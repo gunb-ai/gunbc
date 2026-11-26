@@ -6,8 +6,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 // state, and that it NEVER leaks a secret (the authorized_keys forced-command line is printed
 // only by NAME, never by value). The value-comparison and the indeterminate-vs-drift red
 // controls live in test.claim.compute.remote_build_serving_setup_witness. Run:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
+//   gunbc test //test/claim/compute/remote_build_serving_converge_witness:<test fn>   (one operand per test fn)
 
 import std.optional { Present, Absent }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, compute_root }
@@ -30,7 +29,7 @@ import extdeps.toolchain.types { Aarch64, Riscv64 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
-  ServingLegFailure, serving_forced_command_line,
+  ServingLegFailure, serving_forced_command_line, serving_account_presence_gate,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
   serving_scratch_root_mode_octal,
@@ -41,11 +40,12 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_apply_receipt_lines, ConvergeApplyTerminal, ApplySettled, ApplyRefused, ApplyUnhandled, ApplyStillNeedsWrites, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer , serving_door_leg_kind }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
 import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetLegKind, ActuationLeg, ProvisioningLeg, fleet_leg_wall_deadline }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 
@@ -141,6 +141,16 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
 // observe reports a spurious GroupAbsent and the plan picks up an extra groupadd the cell didn't mean.
 fn converged_groups() -> String {
   "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
+}
+
+// THE CONVERGED gunbc-compute GROUP ON A HOST WITH NO DASHBOARD INSTANCE (ken, operator_host_e2d4b7). Its
+// capacity-ledger service user is the remote-build account (capacity_ledger_directory_owner), NOT the
+// operator login, so the compute group carries exactly one member — gunbc-build. The operator login
+// briansrls does not exist on a fresh host and the account model never creates it, so a converged ken
+// group has no briansrls. This is the post-fix converged state; the upload-host fixture above keeps
+// briansrls because srv1/srv2 carry the operator login as their instance service principal.
+fn native_converged_groups() -> String {
+  "gunbc-compute:x:1006:gunbc-build\ngunbc-build:x:1005:\n"
 }
 
 // The authorized_keys content AS THE DESIRED STATE DECLARES IT, so a fixture that breaks some other leg
@@ -1251,7 +1261,7 @@ fn b3_run_failing(failing: String, a: ConvergeAction) -> ConvergeWriteOutcome {
 test fn execution_stops_at_first_failure_and_skips_the_dependents() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
   let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
-  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a))
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: ak_key, a: a))
   // The failing write itself IS attempted, with its cause kept; everything ordered after it is skipped.
   let failed_with_cause = match m.failed {
     Cons { head: f, tail: more } => f.key == ak_key && f.cause == b3_injected_cause && length(more) == 0
@@ -1260,12 +1270,16 @@ test fn execution_stops_at_first_failure_and_skips_the_dependents() -> Bool {
   failed_with_cause
     && m.skipped == map([b3_checkout(), b3_toolchain(), b3_binary()], a => converge_action_key(a))
     && m.attempted == [converge_action_key(b3_group()), ak_key]
+    // Only the write that settled BEFORE the failure is `applied`; the failed one and the skipped suffix are not.
+    && m.applied == [converge_action_key(b3_group())]
 }
 
 test fn execution_with_no_failure_attempts_everything() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
-  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
-  m.failed == [] && m.skipped == [] && m.attempted == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  m.failed == [] && m.skipped == []
+    && m.attempted == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
+    && m.applied == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
 }
 
 // Review 96096 (fail_closed): the receipt names the failed write WITH ITS CAUSE, not only its key, and
@@ -1273,12 +1287,44 @@ test fn execution_with_no_failure_attempts_everything() -> Bool {
 test fn the_apply_receipt_names_the_failed_write_and_its_cause() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
   let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
-  let lines = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a)))
-  let clean = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a)))
+  let failing = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: ak_key, a: a))
+  let clean = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  let lines = converge_apply_receipt_lines(executed: failing, terminal: ApplyStillNeedsWrites { count: 3 })
+  let settled = converge_apply_receipt_lines(executed: clean, terminal: ApplySettled)
   string_contains(s: lines, pattern: ak_key)
     && string_contains(s: lines, pattern: "Operation not permitted")
     && string_contains(s: lines, pattern: converge_action_key(b3_toolchain()))
-    && clean == ""
+    && settled == ""
+}
+
+// THE applied-then-refused receipt (the srv3 converge 45762320308 shape): every write settled — the apply
+// mutated every arm — and THEN the re-observe refused at recover-catalog. The receipt must name the applied
+// arms AND the refusal, and must NOT read like a converge that mutated nothing.
+test fn the_apply_receipt_names_applied_arms_then_the_refusal() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let executed = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  let refusal = "the re-observe refused after apply: recover-catalog: the seat census could not be read"
+  let lines = converge_apply_receipt_lines(executed: executed, terminal: ApplyRefused { reason: refusal })
+  string_contains(s: lines, pattern: "applied-then-refused")
+    && string_contains(s: lines, pattern: refusal)
+    && string_contains(s: lines, pattern: converge_action_key(b3_group()))
+    && string_contains(s: lines, pattern: converge_action_key(b3_binary()))
+    && !string_contains(s: lines, pattern: "refused-before-apply")
+}
+
+// RED CONTROL: the SAME refusal, but the apply mutated nothing (no arm settled). It must read
+// "refused-before-apply", name NO applied arm, and be a DIFFERENT receipt from the one above. Without the
+// applied/terminal split these two receipts are byte-identical — that conflation is the defect.
+test fn a_refusal_with_no_applied_arm_is_a_different_receipt() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let refusal = "the re-observe refused after apply: recover-catalog: the seat census could not be read"
+  let nothing = converge_apply_receipt_lines(executed: ConvergeExecuted { attempted: [], applied: [], failed: [], skipped: [] }, terminal: ApplyRefused { reason: refusal })
+  let executed = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  let applied_then = converge_apply_receipt_lines(executed: executed, terminal: ApplyRefused { reason: refusal })
+  string_contains(s: nothing, pattern: "refused-before-apply")
+    && !string_contains(s: nothing, pattern: "applied-then-refused")
+    && !string_contains(s: nothing, pattern: converge_action_key(b3_group()))
+    && nothing != applied_then
 }
 
 // ── side-chat review of 2026-11-16, finding B4: an EXTRA ledger-group member is unhandled, not "fixed" ──
@@ -2077,7 +2123,7 @@ fn fully_matched_native_identity(d: RemoteBuildServingDesired, line: String, sid
   serving_observed_from_reads(
     elevation: est_elevation(), account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
-    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    group: est_s(native_converged_groups()), authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
@@ -2350,6 +2396,21 @@ test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
   }
 }
 
+// THE THREE RECOVERY DOOR LEGS RIDE THE DOOR CEILING, not the actuation ceiling. A door is a gunbc
+// CLI run whose wall-clock begins with the host engine's cold entry resolution; converge apply
+// 45354782930 proved the mismatch on srv1: the seat census was killed at the 60s ActuationLeg ceiling
+// "before the host could answer" while the door was still resolving its entry, and the overrun folded
+// — correctly — into an unknown census that refused the plan. The serve route had already classified
+// its host-side gunbc leg as ProvisioningLeg (gunbc.compute.remote_build_client); the doors ride the
+// same kind, decided once by serving_door_leg_kind, and this claim goes red the moment a door leg is
+// reclassified back down (or the kind drifts to something whose ceiling equals the actuation one).
+test fn the_recovery_door_legs_ride_the_door_ceiling() -> Bool {
+  match serving_door_leg_kind() {
+    ProvisioningLeg => fleet_leg_wall_deadline(kind: serving_door_leg_kind()) != fleet_leg_wall_deadline(kind: ActuationLeg)
+    _ => false
+  }
+}
+
 test fn converge_order_preserves_every_action_kind() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
@@ -2397,6 +2458,237 @@ test fn unread_host_architecture_refuses_never_uploads() -> Bool {
         target_arch: ObservationRefused { cause: ServingLegFailure { item: "target_arch", cause: "uname -m unread" } }
       )
       any(r.unhandled, x => x == "serve_binary.sha256") && length(r.writes) == 0
+    }
+  }
+}
+
+// ── RB-M3 ken: a CONFIRMED-ABSENT account has a proven-absent slice, not an unread one ──────────────
+//
+// A brand-new serving host (ken, butch) has no serving account yet. The account leg reads that as a proven
+// absence (passwd Established, row absent) and plans EnsureAccount. Its per-user user-work slice is a proven
+// absence TOO -- there is no slice without the account -- so the slice leg must contribute an install-target
+// DEVIATION, not an unknown. ServingUnknown stays reserved for where nobody read the account (a refused passwd
+// read) or systemctl was refused with the account present. This is the fresh-host bootstrap the wet observe
+// was refusing (goal_indeterminate), which both serving_assessment_runnable and converge_plan reject, so a
+// fresh host could never be converged to create the very account+slice it was waiting on. These fixtures pin
+// the contract at the assess/plan level; the live ken observe is the end-to-end acceptance.
+
+fn fresh_host_proven_absent_slice_observed(d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(""),
+    group: est_s("root:x:0:\n"),
+    authorized_keys: est_s(""),
+    store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+    scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
+    checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
+    serve_binary_sha256: Absent, checkout_revision: Absent,
+    authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_manager_linger: ObservationEstablished { observed: false },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+fn rank_account_write(ws: List<ConvergeAction>) -> Int {
+  match first_where(ws, keep: a => is_ensure_account(a)) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+fn rank_slice_install(ws: List<ConvergeAction>) -> Int {
+  match first_where(ws, keep: a => is_install_slice(a)) {
+    Absent => -1
+    Present { value: a } => converge_kind_rank(a)
+  }
+}
+
+// DOWNSTREAM GUARANTEE (the pure gate claims at the foot of this section are the discriminator for this
+// PR): a confirmed-absent account with a proven-absent slice is RUNNABLE drift, and the plan
+// drafts the account BEFORE the slice it lives under (EnsureAccount rank 1 < InstallUserWorkSlice rank 8),
+// exactly one slice install, the whole list ordered by kind. This is the host the observe used to refuse.
+test fn fresh_host_proven_absent_slice_plans_useradd_before_slice_install() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let asmt = serving_assess(d: d, o: fresh_host_proven_absent_slice_observed(d: d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent())
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && length(filter(ws, x => is_install_slice(x))) == 1
+        && length(filter(ws, x => is_ensure_account(x))) == 1
+        && rank_account_write(ws: ws) >= 0 && rank_slice_install(ws: ws) >= 0
+        && rank_account_write(ws: ws) < rank_slice_install(ws: ws)
+        && writes_sorted_by_kind(ws)
+    }
+  }
+}
+
+// The two cap builders are ONE-WAY apart, and that asymmetry is the whole gate: the proven-absent read is
+// established-unbounded (it LICENSES an install), the refused read is refused everywhere (an unknown). A
+// confirmed-absent account must use the former; the reserved unreadable cases use the latter.
+test fn the_proven_absent_slice_read_is_established_and_the_refused_read_is_refused() -> Bool {
+  let a = serving_slice_cap_account_absent()
+  let all_established = match a.max { ObservationEstablished { observed: CgroupMemoryUnlimited } => true _ => false }
+    && match a.high { ObservationEstablished { observed: CgroupMemoryUnlimited } => true _ => false }
+    && match a.swap { ObservationEstablished { observed: CgroupMemoryUnlimited } => true _ => false }
+  let r = serving_slice_cap_refused(cause: "passwd read refused; slice not locatable")
+  let all_refused = match r.max { ObservationRefused { cause: _ } => true _ => false }
+    && match r.high { ObservationRefused { cause: _ } => true _ => false }
+    && match r.swap { ObservationRefused { cause: _ } => true _ => false }
+  all_established && all_refused
+}
+
+// RESERVED-BEHAVIOUR GUARD (not the discriminator for this PR — it holds with or without the gate): an
+// account that is PRESENT but whose slice systemctl
+// could not be read (all three controls refused) is indeterminate -- the converge refuses and writes nothing,
+// exactly as before. The fix does NOT turn a genuinely-unread slice into an install.
+fn all_slice_refused_account_present_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "systemctl refused, account present" } },
+    user_work_slice_high: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "systemctl refused, account present" } },
+    user_work_slice_swap: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "systemctl refused, account present" } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+test fn all_slice_controls_refused_with_account_present_is_indeterminate() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: all_slice_refused_account_present_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          plan_is_refused(plan) && length(plan_writes(plan)) == 0
+        }
+      }
+    }
+  }
+}
+
+// RESERVED-BEHAVIOUR GUARD (the chain claim refused_passwd_read_drives_the_gate_to_the_systemd_read is the
+// discriminator; this is the end-to-end consequence): a refused /etc/passwd read (nobody read the account at all) is indeterminate, NOT a
+// fabricated proven-absent install. The slice is capped/settled here so the refused passwd is the only
+// unread leg -- if the gate confused 'passwd refused' with 'account confirmed absent' this host would plan a
+// useradd+slice install off a read nobody completed, which is the fabrication the contract forbids.
+fn refused_passwd_settled_slice_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: ObservationRefused { cause: ServingLegFailure { item: "account.uid", cause: "/etc/passwd read refused" } },
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+test fn refused_passwd_read_is_indeterminate_not_a_fabricated_install() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: refused_passwd_settled_slice_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          plan_is_refused(plan) && length(plan_writes(plan)) == 0
+        }
+      }
+    }
+  }
+}
+
+// ── THE DISCRIMINATOR for this PR: the pure slice-leg gate over account_gate ─────────────────────────
+//
+// The whole behaviour this PR adds lives in serving_slice_leg_choice: which cap the observe's slice leg
+// reads, decided over the account gate. These claims execute THAT function (and, in the chain claims, the
+// real path from the /etc/passwd read through serving_account_presence_gate into it), so they go red the
+// moment the gate is reverted to always reading systemd -- which is the fresh-host indeterminate this PR
+// fixes. The fixtures above feed the assessment/plan a slice reading and so are downstream guarantees; these
+// are the reds for the change itself (fail_closed: "green by execution plus a discriminating input").
+
+fn is_proven_absent_choice(c: ServingSliceLegChoice) -> Bool {
+  match c { SliceLegProvenAbsentCap => true _ => false }
+}
+
+fn is_read_systemd_choice(c: ServingSliceLegChoice) -> Bool {
+  match c { SliceLegReadSystemd => true _ => false }
+}
+
+test fn slice_gate_established_false_picks_the_proven_absent_cap() -> Bool {
+  is_proven_absent_choice(serving_slice_leg_choice(account_gate: ObservationEstablished { observed: false }))
+}
+
+test fn slice_gate_established_true_picks_the_systemd_read() -> Bool {
+  is_read_systemd_choice(serving_slice_leg_choice(account_gate: ObservationEstablished { observed: true }))
+}
+
+test fn slice_gate_refused_passwd_picks_the_systemd_read() -> Bool {
+  is_read_systemd_choice(serving_slice_leg_choice(account_gate: ObservationRefused { cause: ServingLegFailure { item: "account.uid", cause: "passwd refused" } }))
+}
+
+// Chain claims: the gate is not driven from a hand-built gate value but from the SAME reads the observe
+// feeds it, so they pin the real decision end-to-end without a host (witness_one_interface).
+
+test fn fresh_host_passwd_read_drives_the_gate_to_the_proven_absent_cap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      // passwd established with the account row simply not present
+      let gate = serving_account_presence_gate(account_name: d.account_name, passwd: est_s("root:x:0:0:root:/root:/bin/bash\n"))
+      is_proven_absent_choice(serving_slice_leg_choice(account_gate: gate))
+    }
+  }
+}
+
+test fn present_account_passwd_read_drives_the_gate_to_the_systemd_read() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let row = join([d.account_name, ":x:1005:1005:", d.account_name, ":/home/", d.account_name, ":/bin/bash\n"], "")
+      let gate = serving_account_presence_gate(account_name: d.account_name, passwd: est_s(row))
+      is_read_systemd_choice(serving_slice_leg_choice(account_gate: gate))
+    }
+  }
+}
+
+test fn refused_passwd_read_drives_the_gate_to_the_systemd_read() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let gate = serving_account_presence_gate(account_name: d.account_name, passwd: ObservationRefused { cause: ServingLegFailure { item: "account.uid", cause: "/etc/passwd read refused" } })
+      is_read_systemd_choice(serving_slice_leg_choice(account_gate: gate))
     }
   }
 }

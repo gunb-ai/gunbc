@@ -121,6 +121,37 @@ type RoadmapScratchSync = ScratchSynced | ScratchSyncFailed { step: String, exit
 
 // Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
 // instance root the worktree hangs under, and the host's git and directory (install) realizations.
+// THE TIP OF THE DURABLE BRANCH, AS THE REMOTE STATES IT, in a hex sha. The recorder's
+// durable store is one git branch, and a checkout of it on the operator's machine is a
+// MIRROR: it reads empty while 85 commits sit on the branch (measured 2026-11-23, when a
+// lane read /opt/gunbc/roadmap-events -- pinned at 02c95a06 -- and concluded the recorder
+// had never recorded anything). So a reader is told the tip the REMOTE states, not what a
+// local mirror happens to hold. Absent means the remote would not say, and the words say
+// to read it yourself; this never claims a tip it could not read.
+fn roadmap_event_branch_tip(layout: RoadmapEventCarrierLayout) -> Optional<String> {
+  match carrier_exec(
+    layout: layout,
+    workdir: layout.worktree as String,
+    args: shape_git_ls_remote_heads_args(remote: layout.remote, branch: roadmap_events_branch)
+  ) {
+    CarrierExecFailed { exit_code: _, stderr: _ } => none
+    CarrierExecOk { stdout: out } => {
+      let line = match filter(xs: split(s: trim(s: out), delimiter: "\n"),
+                              predicate: l => l != "").first() {
+        Absent => ""
+        Present { value: l } => l
+      }
+      let sha = trim(s: match split(s: line, delimiter: "\t").first() {
+        Absent => ""
+        Present { value: v } => v
+      })
+      // Absent, not none: this if is the tail of a match arm, where a bare `none` resolves to Product(Unit)
+      // and the reader calls the arms incompatible. The constructor spells the type the arm must have.
+      if sha == "" { Absent } else { Present { value: sha } }
+    }
+  }
+}
+
 fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
   RoadmapEventCarrierLayout {
     remote: if instance.instance_id == srv2_dashboard_preview_id { concat(instance.instance_root as String, "/ui-preview-events.git") } else { roadmap_events_remote },
@@ -197,10 +228,47 @@ fn roadmap_event_commit_message(env: RoadmapEventEnvelope) -> String {
   join(["roadmap event ", env.id as String, " on ", env.event.node as String], "")
 }
 
+// WHERE A PUBLISHED EVENT WENT — the durable destination, named by the append that produced it. The
+// recorder's only durable store is one git branch (roadmap_events_branch on the instance's events remote);
+// until now nothing the append said named it, so an operator reading the tool could not tell a push from a
+// staging-tree write, and a lane read a stale CHECKOUT of that branch and reported the recorder broken when
+// its own mirror was behind (2026-11-23, session royal-newt-240's retracted defect report, which my
+// manager endorsed as a fair ask). ONE fn states it, at the moment the push is confirmed: the commit it
+// pushed, the ref it pushed to, the remote it pushed them to. An append that could not name its commit
+// still says Absent rather than guessing one — a sha is read from git, never composed here.
+type EventPublication {
+  remote: NonEmptyStr
+  ref_name: NonEmptyStr
+  commit: NonEmptyStr
+}
+
+// THE PUBLISH STATE IS THREE THINGS, NOT TWO. An append that never pushed, an append whose push landed and
+// whose commit was read back, and an append whose push LANDED BUT WHOSE COMMIT COULD NOT BE READ BACK are three
+// different facts. Folding the third into the first (an Optional's Absent) let a publication failure masquerade as
+// an absence — the exact silent degradation DESIGN.md's fail_closed rules out ("every degradation is typed, located
+// and countable"). The unread arm carries the exit code and stderr of the failed readback so the degradation is
+// countable at the append itself, not discovered later by a reader who assumed silence meant success.
+type EventPublishState
+  = Unpublished
+  | Published { publication: EventPublication }
+  | PublishedCoordinateUnread { exit_code: Int, stderr: String }
+
 type RoadmapEventAppend
-  = EventAppended { id: RoadmapEventId }
+  = EventAppended { id: RoadmapEventId, published_as: EventPublishState }
   | EventAlreadyPresent { id: RoadmapEventId }
   | EventAppendRefused { id: RoadmapEventId, step: String, reason: String }
+
+// THE PUBLICATION STATE IS COUNTABLE IN WORDS, not just typed. A consumer (or a witness) that needs to tell the
+// three states apart reads them through here, so "published", "unpublished" and "pushed-but-the-commit-was-unread"
+// each have one canonical sentence and the unread arm's exit code and stderr are surfaced rather than swallowed.
+fn roadmap_event_publish_state_report(state: EventPublishState) -> String {
+  match state {
+    Unpublished => "unpublished"
+    Published { publication: p } => join(["published ", p.commit as String, " to ", p.ref_name as String, " on ", p.remote as String], "")
+    PublishedCoordinateUnread { exit_code: code, stderr: err } =>
+      join(["published-but-unread (exit ", to_string(value: code), "): ", err], "")
+  }
+}
 
 type RoadmapEventsRead
   = EventsRead { node: RoadmapNodeId, envelopes: List<RoadmapEventEnvelope> }
@@ -518,7 +586,7 @@ fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, 
       CarrierSnapshotRefused { reason } => CarrierClosed { result: EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "snapshot", reason: reason }, close: SnapshotNotOpened }
       CarrierSnapshotReady { layout: private } =>
         match roadmap_event_append_private(layout: private, event: event, operation: operation) {
-          EventAppended { id } => CarrierClosed { result: EventAppended { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+          EventAppended { id, published_as } => CarrierClosed { result: EventAppended { id: id, published_as: published_as }, close: roadmap_event_snapshot_close(layout: private) }
           EventAlreadyPresent { id } => CarrierClosed { result: EventAlreadyPresent { id: id }, close: roadmap_event_snapshot_close(layout: private) }
           EventAppendRefused { id, step, reason } => CarrierClosed { result: EventAppendRefused { id: id, step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
         }
@@ -687,7 +755,18 @@ fn roadmap_event_publish_private(layout: RoadmapEventCarrierLayout, env: Roadmap
                 reason: concat("conditional publication refused; retry using the same operation identity: ", stderr) }
               CarrierExecFailed { exit_code: _, stderr: _ } => EventAppendRefused { id: env.id, step: "publication-refused", reason: stderr }
             }
-            CarrierExecOk { stdout: _ } => EventAppended { id: env.id }
+            CarrierExecOk { stdout: _ } => match carrier_exec(layout: layout, workdir: layout.worktree as String,
+              args: ["rev-parse", "HEAD"]) {
+              // THE COMMIT THAT JUST LANDED, read from git itself — the same HEAD the push above carried. If
+              // git will not say, the push STILL landed and the append says so on its own typed arm —
+              // PublishedCoordinateUnread, carrying the failed readback's exit code and stderr. It is NOT folded
+              // into Unpublished: "pushed but the coordinate is unread" and "never pushed" are different facts, and
+              // collapsing them is the silent degradation fail_closed forbids. Inventing a commit would be worse.
+              CarrierExecOk { stdout: sha } => EventAppended { id: env.id, published_as: Published { publication: EventPublication {
+                remote: layout.remote as NonEmptyStr, ref_name: roadmap_events_branch as NonEmptyStr,
+                commit: trim(s: sha) as NonEmptyStr } } }
+              CarrierExecFailed { exit_code: code, stderr: err } => EventAppended { id: env.id, published_as: PublishedCoordinateUnread { exit_code: code, stderr: err } }
+            }
           }
         }
       } }
@@ -948,6 +1027,38 @@ fn roadmap_events_read_all_attached(layout: RoadmapEventCarrierLayout) -> Carrie
         AllEventsRead { envelopes } => CarrierClosed { result: AllEventsRead { envelopes: envelopes }, close: roadmap_event_snapshot_close(layout: private) }
         AllEventsReadRefused { step, reason } => CarrierClosed { result: AllEventsReadRefused { step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
       }
+  }
+}
+
+// ONE admitted snapshot read for the PROJECTION: standings AND the full envelope set from the SAME private
+// snapshot. A projection row carries standing, events, acceptance evidence and the in-flight set together; if
+// they are read from two separate snapshots a release landing between the reads yields a row that shows a
+// claim, a release event AND no held leaf -- three facts about three different heads glued into one row. One
+// snapshot makes them all the one head. Both loads use the very same _private entry points the standalone
+// readers use (roadmap_standings_read_private, roadmap_events_read_all_private) -- no second fold, no second
+// authority (single_authority); only the snapshot OPENING is shared here. The caller releases the snapshot
+// through the returned thunk exactly once, exactly as the two standalone readers do.
+type CarrierProjectionRead {
+  standings: RoadmapStandings
+  events: RoadmapAllEventsRead
+}
+
+fn roadmap_projection_read_one_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierClosed<CarrierProjectionRead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed {
+      result: CarrierProjectionRead {
+        standings: StandingsUnobserved { reason: reason },
+        events: AllEventsReadRefused { step: "snapshot", reason: reason },
+      },
+      close: SnapshotNotOpened,
+    }
+    CarrierSnapshotReady { layout: private } => CarrierClosed {
+      result: CarrierProjectionRead {
+        standings: roadmap_standings_read_private(layout: private),
+        events: roadmap_events_read_all_private(layout: private),
+      },
+      close: roadmap_event_snapshot_close(layout: private),
+    }
   }
 }
 
@@ -1290,7 +1401,7 @@ type RoadmapResultAppend
 
 fn roadmap_result_append_of(append: RoadmapEventAppend) -> RoadmapResultAppend {
   match append {
-    EventAppended { id } => ResultAppended { id: id }
+    EventAppended { id, published_as: _ } => ResultAppended { id: id }
     EventAlreadyPresent { id } => ResultAppendAlreadyPresent { id: id }
     EventAppendRefused { id: _, step, reason } => ResultAppendRefused { step: step, reason: reason }
   }

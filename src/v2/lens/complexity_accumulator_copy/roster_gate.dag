@@ -8,7 +8,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
 }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.parse { grammar_validate_and_analyze, parse_production }
 import v2.compiler.tokenize { tokenize }
 import v2.lens.complexity_accumulator_copy.analyze { accumulator_copy_findings }
 import v2.lens.common.source_analysis_standing {
@@ -28,10 +28,8 @@ import v2.lens.complexity_accumulator_copy { Finding }
 // Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row
 // claim/complexity/accumulator_copy_roster_gate in gunbc.ci.ci_layer_roots — owned by #6452, not
 // duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI;
-// diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag
-// --source-root src/v2 --entry
-// src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag --function
-// roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet. Large-file walks are
+// diagnostic local runs may set it. Std tranche (PR #6440): gunbc test --wet
+// //test/claim/complexity_accumulator_copy_roster_gate_std:roster_std_change_dag_zero_suspects_within_ratchet. Large-file walks are
 // ordinary fns named by gunbc.offline_local_recipe RecipeFunctions. The cap is not raised.
 
 type FindingStanding
@@ -68,9 +66,9 @@ fn source_tree(source_text: String) -> SourceTreeStanding {
   match lm.grammar {
     VoidGrammar => SourceTreeNotEstablished { cause: LanguageGrammarUnavailable }
     ModeledGrammar { root: root } =>
-      match grammar_validate_for_parse(root: root, at: at) {
+      match grammar_validate_and_analyze(root: root, at: at) {
         Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: LanguageGrammarRejected }
-        Accepted { value: validated, diagnostics: _ } =>
+        Accepted { value: modeled, diagnostics: _ } =>
           match tokenize(
             text: source_text,
             file: ^accumulator_copy_roster_subject,
@@ -80,8 +78,8 @@ fn source_tree(source_text: String) -> SourceTreeStanding {
             Accepted { value: stream, diagnostics: _ } =>
               match parse_production(
                 tokens: token_stream_remaining(stream: stream),
-                validated: validated,
-                production_name: validated.root.start
+                modeled: modeled,
+                production_name: modeled.validated.root.start
               ) {
                 Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: SourceParseRejected }
                 Accepted { value: artifact, diagnostics: _ } =>

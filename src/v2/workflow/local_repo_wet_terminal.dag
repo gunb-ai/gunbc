@@ -184,8 +184,9 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // here, and it is why an unmeasured member does not get added by analogy with a measured one.
 //
 // THE FIVE PROBE MEMBERS WERE MEASURED THE SAME WAY, on the same terms. The instrument is
-// `claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> --functions <csv>`
-// over this tree; re-derive the verdicts by running it rather than reading a number here. Two
+// `gunbc test --wet --source-root dag --source-root src/v2 //test/claim/<module>:<fn>` over this
+// tree (before the cutover: `claim_batch --wet --source-root dag --source-root src/v2 --entry <entry>
+// --functions <csv>`); re-derive the verdicts by running it rather than reading a number here. Two
 // things about that run are worth recording because they are properties of the ROUTE and not of
 // the members, and a future reader hitting them should not mistake either for a defect in the
 // probes. First, the executor refuses at entry with `HostBudgetUnreadable` unless a cgroup
@@ -319,14 +320,16 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // with the attempt's CaptureWork and without a git commit; a clean checkout of a different commit
 // refuses as CaptureAbsent; valid bytes claiming this HEAD stored under another basename also
 // refuse as CaptureAbsent. Hermetic claims supply porcelain, standing, and SubmissionCaptureObservation.
-// TWO CLAIM-BATCH PARSE-GATE MEMBERS (test.claim.claim_batch_parse_gate_witness, Charter 4). They
-// plant a module pair under a mktemp directory in target/, run the already-built seed claim_batch
-// over it with gunbc.WitnessBin.Run, and remove the directory: the admitted effect is a temp
-// directory plus ONE CHILD PROCESS OF THE SEED BINARY the floor already built, and that child is a
-// read-only walk. That child is the one thing this lane's membership property does not already
+// TWO CLAIM-ROUTE PARSE-GATE MEMBERS (test.claim.claim_batch_parse_gate_witness, Charter 4). They
+// plant a module pair under a mktemp directory in target/, run the already-built claim route --
+// target/release/gunbc test -- over it with gunbc.WitnessBin.Run, and remove the directory: the admitted
+// effect is a temp directory plus ONE CHILD PROCESS OF THE SEED BINARY the floor already built, and that
+// child is a read-only walk. That child is the one thing this lane's membership property does not already
 // state, so it is stated here as a distinct effect rather than folded into the sentences above: a
-// member whose verdict depends on target/release/claim_batch existing reaches no verdict where the
-// binary is absent, which is the reachability risk every member carries. The refusal row passes only
+// member whose verdict depends on target/release/gunbc existing reaches no verdict where the
+// binary is absent, which is the reachability risk every member carries. (Dated record: before the
+// claim-execution cutover these members ran the seed claim_batch; the route is the one entrypoint now,
+// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint.) The refusal row passes only
 // the planted root; the control must also walk the dag root so gunbc.output_policy resolves, which
 // is irreducible while a verdict needs that module and puts the control over the per-row wall budget
 // that nothing on this lane arms (gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall).
@@ -798,6 +801,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "a_refused_reservation_is_censused_never_charged" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "a_refused_reservation_is_censused_never_charged",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_recovery_write_on_a_never_charged_slot_says_nothing_is_held" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_recovery_write_on_a_never_charged_slot_says_nothing_is_held",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "a_terminal_slot_with_an_unconsultable_ledger_stays_unknown" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "a_terminal_slot_with_an_unconsultable_ledger_stays_unknown",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attempt_past_its_declared_window_is_censused_as_a_write" },
       entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
       function: "an_attempt_past_its_declared_window_is_censused_as_a_write",
@@ -819,6 +840,98 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_cli_door_exits_two_when_no_instance_resolves" },
       entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
       function: "the_cli_door_exits_two_when_no_instance_resolves",
+      expectation: ExpectedToHold {}
+    },
+    // The serving doors added in #16919 were never enrolled with the rest of this witness; the
+    // read-back detail claim joins them now.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_census_door_refuses_a_host_off_the_serving_roster" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_census_door_refuses_a_host_off_the_serving_roster",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_recover_door_exits_unknown_off_the_roster" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_recover_door_exits_unknown_off_the_roster",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_readback_door_carries_its_unknown_detail" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_readback_door_carries_its_unknown_detail",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_census_names_what_the_seat_exit_spool_said" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_census_names_what_the_seat_exit_spool_said",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_census_carries_a_planted_stop_hook_record" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_census_carries_a_planted_stop_hook_record",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_door_refusal_carries_the_planted_stop_hook_record" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_door_refusal_carries_the_planted_stop_hook_record",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_attestation_roster_names_only_the_ruled_seats" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_attestation_roster_names_only_the_ruled_seats",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unruled_reference_is_never_attested" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unruled_reference_is_never_attested",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attested_terminal_seat_without_unit_proof_authorizes_the_release" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attested_terminal_seat_without_unit_proof_authorizes_the_release",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unattested_terminal_seat_without_unit_proof_still_refuses" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unattested_terminal_seat_without_unit_proof_still_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attestation_never_reaches_past_its_own_reference" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attestation_never_reaches_past_its_own_reference",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "attestation_never_overrides_an_observed_live_unit" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "attestation_never_overrides_an_observed_live_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "attestation_never_opens_a_too_early_window" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "attestation_never_opens_a_too_early_window",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attested_launching_seat_without_unit_proof_terminates_and_releases" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attested_launching_seat_without_unit_proof_terminates_and_releases",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3833,9 +3946,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line" },
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "an_unparsable_imported_module_refuses_with_exit_2_and_no_verdict_line" },
       entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
-      function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line",
+      function: "an_unparsable_imported_module_refuses_with_exit_2_and_no_verdict_line",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3845,9 +3958,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_2_as_unobserved" },
       entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
-      function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line",
+      function: "an_entry_with_a_closure_error_exits_2_as_unobserved",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3992,18 +4105,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "a_held_claim_exits_0_and_prints_pass" },
       entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
       function: "a_held_claim_exits_0_and_prints_pass",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.claim_batch_outcomes_out_witness", function: "an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row" },
-      entry: "dag/test/claim/claim_batch_outcomes_out_witness.dag",
-      function: "an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.claim_batch_outcomes_out_witness", function: "an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0" },
-      entry: "dag/test/claim/claim_batch_outcomes_out_witness.dag",
-      function: "an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

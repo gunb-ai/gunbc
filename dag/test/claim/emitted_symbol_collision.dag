@@ -1,0 +1,53 @@
+module test.claim.emitted_symbol_collision
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { census_total_count }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_rows_of_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Replaces src/v1/tests/src/emitted_symbol_collision_test.rs, the part the Rust test asserted that the
+// sibling test.claim.emitted_symbol_collision_witness does not pin by count: the authored collision is
+// refused with EXACTLY ONE EmittedSymbolCollision row and emits no file (the compile is the Refused
+// outcome, which carries no emitted files), and the live shape compiles with no collision row and no
+// diagnostic of any severity. The emitted struct text, including the allow(non_camel_case_types)
+// attribute on Git__Worktree, is asserted by the_live_git_worktree_shape_emits_both_structs in that
+// sibling and is not repeated here. Fixture sources carry no std.types import (see the sibling's note).
+
+data live_shape_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+data collide_source: String = "module esc.probe\n\ntype Git__Worktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+fn collision_rows(sources: String) -> Int {
+  match compile_fixture(MultiModuleCompileFixture { sources: [fixture_source("esc/probe.dag", sources)], entry: "esc/probe.dag" }) {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      census_total_count(rows: fixture_rows_of_class(rows: rows, wanted: "EmittedSymbolCollision"))
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => -1
+    FixtureInstrumentRefused { cause: c } => -1
+  }
+}
+
+fn completed_with_no_diagnostic(sources: String) -> Bool {
+  match compile_fixture(MultiModuleCompileFixture { sources: [fixture_source("esc/probe.dag", sources)], entry: "esc/probe.dag" }) {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => count(rows) == 0 && count(files) > 0
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+test fn a_type_spelled_into_the_service_space_is_refused_with_exactly_one_collision_and_emits_nothing() -> Bool {
+  collision_rows(sources: collide_source) == 1
+}
+
+test fn the_live_git_worktree_shape_has_no_collision_row_and_no_diagnostic() -> Bool {
+  completed_with_no_diagnostic(sources: live_shape_source)
+}

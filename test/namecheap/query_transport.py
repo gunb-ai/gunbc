@@ -70,21 +70,28 @@ scratch = tempfile.TemporaryDirectory(prefix='query-', dir=scratch_root)
 entry = pathlib.Path(scratch.name) / 'query_transport_test.dag'
 entry.write_text('''module test.namecheap.query_transport_probe
 import std.types { Bool, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.http.client
 
-test fn query_reaches_server(url: String) -> Bool {
+fn query_reaches_server(url: String) -> ProcessExit {
   let result = http.Client.GetQueryStdinWithin(url: url as NonEmptyStr,
     query: "ApiKey=fixture-only-not-a-key%26value&Command=namecheap.domains.dns.getHosts",
     connect_seconds: "2" as NonEmptyStr, max_seconds: "5" as NonEmptyStr)
-  result.success && result.body == "fixture-response\\n200"
+  if result.success && result.body == "fixture-response\\n200" {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the fixture query did not come back as the loopback server answered it")
+  }
 }
 ''')
 try:
     closure = pathlib.Path(scratch.name) / 'closure'
     staged_entry = stage_import_closure(entry, closure)
+    # A wet run of one ProcessExit entry: the probe makes a real loopback request, and it takes
+    # an argument, which gunbc test (the claim route) does not carry.
     result = subprocess.run([binary, 'run', '--source-root', str(closure),
-                             '--entry', str(staged_entry),
-                             '--claim-run', '--arg', 'url=' + url], capture_output=True, text=True, timeout=120)
+                             '--entry', str(staged_entry), '--function', 'query_reaches_server',
+                             '--arg', 'url=' + url], capture_output=True, text=True, timeout=120)
     if result.returncode:
         raise RuntimeError(result.stdout + result.stderr)
     assert observed.get('query') == {'ApiKey': [fixture], 'Command': ['namecheap.domains.dns.getHosts']}, observed

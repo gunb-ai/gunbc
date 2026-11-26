@@ -62,7 +62,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // HOW TO CHECK THAT THESE ROWS DISCRIMINATE, STATED AS A PROCEDURE RATHER THAN AS A TRANSCRIBED
 // RESULT, so a later reader re-derives it instead of trusting a number that has since rotted.
 //
-// Run this module through `claim_batch --claim-run`, then delete ONE check in
+// Run this module's claims through `gunbc test` (one `//test/claim/customer_image_admission_witness:<test fn>`
+// operand per claim), then delete ONE check in
 // product.fabric.customer_image and run it again. Each of these three deletions must turn exactly
 // ONE row red and leave every other row green:
 //

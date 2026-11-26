@@ -7,6 +7,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, Memory, One,
   TokenCount, token_count, token_count_value,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  Gibibyte, gibibyte_count,
   Permille, permille, permille_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -98,6 +99,19 @@ fn serving_reading_bytes_or_zero(r: ServingMemoryReading) -> ByteSize {
     ServingMemoryRead { bytes: b, provenance: _ } => b
     ServingMemoryAssumed { bytes: b, reason: _ } => b
     ServingMemoryUnread { reason: _ } => byte_size(count: 0)
+  }
+}
+
+// The figure a reading HAS, or Absent when it is unread -- the third reading accessor beside
+// serving_reading_bytes_or_zero (which invents a zero for a LOWER BOUND only) and serving_reading_missing. A rule
+// that RELATES two figures (floor <= occupies, in serving_layout's hold gate) must ABSTAIN on an unread figure
+// rather than compare against a fabricated zero: comparing an unread figure to a sibling would either refuse a
+// legitimate absence or pass a real violation, so it returns Option and the caller decides what an absence means.
+fn serving_reading_known_bytes(r: ServingMemoryReading) -> ByteSize? {
+  match r {
+    ServingMemoryRead { bytes: b, provenance: _ } => Present { value: b }
+    ServingMemoryAssumed { bytes: b, reason: _ } => Present { value: b }
+    ServingMemoryUnread { reason: _ } => Absent
   }
 }
 
@@ -371,24 +385,84 @@ data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapsh
 // at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log). The
 // bytes that stay warm are the configured size at the watermark, derived from the two readings. It evicts; it does
 // not refuse once full.
-data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 125))
+data srv1_lmcache_l2_configured: Gibibyte = gibibyte(count: 125)
+
+data srv1_lmcache_l2_bytes: ByteSize = gibibyte_to_byte_size(g: srv1_lmcache_l2_configured)
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
-// srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=12 on each container, read from the run identity's
-// own environment (srv1_topology_comparison's run row records the container environment, read 2026-11-08) and
-// corroborated by srv1_lil_serve.sh's LMCache block, which passes 12. LMCache's GB is GiB, as the L2 row's
-// rejection reading established. NOT the 2026-10-30 engine-memory figure below (L1_GB=100): the tier has been
-// 12 GiB per replica since the 2026-11-08 move to two replicas, which is also why no 110 GiB /dev/shm is needed.
-data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 12))
+// srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=48 on each container. THE single authority for the
+// L1 tier size — the launcher's `--env LMCACHE_L1_GB=` token, the START line's "L1 <n>G", and the host budget's
+// `l1_shm` all cite THIS row, so the number that serves and the number that is priced cannot disagree (they
+// could, until 2026-11-24: srv1_serving_replica_layout held its own copy and its comment asserted no owner
+// here existed. It did, at this row).
+//
+// Read 2026-11-24 from the host's own bytes: /usr/local/etc/lil-replica/replica-{0,1}.args carry
+// `LMCACHE_L1_GB=48` (both files identical, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca
+// read on srv1), and the launcher's START event reads "L1 48G, L2 125G". The value BEFORE this read was 12 GiB
+// — the run identity's environment of 2026-11-08, corroborated by srv1_lil_serve.sh's LMCache block — and the
+// raise is what the eviction path's contract made necessary: under `--l2-store-policy checkpoint_on_evict` L1
+// is not an optional cache but the only staging buffer between a checkpoint and the NVMe tier, so the old
+// "small 12 GiB RAM tier" figure was priced against nothing. The contract and its refusal live with the
+// launcher: gunbc.serving.srv1_serving_replica_layout::srv1_l1_staging_floor. The observation that found it —
+// L1 pinned at 90-99%, ~740k fresh pages deleted 0.07-1 s after creation without being written, saves granted
+// 48%/43% of the bytes they asked for, read from LMCache's own lines in ~/lil/serve/serve.log and
+// ~/lil/serve-gpu1/serve.log by the operator's session on 2026-11-24 — is carried as the receipt on
+// gunbc.recurring_failure_mode::a_serving_tier_sized_as_a_cache_while_the_store_policy_makes_it_the_only_path_to_disk.
+// LMCache's GB is GiB, as the L2 row's rejection reading established. NOT the 2026-10-30 engine-memory figure
+// below (L1_GB=100): that predates the 2026-11-08 move to two replicas.
+// THE SAME TIER IN THE UNIT THE ENGINE'S KNOB TAKES IT, which is where the authority has to sit: LMCACHE_L1_GB
+// is a whole number of gibibytes, so a row holding bytes and a second row dividing them back to GB is a second
+// home for the number plus a division that can round. This is the ONE place the figure is written; the byte
+// form below is DERIVED from it, and both launch paths read it — the provisioning launch's environment entry
+// (gunbc.serving.srv1_serving_launch::srv1_serving_launch, which is copied into every provisioned container by
+// gunbc.serving.serving_provision_derivation::srv1_serving_launch_for_port) and the boot launcher's
+// LMCACHE_L1_GB argument (gunbc.serving.srv1_serving_replica_layout::srv1_replica_engine_args_body). That is
+// the defect this row's existence removes: on 2026-11-24 the installed args files carried 48 while the
+// provisioning row still carried the 2026-11-08 figure of 12, so a container provisioned from the model rather
+// than installed by hand would have come up with a quarter of the tier its contract needs. The dated capture of
+// that older reading is KEPT, as a capture, in gunbc.serving.srv1_serving_launch_witness::observed_cmd_tail.
+// TYPED IN THE UNIT IT IS WRITTEN IN (review 98748): a `Nat` named `_gib` carries its unit in its name alone, and
+// std.measure already has the carrier for it -- gunbc.std.measure::Gibibyte, read back with gibibyte_count. The
+// bytes are derived, never written: srv1_lmcache_l1_bytes below.
+data srv1_lmcache_l1_configured: Gibibyte = gibibyte(count: 48)
+
+data srv1_lmcache_l1_bytes: ByteSize = gibibyte_to_byte_size(g: srv1_lmcache_l1_configured)
+
+// The tier as its OWN KNOB spells it. The authority above is already a whole number of gibibytes, so this is a
+// read of that row and not a conversion — which is the point: neither launch path has to divide bytes back into
+// GB, and a division is exactly where a second copy of the figure used to live. The boot launcher's args file
+// (gunbc.serving.srv1_serving_replica_layout::srv1_lmcache_engine_env) and this module's provisioning environment
+// entry (gunbc.serving.srv1_serving_launch::srv1_serving_launch) both take the tier from here, and
+// gunbc.serving.srv1_replica_rendered_boot_path_witness reads the operand out of BOTH and refuses if they differ.
+fn srv1_lmcache_l1_gb_value() -> NonEmptyStr {
+  to_string(gibibyte_count(g: srv1_lmcache_l1_configured)) as NonEmptyStr
+}
+
+// The disk tier's knob, spelled the same way for the same reason.
+fn srv1_lmcache_l2_gb_value() -> NonEmptyStr {
+  to_string(gibibyte_count(g: srv1_lmcache_l2_configured)) as NonEmptyStr
+}
+
+// THE CONTAINER'S HARD RAM CEILING, PER REPLICA — the same collapse applied to the number beside the tier.
+// `docker run --memory=` (with --memory-swap equal, so it is an absolute stop and not a soft cap) was written
+// in three places: srv1_serving_replica_layout's `Srv1ReplicaHostBudget.cgroup_memory_limit`, which the docker
+// argv DERIVES its --memory/--memory-swap flags from, and this module's engine record srv1_vllm_engine_memory,
+// which read it off the host on 2026-10-30 as 130g for the single-engine layout that no longer exists. Three
+// copies of a cgroup limit is how a container can be installed at 72g while the model that budgets the host
+// still believes 130g — and the budget is the copy that decides whether the pair fits the host's admitted
+// memory. CITED by both from here. Read 2026-11-24 from the installed launcher's own bytes (sha256
+// 1ad7de0857a4e06168aa603fd5b8d92f1a2ebc6395c84aa64900d5b968dc12ea, `--memory=72g --memory-swap=72g`); before
+// that raise it was 32 GiB per replica, and 130g before the host moved to two replicas on 2026-11-08.
+data srv1_replica_container_memory_cap: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 72))
 
 data srv1_lmcache_l1_tier: ServingMemoryReading = ServingMemoryRead {
-  bytes: srv1_lmcache_l1_configured,
-  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=12 each (the run identity's environment, srv1_topology_comparison; corroborated by srv1_lil_serve.sh's LMCache block), 2026-11-08" as NonEmptyStr,
+  bytes: srv1_lmcache_l1_bytes,
+  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=48 each (the rendered args files installed on the host, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca read 2026-11-24; the launcher's START event reads L1 48G), was 12 GiB per replica from 2026-11-08 until that raise" as NonEmptyStr,
 }
 
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
-  bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
+  bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_bytes) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
   provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=125 each (docker inspect, 2026-11-08) at the L2 eviction watermark 0.80 (serve.log eviction_controller)" as NonEmptyStr,
 }
 
@@ -433,17 +507,35 @@ data host_6ce85c_serving_memory_observed: ServingDedicatedHostMemory = ServingDe
 
 // ENGINES ON SHARED HOSTS, at engine grain only (the host trees are the frontier below).
 //
-// srv1 vLLM (lil-serve, container lil-flash-next), from ~/strata-test/srv1_lil_serve.sh as calm-crab-645
-// read it 2026-10-30: --memory=130g --memory-swap=130g (docker's memory-swap is RAM plus swap, so equal
-// values allow no swap), LMCache L1 100 GB in RAM and L2 150 GB on disk. Down since srv1's 13:10Z boot,
-// deliberately, pending the operator's DIMM decision.
+// srv1 vLLM (lil-serve, one container per card). This row used to be a 2026-10-30 reading of the host —
+// `--memory=130g --memory-swap=130g`, LMCache L1 100 GB, L2 150 GB, taken off ~/strata-test/srv1_lil_serve.sh
+// while a single engine ran and the host was down pending a DIMM decision. It is no longer a reading: the three
+// figures it restates are the launch shape, and after 2026-11-08 the launch shape lives in rows
+// (gunbc.serving.srv1_serving_replica_layout renders the container from them), so restating them here was a
+// SECOND ANSWER to "what is srv1's KV RAM tier" — 100 GB beside the 48 GiB the launcher renders, with nothing
+// between them able to say which was running. Now CITED from the two rows that decide it:
+// srv1_replica_container_memory_cap and srv1_lmcache_l1_configured. A change to the launch shape moves this row
+// by construction, and the 2026-10-30 figures survive here only as provenance.
+//
+// IT DESCRIBES ONE OF TWO IDENTICAL REPLICAS. Since 2026-11-08 srv1 runs lil-flash-next and lil-flash-next-1,
+// each TP=1 on its own card, with the same cap and the same tiers; the row is at engine grain, so its cap is
+// PER REPLICA and the host carries two of them plus the PLE tables (the pair against the host's admitted
+// memory is gunbc.serving.srv1_serving_replica_layout::srv1_replica_total_host_claim and the witness on it).
+// What the 2026-10-30 single-engine boot read, kept because the provenance strings name it: one container at
+// --memory=130g --memory-swap=130g (equal, so no swap), L1_GB=100, L2 150 GB.
 data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "srv1-lil-flash-next" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 130)), provenance: "srv1_lil_serve.sh docker run --memory=130g, read by calm-crab-645 2026-10-30" as NonEmptyStr },
-  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 130)), provenance: "srv1_lil_serve.sh docker run --memory=130g is the hard RAM ceiling (with --memory-swap=130g equal, --memory is the absolute stop), read by calm-crab-645 2026-10-30" as NonEmptyStr },
-  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "srv1_lil_serve.sh docker run --memory-swap=130g equal to --memory, read by calm-crab-645 2026-10-30" as NonEmptyStr },
+  memory_cap: ServingMemoryRead { bytes: srv1_replica_container_memory_cap, provenance: "CITED from srv1_replica_container_memory_cap (72 GiB per replica, the installed launcher's --memory=72g, sha256 1ad7de0857a4e06168aa603fd5b8d92f1a2ebc6395c84aa64900d5b968dc12ea read 2026-11-24). This row restated it as its own 130 GiB reading from 2026-10-30, when one container held the host; class B4 collapsed the copy" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: srv1_replica_container_memory_cap, provenance: "CITED from srv1_replica_container_memory_cap: --memory-swap equals --memory in the installed launcher, so --memory is the absolute stop rather than a soft high-water mark — the same reading calm-crab-645 recorded of --memory=130g/--memory-swap=130g on 2026-10-30, now carried by the row instead of by this record" as NonEmptyStr },
+  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "no swap is allowed: --memory-swap=72g equals --memory=72g in the installed launcher (docker's memory-swap is RAM plus swap, so equal values leave none), read 2026-11-24; the same equality held of the 2026-10-30 pair" as NonEmptyStr },
   base: ServingMemoryUnread { reason: "srv1 vLLM base: the container's memory with LMCache L1 empty, read after its next start" as NonEmptyStr },
-  conversation_cache: ServingMemoryRead { bytes: byte_size(count: 100000000000), provenance: "srv1_lil_serve.sh LMCache L1_GB=100, read by calm-crab-645 2026-10-30; LMCache's GB is taken as 10^9 bytes and that reading is unconfirmed" as NonEmptyStr },
+  // THE SECOND ANSWER TO "WHAT IS SRV1'S KV RAM TIER", CLOSED. This field read 100 GB (LMCache's GB, taken as
+  // 10^9 — itself an unconfirmed reading) while the launcher rendered LMCACHE_L1_GB=12 into the container that
+  // actually booted. Two figures for one tier, and the engine record was not the one any renderer read. Cited
+  // from the row now, so it cannot lag the launch shape again; the durability obligation the tier carries is
+  // not this record's to state and is modelled at
+  // gunbc.serving.srv1_serving_replica_layout::srv1_l1_staging_floor.
+  conversation_cache: ServingMemoryRead { bytes: srv1_lmcache_l1_bytes, provenance: "CITED from srv1_lmcache_l1_configured (48 GiB, LMCACHE_L1_GB=48 in the installed args files, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca read 2026-11-24). Read here as its own figure until class B4: LMCache L1_GB=100 on 2026-10-30 (LMCache's GB taken as 10^9 bytes, an unconfirmed reading of the unit), 12 GiB in what the launcher rendered from 2026-11-08 — three values for one tier" as NonEmptyStr },
   conversation_slots: Absent,
 }
 
@@ -491,51 +583,40 @@ data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
 // Every figure here is a CANDIDATE reading, not a fleet recommendation: srv4's DIMM A1 is degraded (UE 262,144).
 data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "gunbc-srv4-daily-engine" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryHigh=56G (MemoryMax=64G), raised in place 2026-11-09 after MemoryHigh=40G starved the ~22 GB expert working set (cold decode 5.1 tok/s on 41.5 GB of drive reads); at 56G MemoryCurrent read 46.5 GB. The engine's own guard reports the same limit from the cgroup" as NonEmptyStr },
-  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 64)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryMax=64G (the hard ceiling above MemoryHigh=56G), raised in place 2026-11-09; gunbc.serving.serving_reservation srv4 charges this to the runner" as NonEmptyStr },
+  // THE CAP, AND THE TERMS IT HAS TO HOLD. This drop-in was written to bound one term -- the expert RAM tier
+  // (the operator's 2026-11-09 instruction: "experts mmap-ed from NVMe, small RAM L1 under this cap", recorded in
+  // gunbc.design_ruling::srv3_experts_mmap_under_service_cap and carried on
+  // gunbc.serving.serving_layout::srv4_routed_expert_artifact) -- but the cgroup it sets is shared by four: the
+  // mapped expert tier's OCCUPANCY, the conversation cache, the engine's park admission floor (its own
+  // conversation_cache_min_free_mib, 2560 MiB on srv4) and the process base. At 56G/64G the cap held the expert
+  // tier's 22 GiB working set and starved the other three: the conversation cache saw 2-3 GiB of room and logged
+  // "conversation cache: skip parking (physical RAM admission; need N MiB plus 2560 MiB floor, M MiB available,
+  // source cgroup; evicted K, 0 still parked)" on EVERY turn, so each next turn re-read a 75-95k-token prompt cold
+  // (~90 s) and srv4 ran ~50% cache-warm against srv3's 96% (the operator's session, ad-hoc journal reads on srv4,
+  // 2026-11-24). The operator raised the drop-in to 96G/112G -- srv3's long-standing figure -- on 2026-11-24
+  // ~21:33Z (host file sha256 eb2b16e57eea76f2dd534c0bbb7aa016024462ad580cfb3836a1e8fad8bf581b, read 22:03-22:05Z);
+  // afterwards the same journal logged "97815 reused + 1584 read", srv4 read 99.0% warm against 50.2%, and the
+  // skip-parking line did not appear in the 21:40-21:55Z window (same instrument, same session). Those are
+  // OBSERVATIONS with a named instrument, not deduced consequences: what the model now does with the number is
+  // derive it from its terms -- gunbc.serving.serving_layout::serving_cgroup_terms -- and refuse a cap whose terms
+  // do not fit, so the composition that was missing here cannot go missing silently again. The withdrawn 56G/64G
+  // (and the 40G/48G before it, named in serving_layout::srv4_grant) stay named here rather than repainted.
+  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryHigh=96G (MemoryMax=112G), the operator's hand raise of 2026-11-24 ~21:33Z over the 2026-11-09 56G/64G, which had starved the conversation cache beside the mapped expert tier (see this row's comment); matches srv3's long-standing 96G/112G and sits at the slice's own MemoryHigh (gunbc-srv4-daily.slice, 96G/120G). The engine's own memory guard reports the same limit from the cgroup" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 112)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryMax=112G (the hard ceiling above MemoryHigh=96G), the 2026-11-24 raise of the 2026-11-09 64G; gunbc.serving.serving_reservation srv4 charges this to the runner" as NonEmptyStr },
   swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "systemctl show gunbc-srv4-daily.slice MemorySwapMax=0, 2026-10-30; the 2026-11-09 drop-in caps memory only, so no swap remains" as NonEmptyStr },
   base: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6451)), provenance: "VmRSS 19.5 GB after load under --mmap-experts = anon 2.5 GiB + file 13.2 GiB + shmem 3.8 GiB; the base is the anon and shmem the engine owns (6451 MiB), the file part is the expert artifact's host-RAM rung (2026-11-09 00:18Z)" as NonEmptyStr },
   conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16384)), provenance: "engine.json --conversation-cache-mib 16384, read 2026-11-09 with the mmap change (it was 32768 MiB on 2026-10-30); 3.8 GiB of shmem was resident in it at the read" as NonEmptyStr },
   conversation_slots: Present { value: 8 },
 }
 
-// BUTCH (srv14) -- the operator's hand-deployed pair strata-pool@a (butch-a) / strata-pool@b (butch-b), one engine
-// each. They ran UNCAPPED until 2026-11-12: a read-only ssh at 03:29:30Z (systemctl show strata-pool@{a,b}.service)
-// found MemoryMax=infinity on both -- no ceiling to charge. The operator decision msg_5b61137b (approved by default)
-// set a per-engine cap, and it is now INSTALLED and RE-READ (2026-11-12T03:48:46Z, ubuntu@192.168.1.205): a hand
-// drop-in /etc/systemd/system/strata-pool@{a,b}.service.d/60-memory-cap.conf (the two files identical, sha256
-// b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1) carries MemoryHigh=88G, MemoryMax=96G,
-// MemorySwapMax=0; systemctl show both units now reports MemoryMax=103079215104 (96 GiB), MemoryHigh=94489280512
-// (88 GiB), MemorySwapMax=0, ActiveState=active; the cgroup files (memory.max / memory.high / memory.swap.max) agree.
-// Applied with daemon-reload, NOT a restart (MainPID unchanged: a 2411, b 2752), and /health on 18081 and 18082
-// returned 200. The cap reclaimed file cache (a memory.current 64651292672 down from 121.5 GB, 455 memory.events
-// high during the reclaim, max 0 / oom 0, pressure back to avg10 0; b 71183765504, all events 0). This EXACTLY
-// mirrors how srv3's and srv4's caps are modelled: a ServingMemoryRead of the engine unit's own cgroup ceiling, with
-// the drop-in path, the operator decision and the read as provenance -- a reading with a producer, not a copied
-// literal. srv14's two replicas charge these ceilings, so srv14's runner width now RESOLVES (no longer the fail-
-// closed Unread of B4a). base (loaded-and-idle, nothing parked) and the parked-session conversation-cache budget
-// stay Unread -- neither is a cgroup cap and neither was read (the cfg carries no --conversation-cache key; the
-// memory.current above is under live load, so it is not base). MemoryCurrent/memory.stat are the box's transient
-// charge, not a ceiling -- they belong to gunbc.host.host_memory_observation, not to a cgroup cap here.
-data butch_a_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
-  name: "butch-a-strata" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 88)), provenance: "drop-in /etc/systemd/system/strata-pool@a.service.d/60-memory-cap.conf MemoryHigh=88G (hard ceiling MemoryMax=96G above it), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@a.service -p MemoryHigh=94489280512; the cgroup memory.high agrees" as NonEmptyStr },
-  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/strata-pool@a.service.d/60-memory-cap.conf MemoryMax=96G (the hard ceiling the engine is charged by), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed (daemon-reload, not a restart: MainPID unchanged 2411) and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@a.service -p MemoryMax=103079215104; the cgroup memory.max agrees; gunbc.serving.serving_reservation srv14 charges this to the runner" as NonEmptyStr },
-  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "drop-in /etc/systemd/system/strata-pool@a.service.d/60-memory-cap.conf MemorySwapMax=0, read 2026-11-12T03:48:46Z systemctl show strata-pool@a.service -p MemorySwapMax=0; the host 8G /swap.img reads active, 0 used" as NonEmptyStr },
-  base: ServingMemoryUnread { reason: "butch-a base: the cgroup's anon with the batch warmed and NOTHING parked, which no read taken under live load gives; read obligation: strata-pool@a.service memory.stat anon with the batch warmed and nothing retained (the 2026-11-12T03:48:46Z memory.current 64651292672 was under live load after the reclaim, so it is not base)" as NonEmptyStr },
-  conversation_cache: ServingMemoryUnread { reason: "cfg-a.json carries no --conversation-cache key (read 2026-11-12T03:29:30Z); the engine's parked-session cache budget is unset in the cfg and its effective value is unread" as NonEmptyStr },
-  conversation_slots: Absent,
-}
-
-data butch_b_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
-  name: "butch-b-strata" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 88)), provenance: "drop-in /etc/systemd/system/strata-pool@b.service.d/60-memory-cap.conf MemoryHigh=88G (hard ceiling MemoryMax=96G above it), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@b.service -p MemoryHigh=94489280512; the cgroup memory.high agrees" as NonEmptyStr },
-  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/strata-pool@b.service.d/60-memory-cap.conf MemoryMax=96G (the hard ceiling the engine is charged by), sha256 b28b5a3ffb5a532e700c38e64ba53afab390a976154b411becd08acbda7bc3e1; operator decision msg_5b61137b, installed (daemon-reload, not a restart: MainPID unchanged 2752) and read over read-only ssh 2026-11-12T03:48:46Z (ubuntu@192.168.1.205) systemctl show strata-pool@b.service -p MemoryMax=103079215104; the cgroup memory.max agrees; gunbc.serving.serving_reservation srv14 charges this to the runner" as NonEmptyStr },
-  swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "drop-in /etc/systemd/system/strata-pool@b.service.d/60-memory-cap.conf MemorySwapMax=0, read 2026-11-12T03:48:46Z systemctl show strata-pool@b.service -p MemorySwapMax=0; the host 8G /swap.img reads active, 0 used" as NonEmptyStr },
-  base: ServingMemoryUnread { reason: "butch-b base: the cgroup's anon with the batch warmed and NOTHING parked, which no read taken under live load gives; read obligation: strata-pool@b.service memory.stat anon with the batch warmed and nothing retained (the 2026-11-12T03:48:46Z memory.current 71183765504 was under live load, so it is not base)" as NonEmptyStr },
-  conversation_cache: ServingMemoryUnread { reason: "cfg-b.json carries no --conversation-cache key (read 2026-11-12T03:29:30Z); the engine's parked-session cache budget is unset in the cfg and its effective value is unread" as NonEmptyStr },
-  conversation_slots: Absent,
-}
+// RETIRED 2026-11-24: butch_a_strata_engine_memory and butch_b_strata_engine_memory are GONE with the
+// operator-hand-retired engines (strata-pool@a/@b + strata-expert-lock; boot states
+// gunbc.serving.serving_reservation::srv14_serving_unit_boot_states) and the discharged 192 GiB serving
+// reservation (dissolved_frontier marker in gunbc.serving.serving_reservation; operator ruling
+// gunbc.design_ruling::srv14_serving_memory_charge_retirement_operator_approved_2026_11_24). The 2026-11-12
+// uncapped-then-capped reads (hand drop-in 60-memory-cap.conf, MemoryMax=96G, msg_5b61137b) they recorded are
+// historical; the post-retirement host state is the quiescent peer read in
+// gunbc.host.host_memory_observation (run 45321352046).
 
 // DECLARED FRONTIERS (gunbc.design_argument::consumption).
 //

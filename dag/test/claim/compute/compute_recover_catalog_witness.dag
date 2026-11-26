@@ -49,6 +49,7 @@ module test.claim.compute.compute_recover_catalog_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.decl_ref { declaration_ref_display_key }
 import std.measure { kibibyte }
 import std.algebra { count_where, string_contains }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -56,12 +57,15 @@ import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, host_capacity_carrier_of }
 import gunbc.compute.attempt_lifecycle {
-  attempt_slot_read, attempt_open, AttemptSlotHeld, AttemptSlotAbsent, AttemptSlotUnreadable,
+  attempt_slot_read, attempt_open, attempt_terminate, AttemptSlotHeld, AttemptSlotAbsent, AttemptSlotUnreadable,
   AttemptWorkEnded,
   AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled, RecoveryWriteDeclined, RecoveryWriteRefused,
+  recovery_write_authorization, AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  UnitLifecycleUnknown, UnitStillRunning,
+  ProvenEndedSeatRelease, proven_ended_seat_releases, proven_ended_row_for,
 }
 import gunbc.compute.compute_attempt_slots_root {
   ComputeFlatSeat, ComputeDispatchSeat, ComputeSeat, ComputeSeatStore, ComputeSeatStoreReady, ComputeSeatStoreUnready,
@@ -69,14 +73,21 @@ import gunbc.compute.compute_attempt_slots_root {
 }
 import gunbc.compute.work_request { WorkEndedSucceeded }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogEstablished, RecoverCatalogUnknown, RecoverCatalogEntry,
+  RecoverCatalogEstablished, RecoverCatalogUnknown, RecoverCatalogEntry, CatalogAuthorized, CatalogNeverCharged,
   ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
   compute_recover_attempt,
   compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
-  compute_recover_catalog_serving_cli, compute_recover_serving_cli,
-  compute_open_attempt, compute_settle_attempt,
+  compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
+  compute_open_attempt, compute_settle_attempt, compute_recover_attempt_resolved,
+  compute_seat_exit_spool_dir, ComputeSeatExitSpoolDirResolved, ComputeSeatExitSpoolDirUidUnreadable,
   AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
+}
+import gunbc.owned_directory { owned_directory_path }
+import gunbc.compute.host_capacity {
+  attempt_exit_spool_done_dir, compute_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
+  ComputeCapacityLedger, ComputeBuildPool, compute_root_directory, compute_capacity_directories, host_capacity_subject_in,
+  compute_reserve_against, ComputeReserved, compute_memory_ceiling,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 
@@ -149,8 +160,11 @@ fn open_attempt_in(root: String, seat: ComputeSeat, identity: String, reference:
 // the two must not disagree about the arm, so each claim asks both and compares -- the census's fire/hold word
 // and the door's outcome come from the same authority (recovery_write_authorization). The word is the
 // disagreement check, not a second verdict.
-fn door_word(instance: HostDashboardInstance, reference: NonEmptyStr) -> String {
-  match compute_recover_attempt(instance: instance, reference: reference) {
+// THE DOOR AT THE CLAIM'S ROOT, ledger rooted like the census it must agree with: a witness that asked
+// the census about its own directory and the door about the HOST's ledger would be comparing two
+// different ledgers and calling the agreement an answer.
+fn door_word(root: String, reference: NonEmptyStr) -> String {
+  match compute_recover_attempt_resolved(instance: instance_at(root: root), subject: subject_at(root: root), reference: reference) {
     RecoveryReleased { reference: _, verdict: _, seat: _ } => "released"
     RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => "settled-but-held"
     RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => "nothing-held"
@@ -204,7 +218,7 @@ fn census_of_an_empty_seat_names_no_reference() -> Bool {
   match seat_store_of(root: root, seat: ComputeFlatSeat) {
     Absent => false
     Present { value: store } =>
-      match compute_recover_catalog_for(stores: [store]) {
+      match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
         RecoverCatalogEstablished { entries: es } => count_where(xs: es, predicate: e => true) == 0
         RecoverCatalogUnknown { detail: _ } => false
       }
@@ -227,13 +241,13 @@ fn attempt_inside_its_window_is_a_hold() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
-        && match compute_recover_catalog_for(stores: [store]) {
+        && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
           RecoverCatalogEstablished { entries: es } =>
             count_where(xs: es, predicate: e => true) == 1
               && entry_for(entries: es, reference: reference)
               && string_contains(s: render_entries(entries: es), pattern: "recover-catalog hold ")
               && string_contains(s: render_entries(entries: es), pattern: "TOO EARLY")
-              && door_word(instance: instance_at(root: root), reference: reference) == "declined"
+              && door_word(root: root, reference: reference) == "declined"
           RecoverCatalogUnknown { detail: _ } => false
         }
   }
@@ -257,6 +271,7 @@ fn terminal_record_without_unit_proof_is_a_hold() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
+        && witness_charge_slot(root: root, reference: reference)
         && match attempt_slot_read(store: store.slots, reference: reference) {
           AttemptSlotAbsent => false
           AttemptSlotUnreadable { detail: _ } => false
@@ -270,12 +285,12 @@ fn terminal_record_without_unit_proof_is_a_hold() -> Bool {
               AttemptNotSettled { detail: _ } => false
               AttemptUnsettleable { detail: _ } => false
               AttemptSettled =>
-                match compute_recover_catalog_for(stores: [store]) {
+                match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
                   RecoverCatalogEstablished { entries: _ } => false
                   RecoverCatalogUnknown { detail: d } =>
                     string_contains(s: d, pattern: reference as String)
                       && string_contains(s: d, pattern: "not proven ended")
-                      && door_word(instance: instance_at(root: root), reference: reference) == "refused"
+                      && door_word(root: root, reference: reference) == "refused"
                 }
             }
           }
@@ -301,7 +316,7 @@ fn past_window_attempt_is_a_write_the_census_names() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
-        && match compute_recover_catalog_for(stores: [store]) {
+        && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
           RecoverCatalogEstablished { entries: es } =>
             count_where(xs: es, predicate: e => true) == 1
               && entry_for(entries: es, reference: reference)
@@ -312,7 +327,7 @@ fn past_window_attempt_is_a_write_the_census_names() -> Bool {
               // record without a dispatch that would have charged the seat -- the model's own
               // "the ledger is not holding this reference at the proposal" answer. The arm is what the claim
               // pins: authorized to the census, acted on by the door, never declined.
-              && match door_word(instance: instance_at(root: root), reference: reference) {
+              && match door_word(root: root, reference: reference) {
                 "declined" => false
                 "refused" => false
                 _ => true
@@ -342,7 +357,7 @@ fn one_reference_in_two_seat_directories_is_unknown() -> Bool {
             AttemptSlotHeld { record: rec, generation: _ } =>
               match attempt_open(store: dispatch.slots, record: rec) {
                 AttemptAdvanced { state: _, generation: _ } =>
-                  match compute_recover_catalog_for(stores: [flat, dispatch]) {
+                  match compute_recover_catalog_for(instance: instance_at(root: root), stores: [flat, dispatch], ledger: subject_resolution_at(root: root)) {
                     RecoverCatalogEstablished { entries: _ } => false
                     RecoverCatalogUnknown { detail: d } => string_contains(s: d, pattern: reference as String)
                   }
@@ -369,18 +384,21 @@ fn censusing_the_same_slot_twice_settles_nothing() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
-        && match compute_recover_catalog_for(stores: [store]) {
+        && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
           RecoverCatalogUnknown { detail: _ } => false
           RecoverCatalogEstablished { entries: first } =>
-            match compute_recover_catalog_for(stores: [store]) {
+            match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
               RecoverCatalogUnknown { detail: _ } => false
               RecoverCatalogEstablished { entries: second } =>
                 count_where(xs: first, predicate: e => true) == count_where(xs: second, predicate: e => true)
                   && render_entries(entries: first) == render_entries(entries: second)
-                  && !any(second, e => match e.authorization {
-                    RecoveryWriteTerminateAndRelease { reason: _ } => true
-                    RecoveryWriteReleaseSettled { state: _, reason: _ } => true
-                    _ => false
+                  && !any(second, e => match e {
+                    CatalogNeverCharged { reference: _ } => false
+                    CatalogAuthorized { reference: _, authorization: auth } => match auth {
+                      RecoveryWriteTerminateAndRelease { reason: _ } => true
+                      RecoveryWriteReleaseSettled { state: _, reason: _ } => true
+                      _ => false
+                    }
                   })
             }
         }
@@ -428,8 +446,25 @@ test fn the_serving_census_door_refuses_a_host_off_the_serving_roster() -> Bool 
 // a fabrication) AND it does not take the refusal branch. Red again under the dispatch-gate key.
 test fn the_serving_census_door_answers_unknown_where_the_seat_home_is_absent() -> Bool {
   match compute_recover_catalog_serving_cli(host: "srv1") {
-    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: _ } } =>
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
       string_contains(s: b, pattern: " unknown: ") && !string_contains(s: b, pattern: "is not a remote-build serving host")
+        && string_contains(s: r, pattern: "the attempts directory could not be listed")
+    _ => false
+  }
+}
+
+// THE UNKNOWN EXIT REASON CARRIES THE LOCATED DETAIL, not just the fixed sentence. The converge leg
+// logs the door's exit reason and captures its stdout into the plan, so a reason that names only
+// 'could not be established' sends the operator who ran it to ssh for what the door already knew --
+// fail_closed asks for a typed, LOCATED diagnostic on the channel that survives the run. The read-back
+// of srv1's seat in this container can only answer that the capacity ledger is not provisioned here,
+// and the reason must say so. Red before the detail moved: the sentence alone was the whole reason.
+test fn the_serving_readback_door_carries_its_unknown_detail() -> Bool {
+  match compute_recover_readback_serving_cli(host: "srv1", reference: "011dfdd11f75268188c6b97278319c8b#1.1") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
+      string_contains(s: r, pattern: "recover-readback: the read-back could not be established: ")
+        && string_contains(s: r, pattern: "the capacity ledger is not standing at objects")
+        && string_contains(s: b, pattern: "the capacity ledger is not standing at objects")
     _ => false
   }
 }
@@ -447,6 +482,117 @@ fn check_or_name(name: String, held: Bool) -> String {
   if held { "" } else { concat(name, " ") }
 }
 
+
+// THE REFUSED RESERVATION IS NOT CENSUS POISON. compute_refused_after_open settles a slot whose reservation
+// the pool refused: terminal, never launched, no unit, no stop hook that could ever record an end for it.
+// Demanding the unit's end from that slot -- which the census did until 2026-11-26 -- made it observation
+// unknown FOREVER, and one unknown folds the whole census to unknown, which is what held srv1's and srv3's
+// converges in deadlock while their pools filled with charges that were never actually granted. The ledger
+// is the authority on the hold: it never acquired this reference, so the entry says never-charged and the
+// fold moves on. Red before the ledger consultation: this census answered unknown.
+fn refused_reservation_censuses_never_charged() -> Bool {
+  let root = witness_root(kind: "refused-reservation")
+  let reference = "000000000000000000000000000000000000000000000000000000000000000a" as NonEmptyStr
+  let opened = provision_ledger_at(root: root)
+    && bystander_charge_at(root: root)
+    && open_slot(root: root, seat: ComputeFlatSeat, identity: "8000000000000001", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match attempt_slot_read(store: store.slots, reference: reference) {
+          AttemptSlotHeld { record: _, generation: g } =>
+            match attempt_terminate(store: store.slots, reference: reference, expected: g, verdict: AttemptRecovered, detail: "reservation refused: the capacity pool refused a new seat at proposal: pool-full (attempt 1)") {
+              AttemptAdvanced { state: _, generation: _ } =>
+                match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
+                  RecoverCatalogUnknown { detail: _ } => false
+                  RecoverCatalogEstablished { entries: es } =>
+                    count_where(xs: es, predicate: e => true) == 1
+                      && string_contains(s: render_entries(entries: es), pattern: "recover-catalog never-charged ")
+                      && string_contains(s: render_entries(entries: es), pattern: reference as String)
+                      && !string_contains(s: render_entries(entries: es), pattern: "recover-catalog terminate ")
+                      && !string_contains(s: render_entries(entries: es), pattern: "recover-catalog settle ")
+                      && !string_contains(s: render_entries(entries: es), pattern: "recover-catalog hold ")
+                }
+              _ => false
+            }
+          _ => false
+        }
+  }
+}
+
+test fn a_refused_reservation_is_censused_never_charged() -> Bool {
+  refused_reservation_censuses_never_charged()
+}
+
+// THE SAME SHAPE AT THE WRITE DOOR: nothing to return, said plainly, nothing written. The door used to
+// refuse this shape (an unreadable unit is not an ended unit), needing a ruling for it. The ledger answer
+// needs neither: no charge, no seat, no release.
+fn refused_reservation_door_says_nothing_is_held() -> Bool {
+  let root = witness_root(kind: "refused-reservation-door")
+  let reference = "000000000000000000000000000000000000000000000000000000000000000b" as NonEmptyStr
+  let opened = provision_ledger_at(root: root)
+    && bystander_charge_at(root: root)
+    && open_slot(root: root, seat: ComputeFlatSeat, identity: "8000000000000002", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match attempt_slot_read(store: store.slots, reference: reference) {
+          AttemptSlotHeld { record: _, generation: g } =>
+            match attempt_terminate(store: store.slots, reference: reference, expected: g, verdict: AttemptRecovered, detail: "reservation refused: the capacity pool refused a new seat at proposal: pool-full (attempt 1)") {
+              AttemptAdvanced { state: _, generation: _ } =>
+                match compute_recover_attempt_resolved(instance: instance_at(root: root), subject: subject_at(root: root), reference: reference) {
+                  RecoveryNothingHeld { reference: _, verdict: _, detail: d } =>
+                    string_contains(s: d, pattern: "the ledger holds no charge")
+                  RecoveryReleased { reference: _, verdict: _, seat: _ } => false
+                  RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => false
+                  RecoveryDeclined { reference: _, why: _ } => false
+                  RecoveryRefused { detail: _ } => false
+                }
+              _ => false
+            }
+          _ => false
+        }
+  }
+}
+
+test fn the_recovery_write_on_a_never_charged_slot_says_nothing_is_held() -> Bool {
+  refused_reservation_door_says_nothing_is_held()
+}
+
+// AN UNREADABLE LEDGER IS NOT AN ABSENT CHARGE. A terminal slot whose ledger cannot be consulted stays
+// observation-unknown, keeping the charge: skipping on an unreadable ledger would hand the pool-full fix to
+// any store failure. Red under a census that skipped on the ledger's absence instead of consulting it.
+fn terminal_slot_with_unconsultable_ledger_stays_unknown() -> Bool {
+  let root = witness_root(kind: "ledger-unreadable")
+  let reference = "000000000000000000000000000000000000000000000000000000000000000c" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "8000000000000003", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match attempt_slot_read(store: store.slots, reference: reference) {
+          AttemptSlotHeld { record: _, generation: g } =>
+            match attempt_terminate(store: store.slots, reference: reference, expected: g, verdict: AttemptRecovered, detail: "stamped recovered by a door that has since lost its ledger") {
+              AttemptAdvanced { state: _, generation: _ } =>
+                match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: ComputeSubjectHostUnresolved { host: "unresolved-witness-host" as NonEmptyStr }) {
+                  RecoverCatalogEstablished { entries: _ } => false
+                  RecoverCatalogUnknown { detail: d } =>
+                    string_contains(s: d, pattern: reference as String)
+                      && string_contains(s: d, pattern: "without the ledger that prices it")
+                }
+              _ => false
+            }
+          _ => false
+        }
+  }
+}
+
+test fn a_terminal_slot_with_an_unconsultable_ledger_stays_unknown() -> Bool {
+  terminal_slot_with_unconsultable_ledger_stays_unknown()
+}
+
 fn run_compute_recover_catalog_witness() -> ProcessExit {
   let red = join([
     check_or_name(name: "an_empty_seat_contributes_no_reference_to_a_plan", held: census_of_an_empty_seat_names_no_reference()),
@@ -459,6 +605,21 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "the_serving_census_door_refuses_a_host_off_the_serving_roster", held: the_serving_census_door_refuses_a_host_off_the_serving_roster()),
     check_or_name(name: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent", held: the_serving_census_door_answers_unknown_where_the_seat_home_is_absent()),
     check_or_name(name: "the_serving_recover_door_exits_unknown_off_the_roster", held: the_serving_recover_door_exits_unknown_off_the_roster()),
+    check_or_name(name: "the_serving_readback_door_carries_its_unknown_detail", held: the_serving_readback_door_carries_its_unknown_detail()),
+    check_or_name(name: "the_census_names_what_the_seat_exit_spool_said", held: census_reports_the_seat_spool_reading_when_it_holds_no_record()),
+    check_or_name(name: "the_census_carries_a_planted_stop_hook_record", held: census_carries_the_planted_stop_hook_record()),
+    check_or_name(name: "the_door_refusal_carries_the_planted_stop_hook_record", held: door_carries_the_same_spool_reading_and_still_keeps_the_seat()),
+    check_or_name(name: "the_attestation_roster_names_only_the_ruled_seats", held: the_attestation_roster_names_only_the_ruled_seats()),
+    check_or_name(name: "an_unruled_reference_is_never_attested", held: an_unruled_reference_is_never_attested()),
+    check_or_name(name: "an_attested_terminal_seat_without_unit_proof_authorizes_the_release", held: an_attested_terminal_seat_without_unit_proof_authorizes_the_release()),
+    check_or_name(name: "an_unattested_terminal_seat_without_unit_proof_still_refuses", held: an_unattested_terminal_seat_without_unit_proof_still_refuses()),
+    check_or_name(name: "an_attestation_never_reaches_past_its_own_reference", held: an_attestation_never_reaches_past_its_own_reference()),
+    check_or_name(name: "attestation_never_overrides_an_observed_live_unit", held: attestation_never_overrides_an_observed_live_unit()),
+    check_or_name(name: "attestation_never_opens_a_too_early_window", held: attestation_never_opens_a_too_early_window()),
+    check_or_name(name: "an_attested_launching_seat_without_unit_proof_terminates_and_releases", held: an_attested_launching_seat_without_unit_proof_terminates_and_releases()),
+    check_or_name(name: "a_refused_reservation_is_censused_never_charged", held: refused_reservation_censuses_never_charged()),
+    check_or_name(name: "the_recovery_write_on_a_never_charged_slot_says_nothing_is_held", held: refused_reservation_door_says_nothing_is_held()),
+    check_or_name(name: "a_terminal_slot_with_an_unconsultable_ledger_stays_unknown", held: terminal_slot_with_unconsultable_ledger_stays_unknown()),
   ], "")
   if red == "" {
     ExitSuccess
@@ -467,32 +628,292 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
   }
 }
 
+// ── THE DOOR READS BOTH: THE MANAGER AND THE SEAT'S OWN EXIT SPOOL ─────────────────
+// The widening named in code (work_provider_local unit_lifecycle_from_source; recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death's rung): unit_lifecycle_unpopulated issues the ended
+// arm ONLY beside SeatStopRecordFound, and until ObserveUnitLifecycleWithSeatRecord the recovery doors
+// carried SeatStopRecordNotConsulted and could never reach it. On THIS lane the user manager answers
+// nothing, so the lifecycle stays UNKNOWN and the refusal stands whatever the spool says -- fail-closed
+// is not what these claims test. They pin the READING: a door that opened the seat's partition reports
+// it, with what it found, and that signal cannot appear while the route still holds the manager only.
 
-fn diagnose_claim_three() -> ProcessExit {
-  let root = witness_root(kind: "diag-three")
-  let reference = "0000000000000000000000000000000000000000000000000000000000000003" as NonEmptyStr
-  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "123456789abcdef0", reference: reference)
+// THE LEDGER ROOTED IN THE CLAIM'S OWN DIRECTORY, provisioned through the production rows exactly as
+// test.claim.compute.host_capacity_wet_witness does. The census takes this as a parameter -- production
+// resolves it host-keyed through compute_capacity_subject, which is the same resolution every dispatch's
+// acquire and release uses; a witness roots it at its own directory, which is the only way to test the
+// ledger's answers without writing to the host's real pool.
+fn provision_ledger_at(root: String) -> Bool {
+  let instance = instance_at(root: root)
+  let root_ok = shell.Mkdir.Parents(path: owned_directory_path(t: compute_root_directory(instance: instance)) as String).success
+  let cap_ok = all(compute_capacity_directories(instance: instance), d => shell.Mkdir.Parents(path: owned_directory_path(t: d) as String).success)
+  root_ok && cap_ok
+}
+
+fn subject_at(root: String) -> ComputeCapacitySubject {
+  match subject_resolution_at(root: root) {
+    ComputeSubjectResolved { subject: subj, appropriation: _ } => subj
+    ComputeSubjectHostUnresolved { host: _ } => host_capacity_subject_in(requesting: instance_at(root: root), host_home: host_capacity_carrier_of(instance: instance_at(root: root)), pool: ComputeBuildPool).subject
+  }
+}
+
+fn subject_resolution_at(root: String) -> ComputeSubjectResolution {
+  let instance = instance_at(root: root)
+  match host_capacity_subject_in(requesting: instance, host_home: host_capacity_carrier_of(instance: instance), pool: ComputeBuildPool) {
+    ComputeCapacityLedger { subject: subj, appropriation: approp } => ComputeSubjectResolved { subject: subj, appropriation: approp }
+  }
+}
+
+fn bystander_charge_at(root: String) -> Bool {
+  match subject_resolution_at(root: root) {
+    ComputeSubjectResolved { subject: subj, appropriation: approp } =>
+      match compute_reserve_against(subject: subj, appropriation: approp, request: kibibyte(1024), reference: "witness-bystander-holder" as NonEmptyStr, term_seconds: 3600, total: kibibyte(67108864), available: kibibyte(67108864)) {
+        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => true
+        _ => false
+      }
+    ComputeSubjectHostUnresolved { host: _ } => false
+  }
+}
+
+// THE LEDGER CHARGE A REAL DISPATCH WOULD HAVE LEFT. A slot the witness settles stood for a dispatched
+// attempt: the dispatch adjudicated its reservation into the ledger before launching. Claims that settle a
+// slot plant that fact too; claims about a REFUSED reservation deliberately do not -- that absence is the
+// srv1/srv3 shape, and the census and door now read it from the ledger.
+fn witness_charge_slot(root: String, reference: NonEmptyStr) -> Bool {
+  provision_ledger_at(root: root)
+    && match subject_resolution_at(root: root) {
+    ComputeSubjectResolved { subject: subj, appropriation: approp } =>
+      match compute_reserve_against(subject: subj, appropriation: approp, request: kibibyte(1024), reference: reference, term_seconds: 3600, total: kibibyte(67108864), available: kibibyte(67108864)) {
+        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => true
+        _ => false
+      }
+    ComputeSubjectHostUnresolved { host: _ } => false
+  }
+}
+
+fn witness_settle_slot(root: String, store: ComputeSeatStore, reference: NonEmptyStr) -> Bool {
+  witness_charge_slot(root: root, reference: reference)
+    && match attempt_slot_read(store: store.slots, reference: reference) {
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match compute_settle_attempt(
+        instance: instance_at(root: root),
+        gate: AttemptGateReady { record: rec, generation: g },
+        verdict: AttemptWorkEnded { ending: WorkEndedSucceeded },
+        detail: "the witness closes the slot it opened") {
+        AttemptSettled => true
+        AttemptNotSettled { detail: _ } => false
+        AttemptUnsettleable { detail: _ } => false
+      }
+  }
+}
+
+fn spool_done_dir_of(root: String) -> String? {
+  match compute_seat_exit_spool_dir(instance: instance_at(root: root)) {
+    ComputeSeatExitSpoolDirUidUnreadable { cause: _ } => Absent
+    ComputeSeatExitSpoolDirResolved { store } => Present { value: attempt_exit_spool_done_dir(store: store) }
+  }
+}
+
+// CONTROL: THE SPOOL WAS OPENED AND HELD NOTHING. The census must say what it read -- "no record for
+// this seat" -- and never that it consulted no spool at all. Red before the widening: the manager-only
+// reading printed no spool text anywhere.
+fn census_reports_the_seat_spool_reading_when_it_holds_no_record() -> Bool {
+  let root = witness_root(kind: "spool-none")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000007" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "7000000000000000", reference: reference)
   match seat_store_of(root: root, seat: ComputeFlatSeat) {
-    Absent => ExitFailure { code: 1, reason: "no store" }
-    Present { value: store } => match attempt_slot_read(store: store.slots, reference: reference) {
-      AttemptSlotAbsent => ExitFailure { code: 1, reason: "slot absent" }
-      AttemptSlotUnreadable { detail: d } => ExitFailure { code: 1, reason: join(["unreadable: ", d], "") }
-      AttemptSlotHeld { record: rec, generation: g } =>
-        match compute_settle_attempt(
-          instance: instance_at(root: root), gate: AttemptGateReady { record: rec, generation: g },
-          verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "diag") {
-          AttemptNotSettled { detail: d } => ExitFailure { code: 1, reason: join(["not settled: ", d], "") }
-          AttemptUnsettleable { detail: d } => ExitFailure { code: 1, reason: join(["unsettleable: ", d], "") }
-          AttemptSettled => match compute_recover_catalog_for(stores: [store]) {
-            RecoverCatalogEstablished { entries: es } =>
-              ExitFailure { code: 1, reason: join(["census established: ", render_entries(entries: es)], "") }
+    Absent => false
+    Present { value: store } => match spool_done_dir_of(root: root) {
+      Absent => false
+      Present { value: done_dir } =>
+        let _made = shell.Mkdir.Parents(path: done_dir as FilePath)
+        opened
+          && witness_settle_slot(root: root, store: store, reference: reference)
+          && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
+            RecoverCatalogEstablished { entries: _ } => false
             RecoverCatalogUnknown { detail: d } =>
-              ExitFailure {
-                code: 1,
-                reason: join(["census unknown: ", d, " | door=", door_word(instance: instance_at(root: root), reference: reference)], ""),
-              }
+              string_contains(s: d, pattern: reference as String)
+                && string_contains(s: d, pattern: "the exit-spool reading:")
+                && string_contains(s: d, pattern: "no record for this seat")
+                && !string_contains(s: d, pattern: "this route consulted no exit spool")
           }
-        }
     }
+  }
+}
+
+test fn the_census_names_what_the_seat_exit_spool_said() -> Bool {
+  census_reports_the_seat_spool_reading_when_it_holds_no_record()
+}
+
+// CONTROL: THE SEAT'S OWN HOOK RECORDED ITS END. One real entry in the done directory, named exactly
+// the way the manager's ExecStopPost names it (identity+invocation+result+code+status, the compute
+// seat's five parts). The lifecycle stays UNKNOWN on this lane (no manager), so the seat is STILL kept
+// -- what the claim pins is that the hook's word reaches the reading: "recorded end exit(0) under
+// invocation …". This is the arm srv1's terminal seats turn on: beside a manager that answers
+// not-found, this same record is the ended arm, and the seat comes back.
+fn census_carries_the_planted_stop_hook_record() -> Bool {
+  let root = witness_root(kind: "spool-found")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000008" as NonEmptyStr
+  let identity = "7000000000000001"
+  let invocation = "0123456789abcdef0123456789abcdef"
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: identity, reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } => match spool_done_dir_of(root: root) {
+      Absent => false
+      Present { value: done_dir } =>
+        let _made = shell.Mkdir.Parents(path: done_dir as FilePath)
+        let _planted = shell.Mkdir.Parents(path: join([done_dir, "/", identity, "+", invocation, "+success+exited+0"], "") as FilePath)
+        opened
+          && witness_settle_slot(root: root, store: store, reference: reference)
+          && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store], ledger: subject_resolution_at(root: root)) {
+            RecoverCatalogEstablished { entries: _ } => false
+            RecoverCatalogUnknown { detail: d } =>
+              string_contains(s: d, pattern: reference as String)
+                && string_contains(s: d, pattern: "the exit-spool reading:")
+                && string_contains(s: d, pattern: join(["recorded end exit(0) under invocation ", invocation], ""))
+          }
+    }
+  }
+}
+
+test fn the_census_carries_a_planted_stop_hook_record() -> Bool {
+  census_carries_the_planted_stop_hook_record()
+}
+
+// CONTROL: THE DOOR CARRIES THE SAME READING THE CENSUS CARRIED. The write path (compute_recover_cli's
+// attempt door) and the census read through one source, so on the same planted record the door's refusal
+// names the hook's word too -- and STAYS a refusal: on this lane the manager never answered, so the seat
+// is kept whatever the spool says. Red before the widening: the door's detail was the manager-only
+// sentence and named no spool.
+fn door_carries_the_same_spool_reading_and_still_keeps_the_seat() -> Bool {
+  let root = witness_root(kind: "door-spool")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000009" as NonEmptyStr
+  let identity = "7000000000000002"
+  let invocation = "fedcba9876543210fedcba9876543210"
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: identity, reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } => match spool_done_dir_of(root: root) {
+      Absent => false
+      Present { value: done_dir } =>
+        let _made = shell.Mkdir.Parents(path: done_dir as FilePath)
+        let _planted = shell.Mkdir.Parents(path: join([done_dir, "/", identity, "+", invocation, "+success+exited+0"], "") as FilePath)
+        opened
+          && witness_settle_slot(root: root, store: store, reference: reference)
+          && match compute_recover_attempt_resolved(instance: instance_at(root: root), subject: subject_at(root: root), reference: reference) {
+            RecoveryRefused { detail: d } =>
+              string_contains(s: d, pattern: "the exit-spool reading:")
+                && string_contains(s: d, pattern: join(["recorded end exit(0) under invocation ", invocation], ""))
+            RecoveryReleased { reference: _, verdict: _, seat: _ } => false
+            RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => false
+            RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => false
+            RecoveryDeclined { reference: _, why: _ } => false
+          }
+    }
+  }
+}
+
+test fn the_door_refusal_carries_the_planted_stop_hook_record() -> Bool {
+  door_carries_the_same_spool_reading_and_still_keeps_the_seat()
+}
+
+// ── THE OPERATOR ATTESTATION: A SUPPLIED EVIDENCE CLASS, NOT A SECOND RELEASE LAW ──
+// gunbc.design_ruling::srv1_stale_seats_released_proven_ended_2026_11_26 — the operator, explicitly, on
+// 2026-11-26 (escalation msg_4a9f7902): "A: release both srv1 seats as proven-ended (your ruling;
+// crisp-pike actuates)". The machine form is a row in gunbc.compute.attempt_lifecycle
+// proven_ended_seat_releases, looked up by EXACT attempt reference and handed to recovery_write_authorization
+// as a supplied SeatEndAttestation (witness inputs are supplied values at their boundary). These claims are
+// pure model -- they mint their own records and hand in their own attestations -- and they hold the ruling's
+// whole scope: attestation converts an UNOBSERVABLE unit end into an authorized release for the named
+// references, and nothing else. A live unit, a too-early window, and an unruled reference each keep the
+// answer they had before the ruling existed; the last one is the manager's red control -- a seat with no
+// ruling row still refuses.
+
+fn attestation_record(reference: String, unit: String, state: AttemptState) -> AttemptRecord {
+  AttemptRecord {
+    identity: "attestation-witness", reference: reference, unit: unit,
+    granted: kibibyte(count: 1024), opened_at: 1000, launch_deadline: 2000,
+    state: state, owner: DirectInvocation { why: "attestation witness" },
+  }
+}
+
+test fn the_attestation_roster_names_only_the_ruled_seats() -> Bool {
+  any(proven_ended_seat_releases, row => row.reference == "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1" && string_contains(s: declaration_ref_display_key(ref: row.ruling), pattern: "srv1_stale_seats_released_proven_ended_2026_11_26"))
+    && any(proven_ended_seat_releases, row => row.reference == "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1" && string_contains(s: declaration_ref_display_key(ref: row.ruling), pattern: "srv1_stale_seats_released_proven_ended_2026_11_26"))
+    && !any(proven_ended_seat_releases, row => !(row.reference == "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1" || row.reference == "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1"))
+}
+
+test fn an_unruled_reference_is_never_attested() -> Bool {
+  match proven_ended_row_for(releases: proven_ended_seat_releases, reference: "deadbeef00000000000000000000000000000000000000000000000000000000dead#1") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn an_attested_terminal_seat_without_unit_proof_authorizes_the_release() -> Bool {
+  let reference = "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, releases: proven_ended_seat_releases) {
+    RecoveryWriteReleaseSettled { state: _, reason: why } => string_contains(s: why, pattern: "ATTESTED proven-ended")
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
+}
+
+test fn an_unattested_terminal_seat_without_unit_proof_still_refuses() -> Bool {
+  let reference = "cafe00000000000000000000000000000000000000000000000000000000cafe#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, releases: []) {
+    RecoveryWriteRefused { reason: r } => string_contains(s: r, pattern: "not proven ended")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+  }
+}
+
+test fn an_attestation_never_reaches_past_its_own_reference() -> Bool {
+  let other = "cafe00000000000000000000000000000000000000000000000000000000cafe#1"
+  let rec = attestation_record(reference: other, unit: join(["gunbc-compute-", other], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, releases: proven_ended_seat_releases) {
+    RecoveryWriteRefused { reason: _ } => true
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+  }
+}
+
+test fn attestation_never_overrides_an_observed_live_unit() -> Bool {
+  let reference = "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitStillRunning { detail: "witness: the manager says active" }, now: 3000, releases: proven_ended_seat_releases) {
+    RecoveryWriteDeclined { reason: r } => string_contains(s: r, pattern: "the unit is still running")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
+}
+
+test fn attestation_never_opens_a_too_early_window() -> Bool {
+  let reference = "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptReserved)
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 1500, releases: proven_ended_seat_releases) {
+    RecoveryWriteDeclined { reason: r } => string_contains(s: r, pattern: "TOO EARLY")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
+}
+
+test fn an_attested_launching_seat_without_unit_proof_terminates_and_releases() -> Bool {
+  let reference = "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptLaunching)
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, releases: proven_ended_seat_releases) {
+    RecoveryWriteTerminateAndRelease { reason: why } => string_contains(s: why, pattern: "ATTESTED proven-ended")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
   }
 }

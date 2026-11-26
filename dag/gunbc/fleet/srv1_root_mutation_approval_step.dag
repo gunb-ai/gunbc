@@ -74,7 +74,6 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
 fn gunbc_ci_srv1_root_mutation_approval_invoke() -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_srv1_root_mutation_approval_prelude_statements(), set_e: true), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target,
-    claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target), "\n",
   ], "")
 }

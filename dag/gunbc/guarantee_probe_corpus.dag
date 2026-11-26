@@ -185,6 +185,36 @@ data floor_generic_instantiation_class: GuaranteeClassId = "floor-generic-instan
 data floor_parse_list_separator_class: GuaranteeClassId = "floor-parse-list-separator" as GuaranteeClassId
 data floor_record_field_completeness_class: GuaranteeClassId = "floor-record-field-completeness" as GuaranteeClassId
 
+// APPLIED-GENERIC ALIAS AT A DIRECT-CALL FORMAL: an alias whose right-hand side is a generic
+// application (`type PConfigPatch = PatchRecord<PConfig>`) standing at a formal declared with that
+// same applied type. The class was authored in `docs/plans/compiler-guarantee-recovery-gap-analysis.md`
+// as a FALSE REFUSAL (the alias refused where the identical spelling compiled clean), with its corpus
+// population retired to zero by gunbc#11749 and its only surviving discriminator named there as an
+// unenrolled closure-free fixture. MEASURED AT 71b23d66defc WITH THE RELEASE gunbc sha256
+// 75dadf78018376797d75e80a32caf2e87df9538a7fe729940d77a0d21d42473e (artifact 15082738996, run
+// 45745306828): that false refusal is GONE and the pair no longer discriminates -- both the aliased
+// formal and the directly-spelled formal now settle to the SAME counted-unmodeled advisory
+// (`v1.std.core` `DeclaredTypeInhabitanceUnmodeled`, severity error, gate advisory), zero blocking.
+// So the rows below encode the MEASURED standing, not the gap-analysis expectation: enrolling the
+// stale red would have authored a false red against main, and the gap-analysis prose was not edited
+// (hand-authored plan prose; its staleness is routed, not patched here). Probe rows are named by
+// class, never by a line of that document, so the two cannot drift.
+//
+// THE PAIR-AGREEMENT INVARIANT IS THE POINT OF ROWS 1 AND 2, stated so a reader knows the two
+// adjacent rows are one assertion: the aliased spelling and the direct spelling of the SAME formal
+// must keep the SAME verdict. Either arm moving alone is the bug, not the fix -- an alias that
+// settles differently from the applied form it names is the class recursing, and the witness reds on
+// the difference rather than on the direction.
+//
+// ROW 4 IS THE HOLE, and it is enrolled as counted rather than silent because that is what it is:
+// `type IntInner = Inner<Int>` at a formal, an `Inner<Bool>` actual, accepted with the advisory and
+// zero blocking (the specimen gunbc.recurring_failure_mode::nominal_call_arg_brand_mismatch_does_not_fire_for_an_alias_of_an_applied_form
+// found executing gunbc#14330). Dissolution on climb, per gunbc.design_argument::guarantee_ladder:
+// when the relation grows the terminal arm that refuses this pair, THIS ROW REDS -- visibly, by
+// design, because a hole that is only described in prose cannot report its own repair -- and the
+// row flips to ExpectBlockingRefusal { "TypeMismatch" } as the permanent regression control.
+data applied_generic_alias_at_formal_class: GuaranteeClassId = "applied-generic-alias-at-formal" as GuaranteeClassId
+
 fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
   [
     bare_none_field_admission_class,
@@ -196,6 +226,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     floor_generic_instantiation_class,
     floor_parse_list_separator_class,
     floor_record_field_completeness_class,
+    applied_generic_alias_at_formal_class,
     method_established_surface_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
@@ -512,6 +543,12 @@ fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition
   ]
 }
 
+data applied_alias_at_matching_formal_probe: GuaranteeProbeId = "applied-generic-alias-at-matching-formal-counted" as GuaranteeProbeId
+data applied_form_spelled_directly_probe: GuaranteeProbeId = "applied-generic-form-spelled-directly-counted" as GuaranteeProbeId
+data unparameterized_alias_at_target_formal_probe: GuaranteeProbeId = "unparameterized-alias-at-target-formal-transparent-control" as GuaranteeProbeId
+data applied_alias_admits_wrong_instantiation_probe: GuaranteeProbeId = "applied-generic-alias-admits-wrong-instantiation-counted-hole" as GuaranteeProbeId
+data aliased_both_sides_different_instantiation_probe: GuaranteeProbeId = "applied-generic-alias-both-sides-aliased-type-mismatch-red" as GuaranteeProbeId
+
 type GuaranteeProbeRow {
   probe: GuaranteeProbeId
   class: GuaranteeClassId
@@ -538,6 +575,34 @@ type ProbeRowResolution
 
 fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [
+    // CANONICAL ORDER: the four "applied-generic-*" rows sit at the head because their branded id
+    // strings sort before every existing id; they are NOT appended. The roster order is the
+    // probe-set digest authority (CANONICAL PROBE ORDERING OBLIGATION note) and
+    // probe_ids_are_lexicographically_ordered executes over it.
+    GuaranteeProbeRow {
+      probe: applied_alias_admits_wrong_instantiation_probe,
+      class: applied_generic_alias_at_formal_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectAcceptedCounted { diagnostic_class: "DeclaredTypeInhabitanceUnmodeled" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: applied_alias_at_matching_formal_probe,
+      class: applied_generic_alias_at_formal_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectAcceptedCounted { diagnostic_class: "DeclaredTypeInhabitanceUnmodeled" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: aliased_both_sides_different_instantiation_probe,
+      class: applied_generic_alias_at_formal_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: applied_form_spelled_directly_probe,
+      class: applied_generic_alias_at_formal_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectAcceptedCounted { diagnostic_class: "DeclaredTypeInhabitanceUnmodeled" as NonEmptyStr },
+    },
     GuaranteeProbeRow {
       probe: bare_none_collection_red_probe,
       class: bare_none_field_admission_class,
@@ -664,9 +729,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: floor_generic_instantiation_hole_probe,
       class: floor_generic_instantiation_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "a String literal inhabits the T-typed field of a Boxed<Int> at a declared Boxed<Int> return and compiles with zero diagnostics" as NonEmptyStr,
-      },
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_parse_list_separator_control_probe,
@@ -765,6 +828,15 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: sole_constructor_cross_module_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "ConstructorCallAdmissionRefused" as NonEmptyStr },
+    },
+    // CANONICAL ORDER: this row sits where its branded id string sorts ("unparameterized-..." after
+    // every "sole-..." and before every "v2-..."), not at the end of the list -- see the
+    // CANONICAL PROBE ORDERING OBLIGATION note and the executing probe_ids_are_lexicographically_ordered.
+    GuaranteeProbeRow {
+      probe: unparameterized_alias_at_target_formal_probe,
+      class: applied_generic_alias_at_formal_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
       probe: v2_frontier_green_probe,

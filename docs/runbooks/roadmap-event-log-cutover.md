@@ -522,7 +522,7 @@ order), then append. `roadmap_acceptance_record_cli` takes the receipt LINE — 
 field, and the route beneath refuses a receipt naming another node; `roadmap_acceptance_revoke_cli` takes
 the revocation line alone.
 
-**The three pull-request arguments are passed EMPTY, and that is the honest value, not a placeholder.**
+**The two pull-request arguments are passed EMPTY, and that is the honest value, not a placeholder.**
 The 17 acceptance rows the seed holds carry `node`, `criteria_digest`, `red_control`, `handback`,
 `accepted_by` and `accepted_on` — and no pull request, merge time or head SHA: the hand-committed seed
 never recorded those fields (checked with `jq` over all 18 rows; its latest `accepted_on` is 2026-10-11).
@@ -539,9 +539,66 @@ after this migration must name the pull request that earned it. This book used t
 paragraph quoted with it. A date an operator can type into an argument is not a door — `fail_closed` calls a
 date-shaped escape hatch exactly that, "a silent widen … or escape hatch" — so nothing here may be re-argued from
 a cutoff day. Half a pull request still cannot be written at all (it is not a value of the type) and is refused
-where the three arguments are read (`roadmap_acceptance_pr_evidence_from_args` in
+where the two arguments are read (`roadmap_acceptance_pr_evidence_from_args` in
 `gunbc.roadmap.roadmap_event_cli`); an absence that is not one of the migration's own 17 identities is refused at
 the route, by a reason that says so in as many words.
+
+### The canonical command lines (operator ruling 2026-11-23 — an acceptance is earned on a HEAD)
+
+Every lane reconstructs these by hand today, and a wrong guess costs a resolve cycle, so they are written
+here once. `TREE` is the checkout of the staged build and `BIN` its binary; both `--source-root`s are
+required, and `repo_root` is an **`--arg`** — there is no `--repo-root` flag on `run`.
+
+**Record an acceptance, BEFORE the merge.** Two pull-request arguments, together or neither; the arm of the
+red observation is SAID (`on_main` or `probe`), never guessed from which arguments came empty; the probe arm
+alone carries `--red-base` and `--probe-ref`. There is **no `--merged-at`**: the acceptance states no merge
+fact, and ctrl's merge gate reads this acceptance out of the standings, which is why it must be recordable
+while the pull request is still open.
+
+```sh
+cd "$TREE" && "$BIN" run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_acceptance_record_cli \
+  --arg repo_root=<the instance repo, a rostered dashboard instance> \
+  --arg receipt_line="$LINE" \
+  --arg pr_url=<the review thread> --arg head_sha=<the head accepted> \
+  --arg author=principal:<authority>/<namespace>/<subject> \
+  --arg red_kind=on_main --arg red_at=<commit observed failing> --arg green_at=<commit observed passing> \
+  --arg red_base= --arg probe_ref=
+# … or, for a probe run: --arg red_kind=probe --arg red_at=… --arg green_at=… \
+#     --arg red_base=<base the probe ran against> --arg probe_ref=<where the probe lives>
+```
+
+**Append the merge, later, as its own event.** Four words, in this order: the thread, the head that merged,
+the instant it merged, the merge sha. It refuses, in words, when the node has no live acceptance, when that
+acceptance names no thread, when the thread or the head is not the accepted one (a new head needs a NEW
+acceptance), and when a merge has already landed. It never edits the acceptance — append-only, no
+revocation — and it moves no standing: done stays the receipt alone.
+
+```sh
+cd "$TREE" && "$BIN" run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_record_cli \
+  --arg repo_root=<the instance repo> --arg node=<node id> \
+  --arg kind=pull_request_merged \
+  --arg "text=<pr_url> <head_sha> <merged_at> <merge_sha>" \
+
+To check that a recording actually landed on the durable branch, run the check entry — it exits 0 when the
+event is on the branch's checkout, and refuses with the ref, the remote, the tip the REMOTE states and the
+`git fetch` / `git show` to run against it when it is not. A checkout of the branch that is behind reads
+EMPTY; the words say so rather than reporting absence as a fact:
+
+```
+gunbc run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_publication_check_cli \
+  --arg repo_root=<the instance root> --arg node=<the node> --arg event_id=<the event id>
+```
+  --arg author=principal:<authority>/<namespace>/<subject> --arg leaf_stage= --arg leaf_piece= --arg leaf_member=
+```
+
+**Append the red observation to an acceptance that was recorded without one** (the pre-ruling rows, and any
+row whose control reads `RedControlTreeUnrecorded`): same entry, `--arg kind=red_tree`, text
+`<arm> <red_at> <green_at>` for `on_main` or `<arm> <red_at> <green_at> <red_base> <probe_ref>` for `probe`.
+Until that event lands, the receipt is accepted but is not valid red evidence
+(`gunbc.design_ruling::executed_red_control_names_its_failing_commit`).
 
 **No line of JSON is interpolated into a shell string anywhere in this runbook.** Each line is handed to
 the modeled route through the **environment** (`RUNE` in the preamble, `systemd-run --setenv=`), so nothing
@@ -667,7 +724,7 @@ while IFS= read -r LINE; do
   CMD="$BIN run --source-root dag --source-root src/v2 \
     --entry dag/gunbc/roadmap/roadmap_cutover_cli.dag --function roadmap_cutover_acceptance_record_cli \
     --arg repo_root=/opt/gunbc/gunbc --arg receipt_line=\"\$RECEIPT_LINE\" \
-    --arg pr_url= --arg merged_at= --arg head_sha= \
+    --arg pr_url= --arg head_sha= \
     --arg author=\"\$OPERATOR\" --arg report_path=$D/cutover.precheck.out"
   RUNE "RECEIPT_LINE=$LINE" "OPERATOR=$OPERATOR" \
     || { echo "MIGRATION REFUSED: acceptance $I of $NFAB did not append — no further appends, and step 4 must not run"; exit 1; }

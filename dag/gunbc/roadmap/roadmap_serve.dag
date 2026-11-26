@@ -154,7 +154,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_date_from_epoch_secs,
   AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable,
 }
-import gunbc.roadmap.roadmap_status { TicketFields, line_ticket, red_observation_from_texts }
+import gunbc.roadmap.roadmap_status { TicketFields, line_ticket, red_observation_validate, red_kind_parse, RedKind, RedKindOutcome, KindNamed, KindUnrecognized, RedObsBuilt, RedObsRefused, RedObservationCause, RedAtAbsent, GreenAtAbsent, RedAtMalformed, GreenAtMalformed, RedAtEqualsGreenAt, MainNamesBase, MainNamesRef, ProbeNoBase, ProbeNoRef, RedBaseMalformed, RedBaseEqualsRedAt, ProbeRefMalformed }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
 import extdeps.github.pulls
@@ -173,7 +173,7 @@ import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_daily_url_path,
 }
 import gunbc.roadmap.roadmap_served_observation {
-  DailyPage, AttemptsJson, WorkflowJson, SessionsJson, StandingsJson,
+  DailyPage, AttemptsJson, WorkflowJson, SessionsJson, StandingsJson, ProjectionJson,
   served_observation_surface_response_for_instance,
   served_attempt_revision_observations, served_current_revision_hex,
   served_observation_standing_response_for_instance,
@@ -347,6 +347,7 @@ type RoadmapServeHandler
   | WorkflowJsonHandler
   | ObservationJsonHandler
   | StandingsJsonHandler
+  | ProjectionJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
   | ApprovalBrokerCutoverHandler { route: ApprovalBrokerHandler }
@@ -429,6 +430,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
     ServedRouteSpec { method: GET, raw: "/standings.json", handler: StandingsJsonHandler },
+    ServedRouteSpec { method: GET, raw: "/projection.json", handler: ProjectionJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
@@ -1108,7 +1110,7 @@ fn serve_issue_assign_permitted(
                         expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
                         assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to }, grain: admitted }, recorded_at: observed_at))
                     match outcome {
-                      EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
+                      EventAppended { id, published_as: _ } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
                       EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
                       EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
                     }
@@ -1164,7 +1166,15 @@ fn serve_issue_close_response_over(
               Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "close refused: repo and an integer pull number are required\n")
               Present { value: pr_number } => match clock_unix_millis_read() {
                 ClockUnixMillisRefused { detail: d } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: clock unread: ", d, "\n"], ""))
-                ClockUnixMillisObserved { millis: ms } => serve_close_answer(
+                ClockUnixMillisObserved { millis: ms } => match red_kind_parse(word: get("red_kind")) {
+                  KindUnrecognized { given: g } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: the close form names its red standing — red_kind is exactly on_main or probe; ", g, " is neither, and an unnamed or misspelled arm is refused, never read as a probe\n"], ""))
+                  KindNamed { kind: k } => match red_observation_validate(kind: k, red_at: get("red_at"), green_at: get("green_at"), red_base: get("red_base"), probe_ref: get("probe_ref")) {
+                    // THE ARM IS SAID, NEVER GUESSED: a close whose red standing is missing or misspelled, or
+                    // whose named arm does not hold, is refused in serve's OWN form-field words. The validator
+                    // decided the cause; this route only renders it (a close with red_base filled but no
+                    // red_kind is refused here, never read as a probe).
+                    RedObsRefused { cause: c } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: ", serve_cause_words(cause: c), "\n"], ""))
+                    RedObsBuilt { observation: observation } => serve_close_answer(
                   instance: instance,
                   node_id: node_id,
                   inputs: OperatorCloseInputs {
@@ -1176,7 +1186,7 @@ fn serve_issue_close_response_over(
                     accepted_on: roadmap_operator_date_from_epoch_secs(secs: epoch_secs_of_millis(millis: ms)),
                     witness_module: get("witness_module") as NonEmptyStr,
                     witness_fn: get("witness_fn") as NonEmptyStr,
-                    observation: red_observation_from_texts(red_at: get("red_at"), green_at: get("green_at"), red_base: get("red_base"), probe_ref: get("probe_ref")),
+                    observation: observation,
                     first_artifact: get("first_artifact") as NonEmptyStr,
                     further_artifacts: filter(
                       map(split(s: get("further_artifacts"), delimiter: ","), a => trim(a) as NonEmptyStr),
@@ -1186,12 +1196,34 @@ fn serve_issue_close_response_over(
                   },
                   readback: read(repo, pr_number)
                 )
+                  }
+                }
               }
             }
           }
           }
       } }
     }
+  }
+}
+
+// THE SERVE ROUTE'S OWN WORDS FOR A REFUSAL CAUSE. The validator decided WHY; serve renders it naming its
+// OWN close-form fields (red_kind/red_at/green_at/red_base/probe_ref), never the CLI's --flags — so a client
+// reading a 400 sees vocabulary the close form actually has (gunbc.design_argument::single_authority).
+fn serve_cause_words(cause: RedObservationCause) -> String {
+  match cause {
+    RedAtAbsent => "red_at (the commit where the red control was observed FAILING) is required on the close form"
+    GreenAtAbsent => "green_at (the commit the same witness was observed PASSING) is required on the close form"
+    RedAtMalformed => "red_at is malformed: a commit is 40 lowercase hex characters"
+    GreenAtMalformed => "green_at is malformed: a commit is 40 lowercase hex characters"
+    RedAtEqualsGreenAt => "red_at equals green_at: a witness observed failing and passing on one tree was not observed failing there"
+    MainNamesBase => "the close form's red_base belongs to the probe standing; an on_main close names none"
+    MainNamesRef => "the close form's probe_ref belongs to the probe standing; an on_main close names none"
+    ProbeNoBase => "the probe standing names no red_base: a probe names the main commit it breaks"
+    ProbeNoRef => "the probe standing names no probe_ref: it is the durable ref red-control/<row-id> that makes red_at fetchable"
+    RedBaseMalformed => "red_base is malformed: a commit is 40 lowercase hex characters"
+    RedBaseEqualsRedAt => "red_base equals red_at: a probe breaks its base, so it is a different commit"
+    ProbeRefMalformed => "probe_ref is malformed: it is spelled red-control/<row-id>"
   }
 }
 
@@ -1351,7 +1383,7 @@ fn serve_issue_retire_response_over(
                       expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
                       reason: if get("reason") == "" { "retired by the operator" as NonEmptyStr } else { get("reason") as NonEmptyStr } }, recorded_at: observed_at))
                   match outcome {
-                    EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (event ", id as String, ")\n"], "")))
+                    EventAppended { id, published_as: _ } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (event ", id as String, ")\n"], "")))
                     EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
                     EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
                   }
@@ -1563,7 +1595,7 @@ fn serve_issue_comment_permitted(
           expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
         match outcome {
           EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
-          EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false))
+          EventAppended { id, published_as: _ } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false))
           EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true))
         }
       }
@@ -1767,6 +1799,7 @@ fn roadmap_serve_invoke_over(
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
     StandingsJsonHandler => serve_standings_response_for_instance(instance: instance)
+    ProjectionJsonHandler => serve_projection_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params, request: request)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params, request: request)
     ApprovalBrokerCutoverHandler { route: r } =>
@@ -1899,6 +1932,16 @@ fn serve_standings_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
   served_observation_surface_response_for_instance(instance: instance, kind: StandingsJson)
+}
+
+// GET /projection.json: the work-item projection (gunbc.roadmap.roadmap_work_item_projection) -- one
+// row per roadmap work item, the shape the ctrl Roadmap Timeline and the gunbc planning page read. It is
+// served from the tick's stored observation like /standings.json; before the tick has produced it the
+// surface read refuses (a located 503), never a fabricated document and never a bare 404.
+fn serve_projection_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  served_observation_surface_response_for_instance(instance: instance, kind: ProjectionJson)
 }
 
 fn serve_sessions_response_for_instance(
