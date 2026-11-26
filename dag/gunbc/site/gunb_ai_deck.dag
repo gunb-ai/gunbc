@@ -15,8 +15,7 @@ import gunbc.site.markup { page_render_refusal_prefix }
 
 // gunb.ai's assets/cards.js, the story-deck renderer. The CARD CONTENT is typed rows below (the three
 // cards' code listings, graphs, lanes, panels and receipts, plus the shared USERS_SYSTEM artifacts); the
-// served bytes are the render of deck_segments, checked against dag/test/fixture/gunb_ai/live_cards.js by
-// test.claim.site_gunb_ai_deck_witness.
+// served bytes are the render of deck_segments.
 //
 // THE RENDERER IS NOT MODELLED HERE AND SAYS SO. Every RetainedJs block is hand-written JavaScript kept as
 // lines (the Roles table, the DOM builders, validation, navigation, the card-builder wrappers and
@@ -33,10 +32,10 @@ import gunbc.site.markup { page_render_refusal_prefix }
 // FORMATTING IS DATA TOO. The cards.js text is hand-authored and column-aligned, so alignment is derived,
 // never padded by hand: a column is the longest cell plus the table's own gap, the line-number column of
 // the code listing is the longest `ln(N,` of its group, and a wrapped listing line continues under its
-// first part. The witness checks each derivation against the served file.
+// first part.
 //
-// Consumers (gunbc.design_argument::consumption): deck_write_arg is the build route; test.claim.site_gunb_ai_deck_witness executes
-// render_deck. Outside the claim runner:
+// Consumers (gunbc.design_argument::consumption): gunbc.site.gunb_ai_site serves render_deck at the page's script path
+// (test.claim.site_gunb_ai_site_witness executes it there); deck_write_arg writes it alone:
 //   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_deck.dag \
 //     --function deck_write_arg --arg dir=/tmp/gunbai/assets
 

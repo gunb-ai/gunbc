@@ -32,8 +32,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // command that produced it. It is not a census and gates nothing: a module that starts naming target
 // syntax is not refused for being absent here; it is added when noticed. Excluded on purpose: the
 // grammars themselves (extdeps/languages, src/v2/extdeps/languages) and the compiler's emit and parse
-// claims, which test the target languages and must name their syntax; captured fixtures of served
-// output (dag/test/fixture/gunb_ai); and the Python transport harness under test/namecheap, which no
+// claims, which test the target languages and must name their syntax; and the Python transport harness under test/namecheap, which no
 // one has yet decided is application code. Other targets (bash, YAML, CSS, HTML) were not read.
 
 type TargetLanguage = TargetSwift | TargetTypeScript

@@ -129,7 +129,8 @@ data a_pull_request_job_permissions: WorkflowPermissions = WorkflowPermissions {
   pull_requests: none,
   issues: none,
   actions: Present { value: PermWrite },
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 data a_pull_request_job_grant: EffectiveActionsJobGrant = EffectiveActionsJobGrant {
@@ -187,7 +188,8 @@ fn grant_with(
       pull_requests: none,
       issues: none,
       actions: Present { value: PermWrite },
-      id_token: none
+      id_token: none,
+      pages: none
     }
   }
 }
@@ -410,7 +412,8 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
       pull_requests: none,
       issues: none,
       actions: none,
-      id_token: Present { value: PermRead }
+      id_token: Present { value: PermRead },
+      pages: none
     }
   }
   match effective_actions_grant(grant: id_token_read, name: IdTokenAxis) {
