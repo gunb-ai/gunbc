@@ -72,7 +72,8 @@ fn all_fields_job() -> Job {
         pull_requests: none,
         issues: none,
         actions: none,
-        id_token: none
+        id_token: none,
+        pages: none
       }
     }
   }

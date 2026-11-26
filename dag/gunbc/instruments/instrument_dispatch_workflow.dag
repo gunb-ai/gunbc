@@ -719,6 +719,7 @@ fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
         issues: none,
         actions: none,
         id_token: none,
+        pages: none,
       }
     }
   }
@@ -759,6 +760,7 @@ fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> 
         issues: none,
         actions: none,
         id_token: none,
+        pages: none,
       }
     },
     jobs: [instrument_dispatch_job(seed: seed, guard: guard, script: script)],

@@ -147,7 +147,8 @@ data a_pull_request_job_permissions: WorkflowPermissions = WorkflowPermissions {
   pull_requests: none,
   issues: none,
   actions: Present { value: PermWrite },
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 data a_pull_request_job_grant: EffectiveActionsJobGrant = EffectiveActionsJobGrant {
