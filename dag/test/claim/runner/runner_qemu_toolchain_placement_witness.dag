@@ -37,27 +37,36 @@ import extdeps.shell.exec { ProcessCaptureOutcome, ProcessCaptureNotSpawned, Pro
 // exact defect the reviewer named ("an unspawned `test -e` selects staging"), one grain later in
 // the shared-listing route that replaced test(1).
 test fn spawn_refused_tree_check_is_unreadable_not_absent() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptureNotSpawned { program: "ls -1 -A -- <parent>" as NonEmptyStr, cause: "the transport refused to build the child" as NonEmptyStr }, entry_name: "qemu") {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptureNotSpawned { program: "ls -1 -A -- <parent>/." as NonEmptyStr, cause: "the transport refused to build the child" as NonEmptyStr }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A -- <grandparent>/." as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
     QemuToolchainTreeUnreadable { cause: c } =>
-      string_contains(s: c, pattern: "ls -1 -A -- <parent>")
+      string_contains(s: c, pattern: "ls -1 -A -- <parent>/.")
         && string_contains(s: c, pattern: "the transport refused to build the child")
     _ => false
   }
 }
 
-// A MODE-000 PARENT IS NOT AN ABSENT TREE (round-4 review item 3). ls exits 2 on the denied
-// directory and exits 1 on some usage errors; test(1) answered BOTH old absence and old
-// unreadable with exit 1, which is exactly why the listing replaced it. Every captured nonzero of
-// the LISTING is a reading that failed -- never absence.
+// A MODE-000 PARENT IS NOT AN ABSENT TREE (round-4/5 review item 3). ls exits 2 on the denied
+// directory and exits 1 on some usage errors; test(1) answered BOTH absence and unreadable
+// with exit 1, which is exactly why the listing replaced it. A captured nonzero of the
+// SUBJECT's listing is a failed reading that settles only against a completed GRANDPARENT
+// listing: absent there is absence; standing-but-unlistable here is UNREADABLE.
 test fn a_denied_parent_listing_is_unreadable_not_absent() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "" } }, entry_name: "qemu") {
-    QemuToolchainTreeUnreadable { cause: c } => string_contains(s: c, pattern: "exit 1")
+  match qemu_toolchain_tree_standing(
+    captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "cannot access '<parent>/.': Permission denied" } },
+    entry_name: "qemu", parent_name: "base",
+    parent_listing: ProcessCaptured { outcome: ProcessOutputPresent { text: "base\narchives\n" } },
+  ) {
+    QemuToolchainTreeUnreadable { cause: c } => string_contains(s: c, pattern: "exit 1") && string_contains(s: c, pattern: "would not list")
     _ => false
   }
 }
 
 test fn an_errored_tree_check_is_unreadable_not_absent() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } }, entry_name: "qemu") {
+  match qemu_toolchain_tree_standing(
+    captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } },
+    entry_name: "qemu", parent_name: "base",
+    parent_listing: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } },
+  ) {
     QemuToolchainTreeUnreadable { cause: c } =>
       string_contains(s: c, pattern: "exit 2")
         && string_contains(s: c, pattern: "Permission denied")
@@ -69,11 +78,11 @@ test fn an_errored_tree_check_is_unreadable_not_absent() -> Bool {
 // present; a successful listing the parent positively lacks it is absent (empty stdout is the
 // empty-directory case of the same reading).
 test fn a_successful_listing_answers_present_and_absent_by_membership() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "qemu\narchives\n" } }, entry_name: "qemu") {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "qemu\narchives\n" } }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
     QemuToolchainTreeStands =>
-      match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "archives\n" } }, entry_name: "qemu") {
+      match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "archives\n" } }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
         QemuToolchainTreeAbsent =>
-          match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputAbsent }, entry_name: "qemu") {
+          match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputAbsent }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
             QemuToolchainTreeAbsent => true
             _ => false
           }
@@ -103,8 +112,18 @@ test fn the_wet_tree_check_answers_for_a_real_tree_and_for_a_missing_one() -> Bo
 // the first placement of a fresh toolchain forever.
 test fn a_missing_parent_is_a_positive_absence_not_unreadable() -> Bool {
   let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_parent.XXXXXX").path
-  match qemu_toolchain_tree_test_wet(path: join([made as String, "/no/such/parent/tree"], "")) {
+  match qemu_toolchain_tree_test_wet(path: join([made as String, "/no-parent/tree"], "")) {
     QemuToolchainTreeAbsent => true
+    _ => false
+  }
+}
+
+// THE DEEP MISSING CHAIN IS HONESTLY UNREADABLE (round-5): with the grandparent ALSO missing, no
+// completed reading settles the subject, and the fold refuses instead of trusting an error string.
+test fn a_chain_of_missing_parents_is_unreadable_not_absent() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_deep.XXXXXX").path
+  match qemu_toolchain_tree_test_wet(path: join([made as String, "/no/such/parent/tree"], "")) {
+    QemuToolchainTreeUnreadable { cause: _ } => true
     _ => false
   }
 }

@@ -45,7 +45,12 @@ test fn an_unreadable_fragment_readback_refuses_the_entry_and_never_reports_foun
   let refusal = fleet_host_key_enroll_receipt_refusal(receipt: receipt)
   refusal != ""
     && !string_contains(s: receipt, pattern: "readback=found")
-    && string_contains(s: refusal, pattern: "readback=")
+    // The readback reports its OWN failure, as ERROR with the child's cause, not a bare
+    // "refused" (round-5 review, controls): a mode-000 fragment makes ssh-keygen -F answer
+    // exit 255 with a permission cause, and that cause must be legible in the refusal.
+    && string_contains(s: receipt, pattern: "readback=ERROR")
+    && string_contains(s: refusal, pattern: "readback=ERROR")
+    && string_contains(s: refusal, pattern: "unreadable fragment:")
 }
 
 // A POSITIVE ABSENCE IS ALSO A REFUSAL: the rows are NOT in the staged fragment (an empty

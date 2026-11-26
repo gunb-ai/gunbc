@@ -10,7 +10,8 @@ import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { LocalExec }
+import extdeps.exec.command { LocalExec, ArgvCommand }
+import extdeps.shell.exec { ProcessRunOutcome }
 import extdeps.object_storage { ObjectEntityTag, PutUnconditional, PutIfMatch }
 import extdeps.tools.curl {
   curl_sigv4_s3_upload_command, curl_sigv4_s3_parallel_upload_command, curl_sigv4_s3_delete_command,
@@ -576,7 +577,22 @@ fn race_trace_reading(path: String) -> CurlTraceReading {
   if read.success { curl_trace_reading(trace: read.content) } else { CurlTraceRefused { cause: concat("the trace could not be read back: ", read.error) as NonEmptyStr } }
 }
 
+// THE ROUND, SEALED AGAINST ITS TWO EXTERNAL STEPS (the seed PUT and the parallel writers), so
+// the PRODUCER fold -- seed tag kept, unstarted writers given their own observation carrying
+// program and cause -- is drivable by a claim without a network (round-5 review, controls:
+// "a confirmed seed plus a writer ProcessNotSpawned, through race_round"; a mutation turning the
+// WritersUnstarted arm into RaceRoundUnseeded goes red here, where the aggregate-level claims
+// could not see it). The wet entry passes the real steps; the witness passes a confirmed tag and
+// a ProcessNotSpawned, driving the same code path over local round bodies only.
 fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath) -> RaceRoundObservation {
+  race_round_with(
+    round: round, locator: locator, netrc: netrc, dir: dir,
+    seed: race_seed,
+    writers: (command: ArgvCommand) => run_shell_command_observe_outcome(command: command, transport: LocalExec),
+  )
+}
+
+fn race_round_with(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath, seed: fn(R2ObjectLocator, FilePath, String) -> ObjectEntityTag?, writers: fn(ArgvCommand) -> ProcessRunOutcome) -> RaceRoundObservation {
   let seed_body = race_body_path(dir: dir, name: "seed")
   let trace = race_body_path(dir: dir, name: "trace")
   let a_body = race_body_path(dir: dir, name: race_writer_a as String)
@@ -584,20 +600,17 @@ fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
   if (race_write_body(path: seed_body, round: round, writer: "seed") && race_write_body(path: a_body, round: round, writer: race_writer_a as String) && race_write_body(path: b_body, round: round, writer: race_writer_b as String)) == false {
     RaceRoundUnseeded { cause: "the round's bodies could not be written locally" }
   } else {
-    match race_seed(locator: locator, netrc: netrc, body: seed_body) {
+    match seed(locator: locator, netrc: netrc, body: seed_body) {
       Absent => RaceRoundUnseeded { cause: "the unconditional seed PUT did not answer 2xx with an entity tag" }
       Present { value: tag } => {
         let url = r2_object_url(locator: locator)
-        let observed = run_shell_command_observe_outcome(
-          command: curl_sigv4_s3_parallel_upload_command(
+        let observed = writers(command: curl_sigv4_s3_parallel_upload_command(
             uploads: [
               S3ParallelUpload { label: race_writer_a, url: url, local_path: a_body, precondition: PutIfMatch { tag: tag } },
               S3ParallelUpload { label: race_writer_b, url: url, local_path: b_body, precondition: PutIfMatch { tag: tag } },
             ],
             netrc_path: netrc, sigv4_region: r2_s3_sigv4_region, trace_path: trace as FilePath,
-          ),
-          transport: LocalExec,
-        )
+          ))
         match observed {
           // A round whose writers were never spawned did not race -- but its seed IS confirmed, so
           // the record is NOT 'the round was not seeded': the seed's tag is kept, and the unstarted

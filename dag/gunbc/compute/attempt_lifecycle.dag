@@ -482,6 +482,7 @@ fn attempt_commit_bytes(
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance_payload"),
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled_payload"),
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_fenced_commit"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_rewrite_payload"),
   ]
 {
   match admit_cas_attempt(attempt: cas_attempt(
@@ -585,6 +586,52 @@ fn attempt_advance_payload<P>(
               }
           }
       }
+  }
+}
+
+// AN IN-STATE PAYLOAD REWRITE: commits an updated payload for the SAME reference at the SAME state,
+// under the observed generation. This is the durable record of a FACT WON DURING THE RESERVED WINDOW
+// (today: that a Cursor attempt's create-only mkdir actually succeeded), not a lifecycle transition:
+// the guards refuse any smuggled state change, reference swap, or clock rewrite. A codec is given the
+// UPDATED record only to ENCODE it; state, reference, opened_at and launch_deadline must match what
+// stands in the slot.
+fn attempt_rewrite_payload<P>(
+  store: SlotStore,
+  reference: NonEmptyStr,
+  updated: P,
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_mark_runtime_root_registered"),
+  ]
+{
+  match slot_observe(store: store, key: reference) {
+    CasObservedUnreadable { cause: c } =>
+      AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent =>
+        AttemptLostRace { expected: "the standing slot", observed: "an absent slot" }
+      CasReadablePresent { version: v } =>
+        match codec.decode(v.value as String) {
+        Absent =>
+          AttemptTransitionRefused {
+            detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], ""),
+          }
+        Present { value: rec } =>
+          if codec.reference_of(rec) != (reference as String) || codec.reference_of(updated) != (reference as String) {
+            AttemptTransitionRefused { detail: "the rewrite names a reference other than the slot's own" }
+          } else if codec.state_of(rec) != codec.state_of(updated) {
+            AttemptTransitionRefused { detail: "an in-state rewrite may not change the attempt state" }
+          } else if codec.opened_at(updated) != codec.opened_at(rec) || codec.launch_deadline(updated) != codec.launch_deadline(rec) {
+            AttemptTransitionRefused { detail: "an in-state rewrite may not move the attempt's declared times" }
+          } else {
+            attempt_commit_bytes(
+              store: store, reference: reference, state: codec.state_of(rec),
+              payload: codec.encode(updated) as NonEmptyStr,
+                expected: ExpectSlotGeneration { generation: v.generation })
+            }
+        }
+    }
   }
 }
 

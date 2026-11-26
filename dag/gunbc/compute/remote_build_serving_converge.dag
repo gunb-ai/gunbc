@@ -69,7 +69,7 @@ import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_lis
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command, env_prefixed_command_in }
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
-import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
+import extdeps.posix.test_utility { test_directory_command, test_executable_command }
 // PR-1c: the identity sidecar leg reads the file through the ONE serve-side identity reader (single
 // format authority, so the converge writer and the serve reader cannot drift) and carries the result as
 // the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
@@ -173,37 +173,92 @@ fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionC
 // is a real absence (false); a listing that cannot be read is refused, never absence; and only
 // for an entry the listing SAYS STANDS does the test leg answer its own property (exit 0 true,
 // exit 1 property-genuinely-false, anything else refused).
+// ROUND-5 REVIEW ITEM 3 (remote leg): ABSENCE COMES ONLY FROM A COMPLETED, POSITIVE READING
+// ABOUT THE SUBJECT, and an ELEVATED COMMAND'S exit 1 is never read as a false property -- sudo
+// denies an individual command with exit 1, indistinguishable from the utility's own 1. The
+// elevated lookup lists `<parent>/.` (the trailing `/.` makes ls FAIL when the parent is a
+// regular file, where a bare listing of a file parent exits 0 printing the operand); a failed
+// lookup is settled only by a SECOND, SAME-SHAPE elevated listing of the GRANDPARENT, and only
+// a completed grandparent listing that positively lacks the parent establishes absence. No
+// stderr is ever read for meaning. A listing that cannot be read -- EACCES, EIO, ENOTDIR, an
+// ssh refusal, a denied elevation -- is ObservationRefused, so no remediation is selected on it
+// (round-4 review: "That result can select a directory or binary remediation").
+type ServingListingAnswer
+  = ListingEntryPresent
+  | ListingEntryAbsent
+  | ListingNeedsParent { main_cause: String }
+  | ListingUnreadable { cause: String }
+
+fn serving_listing_entry_standing(listing: TypedArgvExecOutcome, entry: String) -> ServingListingAnswer {
+  match listing {
+    TypedArgvExecRefused { reason: reason } => ListingUnreadable { cause: concat("parent listing refused: ", reason) }
+    TypedArgvExecOverran { deadline: d } => ListingUnreadable { cause: concat("parent listing overran: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) }
+    TypedArgvExecConverged { result: r } => if r.exit_code == 0 {
+      if listing_contains_entry(stdout: r.stdout, name: entry) { ListingEntryPresent } else { ListingEntryAbsent }
+    } else {
+      ListingNeedsParent { main_cause: join(["listing exit ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
+    }
+  }
+}
+
+// The failed subject lookup is settled ONLY by a completed grandparent listing: absent there is
+// a real absence; standing-but-unlistable (mode-000, a regular file, EIO) or another failure is
+// UNREADABLE, never absence.
+fn serving_parent_settles(parent_listing: TypedArgvExecOutcome, parent_name: String, main_cause: String) -> ServingListingAnswer {
+  match parent_listing {
+    TypedArgvExecRefused { reason: reason } => ListingUnreadable { cause: join(["the subject lookup failed (", main_cause, ") and the grandparent listing was refused: ", reason], "") }
+    TypedArgvExecOverran { deadline: d } => ListingUnreadable { cause: join(["the subject lookup failed (", main_cause, ") and the grandparent listing overran: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)], "") }
+    TypedArgvExecConverged { result: gp } => if gp.exit_code == 0 {
+      if listing_contains_entry(stdout: gp.stdout, name: parent_name) {
+        ListingUnreadable { cause: join(["the parent stands in a completed grandparent listing but would not list: ", main_cause], "") }
+      } else { ListingEntryAbsent }
+    } else {
+      ListingUnreadable { cause: join(["the subject lookup failed (", main_cause, ") and the grandparent listing failed too (exit ", to_string(gp.exit_code), ": ", trim(s: gp.stderr), ")"], "") }
+    }
+  }
+}
+
+fn serving_listing_standing_wet(item: String, path: String, target: SshTarget, context: FleetSshExecutionContext) -> ServingListingAnswer {
+  let parent = path_parent(path: path)
+  let main = typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: parent_listing_argv(parent: join([parent, "/."], ""))))
+  match serving_listing_entry_standing(listing: main, entry: path_basename(path: path)) {
+    ListingNeedsParent { main_cause: c } => serving_parent_settles(
+      parent_listing: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: parent_listing_argv(parent: join([path_parent(path: parent), "/."], "")))),
+      parent_name: path_basename(path: parent),
+      main_cause: c,
+    )
+    other => other
+  }
+}
+
 fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, path: String, target: SshTarget, context: FleetSshExecutionContext, probe: ArgvCommand) -> ObservationAttempt<Bool, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: parent_listing_argv(parent: path_parent(path: path)))) {
-      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused on the parent listing: ", reason) } }
-      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused on the parent listing: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-      TypedArgvExecConverged { result: listing } => if listing.exit_code != 0 {
-        // ENOENT FROM THE LOOKUP IS A POSITIVE ABSENCE: the kernel resolved the parent and it is
-        // not there -- so the entry cannot be either. Any OTHER nonzero (EACCES on a mode-000
-        // parent, a killed ls) proves neither presence nor absence and stays REFUSED, never a
-        // false "not there" (round-4 review: `test -e` exit 1 cannot establish absence).
-        if string_contains(s: listing.stderr, pattern: "No such file or directory") {
-          ObservationEstablished { observed: false }
-        } else {
-          ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("parent listing exit ", to_string(listing.exit_code)) } }
-        }
-      } else if !listing_contains_entry(stdout: listing.stdout, name: path_basename(path: path)) {
-        ObservationEstablished { observed: false }
-      } else {
-        match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))) {
-          TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
-          TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-          TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
-            true => ObservationEstablished { observed: true }
-            false => match r.exit_code == 1 {
-              true => ObservationEstablished { observed: false }
-              false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test exit ", to_string(r.exit_code)) } }
-            }
-          }
-        }
-      }
+    ObservationEstablished { observed: _ } => match serving_listing_standing_wet(item: item, path: path, target: target, context: context) {
+      ListingEntryAbsent => ObservationEstablished { observed: false }
+      ListingUnreadable { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingNeedsParent { main_cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingEntryPresent => serving_property_answer(
+        item: item,
+        ran: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))),
+      )
+    }
+  }
+}
+
+// THE PROPERTY LEG'S OWN FOLD, PURE SO THE WITNESS DRIVES IT (round-5 review item 3): the
+// listing already established the entry STANDS, so the property probe answers only its own
+// question, and ONLY exit 0 says yes. Exit 1 from an ELEVATED probe is ambiguous -- sudo
+// denies individual commands with exit 1, indistinguishable from the utility's own 1 -- so it
+// REFUSES rather than establishing a false property. A mutation restoring "exit 1 means false"
+// goes red on the witness claim over this fold.
+fn serving_property_answer(item: String, ran: TypedArgvExecOutcome) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match ran {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => ObservationEstablished { observed: true }
+      false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("elevated property probe exit ", to_string(r.exit_code), ": only exit 0 establishes the property (a sudo denial shares exit 1)") } }
     }
   }
 }
@@ -217,16 +272,17 @@ fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item
 fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
-      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
-      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-        true => ObservationEstablished { observed: "" }
-        false => match t.exit_code == 0 {
-          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
-          true => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
-        }
-      }
+    // ROUND-5 REVIEW ITEM 3: the CONFIRMED ABSENCE comes from the elevated parent listing (and,
+    // through it, the grandparent), NEVER from `test -f` exit 1 -- that exit is also what a sudo
+    // DENIAL of this very command returns, and an established "" (no forced command) selected on
+    // a denial would be a fabricated reading. Only a completed listing positively lacking the
+    // entry says absent; presence leads straight to the affirmative elevated read, whose own
+    // failures all refuse.
+    ObservationEstablished { observed: _ } => match serving_listing_standing_wet(item: item, path: path, target: target, context: context) {
+      ListingEntryAbsent => ObservationEstablished { observed: "" }
+      ListingUnreadable { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingNeedsParent { main_cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingEntryPresent => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
     }
   }
 }
@@ -247,14 +303,15 @@ fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: a
 fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
-      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
-      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-        true => ObservationEstablished { observed: SidecarAbsent }
-        false => match t.exit_code == 0 {
-          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
-          true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
+    // ROUND-5 REVIEW ITEM 3: SidecarAbsent is established ONLY by the elevated parent listing
+    // positively lacking the sidecar (via the grandparent when needed) -- never by `test -f`
+    // exit 1, which an elevated denial of this very command shares. A denied denial that had
+    // been read as absent would trigger a RE-RECORD of an identity file that may stand unread.
+    ObservationEstablished { observed: _ } => match serving_listing_standing_wet(item: item, path: path, target: target, context: context) {
+      ListingEntryAbsent => ObservationEstablished { observed: SidecarAbsent }
+      ListingUnreadable { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingNeedsParent { main_cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingEntryPresent => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
             ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
               // The reader KEEPS the revision (it was previously discarded at this boundary). The sidecar
               // writer (converge_record_serve_identity) and its parser both carry it; on a native-build host
@@ -264,8 +321,6 @@ fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFail
             }
             ObservationRefused { cause: c } => ObservationRefused { cause: c }
           }
-        }
-      }
     }
   }
 }

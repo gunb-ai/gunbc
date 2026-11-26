@@ -63,7 +63,7 @@ fn partial_read(remaining: Int) -> String {
 }
 
 fn complete_read(remaining: Int) -> String {
-  join(["{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"job.3mf\",\"print_error\":0,\"read\":\"attempt-", to_string(remaining), "\"}"], "")
+  join(["{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"job.3mf\",\"print_error\":0,\"read\":\"attempt-", to_string(remaining), "\"}}"], "")
 }
 
 test fn eight_partial_reads_with_an_earlier_leak_walk_the_real_fold_and_keep_the_leak() -> Bool {
@@ -75,7 +75,11 @@ test fn eight_partial_reads_with_an_earlier_leak_walk_the_real_fold_and_keep_the
     },
   ) {
     PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: t } }, cleanup: standing } =>
-      string_contains(s: t, pattern: "read=attempt-1")
+      // The completing capture, VERBATIM -- production returns the real child result it read,
+      // byte for byte (round-5 review: the fixture's eighth report was unbalanced JSON the
+      // parser rejected, and the old assertion searched for "read=attempt-1", a spelling the
+      // member never has; both defects pinned here).
+      t == complete_read(1)
         && match standing {
             PrinterCleanupOutstanding { detail: d } => string_contains(s: d as String, pattern: "/tmp/leaked-telemetry-binding")
             _ => false

@@ -33,7 +33,7 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_candidate_hosts }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
-  ServingLegFailure, serving_forced_command_line, serving_account_presence_gate,
+  ServingLegFailure, serving_forced_command_line, serving_account_presence_gate, serving_listing_entry_standing, serving_parent_settles, serving_property_answer, ServingListingAnswer, ListingEntryPresent, ListingEntryAbsent, ListingNeedsParent, ListingUnreadable,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
   serving_scratch_root_mode_octal,
@@ -3156,3 +3156,80 @@ fn run_remote_build_serving_converge_witness() -> ProcessExit {
     ExitFailure { code: 1, reason: concat("remote_build_serving_converge_witness claims red: ", red) }
   }
 }
+// ---- ROUND-5 REVIEW ITEM 3 (remote leg): the elevated lookup folds, PURE, driven here. ----
+// Absence on a serving leg may come ONLY from a completed, positive reading about the subject
+// (or, through it, the grandparent) -- never from an error string, and never from a nonzero
+// exit; and an ELEVATED property probe establishes only on exit 0, because sudo denies an
+// individual command with exit 1, indistinguishable from the utility's own 1. These claims
+// drive the folds serving_leg_test now rides; a mutation restoring any of the old collapses
+// (stderr-substring absence, nonzero-as-absence, exit-1-as-false-property) turns one red.
+
+fn conv_r(code: Int, out: String, err: String) -> TypedArgvExecOutcome {
+  TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: out, stderr: err } }
+}
+
+fn conv_refused(reason: String) -> TypedArgvExecOutcome {
+  TypedArgvExecRefused { reason: reason }
+}
+
+test fn the_elevated_listing_answers_membership_and_escalates_failures_to_the_parent() -> Bool {
+  match serving_listing_entry_standing(listing: conv_r(0, "authorized_keys\nserve\n", ""), entry: "serve") {
+    ListingEntryPresent => match serving_listing_entry_standing(listing: conv_r(0, "authorized_keys\n", ""), entry: "serve") {
+      ListingEntryAbsent => match serving_listing_entry_standing(listing: conv_r(0, "", ""), entry: "serve") {
+        ListingEntryAbsent => match serving_listing_entry_standing(listing: conv_r(2, "", "cannot access '<parent>/.': Permission denied"), entry: "serve") {
+          ListingNeedsParent { main_cause: c } => string_contains(s: c, pattern: "exit 2")
+            && match serving_listing_entry_standing(listing: conv_refused("ssh: connection refused"), entry: "serve") {
+                 ListingUnreadable { cause: _ } => true
+                 _ => false
+               }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// NO COMPLETED GRANDPARENT READING, NO ABSENCE: only a completed listing that positively lacks
+// the parent says absent; a parent that STANDS but will not list is UNREADABLE (mode-000, EIO,
+// a regular file -- the `/.` lookup fails on all three), and an errored or refused grandparent
+// keeps the whole standing unreadable.
+test fn a_failed_subject_lookup_settles_only_against_the_completed_grandparent_listing() -> Bool {
+  match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\n", ""), parent_name: "srv", main_cause: "exit 2: EACCES") {
+    ListingUnreadable { cause: c } => string_contains(s: c, pattern: "would not list")
+      && match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\n", ""), parent_name: "srv", main_cause: "exit 2: EACCES") {
+           ListingUnreadable { cause: _ } => match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\n", ""), parent_name: "gone", main_cause: "exit 2: ENOENT") {
+             ListingEntryAbsent => match serving_parent_settles(parent_listing: conv_r(2, "", "cannot access"), parent_name: "srv", main_cause: "exit 2") {
+               ListingUnreadable { cause: _ } => match serving_parent_settles(parent_listing: conv_refused("ssh refused"), parent_name: "srv", main_cause: "exit 2") {
+                 ListingUnreadable { cause: _ } => true
+                 _ => false
+               }
+               _ => false
+             }
+             _ => false
+           }
+           _ => false
+         }
+    _ => false
+  }
+}
+
+// THE PROPERTY LEG ANSWERS ITS OWN QUESTION ONLY WITH EXIT 0: exit 1 from the ELEVATED probe
+// refuses -- the sudo-denial-sharing-exit-1 ambiguity is never collapsed into established
+// false (the pre-fix reading that let a denial select a remediation).
+test fn an_elevated_property_probe_establishes_only_on_exit_zero() -> Bool {
+  match serving_property_answer(item: "store.root", ran: conv_r(0, "", "")) {
+    ObservationEstablished { observed: b } => b == true
+      && match serving_property_answer(item: "store.root", ran: conv_r(1, "", "")) {
+           ObservationRefused { cause: c } => string_contains(s: c.cause, pattern: "only exit 0 establishes the property")
+             && string_contains(s: c.cause, pattern: "sudo denial shares exit 1")
+             && match serving_property_answer(item: "store.root", ran: conv_refused("ssh: refused")) {
+                  ObservationRefused { cause: _ } => true
+                  _ => false
+                }
+           _ => false
+         }
+    _ => false
+  }

@@ -3,6 +3,9 @@ module test.claim.r2_conditional_put_race_probe
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.optional { Present, Absent }
 import extdeps.object_storage { ObjectEntityTag, PutIfMatch }
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessNotSpawned }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.exec.command { argv_words }
 import extdeps.version.semver { semver_core_of_dotted, semver_minimum_of_constraint, semver_version_label }
 import extdeps.tools.curl {
@@ -15,7 +18,7 @@ import gunbc.cloudflare.r2_conditional_put_race_probe {
   RaceRoundObservation, RaceRoundUnseeded, RaceRoundRaced,
   RaceOverlap, RaceOverlapEstablished, RaceOverlapUnestablished, race_overlap_of_trace,
   RaceRoundConsistent, RaceRoundBothSucceeded, RaceRoundInconclusive, race_round_verdict,
-  RaceRoundWritersUnstarted, race_round_line, race_receipt_round, race_probe_receipt,
+  RaceRoundWritersUnstarted, race_round_line, race_receipt_round, race_probe_receipt, race_round_with,
   RaceProbePassed, RaceProbeFalsified, RaceProbeInconclusive, race_probe_verdict,
   race_writer_a, race_writer_b, race_probe_rounds,
   r2_conditional_put_race_receipt, race_receipt_reading, RaceReceiptRead, RaceReceiptUnreadable,
@@ -410,6 +413,36 @@ test fn a_run_with_a_confirmed_seed_and_one_unstarted_round_is_inconclusive_neve
         && string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "writers unstarted seed=seed-tag-9")
         && string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "verdict=inconclusive")
         && !string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "verdict=passed")
+    _ => false
+  }
+}
+
+// THE PRODUCER, NOT THE AGGREGATE (round-5 review, controls): a CONFIRMED SEED plus a writer
+// ProcessNotSpawned, driven THROUGH race_round's own fold (race_round_with -- the exact function
+// the wet entry calls, with the two external steps supplied). The producer must keep the seed's
+// entity tag, give the unstarted writers their own observation carrying program and cause, and
+// answer NOTHING else: pre-fix this arm was RaceRoundUnseeded, which threw away a sealed entity
+// and told the next reader "the round was not seeded". The existing aggregate claims above
+// construct the variant directly and could not see such a mutation; this one drives the fold
+// that DECIDES it. Round bodies are local files only; no network, no credential.
+test fn a_confirmed_seed_with_unstarted_writers_goes_through_the_producer_fold() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_r2_producer.XXXXXX").path
+  let locator = R2ObjectLocator {
+    endpoint: R2S3Endpoint { account_id: "acct", jurisdiction: R2JurisdictionDefault },
+    bucket_name: "race-probe-bucket" as NonEmptyStr,
+    key: "race-probe-key" as NonEmptyStr,
+  }
+  match race_round_with(
+    round: 3 as Nat, locator: locator, netrc: "/dev/null" as FilePath, dir: dir as FilePath,
+    seed: (l: R2ObjectLocator, n: FilePath, b: String) => Present { value: ObjectEntityTag { value: "seed-tag-9" as NonEmptyStr } },
+    writers: (command: ArgvCommand) => ProcessNotSpawned { program: "curl" as NonEmptyStr, cause: "transport refused to build the child" as NonEmptyStr },
+  ) {
+    RaceRoundWritersUnstarted { seed_tag: t, cause: c } =>
+      (t as String) == "seed-tag-9"
+        && string_contains(s: c as String, pattern: "curl")
+        && string_contains(s: c as String, pattern: "transport refused to build the child")
+        // The record is NOT "the round was not seeded": its own words say so.
+        && !string_contains(s: c as String, pattern: "not seeded")
     _ => false
   }
 }
