@@ -95,9 +95,19 @@ fn ls_almost_all_one_per_line_command(path: String) -> ArgvCommand {
 // there" (ls(1) EXIT STATUS: 2 for serious trouble, including an invalid option or an absent
 // operand). CONSUMERS: witness_tree_parent_listing_state (membership by exact equality against
 // the NUL-terminated entries) and witness_directory_listing_is_provably_empty (zero entries FROM
-// A LISTING THAT RAN) in test.claim.roadmap.witness_supplied_instance.
+// A LISTING THAT RAN) in test.claim.roadmap.witness_supplied_instance. DIRECTORY SEMANTICS ON THE
+ OPERAND: ls(1) lists FILE OPERANDS THEMSELVES -- `ls -A --zero -- <regular-file>` exits 0 and prints
+ the operand's own name (measured on the battery host, coreutils 9.7), which a child-listing reader
+ would take for a clean listing that does not name the child, i.e. for ABSENCE beneath a file. So the
+ row asks the question it names -- children OF A DIRECTORY -- by appending exactly one trailing
+ separator: with a trailing separator the FILE/'/' form refuses "Not a directory" at exit 2
+ (measured; path_resolution(7) requires the slash-suffixed component to be a directory), while
+ directories answer unchanged -- the 0444 listable-not-searchable parent still lists at exit 0
+ (measured), and a trailing separator on an absolute operand is a second separator on the last
+ component, which collapses to the same directory. An operand that is a dangling symbolic link or is
+ missing exits 2 as before: a listing that did not answer, never an answer of absence.
 fn ls_child_names_command(path: String) -> ArgvCommand {
-  argv_command(program: ls_program(), arguments: ["-A", "--zero", "--", path])
+  argv_command(program: ls_program(), arguments: ["-A", "--zero", "--", join([path, "/"], "")])
 }
 
 // mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing

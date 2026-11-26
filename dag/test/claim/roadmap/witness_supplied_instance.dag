@@ -238,6 +238,33 @@ fn wet_out(command: ArgvCommand) -> String {
   }
 }
 
+// THE PATH-VALUED CAPTURE: stdout's BYTES, with exactly one trailing output terminator removed.
+// `wet_out` trims trailing WHITESPACE, which is the right reading for a word (a uid, a mode, a
+// digest line) and a DEFECT for a path: the kernel admits every byte but `/` and NUL in a name
+// (path_resolution(7)), so a directory legitimately named `<base> ` prints, from realpath(1) or
+// `pwd` or `mktemp -d`, as `<base>` + space + newline -- and `trim` collapses that distinct name
+// onto `<base>`. Every equality and every `is_under` on the captured text then compares about a
+// path the host never printed, and a writer that appends uses the UNTRIMMED spelling: the guard
+// and the write disagree by the whitespace trim erased, which is how a sibling named `<base> `
+// shared `<base>`'s admissions. What a line-oriented tool guarantees is ONE terminating newline
+// -- nothing more -- so exactly one is removed and no other byte is touched. A refused or absent
+// process is the empty string here exactly as in `wet_out`: no answer is still no answer.
+fn witness_strip_one_output_terminator(text: String) -> String {
+  if !ends_with(s: text, suffix: "\n") {
+    text
+  } else {
+    join(list_init(xs: split(s: text, delimiter: "\n")), "\n")
+  }
+}
+
+fn wet_out_verbatim(command: ArgvCommand) -> String {
+  match wet(command: command) {
+    ProcessOutputPresent { text: text } => witness_strip_one_output_terminator(text: text)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
 // THE ONE PROCESS THE FIXTURE NEEDS TO GET A ROOT. Callers run this with `run_shell_command_observe` and read
 // the created path off stdout; an empty or absent stdout is `Absent`, which every claim turns into a refusal
 // rather than a default.
@@ -531,9 +558,15 @@ fn witness_path_spelling_is_refused(candidate: String) -> Bool {
 // nothing. One helper, one row: this arm and `witness_path_resolves_under` below both need the resolved text of
 // a path before it is created, and a second call site spelling the `realpath -m` argv itself would be a second
 // authority for what "resolved" means. Silence -- the tool unspawnable, an argument the tool refuses -- is the
-// empty string, and every caller here reads that as a refusal rather than as permission.
+// empty string, and every caller here reads that as a refusal rather than as permission. THE CAPTURE IS THE
+// PATH-VALUED ONE (`wet_out_verbatim`): realpath(1) prints the resolved text followed by ONE newline, and
+// every byte before that newline is the answer -- realpath resolves what exists, and a name legitimately ends
+// in a space (path_resolution(7)). `wet_out`'s whitespace trim collapsed `<base> ` onto `<base>`, so the
+// sibling of a run base, named the base plus one space, resolved EQUAL to the base and passed the under-base
+// admission while the writer still appended to the UNTRIMMED spelling: guard and write differed by exactly
+// what the trim erased. A capture whose trailing bytes are content strips terminators, never whitespace.
 fn witness_resolved_path(candidate: String) -> String {
-  wet_out(command: realpath_canonicalize_missing_command(path: candidate))
+  wet_out_verbatim(command: realpath_canonicalize_missing_command(path: candidate))
 }
 
 fn witness_resolved_root_is_refused(candidate: String) -> Bool {

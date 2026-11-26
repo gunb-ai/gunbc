@@ -110,8 +110,8 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_supplied_root_is_refused, witness_supplied_roots_are_off_the_live_host,
   witness_refused_instance, witness_unnameable_principal,
   witness_supplied_credstore_dir, witness_supplied_credential_source, witness_supplied_credential_is_confined,
-  wet_ok, wet_out, wet_argv_ok, wet_argv_out,
-  witness_path_spelling_is_refused, witness_resolved_root_is_refused,
+  wet_ok, wet_out, wet_out_verbatim, wet_argv_ok, wet_argv_out,
+  witness_path_spelling_is_refused, witness_resolved_root_is_refused, witness_resolved_path,
   witness_claim_helper_locus, witness_locus_dir_text, witness_locus_dag_dir,
   witness_locus_receipt_path, witness_locus_binary_path, witness_locus_source_roots,
   witness_locus_receipt_seal_path, witness_seal_locus_receipt, witness_file_sha256_hex,
@@ -389,7 +389,7 @@ fn wet_claim_root_under(base: String, tag: NonEmptyStr) -> String {
   if witness_supplied_root_is_refused(candidate: base) {
     ""
   } else {
-    let made = wet_out(
+    let made = wet_out_verbatim(
       command: mktemp_directory_command(
         template: join([base, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
       ),
@@ -498,7 +498,7 @@ fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
 // `source/dag` they had never created (4ffbdfcc, stern), and the hand-made `.git` that left every
 // launching leg unable to name a commit (74683828, stern).
 fn wet_plant_guest_sources_sized(instance: HostDashboardInstance, subdirs: List<String>) -> Bool {
-  let checkout = wet_out(command: pwd_command())
+  let checkout = wet_out_verbatim(command: pwd_command())
   let repo = instance.repo_root as String
   // THE CHECKOUT IS HOST-SAID, NOT ASSUMED. `pwd` is the batch's own working directory as the
   // host reports it; an empty reading refuses the plant rather than copying a guessed path.
@@ -2561,7 +2561,7 @@ fn wet_names_under(base: String, prefix: NonEmptyStr) -> Int {
     0
   } else {
     count(filter(
-      split(s: wet_out(command: ls_almost_all_one_per_line_command(path: base)), delimiter: "\n"),
+      split(s: wet_out_verbatim(command: ls_almost_all_one_per_line_command(path: base)), delimiter: "\n"),
       e => starts_with(s: e, prefix: prefix as String)
     ))
   }
@@ -2603,7 +2603,7 @@ test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is
   // A DISPOSABLE DESTINATION, as the review asked. `/var/tmp` is outside the declared scratch prefix
   // `/tmp`, so this is a real escape and not a rename of somewhere already admitted; the claim owns
   // the directory and hands it to the same root readback that removes its own root.
-  let away = wet_out(command: mktemp_directory_command(
+  let away = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-alias-target-XXXXXX" as NonEmptyStr,
   ))
   let link = join([root, "/alias"], "")
@@ -2717,7 +2717,7 @@ test fn a_failed_unit_listing_is_never_read_as_a_successful_retirement() -> Bool
 test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_the_supplied_tree() -> Bool {
   let root = wet_claim_root(tag: "stage-trail-symlink" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let away = wet_out(command: mktemp_directory_command(
+  let away = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-trail-escape-XXXXXX" as NonEmptyStr,
   ))
   let green_line = "trail-ownership-control-probe"
@@ -2767,7 +2767,7 @@ test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_t
 test fn a_trail_base_the_run_cannot_exclusively_possess_records_nothing() -> Bool {
   let root = wet_claim_root(tag: "trail-base-ownership" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let ours = wet_out(command: mktemp_directory_command(
+  let ours = wet_out_verbatim(command: mktemp_directory_command(
     template: join([root, "/run-owned-XXXXXX"], "") as NonEmptyStr,
   ))
   let ours_trail = join([ours, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
@@ -2806,10 +2806,10 @@ test fn a_trail_base_the_run_cannot_exclusively_possess_records_nothing() -> Boo
 test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bool {
   let root = wet_claim_root(tag: "trail-cross-run-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let run_a = wet_out(command: mktemp_directory_command(
+  let run_a = wet_out_verbatim(command: mktemp_directory_command(
     template: join([root, "/run-A-XXXXXX"], "") as NonEmptyStr,
   ))
-  let run_b = wet_out(command: mktemp_directory_command(
+  let run_b = wet_out_verbatim(command: mktemp_directory_command(
     template: join([root, "/run-B-XXXXXX"], "") as NonEmptyStr,
   ))
   let a_trail = join([run_a, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
@@ -2836,6 +2836,56 @@ test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bo
   )
 }
 
+// THE WHITESPACE-DISTINCT SIBLING THAT USED TO SHARE THE RUN'S ADMISSIONS. The trail's under-base
+// admission resolves candidate and base through `witness_resolved_path` and requires the candidate under
+// the resolved base. That capture used to be `wet_out`, which trims trailing WHITESPACE -- but a name may
+// legitimately end in a space (path_resolution(7) admits every byte but `/` and NUL), and realpath(1)
+// prints `<base> ` + newline for the sibling directory named the base plus one space. The trim collapsed
+// that onto `<base>`, the guard called the sibling's own trail "under the base", and the writer -- tee --
+// appended to the UNTRIMMED spelling: guard and write differed by exactly the bytes the trim erased. The
+// capture is now byte-preserving (`wet_out_verbatim`), and this claim pins the boundary end to end: the
+// sibling resolves AS ITSELF, bytes included; it never resolves under the base; with the run's trail name
+// planted as a symbolic link at the sibling -- the spelling whose resolution ends in the trim-eaten
+// space -- the trail destination is REFUSED and the stage records nothing; the sibling's pre-planted
+// trail file is BYTE-UNCHANGED after the attempt; and the sibling is admitted only as its OWN base, with
+// the real base admitted beside it. Mutation `mut_resolved_path_trims` restores the trim and goes RED
+// here on the capture, the refusal, and the sibling's own-base arms at once.
+test fn a_sibling_named_the_base_plus_one_space_never_shares_its_admissions() -> Bool {
+  let root = wet_claim_root(tag: "trail-whitespace-sibling" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let run_dir = wet_out_verbatim(command: mktemp_directory_command(
+    template: join([root, "/run-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let sibling = join([run_dir, " "], "")
+  let run_trail = join([run_dir, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let sibling_trail = join([sibling, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let marker = "SIBLING-PRE-EXISTING-TRAIL-LINE\n"
+  let marker_probe = tee_append_command(path: sibling_trail)
+  let staged = run_dir != ""
+    && wet_ok(command: mkdir_parents_command(path: sibling))
+    && shell.Exec.RunArgvStdin(
+      program: marker_probe.program.invocation as String,
+      arguments: marker_probe.arguments,
+      stdin_payload: marker,
+    ).exit_code == 0
+  let sibling_keeps_its_bytes = witness_resolved_path(candidate: sibling) == sibling
+  let sibling_never_under_base = !witness_path_resolves_under(candidate: sibling, base: run_dir)
+  let attack_planted = wet_ok(command: rm_force_command(path: run_trail))
+    && wet_ok(command: ln_symbolic_force_command(target: sibling, link_name: run_trail))
+  let refused = wet_stage_trail_path_under(base: run_dir) == ""
+    && !wet_stage_under(base: run_dir, stage: "whitespace-sibling-escape", ok: true)
+    && wet_file_text(path: sibling_trail) == marker
+  let sibling_own_base = wet_stage_trail_path_under(base: sibling) == sibling_trail
+  let base_still_admitted = wet_stage_trail_path_under(base: run_dir) == run_trail
+  let removed = wet_ok(command: rm_force_command(path: run_trail))
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && staged && sibling_keeps_its_bytes && sibling_never_under_base
+      && attack_planted && refused && sibling_own_base && removed && base_still_admitted,
+    roots: [root as NonEmptyStr],
+  )
+}
+
 // THE TRAILING SEPARATOR THAT TURNED EVERY NO-FOLLOW READING INTO A FOLLOWING ONE. The base below is not a
 // directory at all -- it is a symbolic link at ANOTHER RUN's 0700 directory, and it is spelled with a trailing
 // separator. `stat -c %F .../run-A/` and `find .../run-A/` dereference an operand that ends in a separator, so
@@ -2848,7 +2898,7 @@ test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bo
 test fn a_trailing_slash_on_a_linked_trail_base_records_nothing() -> Bool {
   let root = wet_claim_root(tag: "trail-trailing-slash-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let run_b = wet_out(command: mktemp_directory_command(
+  let run_b = wet_out_verbatim(command: mktemp_directory_command(
     template: join([root, "/run-B-XXXXXX"], "") as NonEmptyStr,
   ))
   let b_trail = join([run_b, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
@@ -2895,10 +2945,10 @@ test fn a_trailing_slash_on_a_linked_trail_base_records_nothing() -> Bool {
 test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
   let root = wet_claim_root(tag: "locus-fold-plan-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let away = wet_out(command: mktemp_directory_command(
+  let away = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-fold-escape-XXXXXX" as NonEmptyStr,
   ))
-  let away_deep = wet_out(command: mktemp_directory_command(
+  let away_deep = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-fold-escape-deep-XXXXXX" as NonEmptyStr,
   ))
   let planted = wet_plant_guest_sources(instance: inst)
@@ -3127,26 +3177,58 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
   let refused_dotdot_answer = witness_tree_destination_subtree_outcome_label(
     outcome: witness_tree_destination_subtree_outcome(root: "/a/../b"),
   )
-  // (i) AN ENTRY NAME IS BYTE CONTENT, NOT A LINE. Listing membership and emptiness used to trim stdout and
-  // split on newline, so a directory whose only entry is named " " read as EMPTY, and an entry whose name
-  // holds a newline was no longer one name. Both properties are pinned through the interface: the
-  // whitespace-named destination is PRESENT (LinkFree -- a trimmed membership would lose it to Missing and
-  // admit it as Absent), the newline-named destination is PRESENT, and NEITHER directory is provably empty
-  // (a trimmed, newline-split listing would call the space-only directory empty).
+  // (i) AN ENTRY NAME IS BYTE CONTENT, NOT A LINE -- AND THE MEMBERSHIP BRANCH ONLY RUNS WHEN THE SCAN
+  // CANNOT STAT. Listing membership and emptiness used to trim stdout and split on newline, so a directory
+  // whose only entry is named " " read as EMPTY, and an entry whose name holds a newline was no longer one
+  // name. A first version of this leg planted both parents SEARCHABLE, which meant the stat-ing `find` scan
+  // answered LinkFree and exit 0 and the membership branch never executed -- the controls were GREEN of a
+  // code path they never entered. Both parents are now listable-not-searchable (mode 0444; read enumerates,
+  // search resolves, path_resolution(7)): the scan fails over them at exit 1, and the walk alone must answer
+  // from the NUL listing. A trimmed membership loses ` ` and `nl\ninside` to Missing, Missing folds to
+  // Absent, and Absent ADMITS -- so each byte-content name is asserted UNOBSERVABLE (the scan failed) and
+  // NOT ADMITTED (the listing named it), and NEITHER directory is provably empty.
+  // `mut_list_membership_trim_newline` goes RED here on the branch that actually reads names.
   let ws_dir = join([root, "/loci/ws"], "")
   let ws_child = join([ws_dir, "/ "], "")
   let ws_staged = wet_ok(command: mkdir_parents_command(path: ws_child))
+  let ws_listable = shell.Chmod.ListableNotSearchableDirectory(path: ws_dir as FilePath).success
   let ws_answer = witness_tree_destination_subtree_outcome_label(
     outcome: witness_tree_destination_subtree_outcome(root: ws_child),
   )
+  let ws_admitted = witness_tree_destination_subtree_is_link_free(root: ws_child)
   let ws_dir_not_empty = !witness_directory_listing_is_provably_empty(path: ws_dir)
   let nl_dir = join([root, "/loci/nl"], "")
   let nl_child = join([nl_dir, "/nl", "\n", "inside"], "")
   let nl_staged = wet_ok(command: mkdir_parents_command(path: nl_child))
+  let nl_listable = shell.Chmod.ListableNotSearchableDirectory(path: nl_dir as FilePath).success
   let nl_answer = witness_tree_destination_subtree_outcome_label(
     outcome: witness_tree_destination_subtree_outcome(root: nl_child),
   )
+  let nl_admitted = witness_tree_destination_subtree_is_link_free(root: nl_child)
   let nl_dir_not_empty = !witness_directory_listing_is_provably_empty(path: nl_dir)
+  // (j) A REGULAR FILE IS NOT A DIRECTORY WITH NO CHILDREN. `ls -A --zero -- <regular-file>` exits 0 and
+  // prints the OPERAND's own name (measured, coreutils 9.7) -- ls(1) lists file operands themselves -- so a
+  // probe of a file-as-parent would read as a clean listing that does not name the child, and the walk
+  // would answer Absent for `<file>/<child>` and ADMIT a create that mkdir later fails on, or worse, admits
+  // a path whose ancestry is not a directory tree at all. The listing row carries the directory semantics
+  // (it probes `DIR/`: the FILE/'/' form refuses at exit 2, measured, while the 0444 parent still lists at
+  // exit 0), so this leg pins the regular-file parent as UNOBSERVABLE and NOT ADMITTED, and
+  // `mut_list_no_dir_requirement` (the row drops the separator) goes RED here: the file's own name lists,
+  // the child is "not named", and Absent admits.
+  let file_parent = join([root, "/loci/file-parent"], "")
+  let file_probe = tee_append_command(path: file_parent)
+  let file_planted = shell.Exec.RunArgvStdin(
+    program: file_probe.program.invocation as String,
+    arguments: file_probe.arguments,
+    stdin_payload: "planted\n",
+  ).exit_code == 0
+  let fp_target = join([file_parent, "/v2"], "")
+  let fp_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: fp_target),
+  )
+  let fp_admitted = witness_tree_destination_subtree_is_link_free(root: fp_target)
+  let ws_restored = shell.Chmod.OwnerOnlyDirectory(path: ws_dir as FilePath).success
+  let nl_restored = shell.Chmod.OwnerOnlyDirectory(path: nl_dir as FilePath).success
   wet_claim_verdicts_with_root_readbacks(
     verdict: root != ""
       && present_staged && linked_staged && linked_planted
@@ -3168,9 +3250,11 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
       && spell_trailing_admitted && spell_doubled_admitted
       && refused_relative_answer == "Unobservable" && refused_empty_answer == "Unobservable"
       && refused_dot_answer == "Unobservable" && refused_dotdot_answer == "Unobservable"
-      && ws_staged && nl_staged
-      && ws_answer == "LinkFree" && nl_answer == "LinkFree"
-      && ws_dir_not_empty && nl_dir_not_empty,
+      && ws_staged && ws_listable && nl_staged && nl_listable
+      && ws_answer == "Unobservable" && !ws_admitted && ws_dir_not_empty
+      && nl_answer == "Unobservable" && !nl_admitted && nl_dir_not_empty
+      && file_planted && fp_answer == "Unobservable" && !fp_admitted
+      && ws_restored && nl_restored,
     roots: [root as NonEmptyStr],
   )
 }
@@ -3190,7 +3274,7 @@ test fn the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link() -> Boo
   let root = wet_claim_root(tag: "fold-destination-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let repo = inst.repo_root as String
-  let escape = wet_out(command: mktemp_directory_command(
+  let escape = wet_out_verbatim(command: mktemp_directory_command(
     template: join([root, "/escape-XXXXXX"], "") as NonEmptyStr,
   ))
   let deep_file = join([repo, "/src/v2/workflow/local_repo_wet_terminal.dag"], "")
@@ -3244,7 +3328,7 @@ test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let repo = inst.repo_root as String
   let source = join([root, "/source-probe"], "")
-  let escape = wet_out(command: mktemp_directory_command(
+  let escape = wet_out_verbatim(command: mktemp_directory_command(
     template: join([root, "/escape-XXXXXX"], "") as NonEmptyStr,
   ))
   let built = wet_ok(command: mkdir_parents_command(path: join([source, "/nested"], "")))
@@ -3307,7 +3391,7 @@ test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
 test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect() -> Bool {
   let root = wet_claim_root(tag: "locus-destination-symlink" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let away = wet_out(command: mktemp_directory_command(
+  let away = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-locus-escape-XXXXXX" as NonEmptyStr,
   ))
   let named = wet_environment_value(name: wet_served_binary_env_var)
@@ -3340,7 +3424,7 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
   // writer admitting its own staging path before it writes it: the predicate refuses the name, the route
   // refuses, and the planted target stays empty.
   let staged_key = "staged-link"
-  let stage_away = wet_out(command: mktemp_directory_command(
+  let stage_away = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-locus-stage-escape-XXXXXX" as NonEmptyStr,
   ))
   let stage_name = join([inst.instance_root as String, "/.gunbc-locus-write-hand-receipt-", staged_key], "")
@@ -3380,7 +3464,7 @@ test fn a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse() -
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let claim = "a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse"
   let unit_key = "locus-order-probe"
-  let away = wet_out(command: mktemp_directory_command(
+  let away = wet_out_verbatim(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-locus-order-XXXXXX" as NonEmptyStr,
   ))
   let planted_dir = witness_locus_dir_text(instance: inst, locus_key: unit_key as NonEmptyStr)
@@ -3444,7 +3528,7 @@ test fn the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_
   // against a guard that simply always refuses: `realpath -m` is asked, and it answers with the live
   // install root -- so a fold handed a directory derived from this base would have installed its
   // root-owned helper tree inside the host's own lab root.
-  let resolved_escape = wet_out(command: realpath_canonicalize_missing_command(path: by_traversal))
+  let resolved_escape = wet_out_verbatim(command: realpath_canonicalize_missing_command(path: by_traversal))
   let lands_in_the_live_root = starts_with(s: resolved_escape, prefix: srv1_dashboard_lab_root as String)
   let admitted_base = witness_batch_locus_base(instance: inst)
   let fold_target = witness_locus_dir_text(instance: inst, locus_key: "regression-key" as NonEmptyStr)
@@ -3476,7 +3560,7 @@ test fn the_guard_refuses_a_path_it_cannot_resolve() -> Bool {
   let blocked = join([root, "/blocked"], "")
   let made = Filesystem.Write(path: blocked, content: "not a directory" as NonEmptyStr).success
   let beneath = join([blocked, "/gunbc-sandbox-probe-abc123"], "")
-  let tool_answered = wet_out(command: realpath_canonicalize_missing_command(path: beneath)) != ""
+  let tool_answered = wet_out_verbatim(command: realpath_canonicalize_missing_command(path: beneath)) != ""
   let refuses_silence = witness_resolved_root_is_refused(candidate: "")
     && witness_supplied_root_is_refused(candidate: "")
   let admitted = !witness_supplied_root_is_refused(candidate: root)
@@ -3835,7 +3919,7 @@ test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
   // legs go with it.
   let root = wet_claim_root(tag: "plant" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let checkout = wet_out(command: pwd_command())
+  let checkout = wet_out_verbatim(command: pwd_command())
   // The launcher is handed `wet_witness_entry(instance: inst)` -- an accessor over the row, so
   // if the row's repo_root derivation changes this leg moves with it instead of passing on a
   // restated literal.
