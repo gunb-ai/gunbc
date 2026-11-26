@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.an_unbounded_child_effect_on_the_srv1_deploy_route
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data an_unbounded_child_effect_on_the_srv1_deploy_route: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_unbounded_child_effect_on_the_srv1_deploy_route" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**An unbounded child effect on the srv1 deploy route is contained only by an authority outside the model** (INVALID STATE: a witnessed child that neither completes nor refuses holds the route; the only stop was a GitHub Actions step timeout that names no child and produces no typed artifact. The site is the pair of gunbc.WitnessBin.Run invocations hosted by gunbc.live_deploy.pre_swap_admission::observe_serve_entry_compile_clean and gunbc.live_deploy.pre_swap_admission::observe_served_command_reaches_bind, reached from the CI wet step named 'Deploy the named srv1 instance (live_deploy_apply_desired_wet_from_ci)' in the desired-instance-deploy job of the fleet-converge workflow; the module's own comment above the latter already requires the Run output to be surfaced.)",
+    "OBSERVED, quoted verbatim from the 87 KB raw job log (fleet-converge run 45749803682, job 139679610449, nonce operator-cutover-deploy2-033436, mode desired_instance_deploy, host srv1, subject srv1:srv1-lab-codex-feedback-v0): last wet-step log line '2026-11-26T04:57:05.0640851Z started gunbc.WitnessBin.Run' -- started, NEVER completed; 27 minutes of zero output; '##[error]The action ... has timed out after 60 minutes' at 05:24:17Z; runner cleanup 'Terminate orphan process' x3 (pids 2693071, 3053297, 3361334, all named gunbc). assert_dashboard_deploy_receipts found no receipt dir; the upload step found no files under the deploy receipt path. The class is claimed INDEPENDENT of the hang cause: cause under operator investigation, hypotheses unmeasured (sudo prompt, serve-socket block, load starvation); this class asserts nothing about them.",
+    "RUNG AS FILED: mitigatable -- containment external to the model (the CI step timeout), no typed artifact. The deploy failed closed and that was verified read-only: nothing installed, the last good pair kept serving, the serve unit still pinned release_revision=c95e21e6, /standings.json fresh. The rung is filed as a containment status, not a ladder rung, hence RungUnread { cause: NoRungStated } here.",
+    "COROLLARY (same filing): this wet-step exit left ZERO live-deploy receipts while the assert step's contract is exactly one (apply XOR named refusal); a bounded model-side refusal -- per-run wall bound on the effect, expiry REFUSES with a typed timeout refusal NAMING THE CHILD (witnessed program/argv identity and the calling host symbol) into the named-refusal receipt path -- would satisfy that contract by construction. Today no bounded run exists. Population note: the gunbc.WitnessBin service is declared in dag/extdeps/gunbc.dag with its carrier type in dag/gunbc/instruments/host_prelude.dag; the two call sites named above are the wet-step route's invocations.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.live_deploy.pre_swap_admission", decl_name: "observe_serve_entry_compile_clean", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.live_deploy.pre_swap_admission", decl_name: "observe_served_command_reaches_bind", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instruments.host_prelude", decl_name: "WitnessBin", field: WholeDeclaration },
+  ],
+}
