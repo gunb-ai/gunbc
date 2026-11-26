@@ -26,7 +26,7 @@ import gunbc.runner.runner_browser_toolchain {
   BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
   runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
-  tree_admission_of, PathExistence, PathPresent, PathAbsent, PathExistenceUnreadable, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
+  tree_admission_of, PathExistence, PathPresent, PathAbsent, PathExistenceUnreadable, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of, path_exists_wet,
   browser_toolchain_probe_fragment, admit_tree_wet,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
@@ -403,6 +403,17 @@ test fn a_runs_on_naming_the_user_session_label_has_no_declared_pool() -> Bool {
 // so an unreadable parent staged a fresh tree beside one that may well stand. The shared parent
 // listing fails too -- and failure is PathExistenceUnreadable, which admission reports as
 // TreeUnobservable, never TreeAbsent. Driven through the production consumer admit_tree_wet.
+// A MISSING PARENT IS A POSITIVE ABSENCE, NOT UNREADABLE (round-4b): the lookup's ENOENT is the
+// kernel's own word that the entry cannot exist; collapsing it would refuse a first placement
+// forever. Any OTHER listing failure stays PathExistenceUnreadable (the claim below).
+test fn a_missing_parent_is_a_positive_absence_not_unreadable() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_parent.XXXXXX").path
+  match path_exists_wet(path: join([made as String, "/no/such/parent/tree"], "")) {
+    PathAbsent => true
+    _ => false
+  }
+}
+
 test fn an_unreadable_parent_admits_nothing_and_reports_unobservable_not_absent() -> Bool {
   let home = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_tree_parent.XXXXXX").path as String
   let tree = join([home, "/chromium-tree"], "")

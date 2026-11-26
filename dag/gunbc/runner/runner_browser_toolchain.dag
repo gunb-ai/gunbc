@@ -6,7 +6,7 @@ import std.types { Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.shell
 import gunbc.live_deploy.member_observe { path_parent, path_basename, listing_contains_entry }
 import std.measure { ByteSize, byte_size }
-import std.algebra { Cons, Empty, list_append, trim, length }
+import std.algebra { Cons, Empty, list_append, trim, length, string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import std.env_binding { EnvBinding, EnvSet }
@@ -1202,7 +1202,10 @@ fn path_existence_standing(captured: ProcessCaptureOutcome, entry_name: String) 
       if listing_contains_entry(stdout: t, name: entry_name) { PathPresent } else { PathAbsent }
     ProcessCaptured { outcome: ProcessOutputAbsent } => PathAbsent
     ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
-      PathExistenceUnreadable { program: "ls -1 -A", cause: join(["the parent listing errored: exit ", to_string(code), " ", trim(s: err)], "") }
+      // ENOENT FROM THE LOOKUP IS A POSITIVE ABSENCE (kernel resolved the parent, no entry);
+      // any other nonzero -- EACCES, a killed ls -- proves neither standing and is UNREADABLE.
+      if string_contains(s: err, pattern: "No such file or directory") { PathAbsent }
+      else { PathExistenceUnreadable { program: "ls -1 -A", cause: join(["the parent listing errored: exit ", to_string(code), " ", trim(s: err)], "") } }
   }
 }
 

@@ -180,7 +180,15 @@ fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused on the parent listing: ", reason) } }
       TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused on the parent listing: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
       TypedArgvExecConverged { result: listing } => if listing.exit_code != 0 {
-        ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("parent listing exit ", to_string(listing.exit_code)) } }
+        // ENOENT FROM THE LOOKUP IS A POSITIVE ABSENCE: the kernel resolved the parent and it is
+        // not there -- so the entry cannot be either. Any OTHER nonzero (EACCES on a mode-000
+        // parent, a killed ls) proves neither presence nor absence and stays REFUSED, never a
+        // false "not there" (round-4 review: `test -e` exit 1 cannot establish absence).
+        if string_contains(s: listing.stderr, pattern: "No such file or directory") {
+          ObservationEstablished { observed: false }
+        } else {
+          ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("parent listing exit ", to_string(listing.exit_code)) } }
+        }
       } else if !listing_contains_entry(stdout: listing.stdout, name: path_basename(path: path)) {
         ObservationEstablished { observed: false }
       } else {

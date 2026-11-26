@@ -97,6 +97,18 @@ test fn the_wet_tree_check_answers_for_a_real_tree_and_for_a_missing_one() -> Bo
   }
 }
 
+// A MISSING PARENT IS A POSITIVE ABSENCE, NOT UNREADABLE (round-4b): the kernel resolved the
+// parent and found no entry, so the tree cannot stand -- a first placement under a missing parent
+// is Absent and staging may proceed. Collapsing the lookup's ENOENT into Unreadable would refuse
+// the first placement of a fresh toolchain forever.
+test fn a_missing_parent_is_a_positive_absence_not_unreadable() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_parent.XXXXXX").path
+  match qemu_toolchain_tree_test_wet(path: join([made as String, "/no/such/parent/tree"], "")) {
+    QemuToolchainTreeAbsent => true
+    _ => false
+  }
+}
+
 // PLACE_QEMU_TOOLCHAIN_WET REFUSES BEFORE STAGING WHEN THE LISTING ERRORS (round-3 review: "a
 // mutation that retains TreeUnreadable there but stages on it in place_qemu_toolchain_wet escapes
 // the test"; round-4 item 3: THE CASE IS THE MODE-000 PARENT, which test(1) hid behind exit 1).

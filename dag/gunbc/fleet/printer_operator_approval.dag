@@ -131,7 +131,7 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
     // The report client never ran, so nothing was read and no approval is requested -- the same
     // refusal an unreadable report earns, carrying the spawner's own cause, never an invented one.
     PrinterReported { outcome: ProcessCaptureNotSpawned { program: pp, cause: why }, cleanup: cl } =>
-      return exit_failure(reason:join(["Printer report never ran (", pp, ": ", why, ")", printer_report_cleanup_note(c: cl), "; no approval requested"], ""))
+      return exit_failure(reason:join(["Printer report never ran (", pp as String, ": ", why as String, ")", printer_report_cleanup_note(c: cl), "; no approval requested"], ""))
     // An exhausted retry budget is a refusal in the printer domain, with the last capture's own
     // facts -- no approval is requested over telemetry that never completed.
     PrinterReportExhausted { last: l, cleanup: cl } =>

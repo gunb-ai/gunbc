@@ -1,7 +1,7 @@
 module gunbc.runner.runner_qemu_toolchain
 
 import std.types { Bool, List, NonEmptyStr, FilePath }
-import std.algebra { list_append, trim }
+import std.algebra { list_append, trim, string_contains }
 import std.content_hash { content_hash_atom }
 import std.env_binding { EnvBinding, EnvSet }
 import std.optional { Present, Absent }
@@ -164,7 +164,13 @@ fn qemu_toolchain_tree_standing(captured: ProcessCaptureOutcome, entry_name: Str
       if listing_contains_entry(stdout: t, name: entry_name) { QemuToolchainTreeStands } else { QemuToolchainTreeAbsent }
     ProcessCaptured { outcome: ProcessOutputAbsent } => QemuToolchainTreeAbsent
     ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
-      QemuToolchainTreeUnreadable { cause: join(["the parent listing errored: exit ", to_string(code), " ", trim(s: err)], "") }
+      // ENOENT FROM THE LOOKUP IS A POSITIVE ABSENCE: the kernel resolved the parent and found no
+      // entry, so the tree cannot stand (a first placement under a missing parent is Absent, never
+      // Unreadable). Any OTHER nonzero -- EACCES on a mode-000 parent, a killed ls -- proves
+      // neither standing and is UNREADABLE, refusing before any staging (round-4 review: a
+      // `test -e` exit 1 cannot establish absence, so the probe is a parent listing now).
+      if string_contains(s: err, pattern: "No such file or directory") { QemuToolchainTreeAbsent }
+      else { QemuToolchainTreeUnreadable { cause: join(["the parent listing errored: exit ", to_string(code), " ", trim(s: err)], "") } }
   }
 }
 
