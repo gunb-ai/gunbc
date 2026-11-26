@@ -1,6 +1,6 @@
 module gunbc.instruments.allocation_battery
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
 import std.compiler_entry { NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_copy_qualification { StructuralInapplicability, structural_inapplicability_slug }
@@ -153,51 +153,103 @@ fn discrimination_row(prefix: String, family: BuildingBlockFamily) -> Allocation
   }
 }
 
-// THE EXECUTION QUALIFIER. A row is a measurement only if something executed it, so every measured axis
-// carries its evidence: the claim it was executed under, and the run that executed it. Two states are
-// legal and one is not.
-//
-//   executed=false  pending. It must name the registered claim a later gate can run BY NAME, and the
-//                   exact blocker that keeps it unexecuted. That is the row's own language for a contract
-//                   that has not run: it reads unqualified, and it says why.
-//   executed=true   measured. It must carry a run link. `executed` with an empty link is the failure this
-//                   qualifier exists to refuse: a claim of measurement with nothing behind it.
-//
-// A qualifier that can only be turned on by prose measures nothing, so the two illegal shapes below are
-// planted in the same run as the rows they discipline.
-type ExecutionEvidence {
-  claim: String
-  executed: Bool
-  run_link: String
-  blocker: String
+// THE ROUTE REFUSALS THE v2 LEG CAN REPORT, as a declared sum with one constructor per refusal the native
+// route records, so a blocker is one name chosen by the code that refuses rather than a sentence that
+// happens to contain a slug. The seed's own native lane runner (src/v1/stage0/src/cli_run/
+// native_lane_runner.rs) is where these refusals are produced and where its tests must agree with these
+// constructors; naming the file here is a citation, which is what comments are for, and no value below
+// carries a path or a sentence about code.
+type NativeRouteRefusal =
+    NoProductionRouteEmitsAnArbitrarySubject { door_entry: NonEmptyStr, fixed_subject: NonEmptyStr }
+  | MarkedReferenceDoesNotResolveOnTheLiveRoots
+  | TargetHasNoRegisteredNativeEmitBody
+  | GroundingNotDerivedFromItsSource
+
+// Rendered, never stored. The refusal decides which text appears; the text decides nothing.
+fn native_route_refusal_slug(r: NativeRouteRefusal) -> String {
+  match r {
+    NoProductionRouteEmitsAnArbitrarySubject { door_entry, fixed_subject } => concat(concat("v2_cli_door_entry=", door_entry as String), concat(" fixed_subject=", fixed_subject as String))
+    MarkedReferenceDoesNotResolveOnTheLiveRoots => "NativeMarkedReferenceDoesNotResolveOnTheLiveRoots"
+    TargetHasNoRegisteredNativeEmitBody => "translate_arrow_body_not_a_type_expression"
+    GroundingNotDerivedFromItsSource => "translate_rejected_grounding_not_derived"
+  }
 }
 
-// The adjudication, in one place, so the planted negatives and the real rows cannot drift apart.
+// THE EXECUTION QUALIFIER, AS A SUM. Which fields exist is decided by which arm the evidence is, so the
+// shapes this qualifier exists to refuse -- a claim of measurement with no run behind it, a pending row
+// with no blocker, a pending row with no name to run later -- are not values of the type at all.
+// gunbc.design_argument::fail_closed: "stronger than catching a wrong state is making it unwritable", and
+// a check that only restates a constraint the model already carries is a second representation of it. Both
+// fields are NonEmptyStr, so "non-empty" is a property of the carrier rather than a comparison against the
+// empty string that a later edit could drop.
+//
+//   Executed          measured: the claim it was executed under, and the run link where its PASS lines are
+//                     posted. Turned on only by adding that claim to `executed_claim_roster` below.
+//   PendingExecution  unexecuted: it still names, BY NAME, the registered claim a later gate runs, and the
+//                     exact refusal that keeps it unexecuted. That is the row's own language for a contract
+//                     that has not run: it reads unqualified, and it says why.
+type ExecutionEvidence =
+    Executed { claim: NonEmptyStr, run_link: NonEmptyStr }
+  | PendingExecution { claim: NonEmptyStr, blocker: NativeRouteRefusal }
+
+// WHICH CLAIMS THIS BATTERY REPORTS AS MEASURED, in one place, so no row can decide its own executedness.
+// Empty at this head: every measured axis here is pending, and a leg that posts a run link adds its claim
+// name here and nowhere else. A row that claims `Executed` under a name absent from this roster is refused
+// by the same adjudication that gates the real rows -- that is the negative case, and it is writable, which
+// is why it is the one kept.
+fn executed_claim_roster() -> List<String> {
+  []
+}
+
+// The adjudication, in one place, so the planted negative and the real rows cannot drift apart. It survives
+// the sum because it decides something the type cannot: whether a claimed run was ever registered.
 fn execution_holds(e: ExecutionEvidence) -> Bool {
-  if e.executed {
-    e.run_link != "" && e.claim != ""
-  } else {
-    e.claim != "" && e.blocker != ""
+  match e {
+    Executed { claim } => claim_is_executed(claim: claim)
+    PendingExecution { claim, blocker } => !claim_is_executed(claim: claim)
   }
+}
+
+fn claim_text(claim: NonEmptyStr) -> String {
+  claim as String
+}
+
+fn claim_is_executed(claim: NonEmptyStr) -> Bool {
+  count(filter(executed_claim_roster(), r => r == claim_text(claim: claim))) > 0
 }
 
 fn execution_row(prefix: String, axis: String, block_id: String, e: ExecutionEvidence) -> AllocationCase {
-  AllocationCase {
-    identity: concat(prefix, "_", axis, "_", block_id, "_execution_evidence"),
-    held: execution_holds(e: e),
-    observed: concat(concat(concat(concat(concat(concat("axis=", axis), " ", concat("claim=", e.claim)), " ", concat("status=", if e.executed { "measured" } else { "unqualified_pending_execution" })), " ", concat("run_link=", e.run_link)), " ", concat("blocker=", e.blocker)), " ", concat("ran_at=", if e.executed { "see_run_link" } else { "never" }))
+  match e {
+    Executed { claim, run_link } => AllocationCase {
+      identity: concat(prefix, "_", axis, block_id, "_execution_evidence"),
+      held: claim_is_executed(claim: claim),
+      observed: concat(concat(concat(concat("axis=", axis), " ", concat("claim=", claim_text(claim: claim))), " status=measured"), concat(" run_link=", run_link as String))
+    }
+    PendingExecution { claim, blocker } => AllocationCase {
+      identity: concat(prefix, "_", axis, block_id, "_execution_evidence"),
+      held: !claim_is_executed(claim: claim),
+      observed: concat(concat(concat(concat("axis=", axis), " ", concat("claim=", claim_text(claim: claim))), " status=unqualified_pending_execution"), concat(" blocker=", native_route_refusal_slug(r: blocker)))
+    }
   }
 }
 
-// THE NAMED NEGATIVE CASES, all three illegal shapes: an executed claim with no run, a pending claim with
-// no name to execute later, and a pending claim with no blocker named. Each must be refused by the
-// adjudication above, in the same run as the rows it disciplines, by name.
+// THE NAMED NEGATIVE CASE. Two of the three shapes this qualifier was written to catch used to be writable
+// records -- `executed: true` with an empty link, `executed: false` with an empty name or an empty blocker
+// -- and the sum deletes them rather than checking them. What is still writable is the lie that matters: a
+// row asserting measurement, with a plausible run link, under a claim name this battery has never
+// registered. It is planted here and must be refused, by name, in the same run as the rows it disciplines.
+// The planted claim name, in ONE declaration: the value that is planted and the name printed beside the
+// refusal are the same datum, so the witness cannot name a claim the plant does not carry.
+data planted_unproven_claim: NonEmptyStr = "planted_executed_without_a_registered_run" as NonEmptyStr
+
 fn planted_unproven_executions() -> List<ExecutionEvidence> {
-  [
-    ExecutionEvidence { claim: "planted_executed_without_a_run", executed: true, run_link: "", blocker: "" },
-    ExecutionEvidence { claim: "", executed: false, run_link: "", blocker: "planted_pending_without_a_claim" },
-    ExecutionEvidence { claim: "planted_pending_without_a_blocker", executed: false, run_link: "", blocker: "" }
-  ]
+  [Executed { claim: planted_unproven_claim, run_link: "https://github.com/gunb-ai/gunbc/pull/17018#issuecomment-planted-not-a-run" as NonEmptyStr }]
+}
+
+// The refused claim name, read back out of the planted value rather than retyped beside it: printing a
+// name the plant does not carry would put the witness and the thing witnessed in two places.
+fn planted_claim_name() -> String {
+  claim_text(claim: planted_unproven_claim)
 }
 
 fn execution_mechanism_refuses_unproven_claims(prefix: String) -> AllocationCase {
@@ -205,7 +257,7 @@ fn execution_mechanism_refuses_unproven_claims(prefix: String) -> AllocationCase
   AllocationCase {
     identity: concat(prefix, "_execution_qualifier_refuses_a_claim_of_measurement_without_a_run"),
     held: count(filter(planted, e => execution_holds(e: e))) == 0,
-    observed: concat(count_text(label: "planted_unproven", n: count(planted)), " ", concat("accepted=", count_text(label: "accepted", n: count(filter(planted, e => execution_holds(e: e))))))
+    observed: concat(concat(concat(concat("planted=", count_text(label: "planted_unproven", n: count(planted))), " accepted=", count_text(label: "accepted", n: count(filter(planted, e => execution_holds(e: e))))), " refused_claim="), concat(planted_claim_name(), " roster_size=", count_text(label: "roster", n: count(executed_claim_roster()))))
   }
 }
 

@@ -61,16 +61,14 @@ fn span_is_zero(o: AllocationObservation) -> Bool {
   }
 }
 
-// span_at_least keeps the (bytes: Nat) shape it ARRIVED with, from the instrument this block was
-// moved out of. It is the same unit defect review 98559 stopped in span_bytes, and this row neither
-// chose it nor repeats it; a verbatim move is not a licence to give a known unit error a permanent
-// home. Its repair belongs to the roadmap row that owns repairing a cost defect at its earliest
-// incorrect layer, `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority id
-// emission-ownership-facts-survive-lowering. If planning assigns the reading vocabulary to another
-// row, re-point this line rather than leaving the shape without an owner.
-fn span_at_least(o: AllocationObservation, operations: Nat, bytes: Nat) -> Bool {
+// A BYTE QUANTITY ENTERS AS A ByteSize, like every other byte quantity this module reads or returns:
+// std.measure owns what bytes mean, so the comparison below is `measure_le`, not a count comparison
+// this module could get wrong. The instrument this block was moved out of passed a bare Nat here and
+// decided the unit at the comparison site; review 98757 stopped that, and the parameter type is where
+// the decision now lives rather than in the caller's literal.
+fn span_at_least(o: AllocationObservation, operations: Nat, bytes: ByteSize) -> Bool {
   match o {
-    AllocationObserved { operations: n, bytes_requested: b } => n >= operations && byte_size_count(b: b) >= bytes
+    AllocationObserved { operations: n, bytes_requested: b } => n >= operations && measure_le(a: bytes, b: b)
     AllocationOperationsRanBackwards => false
     AllocationBytesRequestedRanBackwards => false
     AllocationProviderNotSelected => false

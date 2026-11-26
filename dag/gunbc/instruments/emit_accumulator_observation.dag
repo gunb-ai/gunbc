@@ -1,9 +1,11 @@
 module gunbc.instruments.emit_accumulator_observation
 
+import std.types { NonEmptyStr }
+
 import std.realization_measurement { AllocationCounter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
 import gunbc.emit_building_block_contracts { BuildingBlockFamily, Accumulator }
-import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject }
 import gunbc.instruments.emit_accumulator_subjects { acc_measurement_rows }
 
 // THE GREEN ENTRY of the accumulator family: a Loop with a record accumulator, a field read, a record
@@ -19,14 +21,21 @@ import gunbc.instruments.emit_accumulator_subjects { acc_measurement_rows }
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-// THE V2 OUTCOME OF THIS FAMILY, stated rather than omitted: nobody has asked the emitted-compiler door
-// to emit this subject, so the result reads unqualified and names the refusal the door records today.
-fn v2_subject_claim() -> String {
-  "gunbc test //gunbc/instruments:v2-native-cli over subject dag/gunbc/instruments/emit_accumulator_subjects.dag"
-}
-
-fn v2_blocker() -> String {
-  "v2 door has never been asked to emit this subject; the refusals it records for a closure are translate_rejected_grounding_not_derived and for a member body translate_arrow_body_not_a_type_expression, named in src/v1/stage0/src/cli_run/native_lane_runner.rs"
+// THE v2 OUTCOME OF THIS FAMILY, stated rather than omitted, and carried as a value rather than a
+// sentence. The blocker is the door's own structure: the only registered v2 instrument builds the v2 CLI
+// and asks it to emit one fixed control module, so there is no production route that runs the v2 emitter
+// over an arbitrary subject at all. A future gate that walks the door over this family's subject replaces
+// this arm with the refusal it actually observes, and only that arm qualifies the claim.
+//
+// This is a door walk, not a subject attempt: the reserve leg proves the door refuses, and nothing here
+// should be read as the v2 emitter having been asked about these specimens. The seed CLI offers no
+// --compiler or --emitter flag; the refusal constructors and where they are produced are named in a
+// comment above `NativeRouteRefusal` in gunbc.instruments.allocation_battery.
+fn v2_evidence() -> ExecutionEvidence {
+  PendingExecution {
+    claim: "emit_accumulator_observation/v2" as NonEmptyStr,
+    blocker: NoProductionRouteEmitsAnArbitrarySubject { door_entry: "src/v2/cli/compile_cli.dag" as NonEmptyStr, fixed_subject: "gunbc.native_cli_door_probe" as NonEmptyStr }
+  }
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
@@ -35,7 +44,7 @@ fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
   let qualified = [
     roster_membership_row(prefix: "accumulator", family: Accumulator),
     discrimination_row(prefix: "accumulator", family: Accumulator),
-    execution_row(prefix: "accumulator", axis: "v2", block_id: "family", e: ExecutionEvidence { claim: v2_subject_claim(), executed: false, run_link: "", blocker: v2_blocker() }),
+    execution_row(prefix: "accumulator", axis: "v2", block_id: "family", e: v2_evidence())
     execution_mechanism_refuses_unproven_claims(prefix: "accumulator")
   ]
   battery_report(concat(measured, concat(audit, qualified)))
