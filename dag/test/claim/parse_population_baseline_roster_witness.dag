@@ -87,10 +87,12 @@ test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
 // CARRIER <-> TREE reconciliation, BOTH arms (the load-bearing instrument that ties these rows to the
 // tree; review 98443). ACCEPT: the correct real-row slice reconciles fully (zero unreconciled rows).
 // REFUSE: the same slice with one REAL row's byte size mistyped is NOT fully reconciled — a real wrong
-// row drives the refusal. The reconciliation of ALL 170 rows against `git ls-tree -r -l <pinned_sha>`
-// (green diff rc 0; a mistyped row drives it rc nonzero) is the executed leg recorded in the measurement
-// report; these two arms prove the predicate that leg applies is discriminating, not vacuous.
-test fn parse_population_baseline_roster_reconciles_to_tree_holds() -> Bool {
+// row drives the refusal. This test exercises ONLY this predicate against hand-built reference row-sets;
+// it does NOT read `git ls-tree` and does NOT read the 170-row roster. The reconciliation of ALL 170 rows
+// against `git ls-tree -r -l <pinned_sha>` (green diff rc 0; a mistyped row drives it rc nonzero) is a
+// MANUAL check recorded in the measurement report §4a that NO lane runs — see review 98730 finding 1 and
+// the report's named limitation. The name says exactly what runs: the predicate refuses one bad row.
+test fn parse_population_reconcile_predicate_refuses_bad_row_holds() -> Bool {
   parse_population_reconcile_accepts_correct_slice()
     && parse_population_reconcile_refuses_mistyped_slice()
 }

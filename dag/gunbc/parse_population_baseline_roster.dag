@@ -468,15 +468,21 @@ fn parse_population_correct_real_row_slice() -> List<ParsePopulationRow> {
   ]
 }
 
-// ACCEPT arm: the correct real slice reconciles fully (zero unreconciled rows) against the correct tree.
+// These two arms exercise ONLY the comparison predicate over a HAND-BUILT reference row-set. They do not
+// read the tree (no filesystem in the language) and do not read the 170-row roster: they prove the predicate
+// DISCRIMINATES (accepts when declared == reference, refuses when one byte size is off). The real comparison
+// of all 170 rows against `git ls-tree` at the pinned sha is executed by the committed runner
+// test/parse_population_baseline_roster/run_evidence.sh (the last execution of that path), recorded as a
+// run link in the measurement report §4a; that runner reads parse_population_baseline_pinned_sha from HERE.
+// ACCEPT arm: the predicate reports zero unreconciled rows when declared equals the reference row-set.
 fn parse_population_reconcile_accepts_correct_slice() -> Bool {
   parse_population_unreconciled_row_count(
     declared: parse_population_correct_real_row_slice(),
     tree: parse_population_correct_real_row_slice()) == 0
 }
 
-// REFUSE arm: the mistyped real slice is NOT fully reconciled against the correct tree — exactly the
-// mistyped byte-size row is left unreconciled. A real wrong row drives the refusal (review 98443).
+// REFUSE arm: the predicate leaves exactly the mistyped byte-size row unreconciled when one declared byte
+// size differs from the reference. A real wrong row drives the refusal (review 98443), not a planted constant.
 fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
   parse_population_unreconciled_row_count(
     declared: parse_population_mistyped_real_row_slice(),

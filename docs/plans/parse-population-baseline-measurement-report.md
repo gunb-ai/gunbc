@@ -54,7 +54,7 @@ It is emitted, not an interpreted stand-in: `target/release/gunbc test //gunbc/i
 
 ## 4. The two fixed populations (committed, byte-identity proven)
 
-The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`), executed by its rostered claim `test.claim.parse_population_baseline_roster_witness` — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — the **wall/RSS of every measured cell is timed by running the staged roots** (a row list cannot itself be timed), but the **roster is now load-bearing, not a stand-alone declaration**: the executed carrier↔tree reconciliation leg (§4a) ties each of the 170 roster rows to the tree at the pinned sha, so the set of modules the cells actually parsed is the carrier's set *proven equal to the tree*. Per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule (`gunbc.design_argument::consumption`). Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
+The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`); its rostered claim `test.claim.parse_population_baseline_roster_witness` exercises the rule's self-consistency (count, ordering, uniqueness, partition) and the comparison predicate's discriminating arms — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — and the **wall/RSS of every measured cell is timed by running the staged roots** (a row list cannot itself be timed). The tie between the declared rows and the tree is NOT established by a `.dag` claim (a `.dag` function cannot read the tree and CI runs no claims); it is established by an **executed shell runner** `test/parse_population_baseline_roster/run_evidence.sh` (§4a) that reads the pinned sha and the rows out of the carrier, compares them against `git ls-tree`, and refuses by name on any mismatch — this is the last execution of that path and its run link is recorded below. Per `gunbc.design_argument::consumption` the roster's executed consumer is that runner (and, in the measurement re-run, the staging step that builds the roots from `roster.path`); the `run_evidence.sh` header names the condition under which it dissolves. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
 
 The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so each population was staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. Each staged file is byte-identical to the same path at the pinned sha:
 
@@ -63,42 +63,43 @@ NAMED_POP=pop5    files=5   bytes=4575463   sha_mismatches=0
 NAMED_POP=pop165  files=165 bytes=29960631  sha_mismatches=0
 ```
 
-### 4a. Carrier↔tree reconciliation leg (executed; review 98443)
+### 4a. Carrier↔tree reconciliation — executed by the committed runner (rendering; review 98443 / 98730)
 
 The 170 roster rows are a hand-ordered list, so the load-bearing check is whether each declared `path` AND
 byte size equals the tree at the pinned sha — a comparison against `git ls-tree`, not the roster read back
-against itself. Extract the carrier's `parse_population_baseline_rows` body, reproduce the top-170 by the
-selection sort, and diff:
+against itself. That comparison CANNOT live in `.dag` (no filesystem; CI executes no claims), so its last
+execution is the committed runner `test/parse_population_baseline_roster/run_evidence.sh`, which extracts the
+rows and the pinned sha out of the carrier (no second authority), runs `git ls-tree -r -l <sha> -- dag src/v2`,
+takes the top-170 by the selection sort, diffs, and drives its own red (a mistyped row must fail by name or
+the leg is vacuous). The block below is a **rendering of that runner's output**, not the check itself. Its
+dissolve-on marker (in the runner header) is the condition that retires it: emitted `bash_build` node kinds
+rendering the same extract/ls-tree/diff as a step, or an executed claim evaluator for tree-reading claims
+landing on the required path.
+
+Runner output (rendered), at pinned_sha `65230868362de3efc0ddfeeaeef5d83eeb2fa385`:
 
 ```
-awk '/^data parse_population_baseline_rows: List<ParsePopulationRow> = \[/{f=1;next} f&&/^\]/{exit} f' \
-  dag/gunbc/parse_population_baseline_roster.dag \
-  | grep -oE 'path: "[^"]+", bytes: byte_size\(count: [0-9]+\)' \
-  | sed -E 's/.*path: "([^"]+)", bytes: byte_size\(count: ([0-9]+)\)/\2\t\1/' > carrier_rows.tsv
-git ls-tree -r -l 65230868362de3efc0ddfeeaeef5d83eeb2fa385 -- dag src/v2 \
-  | awk '$4 ~ /^[0-9]+$/ && $5 ~ /\.dag$/ {print $4"\t"$5}' \
-  | sort -t$'\t' -k1,1nr -k2,2 | head -170 > tree_top170.tsv
-diff carrier_rows.tsv tree_top170.tsv    # rc 0 => every path AND byte size equals the tree
+== parse_population_baseline_pinned_sha (read from carrier): 65230868362de3efc0ddfeeaeef5d83eeb2fa385
+PASS: all 170 roster rows reconcile to git ls-tree at 65230868362de3efc0ddfeeaeef5d83eeb2fa385 (rc 0)
+PASS: red control discriminates -- mistyped byte size on dag/gunbc/roadmap/roadmap_authority.dag turns the leg red
 ```
 
-- **GREEN** (session worktree, pinned_sha `65230868362de3efc0ddfeeaeef5d83eeb2fa385`): both sides 170 rows,
-  `diff` rc **0** — every declared path and byte size is byte-for-byte the tree.
-- **RED** (a real wrong row: the first row's byte size mistyped `1421761` -> `1412761`): `diff` rc **1**, and
-  the diff prints exactly the one mismatched row:
+- **GREEN**: carrier side and tree side both 170 rows, diff rc **0** — every declared path and byte size is
+  byte-for-byte the tree.
+- **RED**: the runner mistypes the first declared row's byte size by one digit; the leg turns nonzero and
+  prints exactly that row (`roadmap_authority.dag`) by name. If a real wrong row did NOT turn it red, the
+  runner exits 1 (the leg would be vacuous). This real wrong row is the red control, replacing the former
+  planted `byte_size(count: 999)` (review 98443).
 
-  ```
-  < 1412761	dag/gunbc/roadmap/roadmap_authority.dag
-  > 1421761	dag/gunbc/roadmap/roadmap_authority.dag
-  ```
+The `.dag` `parse_population_reconcile_*` arms are NOT this comparison run against the tree — they prove only
+that the comparison predicate DISCRIMINATES over a hand-built reference row-set (`parse_population_reconcile_predicate_refuses_bad_row_holds`,
+plus a by-name `parse_population_roster_red_control_mistyped_row_fails` in the same claim_batch). Reading the
+tree and failing by name on the real 170 rows happens solely in the runner above.
 
-A mistyped path or byte count turns the leg red; this real wrong row is the red control, replacing the former
-planted `byte_size(count: 999)` (review 98443). The carrier's `parse_population_reconcile_*` predicates are the
-same comparison in typed form, executed by the rostered claim's `parse_population_baseline_roster_reconciles_to_tree_holds`
-leg and a by-name `parse_population_roster_red_control_mistyped_row_fails` red control in the same claim_batch.
-
-This leg is host-independent and deterministic (a `git ls-tree` diff, run in the session worktree); the
-BOOT-bearing srv1 run-link execution of this leg, and the re-execution of the rostered claim at the new head,
-are pending a lane-manager acquisition GO.
+The rendered output above is an author-side verification run of the runner (it proves the leg is not vacuous
+and prints the pinned sha read from the carrier by name). The BOOT-bearing srv1 run-link execution of the
+RUNNER `test/parse_population_baseline_roster/run_evidence.sh` at the final head (post-cutover), and the
+re-execution of the rostered claim there, are pending the cutover announcement plus a lane-manager acquisition GO.
 
 ## 5. Cells — raw output, real rc, load alongside every cell
 
@@ -167,12 +168,13 @@ Additionally 4 heavy-slot touches refused instantly at argument validation (wall
      `parse_population_total_count` (its only callers were those three). No consumer remained (§4a's reconciliation
      leg, not a String report, is now the load-bearing surface).
   2. Replaced the planted `byte_size(count: 999)` red control with a **real-wrong-row** red control
-     (`parse_population_roster_red_control_mistyped_row_fails`) and added the discriminating carrier↔tree
-     reconciliation leg `parse_population_baseline_roster_reconciles_to_tree_holds`.
+     (`parse_population_roster_red_control_mistyped_row_fails`) and added the discriminating comparison-predicate
+     arms (`parse_population_reconcile_predicate_refuses_bad_row_holds`); the real carrier↔tree comparison moved to
+     the executed runner `test/parse_population_baseline_roster/run_evidence.sh` (review 98730).
   3. Stripped the load-bearing status/authorization/review-number prose out of the carrier `//` comments to
      one-line pointers (`gunbc.design_argument::source_annotations`).
   **The claim name-set therefore changed** (old executed set included `parse_population_roster_red_control_refuses`,
-  which no longer exists; the new set adds `..._reconciles_to_tree_holds` and renames the red control). The
+  which no longer exists; the new set adds `..._reconcile_predicate_refuses_bad_row_holds` and renames the red control). The
   executed run link recorded earlier (`c426cbf322`, 8 names) is **superseded** by this change and must be
   re-executed at the new head. Both the BOOT-bearing srv1 run of the §4a reconciliation leg and the re-executed
   rostered claim at the new head are **pending a lane-manager acquisition GO** (tranche 2 re-offer).
