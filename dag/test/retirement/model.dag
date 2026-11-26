@@ -47,6 +47,15 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
     retained_field_of_fractions_construction,
     retained_whole_tree_wiring_enum,
     retained_helpers,
+    retained_ambiguous_prefix_infix_newline,
+    retained_declaration_named_in_module_reexport,
+    retained_anonymous_record_struct_resolution,
+    retained_item_kind_dispatch_totality,
+    retained_unimported_bare_name_floor,
+    retained_map_insert_record_shaped_refusal,
+    retained_native_driver_cost_refusal,
+    retained_record_literal_names_a_union_type_refusal,
+    retained_record_literal_declared_type_inhabitance,
   ]
 }
 
@@ -148,4 +157,60 @@ data retained_helpers: RetainedLegacyRustTestModule = RetainedLegacyRustTestModu
   source_file: "helpers.rs",
   purpose: "Shared fixture/harness surface for the retained kernel (workspace root, module-index construction, ephemeral generated source roots), carrying three self-tests: co-root last-wins on duplicate module names, ephemeral generated source-root resolution, and duplicate-name scanning without panic. Every retained module assembles its fixtures through it." as NonEmptyStr,
   dissolution: UnboundDissolution { description: "The retained kernel empties as its modules migrate, at which point the harness has no consumer and is deleted with the last row." as NonEmptyStr },
+}
+
+// THE v1 TEST MIGRATION'S RETENTIONS (node v1-test-migration). Each row says the check the Rust test asserts and
+// why a .dag witness cannot express it today; the reader-facing account is gunbc.v1.v1_deletion_plan::v1_migrated_test_modules.
+data retained_ambiguous_prefix_infix_newline: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "ambiguous_prefix_infix_newline_test.rs",
+  purpose: "Asserts the v1 PARSE diagnostic for `10\\n  - 1` carries the exact message \"ambiguous newline before prefix/infix operator '-'...\" and the exact span text \"10\\n  -\", and that the explicit forms evaluate to Int(9) and Int(10). The compile diagnostic census carries class, subject, count and rendered_pair only, and the message and span come from v1 parse, not the census-armed typecheck. A wet-lane claim that runs the binary and reads its stderr could express it, as dag/test/claim/live_deploy/pre_swap_admission_serve_compile_inhabitance_witness.dag runs a real gunbc: a cost decision, not an impossibility." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A wet-lane claim that runs the released gunbc on the two fixtures and reads the diagnostic text and evaluated values replaces it, and this row is deleted." as NonEmptyStr },
+}
+
+data retained_declaration_named_in_module_reexport: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "declaration_named_in_module_reexport_test.rs",
+  purpose: "Hands a hand-built SymbolIndex straight to the seed fn declaration_named_in_module and asserts the declaring module of a re-exported spelling. Its own header: \"A `dag/test/claim` module cannot import `v1.compiler.*` (src/v1 is not a discovery root; measured: every claim of such a witness failed `module 'v1.std.core' not found`)\"; no claim can call the seed fn." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The required-path discriminator is Charter 1's refusal of a name-only product-head agreement; when the native route judges re-export identity from corpus compiles, this unit test is deleted." as NonEmptyStr },
+}
+
+data retained_anonymous_record_struct_resolution: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "anonymous_record_struct_resolution_test.rs",
+  purpose: "Calls the seed emitter fns find_struct_name_by_fields and anonymous_record_struct_candidates directly over synthetic TypeSummary tables: hint-narrowing to one, to zero and to many, the alphabetical-pick mutation control, and absence versus ambiguity. dag/test/claim/record_emission_candidate_set_witness.dag covers the four end-to-end source cases (single-field none and ambiguous, multi-field nominal and ambiguous) but not the hint cases or the mutation control; no claim harness constructs a TypeSummary table (see gunbc.anonymous_record_resolution_seed_growth)." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim harness that supplies synthetic type-summary tables to the emitter boundary, or the emitter's native replacement, lets these cases migrate and this row be deleted." as NonEmptyStr },
+}
+
+data retained_item_kind_dispatch_totality: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "item_kind_dispatch_totality_test.rs",
+  purpose: "The Rust test asserts that the refusal message contains 'non-exhaustive match' AND the omitted variant name FixNotAnItem. The census row for NonExhaustiveMatch carries the fixed subject '(non-exhaustive)' (compile_clean_diagnostic_histogram_key), not the variant, so the variant-name and message-text assertion cannot be expressed in a claim. The count half (one NonExhaustiveMatch for the six-arm dispatch, no diagnostic for the seven-arm control) is witnessed by test.claim.item_kind_dispatch_totality_witness; the Rust file is kept whole and that half is duplicated until the residue moves." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim surface that reads a diagnostic's message text, or a census subject that carries the missing variant, lets the residue migrate and this row be deleted." as NonEmptyStr },
+}
+
+data retained_unimported_bare_name_floor: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "unimported_bare_name_floor_test.rs",
+  purpose: "The Rust test compiles multi-file fixtures and asserts the refusal message names the unimported bare name, with controls that compile clean. A multi-module compile is reachable from a claim (gunbc.instruments.multi_module_compile_fixture compile_fixture, used by test.claim.emitted_symbol_collision), so the multi-module shape is not what keeps this in Rust; what stays is the message-naming assertion, which is message text that the fixture's census rows do not carry." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim that reads the refusal's message text (the unimported name named in it) lets this row be deleted." as NonEmptyStr },
+}
+
+data retained_map_insert_record_shaped_refusal: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "map_insert_record_shaped_refusal_test.rs",
+  purpose: "The Rust test runs run_in_context over a record-shaped map_insert and asserts InterpError::TypeError naming map_insert and HostRealizedSeam, then reads map_insert_calls counters at n=8 and n=64 and the evaluator-step sublinearity of a first-key lookup. A throw is not a Bool a floor witness can enroll (its own header), and the counters and evaluator steps are interpreter internals no claim can read." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The v2 interpreter exposing a typed refusal outcome and mutation counters to a claim, or the interpreter's replacement, lets this row be deleted." as NonEmptyStr },
+}
+
+data retained_native_driver_cost_refusal: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "native_driver_cost_refusal_test.rs",
+  purpose: "What stays in Rust: the two thread-CPU controls (a host stall outside every row reconciles on thread CPU; uninstrumented driver work refuses), which run the seed's thread_cpu_nanos_checked, and the assertions on marker strings in emit_source_root_eval_driver_main_rs output (refusal exit shape, [native-prepare-split] line, preparation-span close ordering, the thread-CPU basis markers). The remaining tests (planted over-attribution is OverAttributed, reconciled parent passes, no cost rows is unobserved, planted partition line is observed, child still running is pending) are covered by test.claim.native_driver_cost_partition, which the module header names; the Rust file is kept whole and those are duplicated." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim that executes a thread-CPU read, and a claim over the emitted driver's text, lets this row be deleted." as NonEmptyStr },
+}
+
+data retained_record_literal_names_a_union_type_refusal: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "record_literal_names_a_union_type_refusal_test.rs",
+  purpose: "Three checks stay in Rust: the variant list inside the refusal message ('[ZzNamed, ZzEmpty]' and the repair instruction), the_refusal_message_says_what_it_says wording, and the three-file pool-collision control, whose assertion is on refusal message text; the three-module compile itself is reachable from a claim through compile_fixture, so it is not what keeps it in Rust. The counts at each position, the located name (census subject), the alias, the unknown-name and the accept cases are witnessed by test.claim.record_literal_names_a_union_type_refusal_witness; the Rust file is kept whole and those are duplicated." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim that reads refusal message text lets this row be deleted." as NonEmptyStr },
+}
+
+data retained_record_literal_declared_type_inhabitance: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "record_literal_declared_type_inhabitance_test.rs",
+  purpose: "Every assertion is witnessed by test.claim.record_literal_declared_type_inhabitance_witness (four wrong literals refused, four right accepted), through the diagnostic census, which arms the type-reference measure that the Rust test's compile_sources path does not arm. The Rust file is kept because the unarmed path is the one production compiles through, and a reader can judge that the two are the same pipeline family but not the same call." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim that compiles through the unarmed path, or the census no longer arming the measure, lets this row be deleted." as NonEmptyStr },
 }

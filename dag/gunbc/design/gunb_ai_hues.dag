@@ -17,15 +17,14 @@ import gunbc.design.palette {
 // docs/plans carrier `gunbc.plans.gunb_ai_projection_plan` §6): gunbc.design.palette
 // gains gunb.ai's four hue families as named swatches so palette is the site's ONLY
 // colour authority and the live look is unchanged. Names describe the colour, not the
-// use — so a redesign renaming site usage never renames a swatch. Values are the live
-// page's HSL ramp, projected once into Srgb8: re-derive any of them from
-// gunb-ai/frontend's :root block (`grep -A40 ':root' assets/site.css`), never from
-// this file's comments. When the redesign retunes a hue, the edit is HERE — swatch is
+// use — so a redesign renaming site usage never renames a swatch. Values are the site's
+// HSL ramp, projected once into Srgb8; gunb.ai is rendered from these rows, so there is
+// no other copy to re-derive them from. When the redesign retunes a hue, the edit is HERE — swatch is
 // the single value home (gunbc.design_argument::single_authority). Consumer: gunbc.site.gunb_ai_tokens, which binds
 // each of these into the site token set; nothing else imports this module (gunbc.design_argument::consumption).
 
 data gunb_ai_hues_provenance: SwatchSetProvenance = HouseAuthored {
-  note: "The four live gunb.ai hue families (warm/umber-sand neutrals, moss, clay, brass) plus their in-family steps, lifted from the hand-maintained site's :root block so palette becomes the only colour authority. Operator pick A 2026-10-16; values track the live look and move when the redesign retunes them.",
+  note: "The four live gunb.ai hue families (warm/umber-sand neutrals, moss, clay, brass) plus their in-family steps, first lifted from the formerly hand-maintained site's :root block, and now the source it is rendered from, so palette is the only colour authority. Operator pick A 2026-10-16; values track the live look and move when the redesign retunes them.",
 }
 
 data near_black: Swatch = live_swatch(name: "near-black", token: live_token_void)
@@ -99,7 +98,7 @@ data seal_white: Swatch = Swatch { name: "seal-white", color: Srgb8 { r: 244, g:
 // definitions are the values. The Srgb8 swatches above are DERIVED from them (live_swatch, through
 // extdeps.color.srgb.hsl_to_srgb8), and the stylesheet's wire is derived from the same rows
 // (live_token_css). A token meant to differ from its live source would be a typed departure row with a
-// reason; there are none. Re-derive from `:root` in gunb-ai/frontend assets/site.css.
+// reason; there are none. These rows are the source of the served :root block.
 // CONSUMERS: gunbc.site.gunb_ai_css (the wire) and every swatch row above (the Srgb8).
 
 type HueDegrees {
