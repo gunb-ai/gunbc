@@ -2,11 +2,13 @@ module v2.workflow.floor_grandfathered_roster
 
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import v2.std.integer { Int }
+import v2.std.integer { Int, int_add, int_eq, int_gt }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { EvalStepCount }
 import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty, list_flat_map, length, contains }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.content_hash { Sha256DigestHex }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
 // fierce-lark-661, 2026-09-13). It exists so the required floor can carry TWO ceilings without
@@ -2142,7 +2144,7 @@ fn floor_grandfathered_chunk_051() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_052() -> List<String> {
-  Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.leak_reached_through_a_nested_body_is_found", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.nested_entry_does_not_reach_a_leak_outside_the_call_graph", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_determinism_lens_fires_on_a_transform_shaped_call", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_determinism_lens_is_blind_to_the_conj_shape_the_marshal_no_longer_emits", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_live_subject_is_not_empty", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_same_lexeme_in_call_position_is_a_call_edge", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.transitive_leak_in_reached_declaration_is_found", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_witness_excluded_via_frontier", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.enforcement_live_witness_exclusion_inventory_matches_frontier", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.witness_admission_inventory_reconciles_exclusion_frontier", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_fixture_redundant_leg_fails", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_verdict_live_holds", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_fully_authorized_fixture_clean", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_genuinely_new_distinct_surface_passes", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_redundant_verdict_remedy_refused", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_unenrolled_lens_refused", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.same_reporting_metadata_distinct_module_authorities_pass", tail: Cons { head: "v2.test.claim.enforcement_live_witness.empty_facts_feed_reds_subjects_leg", tail: Cons { head: "v2.test.claim.enforcement_live_witness.only_cost_contract_carries_red_control_probe", tail: Cons { head: "v2.test.claim.enforcement_live_witness.red_control_of_red_control_flips", tail: Cons { head: "v2.test.claim.enforcement_live_witness.roster_read_liveness_discriminates", tail: Cons { head: "v2.test.claim.enforcement_live_witness.self_application_liveness_discriminates", tail: Cons { head: "v2.test.claim.enforcement_live_witness.skeleton_only_fact_lands_body_unavailable", tail: Cons { head: "v2.test.claim.enforcement_live_witness.totality_judged_plus_unavailable_equals_fn_items", tail: Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_remain_enumerable", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.leak_reached_through_a_nested_body_is_found", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.nested_entry_does_not_reach_a_leak_outside_the_call_graph", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_determinism_lens_fires_on_a_transform_shaped_call", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_determinism_lens_is_blind_to_the_conj_shape_the_marshal_no_longer_emits", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_live_subject_is_not_empty", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.the_same_lexeme_in_call_position_is_a_call_edge", tail: Cons { head: "v2.test.claim.enforcement.determinism_transitive_witness.transitive_leak_in_reached_declaration_is_found", tail: Cons { head: "test.claim.enforcement_inventory_witness.enforcement_inventory_witness_excluded_via_frontier", tail: Cons { head: "test.claim.enforcement_inventory_witness.enforcement_live_witness_exclusion_inventory_matches_frontier", tail: Cons { head: "test.claim.enforcement_inventory_witness.witness_admission_inventory_reconciles_exclusion_frontier", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_fixture_redundant_leg_fails", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_verdict_live_holds", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_fully_authorized_fixture_clean", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_genuinely_new_distinct_surface_passes", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_redundant_verdict_remedy_refused", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.red_control_unenrolled_lens_refused", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.same_reporting_metadata_distinct_module_authorities_pass", tail: Cons { head: "test.claim.enforcement_live_witness.empty_facts_feed_reds_subjects_leg", tail: Cons { head: "test.claim.enforcement_live_witness.only_cost_contract_carries_red_control_probe", tail: Cons { head: "test.claim.enforcement_live_witness.red_control_of_red_control_flips", tail: Cons { head: "test.claim.enforcement_live_witness.roster_read_liveness_discriminates", tail: Cons { head: "test.claim.enforcement_live_witness.self_application_liveness_discriminates", tail: Cons { head: "test.claim.enforcement_live_witness.skeleton_only_fact_lands_body_unavailable", tail: Cons { head: "test.claim.enforcement_live_witness.totality_judged_plus_unavailable_equals_fn_items", tail: Cons { head: "test.claim.enforcement_live_witness.unbound_contracts_remain_enumerable", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_053() -> List<String> {
@@ -2210,7 +2212,7 @@ fn floor_grandfathered_chunk_068() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_069() -> List<String> {
-  Cons { head: "v2.test.claim.self_host.emitter_producer_provenance_witness.witness_seed_emit_rust_poison_structural_refusal_reds", tail: Cons { head: "v2.test.claim.self_host.emitter_producer_provenance_witness.witness_v2_interpreted_closure_is_seed_free", tail: Cons { head: "v2.test.claim.self_host.emitter_producer_provenance_witness.witness_wet_known_red_entries_is_shared_authority", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.location_and_reason_are_drawn_from_the_same_diagnostic_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.node_locus_reaches_the_not_serializable_arm_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.port_locus_keeps_its_port_rather_than_degrading_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location_roundtrip.emitted_manifest_reloads_with_its_location_intact_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.textual_locus_preserves_the_exact_byte_range_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.textual_locus_reaches_the_textual_arm_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_keeps_the_module_path_it_was_asked_about_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_names_the_absent_closure_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_refusal_lands_in_the_population_detail_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_refuses_rather_than_reporting_a_missing_module_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.both_measured_shards_name_body_lowering_beneath_the_mask_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.every_capped_shard_exceeds_the_cap_it_names_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.every_measured_chain_is_non_uniform_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.the_five_shards_partition_into_measured_and_capped_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.two_shards_are_measured_and_three_are_capped_holds", tail: Cons { head: "v2.test.claim.self_host.native_agreement_label_probe.label_of_an_empty_primitive_is_unknown", tail: Cons { head: "v2.test.claim.self_host.native_agreement_label_probe.label_of_a_two_byte_primitive", tail: Cons { head: "v2.test.claim.self_host.native_agreement_rejected_actual.rejected_native_side_is_named_and_the_interpreted_value_survives", tail: Cons { head: "v2.test.claim.self_host.native_agreement_rejected_actual.rejected_without_a_receipt_still_reports_both_sides_unknown", tail: Cons { head: "v2.test.claim.self_host.native_agreement.native_agreement_divergence_format_holds", tail: Cons { head: "v2.test.claim.self_host.native_agreement.native_agreement_failure_receipt_empty_when_clean_holds", tail: Cons { head: "v2.test.claim.self_host.native_agreement.native_agreement_failure_receipt_names_divergence_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.self_host_emitter_producer_provenance_witness.witness_seed_emit_rust_poison_structural_refusal_reds", tail: Cons { head: "test.claim.self_host_emitter_producer_provenance_witness.witness_v2_interpreted_closure_is_seed_free", tail: Cons { head: "test.claim.self_host_emitter_producer_provenance_witness.witness_wet_known_red_entries_is_shared_authority", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.location_and_reason_are_drawn_from_the_same_diagnostic_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.node_locus_reaches_the_not_serializable_arm_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.port_locus_keeps_its_port_rather_than_degrading_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location_roundtrip.emitted_manifest_reloads_with_its_location_intact_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.textual_locus_preserves_the_exact_byte_range_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_cause_location.textual_locus_reaches_the_textual_arm_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_keeps_the_module_path_it_was_asked_about_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_names_the_absent_closure_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_refusal_lands_in_the_population_detail_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_empty_ingest.empty_ingest_refuses_rather_than_reporting_a_missing_module_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.both_measured_shards_name_body_lowering_beneath_the_mask_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.every_capped_shard_exceeds_the_cap_it_names_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.every_measured_chain_is_non_uniform_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.the_five_shards_partition_into_measured_and_capped_holds", tail: Cons { head: "v2.test.claim.self_host.frontier_probe_semantic_family_receipt.two_shards_are_measured_and_three_are_capped_holds", tail: Cons { head: "v2.test.claim.self_host.native_agreement_label_probe.label_of_an_empty_primitive_is_unknown", tail: Cons { head: "v2.test.claim.self_host.native_agreement_label_probe.label_of_a_two_byte_primitive", tail: Cons { head: "v2.test.claim.self_host.native_agreement_rejected_actual.rejected_native_side_is_named_and_the_interpreted_value_survives", tail: Cons { head: "v2.test.claim.self_host.native_agreement_rejected_actual.rejected_without_a_receipt_still_reports_both_sides_unknown", tail: Cons { head: "v2.test.claim.self_host.native_agreement.native_agreement_divergence_format_holds", tail: Cons { head: "v2.test.claim.self_host.native_agreement.native_agreement_failure_receipt_empty_when_clean_holds", tail: Cons { head: "v2.test.claim.self_host.native_agreement.native_agreement_failure_receipt_names_divergence_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_070() -> List<String> {
@@ -2258,11 +2260,11 @@ fn floor_grandfathered_chunk_080() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_081() -> List<String> {
-  Cons { head: "v2.test.claim.witness_admission.witness_offline_execution_lane_consumer_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_self_host_logic_local_repo_wet_consumer_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_substrate_long_lane_consumer_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_substrate_long_lane_manifest_covers_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_synthetic_orphan_admission_red_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_synthetic_orphan_has_no_consumer_holds", tail: Cons { head: "v2.test.claim.witness_cost_locality.both_axes_closure_couples_on_both", tail: Cons { head: "v2.test.claim.witness_cost_locality.corpus_reading_closure_couples_on_data_breadth", tail: Cons { head: "v2.test.claim.witness_cost_locality.cyclic_facts_terminate_and_still_reach_carrier", tail: Cons { head: "v2.test.claim.witness_cost_locality.declared_bounded_fixture_overrides_coupled_reachability", tail: Cons { head: "v2.test.claim.witness_cost_locality.declared_corpus_input_routes_scheduled_even_when_reachability_is_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.red_control_spanning_closure_is_not_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.red_control_undeclared_coupled_never_rides_continuous", tail: Cons { head: "v2.test.claim.witness_cost_locality.round_trip_closure_couples_on_layer_depth", tail: Cons { head: "v2.test.claim.witness_cost_locality.severed_mid_hop_is_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.single_stage_closure_stays_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.two_hop_carrier_couples_on_data_breadth", tail: Cons { head: "v2.test.claim.witness_cost_locality.undeclared_local_admits_continuous", tail: Cons { head: "v2.test.claim.witness_cost_locality.unit_closure_is_local", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_control_matched_row_is_not_flagged_unclassified", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_frontier_carries_no_quarantine_row_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.witness_admission.witness_offline_execution_lane_consumer_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_self_host_logic_local_repo_wet_consumer_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_substrate_long_lane_consumer_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_substrate_long_lane_manifest_covers_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_synthetic_orphan_admission_red_holds", tail: Cons { head: "v2.test.claim.witness_admission.witness_synthetic_orphan_has_no_consumer_holds", tail: Cons { head: "v2.test.claim.witness_cost_locality.both_axes_closure_couples_on_both", tail: Cons { head: "v2.test.claim.witness_cost_locality.corpus_reading_closure_couples_on_data_breadth", tail: Cons { head: "v2.test.claim.witness_cost_locality.cyclic_facts_terminate_and_still_reach_carrier", tail: Cons { head: "v2.test.claim.witness_cost_locality.declared_bounded_fixture_overrides_coupled_reachability", tail: Cons { head: "v2.test.claim.witness_cost_locality.declared_corpus_input_routes_scheduled_even_when_reachability_is_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.red_control_spanning_closure_is_not_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.red_control_undeclared_coupled_never_rides_continuous", tail: Cons { head: "v2.test.claim.witness_cost_locality.round_trip_closure_couples_on_layer_depth", tail: Cons { head: "v2.test.claim.witness_cost_locality.severed_mid_hop_is_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.single_stage_closure_stays_local", tail: Cons { head: "v2.test.claim.witness_cost_locality.two_hop_carrier_couples_on_data_breadth", tail: Cons { head: "v2.test.claim.witness_cost_locality.undeclared_local_admits_continuous", tail: Cons { head: "v2.test.claim.witness_cost_locality.unit_closure_is_local", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_control_matched_row_is_not_flagged_unclassified", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_frontier_carries_no_quarantine_row_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_082() -> List<String> {
-  Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_frontier_reconciliation_holds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_bare_nickname_row_reds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_discovery_selection_row_reds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_quarantine_row_in_path_carrier_reds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_third_spelling_row_is_unclassified", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_unbacked_bin_wet_row_reds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_unbacked_rehomed_row_reds", tail: Cons { head: "v2.test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds", tail: Cons { head: "v2.test.claim.wrap_decision_gate_smoke.wrap_decision_gate_smoke_bundle_absent_inapplicable", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_bundle_absent_inapplicable", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_bundle_partial_rejects", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_diagnostics_param_is_owned", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_diagnostics_return_is_rc", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_agreeing_sites_accept", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_bundle_absent_inapplicable", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_distinct_reference_layers_refuse", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_missing_row_refuses", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_over_wrap_direction_refuses", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_under_wrap_direction_refuses", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_instantiation_arg_is_wrapped", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_node_struct_field_is_box", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_probe_heap_param_miss_rejects", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_use_site_verdict_param_is_owned", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_use_site_verdict_return_is_owned", tail: Cons { head: "v2.test.claim.compile_door_ledger_ownership.affected_set_diff_failure_refuses_fail_closed", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_frontier_reconciliation_holds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_bare_nickname_row_reds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_discovery_selection_row_reds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_quarantine_row_in_path_carrier_reds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_third_spelling_row_is_unclassified", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_unbacked_bin_wet_row_reds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_unbacked_rehomed_row_reds", tail: Cons { head: "test.claim.witness_exclusion_reconciliation.witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds", tail: Cons { head: "v2.test.claim.wrap_decision_gate_smoke.wrap_decision_gate_smoke_bundle_absent_inapplicable", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_bundle_absent_inapplicable", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_bundle_partial_rejects", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_diagnostics_param_is_owned", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_diagnostics_return_is_rc", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_agreeing_sites_accept", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_bundle_absent_inapplicable", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_distinct_reference_layers_refuse", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_missing_row_refuses", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_over_wrap_direction_refuses", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_flow_under_wrap_direction_refuses", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_instantiation_arg_is_wrapped", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_node_struct_field_is_box", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_probe_heap_param_miss_rejects", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_use_site_verdict_param_is_owned", tail: Cons { head: "v2.test.claim.wrap_decision_predicate.wrap_decision_use_site_verdict_return_is_owned", tail: Cons { head: "v2.test.claim.compile_door_ledger_ownership.affected_set_diff_failure_refuses_fail_closed", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_083() -> List<String> {
@@ -2394,11 +2396,11 @@ fn floor_grandfathered_chunk_114() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_115() -> List<String> {
-  Cons { head: "v2.test.lens_mutation_adequacy.mutation_adequacy.surviving_mutation_is_inadequate", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_synthetic_unrostered_red_holds", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_holds", tail: Cons { head: "v2.test.lens_parallelism.data_dependency.parallelism_data_dependency_claim_holds", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_duplicate_id_refuses_holds", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_singleton_row_counts_holds", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_unbound_id_refuses_holds", tail: Cons { head: "v2.test.lens_structural_resolution.binds_to_resolved.binds_to_resolved_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.constant_not_dominated_by_linear.constant_not_dominated_by_linear_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.exponential_dominates_polynomial.exponential_dominates_polynomial_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.factorial_dominates_exponential.factorial_dominates_exponential_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.linear_not_dominated_by_polynomial.linear_not_dominated_by_polynomial_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.polynomial_dominates_linear.polynomial_dominates_linear_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_information_theoretic.synthesis_gap_it_lens_non_empty", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_information_theoretic.synthesis_gap_it_reason_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_lens_non_empty", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_reason_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.synthesis_no_technique_diagnostic.synthesis_no_tech_diagnostics_non_empty", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_locus_green_on_fact", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_locus_red_on_perturbed_module", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_unrealized_green_on_fact", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_unrealized_red_on_holds", tail: Cons { head: "v2.test.lens_testgen.dag_input_surface.bootstrap_generator_has_conj_dag_input_surface", tail: Cons { head: "v2.test.lens_testgen.dag_input_surface.scheduled_language_behavior_generators_cover_dag_inputs", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.clean_fixture_is_admitted", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.lens_mutation_adequacy.mutation_adequacy.surviving_mutation_is_inadequate", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_synthetic_unrostered_red_holds", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_holds", tail: Cons { head: "v2.test.lens_parallelism.data_dependency.parallelism_data_dependency_claim_holds", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_duplicate_id_refuses_holds", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_singleton_row_counts_holds", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_unbound_id_refuses_holds", tail: Cons { head: "v2.test.lens_structural_resolution.binds_to_resolved.binds_to_resolved_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.constant_not_dominated_by_linear.constant_not_dominated_by_linear_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.exponential_dominates_polynomial.exponential_dominates_polynomial_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.factorial_dominates_exponential.factorial_dominates_exponential_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.linear_not_dominated_by_polynomial.linear_not_dominated_by_polynomial_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.polynomial_dominates_linear.polynomial_dominates_linear_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_information_theoretic.synthesis_gap_it_lens_non_empty", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_information_theoretic.synthesis_gap_it_reason_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_lens_non_empty", tail: Cons { head: "v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_reason_claim_holds", tail: Cons { head: "v2.test.lens_synthesis.synthesis_no_technique_diagnostic.synthesis_no_tech_diagnostics_non_empty", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_locus_green_on_fact", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_locus_red_on_perturbed_module", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_unrealized_green_on_fact", tail: Cons { head: "v2.test.lens_table_decision_tree.sg_claims.witness_tdt_unrealized_red_on_holds", tail: Cons { head: "v2.test.lens_testgen.dag_input_surface.bootstrap_generator_has_conj_dag_input_surface", tail: Cons { head: "v2.test.lens_testgen.dag_input_surface.scheduled_language_behavior_generators_cover_dag_inputs", tail: Cons { head: "test.claim.manual_test_migration_debt.clean_fixture_is_admitted", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_116() -> List<String> {
-  Cons { head: "v2.test.claim.manual.test_migration_debt.default_harness_manifest_is_admitted", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.live_retained_kernel_is_fully_executed", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.plain_test_body_is_admitted", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_custom_harness_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_duplicate_row_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_empty_manifest_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_ignored_test_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_module_with_a_test_is_admitted", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_module_without_tests_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_should_panic_test_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_stale_retention_row_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_undeclared_module_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.planted_unspaced_custom_harness_refuses", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.lens_unit_modeling.bitwidth_flat_scalar_flagged.bitwidth_flat_scalar_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.bitwidth_modeled_passes.bitwidth_modeled_passes_holds", tail: Cons { head: "v2.test.lens_unit_modeling.coordinate_index_not_flagged.coordinate_index_not_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.electrical_blocked_pending_flagged.electrical_blocked_pending_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.flat_scalar_unit_leaf_flagged.flat_scalar_unit_leaf_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.label_version_not_flagged.label_version_not_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses.modeled_unit_field_admitted_via_always_required_lenses_holds", tail: Cons { head: "v2.test.lens_unit_modeling.modeled_unit_field_passes.modeled_unit_field_passes_holds", tail: Cons { head: "v2.test.lens_unit_modeling.novel_unit_flagged.novel_unit_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses.unit_modeling_blocked_via_always_required_lenses_holds", tail: Cons { head: "v2.test.lens_vacuity.vacuity.vacuity_advisory_census_partitions_falsification_suite", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.manual_test_migration_debt.default_harness_manifest_is_admitted", tail: Cons { head: "test.claim.manual_test_migration_debt.live_retained_kernel_is_fully_executed", tail: Cons { head: "test.claim.manual_test_migration_debt.plain_test_body_is_admitted", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_custom_harness_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_duplicate_row_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_empty_manifest_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_ignored_test_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_module_with_a_test_is_admitted", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_module_without_tests_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_should_panic_test_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_stale_retention_row_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_undeclared_module_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.planted_unspaced_custom_harness_refuses", tail: Cons { head: "test.claim.manual_test_migration_debt.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.lens_unit_modeling.bitwidth_flat_scalar_flagged.bitwidth_flat_scalar_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.bitwidth_modeled_passes.bitwidth_modeled_passes_holds", tail: Cons { head: "v2.test.lens_unit_modeling.coordinate_index_not_flagged.coordinate_index_not_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.electrical_blocked_pending_flagged.electrical_blocked_pending_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.flat_scalar_unit_leaf_flagged.flat_scalar_unit_leaf_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.label_version_not_flagged.label_version_not_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses.modeled_unit_field_admitted_via_always_required_lenses_holds", tail: Cons { head: "v2.test.lens_unit_modeling.modeled_unit_field_passes.modeled_unit_field_passes_holds", tail: Cons { head: "v2.test.lens_unit_modeling.novel_unit_flagged.novel_unit_flagged_holds", tail: Cons { head: "v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses.unit_modeling_blocked_via_always_required_lenses_holds", tail: Cons { head: "v2.test.lens_vacuity.vacuity.vacuity_advisory_census_partitions_falsification_suite", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_117() -> List<String> {
@@ -2542,7 +2544,7 @@ fn floor_grandfathered_chunk_151() -> List<String> {
 }
 
 fn floor_grandfathered_chunks() -> List<List<String>> {
-  Cons { head: floor_grandfathered_chunk_000(), tail: Cons { head: floor_grandfathered_chunk_001(), tail: Cons { head: floor_grandfathered_chunk_002(), tail: Cons { head: floor_grandfathered_chunk_003(), tail: Cons { head: floor_grandfathered_chunk_004(), tail: Cons { head: floor_grandfathered_chunk_005(), tail: Cons { head: floor_grandfathered_chunk_006(), tail: Cons { head: floor_grandfathered_chunk_007(), tail: Cons { head: floor_grandfathered_chunk_008(), tail: Cons { head: floor_grandfathered_chunk_009(), tail: Cons { head: floor_grandfathered_chunk_010(), tail: Cons { head: floor_grandfathered_chunk_011(), tail: Cons { head: floor_grandfathered_chunk_012(), tail: Cons { head: floor_grandfathered_chunk_013(), tail: Cons { head: floor_grandfathered_chunk_014(), tail: Cons { head: floor_grandfathered_chunk_015(), tail: Cons { head: floor_grandfathered_chunk_016(), tail: Cons { head: floor_grandfathered_chunk_017(), tail: Cons { head: floor_grandfathered_chunk_018(), tail: Cons { head: floor_grandfathered_chunk_019(), tail: Cons { head: floor_grandfathered_chunk_020(), tail: Cons { head: floor_grandfathered_chunk_021(), tail: Cons { head: floor_grandfathered_chunk_022(), tail: Cons { head: floor_grandfathered_chunk_023(), tail: Cons { head: floor_grandfathered_chunk_024(), tail: Cons { head: floor_grandfathered_chunk_025(), tail: Cons { head: floor_grandfathered_chunk_026(), tail: Cons { head: floor_grandfathered_chunk_027(), tail: Cons { head: floor_grandfathered_chunk_028(), tail: Cons { head: floor_grandfathered_chunk_029(), tail: Cons { head: floor_grandfathered_chunk_030(), tail: Cons { head: floor_grandfathered_chunk_031(), tail: Cons { head: floor_grandfathered_chunk_032(), tail: Cons { head: floor_grandfathered_chunk_033(), tail: Cons { head: floor_grandfathered_chunk_034(), tail: Cons { head: floor_grandfathered_chunk_035(), tail: Cons { head: floor_grandfathered_chunk_036(), tail: Cons { head: floor_grandfathered_chunk_037(), tail: Cons { head: floor_grandfathered_chunk_038(), tail: Cons { head: floor_grandfathered_chunk_039(), tail: Cons { head: floor_grandfathered_chunk_040(), tail: Cons { head: floor_grandfathered_chunk_041(), tail: Cons { head: floor_grandfathered_chunk_042(), tail: Cons { head: floor_grandfathered_chunk_043(), tail: Cons { head: floor_grandfathered_chunk_044(), tail: Cons { head: floor_grandfathered_chunk_045(), tail: Cons { head: floor_grandfathered_chunk_046(), tail: Cons { head: floor_grandfathered_chunk_047(), tail: Cons { head: floor_grandfathered_chunk_048(), tail: Cons { head: floor_grandfathered_chunk_049(), tail: Cons { head: floor_grandfathered_chunk_050(), tail: Cons { head: floor_grandfathered_chunk_051(), tail: Cons { head: floor_grandfathered_chunk_052(), tail: Cons { head: floor_grandfathered_chunk_053(), tail: Cons { head: floor_grandfathered_chunk_054(), tail: Cons { head: floor_grandfathered_chunk_055(), tail: Cons { head: floor_grandfathered_chunk_056(), tail: Cons { head: floor_grandfathered_chunk_057(), tail: Cons { head: floor_grandfathered_chunk_058(), tail: Cons { head: floor_grandfathered_chunk_059(), tail: Cons { head: floor_grandfathered_chunk_060(), tail: Cons { head: floor_grandfathered_chunk_061(), tail: Cons { head: floor_grandfathered_chunk_062(), tail: Cons { head: floor_grandfathered_chunk_063(), tail: Cons { head: floor_grandfathered_chunk_064(), tail: Cons { head: floor_grandfathered_chunk_065(), tail: Cons { head: floor_grandfathered_chunk_066(), tail: Cons { head: floor_grandfathered_chunk_067(), tail: Cons { head: floor_grandfathered_chunk_068(), tail: Cons { head: floor_grandfathered_chunk_069(), tail: Cons { head: floor_grandfathered_chunk_070(), tail: Cons { head: floor_grandfathered_chunk_071(), tail: Cons { head: floor_grandfathered_chunk_072(), tail: Cons { head: floor_grandfathered_chunk_073(), tail: Cons { head: floor_grandfathered_chunk_074(), tail: Cons { head: floor_grandfathered_chunk_075(), tail: Cons { head: floor_grandfathered_chunk_076(), tail: Cons { head: floor_grandfathered_chunk_077(), tail: Cons { head: floor_grandfathered_chunk_078(), tail: Cons { head: floor_grandfathered_chunk_079(), tail: Cons { head: floor_grandfathered_chunk_080(), tail: Cons { head: floor_grandfathered_chunk_081(), tail: Cons { head: floor_grandfathered_chunk_082(), tail: Cons { head: floor_grandfathered_chunk_083(), tail: Cons { head: floor_grandfathered_chunk_084(), tail: Cons { head: floor_grandfathered_chunk_085(), tail: Cons { head: floor_grandfathered_chunk_086(), tail: Cons { head: floor_grandfathered_chunk_087(), tail: Cons { head: floor_grandfathered_chunk_088(), tail: Cons { head: floor_grandfathered_chunk_089(), tail: Cons { head: floor_grandfathered_chunk_090(), tail: Cons { head: floor_grandfathered_chunk_091(), tail: Cons { head: floor_grandfathered_chunk_092(), tail: Cons { head: floor_grandfathered_chunk_093(), tail: Cons { head: floor_grandfathered_chunk_094(), tail: Cons { head: floor_grandfathered_chunk_095(), tail: Cons { head: floor_grandfathered_chunk_096(), tail: Cons { head: floor_grandfathered_chunk_097(), tail: Cons { head: floor_grandfathered_chunk_098(), tail: Cons { head: floor_grandfathered_chunk_099(), tail: Cons { head: floor_grandfathered_chunk_100(), tail: Cons { head: floor_grandfathered_chunk_101(), tail: Cons { head: floor_grandfathered_chunk_102(), tail: Cons { head: floor_grandfathered_chunk_103(), tail: Cons { head: floor_grandfathered_chunk_104(), tail: Cons { head: floor_grandfathered_chunk_105(), tail: Cons { head: floor_grandfathered_chunk_106(), tail: Cons { head: floor_grandfathered_chunk_107(), tail: Cons { head: floor_grandfathered_chunk_108(), tail: Cons { head: floor_grandfathered_chunk_109(), tail: Cons { head: floor_grandfathered_chunk_110(), tail: Cons { head: floor_grandfathered_chunk_111(), tail: Cons { head: floor_grandfathered_chunk_112(), tail: Cons { head: floor_grandfathered_chunk_113(), tail: Cons { head: floor_grandfathered_chunk_114(), tail: Cons { head: floor_grandfathered_chunk_115(), tail: Cons { head: floor_grandfathered_chunk_116(), tail: Cons { head: floor_grandfathered_chunk_117(), tail: Cons { head: floor_grandfathered_chunk_118(), tail: Cons { head: floor_grandfathered_chunk_119(), tail: Cons { head: floor_grandfathered_chunk_120(), tail: Cons { head: floor_grandfathered_chunk_121(), tail: Cons { head: floor_grandfathered_chunk_122(), tail: Cons { head: floor_grandfathered_chunk_123(), tail: Cons { head: floor_grandfathered_chunk_124(), tail: Cons { head: floor_grandfathered_chunk_125(), tail: Cons { head: floor_grandfathered_chunk_126(), tail: Cons { head: floor_grandfathered_chunk_127(), tail: Cons { head: floor_grandfathered_chunk_128(), tail: Cons { head: floor_grandfathered_chunk_129(), tail: Cons { head: floor_grandfathered_chunk_130(), tail: Cons { head: floor_grandfathered_chunk_131(), tail: Cons { head: floor_grandfathered_chunk_132(), tail: Cons { head: floor_grandfathered_chunk_133(), tail: Cons { head: floor_grandfathered_chunk_134(), tail: Cons { head: floor_grandfathered_chunk_135(), tail: Cons { head: floor_grandfathered_chunk_136(), tail: Cons { head: floor_grandfathered_chunk_137(), tail: Cons { head: floor_grandfathered_chunk_138(), tail: Cons { head: floor_grandfathered_chunk_139(), tail: Cons { head: floor_grandfathered_chunk_140(), tail: Cons { head: floor_grandfathered_chunk_141(), tail: Cons { head: floor_grandfathered_chunk_142(), tail: Cons { head: floor_grandfathered_chunk_143(), tail: Cons { head: floor_grandfathered_chunk_144(), tail: Cons { head: floor_grandfathered_chunk_145(), tail: Cons { head: floor_grandfathered_chunk_146(), tail: Cons { head: floor_grandfathered_chunk_147(), tail: Cons { head: floor_grandfathered_chunk_148(), tail: Cons { head: floor_grandfathered_chunk_149(), tail: Cons { head: floor_grandfathered_chunk_150(), tail: Cons { head: floor_grandfathered_chunk_151(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_grandfathered_chunk_158(), tail: Cons { head: floor_grandfathered_chunk_152(), tail: Cons { head: floor_grandfathered_chunk_153(), tail: Cons { head: floor_grandfathered_chunk_154(), tail: Cons { head: floor_grandfathered_chunk_155(), tail: Cons { head: floor_grandfathered_chunk_156(), tail: Cons { head: floor_grandfathered_chunk_157(), tail: Cons { head: floor_grandfathered_chunk_000(), tail: Cons { head: floor_grandfathered_chunk_001(), tail: Cons { head: floor_grandfathered_chunk_002(), tail: Cons { head: floor_grandfathered_chunk_003(), tail: Cons { head: floor_grandfathered_chunk_004(), tail: Cons { head: floor_grandfathered_chunk_005(), tail: Cons { head: floor_grandfathered_chunk_006(), tail: Cons { head: floor_grandfathered_chunk_007(), tail: Cons { head: floor_grandfathered_chunk_008(), tail: Cons { head: floor_grandfathered_chunk_009(), tail: Cons { head: floor_grandfathered_chunk_010(), tail: Cons { head: floor_grandfathered_chunk_011(), tail: Cons { head: floor_grandfathered_chunk_012(), tail: Cons { head: floor_grandfathered_chunk_013(), tail: Cons { head: floor_grandfathered_chunk_014(), tail: Cons { head: floor_grandfathered_chunk_015(), tail: Cons { head: floor_grandfathered_chunk_016(), tail: Cons { head: floor_grandfathered_chunk_017(), tail: Cons { head: floor_grandfathered_chunk_018(), tail: Cons { head: floor_grandfathered_chunk_019(), tail: Cons { head: floor_grandfathered_chunk_020(), tail: Cons { head: floor_grandfathered_chunk_021(), tail: Cons { head: floor_grandfathered_chunk_022(), tail: Cons { head: floor_grandfathered_chunk_023(), tail: Cons { head: floor_grandfathered_chunk_024(), tail: Cons { head: floor_grandfathered_chunk_025(), tail: Cons { head: floor_grandfathered_chunk_026(), tail: Cons { head: floor_grandfathered_chunk_027(), tail: Cons { head: floor_grandfathered_chunk_028(), tail: Cons { head: floor_grandfathered_chunk_029(), tail: Cons { head: floor_grandfathered_chunk_030(), tail: Cons { head: floor_grandfathered_chunk_031(), tail: Cons { head: floor_grandfathered_chunk_032(), tail: Cons { head: floor_grandfathered_chunk_033(), tail: Cons { head: floor_grandfathered_chunk_034(), tail: Cons { head: floor_grandfathered_chunk_035(), tail: Cons { head: floor_grandfathered_chunk_036(), tail: Cons { head: floor_grandfathered_chunk_037(), tail: Cons { head: floor_grandfathered_chunk_038(), tail: Cons { head: floor_grandfathered_chunk_039(), tail: Cons { head: floor_grandfathered_chunk_040(), tail: Cons { head: floor_grandfathered_chunk_041(), tail: Cons { head: floor_grandfathered_chunk_042(), tail: Cons { head: floor_grandfathered_chunk_043(), tail: Cons { head: floor_grandfathered_chunk_044(), tail: Cons { head: floor_grandfathered_chunk_045(), tail: Cons { head: floor_grandfathered_chunk_046(), tail: Cons { head: floor_grandfathered_chunk_047(), tail: Cons { head: floor_grandfathered_chunk_048(), tail: Cons { head: floor_grandfathered_chunk_049(), tail: Cons { head: floor_grandfathered_chunk_050(), tail: Cons { head: floor_grandfathered_chunk_051(), tail: Cons { head: floor_grandfathered_chunk_052(), tail: Cons { head: floor_grandfathered_chunk_053(), tail: Cons { head: floor_grandfathered_chunk_054(), tail: Cons { head: floor_grandfathered_chunk_055(), tail: Cons { head: floor_grandfathered_chunk_056(), tail: Cons { head: floor_grandfathered_chunk_057(), tail: Cons { head: floor_grandfathered_chunk_058(), tail: Cons { head: floor_grandfathered_chunk_059(), tail: Cons { head: floor_grandfathered_chunk_060(), tail: Cons { head: floor_grandfathered_chunk_061(), tail: Cons { head: floor_grandfathered_chunk_062(), tail: Cons { head: floor_grandfathered_chunk_063(), tail: Cons { head: floor_grandfathered_chunk_064(), tail: Cons { head: floor_grandfathered_chunk_065(), tail: Cons { head: floor_grandfathered_chunk_066(), tail: Cons { head: floor_grandfathered_chunk_067(), tail: Cons { head: floor_grandfathered_chunk_068(), tail: Cons { head: floor_grandfathered_chunk_069(), tail: Cons { head: floor_grandfathered_chunk_070(), tail: Cons { head: floor_grandfathered_chunk_071(), tail: Cons { head: floor_grandfathered_chunk_072(), tail: Cons { head: floor_grandfathered_chunk_073(), tail: Cons { head: floor_grandfathered_chunk_074(), tail: Cons { head: floor_grandfathered_chunk_075(), tail: Cons { head: floor_grandfathered_chunk_076(), tail: Cons { head: floor_grandfathered_chunk_077(), tail: Cons { head: floor_grandfathered_chunk_078(), tail: Cons { head: floor_grandfathered_chunk_079(), tail: Cons { head: floor_grandfathered_chunk_080(), tail: Cons { head: floor_grandfathered_chunk_081(), tail: Cons { head: floor_grandfathered_chunk_082(), tail: Cons { head: floor_grandfathered_chunk_083(), tail: Cons { head: floor_grandfathered_chunk_084(), tail: Cons { head: floor_grandfathered_chunk_085(), tail: Cons { head: floor_grandfathered_chunk_086(), tail: Cons { head: floor_grandfathered_chunk_087(), tail: Cons { head: floor_grandfathered_chunk_088(), tail: Cons { head: floor_grandfathered_chunk_089(), tail: Cons { head: floor_grandfathered_chunk_090(), tail: Cons { head: floor_grandfathered_chunk_091(), tail: Cons { head: floor_grandfathered_chunk_092(), tail: Cons { head: floor_grandfathered_chunk_093(), tail: Cons { head: floor_grandfathered_chunk_094(), tail: Cons { head: floor_grandfathered_chunk_095(), tail: Cons { head: floor_grandfathered_chunk_096(), tail: Cons { head: floor_grandfathered_chunk_097(), tail: Cons { head: floor_grandfathered_chunk_098(), tail: Cons { head: floor_grandfathered_chunk_099(), tail: Cons { head: floor_grandfathered_chunk_100(), tail: Cons { head: floor_grandfathered_chunk_101(), tail: Cons { head: floor_grandfathered_chunk_102(), tail: Cons { head: floor_grandfathered_chunk_103(), tail: Cons { head: floor_grandfathered_chunk_104(), tail: Cons { head: floor_grandfathered_chunk_105(), tail: Cons { head: floor_grandfathered_chunk_106(), tail: Cons { head: floor_grandfathered_chunk_107(), tail: Cons { head: floor_grandfathered_chunk_108(), tail: Cons { head: floor_grandfathered_chunk_109(), tail: Cons { head: floor_grandfathered_chunk_110(), tail: Cons { head: floor_grandfathered_chunk_111(), tail: Cons { head: floor_grandfathered_chunk_112(), tail: Cons { head: floor_grandfathered_chunk_113(), tail: Cons { head: floor_grandfathered_chunk_114(), tail: Cons { head: floor_grandfathered_chunk_115(), tail: Cons { head: floor_grandfathered_chunk_116(), tail: Cons { head: floor_grandfathered_chunk_117(), tail: Cons { head: floor_grandfathered_chunk_118(), tail: Cons { head: floor_grandfathered_chunk_119(), tail: Cons { head: floor_grandfathered_chunk_120(), tail: Cons { head: floor_grandfathered_chunk_121(), tail: Cons { head: floor_grandfathered_chunk_122(), tail: Cons { head: floor_grandfathered_chunk_123(), tail: Cons { head: floor_grandfathered_chunk_124(), tail: Cons { head: floor_grandfathered_chunk_125(), tail: Cons { head: floor_grandfathered_chunk_126(), tail: Cons { head: floor_grandfathered_chunk_127(), tail: Cons { head: floor_grandfathered_chunk_128(), tail: Cons { head: floor_grandfathered_chunk_129(), tail: Cons { head: floor_grandfathered_chunk_130(), tail: Cons { head: floor_grandfathered_chunk_131(), tail: Cons { head: floor_grandfathered_chunk_132(), tail: Cons { head: floor_grandfathered_chunk_133(), tail: Cons { head: floor_grandfathered_chunk_134(), tail: Cons { head: floor_grandfathered_chunk_135(), tail: Cons { head: floor_grandfathered_chunk_136(), tail: Cons { head: floor_grandfathered_chunk_137(), tail: Cons { head: floor_grandfathered_chunk_138(), tail: Cons { head: floor_grandfathered_chunk_139(), tail: Cons { head: floor_grandfathered_chunk_140(), tail: Cons { head: floor_grandfathered_chunk_141(), tail: Cons { head: floor_grandfathered_chunk_142(), tail: Cons { head: floor_grandfathered_chunk_143(), tail: Cons { head: floor_grandfathered_chunk_144(), tail: Cons { head: floor_grandfathered_chunk_145(), tail: Cons { head: floor_grandfathered_chunk_146(), tail: Cons { head: floor_grandfathered_chunk_147(), tail: Cons { head: floor_grandfathered_chunk_148(), tail: Cons { head: floor_grandfathered_chunk_149(), tail: Cons { head: floor_grandfathered_chunk_150(), tail: Cons { head: floor_grandfathered_chunk_151(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } 
 }
 
 
@@ -2848,4 +2850,772 @@ fn roster_change_admitted(verdict: RosterChangeVerdict) -> Bool {
     RosterAdditionRefused { added: _ } => false
     RosterRemovalWithoutDisposition { removed: _ } => false
   }
+}
+
+
+// ═══ THE POPULATION THE LIST WAS DRAWN FROM, STATED BESIDE THE LIST ════════════════════════
+//
+// (roadmap node floor-ceiling-roster-cut-completeness, identity rn_3PM7CFJ2XQ8VZ5KDR4HB9TNW6L.)
+//
+// WHY THIS SECTION EXISTS. The chunk rows above were taken from ONE PULL REQUEST RUN of the floor
+// -- run 34733276548, the run the tiering lane was carrying -- and a pull request run reaches the
+// claims that run routed, not the claims the floor routes over the whole corpus. The gap is now
+// measured rather than argued: the disposition policy in v2.workflow.required_floor, replayed over
+// every module declaration and every test fn / test data under the floor's OWN roots
+// (dag/ and src/v2/) at the cut commit named below, plans 4,153 identities; the list above held
+// 1,423 of the ones still present in the corpus at the head this change was cut against, and 135
+// identities that the floor PLANNED at the cut, that still exist in the tree, and that no typed
+// removal named were simply absent. Absence is what this section closes -- and it closes it by
+// stating the population beside the list, because a list with no stated population cannot be
+// found incomplete by anything.
+//
+// ONE AUTHORITY, NOT TWO LISTS. The record below is the single statement of the population, and
+// it is the record the completeness witnesses read: the 135 rows were generated from the producer
+// run this record names, and the witnesses refuse unless the list holds them. A second copy of the
+// population kept off to one side by a test is the gunbc.design_argument::single_authority fork -- it can
+// go green while the roster is wrong. Here the population is the thing the roster is measured
+// AGAINST, so drift in either direction is a red claim, not a green one.
+//
+// WHAT MAKES THE REFUSAL REAL AND NOT A TOGGLE (gunbc.design_argument::fail_closed: a toggle that
+// proceeds as if a refusal had not fired is an escape hatch). The source and the reach are declared,
+// and neither is the check -- both are CONSTRUCTORS, so a report that skipped them cannot be written.
+// Before any number is read, a report whose source is PullRequestRun is refused on that ground alone.
+// Then the producer's own arithmetic must close in both directions:
+// the four declined arms plus the planned total must equal the site census it counted, and the
+// per-prefix rows must sum to the planned total. Then every identity the witnesses name is looked
+// up at identity grain. A list that could ride through on the flag alone would be the escape hatch
+// with a label on it, and each of the four arms is witnessed in BOTH directions in
+// dag/test/claim/floor_grandfathered_roster_completeness_witness.dag -- planted to refuse, and
+// planted to admit -- so no arm is a constant refusal.
+//
+// WHAT THIS SECTION DOES NOT CLAIM. The population is the routed population AT THE CUT. The floor
+// routes 659 identities today (its required_gate_prefixes list has been cut from 31 rows to 14),
+// so none of the 135 is measured against either ceiling at this head: the missing exemptions were
+// latent, not live, and the tier authority -- claim_ceiling_tier, which consults nothing but
+// membership -- is where they were misclassified. The opposite sign, rows that did not exist at
+// the cut sitting in the older allowance, is a separate defect with its own node and is NOT
+// repaired here.
+
+// THE SOURCE AND THE REACH ARE CONSTRUCTORS, NOT A STRING AND A FLAG (review 98219).
+//
+// An earlier shape of this record carried `source_kind: NonEmptyStr` plus
+// `reached_full_population: Bool`, and the verdict refused on an exact string match --
+// `population_source_kind(report: report) == "pull_request"`. That FAILS OPEN: a producer that wrote
+// "pull-request", "pr" or "merge_group" skipped the refusal arm, and if its arithmetic happened to
+// close it was ADMITTED. A Bool is the same defect one level up -- the run declares its own
+// completeness. gunbc.design_argument::fail_closed asks for more than a better check: "stronger than
+// catching a wrong state is making it unwritable". gunbc.design_argument::guarantee_ladder names the
+// rung: "structurally impossible -- the invalid state has no constructor in the canonical model". So
+// there are exactly two sources and two reaches below, and a list drawn from a pull request run is
+// refused because a constructor was matched, not because a word was spelled right.
+type PopulationSource =
+    FullRoutedPopulationRun { roots: NonEmptyStr }
+  | PullRequestRun { pr_number: Int }
+
+// THE REACH IS A CONSTRUCTOR TOO. A run that stopped early must say where it stopped, and the arm it
+// chose is what the verdict reads. "Reached the whole routed population" is not a field an optimistic
+// producer can set; it is the absence of the other arm.
+type PopulationReach =
+    ReachedWholeRoutedPopulation
+  | ReachedLessThanWholeRoutedPopulation { reached_sites: Int }
+
+type GrandfatheredPopulationReport = GrandfatheredPopulationReport {
+  producer: NonEmptyStr,
+  // THE RUN REFERENCE IS A TYPED DIGEST, NOT PROSE (review 98263). The record used to carry a free-form
+  // sentence naming the machine, the boot id, the limiter holder and a host-local path: unclassified text
+  // standing in as provenance (gunbc.design_argument::source_annotations -- "An invariant, receipt,
+  // event, ruling, citation, status, count or dissolution condition belongs in a typed carrier"), and a
+  // path no one else can check (gunbc.design_argument::grounding_is_intersubjective -- point at "a
+  // shared, time-stable framework"). What is left is the content address of the binary that printed the
+  // figures, in std.content_hash's refined carrier: `String where lower_hex_64`, so a malformed or
+  // upper-case digest is not a value this field can hold. Where the run happened, under whose limiter
+  // slot, on which boot -- that is the run link's business, and the run link is a PR comment, not a
+  // record in the substrate.
+  instrument_sha256: Sha256DigestHex,
+  at_sha: NonEmptyStr,
+  source: PopulationSource,
+  reach: PopulationReach,
+  standing: CitedFigureStanding,
+  sites_total: Int,
+  planned_total: Int,
+  declined_long_module: Int,
+  declined_fixture_member: Int,
+  declined_cost_debt: Int,
+  declined_outside_required_gate: Int,
+}
+
+// THE POPULATION, AS THE PRODUCER REPORTED IT. Every number here is a number the run printed, not
+// a number transcribed from a later summary of it: sites_total 19,211 is every test fn and test
+// data under the floor's roots at the cut sha, and the five disposition arms sum to exactly that.
+data floor_grandfathered_population: GrandfatheredPopulationReport = GrandfatheredPopulationReport {
+  producer: "replay of v2.workflow.required_floor required_floor_site_disposition over every module declaration and every test fn / test data under the floor roots, at the cut sha named below" as NonEmptyStr,
+  instrument_sha256: "fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe" as Sha256DigestHex,
+  at_sha: "6dd2206d1258ffd8f9c32cf472f3e24e82b60c56" as NonEmptyStr,
+  source: FullRoutedPopulationRun { roots: "dag/ + src/v2/" as NonEmptyStr },
+  reach: ReachedWholeRoutedPopulation,
+  standing: TranscribedUncited { read_obligation: "no instrument in this repository executes the required-floor disposition replay these figures came from; a gunbc.instrument_targets row naming that replay over dag/ and src/v2/ at the cut sha, run again and diffed against sites_total 19211, planned_total 4153 and the four declined arms, is what would replace this arm with a receipt" as NonEmptyStr },
+  sites_total: 19211,
+  planned_total: 4153,
+  declined_long_module: 573,
+  declined_fixture_member: 0,
+  declined_cost_debt: 0,
+  declined_outside_required_gate: 14485,
+}
+
+// THE PLANNED POPULATION BY GATE PREFIX, ROW BY ROW, FROM THE SAME RUN. These rows are the
+// anti-truncation half of the report: a run that stopped early reported a self-consistent
+// planned total more than once in this lane's history, and a per-prefix breakdown that sums to
+// the total is what a partial run cannot fake without also faking every row of it. Sum:
+// 3,250 under v2.test. plus 903 under the 30 test.claim.* prefixes named below = 4,153.
+// (The cut's required_gate_prefixes list held 31 rows; test.claim.discovery_census_witness_test
+// matched nothing at the cut and so has no row here -- the zero is reported, not dropped.)
+type GrandfatheredPopulationPrefixRow = GrandfatheredPopulationPrefixRow {
+  prefix: NonEmptyStr,
+  planned: Int,
+}
+
+data floor_grandfathered_population_prefixes: List<GrandfatheredPopulationPrefixRow> = [
+  GrandfatheredPopulationPrefixRow { prefix: "v2.test." as NonEmptyStr, planned: 3250 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.self_host_" as NonEmptyStr, planned: 313 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.namespace_" as NonEmptyStr, planned: 146 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.legacy_binding_" as NonEmptyStr, planned: 64 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.declared_type_" as NonEmptyStr, planned: 64 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.occurrence_binding_" as NonEmptyStr, planned: 41 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.compiler_frontend_program_status_witness" as NonEmptyStr, planned: 38 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.prose_citation_census_witness" as NonEmptyStr, planned: 31 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.witness_floor_workflow_consolidation_witness_test" as NonEmptyStr, planned: 23 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.host_budget_source_witness" as NonEmptyStr, planned: 21 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.bare_name_" as NonEmptyStr, planned: 21 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.type_reference_" as NonEmptyStr, planned: 20 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.match_exhaustiveness_coproduct_witness" as NonEmptyStr, planned: 20 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.infer_" as NonEmptyStr, planned: 14 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.floor_resolve_realization_witness" as NonEmptyStr, planned: 10 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.dag_parse_continuation_operator_witness_test" as NonEmptyStr, planned: 10 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.coproduct_payload_soundness_witness_test" as NonEmptyStr, planned: 10 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.class_b_import_closure_binding_refusal_witness" as NonEmptyStr, planned: 9 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.typed_module_cache_capacity_witness" as NonEmptyStr, planned: 8 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.resolved_call_emission_identity_witness_test" as NonEmptyStr, planned: 7 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.memory_stall_refusal_witness" as NonEmptyStr, planned: 7 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.whole_corpus_compile_admission_witness" as NonEmptyStr, planned: 5 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.import_admission_closure_membership_witness_test" as NonEmptyStr, planned: 4 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.generic_lambda_parameter_binding_witness" as NonEmptyStr, planned: 4 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.import_shadowed_by_local_definition_witness_test" as NonEmptyStr, planned: 3 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.if_join_pool_binding_witness_test" as NonEmptyStr, planned: 3 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.parse_test" as NonEmptyStr, planned: 2 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.docs_projection_gate_test" as NonEmptyStr, planned: 2 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.arity_zero_import_refusal_witness" as NonEmptyStr, planned: 2 },
+  GrandfatheredPopulationPrefixRow { prefix: "test.claim.v1_dag_parse_witness" as NonEmptyStr, planned: 1 },
+]
+
+
+// THE REPORT READS ITSELF. Field destructuring rather than a transcription: a constant copied out
+// of the record is a second place the population can be wrong.
+fn population_sites_total(report: GrandfatheredPopulationReport) -> Int {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
+      standing: _, sites_total: s, planned_total: _, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => s
+  }
+}
+
+fn population_planned_total(report: GrandfatheredPopulationReport) -> Int {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
+      standing: _, sites_total: _, planned_total: p, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => p
+  }
+}
+
+fn population_declined_total(report: GrandfatheredPopulationReport) -> Int {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
+      standing: _, sites_total: _, planned_total: _, declined_long_module: l,
+      declined_fixture_member: f, declined_cost_debt: c, declined_outside_required_gate: g,
+    } => int_add(a: int_add(a: int_add(a: l, b: f), b: c), b: g)
+  }
+}
+
+// THE RUN REFERENCE READ BACK OUT OF THE RECORD, so the witness asserts what the record holds rather
+// than restating a constant the record could have quietly dropped.
+fn population_instrument_sha256(report: GrandfatheredPopulationReport) -> Sha256DigestHex {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: h, at_sha: _, source: _, reach: _,
+      standing: _, sites_total: _, planned_total: _, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => h
+  }
+}
+
+fn population_source(report: GrandfatheredPopulationReport) -> PopulationSource {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: _, at_sha: _, source: s, reach: _,
+      standing: _, sites_total: _, planned_total: _, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => s
+  }
+}
+
+fn population_reach(report: GrandfatheredPopulationReport) -> PopulationReach {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: r,
+      standing: _, sites_total: _, planned_total: _, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => r
+  }
+}
+
+// THE HONESTY ARM OF THE FIGURES (review 98219). These numbers were OBSERVED by a run of this
+// repository, and the strongest arm of extdeps.external_authority -- ObservedByReceipt -- is the one
+// that would say so. It is not taken, and the reason is a fact rather than a shortcut: `observed_receipt`
+// is sealed behind an admit_callers list in dag/extdeps/external_authority.dag and this module is not in
+// it, so minting the receipt would mean editing another owner's sealed allowlist. The figures therefore
+// stand where the corpus puts a reading that is real but not re-derivable in-tree: TranscribedUncited,
+// carrying the obligation that would close it. The witness reads the obligation back out of the record
+// rather than restating it, so swapping in a citation this repository has not earned is a red claim.
+fn population_standing(report: GrandfatheredPopulationReport) -> CitedFigureStanding {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
+      standing: s, sites_total: _, planned_total: _, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => s
+  }
+}
+
+fn population_prefix_planned(row: GrandfatheredPopulationPrefixRow) -> Int {
+  match row {
+    GrandfatheredPopulationPrefixRow { prefix: _, planned: p } => p
+  }
+}
+
+// THE PER-PREFIX SUM, FOLDED FROM THE ROWS AND NEVER TRANSSCRIBED. Compared against planned_total
+// by the adoption verdict below: a report whose rows do not sum to its own total did not reach the
+// population it says it reached.
+fn floor_grandfathered_population_prefix_total() -> Int {
+  population_prefix_total_of(rows: floor_grandfathered_population_prefixes)
+}
+
+// THE FOLD IS SPELLED AS RECURSION ON PURPOSE. `fold_left` does not exist anywhere in the .dag
+// corpus -- not in std.algebra, not anywhere -- and importing a name a module does not declare is a
+// closure diagnostic that fails every claim in the module, which is exactly what the first executed
+// run of this module said: "src/v2/workflow/floor_grandfathered_roster.dag:9:68: error: name
+// 'fold_left' not found in module 'std.algebra'". Recursion over the cons list is the spelling the
+// corpus already uses for the same job.
+fn population_prefix_total_of(rows: List<GrandfatheredPopulationPrefixRow>) -> Int {
+  match rows {
+    Empty {} => 0
+    Cons { head: row, tail: rest } =>
+      int_add(a: population_prefix_planned(row: row), b: population_prefix_total_of(rows: rest))
+  }
+}
+
+
+// ── THE ADOPTION VERDICT: HOW A LIST BECOMES THE ROSTER, AND HOW IT REFUSES TO ──────────────
+//
+// THE FOUR ARMS, each one the ticket's red_control, each witnessed in both directions in
+// dag/test/claim/floor_grandfathered_roster_completeness_witness.dag.
+//
+//   RefusedPullRequestRun            a list drawn from a pull request run refuses on that ground
+//                                    ALONE -- before a single count is read, so a pull request run
+//                                    that happened to route everything still cannot be adopted.
+//   RefusedIncompleteRun             a list drawn from a run that reached less than the whole
+//                                    routed population refuses rather than being adopted: either
+//                                    the run says it did not reach it, or its own arithmetic fails
+//                                    to close (arms not summing to the site census, or per-prefix
+//                                    rows not summing to the planned total).
+//   RefusedCheckMissingFromRoster    a check the floor planned at the cut and the list does not
+//                                    hold is A FINDING, named by identity. It is never silently
+//                                    reclassified into the tighter tier, which is what happens
+//                                    today to any check the list forgets: membership is the only
+//                                    thing the tier authority consults, so forgetting IS tiering.
+//   RefusedRosterCoversWholeCorpus   the two allowances stay distinct. A list with a row for every
+//                                    site in the corpus is not a grandfathered tier, it is the
+//                                    absence of tiering wearing the roster's clothes.
+type RosterPopulationAdoption =
+    RosterPopulationAdmitted
+  | RefusedPullRequestRun { pr_number: Int }
+  | RefusedIncompleteRun { sites_total: Int, planned_total: Int, prefix_total: Int, arm_total: Int }
+  | RefusedCheckMissingFromRoster { identity: String }
+  | RefusedRosterCoversWholeCorpus { roster_rows: Int, sites_total: Int }
+
+// IT TAKES THE REPORT, THE PREFIX SUM, THE ROW COUNT AND THE FIRST MISSING IDENTITY AS PARAMETERS,
+// exactly as roster_change_verdict takes both rosters: the verdict stays testable at fixture scale,
+// and no arm can quietly read a global that the test also controls.
+fn roster_population_adoption_verdict(
+  report: GrandfatheredPopulationReport,
+  prefix_total: Int,
+  roster_rows: Int,
+  first_missing: Optional<String>,
+) -> RosterPopulationAdoption {
+  // THE SOURCE IS MATCHED BEFORE ANY NUMBER IS READ, so a pull request run cannot be rescued by
+  // arithmetic that happens to close -- and it is MATCHED, not string-compared: there is no value a
+  // producer can write into `source` that skips this arm. An earlier shape compared
+  // `population_source_kind(report) == "pull_request"`, and a producer that wrote "pull-request",
+  // "pr" or "merge_group" walked straight past it (review 98219).
+  match population_source(report: report) {
+    PullRequestRun { pr_number: n } => RefusedPullRequestRun { pr_number: n }
+    FullRoutedPopulationRun { roots: _ } => match population_reach(report: report) {
+      // THE RUN SAYS WHERE IT STOPPED, and saying it is a constructor, not a Bool an optimistic
+      // producer can leave out.
+      ReachedLessThanWholeRoutedPopulation { reached_sites: _ } => RefusedIncompleteRun {
+        sites_total: population_sites_total(report: report),
+        planned_total: population_planned_total(report: report),
+        prefix_total: prefix_total,
+        arm_total: int_add(a: population_planned_total(report: report), b: population_declined_total(report: report)),
+      }
+      ReachedWholeRoutedPopulation =>
+        // THE PRODUCER'S OWN ARITHMETIC, IN BOTH DIRECTIONS. A run that stopped early has reported a
+        // self-consistent planned total before; per-prefix rows that sum to the planned total, and
+        // declined arms that sum to the site census, are what a partial run cannot fake without
+        // faking every row of it.
+        if prefix_total != population_planned_total(report: report) {
+          RefusedIncompleteRun {
+            sites_total: population_sites_total(report: report),
+            planned_total: population_planned_total(report: report),
+            prefix_total: prefix_total,
+            arm_total: int_add(a: population_planned_total(report: report), b: population_declined_total(report: report)),
+          }
+        } else {
+          if int_add(a: population_planned_total(report: report), b: population_declined_total(report: report))
+               != population_sites_total(report: report) {
+            RefusedIncompleteRun {
+              sites_total: population_sites_total(report: report),
+              planned_total: population_planned_total(report: report),
+              prefix_total: prefix_total,
+              arm_total: int_add(a: population_planned_total(report: report), b: population_declined_total(report: report)),
+            }
+          } else {
+            // A CHECK THE FLOOR PLANNED AT THE CUT AND THE LIST DOES NOT HOLD IS A FINDING, named by
+            // identity. It is never silently reclassified into the tighter tier -- which is what
+            // happens to any check the list forgets, because membership is the only thing the tier
+            // authority consults, so forgetting IS the tiering.
+            match first_missing {
+              Present { value: v } => RefusedCheckMissingFromRoster { identity: v }
+              Absent {} =>
+                // THE TWO ALLOWANCES STAY DISTINCT. A list with a row for every site in the corpus is
+                // not a grandfathered tier; it is the absence of tiering wearing the roster's clothes.
+                if int_eq(a: roster_rows, b: population_sites_total(report: report)) {
+                  RefusedRosterCoversWholeCorpus {
+                    roster_rows: roster_rows,
+                    sites_total: population_sites_total(report: report),
+                  }
+                } else {
+                  if int_gt(a: roster_rows, b: population_sites_total(report: report)) {
+                    RefusedRosterCoversWholeCorpus {
+                      roster_rows: roster_rows,
+                      sites_total: population_sites_total(report: report),
+                    }
+                  } else {
+                    RosterPopulationAdmitted
+                  }
+                }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn first_check_missing_from_roster(rows: List<String>, chunks: List<List<String>>) -> Optional<String> {
+  match rows {
+    Empty {} => Absent {}
+    Cons { head: r, tail: rest } =>
+      if grandfathered_in_chunks(name: r, chunks: chunks) {
+        first_check_missing_from_roster(rows: rest, chunks: chunks)
+      } else {
+        Present { value: r }
+      }
+  }
+}
+
+// THE COMPLETENESS SAMPLE, HELD IN THE LIST ITSELF. These are six of the 135, chosen as the
+// alphabetically first row of each of the five largest declaring modules among the 135 plus the
+// identity the tier handback moves. They live in the chunk list like any other row -- they are
+// roster rows, produced by the same generator -- and they are ALSO named here so the witnesses can
+// look them up without folding 4,150 rows six times over. A probe that is in this list and not in
+// the chunks is a red claim; a probe in the chunks and not in this list costs nothing, because the
+// list is a sample and not an authority. THE 135 ARE NOT LEFT TO A HARNESS: they are carried as
+// floor_grandfathered_at_cut_group_00 .. _08 below and joined against the roster row for row, in nine
+// claims of fifteen rows each. The grain of the split is a MEASURED cost, not a preference, and the
+// numbers are the runner's own per-claim eval_steps lines (printed in the run link on the PR for this
+// module, released claim_batch, head da12866f): the nine fifteen-row membership claims cost 9,732 to
+// 26,580 steps and stay inside the tighter allowance, while a single claim that joined all 135 against
+// all 3,916 rows inside itself measured 96,910 steps, and the adoption fold wrapping that join measured
+// 110,099 -- both past the 72,300-step allowance the tier authority gives new work (millisecond(100) at
+// required_floor.dag times eval_steps_per_millisecond(723) at floor_eval_step_calibration.dag). A claim
+// that spends past its allowance is refused on the routed route -- the same refusal that blocked fourteen
+// passing checks hours after the tiering landed, which is the harm this node exists to stop -- so the
+// whole-list membership join lives NINE claims deep and never inside one fold. The positional join in
+// first_recovered_row_divergence is the cheap whole-population arm (2,724 steps observed for its claim)
+// and it is what makes deleting any one of the 135 a red claim inside the fold as well as outside it.
+data floor_grandfathered_completeness_probes: List<String> = [
+
+  "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse",
+  "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_corpus_roster_dedupes_decl_facts",
+  "v2.test.claim.fold_lowering.algebra_carrying_fold_is_step_form_unresolved",
+  "v2.test.floor_enrolment_margin.a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours",
+]
+
+// THE SAMPLE, AS CHUNK ROWS. First in the chunk list on purpose: a lookup of a completeness
+// probe should pay the head of the list, not the cut, and the 135 rows this change adds are
+// appended at the TAIL so no existing lookup pays for them.
+fn floor_grandfathered_chunk_158() -> List<String> {
+  Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_corpus_roster_dedupes_decl_facts", tail: Cons { head: "v2.test.claim.fold_lowering.algebra_carrying_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.floor_enrolment_margin.a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours", tail: Empty {} } } } } } }
+}
+
+// TEN IDENTITIES PLANNED AT THE CUT ARE NOT ADDED HERE, AND THE REASON IS MEASURED. The extractor's
+// set was "planned by the required-floor gate at the cut sha 6dd2206d1258 and still in the corpus at
+// main", which is 145 identities; ten of them are ALREADY exempted in main's roster -- measured at
+// origin/main 5611ac47e730 and again at d508254b0667 over chunks 000..151: 152 chunk functions, 3,781
+// rows, 3,781 distinct, 0 duplicates, and one occurrence of each of the ten, in chunk 029 (four of
+// them), 040 (three), 056, 062 and 145. Adding them a second time would put 10 duplicate rows in the
+// roster, which is the multiplicity defect this lane is planning separately, and a duplicate buys nothing:
+// membership is a boolean. They are test.claim.self_host_regen_affected_set_witness
+// .w_RED_an_edit_with_no_dependents_bounds_to_itself and .w_RED_an_unlocatable_edited_path_refuses_without
+// _widening, test.claim.self_host_regen_round_cost_witness.w_RED_an_emit_sub_mark_is_unattributed_not
+// _folded_into_emit and .w_RED_one_unreadable_cpu_row_makes_the_cpu_total_unreadable, v2.test.claim
+// .body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_computation_admits_atom_body_holds,
+// .arrow_body_form_RED_no_computation_refuses_transform_body_holds, .arrow_body_form_RED_no_direct_atom
+// _refuses_atom_body_holds, v2.test.claim.grounding_lens.witness_decide_clears_clean_RED, v2.test.claim
+// .normalized_tree_admission.plural_admission_does_not_duplicate_shared_diagnostics_RED, and v2.test.std
+// .reducible.reducible_reduce_verdicts_located_RED. So the population this list is drawn from is stated
+// as 4,153 Planned at the cut, 145 of them absent from the roster AS THE CUT DREW IT, and 135 of those
+// still absent as main draws it -- the latter is what this change adds. None of the 135 is withdrawn by a
+// record in floor_grandfathered_removals (measured: 0 of 135 against 476 distinct removal identities).
+
+// GENERATED: completeness rows 1-25 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+fn floor_grandfathered_chunk_152() -> List<String> {
+  Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_local_parameter_sharing_an_ambiguous_name_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_singly_declared_variant_arm_read_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.an_arm_declared_by_two_visible_coproducts_is_refused_by_the_compile", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.an_arm_of_the_sites_own_coproduct_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.the_refusal_carries_a_pasteable_import_line", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.the_refusal_names_a_declaring_module", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.seed_retirement_awaits_an_instrument_rather_than_only_its_prerequisites", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.the_native_route_fold_answers_both_ways", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.the_native_route_milestone_is_wired_to_its_drop_row", tail: Cons { head: "test.claim.self_host_generation_identity_witness.perturbing_one_axis_leaves_the_others_agreeing", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_build_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_equivalence_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_provenance_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.the_same_bundle_with_no_axis_moved_promotes", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_arrow_lambda_field_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.lambda_in_fn_body_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_loop_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_type_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_renamed_other_control_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
+// GENERATED: completeness rows 26-50 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+fn floor_grandfathered_chunk_153() -> List<String> {
+  Cons { head: "v2.test.claim.body_lowering.match_as_field_name.infix_field_named_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.one_arm_constructor_pattern_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.one_arm_shorthand_field_pattern_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.single_arm_wildcard_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.two_arm_match_still_accepts_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.a_readable_clean_subject_is_established_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.an_unreadable_subject_is_not_established_rather_than_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.red_control_planted_copy_still_alarms", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_standing.malformed_source_reports_tokenization_rejection", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_accounts_for_a_stage_the_contract_never_asked_for", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_blocks_infer_behind_a_failed_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_infer_row_for_a_resolvable_candidate_is_determinate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_locates_a_resolve_death_at_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_resolve_contract_accepts_a_resolvable_candidate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_translate_row_is_determinate", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
+// GENERATED: completeness rows 51-75 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+fn floor_grandfathered_chunk_154() -> List<String> {
+  Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_set_target_bundle_round_trip_preserves_both_production_policies", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_vec_serialize_contract_requires_clone_from_im_vector_authority", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_parse_fraction_is_derived", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_fixed_roster_saturates_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset10_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset5_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v2_tree_receipt_by_execution", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
+// GENERATED: completeness rows 76-100 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+fn floor_grandfathered_chunk_155() -> List<String> {
+  Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_live_matches_gate", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_global_receipt_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.bound_contracts_derive_live_receipts", tail: Cons { head: "v2.test.claim.enforcement_live_witness.complexity_repo_wide_verdict_matches_roadmap", tail: Cons { head: "v2.test.claim.enforcement_live_witness.enforcement_consistency_gate_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.live_corpus_is_currently_all_body_unavailable", tail: Cons { head: "v2.test.claim.enforcement_live_witness.per_root_sentinels_hold_in_one_walk", tail: Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_call_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.duplicate_carrier_edge_is_malformed", tail: Cons { head: "v2.test.claim.fold_lowering.fold_call_lowers_to_terminating_loop", tail: Cons { head: "v2.test.claim.fold_lowering.fold_callee_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_collection_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_probe_ingest_is_accepted", tail: Cons { head: "v2.test.claim.fold_lowering.named_step_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_is_not_a_fold_disposition", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_refuses", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_is_step_shape_invalid", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.well_formed_fold_still_lowers_through_the_split", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
+// GENERATED: completeness rows 101-125 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+fn floor_grandfathered_chunk_156() -> List<String> {
+  Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_perturbation_member_coverage_holds", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_r4_valid_on_interim_holds", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_accepts_a_well_formed_module", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bounded_run_refuses_the_whole_front_end_question", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_parse_and_resolve_deaths_land_on_different_stages", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_projection_agrees_with_the_staged_steps", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_resolve_death_still_passes_parse", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_unbound_value_name_refuses_with_its_own_reason", tail: Cons { head: "v2.test.claim.translate_underived_refusal.translate_derived_emit_byte_identical_to_before_holds", tail: Cons { head: "v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green", tail: Cons { head: "v2.test.compiler.pipeline.tokenize_stage.pipeline_tokenize_pick_relationship_green", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_measured_over_the_margin_does_not_block_here", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_with_no_measurement_does_not_block_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists", tail: Cons { head: "v2.test.floor_enrolment_margin.a_string_roster_hold_does_not_declare_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.the_pairing_hole_is_exhaustive_over_standing", tail: Cons { head: "v2.test.floor_enrolment_margin.typed_admission_is_the_only_roster_ground_at_enrolment", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds", tail: Cons { head: "v2.test.lens_testgen.generator_provenance.lens_testgen_scheduled_generators_carry_provenance_holds", tail: Cons { head: "v2.test.lens_testgen.shadow_ci_receipt.lens_testgen_shadow_ci_run_receipt_holds", tail: Cons { head: "v2.test.manual.ownership_movable.witness_double_consume_is_not_movable", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
+// GENERATED: completeness rows 126-129 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+fn floor_grandfathered_chunk_157() -> List<String> {
+  Cons { head: "v2.test.manual.ownership_movable.witness_read_then_consume_param_is_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_threaded_then_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_whole_read_then_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_zero_consume_is_not_movable", tail: Empty {} } } } }
+}
+
+// ── THE POPULATION CARRIED IN THE TREE, NOT IN A HARNESS (review 98219) ────────────────────────
+//
+// THE COMPLAINT THIS SECTION ANSWERS. The 135 rows the roster gained were joined inside the tree
+// against only six named probes; the other 129 were carried nowhere, so deleting any of them left every
+// witness green and the completeness argument was handed to an off-tree run on srv1 that nothing in the
+// repository reads. gunbc.design_argument::fail_closed: "Completeness is an identity join, not a count
+// equality", and "Done means a real consumer green by execution plus a discriminating input that goes
+// red when the behavior is wrong". So the expected set is declared HERE, at identity grain, and joined
+// HERE.
+//
+// TWO SIDES, ONE AUTHORITY EACH. The groups below are the authority for what the floor PLANNED at the
+// cut -- the set the roster is measured AGAINST. The recovered region further down is the authority for
+// what the LIST HOLDS. They are emitted by the same producer run, in the same order, and the claims are
+// what keep them in step: delete a row from either side and a claim goes red naming that identity. A
+// test holding its own copy of the expected set is the gunbc.design_argument::single_authority fork this
+// refuses; there is exactly one expected-set declaration in the tree and the witnesses read it.
+// GENERATED: at-cut population group 00, rows 1-15 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_00: List<String> = [
+  "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse",
+  "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_corpus_roster_dedupes_decl_facts",
+  "v2.test.claim.fold_lowering.algebra_carrying_fold_is_step_form_unresolved",
+  "v2.test.floor_enrolment_margin.a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours",
+  "test.claim.bare_name_ambiguity_wall_witness.a_local_parameter_sharing_an_ambiguous_name_does_not_refuse",
+  "test.claim.bare_name_ambiguity_wall_witness.a_singly_declared_variant_arm_read_does_not_refuse",
+  "test.claim.bare_name_ambiguity_wall_witness.an_arm_declared_by_two_visible_coproducts_is_refused_by_the_compile",
+  "test.claim.bare_name_ambiguity_wall_witness.an_arm_of_the_sites_own_coproduct_does_not_refuse",
+  "test.claim.bare_name_ambiguity_wall_witness.the_refusal_carries_a_pasteable_import_line",
+  "test.claim.bare_name_ambiguity_wall_witness.the_refusal_names_a_declaring_module",
+  "test.claim.compiler_frontend_program_status_witness.seed_retirement_awaits_an_instrument_rather_than_only_its_prerequisites",
+  "test.claim.compiler_frontend_program_status_witness.the_native_route_fold_answers_both_ways",
+  "test.claim.compiler_frontend_program_status_witness.the_native_route_milestone_is_wired_to_its_drop_row",
+]
+
+// GENERATED: at-cut population group 01, rows 16-30 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_01: List<String> = [
+  "test.claim.self_host_generation_identity_witness.perturbing_one_axis_leaves_the_others_agreeing",
+  "test.claim.self_host_promotion_admission_witness.a_contract_stale_build_receipt_refuses_naming_that_axis",
+  "test.claim.self_host_promotion_admission_witness.a_contract_stale_equivalence_receipt_refuses_naming_that_axis",
+  "test.claim.self_host_promotion_admission_witness.a_contract_stale_provenance_receipt_refuses_naming_that_axis",
+  "test.claim.self_host_promotion_admission_witness.the_same_bundle_with_no_axis_moved_promotes",
+  "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_arrow_lambda_field_is_not_retained_holds",
+  "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds",
+  "v2.test.claim.body_lowering.data_initializer_fn_value.lambda_in_fn_body_control_holds",
+  "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds",
+  "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds",
+  "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds",
+  "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds",
+  "v2.test.claim.body_lowering.match_as_field_name.field_named_loop_control_holds",
+  "v2.test.claim.body_lowering.match_as_field_name.field_named_match_normalizes_holds",
+  "v2.test.claim.body_lowering.match_as_field_name.field_named_type_control_holds",
+]
+
+// GENERATED: at-cut population group 02, rows 31-45 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_02: List<String> = [
+  "v2.test.claim.body_lowering.match_as_field_name.field_renamed_other_control_holds",
+  "v2.test.claim.body_lowering.match_as_field_name.infix_field_named_match_normalizes_holds",
+  "v2.test.claim.body_lowering.single_arm_match.one_arm_constructor_pattern_normalizes_holds",
+  "v2.test.claim.body_lowering.single_arm_match.one_arm_shorthand_field_pattern_normalizes_holds",
+  "v2.test.claim.body_lowering.single_arm_match.single_arm_wildcard_match_normalizes_holds",
+  "v2.test.claim.body_lowering.single_arm_match.two_arm_match_still_accepts_holds",
+  "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds",
+  "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds",
+  "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds",
+  "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds",
+  "v2.test.claim.complexity.accumulator_copy_roster_gate.a_readable_clean_subject_is_established_clean",
+  "v2.test.claim.complexity.accumulator_copy_roster_gate.an_unreadable_subject_is_not_established_rather_than_clean",
+  "v2.test.claim.complexity.accumulator_copy_roster_gate.red_control_planted_copy_still_alarms",
+  "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet",
+  "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet",
+]
+
+// GENERATED: at-cut population group 03, rows 46-60 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_03: List<String> = [
+  "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet",
+  "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet",
+  "v2.test.claim.complexity.accumulator_copy_roster_standing.malformed_source_reports_tokenization_rejection",
+  "v2.test.claim.dag_acceptance.acceptance_accounts_for_a_stage_the_contract_never_asked_for",
+  "v2.test.claim.dag_acceptance.acceptance_blocks_infer_behind_a_failed_resolve",
+  "v2.test.claim.dag_acceptance.acceptance_infer_row_for_a_resolvable_candidate_is_determinate",
+  "v2.test.claim.dag_acceptance.acceptance_locates_a_resolve_death_at_resolve",
+  "v2.test.claim.dag_acceptance.acceptance_resolve_contract_accepts_a_resolvable_candidate",
+  "v2.test.claim.dag_acceptance.acceptance_translate_row_is_determinate",
+  "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority",
+  "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority",
+  "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set_authority",
+  "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers",
+  "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_set_target_bundle_round_trip_preserves_both_production_policies",
+  "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_vec_serialize_contract_requires_clone_from_im_vector_authority",
+]
+
+// GENERATED: at-cut population group 04, rows 61-75 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_04: List<String> = [
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_reject_is_typed_not_silent",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_recomputed_by_execution_holds",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_totality_holds",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton",
+  "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_tree_receipt_by_execution",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_receipt_by_execution",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_totality_holds",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_decl_facts_roster_smoke_totality_holds",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_parse_fraction_is_derived",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_reject_is_typed_not_silent",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_recomputed_by_execution_holds",
+]
+
+// GENERATED: at-cut population group 05, rows 76-90 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_05: List<String> = [
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_totality_holds",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_fixed_roster_saturates_by_execution",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset10_work_units_by_execution",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset5_work_units_by_execution",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_tree_receipt_by_execution",
+  "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v2_tree_receipt_by_execution",
+  "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live",
+  "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_live_matches_gate",
+  "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live",
+  "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_global_receipt_holds",
+  "v2.test.claim.enforcement_live_witness.bound_contracts_derive_live_receipts",
+  "v2.test.claim.enforcement_live_witness.complexity_repo_wide_verdict_matches_roadmap",
+  "v2.test.claim.enforcement_live_witness.enforcement_consistency_gate_holds",
+  "v2.test.claim.enforcement_live_witness.live_corpus_is_currently_all_body_unavailable",
+  "v2.test.claim.enforcement_live_witness.per_root_sentinels_hold_in_one_walk",
+]
+
+// GENERATED: at-cut population group 06, rows 91-105 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_06: List<String> = [
+  "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts",
+  "v2.test.claim.fold_lowering.bodyless_fold_call_refuses_no_loop_fabricated",
+  "v2.test.claim.fold_lowering.bodyless_fold_is_step_form_unresolved",
+  "v2.test.claim.fold_lowering.duplicate_carrier_edge_is_malformed",
+  "v2.test.claim.fold_lowering.fold_call_lowers_to_terminating_loop",
+  "v2.test.claim.fold_lowering.fold_callee_name_survives_parse",
+  "v2.test.claim.fold_lowering.fold_collection_name_survives_parse",
+  "v2.test.claim.fold_lowering.fold_probe_ingest_is_accepted",
+  "v2.test.claim.fold_lowering.named_step_fold_is_step_form_unresolved",
+  "v2.test.claim.fold_lowering.non_fold_call_is_not_a_fold_disposition",
+  "v2.test.claim.fold_lowering.non_fold_call_refuses",
+  "v2.test.claim.fold_lowering.paramless_step_fold_is_step_shape_invalid",
+  "v2.test.claim.fold_lowering.paramless_step_fold_refuses_no_loop_fabricated",
+  "v2.test.claim.fold_lowering.well_formed_fold_still_lowers_through_the_split",
+  "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct",
+]
+
+// GENERATED: at-cut population group 07, rows 106-120 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_07: List<String> = [
+  "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim",
+  "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds",
+  "v2.test.claim.rust_crate_partition_witness.witness_partition_perturbation_member_coverage_holds",
+  "v2.test.claim.rust_crate_partition_witness.witness_partition_r4_valid_on_interim_holds",
+  "v2.test.claim.staged_front_end.staged_front_end_accepts_a_well_formed_module",
+  "v2.test.claim.staged_front_end.staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for",
+  "v2.test.claim.staged_front_end.staged_front_end_bounded_run_refuses_the_whole_front_end_question",
+  "v2.test.claim.staged_front_end.staged_front_end_parse_and_resolve_deaths_land_on_different_stages",
+  "v2.test.claim.staged_front_end.staged_front_end_projection_agrees_with_the_staged_steps",
+  "v2.test.claim.staged_front_end.staged_front_end_resolve_death_still_passes_parse",
+  "v2.test.claim.staged_front_end.staged_front_end_unbound_value_name_refuses_with_its_own_reason",
+  "v2.test.claim.translate_underived_refusal.translate_derived_emit_byte_identical_to_before_holds",
+  "v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green",
+  "v2.test.compiler.pipeline.tokenize_stage.pipeline_tokenize_pick_relationship_green",
+  "v2.test.floor_enrolment_margin.a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment",
+]
+
+// GENERATED: at-cut population group 08, rows 121-135 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_08: List<String> = [
+  "v2.test.floor_enrolment_margin.a_declared_identity_measured_over_the_margin_does_not_block_here",
+  "v2.test.floor_enrolment_margin.a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution",
+  "v2.test.floor_enrolment_margin.a_declared_identity_with_no_measurement_does_not_block_at_enrolment",
+  "v2.test.floor_enrolment_margin.a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists",
+  "v2.test.floor_enrolment_margin.a_string_roster_hold_does_not_declare_at_enrolment",
+  "v2.test.floor_enrolment_margin.the_pairing_hole_is_exhaustive_over_standing",
+  "v2.test.floor_enrolment_margin.typed_admission_is_the_only_roster_ground_at_enrolment",
+  "v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds",
+  "v2.test.lens_testgen.generator_provenance.lens_testgen_scheduled_generators_carry_provenance_holds",
+  "v2.test.lens_testgen.shadow_ci_receipt.lens_testgen_shadow_ci_run_receipt_holds",
+  "v2.test.manual.ownership_movable.witness_double_consume_is_not_movable",
+  "v2.test.manual.ownership_movable.witness_read_then_consume_param_is_movable",
+  "v2.test.manual.ownership_movable.witness_threaded_then_consume_is_not_movable",
+  "v2.test.manual.ownership_movable.witness_whole_read_then_consume_is_not_movable",
+  "v2.test.manual.ownership_movable.witness_zero_consume_is_not_movable",
+]
+
+fn floor_grandfathered_at_cut_groups() -> List<List<String>> {
+  Cons { head: floor_grandfathered_at_cut_group_00, tail: Cons { head: floor_grandfathered_at_cut_group_01, tail: Cons { head: floor_grandfathered_at_cut_group_02, tail: Cons { head: floor_grandfathered_at_cut_group_03, tail: Cons { head: floor_grandfathered_at_cut_group_04, tail: Cons { head: floor_grandfathered_at_cut_group_05, tail: Cons { head: floor_grandfathered_at_cut_group_06, tail: Cons { head: floor_grandfathered_at_cut_group_07, tail: Cons { head: floor_grandfathered_at_cut_group_08, tail: Empty {} } } } } } } } } }
+}
+
+// THE ROSTER SIDE OF THE SAME 135: the chunks the generator appended at the cut, and nothing else.
+// Reading the region rather than all 159 chunks is not a weakening -- these identities live only in
+// these seven chunks -- and it is what keeps the whole-population join inside the ceiling this node
+// governs. The full-roster path is still walked, at identity grain, by the nine fifteen-row membership
+// claims in dag/test/claim/floor_grandfathered_roster_completeness_witness.dag -- each one inside the
+// allowance, 9,732 to 26,580 eval steps as the runner printed them -- and by the six named probes. A
+// single claim walking the full roster with all 135 at once measured 96,910 steps, past the 72,300 the
+// tier authority gives new work, so it was removed rather than shipped (review 98392; the numbers are
+// in the comment above floor_grandfathered_completeness_probes).
+fn floor_grandfathered_recovered_region() -> List<List<String>> {
+  Cons { head: floor_grandfathered_chunk_158(), tail: Cons { head: floor_grandfathered_chunk_152(), tail: Cons { head: floor_grandfathered_chunk_153(), tail: Cons { head: floor_grandfathered_chunk_154(), tail: Cons { head: floor_grandfathered_chunk_155(), tail: Cons { head: floor_grandfathered_chunk_156(), tail: Cons { head: floor_grandfathered_chunk_157(), tail: Empty {} } } } } } } }
+}
+
+fn floor_grandfathered_at_cut_rows() -> List<String> {
+  list_flat_map(xs: floor_grandfathered_at_cut_groups(), f: fn(g) { g })
+}
+
+fn floor_grandfathered_recovered_rows() -> List<String> {
+  list_flat_map(xs: floor_grandfathered_recovered_region(), f: fn(c) { c })
+}
+
+fn floor_grandfathered_at_cut_row_total() -> Int {
+  length(xs: floor_grandfathered_at_cut_rows())
+}
+
+fn floor_grandfathered_recovered_row_total() -> Int {
+  length(xs: floor_grandfathered_recovered_rows())
+}
+
+// THE POSITIONAL JOIN, OVER ALL 135 AT ONCE. Both sides are emitted sorted by the same producer run, so
+// the descent is one pass and the cost is O(135) rather than 135 descents of 3,916 rows -- which is the
+// only reason a whole-population claim fits under the ceiling at all. A row deleted from either side
+// misaligns the pass from that row on, and the identity returned is the population row that lost its
+// partner: a FINDING, named, never a silent reclassification.
+fn first_recovered_row_divergence(rows: List<String>, region: List<String>) -> Optional<String> {
+  match rows {
+    Empty {} => Absent {}
+    Cons { head: r, tail: rest } => match region {
+      Empty {} => Present { value: r }
+      Cons { head: c, tail: crest } =>
+        if r == c {
+          first_recovered_row_divergence(rows: rest, region: crest)
+        } else {
+          Present { value: r }
+        }
+    }
+  }
+}
+
+// THE LIVE-DATA FOLD THE CLAIMS EXECUTE -- AND WHAT IT DOES NOT GATE (review 98256).
+//
+// It takes NO parameters: it reads the live population record, the live per-prefix rows, the live roster
+// size and the live positional join over the recovered region of the live chunks, so the witnesses execute
+// one fold over the data instead of re-assembling its arguments. WHY THE POSITIONAL ARM AND NOT THE
+// MEMBERSHIP JOIN: the whole-list membership join -- every one of the 135, against all 3,916 frozen chunk
+// rows -- measured 96,910 eval steps inside a claim and 110,099 inside this fold, past the 72,300-step
+// allowance the tier authority gives new work; a fold cannot hold a computation its own claim would be
+// refused for running, so that arm lives NINE claims deep instead (the nine fifteen-row membership claims
+// in the witness, 9,732 to 26,580 steps each) and this fold carries the O(135) positional arm, which
+// misaligns and NAMES the lost identity if any one of the 135 is deleted. Both arms must be green for the
+// list to be whole; neither is redundant with the other -- the positional arm trusts the region, the
+// nine membership claims do not. It is NOT a gate, and saying so plainly is why this handback can be read:
+// its only callers today live in dag/test/claim/floor_grandfathered_roster_completeness_witness.dag, and
+// DESIGN.md (Reference: building and checks, "What a green `v2-bootstrap` does not say") states "Nothing
+// on the required path evaluates a witness". The witness corpus runs on pull requests under changed-witness
+// selection; the required gate does not read it. A generator could therefore still emit a pull-request
+// -sourced list, or one missing an at-cut check, and nothing on a production route would refuse it. The
+// refusal is specified and witnessed, and it is not yet load-bearing. An earlier cut of this comment
+// claimed required-path execution for the witness corpus; that was false, and it is the record of the drop
+// that replaces it (the drop is declared upstream as gunbc.rung_drop `v1_required_lanes_withdrawn`).
+//
+// THE CONSUMER TO COME, AND ITS TRIGGER -- the remedy review 98256 names. The consumer this fold is shaped
+// for is the route that ADOPTS a roster: a generator, or a floor phase, that calls it and refuses the list
+// before the rows land, so a pull-request-sourced population cannot reach the tier authority. Its trigger
+// is a ruling that enrols this module on the floor: `required_gate_authored_modules` in
+// v2.workflow.required_floor is grown one exact module name at a time, on a ruling (the same DESIGN.md
+// section), and a worker adding its own module name to the gate is the self-authorisation that section
+// refuses. gunbc.design_argument::guarantee_ladder -- "A type name, diagnostic variant, inert lens or plan
+// establishes nothing" -- is why the wording here says what is WITNESSED rather than what is GATED.
+fn floor_grandfathered_roster_adoption() -> RosterPopulationAdoption {
+  roster_population_adoption_verdict(
+    report: floor_grandfathered_population,
+    prefix_total: floor_grandfathered_population_prefix_total(),
+    roster_rows: floor_grandfathered_cut_size(),
+    first_missing: first_recovered_row_divergence(
+      rows: floor_grandfathered_at_cut_rows(),
+      region: floor_grandfathered_recovered_rows(),
+    ),
+  )
 }

@@ -71,7 +71,9 @@ import gunbc.compute.attempt_lifecycle {
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_write_authorization, RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled,
+  attempt_verdict_wire,
   RecoveryWriteDeclined, RecoveryWriteRefused,
+  proven_ended_seat_releases,
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
@@ -116,8 +118,20 @@ import gunbc.emitted_subject_build_gate {
   NativeStepMemoryInput, native_step_memory_inputs, native_product_reuse_env_name, native_product_reuse_fresh_value,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
-import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
+import gunbc.gunbc_cli_command {
+  gunbc_test_invocation_words,
+  TestBatchMode,
+  HermeticBatch,
+  WetBatch,
+  gunbc_test_batch_invocation_words,
+  gunbc_test_batch_hermetic_spelling,
+}
 import gunbc.cli_invoke { invocation_words_bare }
+import gunbc.instruments.claim_operand {
+  ClaimOperand,
+  ClaimOperandUnnameable,
+  claim_identity_operand,
+}
 import extdeps.bazel.label { render_label }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
@@ -173,7 +187,7 @@ import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
   WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
-  GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
+  GunbcBinary, GunbcDriver, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -181,7 +195,7 @@ import gunbc.compute.work_request {
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
-import gunbc.systemd_unit_names { compute_unit_name }
+import gunbc.systemd_unit_names { compute_unit_name, compute_unit_identity_from_name }
 
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
@@ -634,14 +648,208 @@ fn provide_result_document(r: ProvideResult) -> String {
 // the binaries the SAME subject's build produced -- the verified byte-part readings of that build's
 // record in the materialization store (compute_dependency_read) -- so a worker never checks its .dag
 // with a compiler built from a different tree, and never executes bytes the store did not verify.
-// THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
-// request ran it hermetic while its identity said wet -- the key and the realization answering two
-// different questions. Both arms now name their mode, so the run is the operation the key describes.
+// THE MODE IS A REQUIRED ARGUMENT OF THE REQUEST, NOT A FLAG THAT MAY BE OMITTED. This used to read
+// "the mode is always spelled", because `claim_batch` defaulted to hermetic and a request that left the
+// flag off ran hermetic while its identity said wet -- the key and the realization answering two
+// different questions. On the one route the guarantee moved from the argv into the request's TYPE:
+// `gunbc_test_batch_invocation_words` takes the mode as an argument, so this call site cannot be written
+// without deciding it, and `gunbc.gunbc_cli_command`'s admission grants the same mode the words name (a
+// `gunbc test` with no mode flag is Hermetic by admission, which is why Hermetic needs no word here).
+// The key and the realization answer one question, and it is answered by the compiler rather than by a
+// convention a later edit can drop.
 // THE ONE TARGET AUTHORITY IS cargo's --target-dir, NOT the CARGO_TARGET_DIR environment variable:
 // sccache hashes every CARGO_* variable of a rustc invocation into the Rust compile key
 // (extdeps.cache.sccache sccache_rust_key_facts), so exporting the per-identity target through the
 // environment made every identity's key unique and no Rust compile was ever reused across identities.
-fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
+// ONE OPERAND PER NAMED FUNCTION, THROUGH THE ROUTE'S IDENTITY RULE. The work request keeps its shape
+// -- a module path and a comma-separated list of function names, both part of the request KEY, which a
+// caller migration must not perturb -- and the words it turns into are labels admitted by
+// `claim_identity_operand`. A name the route cannot spell is NOT dropped: the raw entry goes through as
+// an operand and `gunbc.gunbc.target_invocation`'s admission refuses the run with a located reason, so a
+// malformed subject fails the work loudly instead of running a subset the key never described. That is
+// the difference between a refusal and a silent shrink, and this call site has no error channel of its
+// own to be polite about.
+// THE CLAIM ARGV, OR A REFUSAL -- NEVER A SMALLER RUN. One operand per named function, admitted by
+// `claim_identity_operand`, the same rule `host_prelude`'s pooled builder admits rows through; the first
+// name the route cannot spell refuses the WHOLE request, with the row and the reason. Two builders with
+// two refusal points is a fork, so this one refuses rather than passing the raw entry through and
+// letting the route's admission be the one that notices: the request key and the argv the worker runs
+// then cannot disagree, and "we ran something other than what the key said" is not available to anyone.
+type ComputeClaimArgv
+  = ComputeClaimArgvBuilt { argv: List<String> }
+  | ComputeClaimArgvRefused { entry: String, function: String, reason: String }
+
+fn compute_claim_argv(
+  layout: ComputeLayout,
+  dependency: ComputeDependency,
+  entry: NonEmptyStr,
+  functions: NonEmptyStr,
+  hermetic: Bool
+) -> ComputeClaimArgv {
+  match compute_claim_operands(entry: entry, functions: functions) {
+    ComputeClaimOperandsRefused { entry: e, function: f, reason: r } => ComputeClaimArgvRefused {
+      entry: e as String,
+      function: f as String,
+      reason: r as String,
+    }
+    ComputeClaimOperandsBuilt { operands: operands } => ComputeClaimArgvBuilt {
+      argv: concat(
+        [compute_dependency_program(dependency: dependency, bin: GunbcDriver)],
+        invocation_words_bare(
+          words: gunbc_test_batch_invocation_words(
+            operands: operands,
+            mode: if hermetic { HermeticBatch } else { WetBatch },
+            source_roots: [join([layout.checkout, "/dag"], ""), join([layout.checkout, "/src/v2"], "")]
+          )
+        ),
+        invocation_words_bare(
+          words: gunbc_test_batch_hermetic_spelling(mode: if hermetic { HermeticBatch } else { WetBatch })
+        ),
+      ),
+    }
+  }
+}
+
+type ComputeClaimOperands
+  = ComputeClaimOperandsBuilt { operands: List<String> }
+  | ComputeClaimOperandsRefused { entry: NonEmptyStr, function: NonEmptyStr, reason: NonEmptyStr }
+
+fn compute_claim_operands(entry: NonEmptyStr, functions: NonEmptyStr) -> ComputeClaimOperands {
+  fold(
+    functions.split(delimiter: ","),
+    init: ComputeClaimOperandsBuilt { operands: [] },
+    f: (acc, name) => match acc {
+      ComputeClaimOperandsRefused { entry: e, function: f, reason: r } => ComputeClaimOperandsRefused {
+        entry: e,
+        function: f,
+        reason: r,
+      }
+      ComputeClaimOperandsBuilt { operands: built } => match claim_identity_operand(
+        entry: entry as String,
+        function: name as String
+      ) {
+        ClaimOperand { label: label } => ComputeClaimOperandsBuilt { operands: concat(built, [label]) }
+        ClaimOperandUnnameable { entry: e, function: f, reason: r } => ComputeClaimOperandsRefused {
+          entry: e,
+          function: f,
+          reason: r,
+        }
+      }
+    }
+  )
+}
+
+// THE ONE TYPED ENTRY TO A WORK UNIT'S ARGV. `Built` carries the words the systemd unit execs;
+// `Refused` carries the request's own row and the reason the route could not name it, and it stops the
+// launch. The split is the whole point: before it, a claim request produced an argv whatever its rows
+// said, and a subject outside the claim universe turned into a run of something the key never described.
+// Claim requests go to `compute_claim_argv` (identity-admitted, first unnameable name refuses the batch,
+// the same rule and the same refusal point as `host_prelude`'s pooled builder); every other operation
+// keeps the word builder unchanged.
+type ComputeCommandArgv
+  = ComputeCommandArgvBuilt { argv: List<String> }
+  | ComputeCommandArgvRefused { entry: String, function: String, reason: String }
+
+fn compute_command_argv(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  op: WorkOperation,
+  dependency: ComputeDependency
+) -> ComputeCommandArgv {
+  match op {
+    RunClaims { entry, functions, hermetic, window: _ } => match compute_claim_argv(
+      layout: layout,
+      dependency: dependency,
+      entry: entry,
+      functions: functions,
+      hermetic: hermetic
+    ) {
+      ComputeClaimArgvBuilt { argv: argv } => ComputeCommandArgvBuilt { argv: argv }
+      ComputeClaimArgvRefused { entry: e, function: f, reason: r } => ComputeCommandArgvRefused {
+        entry: e,
+        function: f,
+        reason: r,
+      }
+    }
+    _ => ComputeCommandArgvBuilt {
+      argv: compute_command_argv_words(
+        instance: instance,
+        layout: layout,
+        op: op,
+        dependency: dependency
+      )
+    }
+  }
+}
+
+// THE TWO QUESTIONS THE LAUNCH SITE ASKS OF A TYPED ARGV, ANSWERED WITHOUT UNWRAPPING IT TWICE. They
+// exist so the guard below reads as one decision -- refuse, or run what was built -- rather than as a
+// match nested inside the launch's own match, where a missed arm would be the next version of the bug
+// this type removes.
+fn is_compute_command_refused(command: ComputeCommandArgv) -> Bool {
+  match command {
+    ComputeCommandArgvRefused { entry: _, function: _, reason: _ } => true
+    ComputeCommandArgvBuilt { argv: _ } => false
+  }
+}
+
+fn compute_command_argv_words_of(command: ComputeCommandArgv) -> List<String> {
+  match command {
+    ComputeCommandArgvBuilt { argv: argv } => argv
+    ComputeCommandArgvRefused { entry: _, function: _, reason: _ } => []
+  }
+}
+
+// THE REFUSAL, REPORTED AS THE WORK'S OUTCOME. Nothing spawned, so the summary is the unspawned one and
+// the gate says what it always says; what is new is that the cause names THE ROW and THE REASON, because
+// "the request did not denote a claim" is a defect a person has to be able to find in the record without
+// reproducing the launch.
+fn compute_claim_refusal_attempt(
+  identity: String,
+  command: ComputeCommandArgv,
+  launched: AttemptGate
+) -> ComputeAttempt {
+  match command {
+    ComputeCommandArgvRefused { entry: entry, function: function, reason: reason } => ComputeAttempt {
+      outcome: WorkRefusedByInfrastructure {
+        identity: identity,
+        cause: ClaimRequestSubjectUnnameable { entry: entry, function: function, reason: reason },
+      },
+      summary: compute_unspawned_summary(),
+      gate: launched,
+    }
+    ComputeCommandArgvBuilt { argv: _ } => ComputeAttempt {
+      outcome: WorkRefusedByInfrastructure {
+        identity: identity,
+        cause: SubjectUnresolved { detail: "a built claim argv reached the refusal report" },
+      },
+      summary: compute_unspawned_summary(),
+      gate: launched,
+    }
+  }
+}
+
+// THE UNWRAP FOR CALLERS THAT CANNOT CARRY A REFUSAL, AND CANNOT RECEIVE ONE. Both callers here pass
+// `work_default_build()` -- `dag/gunbc/instruments/compute_wrong_capture.dag:166` and
+// `dag/gunbc/instruments/compute_run_unit_cold.dag:609` -- and a Build operation never produces a claim
+// operand, so the refused arm is unreachable FOR THEM. It is written rather than assumed: if a caller
+// ever starts passing a claim operation through here, it gets an argv with no program word, the unit
+// fails to exec, and the capture reports the failure -- which is a loud defect, not a run of something
+// the key did not describe. Callers that CAN carry the refusal (the launch site, and the witness that
+// pins the claim argv) match `compute_command_argv` directly instead of using this.
+fn compute_build_command_argv(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  op: WorkOperation,
+  dependency: ComputeDependency
+) -> List<String> {
+  match compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency) {
+    ComputeCommandArgvBuilt { argv: argv } => argv
+    ComputeCommandArgvRefused { entry: _, function: _, reason: _ } => []
+  }
+}
+
+fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
       concat(
@@ -652,13 +860,13 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
       [compute_dependency_program(dependency: dependency, bin: GunbcDriver), "compile",
        "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
        "--entry", join([layout.checkout, "/", entry as String], ""), "--output-dir", layout.out_dir, "--target", "dag"]
-    RunClaims { entry, functions, hermetic, window: _ } =>
-      concat(
-        [compute_dependency_program(dependency: dependency, bin: ClaimBatchRunner),
-         "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
-         "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
-        if hermetic { ["--hermetic"] } else { ["--wet"] },
-      )
+    // UNREACHABLE FOR ANY CALLER THAT ASKS THROUGH `compute_command_argv`, and deliberately so: that
+    // dispatcher answers every `RunClaims` request through `compute_claim_argv`, which is the one place a
+    // name the route cannot spell refuses the WHOLE request with the row and the reason. This arm exists
+    // because the match must be exhaustive. Returning an empty argv here is not a silent pass -- the unit
+    // it would spawn has no program to exec, so the launch fails and the capture reports it; the refusal
+    // is not bypassed, it simply is not carried by this path, and no caller takes it.
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
     // THE GATE SUBJECT IS THE CI STEP, SHAPE FOR SHAPE: build the seed with cargo, then run
     // `gunbc test <label>` on the binary that build produced. Those two CI STEPS are ONE cargo
     // PROGRAM here (`cargo run`), and that is a fact about the guard, not a convenience. `gunbc test`'s
@@ -685,7 +893,7 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
 // compute_dependency_read constructs the populated arm, from a store lookup whose parts verified.
 type ComputeDependency
   = NoComputeDependency
-  | VerifiedBuildBinaries { gunbc: FabricBlobReading, claim_batch: FabricBlobReading }
+  | VerifiedBuildBinaries { gunbc: FabricBlobReading }
 
 // THE PROGRAM FOR ONE BINARY IS A TOTAL MATCH OVER THE CLOSED SET: the resolved dependency carries one
 // verified reading per GunbcBinary, so selecting one is never a lookup that can miss. A dependent
@@ -695,10 +903,9 @@ type ComputeDependency
 fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -> String {
   match dependency {
     NoComputeDependency => join(["compute: no verified build binary for ", gunbc_binary_name(b: bin) as String], "")
-    VerifiedBuildBinaries { gunbc, claim_batch } =>
+    VerifiedBuildBinaries { gunbc } =>
       match bin {
         GunbcDriver => fabric_blob_reading_path(reading: gunbc) as String
-        ClaimBatchRunner => fabric_blob_reading_path(reading: claim_batch) as String
       }
   }
 }
@@ -1441,7 +1648,13 @@ fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
 // load state, active state and result alone.
 fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
       if !o.load_state.queried {
-        UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
+        // THE SPOOL READING TRAVELS WITH THIS REFUSAL. What the route consulted at the exit spool is a
+        // fact the reader holds even where the manager never answered, and a located diagnostic names
+        // every reading it made (gunbc.design_argument::fail_closed). It also keeps the two readings
+        // distinguishable on a lane with no user manager: a route that consulted nothing says so, and
+        // one that consulted the seat's partition reports what it found there. Neither frees a charge --
+        // the refusal stands whatever the spool says.
+        UnitLifecycleUnknown { detail: join(["the user manager could not be queried for this unit's load state; the exit-spool reading: ", seat_stop_record_wire(r: o.stop_record)], "") }
       } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
         // THE SAME RULE AS THE TERMINATION FOLD, DECIDED ON THE SAME READING. A transient --collect unit
         // that ran really is removed, so not-found CAN be an ending -- but it is also the state of a unit
@@ -2828,11 +3041,7 @@ fn compute_dependency_decide(read: LocalStorePartsLookup) -> ComputeDependencyRe
     StoreLookupHit { artifact: _, payloads: _, blobs, receipt: _, evaluation_identity: _ } =>
       match compute_verified_binary(blobs: blobs, parts: read.parts, b: GunbcDriver) {
         Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: GunbcDriver) as String], "") }
-        Present { value: g } =>
-          match compute_verified_binary(blobs: blobs, parts: read.parts, b: ClaimBatchRunner) {
-            Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: ClaimBatchRunner) as String], "") }
-            Present { value: c } => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { gunbc: g, claim_batch: c } }
-          }
+        Present { value: g } => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { gunbc: g } }
       }
   }
 }
@@ -3428,7 +3637,13 @@ fn compute_spawn_and_collect(
         gate: launched,
       }
     Present { value: user_runtime_dir } =>
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
+  let command = compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency)
+  // THE GUARD COMES BEFORE THE SPAWN. A request whose subject the route cannot name never reaches
+  // systemd: it is reported, with its row and reason, as the work's outcome.
+  if is_compute_command_refused(command: command) {
+    compute_claim_refusal_attempt(identity: identity, command: command, launched: launched)
+  } else {
+    match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv_words_of(command: command), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -3464,6 +3679,7 @@ fn compute_spawn_and_collect(
     gate: launched,
   }
     }
+  }
   }
   }
 }
@@ -3685,17 +3901,31 @@ fn compute_recovery_wire(r: ComputeRecovery) -> String {
 // below is one call.
 type UnitLifecycleSource
   = ObserveUnitLifecycle
+  | ObserveUnitLifecycleWithSeatRecord { instance: HostDashboardInstance }
   | SuppliedUnitLifecycle { lifecycle: UnitLifecycle }
   | SuppliedStoppableUnit { before: UnitLifecycle, after_stop: UnitLifecycle }
 
 fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
   match source {
-    // THIS READING NEVER OPENS A SPOOL, so it answers with its own arm. Stated gap, named rather than
-    // hidden: the recovery door (compute_recover_cli) and the belt's resolver come through here, so a
-    // seat's record-bearing absence is not reachable on THOSE routes yet -- only on routes that hold the
-    // seat and read compute_seat_stop_record for it. Widening the door is its own change with its own wet
-    // witness; see recurring_failure_mode hold_recovered_by_age_not_observed_holder_death's named next rung.
+    // THE READING THAT HOLDS NO SEAT. Stated gap, now narrowed to its remainder: the two recovery
+    // doors (compute_recover_cli's attempt door and the census door) reach the spool through the arm
+    // below -- the rungs recurring_failure_mode hold_recovered_by_age_not_observed_holder_death named
+    // for them. What still comes through HERE is the belt's resolver and every route that never held
+    // a seat: a reading that opens no spool answers with its own arm, so its absence claim stays
+    // unproven rather than dressed as an observation of an end.
     ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNotConsulted { reason: "this reading observes the manager only; the route that holds the seat reads its record through compute_seat_stop_record" })
+    // THE DOORS' READING: the manager AND the seat's own exit spool, in one pass. The identity the
+    // spool files under is extracted by the minting authority itself (gunbc.systemd_unit_names
+    // compute_unit_identity_from_name), and a unit name that does not round-trip through it never
+    // names a partition: the reading stays the manager's, with that fact in its detail, rather than
+    // guessing a subject no hook could have filed. This is the rung the recovery of srv1's terminal
+    // seats was waiting on -- unit_lifecycle_unpopulated issues the ended arm ONLY beside
+    // SeatStopRecordFound, and until this arm the doors carried NotConsulted and could never reach it.
+    ObserveUnitLifecycleWithSeatRecord { instance } =>
+      match compute_unit_identity_from_name(unit: unit as String) {
+        Absent => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNotConsulted { reason: join(["the unit name ", unit as String, " was not minted by the compute seat's own stem authority, so no exit-spool subject can be named for it"], "") })
+        Present { value: identity_hex } => observe_unit_lifecycle(unit: unit, stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity_hex))
+      }
     SuppliedUnitLifecycle { lifecycle: l } => l
     SuppliedStoppableUnit { before: b, after_stop: _ } => b
   }
@@ -3720,6 +3950,7 @@ fn compute_stop_unit(unit: NonEmptyStr) -> UnitStop {
 fn unit_stop_by_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitStop {
   match source {
     ObserveUnitLifecycle => compute_stop_unit(unit: unit)
+    ObserveUnitLifecycleWithSeatRecord { instance: _ } => compute_stop_unit(unit: unit)
     SuppliedUnitLifecycle { lifecycle: _ } => UnitStopped
     SuppliedStoppableUnit { before: _, after_stop: _ } => UnitStopped
   }
@@ -3754,11 +3985,11 @@ fn compute_recover_attempt_at(instance: HostDashboardInstance, holders: List<Com
     RecoveryRefused { detail: join(["the reference ", reference as String, " has an attempt slot in ", to_string(value: count(holders)), " seat directories, and a reference names exactly one hold; nothing was released"], "") }
   } else {
     match holders.first() {
-      Present { value: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+      Present { value: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycleWithSeatRecord { instance: instance })
       Absent =>
         match compute_seat_store(instance: instance, seat: ComputeFlatSeat) {
           ComputeSeatStoreUnready { detail: d } => RecoveryRefused { detail: join(["the attempts directory's own store is not ready: ", d], "") }
-          ComputeSeatStoreReady { store: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+          ComputeSeatStoreReady { store: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycleWithSeatRecord { instance: instance })
         }
     }
   }
@@ -3818,8 +4049,30 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
       match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
-          match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
-            RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
+          // THE LEDGER FIRST, FOR A TERMINAL SLOT: a slot whose reservation was refused never became a
+          // charge and never ran a unit; this door answers it with the nothing-held arm rather than
+          // demanding a unit end that no hook could ever witness. The charge the ledger DOES account for
+          // classifies through the one write authorization, exactly as before.
+          match rec.state {
+            AttemptTerminal { verdict: v, detail: _ } =>
+              match terminal_charge_standing(subject: subject, reference: reference) {
+                LedgerNeverCharged =>
+                  RecoveryNothingHeld { reference: rec.reference, verdict: attempt_verdict_wire(v: v), detail: "the ledger holds no charge for this reference: the slot names an attempt whose reservation was refused, so there is no seat to return" }
+                LedgerUnconsultable { detail: d } =>
+                  RecoveryRefused { detail: join(["the capacity ledger could not say whether ", rec.reference, " was charged (", d, "); nothing is released against an unconsultable ledger"], "") }
+                LedgerChargeStanding { detail: _ } =>
+                  recover_attempt_by_authorization(seat: seat, subject: subject, reference: reference, rec: rec, g: g, lifecycle: lifecycle, now: now)
+              }
+            _ => recover_attempt_by_authorization(seat: seat, subject: subject, reference: reference, rec: rec, g: g, lifecycle: lifecycle, now: now)
+          }
+      }
+    }
+  }
+}
+
+fn recover_attempt_by_authorization(seat: ComputeSeatStore, subject: ComputeCapacitySubject, reference: NonEmptyStr, rec: AttemptRecord, g: CasGeneration, lifecycle: UnitLifecycle, now: EpochSecs) -> ComputeRecovery {
+  match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, releases: proven_ended_seat_releases) {
+    RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
             RecoveryWriteRefused { reason: r } => RecoveryRefused { detail: r }
             RecoveryWriteReleaseSettled { state: _, reason: why } => compute_recover_settled_seat(subject: subject, rec: rec, why: why, lifecycle: lifecycle)
             RecoveryWriteTerminateAndRelease { reason: why } =>
@@ -3833,9 +4086,6 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
                     verdict: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], ""),
                     returned: compute_recover_release(subject: subject, reference: reference, reason: why))
               }
-          }
-      }
-    }
   }
 }
 
@@ -3909,7 +4159,9 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // lists each one's attempt slots, and for each reference renders exactly what
 // gunbc.compute.attempt_lifecycle recovery_write_authorization answers for that record against the unit's
 // live lifecycle -- the same authority the write path consumes, so a plan read from the census cannot disagree
-// with the door it will call. Authorized is rendered "fire" with the model's own reason; declined is "hold";
+// with the door it will call. That lifecycle is read through the SAME source the doors now use
+// (ObserveUnitLifecycleWithSeatRecord): manager and the seat's own exit spool, one reading, so the census and
+// the door cannot disagree about what the hook said either. Authorized is rendered "fire" with the model's own reason; declined is "hold";
 // a REFUSED authorization (the unit's lifecycle could not be read) is not a word at all: it makes the whole
 // census's OBSERVATION unknown, which is the same refusal the write path would answer with.
 //
@@ -3921,7 +4173,14 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // compute_recover_attempt_in refuses an unreadable slot). A seat whose slot directory does not exist at all
 // contributes no reference: that is the census of a store that was never created, and nothing here releases
 // on a census, which is attempt_slot_keys' own warning.
-type RecoverCatalogEntry { reference: NonEmptyStr, authorization: RecoveryWriteAuthorization }
+// A CENSUS ENTRY IS EITHER AN AUTHORIZED WRITE, A DECLINED HOLD, OR A SLOT THE LEDGER NEVER CHARGED.
+// The third arm is the refused-reservation shape (compute_refused_after_open settles a slot that never
+// reached the ledger): it names a real attempt but holds no seat, and demanding unit proof of a unit that
+// never existed would make it permanent census poison -- which is the srv1/srv3 stall of 2026-11-26.
+// Whether a reference was ever CHARGED is the ledger's fact, asked through terminal_charge_standing.
+type RecoverCatalogEntry
+  = CatalogAuthorized { reference: NonEmptyStr, authorization: RecoveryWriteAuthorization }
+  | CatalogNeverCharged { reference: NonEmptyStr }
 
 type RecoverCensusPairs
   = RecoverCensusPairsListed { pairs: List<RecoverSlotPair> }
@@ -3950,7 +4209,33 @@ type ComputeRecoverCatalog
   = RecoverCatalogEstablished { entries: List<RecoverCatalogEntry> }
   | RecoverCatalogUnknown { detail: String }
 
-fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecoverCatalog {
+// WHAT THE LEDGER SAYS ABOUT ONE REFERENCE'S CHARGE -- the ONE question census and door share, asked once.
+// The ledger is the authority on who holds a seat (host_capacity adjudicates every reservation into it);
+// the attempt slot names the attempt, it does not price the hold. A reference the ledger never acquired
+// never held a seat -- that is an established fact, not an unknown. An UNREADABLE ledger is never an
+// absent charge: the caller keeps the charge and says so (gunbc.design_argument::fail_closed).
+type NeverChargedReading
+  = LedgerNeverCharged
+  | LedgerChargeStanding { detail: String }
+  | LedgerUnconsultable { detail: String }
+
+fn terminal_charge_standing(subject: ComputeCapacitySubject, reference: NonEmptyStr) -> NeverChargedReading {
+  match compute_capacity_store(subject: subject) {
+    ComputeCapacityStoreUnready { area: a, detail: d } =>
+      LedgerUnconsultable { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+    ComputeCapacityStoreReady { store } =>
+      match compute_seat_charge_returned(store: store, partition: subject.partition, reference: reference) {
+        SeatChargeNeverAcquired { reference: _ } => LedgerNeverCharged
+        SeatChargeUnproven { detail: d } => LedgerUnconsultable { detail: d }
+        SeatChargeStillHeld { reference: _, acquired_at: _ } =>
+          LedgerChargeStanding { detail: "the ledger holds the charge" }
+        SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, by: _, generation: _ } =>
+          LedgerChargeStanding { detail: "the ledger shows the charge returned" }
+      }
+  }
+}
+
+fn compute_recover_catalog_for(instance: HostDashboardInstance, stores: List<ComputeSeatStore>, ledger: ComputeSubjectResolution) -> ComputeRecoverCatalog {
   match compute_recover_census_pairs(stores: stores) {
     RecoverCensusPairsUnknown { detail: d } => RecoverCatalogUnknown { detail: d }
     RecoverCensusPairsListed { pairs: ps } =>
@@ -3969,19 +4254,48 @@ fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecover
                 AttemptSlotHeld { record: rec, generation: _ } =>
                   match now_epoch_seconds() {
                     Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged; the record names unit ", rec.unit], "") }
-                    Present { value: now } => {
-                      let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr)
-                      match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
-                        RecoveryWriteRefused { reason: r } =>
-                          RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
-                        auth =>
-                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, authorization: auth }) }
+                    Present { value: now } =>
+                      // A TERMINAL SLOT FIRST ASKS THE LEDGER, NOT THE MANAGER. A slot whose reservation was
+                      // refused (compute_refused_after_open) names an attempt that never held a seat: the
+                      // ledger never acquired it, no unit ever existed, and no stop hook could ever have
+                      // written for it -- demanding the unit's end from that slot is what held srv1 and srv3
+                      // in census deadlock on 2026-11-26. The ledger's never-acquired is an established
+                      // answer, so the entry says so and the fold moves on. A charge the ledger does know
+                      // about -- held or returned -- classifies exactly as before.
+                      match rec.state {
+                        AttemptTerminal { verdict: _, detail: _ } =>
+                          match ledger {
+                            ComputeSubjectHostUnresolved { host: h } =>
+                              RecoverCatalogUnknown { detail: join([pair.reference as String, ": no capacity subject resolves for host ", h as String, "; the census will not call a terminal slot held or skipped without the ledger that prices it; the record names unit ", rec.unit], "") }
+                            ComputeSubjectResolved { subject: subj, appropriation: _ } =>
+                              match terminal_charge_standing(subject: subj, reference: pair.reference) {
+                                LedgerNeverCharged =>
+                                  RecoverCatalogEstablished { entries: es |> list_push(CatalogNeverCharged { reference: pair.reference }) }
+                                LedgerUnconsultable { detail: d } =>
+                                  RecoverCatalogUnknown { detail: join([pair.reference as String, ": the capacity ledger could not say whether this slot was charged (", d, "), and an unconsultable ledger is not an absent charge"], "") }
+                                LedgerChargeStanding { detail: _ } =>
+                                  recover_census_classify(instance: instance, pair: pair, rec: rec, now: now, entries: es)
+                              }
+                          }
+                        _ => recover_census_classify(instance: instance, pair: pair, rec: rec, now: now, entries: es)
                       }
-                    }
                   }
               }
           })
       }
+  }
+}
+
+// THE UNIT-PROOF CLASSIFICATION, in its one copy: manager and spool readings in, an authorization or an
+// unknown out. The census calls it for every slot whose charge the ledger accounts for; the never-charged
+// arm above never reaches it, because a unit that never existed has no lifecycle to observe.
+fn recover_census_classify(instance: HostDashboardInstance, pair: RecoverSlotPair, rec: AttemptRecord, now: EpochSecs, entries: List<RecoverCatalogEntry>) -> ComputeRecoverCatalog {
+  let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycleWithSeatRecord { instance: instance }, unit: rec.unit as NonEmptyStr)
+  match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, releases: proven_ended_seat_releases) {
+    RecoveryWriteRefused { reason: r } =>
+      RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
+    auth =>
+      RecoverCatalogEstablished { entries: entries |> list_push(CatalogAuthorized { reference: pair.reference, authorization: auth }) }
   }
 }
 
@@ -3991,7 +4305,8 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
     ComputeSeatsListed { seats } =>
       match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
         ComputeSeatStoresUnready { detail: d } => RecoverCatalogUnknown { detail: join(["a seat's attempt store is not ready: ", d], "") }
-        ComputeSeatStoresReady { stores } => compute_recover_catalog_for(stores: stores)
+        ComputeSeatStoresReady { stores } =>
+          compute_recover_catalog_for(instance: instance, stores: stores, ledger: compute_capacity_subject(instance: instance))
       }
   }
 }
@@ -4003,7 +4318,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 // (gunbc.design_argument::single_authority; minimize_redundancy: "a concept is modeled once and every
 // use derived from it"). The pairing of an authorization arm to its word lives in the one match that
 // renders it; what the WORDS are lives only here.
-type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, established_header: String }
+type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String }
 
 fn recover_catalog_words() -> RecoverCatalogWords {
   let prefix = "recover-catalog"
@@ -4013,25 +4328,28 @@ fn recover_catalog_words() -> RecoverCatalogWords {
     settle: "settle",
     hold: "hold",
     refused: "refused",
+    never_charged: "never-charged",
     established_header: join([prefix, " established"], ""),
   }
 }
 
 fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
   let w = recover_catalog_words()
-  let verdict = match e.authorization {
-    RecoveryWriteTerminateAndRelease { reason: _ } => w.terminate
-    RecoveryWriteReleaseSettled { state: _, reason: _ } => w.settle
-    RecoveryWriteDeclined { reason: _ } => w.hold
-    RecoveryWriteRefused { reason: _ } => w.refused
+  match e {
+    CatalogNeverCharged { reference: r } =>
+      join([w.line_prefix, " ", w.never_charged, " ", r as String, " the ledger holds no charge for this reference: the slot names an attempt whose reservation was refused, so no seat was ever held and no unit ever ran", "\n"], "")
+    CatalogAuthorized { reference: r, authorization: auth } =>
+      match auth {
+        RecoveryWriteTerminateAndRelease { reason: why } =>
+          join([w.line_prefix, " ", w.terminate, " ", r as String, " ", why, "\n"], "")
+        RecoveryWriteReleaseSettled { state: _, reason: why } =>
+          join([w.line_prefix, " ", w.settle, " ", r as String, " ", why, "\n"], "")
+        RecoveryWriteDeclined { reason: why } =>
+          join([w.line_prefix, " ", w.hold, " ", r as String, " ", why, "\n"], "")
+        RecoveryWriteRefused { reason: why } =>
+          join([w.line_prefix, " ", w.refused, " ", r as String, " ", why, "\n"], "")
+      }
   }
-  let why = match e.authorization {
-    RecoveryWriteTerminateAndRelease { reason: r } => r
-    RecoveryWriteReleaseSettled { state: _, reason: r } => r
-    RecoveryWriteDeclined { reason: r } => r
-    RecoveryWriteRefused { reason: r } => r
-  }
-  join([w.line_prefix, " ", verdict, " ", e.reference as String, " ", why, "\n"], "")
 }
 
 // THE PARSE OF THE CENSUS RENDERING, beside the renderer so the grammar has one home. This is what a
@@ -4045,6 +4363,10 @@ fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
 type RecoverCatalogLegEntry
   = CatalogLegStale { reference: NonEmptyStr }
   | CatalogLegHeld { reference: NonEmptyStr }
+  // The ledger never charged this reference: nothing is held, nothing is stale, nothing is planned.
+  // Distinct from Held on purpose -- a held seat is legitimately occupied, a never-charged slot never
+  // held anything, and a leg that conflated the two would be reading the ledger's fact as the manager's.
+  | CatalogLegNeverCharged { reference: NonEmptyStr }
 
 type RecoverCatalogLegReading
   = RecoverCatalogLegEstablished { entries: List<RecoverCatalogLegEntry> }
@@ -4080,6 +4402,8 @@ fn recover_catalog_leg_line(words: List<String>) -> RecoverCatalogLegEntry? {
                   Present { value: CatalogLegStale { reference: trim(s: reference) as NonEmptyStr } }
                 } else if arm == recover_catalog_words().hold {
                   Present { value: CatalogLegHeld { reference: trim(s: reference) as NonEmptyStr } }
+                } else if arm == recover_catalog_words().never_charged {
+                  Present { value: CatalogLegNeverCharged { reference: trim(s: reference) as NonEmptyStr } }
                 } else {
                   none
                 }
@@ -4096,6 +4420,7 @@ fn recover_catalog_leg_reference(e: RecoverCatalogLegEntry) -> NonEmptyStr {
   match e {
     CatalogLegStale { reference: r } => r
     CatalogLegHeld { reference: r } => r
+    CatalogLegNeverCharged { reference: r } => r
   }
 }
 

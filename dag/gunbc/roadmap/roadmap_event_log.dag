@@ -191,6 +191,17 @@ type RoadmapEventKind
   // second acceptance. It is admitted only on a node whose live acceptance is tree-unrecorded and only with a
   // pair that holds (roadmap_event_admitted_after).
   | RedTreeRecorded { observation: RedObservation }
+  // THE ACCEPTED HEAD, LANDED — operator ruling 2026-11-23
+  // (gunbc.design_ruling::acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event). The acceptance is
+  // recorded on a head BEFORE the merge (that is what unblocks ctrl's merge gate); whoever sees that head
+  // merge appends THIS event, naming {pr_url, head_sha, merged_at, merge_sha}. It is appended to the node
+  // whose live acceptance earned the head; it never edits or backfills that acceptance, and it changes no
+  // node standing — "done" stays the receipt alone. The law that decides whether it may be written is
+  // roadmap_pull_request_merge_admission: it refuses with words when the node has no live acceptance, when
+  // that acceptance names no thread, when the thread or the head is not the one accepted, and when a merge
+  // has already landed. Append-only, no revocation: a head that never merged is simply a node whose log
+  // holds no merge event.
+  | PullRequestMergedEvent { merge: PullRequestMergeEvidence }
   | CommentCreated { comment: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr, parent_comment: NonEmptyStr? }
   | CommentEdited { comment: NonEmptyStr, body: NonEmptyStr }
   | CommentDeleted { comment: NonEmptyStr }
@@ -276,6 +287,7 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     Retired { reason: _ } => "retired"
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => "receipt"
     RedTreeRecorded { observation: _ } => "red_tree_recorded"
+    PullRequestMergedEvent { merge: _ } => "pull_request_merged"
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment_created"
     CommentEdited { comment: _, body: _ } => "comment_edited"
     CommentDeleted { comment: _ } => "comment_deleted"
@@ -305,6 +317,7 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
     HandedBack { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
     Retired { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
     RedTreeRecorded { observation } => red_observation_members(o: observation)
+    PullRequestMergedEvent { merge } => roadmap_pull_request_merge_evidence_members(merge: merge)
     ReceiptReferenced { obligation, address, verdict } => [
       json_kv(key: "obligation", value: json_string(s: obligation as String)),
       json_kv(key: "address", value: json_string(s: address as String)),
@@ -451,23 +464,44 @@ fn event_member_optional_nonempty(doc: JsonValue, key: String) -> OptionalMember
   }
 }
 
-// THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY IS ONE FACT, SO IT IS ONE TYPE. Either the acceptance was
-// earned by a review thread — and then the thread, the time it merged and the head that merged are all
-// there together — or there was no pull request. "A thread with no merge time" or "a head with no thread"
-// is not a value of this type: it cannot be built, written, folded or verified, so no runtime check has to
-// catch it later. The no-pull-request case exists because the record the operator left says exactly that
-// (the hand-committed seed names no pull request for any of its 18 rows); admitting it is gated by the
-// closed set roadmap_migration_acceptance_identities, which names the migrated receipts by their own
-// canonical bytes, and reading it off a carrier is gated by the decode, which refuses a partial spelling
-// rather than choosing a variant for the data.
+// WHAT THE ACCEPTANCE NAMES ABOUT THE PULL REQUEST IS ONE FACT, SO IT IS ONE TYPE — and since the
+// operator's ruling of 2026-11-23 (gunbc.design_ruling::
+// acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event) it names ONE THING ONLY: the head the
+// acceptance was given. An acceptance is earned on a head, so the live arm is AcceptedOnPullRequestHead
+// { pr_url, head_sha }: the thread the work was accepted on, and the commit that was accepted. THERE IS NO
+// MERGE FIELD ON THE ACCEPTANCE AT ALL — not an absent merged_at, not an empty string, not a time guessed
+// at record time — because the event states no such fact: the merge is its own event
+// (PullRequestMergedEvent) and the merge time has exactly one home there (gunbc.design_argument::
+// single_authority). Before the ruling the acceptance carried merged_at as the author's assertion while the
+// fact lived on GitHub, and the recorder could only be run once the merge it was the gate for had already
+// happened. EarnedByPullRequest { pr_url, merged_at, head_sha } stays in the sum as the READ-ONLY shape of
+// the rows the recorder wrote before the ruling: the log still holds them, they must keep reading, and no
+// route rewrites them. It is therefore built by exactly one fn — roadmap_acceptance_pr_evidence_decode,
+// from bytes already durable — and by nothing that builds a command, so a new row cannot smuggle a merge
+// time back in. "A thread with no head" is not a value of this type: it cannot be built, written, folded or
+// verified, so no runtime check has to catch it later. The no-pull-request case exists because the record
+// the operator left says exactly that (the hand-committed seed names no pull request for any of its 18
+// rows); admitting it is gated by the closed set roadmap_migration_acceptance_identities, which names the
+// migrated receipts by their own canonical bytes, and reading it off a carrier is gated by the decode, which
+// refuses a partial spelling rather than choosing a variant for the data.
 type AcceptancePrEvidence
   = NoPullRequest
+  | AcceptedOnPullRequestHead { pr_url: NonEmptyStr, head_sha: NonEmptyStr }
+  // READ-ONLY: written only by roadmap_acceptance_pr_evidence_decode, over bytes the log already holds.
+  // The command path cannot build this arm — a merge time is stated by PullRequestMergedEvent, once.
   | EarnedByPullRequest { pr_url: NonEmptyStr, merged_at: NonEmptyStr, head_sha: NonEmptyStr }
 
-// THE EVIDENCE'S MEMBERS, written as the one fact it is: three members together, or none.
+// THE EVIDENCE'S MEMBERS, written as the fact it is: the thread and the accepted head together, the
+// historical row's three members together as they were written, or none. A row written after the
+// operator's ruling of 2026-11-23 never carries merged_at — the merge event owns that field — so the
+// members spell exactly the arm, and the decode reads them back as the same arm.
 fn roadmap_acceptance_pr_evidence_members(evidence: AcceptancePrEvidence) -> List<JsonKeyValue> {
   match evidence {
     NoPullRequest => [] as List<JsonKeyValue>
+    AcceptedOnPullRequestHead { pr_url, head_sha } => [
+      json_kv(key: "pr_url", value: json_string(s: pr_url)),
+      json_kv(key: "head_sha", value: json_string(s: head_sha)),
+    ]
     EarnedByPullRequest { pr_url, merged_at, head_sha } => [
       json_kv(key: "pr_url", value: json_string(s: pr_url)),
       json_kv(key: "merged_at", value: json_string(s: merged_at)),
@@ -476,69 +510,378 @@ fn roadmap_acceptance_pr_evidence_members(evidence: AcceptancePrEvidence) -> Lis
   }
 }
 
-// THE EVIDENCE, READ AS ONE FACT OR NOT AT ALL: all three members present and well-shaped, or all three
-// absent. Anything between — one member, a duplicated member, an empty string where a value should be —
-// REFUSES rather than choosing `NoPullRequest` for data that clearly names a pull request partially. That
-// choice is the whole point of the type: an absence is a fact the record states, never a fallback for a
-// record the reader could not finish.
+// THE EVIDENCE, READ AS ONE FACT OR NOT AT ALL. Three shapes decide it, and only these three spellings
+// are values of the type: all three members absent (the acceptance names no pull request), pr_url +
+// head_sha with no merged_at (the live arm — the acceptance is earned on a head, which is what the
+// operator's ruling of 2026-11-23 makes an acceptance BE), or all three present (a row the recorder
+// wrote before that ruling, which must keep reading). Everything else REFUSES rather than choosing a
+// variant for data the reader could not finish: a thread with no head, a head with no thread, a merge
+// time with nothing to merge, any member malformed. That refusal is the whole point of the type — an
+// absence is a fact the record states, never a fallback for a record that would not parse.
 fn roadmap_acceptance_pr_evidence_decode(doc: JsonValue) -> AcceptancePrEvidence? {
-  match event_member_optional_nonempty(doc: doc, key: "pr_url") {
-    OptionalMemberRefused => none
-    OptionalMemberAbsent => match event_member_optional_nonempty(doc: doc, key: "merged_at") {
-      OptionalMemberRefused => none
-      OptionalMemberAbsent => match event_member_optional_nonempty(doc: doc, key: "head_sha") {
-        OptionalMemberRefused => none
+  let url = event_member_optional_nonempty(doc: doc, key: "pr_url")
+  let at = event_member_optional_nonempty(doc: doc, key: "merged_at")
+  let sha = event_member_optional_nonempty(doc: doc, key: "head_sha")
+  match url {
+    // The thread is absent: the only admissible shape left is all three absent (the acceptance names no
+    // pull request); any other member present or malformed has no representation and refuses.
+    OptionalMemberAbsent => match at {
+      OptionalMemberAbsent => match sha {
         OptionalMemberAbsent => Present { value: NoPullRequest }
         OptionalMemberPresent { value: _ } => none
+        OptionalMemberRefused => none
       }
       OptionalMemberPresent { value: _ } => none
-    }
-    OptionalMemberPresent { value: url } => match event_member_optional_nonempty(doc: doc, key: "merged_at") {
-      OptionalMemberAbsent => none
       OptionalMemberRefused => none
-      OptionalMemberPresent { value: at } => match event_member_optional_nonempty(doc: doc, key: "head_sha") {
-        OptionalMemberAbsent => none
-        OptionalMemberRefused => none
-        OptionalMemberPresent { value: sha } => Present { value: EarnedByPullRequest { pr_url: url, merged_at: at, head_sha: sha } }
-      }
     }
+    // The thread is present and carries its head directly: no phantom Optional to fall through, so the
+    // head-shape arms below cannot spell an Absent that the record never held.
+    OptionalMemberPresent { value: u } => match sha {
+      OptionalMemberPresent { value: h } => match at {
+        OptionalMemberAbsent => Present { value: AcceptedOnPullRequestHead { pr_url: u, head_sha: h } }
+        OptionalMemberPresent { value: t } => Present { value: EarnedByPullRequest {
+          pr_url: u, merged_at: t, head_sha: h } }
+        OptionalMemberRefused => none
+      }
+      // A thread with no head has no representation: the head is the join key the merge event needs.
+      OptionalMemberAbsent => none
+      OptionalMemberPresent { value: _ } => none
+      OptionalMemberRefused => none
+    }
+    OptionalMemberRefused => none
   }
 }
 
-// THE COMMAND LINE IS THE UNTYPED EDGE, so this is where half a fact is refused. Three arguments arrive,
-// and they either spell the whole fact, spell its absence, or are refused HERE — the only place a partial
-// pull request can exist is in a command line, and it does not get past this function.
-fn roadmap_acceptance_pr_evidence_from_args(url: String, at: String, sha: String) -> AcceptancePrEvidence? {
+// THE COMMAND LINE IS THE UNTYPED EDGE, so this is where half a fact is refused. TWO arguments arrive —
+// the thread and the head — and they either spell the whole fact or spell its absence; anything between
+// is refused HERE, the only place a partial pull request can exist. There is no merged_at argument: the
+// recorder runs BEFORE the merge (operator ruling 2026-11-23), so a merge time is not available to it and
+// the arm it builds has no such member. The historical EarnedByPullRequest arm is built by the decode
+// alone, from bytes the log already holds, so no command line can produce it.
+fn roadmap_acceptance_pr_evidence_from_args(url: String, sha: String) -> AcceptancePrEvidence? {
   // A BLANK IS NOT A FACT. NonEmptyStr forbids "", not " ", so counting the raw arguments would let a
-  // pull request that never merged in, or a URL typed as three spaces on a terminal, fold into
-  // EarnedByPullRequest and be written to the log as evidence. Each argument is measured on its trimmed
-  // spelling: whitespace-only arrives as the absence it means, so it either joins the ONE admissible
-  // absence (all three blank) or leaves a partial fact, which has no representation and refuses here —
-  // where the three arguments are read, not later at the write.
+  // URL typed as three spaces on a terminal fold into a pull request and be written to the log as
+  // evidence. Each argument is measured on its trimmed spelling: whitespace-only arrives as the absence it
+  // means, so it either joins the ONE admissible absence (both blank) or leaves a partial fact, which has
+  // no representation and refuses here — where the arguments are read, not later at the write.
   let url_seen = trim(s: url)
-  let at_seen = trim(s: at)
   let sha_seen = trim(s: sha)
-  let filled = count(filter([url_seen, at_seen, sha_seen], v => v != ""))
-  if filled == 3 {
-    Present { value: EarnedByPullRequest {
-      pr_url: url_seen as NonEmptyStr, merged_at: at_seen as NonEmptyStr, head_sha: sha_seen as NonEmptyStr } }
+  let filled = count(filter([url_seen, sha_seen], v => v != ""))
+  if filled == 2 {
+    // THE ACCEPTED HEAD IS A COMMIT, OR THE FACT IS NOT BUILT. The merge event is matched to its
+    // acceptance by this very head (roadmap_pull_request_merge_evidence_from_args holds to the same
+    // shape via std.types::commit_sha_text_holds), so an acceptance recorded with a short or non-hex
+    // head could NEVER have its merge recorded — the join key would name a commit no one can name back.
+    // Refuse it HERE, where the argument is read, exactly as --red-at/--green-at/--red-base are held to
+    // the same shape; the CLI names the refusal so the operator learns which argument is wrong.
+    if !commit_sha_text_holds(head: sha_seen) { Absent }
+    else { Present { value: AcceptedOnPullRequestHead {
+      pr_url: url_seen as NonEmptyStr, head_sha: sha_seen as NonEmptyStr } } }
   }
   else if filled == 0 { Present { value: NoPullRequest } }
-  else { none }
+  else { Absent }
 }
 
-// THE ROW'S THREE PULL-REQUEST FIELDS, each read from the one evidence fact: the empty string is the
-// row's own spelling of "no pull request", the same spelling a revocation row uses.
+// THE ROW'S PULL-REQUEST FIELDS, each read from the one evidence fact. The empty string is the row's own
+// spelling of "this event states no such fact" — the same spelling a revocation row uses for a pull
+// request that does not exist — and it is a ROW spelling, never a value of the type: merged_at is "" for
+// every acceptance recorded after the ruling, because the acceptance states no merge time at all, and the
+// merge time a reader wants lives in the node's PullRequestMergedEvent.
 fn roadmap_acceptance_pr_evidence_url(evidence: AcceptancePrEvidence) -> String {
-  match evidence { NoPullRequest => ""  EarnedByPullRequest { pr_url, merged_at: _, head_sha: _ } => pr_url as String }
+  match evidence {
+    NoPullRequest => ""
+    AcceptedOnPullRequestHead { pr_url, head_sha: _ } => pr_url as String
+    EarnedByPullRequest { pr_url, merged_at: _, head_sha: _ } => pr_url as String
+  }
 }
 
 fn roadmap_acceptance_pr_evidence_merged_at(evidence: AcceptancePrEvidence) -> String {
-  match evidence { NoPullRequest => ""  EarnedByPullRequest { pr_url: _, merged_at, head_sha: _ } => merged_at as String }
+  match evidence {
+    NoPullRequest => ""
+    AcceptedOnPullRequestHead { pr_url: _, head_sha: _ } => ""
+    EarnedByPullRequest { pr_url: _, merged_at, head_sha: _ } => merged_at as String
+  }
 }
 
 fn roadmap_acceptance_pr_evidence_head_sha(evidence: AcceptancePrEvidence) -> String {
-  match evidence { NoPullRequest => ""  EarnedByPullRequest { pr_url: _, merged_at: _, head_sha } => head_sha as String }
+  match evidence {
+    NoPullRequest => ""
+    AcceptedOnPullRequestHead { pr_url: _, head_sha } => head_sha as String
+    EarnedByPullRequest { pr_url: _, merged_at: _, head_sha } => head_sha as String
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE MERGE IS ITS OWN EVENT — operator ruling 2026-11-23
+// (gunbc.design_ruling::acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event). An acceptance is
+// earned on a HEAD; the merge that lands that head is appended later, as an event of its own, by whoever
+// sees it land. Three things follow, and the three sections below are each one of them: the fact's TYPE,
+// the LAW that decides whether an append of it may be written, and the READERS that show it.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE MERGE IS ITS OWN FACT, SO IT IS ITS OWN TYPE — and it is the ONLY place a merge time is written. Four
+// members, all four always: the thread that merged, the HEAD that merged, when it merged, and the sha of the
+// merge itself. The head is here for one reason — the law below compares it against the head the acceptance
+// accepted, and a merge of any other head is not the merge that was accepted. merged_at is the author's
+// assertion, as every time in this log is (an event's recorded_at is written by its author too): the ruling
+// gives the field one home, it does not make GitHub the verifier, and an online check of the merge against
+// the host is a separate claim, not this one. A partial spelling is not a value of the type, so it cannot be
+// built, written, folded or verified.
+type PullRequestMergeEvidence {
+  pr_url: NonEmptyStr
+  head_sha: NonEmptyStr
+  merged_at: NonEmptyStr
+  merge_sha: NonEmptyStr
+}
+
+// THE MERGE EVIDENCE'S MEMBERS, all four, always. A merge event that wrote three of them would state a
+// different fact, and the decode below would refuse it — so what is written and what is read are one shape.
+fn roadmap_pull_request_merge_evidence_members(merge: PullRequestMergeEvidence) -> List<JsonKeyValue> {
+  [
+    json_kv(key: "pr_url", value: json_string(s: merge.pr_url)),
+    json_kv(key: "head_sha", value: json_string(s: merge.head_sha)),
+    json_kv(key: "merged_at", value: json_string(s: merge.merged_at)),
+    json_kv(key: "merge_sha", value: json_string(s: merge.merge_sha)),
+  ]
+}
+
+// THE MERGE EVIDENCE, READ AS ONE FACT OR NOT AT ALL: all four members present and non-empty, or the read
+// REFUSES. There is no absence arm here, unlike the acceptance's evidence: a merge event with no pull request
+// is not a merge of anything, so "all four absent" is not a fact worth a variant — it is a malformed event.
+// A sha that is not 40 hex digits is refused too, because the law this type exists for compares one head
+// against another, and a malformed head can only produce a nonsense answer
+// (std.types::commit_sha_text_holds is that shape's authority, as it is for the red observation's commits).
+fn roadmap_pull_request_merge_evidence_decode(doc: JsonValue) -> PullRequestMergeEvidence? {
+  match event_member_nonempty(doc: doc, key: "pr_url") {
+    Absent => none
+    Present { value: url } => match event_member_nonempty(doc: doc, key: "head_sha") {
+      Absent => none
+      Present { value: head } =>
+        if !commit_sha_text_holds(head: head as String) { none }
+        else {
+          match event_member_nonempty(doc: doc, key: "merged_at") {
+            Absent => none
+            Present { value: at } => match event_member_nonempty(doc: doc, key: "merge_sha") {
+              Absent => none
+              Present { value: msha } =>
+                if !commit_sha_text_holds(head: msha as String) { none }
+                else { Present { value: PullRequestMergeEvidence {
+                  pr_url: url, head_sha: head, merged_at: at, merge_sha: msha } } }
+            }
+          }
+        }
+    }
+  }
+}
+
+// A MERGE EVIDENCE HOLDS when it states a merge at all — the same test the decode makes, named separately
+// because the append law below asks it of an event it was handed, without re-encoding that event to bytes.
+fn roadmap_pull_request_merge_evidence_holds(merge: PullRequestMergeEvidence) -> Bool {
+  commit_sha_text_holds(head: merge.head_sha as String) && commit_sha_text_holds(head: merge.merge_sha as String)
+}
+
+// THE COMMAND LINE IS THE UNTYPED EDGE, so this is where a merge that does not name all four things is
+// refused. All four are REQUIRED: a blank merged_at or merge_sha has no representation, and the ruling
+// forbids substituting one — never an empty string, never a guessed time.
+fn roadmap_pull_request_merge_evidence_from_args(
+  url: String, head: String, at: String, merge_sha: String,
+) -> Optional<PullRequestMergeEvidence> {
+  let url_seen = trim(s: url)
+  let head_seen = trim(s: head)
+  let at_seen = trim(s: at)
+  let merge_seen = trim(s: merge_sha)
+  let blank = count(filter([url_seen, head_seen, at_seen, merge_seen], v => v == ""))
+  // Absent, not none: as the tail of an if-chain whose other arm builds a Present, a bare `none` resolves
+  // to Product(Unit) and the reader calls the branches incompatible. The constructor says what the arm is.
+  if blank > 0 { Absent }
+  else if !commit_sha_text_holds(head: head_seen) { Absent }
+  else if !commit_sha_text_holds(head: merge_seen) { Absent }
+  else {
+    Present { value: PullRequestMergeEvidence {
+      pr_url: url_seen as NonEmptyStr, head_sha: head_seen as NonEmptyStr,
+      merged_at: at_seen as NonEmptyStr, merge_sha: merge_seen as NonEmptyStr } }
+  }
+}
+
+// WHETHER A MERGE EVENT MAY BE APPENDED TO A NODE'S HISTORY, said as the refusal it is. ONE fn decides it,
+// and both readers consult it — roadmap_event_admitted_after (the Bool the carrier and the append route ask)
+// and the CLI, which quotes the detail to the person who typed the command. The order is the order of what a
+// reader would ask first: is there an acceptance to merge against at all; does it name a thread; is it the
+// SAME thread; is it the SAME head; has this merge already landed. Each arm carries its own rule word so a
+// witness can plant exactly one refusal and see exactly that one fire.
+type PullRequestMergeAdmission
+  = MergeAdmitted
+  | MergeRefused { rule: NonEmptyStr, detail: NonEmptyStr }
+
+fn roadmap_pull_request_merge_admission(
+  envs: List<RoadmapEventEnvelope>, merge: PullRequestMergeEvidence,
+) -> PullRequestMergeAdmission {
+  if !roadmap_pull_request_merge_evidence_holds(merge: merge) {
+    MergeRefused { rule: "malformed-merge-evidence" as NonEmptyStr, detail: "a merge event names a pull request, the head that merged, the time it merged and the merge sha, and both shas are 40 hex digits" as NonEmptyStr }
+  }
+  else if roadmap_node_standing_key(s: roadmap_node_standing(envs: envs)) != "accepted" {
+    // The standing is the single authority for "is there a live acceptance" — it is what the fold decides and
+    // what ctrl's gate reads, so the merge law cannot quietly disagree with it about which acceptance is live.
+    MergeRefused { rule: "no-live-acceptance" as NonEmptyStr, detail: "this node has no live acceptance to merge: the acceptance is recorded first, on the head that was accepted, and a merge event appends to it" as NonEmptyStr }
+  }
+  else {
+    match roadmap_live_acceptance_evidence(envs: envs) {
+      Absent => MergeRefused { rule: "no-live-acceptance" as NonEmptyStr, detail: "this node's standing says accepted but its history states no acceptance event to merge against" as NonEmptyStr }
+      Present { value: evidence } => match evidence {
+        // A migration acceptance names no thread, so there is nothing for a merge event to name either. The
+        // rows written before the ruling carry a thread and stay mergeable through EarnedByPullRequest.
+        NoPullRequest => MergeRefused { rule: "no-accepted-thread" as NonEmptyStr, detail: "the acceptance on this node names no pull request, so there is no thread whose merge can be recorded" as NonEmptyStr }
+        AcceptedOnPullRequestHead { pr_url, head_sha } =>
+          roadmap_merge_against_accepted_head(merge: merge, accepted_url: pr_url as String, accepted_head: head_sha as String, envs: envs)
+        EarnedByPullRequest { pr_url, merged_at: _, head_sha } =>
+          roadmap_merge_against_accepted_head(merge: merge, accepted_url: pr_url as String, accepted_head: head_sha as String, envs: envs)
+      }
+    }
+  }
+}
+
+// THE HEAD LAW, written once and reached from either arm that names an accepted head. This is the ruling's
+// centre: a merge event that names a head OTHER than the one the acceptance accepted is refused, because
+// what was accepted is not what landed — and the answer is not to edit the acceptance, it is to record a NEW
+// acceptance on the new head. A merge event lands once per node, so a second append is refused rather than
+// quietly agreeing with the first.
+fn roadmap_merge_against_accepted_head(
+  merge: PullRequestMergeEvidence, accepted_url: String, accepted_head: String, envs: List<RoadmapEventEnvelope>,
+) -> PullRequestMergeAdmission {
+  if (merge.pr_url as String) != accepted_url {
+    MergeRefused { rule: "thread-mismatch" as NonEmptyStr, detail: join([
+      "the acceptance on this node was earned on ", accepted_url,
+      ", not on ", merge.pr_url as String, " — a merge event names the thread the acceptance names"], "") as NonEmptyStr }
+  }
+  else if (merge.head_sha as String) != accepted_head {
+    MergeRefused { rule: "head-not-accepted" as NonEmptyStr, detail: join([
+      "the head that merged (", merge.head_sha as String, ") is not the head this node's acceptance accepted (",
+      accepted_head, ") — a new head needs a new acceptance, recorded before the merge it gates"], "") as NonEmptyStr }
+  }
+  else if roadmap_node_merge_landed_for(envs: envs, pr_url: accepted_url, head_sha: accepted_head) {
+    MergeRefused { rule: "already-merged" as NonEmptyStr, detail: join([
+      "the live acceptance (", accepted_url, " @ ", accepted_head,
+      ") already carries its merge event, and a merge lands once — an append-only log does not re-merge a head. ",
+      "A merge of a DIFFERENT head does not block this one: only this head's own merge is a duplicate"], "") as NonEmptyStr }
+  }
+  else { MergeAdmitted }
+}
+
+// THE LIVE ACCEPTANCE'S EVIDENCE — the evidence of the LAST acceptance event on the node's history. Called
+// only once the standing has said "accepted", which is what makes the last one the LIVE one: an acceptance
+// that was revoked leaves the fold in some other standing, and the standing is the authority on that, not
+// this scan. The scan is a reader of bytes; the fold is the decider (gunbc.design_argument::single_authority).
+fn roadmap_live_acceptance_evidence(
+  envs: List<RoadmapEventEnvelope>,
+) -> Optional<AcceptancePrEvidence> {
+  roadmap_live_acceptance_evidence_step(envs: envs, acc: [] as List<AcceptancePrEvidence>).first()
+}
+
+// The accumulator is a LIST of one, not an Optional: the recursion below passes it through several calls,
+// and a value passed as an argument has no declared position to decide what an absent one means — which is
+// the same reason every scan in this file accumulates a List (roadmap_retired_node_ids_step) rather than an
+// option. `.first()` at the caller turns the one-element list back into the answer.
+fn roadmap_live_acceptance_evidence_step(
+  envs: List<RoadmapEventEnvelope>, acc: List<AcceptancePrEvidence>,
+) -> List<AcceptancePrEvidence> {
+  match envs.first() {
+    Absent => acc
+    Present { value: env } => match env.event.kind {
+      AcceptanceRecordedEvent { receipt: _, evidence } =>
+        roadmap_live_acceptance_evidence_step(envs: envs.skip(n: 1), acc: [evidence])
+      _ => roadmap_live_acceptance_evidence_step(envs: envs.skip(n: 1), acc: acc)
+    }
+  }
+}
+
+// THE NODE'S MERGE EVENT, if its history holds one, and the merge time it states. A merge lands once (the
+// admission law refuses a second), so there is at most one; the scan takes the last so a history that
+// somehow holds two still reads deterministically, and keeping them from being two is the admission's job,
+// not a reader's guess. "" from the reader is the row's own spelling of "no such fact is stated" — a node
+// accepted before its head merged states no merge time at all, which is the whole point of the ruling.
+fn roadmap_node_merge_event(envs: List<RoadmapEventEnvelope>) -> Optional<RoadmapEventEnvelope> {
+  roadmap_node_merge_event_step(envs: envs, acc: [] as List<RoadmapEventEnvelope>).first()
+}
+
+fn roadmap_node_merge_event_step(
+  envs: List<RoadmapEventEnvelope>, acc: List<RoadmapEventEnvelope>,
+) -> List<RoadmapEventEnvelope> {
+  match envs.first() {
+    Absent => acc
+    Present { value: env } => match env.event.kind {
+      PullRequestMergedEvent { merge: _ } =>
+        roadmap_node_merge_event_step(envs: envs.skip(n: 1), acc: [env])
+      _ => roadmap_node_merge_event_step(envs: envs.skip(n: 1), acc: acc)
+    }
+  }
+}
+
+// HAS THIS MERGE ALREADY LANDED? The question the once-only law asks, said as a Bool so the law above reads
+// as the sentence it is.
+fn roadmap_node_has_merge_event(envs: List<RoadmapEventEnvelope>) -> Bool {
+  match roadmap_node_merge_event(envs: envs) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// HAS THIS HEAD'S OWN MERGE ALREADY LANDED? The once-only law (gunbc.design_ruling::
+// acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event) is scoped to the LIVE acceptance, not to the
+// node's whole history: "a merge lands once" means a given head on a given thread merges once. A node may
+// legally carry a second AcceptanceRecordedEvent (the live one is the latest), so a prior merge belongs to an
+// EARLIER, superseded acceptance and must NOT block the new head's merge — checking the whole history would
+// refuse it forever with the wrong reason (a silent fabrication of a duplicate that is not one, which
+// gunbc.design_argument::fail_closed rules out). Existential scan: true iff some PullRequestMergedEvent names
+// this very (pr_url, head_sha).
+fn roadmap_node_merge_landed_for(envs: List<RoadmapEventEnvelope>, pr_url: String, head_sha: String) -> Bool {
+  match envs.first() {
+    Absent => false
+    Present { value: env } => match env.event.kind {
+      PullRequestMergedEvent { merge } =>
+        if (merge.pr_url as String) == pr_url && (merge.head_sha as String) == head_sha {
+          true
+        } else {
+          roadmap_node_merge_landed_for(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha)
+        }
+      _ => roadmap_node_merge_landed_for(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha)
+    }
+  }
+}
+
+// THE MERGE TIME THIS NODE'S LOG STATES, from whichever event states it — ONE reader, so no reader picks a
+// source and two readers disagree (gunbc.design_argument::single_authority). Three events can state it, in
+// the order a reader should trust them: the node's OWN merge event (the fact's home since the ruling, and
+// the only one that also names the merge sha); a live acceptance written before the ruling, which carried a
+// merge time inside its evidence; or a live acceptance the operator-close route recorded from GitHub-verified
+// pull-request facts (that route is the one other place a merge time is ever written, and it writes one only
+// where the host has verified the merge — see gunbc.roadmap.roadmap_operator_acceptance OperatorClosePrFacts).
+// An empty string is the row's own spelling of "no such fact is stated": a node accepted on a head that has
+// not merged states no merge time at all, and that is the point of the ruling.
+// THE MERGE EVENT FOR ONE EXACT IDENTITY — the same (pr_url, head_sha) key the admission law compares
+// (roadmap_merge_against_accepted_head), so the READ and the LAW cannot disagree about which merge is the
+// merge of the live acceptance. The scan takes the last such event so a history that somehow holds two
+// still reads deterministically; keeping them from being two is the admission's job, not a reader's guess.
+fn roadmap_merge_event_for(
+  envs: List<RoadmapEventEnvelope>, pr_url: String, head_sha: String,
+) -> Optional<RoadmapEventEnvelope> {
+  roadmap_merge_event_for_step(envs: envs, pr_url: pr_url, head_sha: head_sha, acc: [] as List<RoadmapEventEnvelope>).first()
+}
+
+fn roadmap_merge_event_for_step(
+  envs: List<RoadmapEventEnvelope>, pr_url: String, head_sha: String, acc: List<RoadmapEventEnvelope>,
+) -> List<RoadmapEventEnvelope> {
+  match envs.first() {
+    Absent => acc
+    Present { value: env } => match env.event.kind {
+      PullRequestMergedEvent { merge } =>
+        if (merge.pr_url as String) == pr_url && (merge.head_sha as String) == head_sha {
+          roadmap_merge_event_for_step(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha, acc: [env])
+        } else {
+          roadmap_merge_event_for_step(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha, acc: acc)
+        }
+      _ => roadmap_merge_event_for_step(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha, acc: acc)
+    }
+  }
 }
 
 // THE RECEIPT'S OWN MEMBERS, in a fixed order, with the two nested evidences as objects. The digest
@@ -850,6 +1193,11 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
     match red_observation_decode(doc: doc) {
       Absent => none
       Present { value: ob } => Present { value: RedTreeRecorded { observation: ob } }
+    }
+  } else if word == "pull_request_merged" {
+    match roadmap_pull_request_merge_evidence_decode(doc: doc) {
+      Absent => none
+      Present { value: m } => Present { value: PullRequestMergedEvent { merge: m } }
     }
   } else if word == "receipt" {
     match event_member_nonempty(doc: doc, key: "obligation") {
@@ -1508,6 +1856,7 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
       if revocation_reopens_active_frontier(disposition: disposition) { roadmap_standing_acc_empty() } else { acc }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     RedTreeRecorded { observation: _ } => acc
+    PullRequestMergedEvent { merge: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
     CommentDeleted { comment: _ } => acc
@@ -1691,6 +2040,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
     RedTreeRecorded { observation: _ } => false
+    PullRequestMergedEvent { merge: _ } => false
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
@@ -1707,6 +2057,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     RedTreeRecorded { observation: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    PullRequestMergedEvent { merge: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentEdited { comment: _, body: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentDeleted { comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
@@ -1826,6 +2177,7 @@ fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<Is
     Retired { reason: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     RedTreeRecorded { observation: _ } => acc
+    PullRequestMergedEvent { merge: _ } => acc
     ResultReturned { attempt: _, claim: _, outcome: _ } => acc
     // An acceptance is not a comment: it belongs to the standing and the closed set, never to the
     // comment stream. It is absorbed here so the fold stays exhaustive on purpose.
@@ -1875,6 +2227,7 @@ fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, comment
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
     RedTreeRecorded { observation: _ } => false
+    PullRequestMergedEvent { merge: _ } => false
   })
 }
 
@@ -1903,6 +2256,7 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
     RedTreeRecorded { observation: _ } => false
+    PullRequestMergedEvent { merge: _ } => false
   })
 }
 
@@ -1934,6 +2288,7 @@ fn roadmap_results_for_attempt(envs: List<RoadmapEventEnvelope>, attempt: String
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
     RedTreeRecorded { observation: _ } => false
+    PullRequestMergedEvent { merge: _ } => false
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
@@ -1958,6 +2313,7 @@ fn roadmap_claim_return_to(envs: List<RoadmapEventEnvelope>, claim: RoadmapEvent
         AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => none
         ReceiptReferenced { obligation: _, address: _, verdict: _ } => none
         RedTreeRecorded { observation: _ } => none
+        PullRequestMergedEvent { merge: _ } => none
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => none
         CommentEdited { comment: _, body: _ } => none
         CommentDeleted { comment: _ } => none
@@ -2088,6 +2444,7 @@ fn roadmap_acceptance_row_of_events(events: List<RoadmapEventEnvelope>, acc: Lis
       Retired { reason: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       ReceiptReferenced { obligation: _, address: _, verdict: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       RedTreeRecorded { observation: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      PullRequestMergedEvent { merge: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       CommentEdited { comment: _, body: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       CommentDeleted { comment: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
@@ -2254,6 +2611,10 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
       roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt)
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => true
     RedTreeRecorded { observation: ob } => red_observation_holds(o: ob) && roadmap_node_accepted_without_red_tree(envs: envs)
+    PullRequestMergedEvent { merge } => match roadmap_pull_request_merge_admission(envs: envs, merge: merge) {
+      MergeAdmitted => true
+      MergeRefused { rule: _, detail: _ } => false
+    }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => true
     CommentEdited { comment: _, body: _ } => true
     CommentDeleted { comment: _ } => true
@@ -2726,6 +3087,56 @@ fn roadmap_leaf_in_flight_set(node: RoadmapNodeId, lines: List<String>) -> LeafI
         absorbed_claims: 0,
         acc: roadmap_standing_acc_empty(),
       )
+    }
+  }
+}
+
+// THE SAME SET, OVER ALREADY-DECODED ENVELOPES. roadmap_leaf_in_flight_set parses the item's wire lines;
+// a surface that has already read and decoded the item's log (roadmap_events_read_all carries envelopes, not
+// the raw lines) re-derives the set here instead of opening the log a second time. The fold, the causal
+// ordering and the empty init are the ones authority's -- nothing is recomputed beside it, and an unordered
+// history refuses exactly as the lines entry does, so the two entries can never disagree.
+//
+// THE OWNERSHIP CHECK IS RUN HERE TOO, not skipped (gunb-ai/gunbc#16703 review): every envelope must be this
+// item's own event and every claimed leaf this item's own leaf, exactly the two refusals the lines entry
+// raises at its first pass. Both entries share the one judgment through roadmap_leaf_in_flight_decoded, so
+// "a foreign event" and "a foreign claimed leaf" mean the same thing on both paths (single_authority). An
+// envelope read from another item's log, or a claim naming another item's leaf, REFUSES the whole read --
+// never a silent drop, which would show an item that has held claims as one nobody claimed (fail_closed). The
+// `asked` node is the item whose log these envelopes were read from; the refusal names the foreign one.
+fn roadmap_leaf_in_flight_from_envs(node: RoadmapNodeId, envs: List<RoadmapEventEnvelope>) -> LeafInFlightRead {
+  match roadmap_leaf_in_flight_envs_owned(node: node, envs: envs, index: 0) {
+    InFlightLinesRefused { cause } => InFlightRefused { cause: cause }
+    InFlightLinesRead { envs: owned } => match roadmap_event_causal_chain(envs: owned) {
+      Absent => InFlightRefused { cause: InFlightHistoryUnordered {} }
+      Present { value: chain } => roadmap_leaf_in_flight_fold(
+        chain: chain,
+        envs: owned,
+        held: [],
+        closed: [],
+        pathless_claims: 0,
+        absorbed_claims: 0,
+        acc: roadmap_standing_acc_empty(),
+      )
+    }
+  }
+}
+
+// EVERY ENVELOPE JUDGED AGAINST THE ITEM WHOSE LOG IT WAS READ FROM, before any folding -- the envelope-side
+// mirror of roadmap_leaf_in_flight_lines, which makes the same two judgments as it decodes each text line.
+// It walks the already-decoded envelopes and runs each through roadmap_leaf_in_flight_decoded (the single
+// owner of both cross-item refusals, shared with the lines entry), refusing at the first envelope that is
+// not this item's own event or that claims a leaf belonging to another item. The index is the position in the
+// read list, so a refusal points at a real place the caller handed in.
+fn roadmap_leaf_in_flight_envs_owned(node: RoadmapNodeId, envs: List<RoadmapEventEnvelope>, index: Int) -> LeafInFlightLines {
+  match envs.first() {
+    Absent => InFlightLinesRead { envs: [] }
+    Present { value: envelope } => match roadmap_leaf_in_flight_decoded(node: node, envelope: envelope, index: index) {
+      InFlightLineRefused { cause } => InFlightLinesRefused { cause: cause }
+      InFlightLineRead { envelope: ok } => match roadmap_leaf_in_flight_envs_owned(node: node, envs: envs.skip(n: 1), index: index + 1) {
+        InFlightLinesRefused { cause } => InFlightLinesRefused { cause: cause }
+        InFlightLinesRead { envs: rest } => InFlightLinesRead { envs: concat([ok], rest) }
+      }
     }
   }
 }

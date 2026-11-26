@@ -28,15 +28,17 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 // It runs under `gunbc test //test/claim/...:all` (the native claim lane), not self-host.
 
 import std.types { Bool, Int, String, List }
-import std.optional { Present }
-import std.measure { second, second_count, minute_count }
+import std.optional { Present, Absent }
+import std.measure { second, second_count, minute, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
-import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
+import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, fleet_converge_autonomous_job_rows, FleetConvergeAutonomousJobRow, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name, gunbc_roster_gate }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_build_job, fleet_converge_plan_revision_job, fleet_converge_schedule_event, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
+import test.claim.review_sheet_converge_workflow_witness { admits_only_a_dispatch }
+import extdeps.github.expressions { serialize_expression }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow, instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow, microvm_shakedown_workflow_triggers }
 
@@ -54,14 +56,21 @@ fn poll_seconds() -> Int {
 // by its required-context id — plus the policy's own poll interval. Restoring the 2700s literal fails
 // this immediately (the authority declares 60 minutes today, not 2700 minus the poll), and the budget
 // controls cascade. The census fold itself is certified by claims 2 and 4, which consume it.
+// Since the daily schedule (gunbc.design_ruling::runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24)
+// the longest member is fleet-converge's build, read here from ITS authority, gunbc.fleet.fleet_converge_workflow,
+// which this witness can import and the census cannot: the expected bound is the larger of the two authorities'
+// own declarations plus the poll, never the census's rows.
+fn longest(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
 test fn the_wait_bound_is_the_declared_timeout_fold_plus_the_poll_interval() -> Bool {
   let boot = filter(compiler_gate_workflow.jobs, j => j.id == gunbc_required_context_name())
+  let scheduled = longest(a: job_declared_timeout_minutes(j: fleet_converge_build_job()), b: job_declared_timeout_minutes(j: fleet_converge_plan_revision_job()))
   length(boot) == 1
     && all(
       boot,
       j => job_declared_timeout_minutes(j: j) == minute_count(m: gunbc_roster_gate().timeout)
         && fleet_job_belongs_to_population(w: compiler_gate_workflow, j: j)
-        && bound_seconds() == job_declared_timeout_minutes(j: j) * 60 + poll_seconds()
+        && bound_seconds() == longest(a: job_declared_timeout_minutes(j: j), b: scheduled) * 60 + poll_seconds()
     )
     && (second_count(s: fleet_targeted_wait_bound(policy_poll_interval: runner_host_cap_drain_policy.poll_interval)) as Int) == bound_seconds()
 }
@@ -138,8 +147,10 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
   length(jobs) > 0
     && all(jobs, j => job_selects_fleet_pool(j: j))
     && any(jobs, j => j.id == gunbc_required_context_name() && job_declared_timeout_minutes(j: j) == minute_count(m: gunbc_roster_gate().timeout))
-    && any(jobs, j => job_declared_timeout_minutes(j: j) == fleet_targeted_declared_timeout_minutes())
+    && (any(jobs, j => job_declared_timeout_minutes(j: j) == fleet_targeted_declared_timeout_minutes())
+      || any(fleet_converge_autonomous_job_rows, r => (minute_count(m: r.timeout) as Int) == fleet_targeted_declared_timeout_minutes()))
     && minute_count(m: gunbc_roster_gate().timeout) <= fleet_targeted_declared_timeout_minutes()
+    && all(fleet_converge_autonomous_job_rows, r => (minute_count(m: r.timeout) as Int) <= fleet_targeted_declared_timeout_minutes())
 }
 
 // 5. THE ENCLOSING BUDGETS FOLD OVER THE BOUND AND STILL BOUND IT. host_cap_bracket_budget is the
@@ -166,8 +177,9 @@ test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> 
 // THE THREE OMITTED WORKFLOW ARTIFACTS ARE FORCED THERE, not merely declared there (review of
 // 2026-10-24: an identity check alone proves nothing about the reasons). The proof reads each
 // omission reason AT THE LEVEL IT IS STATED, by construction (side-chat ruling, 2026-10-24):
-//   - fleet_converge_workflow is a constant Workflow whose modeled 'on' set carries no autonomous
-//     trigger; if it ever grows one (a schedule, a push), it must join the fold and this goes red;
+//   - fleet_converge_workflow is a constant Workflow that DOES carry an autonomous trigger (the daily
+//     schedule): its fleet-pool jobs a schedule can start are exactly the census's declared rows, by id
+//     and declared timeout (fleet_converge_autonomous_jobs_are_exactly_the_declared_rows);
 //   - the two function-built omissions discharge on their MODULE-LEVEL TRIGGER CONSTANTS
 //     (instrument_dispatch_workflow_triggers / microvm_shakedown_workflow_triggers), which the
 //     Workflow constructors read for their 'on' field — so the 'on' set cannot depend on any
@@ -178,11 +190,48 @@ fn omission_autonomous_count_triggers(ts: List<WorkflowTrigger>) -> Int {
   length(filter(ts, t => workflow_trigger_is_autonomous(t: t)))
 }
 
-test fn fleet_converge_workflow_is_genuinely_dispatch_only_so_its_omission_holds() -> Bool {
-  length(fleet_converge_workflow.jobs) > 0
-    && length(fleet_converge_workflow.on) > 0
-    && omission_autonomous_count_triggers(ts: fleet_converge_workflow.on) == 0
+// THE DECLARED ROWS ARE THE WORKFLOW'S SCHEDULED FLEET-POOL JOBS, BOTH WAYS. A job a schedule can start is one
+// whose condition is not gated to a dispatch (test.claim.review_sheet_converge_workflow_witness admits_only_a_dispatch,
+// the same reading that witness proves no host-actuating job escapes) OR whose condition names the schedule event
+// (fleet_converge_schedule_event, serialized): a disjunction 'dispatch || schedule' contains the dispatch text, so
+// the dispatch reading alone would call it dispatch-only. The two pack producers' conditions are evaluated in
+// that witness. Every such fleet-pool job has a row at its own declared timeout, and every row names such a
+// job: a timeout edit, a newly scheduled job, or a job that stops being scheduled is RED until the row moves.
+fn job_condition_text(j: Job) -> String {
+  match j.if_condition { Present { value: v } => v  Absent => "" }
+}
+
+fn may_start_on_a_schedule(j: Job) -> Bool {
+  !admits_only_a_dispatch(j: j)
+    || string_contains(s: job_condition_text(j: j), pattern: serialize_expression(expression: fleet_converge_schedule_event))
+}
+
+fn scheduled_fleet_pool_jobs() -> List<Job> {
+  filter(fleet_converge_workflow.jobs, j => job_selects_fleet_pool(j: j) && may_start_on_a_schedule(j: j))
+}
+
+fn row_names_job(r: FleetConvergeAutonomousJobRow, j: Job) -> Bool {
+  r.job_id == j.id && (minute_count(m: r.timeout) as Int) == job_declared_timeout_minutes(j: j)
+}
+
+test fn fleet_converge_autonomous_jobs_are_exactly_the_declared_rows() -> Bool {
+  let jobs = scheduled_fleet_pool_jobs()
+  omission_autonomous_count_triggers(ts: fleet_converge_workflow.on) > 0
+    && length(jobs) > 0
+    && length(jobs) == length(fleet_converge_autonomous_job_rows)
+    && all(jobs, j => any(fleet_converge_autonomous_job_rows, r => row_names_job(r: r, j: j)))
+    && all(fleet_converge_autonomous_job_rows, r => any(jobs, j => row_names_job(r: r, j: j)))
     && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: FleetConvergeYamlArtifact))
+}
+
+// RED CONTROL: a row whose timeout disagrees with the job it names does not name it, so the equality above
+// cannot be satisfied by a stale row.
+test fn a_stale_declared_row_does_not_name_its_job() -> Bool {
+  let build = fleet_converge_build_job()
+  let rows = filter(fleet_converge_autonomous_job_rows, r => r.job_id == build.id)
+  length(rows) == 1
+    && all(rows, r => row_names_job(r: r, j: build))
+    && all(rows, r => !row_names_job(r: FleetConvergeAutonomousJobRow { job_id: r.job_id, timeout: minute(count: minute_count(m: r.timeout) + 1) }, j: build))
 }
 
 test fn the_function_built_omissions_discharge_on_their_trigger_constants() -> Bool {

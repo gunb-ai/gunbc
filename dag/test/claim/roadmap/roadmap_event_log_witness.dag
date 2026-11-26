@@ -129,6 +129,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
               && (match return_to { LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "lead@gunb.ai" && authentication_unestablished  EventPrincipalAuthenticated { ref: _ } => false })
           Released => false
           Progress { note: _ } => false
+          PullRequestMergedEvent { merge: _ } => false
           Blocked { reason: _ } => false
           AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
           AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
@@ -161,6 +162,7 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
               && (match return_to { LegacyEmailPrincipal { email, authentication_unestablished } => (email as String) == "session-a" && authentication_unestablished  EventPrincipalAuthenticated { ref: _ } => false })
           Released => false
           Progress { note: _ } => false
+          PullRequestMergedEvent { merge: _ } => false
           Blocked { reason: _ } => false
           AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
           AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false

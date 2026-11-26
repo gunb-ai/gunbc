@@ -376,7 +376,7 @@ fn fixture_evidence(
     provider_events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     provider_events_error: "",
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
-    validation_summary: "gunbc run --claim-run",
+    validation_summary: "gunbc test",
     verification_subject: subject,
     verification_selection: selection,
     verification_source: source,

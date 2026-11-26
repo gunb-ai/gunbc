@@ -1178,15 +1178,15 @@ name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]
-name = "claim_batch"
-path = "src/bin/claim_batch.rs"
+name = "claim_executor"
+path = "src/bin/claim_executor.rs"
 "#;
         assert_eq!(
             parse_stage0_cargo_manifest_bin_paths(manifest),
             Stage0CargoManifestBinParse::Parsed {
                 authored_relative_paths: vec![
                     "src/main.rs".to_string(),
-                    "src/bin/claim_batch.rs".to_string(),
+                    "src/bin/claim_executor.rs".to_string(),
                 ],
             }
         );
@@ -1815,7 +1815,7 @@ mod process_cwd_mutation_reachability_gate {
     /// NAME RESOLUTION, AND WHY IT IS NOT A BARE GLOBAL MERGE. A first cut at the crate-wide
     /// population unioned every call edge by name across all files, and that is unsound in the
     /// direction that looks safe: the crate declares `main` 18 times, `new` 13, `probe`, `fail`
-    /// and `foo` besides, so one production function reaching the mutator (`pre_push::run_inner`)
+    /// and `foo` besides, so one production function reaching a mutator
     /// bridged through those shared spellings into hundreds of unrelated tests. A wall that names
     /// `two_identical_runs_mark_nothing_unstable` as a cwd offender is the absorbing fallback
     /// gunbc.design_argument::fail_closed refuses — it cannot be acted on, so it would be silenced rather than fixed.
@@ -2625,7 +2625,7 @@ fn anchor_source_root_typed(root: &str) -> Result<String, String> {
     Ok(anchored.to_string_lossy().into_owned())
 }
 
-/// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
+/// CLI-boundary path resolution for the claim bin (`claim_executor`).
 ///
 /// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at COMPILE
 /// time (now cwd-derived at runtime, see its doc), and the shared pipeline (`pool_roots_abs`)
@@ -2707,7 +2707,7 @@ mod cli_path_arg_resolution_tests {
     #[test]
     fn relative_arg_at_workspace_root_passes_through_unchanged() {
         let ws = workspace_root();
-        let resolved = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &ws)
+        let resolved = resolve_cli_path_arg_against("claim_executor", "--source-root", "dag", &ws)
             .expect("`dag` exists under the workspace root");
         assert_eq!(resolved, "dag");
     }
@@ -2721,7 +2721,7 @@ mod cli_path_arg_resolution_tests {
         std::fs::create_dir_all(base.join("dag")).expect("create fixture tree");
         std::fs::write(base.join("dag/mini.dag"), "module mini\n").expect("write fixture module");
 
-        let root = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &base)
+        let root = resolve_cli_path_arg_against("claim_executor", "--source-root", "dag", &base)
             .expect("fixture tree exists under the fixture cwd");
         assert_eq!(root, base.join("dag").to_string_lossy());
         assert_ne!(
@@ -2729,8 +2729,9 @@ mod cli_path_arg_resolution_tests {
             "must absolutize away from the baked-root anchor"
         );
 
-        let entry = resolve_cli_path_arg_against("claim_batch", "--entry", "dag/mini.dag", &base)
-            .expect("fixture entry exists under the fixture cwd");
+        let entry =
+            resolve_cli_path_arg_against("claim_executor", "--entry", "dag/mini.dag", &base)
+                .expect("fixture entry exists under the fixture cwd");
         assert_eq!(entry, base.join("dag/mini.dag").to_string_lossy());
 
         let _ = std::fs::remove_dir_all(&base);
@@ -2745,9 +2746,9 @@ mod cli_path_arg_resolution_tests {
         std::fs::create_dir_all(&base).expect("create empty fixture cwd");
         // `dag` exists under the baked workspace root but NOT under `base`; a baked-root
         // fallback would return Ok here — the refusal is the proof there is none.
-        let err = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &base)
+        let err = resolve_cli_path_arg_against("claim_executor", "--source-root", "dag", &base)
             .expect_err("missing path must refuse, never fall back to the baked root");
-        assert!(err.contains("claim_batch"), "names the binary: {err}");
+        assert!(err.contains("claim_executor"), "names the binary: {err}");
         assert!(err.contains("--source-root"), "names the argument: {err}");
         assert!(err.contains("dag"), "names the given value: {err}");
         assert!(
@@ -3634,9 +3635,9 @@ impl ModuleIndexRefusal {
     }
 }
 
-/// The exit arm for the INFALLIBLE index consumers (floor, `claim_batch`, `claim_executor`,
-/// census, compile): a refusal set stops the line with exit 1, counted and located, exactly as the
-/// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
+/// The exit arm for the INFALLIBLE index consumers (floor, `claim_executor`, census, compile): a
+/// refusal set stops the line with exit 1, counted and located, exactly as the unparseable arm
+/// always did; the header-less and unreadable causes join it. The exit class is
 /// those consumers' standing contract and is not changed here. A caller that answers "what did
 /// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
 fn refuse_module_index(refusals: &[ModuleIndexRefusal]) {
@@ -5723,7 +5724,7 @@ pub struct ModuleGraphFactsLive {
     /// That makes it the release-live witness for "this scratch's facts ARE the underlay's
     /// facts": a content comparison of two clones could agree while the underlying builds
     /// differed, and a `debug_assert_eq!` is compiled out exactly where the census runs
-    /// (every `claim_batch` build is `--release`). Read by `MultiEntryIndex::pool_identity_proof`.
+    /// (every census build is `--release`). Read by `MultiEntryIndex::pool_identity_proof`.
     pub(crate) build_id: u64,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
@@ -16536,25 +16537,6 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
-/// The exact source-path population the entry loader will hand to resolution.
-///
-/// This stops at the loader boundary: it runs the same import, qualified-reference, and bare-name
-/// fixpoint as `resolve_entry_with_index`, but does not parse, typecheck, reconcile, or evaluate the
-/// resulting modules. A caller deciding whether a changed path intersects an entry can therefore
-/// ask the real loader before paying for the downstream work it is trying to avoid.
-pub fn entry_closure_source_paths(
-    index: &MultiEntryIndex,
-    entry: &str,
-) -> Result<Vec<String>, String> {
-    let mut paths: Vec<String> = load_sources_for_entry_with_pool(index, entry)?
-        .iter()
-        .map(|source| workspace_relative_repo_path(&source.path))
-        .collect();
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
-}
-
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
@@ -16735,10 +16717,7 @@ mod panic_payload_kind_tests {
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure =>
     // ExitFailure carrying its typed reason). NotProcessExit stays NotBool — fail-closed
-    // preserved for genuine type errors. Reuses pre-existing classify_exit. Required: emitted
-    // pre-push drift --wet gate runs through claim_batch -> run_claim; without this mapping
-    // ExitSuccess -> exit 1 false-blocks push (receipt: claim_batch rebuilt on reverted seed
-    // reproduced the false-block).
+    // preserved for genuine type errors. Reuses pre-existing classify_exit.
     // A path left by an error some earlier evaluation absorbed must not be read as this one's.
     let _ = v1_interpreter::take_raise_path();
     let evaluated = match run_claim_evaluation(ctx, function) {
@@ -17339,15 +17318,6 @@ pub fn run_value(
     function: &str,
 ) -> Result<v1_interpreter::Value, String> {
     v1_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
-}
-
-#[path = "pre_push.rs"]
-mod pre_push;
-
-/// Thin CLI transport handler for `claim_batch --pre-push`: stdin parse and gate
-/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks.githooks_pre_push_cli`.
-pub fn handle_pre_push() -> std::process::ExitCode {
-    pre_push::run()
 }
 
 /// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically
@@ -17982,6 +17952,179 @@ fn bootstrap_invocation_receipt_path(receipt_root: &str) -> Result<std::path::Pa
         .join(format!("receipt-{}-{sequence}", std::process::id())))
 }
 
+/// THE SEED'S BUILD IDENTITY IS BOUND BY THE BINARY, NOT READ BY THIS LIBRARY. A compile-time read
+/// of `GUNBC_BUILD_IDENTITY` here made the library's compilation depend on the commit, so every
+/// commit recompiled it. The retained-host main binds the value once, before dispatch; a bootstrap
+/// operation reached with nothing bound refuses rather than writing a receipt that names no seed.
+/// It crosses here rather than as a dispatch argument because the generated dispatch's call
+/// signature is emitted surface: changing it beside this hand-written callee is a change heal's
+/// round 1 cannot build (#gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair::heal_round_one_bootstraps_from_the_mirror_the_change_must_repair).
+static SEED_BUILD_IDENTITY: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Bind the running binary's build identity. A second bind with a different value refuses: one
+/// process has one seed.
+pub fn bind_seed_build_identity(identity: &'static str) {
+    let bound = *SEED_BUILD_IDENTITY.get_or_init(|| identity);
+    if bound != identity {
+        eprintln!(
+            "REFUSED: seed build identity bound twice with different values ({bound} then {identity})"
+        );
+        std::process::exit(2);
+    }
+}
+
+/// THE ONE ROUTE BY WHICH THE CLI EXECUTES A NAMED `.dag` FUNCTION: resolve the entry's
+/// demand-acquired closure SCOPED to the requested functions, report where the pre-entry time
+/// went, and build the evaluation context. `gunbc run` (`main.rs` `run_verb`) and every
+/// bootstrap operation row (`run_bootstrap_dag_operation`) reach evaluation through here and
+/// nowhere else, so there is one resolve for executing a function, not one per verb.
+///
+/// `functions` are the designations the caller will execute, bare (`main`) or qualified
+/// (`a.b.entry`). The typecheck's `ReachableFrom` scope seeds on AUTHORED declaration names
+/// (`v1.compiler.infer` `realization_names`), so the scope is seeded with each designation's
+/// last segment -- the same reading `realization_includes` gives a qualified name. Seeding with
+/// the qualified spelling would match no declaration and realize nothing the function demands.
+///
+/// There is no fallback to the whole-tree `resolve_entry_graph`: a closure that does not settle
+/// refuses with the resolve's own located cause. The resolve already refuses every
+/// interpreter-blocking diagnostic in the settled graph, so no second gate follows it.
+#[allow(clippy::type_complexity)]
+pub fn load_entry_for_functions(
+    source_roots: &[String],
+    entry_file: &str,
+    functions: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        v1_interpreter::InterpContext,
+    ),
+    String,
+> {
+    let resolve_started = std::time::Instant::now();
+    let requested: Vec<String> = functions
+        .iter()
+        .map(|designation| {
+            designation
+                .rsplit('.')
+                .next()
+                .unwrap_or(designation)
+                .to_string()
+        })
+        .collect();
+    let resolved = resolve_entry_graph_demand_acquired_scoped(source_roots, entry_file, &requested);
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
+    let (graph, source_indices) = resolved?;
+    let ctx = make_eval_context(graph.as_ref(), source_indices, execution_mode);
+    Ok((graph, ctx))
+}
+
+/// Why a named function loaded by [`load_entry_for_functions`] produced no value. Three causes,
+/// kept apart because their callers map them to different statuses: an absent declaration and a
+/// failed evaluation are failed runs, a refused argument is no observation at all.
+pub enum NamedFunctionRefusal {
+    /// The loaded closure declares no function with this designation.
+    FunctionAbsent,
+    /// A named text argument the function's declared parameter types do not admit.
+    ArgumentRefused(String),
+    /// The interpreter refused the evaluation.
+    EvaluationFailed(v1_interpreter::InterpError),
+}
+
+/// Execute one named function over a loaded entry, binding named text arguments against the
+/// function's DECLARED parameter types (`bind_run_args_for_entry`, the one binder for argv text).
+pub fn run_named_function(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+    text_args: &[(String, String)],
+) -> Result<v1_interpreter::Value, NamedFunctionRefusal> {
+    if v1_interpreter::declared_parameter_names(ctx, function).is_none() {
+        return Err(NamedFunctionRefusal::FunctionAbsent);
+    }
+    let bound = bind_run_args_for_entry(ctx, function, text_args)
+        .map_err(NamedFunctionRefusal::ArgumentRefused)?;
+    v1_interpreter::run_in_context_with_args(ctx, function, &bound, true)
+        .map_err(NamedFunctionRefusal::EvaluationFailed)
+}
+
+/// Print the pre-entry phase receipt (`pre_entry_phase`): the tree-scaled phases recorded where
+/// they ran, then the closure-scaled resolve stages from `ResolveStageNanos`, then the inclusive
+/// resolve window they sit inside. Printed whether resolve succeeded or refused, because a
+/// refusal after minutes of preparation is exactly the run whose cost the operator most needs
+/// attributed.
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
+    use pre_entry_phase::{record, take_lines, PhaseScale};
+    let st = resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    // Reconcile sub-rows whose INPUT is the pool, not the closure: per source root
+    // the same-tree bare underlay and its variant base. They sit inside reconcile but
+    // outside every closure row above, so without these lines a small-closure run
+    // reported seconds of tree-scale work as an unexplained gap between the phase sum
+    // and `resolve_entry_graph_inclusive`.
+    for (name, nanos) in [
+        (
+            "reconcile_root_bare_underlay",
+            st.assembly_root_symbol_index,
+        ),
+        ("reconcile_root_variant_base", st.assembly_root_variant_base),
+    ] {
+        record(name, pre_entry_phase::index_scale(), ns(nanos));
+    }
+    record(
+        "resolve_entry_graph_inclusive",
+        PhaseScale::Closure,
+        resolve_inclusive,
+    );
+    for line in take_lines() {
+        eprintln!("{line}");
+    }
+    // POPULATIONS beside the times: `pool_modules` is the whole-tree indexed pool
+    // (or `refused` when that index was never built — demand-acquired `gunbc run`
+    // does not walk it). `demand_acquired_modules` is the layout-closure set.
+    // `closure_files` is the resolved graph's source-index size.
+    let pool_modules = pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
+    let demand =
+        pre_entry_phase::demand_acquired_modules().map_or("refused".to_string(), |n| n.to_string());
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!(
+        "[pre-entry] population pool_modules={pool_modules} closure_files={closure} demand_acquired_modules={demand}"
+    );
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec * 1000 + t.tv_usec / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            peak_rss_vhwm_bytes().map_or("refused".to_string(), |b| (b / 1024).to_string())
+        );
+    }
+}
+
 /// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
 /// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
 /// this declaration knows only source/declaration identity, named String bindings, an internal
@@ -17996,6 +18139,12 @@ pub fn run_bootstrap_dag_operation(
     receipt_parameter: &str,
     receipt_root: &str,
 ) -> ! {
+    let Some(seed_identity) = SEED_BUILD_IDENTITY.get().copied() else {
+        eprintln!(
+            "REFUSED: no seed build identity was bound before dispatch, so a bootstrap receipt could not name the seed that ran it"
+        );
+        std::process::exit(2);
+    };
     if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
         eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
         std::process::exit(2);
@@ -18008,55 +18157,46 @@ pub fn run_bootstrap_dag_operation(
         }
     };
     let receipt_path = receipt_path.to_string_lossy().into_owned();
-    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry_path) {
-        Ok(resolved) => resolved,
+    public_operands.push((receipt_parameter.to_string(), receipt_path.clone()));
+    // THE RUN ROUTE, NOT A SECOND DRIVER. This operation used to resolve the WHOLE TREE
+    // (`resolve_entry_graph`) and typecheck every declaration in it before evaluating one
+    // function; `gunbc run` resolves the entry's demand-acquired closure scoped to the requested
+    // function. Same entry, same function, same arguments, same binary (srv1, main a58ba3e3):
+    // `gunbc converge` had not finished planning after 45 min, `gunbc run --function
+    // fleet_converge_operator_cli_entry` finished in 13.2 min. A verb is a row bound to the one
+    // execution route; what is this operation's own is only the receipt channel below.
+    let qualified_declaration = format!("{declaration_module}.{declaration_name}");
+    let ctx = match load_entry_for_functions(
+        source_roots,
+        entry_path,
+        std::slice::from_ref(&qualified_declaration),
+        v1_interpreter::ExecutionMode::Wet,
+    ) {
+        Ok((_graph, ctx)) => ctx,
         Err(cause) => {
             eprintln!("REFUSED: bootstrap operation resolve failed at `{entry_path}`: {cause}");
             std::process::exit(1);
         }
     };
-    if graph
-        .diagnostics
-        .iter()
-        .any(|diagnostic| is_interpreter_blocking_diagnostic(diagnostic.diagnostic.clone()))
-    {
-        eprintln!("REFUSED: bootstrap operation `{entry_path}` has blocking diagnostics");
-        std::process::exit(1);
-    }
-    let declaration_present = graph.item_registry.values().any(|item| {
-        item.module_name == declaration_module
-            && item.name == declaration_name
-            && matches!(item.kind, ItemKind::FnItem)
-    });
-    if !declaration_present {
-        eprintln!(
-            "REFUSED: bound bootstrap declaration `{declaration_module}.{declaration_name}` \
-             is absent from `{entry_path}`"
-        );
-        std::process::exit(1);
-    }
-    public_operands.push((receipt_parameter.to_string(), receipt_path.clone()));
-    let arguments = public_operands
-        .into_iter()
-        .map(|(name, value)| (Some(name), str_value(value)))
-        .collect::<Vec<_>>();
-    let ctx = make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let qualified_declaration = format!("{declaration_module}.{declaration_name}");
-    let terminal = match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        &qualified_declaration,
-        &arguments,
-        true,
-    ) {
+    let terminal = match run_named_function(&ctx, &qualified_declaration, &public_operands) {
         Ok(value) => classify_exit(&value, &ctx),
-        Err(error) => {
+        Err(NamedFunctionRefusal::FunctionAbsent) => {
             eprintln!(
-                "REFUSED: bootstrap operation `{declaration_module}.{declaration_name}` \
-                 evaluation failed: {error:?}"
+                "REFUSED: bound bootstrap declaration `{qualified_declaration}` \
+                 is absent from `{entry_path}`"
+            );
+            std::process::exit(1);
+        }
+        Err(NamedFunctionRefusal::ArgumentRefused(cause)) => {
+            eprintln!(
+                "REFUSED: bootstrap operation `{qualified_declaration}` refused its modeled \
+                 bindings: {cause}"
+            );
+            std::process::exit(2);
+        }
+        Err(NamedFunctionRefusal::EvaluationFailed(error)) => {
+            eprintln!(
+                "REFUSED: bootstrap operation `{qualified_declaration}` evaluation failed: {error:?}"
             );
             std::process::exit(1);
         }
@@ -18072,7 +18212,6 @@ pub fn run_bootstrap_dag_operation(
     if !receipt.ends_with('\n') {
         println!();
     }
-    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
     match terminal {
         ExitClass::Success => {
             eprintln!(
@@ -20592,6 +20731,18 @@ pub fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
 /// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
 /// module name (read off the `module` line by the module index), which is what the claim's label
 /// is minted from (`gunbc.discovery_census` `site_label`).
+/// One member's result in the claim route -- the route's OWN outcome type, deliberately NOT a
+/// `ClaimOutcome` variant. A member either reports what the runner evaluated, or reports the typed
+/// reason its entry could not be resolved at all.
+///
+/// Reusing `ClaimOutcome::NotAttempted` for a resolve failure would give one name two meanings: it is
+/// documented as "planned, never reached, because a sibling claim's unwind stopped the line," with
+/// `halted_by` naming the claim whose panic stopped it -- which the floor and CI renderers read that
+/// way. A resolve refusal is not that (`gunbc.design_argument::single_authority`), so the route carries
+/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority already
+/// sets: a closure diagnostic is a finding (did not hold); a missing entry or infrastructure refusal is
+/// no observation. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimRouteMember {
     pub module_path: String,
     pub function: String,
@@ -20650,6 +20801,33 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
     format!("claim source refused: {path}{tail}")
 }
 
+/// The module paths the claim route's corpus holds, read from the same process-shared index
+/// `run_claim_route` reads, so asking costs the walk the route would take anyway. It answers
+/// `gunbc.target_invocation` `admit_resolvable_exact_targets`'s `module_resolves`.
+pub fn claim_route_module_paths(
+    source_roots: &[String],
+) -> Result<std::collections::HashSet<String>, String> {
+    // The same fallible walk `run_claim_route` takes first, so an unreadable or unparseable source
+    // is refused here with the route's own located causes, not read as a corpus without that module.
+    if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
+        return Err(format!(
+            "{} unreadable claim source(s):\n  {}",
+            refusals.len(),
+            refusals
+                .iter()
+                .map(ModuleIndexRefusal::rendered)
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        ));
+    }
+    let index = entry_resolve::try_process_shared_index(source_roots)?;
+    Ok(index
+        .source_files
+        .iter()
+        .map(|(module_path, _)| module_path.clone())
+        .collect())
+}
+
 /// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
 /// reach, then the floor's claim evaluation over the claims it selects.
 ///
@@ -20670,10 +20848,49 @@ pub fn run_claim_route(
     source_roots: &[String],
     module_selected: &dyn Fn(&str) -> bool,
     claim_selected: &dyn Fn(&str, &str) -> bool,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
 ) -> Result<Vec<ClaimRouteMember>, String> {
     // The ONE module-index walk, taken fallibly: an unreadable source is no observation, not a
     // wrong label and not a failed claim. The walk fills the shared path-index cache on success,
     // so the resolves below read it instead of walking again.
+    // THE OPTION'S OWN ADMISSION, TAKEN BEFORE ANY WORK. `--source-root` is an option this change
+    // adds, so its admission is this change's to own: a corpus root the route cannot read -- an
+    // absolute path outside the checkout, a traversal out of it, or a path that is not a directory
+    // there -- is refused HERE, typed and located, at the layer that received the word. It is
+    // never an unwind inside path normalization (the state that printed
+    // `repo_relative_path_normalized: ... is not under ...` with rc=101), and never a quiet
+    // fallback to the default corpus: a route that cannot honour the corpus it was asked to read
+    // refuses rather than reading another one and reporting the standing anyway.
+    {
+        let workspace = std::env::current_dir()
+            .map_err(|e| format!("cause=ClaimRouteWorkspaceUnresolved detail=\"{e}\""))?;
+        let base = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.clone());
+        for root in source_roots {
+            let spelled = std::path::Path::new(root.as_str());
+            let candidate = if spelled.is_absolute() {
+                spelled.to_path_buf()
+            } else {
+                base.join(spelled)
+            };
+            let under = match candidate.canonicalize() {
+                Ok(real) => real.is_dir() && real.starts_with(&base),
+                Err(_) => false,
+            };
+            if !under {
+                return Err(format!(
+                    "cause=ClaimRouteSourceRootOutsideWorkspace root={root} \
+                     workspace={} — --source-root names the claim corpus relative to the \
+                     checkout; a root that is not a directory under it (absolute outside, \
+                     escaping, or absent) is a refusal at the option's admission, not a \
+                     fallback to the default corpus and not a panic.",
+                    base.display()
+                ));
+            }
+        }
+    }
     if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
         return Err(format!(
             "{} unreadable claim source(s) — no observation:\n  {}",
@@ -20765,10 +20982,17 @@ pub fn run_claim_route(
                 }
             }
             Ok(((graph, source_indices), closure_subject)) => {
-                let ctx = make_eval_context(
+                // THE ONE EXECUTION MODE THE BATCH ASKED FOR. The hard-coded Hermetic here was the
+                // route's whole story: it could not run a wet or recorded claim, which is why
+                // `claim_batch` had to exist for those. The mode now arrives from the invocation
+                // through `cli_run::execution_mode_for` (whose default for a claim is still Hermetic,
+                // so an unspelled batch behaves exactly as before); a mode this route could not honour
+                // is refused at admission and never reaches here.
+                let ctx = make_eval_context_with_fixture_store(
                     &graph,
                     source_indices,
-                    v1_interpreter::ExecutionMode::Hermetic,
+                    execution_mode,
+                    fixture_store.clone(),
                 );
                 for function in functions {
                     let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);

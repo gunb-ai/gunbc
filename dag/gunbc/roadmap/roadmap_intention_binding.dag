@@ -46,9 +46,39 @@ data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
 data new_server_bringup_intention: String = "gunbc.plans.new_server_bringup"
 data gunbhub_source_of_truth_intention: String = "gunbc.plans.gunbhub_source_of_truth"
+data github_actions_retirement_intention: String = "gunbc.plans.github_actions_retirement"
 data demand_engine_intention: String = "gunbc.plans.demand_engine_program"
+data gunb_ai_served_from_gunbc_intention: String = "gunbc.plans.gunb_ai_served_from_gunbc"
+data remote_build_bandwidth_intention: String = "gunbc.plans.remote_build_bandwidth"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
+  // #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan; its work items are the
+  // remote-build/serving rows below. Layer is the plan's dependency reading: layer 0 is the general
+  // fixes every host needs, layer 1 is per host, layer 2 is what one host's service makes possible.
+  serves(node: "remote-build-census-refused-reservation-never-charges", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-census-reports-every-unknown", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-request-host-wall-bounds", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "serving-capacity-ledger-owner-per-host", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-shadow-gate-remote-steps-run", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-serving-precondition-survey-route", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "fleet-converge-dispatch-admission-step-slim-entry", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "serving-observe-assesses-installed-revision", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "serving-converge-applied-then-refused-is-typed", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "fleet-drain-jobs-join-host-mutation-group", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-client-pin-reaches-sessions", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "serving-build-pool-for-zero-ci-host", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "gunbc-entries-resolve-checked-in-ci", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-census-proves-ended-without-root-cgroup-events", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-run-level-leg-budget", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-srv1-serves", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
+  serves(node: "remote-build-srv3-serves", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
+  serves(node: "remote-build-srv4-serves", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
+  serves(node: "remote-build-ken-serves", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
+  serves(node: "remote-build-butch-serves", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
+  serves(node: "remote-build-serving-probe-ceiling-from-host-read", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
+  serves(node: "remote-build-client-closure-cost", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
+  serves(node: "remote-build-served-attempt-host-log-read", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
+  serves(node: "remote-build-executes-the-bound-source", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   // #gunbc.plans.fabric_market::fabric_market_plan: layer is the edge depth within the intention.
   serves(node: "market-fix-upstream-model", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
   serves(node: "execution-uncertainty-one-carrier", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
@@ -114,6 +144,9 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "2-scm-p0-landing-spine", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 2),
   serves(node: "gunbhub-simple-frontend", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 3),
   serves(node: "gunbhub-authoritative-cutover", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 4),
+  // gunbc.plans.github_actions_retirement: layer is the edge depth (keen-dove-217, 2026-11-24).
+  serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 0),
+  serves(node: "github-actions-deleted", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 1),
   // gunbc.plans.claim_execution_consolidation: layer is the edge depth.
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
   serves(node: "claim-entrypoints-cutover", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 1),
@@ -220,6 +253,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "roadmap-dispatch-carries-leaf", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
   serves(node: "roadmap-typed-handback", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
   serves(node: "roadmap-work-item-projection", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
+  serves(node: "roadmap-work-item-projection-unbound-coverage", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
   serves(node: "roadmap-timeline-page", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 6),
   serves(node: "roadmap-return-to-principal-records-acceptance", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
   // gunbc.plans.desired_state_follows_the_machine (operator's tiered breakage report, 2026-11-21). The
@@ -254,6 +288,9 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "schedulers-on-the-engine", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 1),
   serves(node: "reuse-decided-by-measurement", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 2),
   serves(node: "a-change-pays-only-for-what-it-invalidates", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 3),
+  // gunbc.plans.gunb_ai_served_from_gunbc (2026-11-24): the cutover, then the refresh that waits on it.
+  serves(node: "gunb-ai-deploy-cutover", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 0),
+  serves(node: "gunb-ai-content-refresh", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 1),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -266,6 +303,10 @@ type IntentionTerminals {
 }
 
 data intention_terminals: List<IntentionTerminals> = [
+  // Every bound row reaches one of these: the layer-1 hosts that serve, the layer-2 rows that end a path,
+  // and the layer-0 rows nothing else in this intention depends on. srv3-serves is NOT a terminal: it is
+  // the read the probe-ceiling row depends on.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.remote_build_bandwidth", decl_name: "remote_build_bandwidth_plan"), terminals: [nid(s: "remote-build-srv1-serves"), nid(s: "remote-build-srv4-serves"), nid(s: "remote-build-ken-serves"), nid(s: "remote-build-butch-serves"), nid(s: "remote-build-serving-probe-ceiling-from-host-read"), nid(s: "remote-build-client-closure-cost"), nid(s: "remote-build-served-attempt-host-log-read"), nid(s: "remote-build-executes-the-bound-source"), nid(s: "remote-build-serving-precondition-survey-route"), nid(s: "remote-build-client-pin-reaches-sessions"), nid(s: "fleet-drain-jobs-join-host-mutation-group"), nid(s: "serving-observe-assesses-installed-revision"), nid(s: "serving-converge-applied-then-refused-is-typed"), nid(s: "gunbc-entries-resolve-checked-in-ci"), nid(s: "fleet-converge-dispatch-admission-step-slim-entry"), nid(s: "remote-build-run-level-leg-budget")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.fabric_market", decl_name: "fabric_market_plan"), terminals: [nid(s: "fabric-market-convergence")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
@@ -309,6 +350,10 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.new_server_bringup", decl_name: "new_server_bringup_plan"), terminals: [nid(s: "bobo-onboarding-end-to-end"), nid(s: "redfish-boot-once-live-route"), nid(s: "bmc-generic-protocol-family"), nid(s: "bmc-located-from-site-network"), nid(s: "bmc-secure-live-rotation"), nid(s: "boot-nic-from-observation"), nid(s: "install-method-selection-consumed"), nid(s: "fleet-admission-hand-lists-fold"), nid(s: "install-chain-selected-by-content"), nid(s: "install-adoption-of-installed-units"), nid(s: "edge-concurrent-install-offers")] },
   // gunbhub_source_of_truth's terminal is its cutover; every bound row reaches it along dependency edges.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.gunbhub_source_of_truth", decl_name: "gunbhub_source_of_truth_plan"), terminals: [nid(s: "gunbhub-authoritative-cutover")] },
+  // github_actions_retirement's terminal is the deletion milestone.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.github_actions_retirement", decl_name: "github_actions_retirement_plan"), terminals: [nid(s: "github-actions-deleted")] },
+  // gunb_ai_served_from_gunbc's one line ends at the refresh, which waits on the cutover along the prerequisite edge.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.gunb_ai_served_from_gunbc", decl_name: "gunb_ai_served_from_gunbc_plan"), terminals: [nid(s: "gunb-ai-content-refresh")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {

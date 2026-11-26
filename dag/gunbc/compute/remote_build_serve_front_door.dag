@@ -1,0 +1,224 @@
+module gunbc.compute.remote_build_serve_front_door
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.gunbc
+import product.host_identity { HostIdentity }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
+import gunbc.compute.remote_build_wire {
+  RemoteBuildServeEnding, ServeReady, ServeRequestRefused, ServeHostCannotServe,
+  ServeServed, ServeWorkEndedUnsuccessfully, ServeWorkInFlight,
+  remote_build_protocol_word, remote_build_leg_is_probe, remote_build_serve_answer,
+  remote_build_ending_of_answer,
+  RemoteBuildHandOff, remote_build_serve_hand_off, remote_build_ssh_command_variable,
+}
+import gunbc.compute.remote_build_serve_principal {
+  RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
+  remote_build_serve_probe_principal,
+}
+
+// THE FRONT DOOR: the entry sshd RUNS, which answers the probe and hands everything else to the
+// serving entry.
+//
+// WHY A LEG PAID 240 SECONDS FOR A CONSTANT, AND WHY THE FIX IS AN ENTRY AND NOT A CACHE.
+// `gunbc run` resolves the requested entry's demand-acquired import closure before it runs any
+// function (src/v1/stage0/src/main.rs run_verb -> cli_run::resolve_entry_graph_demand_acquired_scoped,
+// reported as resolve_entry_graph_inclusive). The engine already scopes that resolve to the ENTRY
+// MODULE: it owes the bodies of what the requested function reaches, and no more. The route paid
+// 248,554 ms over 895 modules at 3.8 GiB for a probe that prints a constant because the probe's
+// words and the probe's answer were declared inside the request module -- so the probe's demand
+// graph included fetch, the seed build, the provider and the ledger, and the probe entry was the
+// request module (srv1, 2026-11-25, calm-wren-314). The fix is therefore the engine's own
+// boundary, used correctly: put the probe behind a door whose closure stops at the probe
+// (gunbc.design_argument::demand_before_materialization -- the cost was the demand graph, so the
+// answer removes the demand rather than caching its result, suppressing a deletion signal, or
+// holding a process open to amortize it).
+//
+// WHAT THE DOOR ESTABLISHES BEFORE IT ANSWERS A PROBE, and what it does not. It answers only after
+// (a) the host is on the serving row -- gunbc.compute.remote_build_hosts remote_build_serving_hosts,
+// the SAME row the roster's serving instances are built from, so this is not a second standing --
+// and (b) the process's own ACCOUNT half of the principal judgment admits it
+// (gunbc.compute.remote_build_serve_principal remote_build_serve_probe_principal: this uid is the
+// declared remote-build account, its declared supplementary groups are held, the ledger group is
+// held by its declared gid). What it does NOT check is the LEDGER half -- whether /etc/group lists
+// the host's ledger service user as a member -- because that is the host's ledger standing, a fact a
+// reservation needs and a reachability answer does not (clever-raven-401, 2026-11-25). Narrowing it
+// away is only admissible because a request refused for that reason still arrives at the serving
+// entry, which answers ServeHostCannotServe, which the client reads as "try the next host"
+// (gunbc.compute.remote_build remote_build_answer_of_ending) -- never as an unknown outcome that
+// stops the walk. The claim pair
+// dag/test/claim/compute/remote_build_serve_front_door_witness.dag pins exactly that: the same
+// reading of /etc/group that the request path refuses, the probe answers ready, and the ending the
+// client would see is one that moves the request on.
+//
+// THE HAND-OFF IS A RUN, NOT AN INTERPRETATION. The door never decodes a request, never reads the
+// ledger, and never decides an ending for a request: for anything that is not the probe it runs the
+// serving entry with the forced command's own argv (gunbc.compute.remote_build_wire
+// remote_build_serve_hand_off -- the same rendering the authorized_keys line uses) and forwards that
+// child's answer bytes and exit code UNCHANGED. Two properties are held:
+//   * the bytes and the code the client reads for a served, refused or full answer are the child's,
+//     so the ending vocabulary has one author, the serving entry; and
+//   * the client's own command never travels to the child: the child's request arrives only as the
+//     inherited SSH_ORIGINAL_COMMAND, which sshd set and the door does not re-send. The door reads
+//     that variable to recognize the probe and for nothing else, so a client cannot aim the hand-off
+//     at anything -- the child is fixed data in the wire module, never an argument.
+//
+// THE ONE LOSS, STATED. There is no stdio-inheriting seam in this repository's tool vocabulary
+// (every shell seam captures: extdeps.shell.exec, extdeps.gunbc, gunbc.compute.work_provider_local),
+// so the child's stderr arrives here captured rather than on the channel. It is forwarded into the
+// bytes the door prints EXACTLY WHEN IT IS EVIDENCE -- whenever the child did not answer with a
+// receipt the client parses (no header at all, or an ending whose body is a refusal detail). For the
+// three endings whose body IS the provider's document the child's stderr is dropped, because folding
+// it in would corrupt the receipt the client reads from that body. Nothing the client DECIDES on is
+// lost: it decides on the header and the exit code, both forwarded verbatim.
+//
+// THE COST OF THE DOOR ITSELF, measured rather than claimed: the tally in
+// dag/test/claim/compute/remote_build_serve_front_door_witness.dag. Its import closure is a census of this
+// file's imports, and the discriminating control is that importing the request module here -- the one
+// module this door exists to keep out -- turns that claim red.
+
+// ── THE TURN: what the door does with one connection ────────────────────────────────────────────────
+type RemoteBuildFrontDoorTurn
+  = FrontDoorAnswer { ending: RemoteBuildServeEnding, detail: String }
+  | FrontDoorHandOffToChild { hand_off: RemoteBuildHandOff }
+
+// THE DECISION, PURE: the connection's own facts in, the door's turn out. Everything effectful is the
+// caller's, so the whole front door -- probe answers and hand-off alike -- is readable without a host.
+fn remote_build_serve_front_door_turn(
+  host: String,
+  serve_binary: String,
+  repo_root: String,
+  raw_command: String?,
+  principal: RemoteBuildServePrincipal,
+) -> RemoteBuildFrontDoorTurn {
+  if serve_binary == "" || repo_root == "" || host == "" {
+    // The words came from the roster through remote_build_serve_front_door_run_words and arrived
+    // emptied. This host cannot serve what it was not told to run; the walk moves on rather than the
+    // door guessing a path (gunbc.design_argument::fail_closed).
+    FrontDoorAnswer {
+      ending: ServeHostCannotServe,
+      detail: "remote-build: the front door was rendered without a binary, a checkout or a host",
+    }
+  } else if !starts_with(s: serve_binary, prefix: "/") || !starts_with(s: repo_root, prefix: "/") {
+    FrontDoorAnswer {
+      ending: ServeHostCannotServe,
+      detail: "remote-build: the front door was given a binary or a checkout that is not a path",
+    }
+  } else if !remote_build_host_is_serving(host: host as HostIdentity) {
+    // The same sentence the serving entry gives for this fact, so one fact has one spelling however
+    // many entries read it; the ending is the one that moves the request to the next host.
+    FrontDoorAnswer {
+      ending: ServeHostCannotServe,
+      detail: concat("remote-build: the roster has no serving instance for host ", host),
+    }
+  } else {
+    match raw_command {
+      Absent => FrontDoorAnswer {
+        ending: ServeRequestRefused,
+        detail: concat("remote-build: no request (", remote_build_ssh_command_variable as String, " is unset)"),
+      }
+      Present { value: raw } =>
+        if remote_build_leg_is_probe(raw: raw) {
+          remote_build_serve_front_door_probe_answer(host: host, principal: principal)
+        } else if !starts_with(s: trim(s: raw), prefix: remote_build_protocol_word as String) {
+          // Words that do not even name the contract never reach the build binary. The client sends
+          // the protocol word first (gunbc.compute.remote_build remote_build_request_words); anything
+          // else is somebody else's command, and the refusal is the request's own fault, which is
+          // final -- exactly what the serving entry would have said.
+          FrontDoorAnswer {
+            ending: ServeRequestRefused,
+            detail: "remote-build: the request does not name the remote-build contract",
+          }
+        } else {
+          FrontDoorHandOffToChild {
+            hand_off: remote_build_serve_hand_off(
+              serve_binary: serve_binary as NonEmptyStr,
+              repo_root: repo_root as NonEmptyStr,
+              host: host,
+            ),
+          }
+        }
+    }
+  }
+}
+
+// THE PROBE'S ANSWER, from the account half alone. Admitted answers ready; every refusal is
+// ServeHostCannotServe, the one ending in this vocabulary that the client reads as "this host is not
+// serving, ask the next one" (gunbc.compute.remote_build remote_build_probe_answer). It is never an
+// absence: an absent probe answer is what a wedged host leaves behind, and it costs the whole walk.
+fn remote_build_serve_front_door_probe_answer(host: String, principal: RemoteBuildServePrincipal) -> RemoteBuildFrontDoorTurn {
+  match principal {
+    RemoteBuildServePrincipalRefused { reason } => FrontDoorAnswer {
+      ending: ServeHostCannotServe,
+      detail: concat("remote-build: the front door will not answer the probe: ", reason),
+    }
+    RemoteBuildServePrincipalAdmitted => FrontDoorAnswer {
+      ending: ServeReady,
+      // The door names what it read: the host it was rendered for, and the principal it admitted. It
+      // does NOT name an instance, a capacity home or a ledger -- it read none of them, and the
+      // client's reading of a probe answer never goes past the header and the exit code
+      // (gunbc.compute.remote_build remote_build_probe_from_exit).
+      detail: concat("remote-build: the front door is ready on ", host),
+    }
+  }
+}
+
+// ── THE ENTRY SSHD RUNS ─────────────────────────────────────────────────────────────────────────────
+//
+// THE FORCED COMMAND'S OWN ARGS. The serving binary and the checkout are what the roster says they
+// are (gunbc.compute.remote_build remote_build_serving_instance), rendered into this command by
+// remote_build_serve_front_door_run_words beside the serving entry's own words. They are arguments
+// because whoever renders the forced command already chooses them -- the authorized_keys line spells
+// both today -- and the door must not guess them. THE HAND-OFF TARGET IS NOT AN ARGUMENT: which entry
+// and which function the child runs are fixed data in the wire module, so no caller can aim the
+// serving route at an arbitrary module.
+fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_root: String) -> CliWireResponse {
+  match remote_build_serve_front_door_turn(
+    host: host,
+    serve_binary: serve_binary,
+    repo_root: repo_root,
+    raw_command: shell.Env.Get(name: remote_build_ssh_command_variable).value,
+    principal: remote_build_serve_probe_principal(),
+  ) {
+    FrontDoorAnswer { ending, detail } => remote_build_serve_answer(ending: ending, text: detail)
+    FrontDoorHandOffToChild { hand_off } => remote_build_serve_front_door_hand_off(hand_off: hand_off)
+  }
+}
+
+// RUN THE SERVING ENTRY AND GET OUT OF THE WAY. The child's stdout is the answer; its exit code is
+// this process's exit code; its stderr travels only where it is evidence (see the note above).
+fn remote_build_serve_front_door_hand_off(hand_off: RemoteBuildHandOff) -> CliWireResponse {
+  let child = gunbc.WitnessBin.Run(
+    workdir: hand_off.workdir as FilePath,
+    bin_path: hand_off.program as FilePath,
+    args: hand_off.arguments,
+    expect: OutcomeIsData,
+  )
+  let code = child.exit_code
+  let receipts = remote_build_answer_body_is_a_receipt(stdout: child.stdout)
+  let bytes = if receipts || child.stderr == "" {
+    child.stdout
+  } else {
+    join([child.stdout, child.stderr], "\n")
+  }
+  CliWirePrintable {
+    bytes: bytes,
+    exit: if code == 0 { ExitSuccess } else { ExitFailure { code: code, reason: "" } },
+  }
+}
+
+// ARE THOSE BYTES A DOCUMENT THE CLIENT PARSES? The three endings whose body becomes a receipt
+// (gunbc.compute.remote_build remote_build_answer_of_ending) must go out byte-exact; everywhere else
+// the child's stderr is the only account of what happened, and the client's own refusal text reads
+// body and stderr together. One reading of the header, from the wire module, both sides.
+fn remote_build_answer_body_is_a_receipt(stdout: String) -> Bool {
+  match remote_build_ending_of_answer(stdout: stdout) {
+    Present { value: e } => e == ServeServed || e == ServeWorkEndedUnsuccessfully || e == ServeWorkInFlight
+    Absent => false
+  }
+}

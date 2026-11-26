@@ -190,7 +190,7 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, fleet_converge_release_bins_job_id, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_dashboard_deploy_step_timeout_minutes, gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, fleet_converge_release_bins_job_id, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_dashboard_deploy_step_timeout_minutes, gunbc_ci_desired_instance_deploy_step_timeout_minutes, gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes, gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -573,12 +573,12 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     HostTruthReadObserve => FleetConvergeModeFacts { wire: "host_truth_read_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: OwnRunConfined, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotReserve => FleetConvergeModeFacts { wire: "microvm_slot_reserve", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotStart => FleetConvergeModeFacts { wire: "microvm_slot_start", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    RunnerHostFileConverge => FleetConvergeModeFacts { wire: "runner_host_file_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    RunnerHostFileConverge => FleetConvergeModeFacts { wire: "runner_host_file_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     HostPrimaryNetworkObserve => FleetConvergeModeFacts { wire: "host_primary_network_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     HostPrimaryNetworkConverge => FleetConvergeModeFacts { wire: "host_primary_network_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     BoardFunctionConverge => FleetConvergeModeFacts { wire: "board_function_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    RunnerHostWithdraw => FleetConvergeModeFacts { wire: "runner_host_withdraw", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    RunnerHostRestore => FleetConvergeModeFacts { wire: "runner_host_restore", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    RunnerHostWithdraw => FleetConvergeModeFacts { wire: "runner_host_withdraw", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    RunnerHostRestore => FleetConvergeModeFacts { wire: "runner_host_restore", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     SitePxeEdgeObserve => FleetConvergeModeFacts { wire: "site_pxe_edge_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     SitePxeEdgeConverge => FleetConvergeModeFacts { wire: "site_pxe_edge_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerPasswordSessionToolConverge => FleetConvergeModeFacts { wire: "runner_password_session_tool_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -1572,6 +1572,7 @@ fn fleet_converge_build_job() -> Job {
         issues: none,
         actions: Present { value: PermWrite }, // release-bins retention deletes cache entries (option A, msg_66b5d26e); THIS JOB ONLY
         id_token: none,
+        pages: none,
       }
     },
   }
@@ -1691,6 +1692,7 @@ fn fleet_converge_plan_revision_job() -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: none,
+        pages: none,
       }
     },
   }
@@ -5359,6 +5361,7 @@ data fleet_converge_srv1_root_mutation_job_permissions: WorkflowPermissions = Wo
   issues: none,
   actions: Present { value: PermRead },
   id_token: Present { value: PermWrite },
+  pages: none,
 }
 
 // A srv1 ROOT-MUTATION JOB IS ADMITTED ONLY FOR host == srv1, AT THE JOB: the WIF step and the
@@ -5498,7 +5501,7 @@ fn fleet_converge_desired_instance_deploy_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_desired_instance_deploy_step_timeout_minutes }
   }
 }
 
@@ -5618,7 +5621,7 @@ fn fleet_converge_desired_instance_deploy_job() -> Job {
     env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
     if_condition: Present { value: fleet_converge_desired_instance_deploy_step_if },
-    timeout_minutes: Present { value: gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -6549,6 +6552,7 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -6835,6 +6839,7 @@ fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -6936,6 +6941,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -7210,6 +7216,7 @@ fn fleet_converge_branch_run_grant_await_job() -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: none,
+        pages: none,
       }
     },
   }
@@ -7704,6 +7711,7 @@ fn fleet_converge_fleet_keypair_mint_job() -> Job {
         issues: none,
         actions: none,
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     },
   }
@@ -8114,6 +8122,7 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
         issues: none,
         actions: none,
         id_token: none,
+        pages: none,
       }
     }
   }
@@ -8164,6 +8173,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -8883,6 +8893,7 @@ fn fleet_converge_arrival_converge_job() -> Job {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     },
   }
@@ -8981,6 +8992,7 @@ fn fleet_converge_review_sheet_converge_job() -> Job {
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: none, id_token: Present { value: PermWrite },
+      pages: none,
     } },
   }
 }
@@ -9021,6 +9033,7 @@ fn fleet_converge_namecheap_observe_job() -> Job {
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+      pages: none,
     } },
   }
 }
@@ -9109,6 +9122,7 @@ fn fleet_converge_printer_job() -> Job {
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+      pages: none,
     } },
   }
 }
@@ -9180,7 +9194,7 @@ data fleet_converge_gcp_iam_bootstrap_apply_job_gate: Expression = LogicalAnd {
 data fleet_converge_gcp_iam_bootstrap_apply_job_if: String = serialize_expression(expression: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
 
 fn fleet_converge_gcp_iam_bootstrap_permissions() -> WorkflowPermissions {
-  WorkflowPermissions { contents: Present { value: PermRead }, pull_requests: none, issues: none, actions: Present { value: PermRead }, id_token: Present { value: PermWrite } }
+  WorkflowPermissions { contents: Present { value: PermRead }, pull_requests: none, issues: none, actions: Present { value: PermRead }, id_token: Present { value: PermWrite }, pages: none }
 }
 
 fn fleet_converge_gcp_iam_bootstrap_concurrency() -> ConcurrencySpec {
@@ -9493,6 +9507,11 @@ fn fleet_converge_hostname_converge_readopt_step() -> Step {
 
 // THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target, or
 // a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
+// It runs only on mode=hostname_converge, like its sibling hostname steps: on every other mode the entry
+// answers "not this mode; nothing to gate" after a ~5 minute demand-acquired resolve, under a 5 minute
+// deadline, so the build job of an unrelated mode passed or timed out on runner speed alone (measured
+// 2026-11-26: 4m55s srv3-04 pass; 5m03s-5m04s on srv1-07/08/09, four timeouts on apply and
+// desired_instance_deploy runs 45731925410 and 45736282462).
 fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge dispatch admission (refuses a peer that is the target, or an unallocated peer)" },
@@ -9509,7 +9528,7 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
   }

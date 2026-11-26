@@ -300,6 +300,10 @@ import gunbc.roadmap.roadmap_execution_contract {
   ClaimSourceRootLayout,
   ValidationOperation,
   ModeledValidationCommand,
+  ValidationOperationCommandResult,
+  ValidationCommandBuilt,
+  ValidationCommandCapabilityUnrealized,
+  ValidationCommandSubjectUnnameable,
   validation_operation_command,
   modeled_validation_command_wire,
   execution_contract_validation_summary,
@@ -349,8 +353,9 @@ import gunbc.compute.compute_seat_ensure {
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideResult, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
-  ObserveUnitLifecycle,
+  ObserveUnitLifecycle, compute_claim_operands, ComputeClaimOperandsBuilt, ComputeClaimOperandsRefused,
 }
+import gunbc.gunbc_cli_command { WetBatch, gunbc_test_batch_invocation_words }
 import gunbc.compute.compute_producer_lease { compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable,
@@ -437,6 +442,7 @@ import gunbc.roadmap.roadmap_validation_oracle { ValidationRefusalCause,
   ValidationRefused,
   ValidationNotRun,
   ValidationCommandUnrealized,
+  ValidationSubjectUnnameable,
   ValidationCommandRefused,
   ValidationChangeWindowRefused,
   ValidationContractUnspecified,
@@ -9362,12 +9368,19 @@ fn belt_run_bounded_validation_units(
             environment: instance.execution_environment,
             source_roots: source_roots,
           ) {
-            Absent =>
+            ValidationCommandCapabilityUnrealized =>
               BeltValidationRun {
                 executions: acc.executions,
                 verdict: ValidationRefused { cause: ValidationCommandUnrealized },
               }
-            Present { value: command } => {
+            ValidationCommandSubjectUnnameable { entry: e, function: f, reason: r } =>
+              BeltValidationRun {
+                executions: acc.executions,
+                verdict: ValidationRefused {
+                  cause: ValidationSubjectUnnameable { entry: e, function: f, reason: r },
+                },
+              }
+            ValidationCommandBuilt { command: command } => {
               let wire = modeled_validation_command_wire(command: command)
               let exec_outcome = if validation_consumes_affected_set_window(
                 validation: validation,
@@ -9535,10 +9548,20 @@ fn belt_run_claim_through_compute(
       hermetic: false,
       window: Present { value: ClaimDiffWindow { identity: subject.change_window_identity, path: window_path as FilePath } },
     }
+    // The recorded command names the route the compute provider realizes `RunClaims` through:
+    // `gunbc test` over the claim operands, with the wet mode this op carries (hermetic: false).
+    // Operands and words come from the provider's own builders, so the receipt cannot spell a
+    // second route; an unnameable function leaves no operand, and the provider refuses that run.
+    let claim_operands = match compute_claim_operands(entry: entry as NonEmptyStr, functions: function) {
+      ComputeClaimOperandsBuilt { operands: built } => built
+      ComputeClaimOperandsRefused { entry: _, function: _, reason: _ } => []
+    }
     let command = ModeledValidationCommand {
       label: "gunbc-compute-claim" as NonEmptyStr,
-      program: "claim_batch" as FilePath,
-      args: ["--entry", entry as String, "--functions", function as String],
+      program: "gunbc" as FilePath,
+      args: invocation_words_bare(
+        words: gunbc_test_batch_invocation_words(operands: claim_operands, mode: WetBatch, source_roots: [])
+      ),
     }
     let wire = modeled_validation_command_wire(command: command)
     let result = belt_provide_converging(instance: instance, owner: DispatchOwned { node_id: subject.node_identity as String, attempt_key: subject.attempt_key }, commit: subject.head_sha as String, op: op)
@@ -16861,7 +16884,7 @@ data belt_exit_stall_clear_function: String = "belt_exit_stall_clear_cli"
 fn belt_exit_stall_clear_invocation(entry: String) -> String {
   match admit_named_argument(name: "entry", value: entry) {
     NamedArgumentAdmitted { argument } =>
-      join(["gunbc ", join(invocation_words_bare(words: gunbc_run_invocation_words_with_functions(source_roots: [], entry: "gunbc.roadmap.roadmap_belt_tick_cli", functions: [belt_exit_stall_clear_function], claim_run: false, arguments: [argument])), " ")], "")
+      join(["gunbc ", join(invocation_words_bare(words: gunbc_run_invocation_words_with_functions(source_roots: [], entry: "gunbc.roadmap.roadmap_belt_tick_cli", functions: [belt_exit_stall_clear_function], arguments: [argument])), " ")], "")
     NamedArgumentNameEmpty => "(the clear verb takes --arg entry=<entry>)"
     NamedArgumentNameHoldsSeparator { name: _ } => "(the clear verb takes --arg entry=<entry>)"
   }

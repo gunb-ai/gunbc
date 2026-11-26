@@ -222,6 +222,7 @@ fn axis_modeled_by_workflow_permissions(axis: GitHubPermissionAxis) -> Bool {
     IdTokenAxis => true
     IssuesAxis => true
     PullRequestsAxis => true
+    PagesAxis => true
     ArtifactMetadataAxis => false
     AttestationsAxis => false
     ChecksAxis => false
@@ -231,7 +232,6 @@ fn axis_modeled_by_workflow_permissions(axis: GitHubPermissionAxis) -> Bool {
     MetadataAxis => false
     ModelsAxis => false
     PackagesAxis => false
-    PagesAxis => false
     RepositoryProjectsAxis => false
     SecurityEventsAxis => false
     StatusesAxis => false
@@ -249,6 +249,7 @@ fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxi
     IdTokenAxis => perms.id_token
     IssuesAxis => perms.issues
     PullRequestsAxis => perms.pull_requests
+    PagesAxis => perms.pages
     ArtifactMetadataAxis => none
     AttestationsAxis => none
     ChecksAxis => none
@@ -258,7 +259,6 @@ fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxi
     MetadataAxis => none
     ModelsAxis => none
     PackagesAxis => none
-    PagesAxis => none
     RepositoryProjectsAxis => none
     SecurityEventsAxis => none
     StatusesAxis => none
