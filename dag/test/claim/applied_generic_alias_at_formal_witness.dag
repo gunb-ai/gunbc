@@ -1,0 +1,208 @@
+module test.claim.applied_generic_alias_at_formal_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  compile_dag_diagnostic_census,
+  census_blocking_rows,
+  census_rows_of_class,
+}
+import gunbc.compile_census_probe {
+  census_verdict_all,
+  census_premise,
+  census_ran,
+}
+import gunbc.guarantee_probe_corpus {
+  applied_generic_alias_at_formal_class,
+  applied_alias_at_matching_formal_probe,
+  applied_form_spelled_directly_probe,
+  unparameterized_alias_at_target_formal_probe,
+  applied_alias_admits_wrong_instantiation_probe,
+  aliased_both_sides_different_instantiation_probe,
+  active_probe_row,
+  guarantee_probe_rows,
+  probe_row_expectation_holds,
+}
+import std.types { String, Bool, Int, List }
+import std.process { ProcessExit }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.guarantee_measurement { GuaranteeProbeId }
+import std.optional { Absent, Present }
+
+// THE CLASS, AND WHY ITS ENROLMENT IS NOT THE ONE THE SOURCE NOTE ASKED FOR. An alias whose
+// right-hand side is a generic application (`type PConfigPatch = PatchRecord<PConfig>`) standing at
+// a formal declared with that same applied type. The class was authored in
+// `docs/plans/compiler-guarantee-recovery-gap-analysis.md` as a FALSE REFUSAL -- the alias refused
+// where the identical spelling compiled clean -- and that document names its only surviving
+// discriminator as an unenrolled closure-free fixture. Measured at 71b23d66defc with the release
+// gunbc sha256 75dadf78018376797d75e80a32caf2e87df9538a7fe729940d77a0d21d42473e (artifact
+// 15082738996, run 45745306828), the false refusal is GONE: the aliased formal and the
+// directly-spelled formal now settle to the SAME verdict, zero blocking plus exactly one
+// `v1.std.core` `DeclaredTypeInhabitanceUnmodeled` advisory. Enrolling the documented pair as an
+// expected red would have authored a false red against main, so the enrolled rows carry the measured
+// standing and this witness asserts them. The document was NOT edited: it is hand-authored plan
+// prose, and its staleness is routed rather than patched here.
+//
+// WHAT THIS WITNESS HOLDS, in order: each row against its own census, so a row that no longer
+// matches the compiler reds; the PAIR-AGREEMENT INVARIANT as its own assertion, because rows 1 and
+// 2 are one claim -- the two spellings of one formal must not diverge, in either direction, and an
+// agreement pinned at zero would be a different agreement, so the invariant also refuses the zero;
+// the counted hole as the standing its repair must invert (when the terminal refusal arm lands, this
+// witness reds by design and the row flips to ExpectBlockingRefusal, per
+// gunbc.design_argument::guarantee_ladder); and the roster's own shape, five rows under one class,
+// so an enrolment that silently loses a row is not read as coverage.
+//
+// LIVE-TREE IS READ TRUTHFULLY. `compile_dag_diagnostic_census` resolves its synthetic module's
+// imports against the live checkout, so this module reads the tree; the fixture sources below import
+// nothing and declare everything they need, which is what makes the verdict attributable to the
+// alias edge and to nothing else.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn row_holds(probe: GuaranteeProbeId, source: String) -> Bool {
+  match active_probe_row(probe: probe) {
+    Present { value: row } => probe_row_expectation_holds(census: census_of(source: source), row: row)
+    Absent => false
+  }
+}
+
+// A census that never ran reports -1, so a harness failure can never be read as a zero count.
+fn blocking_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn unmodeled_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => count(census_rows_of_class(rows: rows, wanted: "DeclaredTypeInhabitanceUnmodeled"))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn total_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => count(rows)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// THE SAME SUBJECT, SPOKEN TWO WAYS. These two sources differ in ONE token: the spelling of the
+// formal `q`. Everything else -- declarations, the generic callee, the call form, the actual -- is
+// byte-identical except the module name (the two synthetic compiles cannot share one), which is what
+// lets a verdict difference be attributed to the alias and nothing else.
+data alias_at_matching_formal_source: String = "module probe_aga_alias_formal\ntype PConfig {\n  name: String\n}\ntype PatchRecord<Config> {\n  payload: Config\n}\ntype PConfigPatch = PatchRecord<PConfig>\nfn patch_layer<Config>(base: Config, patch: PatchRecord<Config>) -> Config { base }\nfn apply_layer(x: PConfig, q: PConfigPatch) -> PConfig { patch_layer(base: x, patch: q) }\n"
+
+data form_spelled_directly_source: String = "module probe_aga_direct_formal\ntype PConfig {\n  name: String\n}\ntype PatchRecord<Config> {\n  payload: Config\n}\ntype PConfigPatch = PatchRecord<PConfig>\nfn patch_layer<Config>(base: Config, patch: PatchRecord<Config>) -> Config { base }\nfn apply_layer(x: PConfig, q: PatchRecord<PConfig>) -> PConfig { patch_layer(base: x, patch: q) }\n"
+
+// THE TRANSPARENCY CONTROL: an UNPARAMETERIZED alias settles to its target and is admitted there,
+// zero diagnostics. Without it the two counted arms above could be read as aliases simply never
+// working at a formal, which is not what this class found.
+data unparameterized_alias_source: String = "module probe_aga_plain_alias\ntype Inner {\n  v: Int\n}\ntype InnerAlias = Inner\nfn take(i: Inner) -> Int { i.v }\nfn call(a: InnerAlias) -> Int { take(i: a) }\n"
+
+// THE HOLE: the formal is the applied alias, the actual is a DIFFERENT instantiation of the same
+// declaration. Accepted, counted. This is the specimen recorded by
+// gunbc.recurring_failure_mode::nominal_call_arg_brand_mismatch_does_not_fire_for_an_alias_of_an_applied_form
+// (found executing gunbc#14330); it is enrolled as counted because counting is what the compiler
+// does with it today.
+data wrong_instantiation_source: String = "module probe_aga_wrong_instantiation\ntype Inner<T> {\n  v: T\n}\ntype IntInner = Inner<Int>\nfn take(x: IntInner) -> Int { 0 }\nfn p(b: Inner<Bool>) -> Int { take(x: b) }\n"
+
+// THE POSITIVE CONTROL ON THE HOLE: with BOTH sides named by an alias of an applied form, the same
+// brand mismatch is refused, one blocking TypeMismatch. The pair says where the relation stops
+// judging -- one side aliased is unmodeled, both sides aliased reaches the type-mismatch arm.
+data both_sides_aliased_source: String = "module probe_aga_both_aliased\ntype Inner<T> {\n  v: T\n}\ntype IntInner = Inner<Int>\ntype BoolInner = Inner<Bool>\nfn take(x: IntInner) -> Int { 0 }\nfn p(b: BoolInner) -> Int { take(x: b) }\n"
+
+test fn aliased_formal_is_counted_and_not_refused() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: alias_at_matching_formal_source)),
+    census_premise(name: "the probe row's expectation holds", holds: row_holds(probe: applied_alias_at_matching_formal_probe, source: alias_at_matching_formal_source)),
+    census_premise(name: "exactly one unmodeled-inhabitance advisory is counted", holds: unmodeled_count(source: alias_at_matching_formal_source) == 1),
+    census_premise(name: "nothing blocking is refused", holds: blocking_count(source: alias_at_matching_formal_source) == 0),
+  ])
+}
+
+test fn directly_spelled_formal_is_counted_and_not_refused() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: form_spelled_directly_source)),
+    census_premise(name: "the probe row's expectation holds", holds: row_holds(probe: applied_form_spelled_directly_probe, source: form_spelled_directly_source)),
+    census_premise(name: "exactly one unmodeled-inhabitance advisory is counted", holds: unmodeled_count(source: form_spelled_directly_source) == 1),
+    census_premise(name: "nothing blocking is refused", holds: blocking_count(source: form_spelled_directly_source) == 0),
+  ])
+}
+
+// THE INVARIANT AS ITS OWN ASSERTION, not implied by the two rows above: the two spellings of one
+// formal agree. Either arm moving alone -- the aliased one starting to refuse while the direct one
+// does not, or the direct one losing its advisory while the aliased one keeps it -- reds here. The
+// agreement is also pinned away from zero, because two arms agreeing at no diagnostics is a
+// different claim (the relation judging the pair, or the harness never reaching it) and would have to
+// be enrolled as such, not inherited from this one.
+test fn the_two_spellings_of_one_formal_agree() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: alias_at_matching_formal_source)),
+    census_ran(census: census_of(source: form_spelled_directly_source)),
+    census_premise(name: "both arms refuse nothing", holds: blocking_count(source: alias_at_matching_formal_source) == blocking_count(source: form_spelled_directly_source)),
+    census_premise(name: "both arms count the same unmodeled advisory", holds: unmodeled_count(source: alias_at_matching_formal_source) == unmodeled_count(source: form_spelled_directly_source)),
+    census_premise(name: "the agreement is not an agreement at zero", holds: unmodeled_count(source: alias_at_matching_formal_source) >= 1),
+  ])
+}
+
+test fn unparameterized_alias_stays_transparent_at_its_target_formal() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: unparameterized_alias_source)),
+    census_premise(name: "the probe row's expectation holds", holds: row_holds(probe: unparameterized_alias_at_target_formal_probe, source: unparameterized_alias_source)),
+    census_premise(name: "the control compiles with no diagnostic at all", holds: total_count(source: unparameterized_alias_source) == 0),
+  ])
+}
+
+// THE HOLE IS ENROLLED SO ITS REPAIR IS LOUD. If the relation grows the arm that refuses this pair,
+// this witness reds and the row flips to ExpectBlockingRefusal -- the dissolution-on-climb the
+// guarantee ladder requires, held by a row rather than by a paragraph.
+test fn wrong_instantiation_through_an_alias_is_admitted_and_counted() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: wrong_instantiation_source)),
+    census_premise(name: "the probe row's expectation holds", holds: row_holds(probe: applied_alias_admits_wrong_instantiation_probe, source: wrong_instantiation_source)),
+    census_premise(name: "the invalid state is refused by nothing today", holds: blocking_count(source: wrong_instantiation_source) == 0),
+    census_premise(name: "and is counted rather than silent", holds: unmodeled_count(source: wrong_instantiation_source) == 1),
+  ])
+}
+
+test fn both_sides_aliased_refuses_one_type_mismatch() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: both_sides_aliased_source)),
+    census_premise(name: "the probe row's expectation holds", holds: row_holds(probe: aliased_both_sides_different_instantiation_probe, source: both_sides_aliased_source)),
+    census_premise(name: "exactly one blocking TypeMismatch", holds: blocking_count(source: both_sides_aliased_source) == 1),
+  ])
+}
+
+// THE ROSTER'S OWN SHAPE. Five probes under one class, each with an active row. Without this, an
+// enrolment that lost a row would show as four green witnesses, which is the shape
+// gunbc.recurring_failure_mode::census_instrument_silently_drops_items names as the failure of a
+// census, not of a compiler.
+// Each of the five probe ids named HERE (not a line of any document) must resolve to an active row
+// under this class. A roster that lost one would otherwise show as four green witnesses.
+fn probe_active_under_this_class(probe: GuaranteeProbeId) -> Bool {
+  match active_probe_row(probe: probe) {
+    Present { value: row } => (row.class as String) == (applied_generic_alias_at_formal_class as String)
+    Absent => false
+  }
+}
+
+test fn the_class_carries_exactly_five_active_rows() -> ProcessExit {
+  let rows = guarantee_probe_rows() |> filter(r => (r.class as String) == (applied_generic_alias_at_formal_class as String))
+  let named = [
+    applied_alias_at_matching_formal_probe,
+    applied_form_spelled_directly_probe,
+    unparameterized_alias_at_target_formal_probe,
+    applied_alias_admits_wrong_instantiation_probe,
+    aliased_both_sides_different_instantiation_probe,
+  ]
+  census_verdict_all([
+    census_premise(name: "five rows carry the class", holds: count(rows) == 5),
+    census_premise(name: "each named probe resolves active under this class", holds: all(named, probe => probe_active_under_this_class(probe: probe))),
+  ])
+}
