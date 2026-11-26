@@ -747,9 +747,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: floor_parse_list_separator_hole_probe,
       class: floor_parse_list_separator_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "a list literal whose second separator is omitted parses as element juxtaposition -- two elements where three were written -- with zero diagnostics" as NonEmptyStr,
-      },
+      expectation: ExpectBlockingRefusal { diagnostic_class: "ParseError" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_record_completeness_bare_name_control_probe,
