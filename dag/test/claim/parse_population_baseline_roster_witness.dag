@@ -3,6 +3,7 @@ module test.claim.parse_population_baseline_roster_witness
 import std.types { Bool, Int, String, List, CommitSha }
 import std.algebra { string_contains, fold_list }
 import std.measure { byte_size, microsecond }
+import std.content_hash { Sha256Digest }
 import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -87,11 +88,11 @@ test fn parse_population_ordering_refuses_ascending_holds() -> Bool {
   parse_population_ordering_refuses_ascending()
 }
 
-// THE SELECTION RULE AS A TYPED ALGORITHM (review 98809 F1). The rule "top N by blob size descending,
-// then path ascending for the tiebreak" was an unchecked comment plus a shell sort; it now lives in
-// the carrier and is EXECUTED here, so the shell runner is transport, not the authority for the rule
-// (how_to_work: "raw shell implementing semantics expressible in .dag"). The roster is checked against
-// its own modelled top-N order.
+// THE SELECTION RULE AS A TYPED ALGORITHM (review 98809 F1; review 98986 F3 reworded). The rule "top N
+// by blob size descending, then path ascending for the tiebreak" was once an unchecked comment plus a
+// shell sort. It now lives in the carrier and is EXECUTED here — the sole authority for the rule. The
+// shell runner that once applied it as transport was WITHDRAWN from this PR (review 98836, route B
+// declined) and ships in no merge; nothing in this diff or tree shells out to read the roster.
 test fn parse_population_selection_rule_is_modelled_holds() -> Bool {
   parse_population_roster_is_selected_sorted()
 }
@@ -215,7 +216,7 @@ data parse_population_planted_reversed_stat_receipt: ParsePopulationMeasurementR
     measurement: WallStat { min_wall: microsecond(count: 23300000),
       median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 20160000) },
     peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
-    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" }
@@ -232,7 +233,7 @@ data parse_population_planted_failed_receipt: ParsePopulationMeasurementReceipt 
     measurement: WallStat { min_wall: microsecond(count: 1000000),
       median_wall: microsecond(count: 1000000), max_wall: microsecond(count: 1000000) },
     peak_rss: byte_size(count: 1024), modules: 1, declared_refusals: 0, rc: 1,
-    binary_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
     tree_sha: "0000000000000000000000000000000000000000" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "00000000-0000-0000-0000-000000000000" }

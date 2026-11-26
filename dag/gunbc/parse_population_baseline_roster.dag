@@ -1,6 +1,7 @@
 module gunbc.parse_population_baseline_roster
 
 import std.types { Bool, Int, List, String, NonEmptyStr, CommitSha }
+import std.content_hash { Sha256Digest }
 import std.measure { ByteSize, Microsecond, byte_size, microsecond, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
@@ -256,7 +257,7 @@ type ParsePopulationMeasurementReceipt {
   modules: Int
   declared_refusals: Int
   rc: Int
-  binary_sha256: CommitSha
+  binary_sha256: Sha256Digest
   tree_sha: CommitSha
   host: NonEmptyStr
   boot_id: NonEmptyStr
@@ -281,7 +282,7 @@ data parse_population_measurement_receipts: List<ParsePopulationMeasurementRecei
     measurement: WallStat { min_wall: microsecond(count: 563940000),
       median_wall: microsecond(count: 563940000), max_wall: microsecond(count: 563940000) },
     peak_rss: byte_size(count: 673443840), modules: 10567, declared_refusals: 0, rc: 0,
-    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
@@ -289,7 +290,7 @@ data parse_population_measurement_receipts: List<ParsePopulationMeasurementRecei
     measurement: WallStat { min_wall: microsecond(count: 20160000),
       median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 23300000) },
     peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
-    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
@@ -297,7 +298,7 @@ data parse_population_measurement_receipts: List<ParsePopulationMeasurementRecei
     measurement: WallStat { min_wall: microsecond(count: 132190000),
       median_wall: microsecond(count: 132510000), max_wall: microsecond(count: 143840000) },
     peak_rss: byte_size(count: 503054336), modules: 166, declared_refusals: 0, rc: 0,
-    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
@@ -305,7 +306,7 @@ data parse_population_measurement_receipts: List<ParsePopulationMeasurementRecei
     measurement: WallStat { min_wall: microsecond(count: 136660000),
       median_wall: microsecond(count: 136660000), max_wall: microsecond(count: 136660000) },
     peak_rss: byte_size(count: 500129792), modules: 166, declared_refusals: 0, rc: 0,
-    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
@@ -313,7 +314,7 @@ data parse_population_measurement_receipts: List<ParsePopulationMeasurementRecei
     measurement: ProcessTimes { utime: microsecond(count: 28920000), stime: microsecond(count: 610000),
       minor_faults: 160128, major_faults: 0, voluntary_ctx_switches: 2, involuntary_ctx_switches: 212 },
     peak_rss: byte_size(count: 668962816), modules: 5, declared_refusals: 0, rc: 0,
-    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
     host: "srv1.tailecbe08.ts.net",
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
@@ -539,25 +540,49 @@ fn parse_population_selection_precedes(a: ParsePopulationRow, b: ParsePopulation
   strictly_larger || tie_earlier_path
 }
 
-// How many rows precede `row` in the modelled order -- its 0-based rank. A row is inside the top-N
-// window when its rank is < n, exactly the semantics of `sort ... | head n`.
-fn parse_population_preceding_count(
-    row: ParsePopulationRow, all: List<ParsePopulationRow>) -> Int {
-  count_where(xs: all, predicate: fn(other) {
-    parse_population_selection_precedes(a: other, b: row)
+// RANK BY POSITION, not by counting preceders (review 98986 F2, how_to_work: "a proven cost-shape
+// defect — a copied accumulator, a quadratic fold — is always fixed, regardless of realized n"). The
+// previous formulation ran a count_where over the whole list per row — O(n^2) — and its stated
+// subject was the 170-row reconciliation. The roster's home invariant is that it is STORED in
+// selection order (parse_population_rows_sorted_by_selection_rule, adjacent-pair, linear); under that
+// precondition rank IS position, exactly the semantics of `sort ... | head n`, and both queries below
+// are one linear scan (or a length subtraction after the linear sorted check).
+
+type ParsePopulationRankScan { found: Bool, rank: Int, pos: Int }
+
+fn parse_population_row_rank(row: ParsePopulationRow, all: List<ParsePopulationRow>) -> Int {
+  let scan = fold_list(xs: all,
+    empty: ParsePopulationRankScan { found: false, rank: 0, pos: 0 }, cons: fn(acc, r) {
+    if acc.found == true { acc }
+    else if r == row {
+      ParsePopulationRankScan { found: true, rank: acc.pos + 1, pos: acc.pos + 1 }
+    }
+    else { ParsePopulationRankScan { found: false, rank: 0, pos: acc.pos + 1 } }
   })
+  if scan.found == true { scan.rank } else { parse_population_list_length(xs: all) + 1 }
 }
 
+// Membership is checked first (a row absent from the list has rank length+1 and is never inside),
+// then the window test is the position rule rank <= n.
 fn parse_population_row_in_top_n(
     row: ParsePopulationRow, all: List<ParsePopulationRow>, n: Int) -> Bool {
-  parse_population_preceding_count(row: row, all: all) < n
+  if parse_population_row_rank(row: row, all: all) > parse_population_list_length(xs: all) { false }
+  else { parse_population_row_rank(row: row, all: all) <= n }
 }
 
+// Outside-top-N of a list stored IN selection order is exactly its suffix past n: linear sorted
+// check plus one subtraction. A list that is not in selection order REFUSES with -1: no outside-count
+// is claimed from unordered input (fail_closed), and -1 is distinguishable from the lawful 0 of a
+// window that covers the whole list, so a mis-sorted roster can never be silently certified.
 fn parse_population_rows_outside_top_n(
     all: List<ParsePopulationRow>, n: Int) -> Int {
-  count_where(xs: all, predicate: fn(r) {
-    parse_population_row_in_top_n(row: r, all: all, n: n) == false
-  })
+  if parse_population_rows_sorted_by_selection_rule(rows: all) == false { -1 }
+  else if parse_population_list_length(xs: all) <= n { 0 }
+  else { parse_population_list_length(xs: all) - n }
+}
+
+fn parse_population_list_length(xs: List<ParsePopulationRow>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { acc + 1 })
 }
 
 // The roster-side full-rule ordering: adjacent pairs must satisfy the comparator, so a stored order
