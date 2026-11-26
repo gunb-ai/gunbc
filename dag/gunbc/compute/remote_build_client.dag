@@ -48,6 +48,7 @@ import gunbc.compute.test_run {
 import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, WitnessModuleSelected, WitnessModuleNotAWitness,
 }
+import gunbc.compute.remote_build_wire { remote_build_probe_text }
 import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildWork, RemoteBuildSourceRef,
   remote_build_source_ref, remote_build_source_ref_name, remote_build_request_work, remote_build_request_words, remote_build_entry_admitted,
@@ -60,7 +61,7 @@ import gunbc.compute.remote_build {
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildOperationDecode, RemoteBuildOperationDecoded, RemoteBuildOperationRefused, remote_build_decode_gate_subject,
   remote_build_gate_word, remote_build_request_refusal_text,
-  remote_build_probe_text, remote_build_probe_from_exit, remote_build_probe_answer, remote_build_answer_from_exit,
+  remote_build_probe_from_exit, remote_build_probe_answer, remote_build_answer_from_exit,
 }
 
 // ── THE REQUESTING SIDE: A SESSION'S COMPILE OR CLAIM RUN, SERVED ON A ROSTER HOST ──────────────────

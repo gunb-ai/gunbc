@@ -6,7 +6,7 @@ import std.nat { Nat, Zero, Succ }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { render_ipv4_address }
 import std.list { first_where }
-import std.algebra { length, string_contains }
+import std.algebra { length, string_contains, zip_eq }
 import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
@@ -21,6 +21,7 @@ import std.measure { token_count_value }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
 import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_gb_value }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts,
@@ -68,8 +69,43 @@ data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
 // read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
 // argv a DERIVATION verified against an OBSERVATION, not a restatement of it. The observation is the
 // 2026-10-31 08:02 relaunch at the pool context cap (gunbc.design_ruling one_serving_context_cap).
+// THE RENDER EQUALS WHAT THE RUNNING CONTAINER SHOWED, element for element — including the key's file
+// read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
+// argv a DERIVATION verified against an OBSERVATION, not a restatement of it.
+//
+// THE CAPTURE IS KEPT AS READ, TIER AND ALL. observed_cmd_tail is the 2026-11-08 relaunch, and its tier slot
+// says 12 because that is what the tier was then; the tier moved to 48 on 2026-11-24 (read from the installed
+// args files) and a capture does not move to keep a test green. So the equality is per-slot, with ONE slot
+// permitted to differ — and it is permitted only when BOTH sides are that slot, with both figures named by
+// the control below, so the exception cannot widen into a licence to differ anywhere.
 test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
-  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
+  zip_eq(a: srv1_serving_launch_argv(api_key_wire: bash_realization_key_read), b: observed_cmd_tail, eq: argv_slot_agrees)
+}
+
+// The one slot the 2026-11-24 window moved, recognised on both sides by the knob it names.
+fn argv_slot_is_the_tier(value: NonEmptyStr) -> Bool {
+  string_contains(s: value as String, pattern: "LMCACHE_L1_GB=")
+}
+
+fn argv_slot_agrees(derived: NonEmptyStr, captured: NonEmptyStr) -> Bool {
+  (derived as String) == (captured as String)
+    || (argv_slot_is_the_tier(value: derived) && argv_slot_is_the_tier(value: captured))
+}
+
+// The exception above is bounded: the capture holds the figure its own window read (12), the render holds the
+// authority today (48), and nothing else in the argv differs. If someone re-bases the capture, or lets the
+// derived row drift from the tier authority, this goes red by name rather than by a missing equality.
+test fn the_tier_slot_is_the_only_difference_and_both_figures_are_named() -> Bool {
+  let derived = srv1_serving_launch_argv(api_key_wire: bash_realization_key_read)
+  let derived_tier = first_where(xs: derived, keep: argv_slot_is_the_tier)
+  let captured_tier = first_where(xs: observed_cmd_tail, keep: argv_slot_is_the_tier)
+  match derived_tier {
+    Absent => false
+    Present { value: d } => match captured_tier {
+      Absent => false
+      Present { value: c } => (d as String) == "LMCACHE_L1_GB=48" && (c as String) == "LMCACHE_L1_GB=12"
+    }
+  }
 }
 
 // ONE CAP, TWO ENGINES: srv1's vLLM launch and srv3's Strata flags both carry the pool cap from its one
@@ -77,7 +113,7 @@ test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
 // it is pinned by its render check (above for vLLM; extdeps.strata.serve_flags for Strata).
 test fn both_pool_engines_carry_the_one_context_cap() -> Bool {
   (match srv1_serving_launch.engine.max_model_len { Present { value: n } => n == serving_fleet_context_cap _ => false })
-    && srv3_strata_flags.max_context == serving_fleet_context_cap
+    && srv3_strata_flags.launch.max_context == serving_fleet_context_cap
     && token_count_value(t: serving_fleet_context_cap) == 229376
 }
 
@@ -108,7 +144,14 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
   srv1_serving_launch.environment
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "12" as NonEmptyStr),
+      // THE ONE SLOT IN THIS LIST THAT IS NOT A LITERAL IS THE L1 TIER, and that is the point of it: the value
+      // comes from gunbc.serving.serving_host_memory::srv1_lmcache_l1_gb_value, the same authority the boot args
+      // are rendered from. It used to be the literal "12" — the figure read off the container on 2026-11-09 —
+      // which provisioning handed to every srv1 container it started while the boot path had already been raised
+      // to 48: the sixth home of one fact, and the one that made a provisioned replica disagree with a restarted
+      // one. The Nov 9 capture still says 12, and it is kept (srv1_serving_command_observed) and asserted against
+      // the render in the control named for it.
+      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: srv1_lmcache_l1_gb_value()),
       lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "125" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
@@ -218,7 +261,10 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--profile", "qwen38-flash-next",
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
-      "--env", "LMCACHE_L1_GB=12",
+      // the derived tier, not the 2026-11-09 capture's 12 — see the note in
+      // the_environment_tiers_wire_as_the_container_shows_them. Spelled through the same wire function the row
+      // itself uses, so this line is the row's answer and not a second copy of the number.
+      "--env", (lil_serve_environment_wire(e: lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: srv1_lmcache_l1_gb_value())) as String),
       "--env", "LMCACHE_L2_GB=125",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
       "--env", "LMCACHE_L2_WORKERS=16",

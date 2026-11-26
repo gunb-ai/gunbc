@@ -869,6 +869,54 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_attestation_roster_names_only_the_ruled_seats" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_attestation_roster_names_only_the_ruled_seats",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unruled_reference_is_never_attested" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unruled_reference_is_never_attested",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attested_terminal_seat_without_unit_proof_authorizes_the_release" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attested_terminal_seat_without_unit_proof_authorizes_the_release",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unattested_terminal_seat_without_unit_proof_still_refuses" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unattested_terminal_seat_without_unit_proof_still_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attestation_never_reaches_past_its_own_reference" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attestation_never_reaches_past_its_own_reference",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "attestation_never_overrides_an_observed_live_unit" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "attestation_never_overrides_an_observed_live_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "attestation_never_opens_a_too_early_window" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "attestation_never_opens_a_too_early_window",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attested_launching_seat_without_unit_proof_terminates_and_releases" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attested_launching_seat_without_unit_proof_terminates_and_releases",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.manager_unaskable_wet_witness", function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting" },
       entry: "dag/test/claim/compute/manager_unaskable_wet_witness.dag",
       function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting",

@@ -7,18 +7,10 @@ module test.claim.site_gunb_ai_page_witness
 // WHAT EXECUTES. Every test below calls gunbc.site.gunb_ai_page.render_page(), which builds the
 // page as typed Fragments and serializes it through std.markup's algebra under the page medium. So
 // none of these is a grep over a source file: each reads the bytes the writer would publish, and
-// the writer's Filesystem.Write is reachable only from those same bytes. The claim that carries the
-// layer is the first: the render, after the parity roster is applied, must EQUAL the committed copy
-// of the SERVED page (dag/test/fixture/gunb_ai/live_index.html). The oracle comes from outside this
-// repo, which is what stops the content rows being a second copy of the site's text.
-//
-// THE ROSTER IS CHECKED BOTH WAYS, because a one-directional "differences are allowed" list decays
-// into a list of differences nobody remembers causing:
-//   - every row's served text must occur in the fixture and its generated text in the render;
-//   - substituting them must make the two files EQUAL — that equality is the "no fourth difference"
-//     claim;
-//   - no row may describe a difference that no longer exists, or the roster is stale and would hide
-//     the next real one.
+// the writer's Filesystem.Write is reachable only from those same bytes. Each claim ties what the
+// bytes say to the row they are rendered from, or puts a real offence in front of a guard. There is
+// no comparison against a committed copy of the output: this module is the source of what gunb.ai
+// serves, so such a copy would only restate the render (gunbc.design_argument::fail_closed).
 //
 // CONSUMERS (gunbc.design_argument::consumption): render_page and page_write are the site's build route (entry points
 // page_write_arg / v2_cli_main); every row read here is read on that route. The roster is read here
@@ -41,17 +33,15 @@ module test.claim.site_gunb_ai_page_witness
 //   - hero_examples' first two entries swapped -> witness_hero_examples_keep_row_order
 //   - deck_mount_value changed -> witness_deck_mount_is_the_served_mount
 //   - "<em>" injected into tagline_text -> witness_copy_arrives_as_escaped_text
-//   - one parity row's generated text set equal to its served text -> witness_parity_rows_are_current
 
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.markup { Fragment, Element, FragmentText, MarkupComment, MarkupDocument, Attribute, EscapeContext, UrlContext }
 import extdeps.languages.html { html_doctype_name }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import test.fixture.text_scan { occurrences, index_of, occurs_before }
 import gunbc.site.gunb_ai_page {
-  render_page, PageRender, PageRendered, PageRefused, parity_nullities, parity_served_texts,
+  render_page, PageRender, PageRendered, PageRefused,
   page_classes, render_document,
   comment_texts, hero_seal_d, theme_color_value,
 }
@@ -62,16 +52,6 @@ import gunbc.site.gunb_ai_content {
 import gunbc.design.brand_mark { brand_mark_box_path, brand_mark_disc_path, BrandMarkBox, BrandMarkDisc }
 import gunbc.design.gunb_ai_hues { theme_chrome_black }
 
-// The committed copy of what gunb.ai serves today. Read from disk rather than embedded, so agreeing
-// with a regression would take editing the oracle — which is a visible act, not a side effect of
-// editing this file.
-data served_fixture_path: String = "dag/test/fixture/gunb_ai/live_index.html"
-
-fn served_page() -> String {
-  let read = Filesystem.Read(path: served_fixture_path)
-  if read.success { read.content } else { "" }
-}
-
 // The render, or "" — every test below is an equality or a containment over these bytes, so a
 // refusal reads as "nothing matched" and reddens whatever asked, instead of passing on a default.
 fn rendered_page() -> String {
@@ -81,24 +61,13 @@ fn rendered_page() -> String {
   }
 }
 
-// The render with the roster applied: each row's generated spelling swapped back for the served
-// spelling. Equality against the fixture after this is the parity claim.
-fn render_with_parity_applied() -> String {
-  fold(parity_nullities, init: rendered_page(), f: fn(acc, d) { acc.replace(from: d.generated, to: d.served) })
-}
+// ── The document ──────────────────────────────────────────────────────────────────────────────
 
-// ── Parity ────────────────────────────────────────────────────────────────────────────────────
-
-// 1. THE PARITY CLAIM. The fixture must be readable first: a missing file would make both sides ""
-//    and pass every claim below vacuously.
-test fn witness_generated_page_equals_the_served_page() -> Bool {
-  string_contains(s: served_page(), pattern: "<!DOCTYPE html>")
-    && (render_with_parity_applied() == served_page())
-}
-
+// 1. The render is one whole document.
 test fn witness_render_is_a_whole_document() -> Bool {
   let out = rendered_page()
-  string_contains(s: out, pattern: "</html>")
+  string_contains(s: out, pattern: "<!DOCTYPE html>")
+    && string_contains(s: out, pattern: "</html>")
     && occurrences(s: out, pattern: "<main ") == 1
     && occurrences(s: out, pattern: "<head>") == 1
     && occurrences(s: out, pattern: "</main>") == 1
@@ -252,26 +221,6 @@ test fn witness_guards_are_live_not_vacuous() -> Bool {
     && refuses(child: script_probe(body: "var a = '</script>';"))
     && refuses(child: MarkupComment { body: "a --> b" })
     && !refuses(child: MarkupComment { body: "fine" })
-}
-
-// ── The roster itself ───────────────────────────────────────────────────────────────────────────
-
-test fn witness_parity_rows_apply_and_exhaust_the_difference() -> Bool {
-  all(parity_nullities, d => string_contains(s: served_page(), pattern: d.served)
-    && string_contains(s: rendered_page(), pattern: d.generated))
-    && render_with_parity_applied() == served_page()
-}
-
-test fn witness_parity_rows_are_current() -> Bool {
-  // A row whose generated text already equals the served text describes no difference, and a roster
-  // carrying such a row would let a real fourth difference pass unremarked.
-  all(parity_nullities, d => d.served != d.generated && !string_contains(s: served_page(), pattern: d.generated))
-}
-
-test fn witness_parity_roster_is_named_by_unique_served_text() -> Bool {
-  let texts = parity_served_texts()
-  rows_length(rows: texts) == 7
-    && all(texts, t => occurrences(s: served_page(), pattern: t) == 1)
 }
 
 // ── Helpers; each is read by a test above and by nothing else ───────────────────────────────────
