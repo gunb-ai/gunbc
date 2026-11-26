@@ -1,0 +1,87 @@
+module test.claim.roadmap.roadmap_serve_healthz_served_plan_witness
+
+import std.types { Bool, String }
+import extdeps.ietf.http_semantics { GET }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext }
+import gunbc.auth.request_authentication { AccessPathLocalDev, AuthAbsent, RequestAccessPath, RequestAuthenticationEvidence }
+import gunbc.roadmap.roadmap_serve { HealthzHandler, DailyBodyRenderedUnderThisPlan, roadmap_serve_invoke_over }
+import gunbc.roadmap.roadmap_site_surface_observe { render_roadmap_site_surface_bundle_for_projection }
+import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
+import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+
+// THE /healthz HANDLER ANSWERS FROM THE PLAN THE SERVE SEAM HANDS IT, AND READS NO CARRIER OF ITS OWN.
+// Incident 2026-11-26 (srv1-lab-codex-feedback-v0 at a58ba3e3): the handler ignored the entry's plan and
+// called materialize_live_roadmap_site_surface_bundle, which is pinned to srv1_live_dashboard_instance, so every
+// lab probe added and removed a git worktree in production's repository, fetched, reset --hard and folded the
+// whole projection, and overran the 30 s serve budget. These claims supply the plan as a VALUE at the
+// gunbc.roadmap.roadmap_serve roadmap_serve_invoke_over interface (DESIGN section 3, a witness discriminates at
+// one interface): on a handler that reads only that value they are pure, and on one that reaches past it to a
+// carrier the hermetic route refuses the host effect (NoMockResponse), which is this claim's red.
+//
+// The two plans render different surfaces, so a handler that answered a constant -- or one plan's surface for
+// the other -- cannot satisfy both claims.
+
+fn healthz_fixture_request() -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
+  ServeHttpRequest {
+    method: GET,
+    path: "/healthz",
+    body: "",
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+  }
+}
+
+fn healthz_fixture_projected_plan() -> RoadmapAuthorityProjection {
+  RoadmapAuthorityProjected {
+    doc: RoadmapDocument {
+      preamble: [],
+      lead_lanes: [],
+      sections: [RoadmapSection { title: "healthz served-plan fixture section", elements: [] }],
+    },
+    accepted: [],
+    withheld: [],
+  }
+}
+
+fn healthz_fixture_refused_plan() -> RoadmapAuthorityProjection {
+  RoadmapAuthorityProjectionRefused { detail: "healthz served-plan fixture: the carrier read refused" }
+}
+
+fn healthz_served_over(plan: RoadmapAuthorityProjection) -> ServeHttpResponse {
+  roadmap_serve_invoke_over(
+    instance: srv1_lab_dashboard_instance(),
+    plan: fn() { plan },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    handler: HealthzHandler,
+    params: [],
+    request: healthz_fixture_request(),
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+// The expectation is spelled by the producers the route itself uses (render over the plan, then the one
+// served-document producer), never a hand-assembled body.
+fn healthz_expected_over(plan: RoadmapAuthorityProjection) -> String {
+  let bundle = render_roadmap_site_surface_bundle_for_projection(proj: plan)
+  healthz_body_with_release_identity(
+    dispatch: bundle.dispatch_json,
+    daily: bundle.daily_html,
+    dispatch_js: bundle.dispatch_js,
+    release_revision: deploy_witness_release_revision,
+    surface_bundle_identity: bundle.bundle_identity,
+  )
+}
+
+test fn healthz_publishes_the_surface_of_the_supplied_projected_plan() -> Bool {
+  let r = healthz_served_over(plan: healthz_fixture_projected_plan())
+  r.status == 200 && r.body == healthz_expected_over(plan: healthz_fixture_projected_plan())
+}
+
+test fn healthz_publishes_the_surface_of_the_supplied_refused_plan() -> Bool {
+  let r = healthz_served_over(plan: healthz_fixture_refused_plan())
+  r.status == 200
+    && r.body == healthz_expected_over(plan: healthz_fixture_refused_plan())
+    && r.body != healthz_expected_over(plan: healthz_fixture_projected_plan())
+}

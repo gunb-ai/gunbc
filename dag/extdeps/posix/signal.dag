@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.posix.process { ProcessGroupLeader }
+import extdeps.posix.process { ProcessGroupLeader, SignalTargetPid }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -26,23 +26,26 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// TerminateProcess sends SIGTERM to ONE pid. The reaper's bound is at the CALLER (residual
-// reap only ever names a pid it read out of an inactive unit's own cgroup.procs, per
-// gunbc.host.host_hygiene_reaper_remediate) rather than at the signal — this service does not
-// widen to SIGKILL, does not accept an arbitrary signal name, and does not fold a process
-// group into this operation. kill(2) with a negative pid is a different POSIX form
+// TerminateProcess sends SIGTERM to ONE pid. Which pids the reaper names stays the CALLER's
+// fact (residual reap only ever names a pid it read out of an inactive unit's own cgroup.procs,
+// per gunbc.host.host_hygiene_reaper_remediate) -- this service does not widen to SIGKILL, does
+// not accept an arbitrary signal name, and does not fold a process group into this operation.
+// The input is the sealed extdeps.posix.process SignalTargetPid, minted ONLY by signal_target_pid
+// (or its text form), which refuses everything outside 2..=pid_t max. It used to be a bare
+// NonEmptyStr, so `kill -TERM -1` -- every process the caller may signal -- was one string away
+// from any caller. kill(2) with a negative pid is a different POSIX form
 // (pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html): it names a process group.
 // That form is TerminateProcessGroup, used by the harness shell-job backstop and job_kill,
 // not by the host reaper.
 service posix.Signal {
   operation TerminateProcess {
     requires none
-    input { pid: NonEmptyStr }
+    input { target: SignalTargetPid }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["kill", "-TERM", "{pid}"] }
+    transport shell { argv: ["kill", "-TERM", "{target.pid}"] }
     exit {
       0 => Unit
       nonzero => String "kill -TERM failed"

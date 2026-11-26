@@ -610,9 +610,9 @@ fn shadow_gate_remote_build_steps() -> List<Step> {
 fn shadow_gate_push_credential_env() -> List<YamlKeyValue> {
   [
     kv(key: "GIT_CONFIG_COUNT", value: yaml_string(s: "2")),
-    kv(key: "GIT_CONFIG_KEY_0", value: yaml_string(s: "credential.https://github.com/helper")),
+    kv(key: "GIT_CONFIG_KEY_0", value: yaml_string(s: "credential.https://github.com/.helper")),
     kv(key: "GIT_CONFIG_VALUE_0", value: yaml_string(s: "")),
-    kv(key: "GIT_CONFIG_KEY_1", value: yaml_string(s: "credential.https://github.com/helper")),
+    kv(key: "GIT_CONFIG_KEY_1", value: yaml_string(s: "credential.https://github.com/.helper")),
     kv(key: "GIT_CONFIG_VALUE_1", value: yaml_string(s: "!f(){ echo username=x-access-token; echo password=$GITHUB_TOKEN; };f")),
     kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
   ]

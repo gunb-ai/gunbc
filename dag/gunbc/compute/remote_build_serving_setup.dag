@@ -25,7 +25,7 @@ module gunbc.compute.remote_build_serving_setup
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
-import std.list { first_where }
+import std.list { first_where, distinct_by_key }
 import std.algebra { trim, skip, non_empty_to_list }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named, etc_group_name_of, EtcGroupEntry }
 import extdeps.tools.uname { uname_linux_machine_architecture }
@@ -62,7 +62,7 @@ import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuild
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 import extdeps.ssh.keys { authorized_key_entry_line }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, CatalogLegNeverCharged, recover_catalog_leg_reading,
 }
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -373,6 +373,18 @@ fn serving_account_presence_gate(account_name: String, passwd: ObservationAttemp
       Absent => ObservationEstablished { observed: false }
     }
   }
+}
+
+// Is rustup PROVEN ABSENT -- the account's cargo-bin rustup read as not executable by a COMPLETED
+// test (Established false), the signature of a fresh serving account that has never had rustup? On
+// such an account `rustup toolchain list` cannot run and exits 127, so the toolchain leg reads
+// Refused. That 127 is the EXPECTED consequence of a proven-absent rustup, and bootstrapping rustup
+// then the pinned channel is the converge's work (EnsureRustup -> EnsureToolchain) -- so the toolchain
+// leg reports DRIFT there, never an unreadable fact. When rustup is merely unreadable (elevation
+// refused) or present but the listing errored, the toolchain stays unknown: a read nobody completed
+// never becomes a planned install (fail_closed). (remote_build_serving_fresh_account_has_no_toolchain_bootstrap)
+fn serving_rustup_proven_absent(rustup: ObservationAttempt<Bool, ServingLegFailure>) -> Bool {
+  match rustup { ObservationEstablished { observed: false } => true  _ => false }
 }
 
 // The authorized_keys-presence gate off the content leg: the reader mints the established empty
@@ -849,7 +861,16 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     account_shell: account_shell as String,
     group_name: fleet_posix_compute_ledger_group_name as String,
     group_gid: fleet_posix_compute_ledger_group_gid,
-    group_members: [service_user, fleet_posix_remote_build_user.name as String],
+    // The ledger's service user and the remote-build account are the two members. On a host with a
+    // dashboard instance the service user is the operator login, so this carries two distinct names.
+    // On a host whose ledger owner IS the remote-build account (no dashboard instance, off the legacy
+    // frontier), the service user and the account are the same name — dedupe so the observed group
+    // (which lists each member once) matches the desired count; an undeduped [gunbc-build, gunbc-build]
+    // would never settle (serving_group_deviations compares counts). See the serving setup witness's
+    // fresh_host_group_members_are_a_single_converge_ensured_principal, its settle control
+    // fresh_host_deduped_settles_against_the_single_observed_member, and red control
+    // a_undeduped_second_member_diverges_at_plan_time.
+    group_members: distinct_by_key([service_user, fleet_posix_remote_build_user.name as String], m => m),
     supplementary_groups: fleet_posix_remote_build_supplementary_groups,
     ledger_dirs: ledger,
     ledger_service_user: service_user,
@@ -1315,7 +1336,39 @@ fn slice_cap_reason_text(reason: UserWorkSliceUncappedReason<ServingLegFailure>)
   }
 }
 
+// WHAT THE ASSESSMENT MEASURES THE HOST AGAINST. The same body judges two genuinely different
+// questions, and the difference is the WHOLE POINT of serving-observe-assesses-installed-revision:
+//   * AssessForAdvance (the converge): the host must MOVE TO the dispatched ref, so the checkout
+//     revision and the serve-binary sha are demanded to equal the executor plan-time pin. This is
+//     what advances a host when the fleet dispatches a converge at a newer ref.
+//   * AssessForReadiness (the observe): the host is a ready serving host exactly when it is
+//     SELF-CONSISTENT with its own settle record -- the identity sidecar RecordServeIdentity wrote
+//     at its last converge: it is present and well-formed, the running binary's sha equals the
+//     sha it records, and the checkout stands at the revision it records. The observing head is NOT
+//     a drift signal for a serving read: a host that just converged at X and is observed from a
+//     newer head Y reports NO checkout and NO serve_binary drift. Demanding Y was the defect
+//     (still-tern-419): it put every rostered host into drift on every head advance and made a
+//     successful observe only ever "met against the head that observed it". The readiness arm drops
+//     the two pin compares; the ONE identity self-consistency check (serving_serve_identity_deviation,
+//     its bound revision set to the host's OWN checkout HEAD) carries both relations, fail-closed:
+//     a binary that no longer matches its sidecar, a checkout moved off its settled revision, and an
+//     absent/malformed sidecar each still drift. Protocol compatibility with the current client is a
+//     separate axis and is NOT assessable from the host today (no wire version the client checks --
+//     see gunbc.compute.remote_build_wire remote_build_protocol_word, a static contract name; named a
+//     follow-up in the PR body). Witnesses: the readiness discriminators in the setup witness module.
+type ServingAssessBasis = AssessForAdvance | AssessForReadiness
+
 fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: ServingPlanInput) -> ServingAssessment {
+  serving_assess_inner(d: d, o: o, pin: pin, basis: AssessForAdvance)
+}
+
+// The observe's pre-service readiness read: an admissible serving state is self-consistent with the
+// host's own settle record, not equal to whatever head dispatched this observe. See ServingAssessBasis.
+fn serving_assess_readiness(d: RemoteBuildServingDesired, o: ServingObserved, pin: ServingPlanInput) -> ServingAssessment {
+  serving_assess_inner(d: d, o: o, pin: pin, basis: AssessForReadiness)
+}
+
+fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: ServingPlanInput, basis: ServingAssessBasis) -> ServingAssessment {
   match d.forced_command_line {
     Absent => GoalAssessmentRefused { cause: ServingAssessRefusal { reason: "the host's forced-command line is unrenderable; a host that cannot serve is refused, never written" } }
     Present { value: dline } => {
@@ -1338,7 +1391,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           match o.serve_binary { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "seed.serve_binary", cause: c.cause }] },
           match o.checkout { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "checkout", cause: c.cause }] },
         ),
-        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "toolchain", cause: c.cause }] },
+        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => if serving_rustup_proven_absent(o.rustup) { [] } else { [ServingUnknown { item: "toolchain", cause: c.cause }] } },
       )
       let deviations = concat(
         concat(
@@ -1363,7 +1416,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
               serving_present_deviations(item: "seed.serve_binary", present: o.serve_binary),
               concat(
                 serving_present_deviations(item: "checkout", present: o.checkout),
-                serving_present_deviations(item: "toolchain", present: o.toolchain),
+                if serving_rustup_proven_absent(o.rustup) { match o.toolchain { ObservationEstablished { observed: true } => [] _ => [PresentAbsent { item: "toolchain" }] } } else { serving_present_deviations(item: "toolchain", present: o.toolchain) },
               ),
             ),
           ),
@@ -1396,25 +1449,33 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
         },
       )
       let pin_deviations = concat(
-        concat(
-          // RB-M3 native settle: a host whose authored architecture DIFFERS from the executor's can never
-          // carry the pool binary, so its serve-binary sha must never be demanded to equal the pool pin
-          // (pin.local_binary_sha256) -- that comparison would fire forever and rebuild the host endlessly.
-          // Such a host settles instead on: the checkout pinned at the dispatched revision (below), the
-          // binary being present (the seed deviation), and -- THE BINDING -- the identity sidecar recording
-          // the DISPATCHED revision and matching the sha of the binary the host actually runs (bound-revision
-          // compare in serving_serve_identity_deviation). Dropping the pin-sha compare is NOT a gap: the
-          // revision binding replaces it, so a native host that keeps an older binary now DRIFTS and rebuilds
-          // (review 97463 finding 1; the guarantee ladder forbids reading settled on a stale binary). An
-          // upload host (row arch == executor arch) and an unauthored host (Unclassified, refused upstream)
-          // both keep the pin-sha comparison exactly as before.
-          if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
-            []
-          } else {
-            serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
-          },
-          serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
-        ),
+        match basis {
+          // The converge's "move to the dispatched ref" compares, unchanged.
+          AssessForAdvance => concat(
+            // RB-M3 native settle: a host whose authored architecture DIFFERS from the executor's can never
+            // carry the pool binary, so its serve-binary sha must never be demanded to equal the pool pin
+            // (pin.local_binary_sha256) -- that comparison would fire forever and rebuild the host endlessly.
+            // Such a host settles instead on: the checkout pinned at the dispatched revision (below), the
+            // binary being present (the seed deviation), and -- THE BINDING -- the identity sidecar recording
+            // the DISPATCHED revision and matching the sha of the binary the host actually runs (bound-revision
+            // compare in serving_serve_identity_deviation). Dropping the pin-sha compare is NOT a gap: the
+            // revision binding replaces it, so a native host that keeps an older binary now DRIFTS and rebuilds
+            // (review 97463 finding 1; the guarantee ladder forbids reading settled on a stale binary). An
+            // upload host (row arch == executor arch) and an unauthored host (Unclassified, refused upstream)
+            // both keep the pin-sha comparison exactly as before.
+            if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
+              []
+            } else {
+              serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
+            },
+            serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
+          ),
+          // The observe's readiness read: the checkout and serve-binary relations are carried ENTIRELY by
+          // the ONE identity self-consistency check below (its bound revision set to the host's own checkout
+          // HEAD), so neither pin compare is demanded here -- that is the defect this item removes. An unread
+          // checkout/binary still mints its unknown above; an absent/malformed sidecar still drifts below.
+          AssessForReadiness => [],
+        },
         // RB-M3: the on-host `uname -m` is a CONSISTENCY CHECK only, projected to Architecture with the
         // SAME upstream projection the executor's spelling uses (uname_linux_machine_architecture) and
         // compared enum==enum against the ONE host-architecture authority (executor_host_architecture row).
@@ -1495,7 +1556,15 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       // RB-M3: on a NATIVE-build host the sidecar's recorded revision is the only thing binding the running
       // binary to a revision, so it is bound to the dispatched revision here (a stale one drifts and rebuilds).
       // On an upload host it is left unbound (Absent) -- the pin sha already carries the binding (see above).
-      let identity_bound_revision = serving_identity_bound_revision(host: d.host, executor_arch: pin.executor_arch, dispatched_revision: pin.dispatched_revision)
+      // READINESS (serving-observe-assesses-installed-revision): the sidecar is bound instead to the host's
+      // OWN checkout HEAD, so an admissible serving state is self-consistent (the checkout still carries the
+      // source the running binary was recorded at) and INDEPENDENT of the observing head; a checkout moved off
+      // its settled revision still drifts (IdentityRevisionStale), a binary that no longer matches its sidecar
+      // still drifts (IdentityShaMismatch) -- both handled inside serving_serve_identity_deviation.
+      let identity_bound_revision = match basis {
+        AssessForAdvance => serving_identity_bound_revision(host: d.host, executor_arch: pin.executor_arch, dispatched_revision: pin.dispatched_revision)
+        AssessForReadiness => match o.checkout_revision { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent }
+      }
       let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String), bound_revision: identity_bound_revision)
       let identity_unknowns = serving_serve_identity_unknown(binary_sha: serve_identity_binary_sha, leg: o.serve_identity)
       // The seat census: a STALE seat (the recovery write authorized THROUGH THE MODEL, by
@@ -1799,6 +1868,7 @@ fn serving_seat_census_deviations(leg: RecoverCatalogLegReading) -> List<Serving
       fold(es, init: [], f: (acc, e) => match e {
         CatalogLegStale { reference: r } => concat(acc, [StaleSeatDetected { reference: r }])
         CatalogLegHeld { reference: _ } => acc
+        CatalogLegNeverCharged { reference: _ } => acc
       })
     RecoverCatalogLegUnknown { detail: _ } => []
     RecoverCatalogLegDeferred { reason: r } => [StaleSeatCensusDeferred { reason: r }]

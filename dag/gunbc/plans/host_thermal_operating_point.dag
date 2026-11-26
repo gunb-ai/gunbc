@@ -136,7 +136,7 @@ fn findings() -> List<MarkdownBlock> {
       li(text: "FleetFanControl holds one duty per host. It cannot express CPU automatic with chassis at 40% (Butch today) or CPU 50% with chassis 100% (srv3/srv4 today)."),
     ]),
     h3(text: "E. Runner width and clock ignore heat"),
-    p(text: "Runner width derives from memory and thread budgets (gunbc.runner.runner_slot_allocation, gunbc.fleet.fleet_host_budget). The cap of 12 exists only as host drop-ins and the clock cap appears nowhere in the repository, so model and machines disagree silently."),
+    p(text: "Runner width derives from memory and thread budgets (gunbc.runner.runner_slot_allocation, gunbc.fleet.fleet_host_budget). The cap of 12 exists only as host drop-ins, so model and machines disagree silently on width. On the clock the disagreement CLOSED on 2026-11-24: the 2.0 GHz cap is recorded, rendered and digest-checked against all four hosts in gunbc.fleet.cpu_freq_cap_boot_state (its standing reads as CeilingStands under the operator's pass), and the GPU caps likewise in gunbc.fleet.gpu_power_cap_boot_state. What this plan still owes is the STANDING leg -- ReadCpuOperatingLimits below, a scheduled read rather than one operator pass -- so a hand edit that moves a ceiling is caught by the model rather than by the next pass."),
     h3(text: "F. We cannot see the machines, though the tools exist"),
     ul(items: [
       li(text: "gunbc.bmc.bmc_health_reader defines a per-host gunbc_health Redfish ReadOnly account with its own secret (bmc-srvN-health-reader); the health check never holds the admin credential (operator ruling 2026-09-18)."),
