@@ -1,7 +1,7 @@
 module gunbc.site.gunb_ai_pages_workflow
 
-import std.types { Bool, List, String }
-import std.measure { Minute, minute, minute_count }
+import std.types { Bool, Int, List, String }
+import std.measure { Minute, minute, minute_count, Second, second, second_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
@@ -35,6 +35,7 @@ import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_for_target }
 import gunbc.site.gunb_ai_site { gunb_ai_site_stage_dir }
+import extdeps.github.expressions { Expression, LogicalAnd, StepOutcomeFailure, step_outcome_is, serialize_expression }
 
 // gunb.ai's DEPLOY: ON A PUSH TO MAIN, RENDER THE SITE FROM ITS TYPED MODULES AND PUBLISH IT TO GITHUB PAGES.
 //
@@ -85,7 +86,6 @@ fn gunb_ai_pages_render_step() -> Step {
     run: gunbc_run_step_script_for_target(
       source_roots: witness_layer_roots,
       target: gunbc_run_step_target(module: "gunbc.site.gunb_ai_site", function: "site_write_main"),
-      claim_run: false,
       receipt_rel: none
     ),
     shell: none,
@@ -110,14 +110,53 @@ fn gunb_ai_pages_upload_step() -> Step {
   }
 }
 
-fn gunb_ai_pages_deploy_step() -> Step {
+// THE DEPLOY IS RETRIED, BOUNDED. actions/deploy-pages finds the artifact by listing the run's artifacts,
+// and that listing can lag behind the upload that finished a moment before it, so the first deploy can
+// report 'No artifacts named "github-pages"' for an artifact that exists (actions/deploy-pages issue 451,
+// open, reported against this exact pair of pins; observed here on both attempts of run 45782123533).
+// The lookup fails before any deployment is created, so a retry cannot deploy twice. Each earlier try
+// continues on error; a later try runs only if every earlier one failed, after its wait; only the last
+// try can fail the job. Dissolves when deploy-pages deploys
+// by the artifact id upload-pages-artifact outputs, or the listing is consistent after upload.
+data gunb_ai_pages_deploy_retry_waits: List<Second> = [second(count: 20), second(count: 60)]
+
+data gunb_ai_pages_deploy_step_name: String = "Deploy to GitHub Pages"
+
+fn gunb_ai_pages_deploy_try_id(n: Int) -> String {
+  join(["deploy_try_", to_string(n)], "")
+}
+
+fn gunb_ai_pages_deploy_try_name(n: Int) -> String {
+  if n == 1 { gunb_ai_pages_deploy_step_name } else { join([gunb_ai_pages_deploy_step_name, " (try ", to_string(n), ")"], "") }
+}
+
+// A try's outcome was failure, as a steps-context expression (extdeps.github.expressions).
+fn gunb_ai_pages_try_failed(n: Int) -> Expression {
+  step_outcome_is(step_id: gunb_ai_pages_deploy_try_id(n: n), outcome: StepOutcomeFailure)
+}
+
+fn gunb_ai_pages_deploy_try_step(n: Int, all_failed: Expression?, last: Bool) -> Step {
   UsesStep {
-    name: Present { value: "Deploy to GitHub Pages" },
-    id: Present { value: "deployment" },
+    name: Present { value: gunb_ai_pages_deploy_try_name(n: n) },
+    id: Present { value: if last { "deployment" } else { gunb_ai_pages_deploy_try_id(n: n) } },
     uses: deploy_pages_action,
     with: none,
     env: none,
-    if_condition: none,
+    if_condition: match all_failed { Present { value: e } => Present { value: serialize_expression(expression: e) } Absent => none },
+    continue_on_error: if last { none } else { Present { value: true } },
+    timeout_minutes: none
+  }
+}
+
+fn gunb_ai_pages_deploy_wait_step(n: Int, all_failed: Expression, wait: Second) -> Step {
+  RunStep {
+    name: Present { value: join(["Wait ", to_string(second_count(s: wait)), "s before deploy try ", to_string(n)], "") },
+    id: none,
+    run: join(["sleep ", to_string(second_count(s: wait))], ""),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: serialize_expression(expression: all_failed) },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -130,6 +169,10 @@ type GunbAiPagesBoundStep {
 }
 
 fn gunb_ai_pages_bound_steps() -> List<GunbAiPagesBoundStep> {
+  concat(gunb_ai_pages_build_bound_steps(), gunb_ai_pages_deploy_bound_steps())
+}
+
+fn gunb_ai_pages_build_bound_steps() -> List<GunbAiPagesBoundStep> {
   [
     GunbAiPagesBoundStep { step: gunb_ai_pages_checkout_step(), role: capability_neutral, step_name: "Checkout" },
     GunbAiPagesBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
@@ -150,8 +193,45 @@ fn gunb_ai_pages_bound_steps() -> List<GunbAiPagesBoundStep> {
     },
     GunbAiPagesBoundStep { step: gunb_ai_pages_render_step(), role: capability_neutral, step_name: "Render gunb.ai into the stage directory" },
     GunbAiPagesBoundStep { step: gunb_ai_pages_upload_step(), role: capability_neutral, step_name: "Upload the stage directory as the Pages artifact" },
-    GunbAiPagesBoundStep { step: gunb_ai_pages_deploy_step(), role: capability_neutral, step_name: "Deploy to GitHub Pages" },
   ]
+}
+
+// Try 1, then for each wait: the wait and the next try, so there is one more try than waits. The fold
+// carries the steps so far, the next try's number, and the expression that every try so far failed.
+type GunbAiPagesDeployFold {
+  steps: List<GunbAiPagesBoundStep>
+  next: Int
+  all_failed: Expression
+}
+
+fn gunb_ai_pages_deploy_bound_steps() -> List<GunbAiPagesBoundStep> {
+  let tries = fold(gunb_ai_pages_deploy_retry_waits, init: 1, f: fn(acc, _) { acc + 1 })
+  let first = GunbAiPagesBoundStep {
+    step: gunb_ai_pages_deploy_try_step(n: 1, all_failed: none, last: tries == 1),
+    role: capability_neutral,
+    step_name: gunb_ai_pages_deploy_try_name(n: 1),
+  }
+  let done = fold(gunb_ai_pages_deploy_retry_waits,
+    init: GunbAiPagesDeployFold { steps: [first], next: 2, all_failed: gunb_ai_pages_try_failed(n: 1) },
+    f: fn(acc, wait) {
+      GunbAiPagesDeployFold {
+        steps: concat(acc.steps, [
+          GunbAiPagesBoundStep {
+            step: gunb_ai_pages_deploy_wait_step(n: acc.next, all_failed: acc.all_failed, wait: wait),
+            role: capability_neutral,
+            step_name: join(["Wait before deploy try ", to_string(acc.next)], ""),
+          },
+          GunbAiPagesBoundStep {
+            step: gunb_ai_pages_deploy_try_step(n: acc.next, all_failed: Present { value: acc.all_failed }, last: acc.next == tries),
+            role: capability_neutral,
+            step_name: gunb_ai_pages_deploy_try_name(n: acc.next),
+          },
+        ]),
+        next: acc.next + 1,
+        all_failed: LogicalAnd { left: acc.all_failed, right: gunb_ai_pages_try_failed(n: acc.next) },
+      }
+    })
+  done.steps
 }
 
 fn gunb_ai_pages_capability_closure_holds() -> Bool {

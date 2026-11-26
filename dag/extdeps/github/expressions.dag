@@ -102,6 +102,32 @@ type TemplateSegment
   = LiteralText { text: String }
   | Interpolation { expression: Expression }
 
+// A step's `outcome` in the steps context: success, failure, cancelled or skipped, the result before
+// continue-on-error is applied (its `conclusion` is the result after). docs.github.com/en/actions/
+// writing-workflows/choosing-what-your-workflow-does/accessing-contextual-information-about-workflow-runs#steps-context
+type StepContextOutcome
+  = StepOutcomeSuccess
+  | StepOutcomeFailure
+  | StepOutcomeCancelled
+  | StepOutcomeSkipped
+
+fn step_context_outcome_wire(outcome: StepContextOutcome) -> String {
+  match outcome {
+    StepOutcomeSuccess => "success"
+    StepOutcomeFailure => "failure"
+    StepOutcomeCancelled => "cancelled"
+    StepOutcomeSkipped => "skipped"
+  }
+}
+
+// `steps.<step_id>.outcome == '<outcome>'`.
+fn step_outcome_is(step_id: String, outcome: StepContextOutcome) -> Expression {
+  Equals {
+    left: ContextAccess { context: Steps, path: [step_id, "outcome"] },
+    right: StringLiteral { value: step_context_outcome_wire(outcome: outcome) },
+  }
+}
+
 type ExpressionTemplate {
   segments: List<TemplateSegment>
 }

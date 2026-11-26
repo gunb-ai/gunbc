@@ -25,7 +25,7 @@ module gunbc.compute.remote_build_serving_setup
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
-import std.list { first_where }
+import std.list { first_where, distinct_by_key }
 import std.algebra { trim, skip, non_empty_to_list }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named, etc_group_name_of, EtcGroupEntry }
 import extdeps.tools.uname { uname_linux_machine_architecture }
@@ -62,7 +62,7 @@ import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuild
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 import extdeps.ssh.keys { authorized_key_entry_line }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, CatalogLegNeverCharged, recover_catalog_leg_reading,
 }
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -849,7 +849,16 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     account_shell: account_shell as String,
     group_name: fleet_posix_compute_ledger_group_name as String,
     group_gid: fleet_posix_compute_ledger_group_gid,
-    group_members: [service_user, fleet_posix_remote_build_user.name as String],
+    // The ledger's service user and the remote-build account are the two members. On a host with a
+    // dashboard instance the service user is the operator login, so this carries two distinct names.
+    // On a host whose ledger owner IS the remote-build account (no dashboard instance, off the legacy
+    // frontier), the service user and the account are the same name — dedupe so the observed group
+    // (which lists each member once) matches the desired count; an undeduped [gunbc-build, gunbc-build]
+    // would never settle (serving_group_deviations compares counts). See the serving setup witness's
+    // fresh_host_group_members_are_a_single_converge_ensured_principal, its settle control
+    // fresh_host_deduped_settles_against_the_single_observed_member, and red control
+    // a_undeduped_second_member_diverges_at_plan_time.
+    group_members: distinct_by_key([service_user, fleet_posix_remote_build_user.name as String], m => m),
     supplementary_groups: fleet_posix_remote_build_supplementary_groups,
     ledger_dirs: ledger,
     ledger_service_user: service_user,
@@ -1799,6 +1808,7 @@ fn serving_seat_census_deviations(leg: RecoverCatalogLegReading) -> List<Serving
       fold(es, init: [], f: (acc, e) => match e {
         CatalogLegStale { reference: r } => concat(acc, [StaleSeatDetected { reference: r }])
         CatalogLegHeld { reference: _ } => acc
+        CatalogLegNeverCharged { reference: _ } => acc
       })
     RecoverCatalogLegUnknown { detail: _ } => []
     RecoverCatalogLegDeferred { reason: r } => [StaleSeatCensusDeferred { reason: r }]

@@ -95,5 +95,21 @@ jobs:
         with:
           path: _site
       - name: Deploy to GitHub Pages
+        id: deploy_try_1
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
+        continue-on-error: true
+      - name: Wait 20s before deploy try 2
+        run: sleep 20
+        if: steps.deploy_try_1.outcome == 'failure'
+      - name: Deploy to GitHub Pages (try 2)
+        id: deploy_try_2
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
+        if: steps.deploy_try_1.outcome == 'failure'
+        continue-on-error: true
+      - name: Wait 60s before deploy try 3
+        run: sleep 60
+        if: steps.deploy_try_1.outcome == 'failure' && steps.deploy_try_2.outcome == 'failure'
+      - name: Deploy to GitHub Pages (try 3)
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
+        if: steps.deploy_try_1.outcome == 'failure' && steps.deploy_try_2.outcome == 'failure'
