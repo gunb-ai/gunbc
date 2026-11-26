@@ -15,7 +15,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
   dashboard_instance_is_disjoint_from_public_builtins, host_capacity_ledger_home,
   capacity_ledger_directory_owner, capacity_ledger_legacy_owner_frontier,
+  capacity_ledger_frontier_confers_operator_ownership, ReOwnRulingNotYetMade, ReOwnRulingMade,
 }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, SameUserRegroupToDeclaredGroup, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgidSticky, DirectoryOwnerAllEveryoneTraverse }
 import std.measure { ByteSize, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor }
@@ -34,8 +36,6 @@ import gunbc.compute.remote_build_serve {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused, remote_build_serve_principal_of,
   RemoteBuildServeLedgerOwner, ServeLedgerOwnerDeclared, ServeLedgerOwnerUndeclared, remote_build_serve_ledger_owner,
 }
-import gunbc.compute.remote_build_serving_setup { remote_build_serving_desired, serving_group_deviations, ServingLegFailure }
-import std.goal_assessment { ObservationAttempt, ObservationEstablished }
 
 // HERMETIC CONTROLS for the remote-build account (operator, 2026-11-15): the account row, the principal
 // the serving entry admits, the serving instance it owns, and the one ledger it shares with the service
@@ -339,62 +339,12 @@ test fn srv3_and_srv4_ledger_owner_is_legacy_operator_preserving_byte_identity()
   })
 }
 
-// (2) ken (operator_host_e2d4b7) and butch (operator_host_srv14) get the remote-build account as their
-// ledger owner, and their desired gunbc-compute members are exactly the one principal the converge
-// itself ensures (converge_add_account creates fleet_posix_remote_build_user). Because the ledger
-// service user and the account are the SAME name on these hosts, group_members is DEDUPED to a single
-// entry — an undeduped [gunbc-build, gunbc-build] never settles against the one real member the apply
-// creates (serving_group_deviations compares counts), trading the usermod crash for a permanent
-// GroupMembersMismatch. This positive control pins count == 1 and the sole member's name.
-test fn fresh_host_group_members_are_all_ensured_by_the_converge() -> Bool {
-  [operator_host_e2d4b7, operator_host_srv14] |> all(h => {
-    match remote_build_serving_desired(host: h) {
-      Absent => false
-      Present { value: d } => {
-        count(d.group_members) == 1
-          && all(d.group_members, m => m == (fleet_posix_remote_build_user.name as String))
-      }
-    }
-  })
-}
-
-// (2b) The positive control of the settle claim: serving_group_deviations over the REAL deduped
-// desired for ken, against an /etc/group whose gunbc-compute carries exactly the single ensured
-// member, must be drift-free. This exercises the same comparison the wet receipt takes.
-test fn fresh_host_group_settles_against_a_single_observed_member() -> Bool {
-  match remote_build_serving_desired(host: operator_host_e2d4b7) {
-    Absent => false
-    Present { value: d } => {
-      let observed = ObservationEstablished {
-        observed: concat(
-          concat(concat(concat("gunbc-compute:x:", to_string(fleet_posix_compute_ledger_group_gid)), ":"),
-            fleet_posix_remote_build_user.name as String),
-          ""),
-      }
-      count(serving_group_deviations(d: d, group: observed)) == 0
-    }
-  }
-}
-
-// (2c) RED CONTROL for the settle claim (guarantee_ladder: a discriminating RED on the real
-// acceptance path). Against the SAME deduped desired, an /etc/group whose gunbc-compute has a stray
-// second member must NOT be drift-free — proving serving_group_deviations's membership/count check is
-// live, so the empty deviation list in (2b) is meaningful, not vacuous. If the dedupe is removed and
-// the apply leaves one member while desired holds two, the count check is what refuses; this red is
-// the mirror that keeps that check honest.
-test fn a_stray_member_the_converge_does_not_ensure_refuses_at_plan_time() -> Bool {
-  match remote_build_serving_desired(host: operator_host_e2d4b7) {
-    Absent => false
-    Present { value: d } => {
-      let stray = concat(
-        concat(concat("gunbc-compute:x:", to_string(fleet_posix_compute_ledger_group_gid)), ":"),
-        concat(concat(fleet_posix_remote_build_user.name as String, ","), fleet_posix_operator_user.name as String),
-      )
-      let observed = ObservationEstablished { observed: stray }
-      count(serving_group_deviations(d: d, group: observed)) > 0
-    }
-  }
-}
+// (2) The serving-model claims (fresh-host group members are all converge-ensured; the deduped desired
+// settles against the single observed member; a stray member deviates) live in the SERVING sweep,
+// test.claim.compute.remote_build_serving_setup_witness, which imports the serving model this exercises
+// (partition by module). They are kept out of the account sweep deliberately: pulling remote_build_serving_setup
+// into the account graph blew its compile from ~65s past timeout, and they are serving-model claims, not
+// account-model claims.
 
 // (3) The discriminator IS THE FRONTIER'S OWN MEMBERSHIP — never the live-roster or candidate row. A
 // fresh host joins the candidate row and then the serving roster as it converges; if the ledger owner
@@ -420,11 +370,30 @@ test fn the_owner_discriminator_is_the_frontier_not_the_candidate_or_roster_row(
     && all(capacity_ledger_legacy_owner_frontier.members, h => is_operator(capacity_ledger_directory_owner(host: (h as String) as NonEmptyStr)))
 }
 
-// (4) The frontier's retirement condition lives on a typed carrier, not a comment (source_annotations,
-// guarantee_ladder: no untracked stall). The discharge row names both the live ledger read that must
-// report no operator-owned entry and the ruling that re-owns the directories; this witness binds those
-// fields so the condition cannot be deleted or gutted without going red.
-test fn the_frontier_discharge_condition_is_a_named_typed_carrier() -> Bool {
-  (capacity_ledger_legacy_owner_frontier.discharge.ledger_read as String) != ""
-    && (capacity_ledger_legacy_owner_frontier.discharge.re_own_ruling as String) != ""
+// (4) The frontier's retirement condition is CONSUMED DATA, not a comment or a prose field
+// (source_annotations: a dissolution condition belongs in a typed carrier AND is exercised, not merely
+// present; consumption: a row no behavior reads is a named tell; guarantee_ladder: the next-rung trigger
+// must be a live branch with a discriminating red). The single consumer
+// capacity_ledger_frontier_confers_operator_ownership gates the owner function's operator arm; this
+// witness drives BOTH its arms so the check cannot be gutted to a constant, and pins the live state to the
+// "ruling not yet made" arm that keeps srv3/srv4 byte-identical.
+//   - positive control: the live ruling confers operator ownership (srv3/srv4 stay on the operator login);
+//   - the RED CONTROL: a ReOwnRulingMade{...} does NOT confer it — so an authored ruling is what ends the
+//     frontier, and a consumer that ignored the arm (always true) or was inverted goes red here.
+//   - the live state is the NotYetMade arm exactly (an authored ruling in the shipped model would flip it);
+//   - the read is a real named instrument: a DeclarationRef equal to the converge's own ledger-row owner
+//     reader, not a sentence that can never be false.
+test fn the_frontier_discharge_is_consumed_and_falsifiable() -> Bool {
+  let live = capacity_ledger_legacy_owner_frontier.discharge
+  // positive control: the live ruling keeps the frontier operator-owned.
+  capacity_ledger_frontier_confers_operator_ownership(ruling: live.re_own_ruling)
+    // the live state is precisely the not-yet-ruled arm; if a ruling were authored in the model, this fails.
+    && match live.re_own_ruling { ReOwnRulingNotYetMade => true ReOwnRulingMade { ruling: _ } => false }
+    // RED CONTROL: an authored re-own ruling does NOT confer operator ownership — the arm that ends the
+    // frontier. A consumer that always returned true (gutted) or inverted would fail this branch.
+    && !capacity_ledger_frontier_confers_operator_ownership(ruling: ReOwnRulingMade {
+         ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "capacity_ledger_legacy_owner_re_own_pending"),
+       })
+    // the discharge read is a real instrument reference, equal to the converge's own ledger-row owner reader.
+    && declaration_ref_eq(a: live.ledger_read, b: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "serving_ledger_row_read"))
 }

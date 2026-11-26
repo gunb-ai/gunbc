@@ -37,6 +37,10 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
   serving_store_dir_mode_octal,
   serving_scratch_root_mode_octal,
   serving_authorized_keys_mode_octal, serving_serve_binary_mode_octal,
+  serving_group_deviations,
+}
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_gid, fleet_posix_operator_user,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
@@ -1645,4 +1649,66 @@ test fn ken_candidate_row_does_not_admit_to_roster_or_dispatch() -> Bool {
     && !remote_build_host_is_serving(host: operator_host_e2d4b7)
     && !any(remote_build_serving_candidate_hosts(), h => h == operator_host_srv9)
     && !remote_build_host_is_serving(host: operator_host_srv9)
+}
+
+// ── the fresh-host ledger owner: a single deduped, converge-ensured member ──────────────────────────
+//
+// ken (operator_host_e2d4b7) and butch (operator_host_srv14) carry NO operator login. Their ledger is
+// owned by the remote-build account (capacity_ledger_directory_owner's third arm), so the ledger service
+// user and the serving account are the SAME name. remote_build_serving_desired therefore emits
+// group_members = DEDUPED([service_user, account]) = a single "gunbc-build". An UNDEDUPED
+// [gunbc-build, gunbc-build] never settles against the one real member the apply's usermod creates
+// (serving_group_deviations compares counts), trading the usermod crash for a permanent
+// GroupMembersMismatch. These witnesses (relocated from the account sweep — they are serving-model claims)
+// pin the dedupe and prove the settle comparison is live. (guarantee_ladder: positive + discriminating red.)
+
+// Positive: on a fresh host the desired gunbc-compute has EXACTLY ONE member, the remote-build account —
+// the only principal the converge itself ensures (converge_add_account creates fleet_posix_remote_build_user).
+test fn fresh_host_group_members_are_a_single_converge_ensured_principal() -> Bool {
+  all([operator_host_e2d4b7, operator_host_srv14], h => {
+    match remote_build_serving_desired(host: h) {
+      Absent => false
+      Present { value: d } => {
+        count(d.group_members) == 1
+          && all(d.group_members, m => m == (fleet_posix_remote_build_user.name as String))
+      }
+    }
+  })
+}
+
+// Positive (the settle, per lively-owl-722): serving_group_deviations over the REAL deduped desired for
+// ken, against an /etc/group whose gunbc-compute carries exactly the single ensured member, is empty —
+// the comparison the wet receipt takes returns no drift. This is the claim the dedupe exists to make true.
+test fn fresh_host_deduped_desired_settles_against_the_single_observed_member() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let single = concat(
+        concat(concat(concat("gunbc-compute:x:", to_string(value: fleet_posix_compute_ledger_group_gid)), ":"),
+          fleet_posix_remote_build_user.name as String),
+        "",
+      )
+      count(serving_group_deviations(d: d, group: ObservationEstablished { observed: single })) == 0
+    }
+  }
+}
+
+// RED CONTROL (the discriminating red for the dedupe, per lively-owl-722): against the SAME deduped desired,
+// an /etc/group whose gunbc-compute lists the member TWICE — the state the undeduped [gunbc-build,
+// gunbc-build] desired would demand, which is what the model would now compare against — must NOT be
+// drift-free, proving serving_group_deviations's count check is live. The empty deviation list in the
+// settle witness is therefore meaningful, not vacuous: had the dedupe been removed, the desired's two
+// members against the apply's single real member diverge the same way this red diverges.
+test fn a_undeduped_second_member_diverges_at_plan_time() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let dup = concat(
+        concat(concat(concat("gunbc-compute:x:", to_string(value: fleet_posix_compute_ledger_group_gid)), ":"),
+          fleet_posix_remote_build_user.name as String),
+        concat(",", fleet_posix_remote_build_user.name as String),
+      )
+      count(serving_group_deviations(d: d, group: ObservationEstablished { observed: dup })) > 0
+    }
+  }
 }
