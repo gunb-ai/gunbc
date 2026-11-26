@@ -674,6 +674,7 @@ fn shadow_gate_job() -> Job {
       issues: none,
       actions: none,
       id_token: Present { value: PermWrite },
+      pages: none,
     }},
     concurrency: none,
     timeout_minutes: Present { value: shadow_gate_timeout_minutes },
