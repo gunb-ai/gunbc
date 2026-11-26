@@ -1,7 +1,7 @@
 module test.claim.shell.shell_dag_live_deploy_install_owned_argv_route_witness
 
 import std.types { Bool, String, List, NonEmptyStr, FilePath }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import std.algebra { count_where, length, list_at_optional, string_contains }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.integer { int_to_decimal_string }
@@ -11,6 +11,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.ensure {
   EnsureAbsent,
   EnsureObservation,
+  EnsureObserved,
   EnsurePlanAvailable,
   EnsurePlanUnavailable,
 }
@@ -22,6 +23,7 @@ import gunbc.owned_directory {
   OwnedDirectoryTarget,
   owned_directory_install_argv,
   owned_directory_plan,
+  owned_directory_reading_of_stat_line,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
@@ -273,5 +275,105 @@ test fn remote_routes_refuse_the_separator_word_before_dispatch() -> ProcessExit
   match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
     EnsurePlanUnavailable { reason } => ExitFailure { code: 1, reason: concat("plan_refused: ", reason) }
     EnsurePlanAvailable { plan } => remote_refusal_verdict(argv: owned_directory_install_argv(plan: plan))
+  }
+}
+
+// ── THE THIRD LEG OF THE ROW'S red_control: AN OWNERSHIP THE TYPED EFFECT CANNOT EXPRESS REFUSES ────────
+//
+// THE ROW HAS THREE LEGS AND THIS ARMS THE THIRD, which the two arms above do not. The pinned module's arms
+// adversarial_install_path_renders_no_shell_control_word and benign_install_line_renders_no_shell_control_word
+// carry "no shell control word in the rendered install surface"; install_line_realizes_the_declared_path_and_principal
+// here together with separator_path_realizes_as_one_final_argv_element carries "the positive control asserts the
+// typed write and ownership effect over a planted deploy fixture". A transposed-but-well-formed owner -- which is
+// what the deliberate negative control in the run receipt does -- is NOT this leg. It shows the positional
+// assertion can fail, on a value the effect is perfectly able to carry. This leg asks what happens when the
+// ownership CANNOT be carried, and the typed effect answers in two places, both on the route this node's install
+// actually travels through (#gunbc.owned_directory::owned_directory_plan, then
+// #gunbc.owned_directory::owned_directory_install_argv):
+//
+//  (a) A PRINCIPAL THE TYPE CANNOT NAME. PosixOwnerNames carries NonEmptyStr, so an empty user or group is not an
+//      ownership with a blank in it -- it is no reading at all.
+//      #gunbc.owned_directory::owned_directory_reading_of_stat_line returns none for an empty user and for an
+//      empty group. Asserting the refusal alone is worthless: a parser that refuses everything passes it. So the
+//      arm first asserts the EXPRESSIBLE line parses to the planted principal, and only then that the two
+//      unexpressible ones do not -- the positive control is inside the arm, not beside it.
+//  (b) A PRINCIPAL THE EFFECT WILL NOT ADOPT. root:root is perfectly expressible and is still nothing this
+//      install may carry: a present directory under another principal yields EnsurePlanUnavailable whose reason
+//      states the rule and NAMES the principal found. Accepting any refusal would let a missing-path or mode
+//      refusal stand in for the ownership rule, so the reason is asserted to contain both the rule's own words
+//      and the word for the principal it found.
+//
+// ZERO COVERAGE BEFORE THIS ARM, MEASURED: git grep -E '"directory\|\|' -- dag = 0 hits in 0 files. The upstream
+// malformed-line arm (test.claim.owned_directory_witness,
+// the_stat_identity_line_parses_and_a_malformed_line_does_not) exercises a wrong FIELD COUNT, not an empty
+// principal; that file's a_foreign_owner_refuses_and_is_never_adopted refuses at the DECISION over its own
+// target, while this arm sits at this node's surface, over the plan builder the live_deploy install-owned leaf
+// calls. Mode text is three digits because that is the spelling the parser is exercised with upstream.
+data expressible_stat_line: String = "directory|briansrls|gunbc-attempt-writers|755"
+data empty_user_stat_line: String = "directory||gunbc-attempt-writers|755"
+data empty_group_stat_line: String = "directory|briansrls||755"
+data foreign_stat_line: String = "directory|root|root|755"
+data foreign_principal_word: String = "root"
+data never_adopted_rule_words: String = "never adopted"
+
+fn reading_is_the_planted_principal(r: OwnedDirectoryReading) -> Bool {
+  let user: String = r.owner.user as String
+  let group: String = r.owner.group as String
+  r.is_directory && user == spec_service_user_literal && group == fixture_group
+}
+
+fn reading_words(r: OwnedDirectoryReading) -> String {
+  let user: String = r.owner.user as String
+  let group: String = r.owner.group as String
+  concat(concat("user=", user), concat(" group=", group))
+}
+
+// (a) THE UNEXPRESSIBLE PRINCIPAL: the expressible line MUST parse and the two unexpressible ones MUST NOT.
+fn unexpressible_principal_failure() -> Optional<String> {
+  let expressible: Bool = match owned_directory_reading_of_stat_line(line: expressible_stat_line) {
+    Present { value: r } => reading_is_the_planted_principal(r: r)
+    Absent => false
+  }
+  if !expressible {
+    Present { value: "the expressible control line did not parse to the planted principal, so both refusals below would be vacuous" }
+  } else {
+    match owned_directory_reading_of_stat_line(line: empty_user_stat_line) {
+      Present { value: r } => Present { value: concat("an EMPTY USER was accepted as a reading: ", reading_words(r: r)) }
+      Absent => match owned_directory_reading_of_stat_line(line: empty_group_stat_line) {
+        Present { value: r } => Present { value: concat("an EMPTY GROUP was accepted as a reading: ", reading_words(r: r)) }
+        Absent => none
+      }
+    }
+  }
+}
+
+// (b) THE UNADOPTABLE PRINCIPAL: expressible, present, and refused by the very plan the install would have used.
+fn unadoptable_owner_failure() -> Optional<String> {
+  match owned_directory_reading_of_stat_line(line: foreign_stat_line) {
+    Absent => Present { value: "the foreign control line did not parse, so the arm cannot test a refusal it cannot build" }
+    Present { value: r } => match owned_directory_plan(t: separator_fixture(), o: EnsureObserved { evidence: r }) {
+      EnsurePlanAvailable { plan } =>
+        Present { value: "a plan CARRIED a foreign owner: the effect adopted an ownership it declares it never adopts" }
+      EnsurePlanUnavailable { reason } =>
+        if reason == "" {
+          Present { value: "the refusal carried no reason, so any refusal at all would have satisfied this arm" }
+        } else if !string_contains(s: reason, pattern: never_adopted_rule_words) {
+          Present { value: concat("the refusal does not state the ownership rule: ", reason) }
+        } else if !string_contains(s: reason, pattern: foreign_principal_word) {
+          Present { value: concat("the refusal does not name the principal it found: ", reason) }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+test fn the_typed_effect_refuses_an_ownership_it_cannot_carry() -> ProcessExit {
+  match unexpressible_principal_failure() {
+    Present { value: why } => ExitFailure { code: 1, reason: concat("unexpressible_principal: ", why) }
+    Absent => match unadoptable_owner_failure() {
+      Present { value: why } => ExitFailure { code: 1, reason: concat("unadoptable_owner: ", why) }
+      Absent => ExitSuccess
+    }
   }
 }
