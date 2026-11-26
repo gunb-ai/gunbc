@@ -14,7 +14,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { second, second_count, money_amount_micro, money_per_hour_micros, milliseconds_per_second, MoneyPerHour }
 import extdeps.currency.currency { Usd }
 import extdeps.entropy { Urandom }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
@@ -472,9 +472,28 @@ fn flex_aws_read_intent() -> FlexAwsIntentRead {
   }
 }
 
-// "" when written or removed, else the error.
-fn flex_aws_record_intent(i: FlexAwsIntent) -> String {
-  let w = Filesystem.WriteOwnerOnly(path: flex_aws_intent_path(), content: flex_aws_intent_json(i: i))
+// TWO WRITES, TWO FACTS. Opening a purchase is CREATE-ONLY: an intent already on disk is a purchase still open,
+// and overwriting it would forget a card that may be billing. Naming the card the purchase bought REPLACES the
+// record this pass opened. (WriteOwnerOnly once did both; its O_EXCL is a realization detail, so the naming
+// write was refused on the file the opening write had made, and the card was only ever found again by asking.)
+// The record holds no secret -- token, zone, rate, image, subnet, group -- and its directory is the operator's
+// 0700 state directory. "" when written, else the cause.
+fn flex_aws_open_intent(i: FlexAwsIntent) -> String { flex_aws_open_intent_at(path: flex_aws_intent_path(), i: i) }
+
+fn flex_aws_name_intent(i: FlexAwsIntent) -> String { flex_aws_name_intent_at(path: flex_aws_intent_path(), i: i) }
+
+fn flex_aws_open_intent_at(path: String, i: FlexAwsIntent) -> String {
+  let w = Filesystem.WriteCreateNew(path: path, content: flex_aws_intent_json(i: i))
+  match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreated { path: _ } => ""
+    FilesystemCreateTargetOccupied { path: _ } => "another purchase is already recorded"
+    FilesystemCreateRefused { path: _, kind: _, error: e } => e
+    FilesystemCreateKindUnrecognized { path: _, observed: o, error: e } => join([o, ": ", e], "")
+  }
+}
+
+fn flex_aws_name_intent_at(path: String, i: FlexAwsIntent) -> String {
+  let w = Filesystem.Write(path: path, content: flex_aws_intent_json(i: i))
   if w.success { "" } else { w.error }
 }
 
@@ -573,7 +592,7 @@ fn flex_aws_ask_again(i: FlexAwsIntent) -> FlexAwsIntentPass {
           Absent => FlexAwsIntentPass { lines: [join(["intent ", i.token as String, " asked again, answer named no card"], "")], outstanding: still.outstanding, card: "", blocked: "" }
           Present { value: c } => {
             let named = flex_aws_intent_naming(i: i, instance_id: c.instance_id)
-            let rec = flex_aws_record_intent(i: named)
+            let rec = flex_aws_name_intent(i: named)
             FlexAwsIntentPass {
               lines: [join(["intent ", i.token as String, " asked again: ", c.instance_id as String, if rec == "" { "" } else { concat(" (record NOT updated: ", concat(rec, ")")) }, " ", flex_aws_deliver_key(region: i.region, instance_id: c.instance_id)], "")],
               outstanding: still.outstanding, card: c.instance_id as String, blocked: "",
@@ -644,7 +663,7 @@ fn flex_aws_launch_in(region: NonEmptyStr, candidate: FlexAwsCandidate, ami: Non
           region: region, zone: candidate.zone, instance_type: candidate.instance_type, rate: rate,
           ami: ami, subnet: subnet, security_group: sg, created_unix: now_unix, instance_id: "",
         }
-        let recorded = flex_aws_record_intent(i: intent)
+        let recorded = flex_aws_open_intent(i: intent)
         if recorded != "" { FlexAwsLaunchSettled { line: concat("write=launch REFUSED the purchase could not be recorded before it was made: ", recorded) } }
         else { flex_aws_purchase(i: intent, user_data: user_data) }
       }
@@ -667,7 +686,7 @@ fn flex_aws_purchase(i: FlexAwsIntent, user_data: String) -> FlexAwsLaunchOne {
       AwsCliReadOk { value: instances } => match instances.first() {
         Absent => FlexAwsLaunchSettled { line: join(["write=launch ANSWER-EMPTY (intent ", i.token as String, " kept)"], "") }
         Present { value: c } => {
-          let rec = flex_aws_record_intent(i: flex_aws_intent_naming(i: i, instance_id: c.instance_id))
+          let rec = flex_aws_name_intent(i: flex_aws_intent_naming(i: i, instance_id: c.instance_id))
           FlexAwsLaunchSettled { line: join(["write=launch ", c.instance_id as String, " ", i.zone as String, " max_price_micros=", to_string(money_per_hour_micros(q: i.rate)), " ami=", i.ami as String, " intent=", i.token as String, if rec == "" { "" } else { concat(" (intent NOT updated: ", concat(rec, ")")) }, " ", flex_aws_deliver_key(region: i.region, instance_id: c.instance_id)], "") }
         }
       }

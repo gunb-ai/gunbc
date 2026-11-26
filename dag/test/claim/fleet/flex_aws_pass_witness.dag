@@ -1,5 +1,7 @@
 module test.claim.fleet.flex_aws_pass_witness
 
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.optional { Present, Absent }
@@ -13,6 +15,7 @@ import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse
 import gunbc.fleet.flex_aws_pass {
   flex_aws_reload_owed, flex_aws_inventory_gate, flex_aws_intent_gate,
   FlexAwsIntent, FlexAwsIntentOpen, FlexAwsIntentUnreadable, FlexAwsIntentNone, flex_aws_intent_json, flex_aws_intent_of,
+  flex_aws_open_intent_at, flex_aws_name_intent_at,
   flex_aws_intent_step, FlexAwsIntentListed, FlexAwsIntentWaiting, FlexAwsIntentAskAgain, FlexAwsIntentLapsed,
   flex_aws_orphans, flex_aws_region_provisioned, flex_aws_weights_revision,
 }
@@ -122,4 +125,17 @@ test fn only_a_region_marked_with_the_weights_revision_offers_candidates() -> Bo
   flex_aws_region_provisioned(marker: AwsCliReadOk { value: flex_aws_weights_revision() })
     && !flex_aws_region_provisioned(marker: AwsCliReadOk { value: "0000000000000000000000000000000000000000" as NonEmptyStr })
     && !flex_aws_region_provisioned(marker: AwsCliReadRefused { cause: "ParameterNotFound" })
+}
+
+// REAL EXECUTION of the two intent writes, in a scratch directory: a purchase is opened create-only (a second
+// open over it refuses, so an open purchase is never forgotten), and naming its card replaces the record and
+// reads back. The naming write was once refused on the file the opening write had made.
+test fn an_opened_purchase_is_named_in_place_and_never_opened_twice() -> Bool {
+  let path = concat(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_flex_intent.XXXXXX").path, "/launch-intent.json")
+  let opened = flex_aws_open_intent_at(path: path, i: intent(instance_id: "", created: 1795575540))
+  let again = flex_aws_open_intent_at(path: path, i: intent(instance_id: "", created: 1795575541))
+  let named = flex_aws_name_intent_at(path: path, i: intent(instance_id: "i-0new", created: 1795575540))
+  let back = Filesystem.Read(path: path)
+  (opened == "") && (again == "another purchase is already recorded") && (named == "")
+    && (match flex_aws_intent_of(text: back.content) { FlexAwsIntentOpen { intent: i } => (i.instance_id == "i-0new") && (i.created_unix == 1795575540)  _ => false })
 }
