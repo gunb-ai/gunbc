@@ -2,6 +2,7 @@ module gunbc.plans.contained_development_execution_g0_conditions
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 
 // Single typed carrier for the G0 done-when conditions and the lifting count, so the
 // count and conditions live in a typed carrier (gunbc.design_argument::source_annotations)
@@ -60,6 +61,9 @@ data g0_state_groups: List<G0StateGroup> = [
 //     review 98951), demonstrated by the executed drop-key discriminant in the PR
 //     evidence logs; a duplicate makes the lifting join red (one proof cannot appear
 //     exactly once twice).
+//   - LIFTING INPUT: an entry that is not proof true with standing CitedToAuthority
+//     never counts as proved, and an empty evidence_receipt is unwritable (NonEmptyStr)
+//     - the conjunction is closed by construction to unevidenced Bools (review 98958).
 data g0_all_condition_keys: List<G0ConditionKey> = [
   ProtectHomeReadonlyRendered,
   OperatorHomeNotInHandedReadWritePaths,
@@ -130,15 +134,28 @@ fn g0_condition_count() -> Int {
   count(g0_all_condition_keys)
 }
 
-// One proof bound to the condition row it proves, joined on the typed key
-// (review 98801 FINDING 2). A bare Bool cannot say WHICH condition it proves.
+// One proof bound to the condition row it proves, joined on the typed key, and EVIDENCED:
+// a bare Bool cannot say WHICH condition it proves (review 98801 FINDING 2), and an
+// unevidenced Bool cannot lift it either (review 98958 FINDING 1) - the plan promises
+// "per-key proof plus evidence citation" and the TYPE now holds that promise.
+// standing is the repo's ONE standing coproduct, gunbc.extdeps.external_authority::CitedFigureStanding
+// (CitedToAuthority | TranscribedUncited | ObservedByReceipt; one concept, one authority), and
+// evidence_receipt is a std.types NonEmptyStr, so an EMPTY receipt is unwritable rather than
+// checked (gunbc.design_argument::fail_closed: making it unwritable beats catching it).
 // PRODUCER FRONTIER: each G0ConditionProof is produced by the G0 lifting-record route - an
-// operator-issued condition record (per-key proof plus evidence citation) recorded via the
-// roadmap event CLI extension proposed as the follow-up planning change (node to be minted
-// via planning PR; not present in gunbc.roadmap.roadmap_authority yet). Trigger: operator
-// approval of this plan. The proof lists in the witness are TEST FIXTURES, not lifting
-// records (review 98911 FINDING 2, gunbc.design_argument::consumption).
-type G0ConditionProof = G0ConditionProof { key: G0ConditionKey, proof: Bool }
+// operator-issued condition record (per-key proof, standing CitedToAuthority pointing at the
+// ExternalAuthority the evidence cites, and a non-empty evidence_receipt naming the lifting
+// record) recorded via the roadmap event CLI extension proposed as the follow-up planning
+// change (node to be minted via planning PR; not present in gunbc.roadmap.roadmap_authority
+// yet). Trigger: operator approval of this plan. The proof lists in the witness are TEST
+// FIXTURES - fabricated CitedToAuthority standings with fixture receipts, not lifting
+// records (review 98911 FINDING 2 + review 98958, gunbc.design_argument::consumption).
+type G0ConditionProof = G0ConditionProof {
+  key: G0ConditionKey,
+  proof: Bool,
+  standing: CitedFigureStanding,
+  evidence_receipt: NonEmptyStr,
+}
 
 // The lifting rule as a conjunction - an IDENTITY JOIN, not a count equality
 // (review 98801 FINDING 2, gunbc.design_argument::fail_closed: "Completeness is an
@@ -147,14 +164,32 @@ type G0ConditionProof = G0ConditionProof { key: G0ConditionKey, proof: Bool }
 // EXACTLY ONCE among the supplied proofs and every supplied proof is true. Fifteen
 // copies of one proof, a mislabelled or duplicated key, a dropped row, or an empty list
 // all fail; the required count is COMPUTED via fn g0_condition_count, never written down.
+// And the join is CLOSED BY CONSTRUCTION to unevidenced Bools (review 98958 FINDING 1):
+// an entry counts as proved only with proof true AND standing CitedToAuthority -
+// TranscribedUncited and ObservedByReceipt entries never satisfy it (decided by the
+// total match in fn g0_proof_is_evidenced, not by a separate validator) - while an
+// empty evidence_receipt cannot be written at all (evidence_receipt: NonEmptyStr).
 fn g0_lift_conjunction_holds(proofs: List<G0ConditionProof>) -> Bool {
   count(proofs) == g0_condition_count()
     && all(g0_all_condition_keys, k => g0_condition_proved_once(proofs, k))
     && all(proofs, pf => pf.proof)
 }
 
+// What makes ONE entry count as the proof of its key: the Bool is true AND the standing
+// is the cited arm of the repo's one standing coproduct. The match is TOTAL over
+// CitedFigureStanding, so only CitedToAuthority can answer true (review 98958 FINDING 1:
+// TranscribedUncited is unable to satisfy the conjunction by construction).
+fn g0_proof_is_evidenced(pf: G0ConditionProof) -> Bool {
+  pf.proof
+    && match pf.standing {
+      CitedToAuthority { authority: _ } => true,
+      TranscribedUncited { read_obligation: _ } => false,
+      ObservedByReceipt { observed: _ } => false,
+    }
+}
+
 fn g0_condition_proved_once(proofs: List<G0ConditionProof>, k: G0ConditionKey) -> Bool {
-  count(filter(proofs, pf => pf.key == k)) == 1
+  count(filter(proofs, pf => pf.key == k && g0_proof_is_evidenced(pf))) == 1
 }
 
 // Every declared state group has at least one condition key. Group membership is decided
