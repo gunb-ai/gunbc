@@ -40,7 +40,7 @@ import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
-  serving_observed_from_reads, serving_assess, ServingAssessment, ServingDeviation, serving_deviation_item,
+  serving_observed_from_reads, serving_assess, serving_assess_readiness, ServingAssessment, ServingDeviation, serving_deviation_item,
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
   ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item,
   serving_passwd_uid, serving_gate_and, serving_account_presence_gate,
@@ -797,7 +797,11 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
                 Absent => exit_failure(reason: concat("remote_build_serving_observe: the executor plan-time pin (binary sha / arch / GITHUB_SHA / rust-toolchain channel) could not be read; refusing to assess ", raw_host))
                 Present { value: pin } => {
                   let view = observe_host_reads(target: target, context: context, d: hi_desired, pin: pin)
-                  let assessment = serving_assess(d: view.desired, o: view.observed, pin: pin)
+                  // READINESS, not advance: the pre-service read assesses the host against its own settle
+                  // record, so a host that converged at X and is observed from a newer head Y reports no
+                  // checkout/serve_binary drift (serving-observe-assesses-installed-revision). The converge
+                  // entry below keeps serving_assess (advance) so a dispatched converge still moves a host.
+                  let assessment = serving_assess_readiness(d: view.desired, o: view.observed, pin: pin)
                   let body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
                   let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_observe_receipt_path, content: body)
                   if w.success == false {
