@@ -36,12 +36,17 @@ import std.host_text { chars }
 // this control compares neighbours, not scopes.
 //
 // HOW TO EXECUTE THIS CONTROL, and two traps on the way there (node parse-comment-gap-attachment-v2-consumed).
-// It imports v1.compiler.*, so it needs src/v1 as a source root -- claim_batch with only
-// --source-root dag --source-root src/v2 refuses it at the checker, because none of those modules is in a
-// root it can see. The executed form names all three roots itself:
+// It imports v1.compiler.*, so it lives under manual/ and needs src/v1 as a source root: claim_batch with
+// only --source-root dag --source-root src/v2 refuses it at the checker, because none of those modules is in
+// a root it can see. The executed form names all three roots itself:
 //   claim_batch --source-root dag --source-root src/v2 --source-root src/v1 \
 //     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag \
 //     --functions v1_and_v2_agree_on_neighbour_text_holds --hermetic
+// The seed route, for the Bool reported directly rather than as a batch verdict:
+//   gunbc --dry-run run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag
+//   (gunbc test sends a //v2/... label to the native route, not the seed interpreter this comparison needs;
+//   the seed reports the claim's Bool in its refusal line, exit 2)
 // And its two pool callees MUST be imported by name: left bare, the checker refuses the whole claim with
 // "effect summary incomplete: call to 'dag_language_model' ... has no established callee identity" (and the
 // same for 'span_index_extent'). That refusal is why this control, though it has sat under manual/ since it
