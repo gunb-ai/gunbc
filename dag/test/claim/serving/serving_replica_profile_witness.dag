@@ -268,7 +268,7 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
   // The ladder --mmap-experts actually runs: a card tier, a capped host-RAM tier, a disk tier.
   rungs.length() == 3
     && rungs.any(r => match r {
-        ExpertInHostRam { bytes: _, holds: ArtifactHeldEvictable { bound_by: bound_by, floor: floor }, mechanism: _ } =>
+        ExpertInHostRam { bytes: _, holds: ArtifactHeldEvictable { bound_by: bound_by, floor: _, occupies: _ }, mechanism: _ } =>
           string_contains(s: bound_by as String, pattern: "cgroup" as String)
         _ => false
       })
@@ -283,11 +283,20 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
 test fn srv3_has_a_host_ram_expert_rung() -> Bool {
   match srv3_routed_expert_artifact.host_ram {
     Present { value: r } => match r.holds {
-      ArtifactHeldEvictable { bound_by: _, floor: f } =>
+      ArtifactHeldEvictable { bound_by: _, floor: f, occupies: o } =>
         match f {
           ServingMemoryAssumed { bytes: fb, reason: _ } =>
-            match r.bytes {
-              ServingMemoryUnread { reason: _ } => byte_size_count(b: fb) > 0
+            match o {
+              // The rung states BOTH figures: a floor a turn must keep, and the occupancy the shared cgroup pays
+              // (the whole mapped shard set, borrowed from srv4's read with its attribution obligation). The
+              // resident BYTES stay Unread -- the cgroup file counter is not attributable to experts -- so the rung
+              // may not state a resident figure it has not attributed, and the budget must not borrow the floor.
+              ServingMemoryAssumed { bytes: ob, reason: _ } =>
+                match r.bytes {
+                  ServingMemoryUnread { reason: _ } => byte_size_count(b: fb) > 0 && byte_size_count(b: ob) >= byte_size_count(b: fb)
+                    && byte_size_count(b: ob) <= byte_size_count(b: srv3_routed_expert_artifact.bytes)
+                  _ => false
+                }
               _ => false
             }
           _ => false
