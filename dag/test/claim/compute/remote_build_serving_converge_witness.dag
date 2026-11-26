@@ -6,8 +6,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 // state, and that it NEVER leaks a secret (the authorized_keys forced-command line is printed
 // only by NAME, never by value). The value-comparison and the indeterminate-vs-drift red
 // controls live in test.claim.compute.remote_build_serving_setup_witness. Run:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
+//   gunbc test //test/claim/compute/remote_build_serving_converge_witness:<test fn>   (one operand per test fn)
 
 import std.optional { Present, Absent }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, compute_root }
@@ -41,11 +40,12 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer , serving_door_leg_kind }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
 import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetLegKind, ActuationLeg, ProvisioningLeg, fleet_leg_wall_deadline }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 
@@ -2347,6 +2347,21 @@ test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
           && (!string_contains(s: words, pattern: "repo_root"))
       }
     }
+  }
+}
+
+// THE THREE RECOVERY DOOR LEGS RIDE THE DOOR CEILING, not the actuation ceiling. A door is a gunbc
+// CLI run whose wall-clock begins with the host engine's cold entry resolution; converge apply
+// 45354782930 proved the mismatch on srv1: the seat census was killed at the 60s ActuationLeg ceiling
+// "before the host could answer" while the door was still resolving its entry, and the overrun folded
+// — correctly — into an unknown census that refused the plan. The serve route had already classified
+// its host-side gunbc leg as ProvisioningLeg (gunbc.compute.remote_build_client); the doors ride the
+// same kind, decided once by serving_door_leg_kind, and this claim goes red the moment a door leg is
+// reclassified back down (or the kind drifts to something whose ceiling equals the actuation one).
+test fn the_recovery_door_legs_ride_the_door_ceiling() -> Bool {
+  match serving_door_leg_kind() {
+    ProvisioningLeg => fleet_leg_wall_deadline(kind: serving_door_leg_kind()) != fleet_leg_wall_deadline(kind: ActuationLeg)
+    _ => false
   }
 }
 

@@ -18,7 +18,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 //
 // WHAT IT IS NOW. Such an edit is DECLINED, counted and located per row with the exclusion pattern
 // that matched, and non-blocking. Nothing in CI executes it. The mitigation is procedural: a PR
-// that edits one carries a real bin_wet receipt (the entry run by `gunbc run --claim-run` with its
+// that edits one carries a real bin_wet receipt (the entry run by `gunbc test --wet` with its
 // witness binaries built), which covers that PR only.
 //
 // THE REASON IS LOST-AS-PASSENGER. The class was executed per PR by the bin-witness wet batch,

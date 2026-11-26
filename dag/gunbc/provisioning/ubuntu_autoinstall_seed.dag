@@ -16,8 +16,8 @@ module gunbc.provisioning.ubuntu_autoinstall_seed
 //     gunbc.design_argument::how_to_work: name the instrument, never transcribe its output): the count of test fns is derived from the
 //     witness file by gunbc.frontend_eval.control's test_fns, which reads the module-scope `test fn ` lines the
 //     parser itself requires, and each one's verdict comes from the claim run, which reports one PASS or FAIL
-//     line per test fn — `gunbc run --source-root dag --source-root src/v2 --entry
-//     dag/test/claim/ubuntu_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
+//     line per test fn — `gunbc test //test/claim/ubuntu_autoinstall_seed_witness:<the fn>`, one operand
+//     per test fn. A number written into
 //     this comment would be a second, rotting copy of a fact both of those produce on demand; if the two ever
 //     disagree, the module has grown a rule nothing exercises and the run says so, not this sentence.
 //   * CONSUMED ON MAIN: test.claim.ubuntu_autoinstall_seed_witness, as above. That is the only EXECUTING consumer

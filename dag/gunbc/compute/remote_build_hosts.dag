@@ -118,7 +118,21 @@ fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
   // planned group-shared for the remote-build account from this row -- which is what the converge needs to
   // write the home it is being admitted to create. Nothing acts on that yet: ken is x86 and has no converge
   // path, so the posture is a plan awaiting an executor, not a change to a live host.
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7]
+  //
+  // butch (operator_host_srv14) joins the CANDIDATE set only, on the same footing as ken: admitted for the
+  // OBSERVE/CONVERGE arms so a peer executor (srv1) can create its /opt/gunbc/compute/capacity serving home.
+  // This does NOT put butch on remote_build_serving_hosts nor into client dispatch -- that roster stays the
+  // ONE live gate (its join is step 6, separately gated on the capacity ledger having a traversable home).
+  // unlike ken (x86, no converge path, a plan awaiting an executor), butch IS arm64 with a real converge path
+  // run by the peer, and its Strata serving engines were retired BY THE OPERATOR'S HAND -- recorded as
+  // ServingUnitBootState UnitDisabled in gunbc.serving.serving_reservation::srv14_serving_unit_boot_states --
+  // so its reserved serving charge is released and its build pool is what that released charge frees
+  // (gunbc.compute.remote_build). Grounded in host reads, not the ruling row alone: run 45173386343
+  // (fleet-converge remote_build_serving_observe host=srv1 subject_host=srv14) read butch over the tailnet --
+  // known_hosts anchor materialized + content-verified, 'enrolled host=srv14
+  // endpoint=butch.tailecbe08.ts.net provenance=scanned-first-contact' -- proving it joined and is reachable;
+  // the boot_states rows are the retirement read.
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7, operator_host_srv14]
 }
 
 // IS THE SERVING ROUTE PROVISIONED ON THIS HOST, whatever its dispatch standing? The question the ledger
