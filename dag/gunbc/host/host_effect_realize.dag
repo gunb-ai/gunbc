@@ -3872,12 +3872,14 @@ type RunArgvTransportUnansweredCause
   = TransportUnansweredOverran
   | TransportUnansweredWireInconsistent
 
-// render a dispatched-but-unanswered leg by the kind of fault that left its effect unknown -- never as "not run",
-// "refused", or "not dispatched" (gunbc.design_argument::fail_closed: a sent leg is never reported as not-sent).
+// render a dispatched-but-unanswered leg: the typed cause gives the class of fault, the `reason` carries the
+// specific detail (the deadline, or the SshSessionWireFault) -- both must appear so the diagnostic is located and
+// countable (gunbc.design_argument::fail_closed). A sent leg is never described as "not run", "refused", or "not
+// dispatched" (gunbc.design_argument::declared_intent: a parameter must be read; here `reason` is).
 fn run_argv_transport_unanswered_cause_phrase(cause: RunArgvTransportUnansweredCause, reason: String) -> String {
   match cause {
-    TransportUnansweredOverran => "its reply was lost (the process group was killed before the host answered), so its effect is unknown; ",
-    TransportUnansweredWireInconsistent => "its reply carried an inconsistent wire shape, so its effect is unknown; ",
+    TransportUnansweredOverran => join(["its reply was lost -- ", reason, " -- so its effect is unknown; "], ""),
+    TransportUnansweredWireInconsistent => join(["its reply carried an inconsistent wire shape -- ", reason, " -- so its effect is unknown; "], ""),
   }
 }
 type RunArgvTransportOutcome
@@ -4450,18 +4452,14 @@ fn build_cache_fold_op_executed(
     // returned. An `if o.exit_code != 0` written here instead would put the same rule in two places, where
     // the digest gate already sits in one — and the two would be free to disagree, silently, about whether a
     // given leg stops the sequence.
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown; it does not reach the
+    // cited build_cache_ensure_leg_verdict (there is no observed exit to decide on), so it blocks like a refusal
+    // for control flow, but the typed cause records that the leg was in fact dispatched.
     RunArgvTransportUnanswered { cause: _, reason: r } =>
       BuildCacheEnsureFold {
         executed: EnsureTransportBlocked { op: op, reason: r },
         digest_line: acc.digest_line,
       }
-    // THE `set -e` DECISION IS NOT MADE HERE. It is the cited build_cache_ensure_leg_verdict, in the module
-    // that owns the effect: this site turns the transport's outcome into that fn's input and reports what it
-    // returned. An `if o.exit_code != 0` written here instead would put the same rule in two places, where
-    // the digest gate already sits in one — and the two would be free to disagree, silently, about whether a
-    // given leg stops the sequence.
     RunArgvTransportObserved { observed: o } =>
       match build_cache_ensure_leg_verdict(
         op: op,
