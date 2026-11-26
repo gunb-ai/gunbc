@@ -5666,7 +5666,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shell-dag-host-reach-identity-probe",
       owner: "debt",
       carriers: carrier(path: "dag/gunbc/host/host_reach_identity_probe.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Replace the hand id/hostname argv in the identity probe with builders",
           boundary: "gunbc.host.host_reach_identity_probe probe_reachable_with_principal uses [\"id\",\"-un\"] and probe_ready_target_once uses [\"hostname\"]. The existing builders differ: extdeps.tools.id id_uid_argv is [\"id\",\"-u\"] (numeric) and hostname_short_read_argv is [\"hostname\",\"-s\"].",
           displaced_cost: "Hand argv is invocation text no builder owns.",
