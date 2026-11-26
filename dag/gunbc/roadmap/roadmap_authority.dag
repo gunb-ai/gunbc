@@ -3312,6 +3312,133 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "gunbc-project-root", contribution: "Known gaps and recurring failure modes, each retired against its rostered trigger, stop charging every later change for the same defect."),
     ),
     roadmap_node(
+      identity: "rn_32ETACQLIVB34CDUZKSNZHOQVA",
+      id: "fallback-retirement",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: level_fields(
+          headline: "Standing fallback arms are retired in priority order, each refusing where it used to search, substitute or widen",
+          boundary: "One batch admitted under gunbc.plans.debt_payoff section 3 (gunbc.design_ruling::standing_fallbacks_are_retired_in_priority_order_2026_11_26). Scope is the live fallback arms a 2026-11-26 read-only survey at daf23d4fb46 found in the seed, the v2 compiler, the harness and the workflows, in seven families: names answered by search, the interpreter's second name answer, refusals erased into answers, spelling standing in for identity, two mechanisms for one question, integrity failures that widen, and environment presence standing in for a declared fact. The seed is in scope.",
+          approach: "Members in priority order: claim-route-loads-by-layout-demand, interpreter-evaluates-the-resolved-call-target (both layer 0 of gunbc.plans.names_without_imports), refusals-are-not-erased-into-answers, spelling-is-not-identity, one-mechanism-per-question, integrity-failures-refuse, environment-is-not-a-declared-fact. Each lands the next step on its terminal's path, not the whole terminal. Arms already owned elsewhere stay there: the v2 AmbientBindingTable tiers and the pattern-atom corpus lookup with names-bind-to-the-unique-declaration, the kernel type rows with one-standard-library. The admitting pull request carries the surveyed population per member, as section 3 requires.",
+          red_control: "A member that swaps one fallback for another (a cache, a wider default, a second search) is not payoff. A member is retired only with a discriminating RED that reaches the former fallback arm and now refuses, typed and located, and a positive control green on the production route.",
+          displaced_cost: "Each arm answers a question nobody declared, so a judgment's real input is wider than its source says: a claim run parses the whole tree for a closure of a few dozen files, a refusal becomes a plausible wrong answer, and a corrupted cache becomes a slower green.",
+          handback: "Per member: the arm deleted or refusing, its RED enrolled, the production route green, and that family's surveyed population empty or each remaining site named with its owner."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "Fallbacks are forbidden by gunbc.design_argument::fail_closed; this batch retires the standing arms that predate or escaped that law, most damaging first."),
+    ),
+    roadmap_node(
+      identity: "rn_YVY3346RXI4LPIVXQXAHGJWM2I",
+      id: "claim-route-loads-by-layout-demand",
+      owner: "namespace",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
+      line: ticket(t: fields(
+          headline: "The seed's claim route loads a claim's closure by its references and the layout rule, and the whole-tree name census is deleted",
+          boundary: "Serves gunbc.plans.names_without_imports layer 0 (the seed loads by the same demands), a step short of names-bind-to-the-unique-declaration. run_claim_route acquires through demand_acquire build_demand_acquired_index, which gunbc run already uses, locating each module by gunbc.source_layout (source_layout_lookup module_storage_relative) instead of the whole-tree module path index. The bare-provider channel and its census are deleted (visit_bare_reference_providers, closure_name_census, tree_census_nodes, pool_census_for_name, run_required_bare_reference_admission), and the typechecker's tree_bare_census_for_root fill is confined to the closure.",
+          displaced_cost: "Every claim process parses every module in the tree before the claim's own closure is touched, and an unrelated file anywhere can change what a bare name binds. Reading of 2026-11-26 (srv1, pre-#16872 claim_batch process-partition lines over 50 src/v2 claim modules): the whole-tree index and the bare-reference edge index were over 40 percent of each process, claim evaluation about 2 percent. The survey found every .dag file under dag and src/v2 stored at its layout path, and only 3 of the 445 import-less files with an ancestor declarer the census could lawfully supply.",
+          first_slice: "Qualify the bare references of the three import-less files with an ancestor declarer (dag/std/filesystem/types.dag, src/v2/lens/extdeps_shape_transport_policy/module_refs.dag, src/v2/compiler/self_host/stage0_boundary_add_probe.dag) and count bare service keys in import-less files; then route run_claim_route's exact-label path through the demand-acquired index and delete the bare channel.",
+          red_control: "A module stored off its layout path refuses naming both paths; a bare reference only the census could answer refuses as unbound, located; a claim run reads no source file outside its closure. Positive control: the native-seven claim modules give the same verdicts on the new route as on the old.",
+          out_of_scope: "Rewriting references or deleting the import grammar corpus-wide (names-bind-to-the-unique-declaration, import-grammar-and-lines-deleted); the v2 loader; pattern selection beyond walking the named package's directory.",
+          handback: "run_claim_route on demand acquisition, the census functions deleted, the REDs enrolled, and a claim run's pre-entry cost scaling with its closure rather than the tree."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "Names stop being answered by searching the whole tree on the route every claim run takes."),
+    ),
+    roadmap_node(
+      identity: "rn_YH5MWVXHBANQC243CDHNQTE7WQ",
+      id: "interpreter-evaluates-the-resolved-call-target",
+      owner: "namespace",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+          headline: "The seed interpreter evaluates the call target the checker resolved, and its own name search is deleted",
+          boundary: "Serves gunbc.plans.names_without_imports layer 0 (its resolved-declaration evaluation prerequisite). eval_call answers a call head a second time: local binding, site_resolved_fn, the fold intercept, the generated lookup_eval_builtin_inner table by spelling, then a slot keyed by bare name (fn_nodes, first-write-wins or last-write-wins by module_order). The checker already records CallTargetIdentity and the Rust emitter consumes it. The interpreter consumes the same per-site target, an unresolved call refuses NoSuchFunction, and the bare-name slot and the table's free-call arms are deleted.",
+          displaced_cost: "The interpreter and the emitter can bind one call to two declarations (gunbc.recurring_failure_mode an_unimported_bare_name_binds_differently_per_realization), the answer can depend on module load order, and service_ops keys collide last-write-wins.",
+          first_slice: "Key the recorded CallTargetIdentity by call-site occurrence and read it in eval_call ahead of every tier; over the native-seven claims, record which tier answered each call before any tier is deleted.",
+          red_control: "Two modules declaring one spelling, one of them imported: the call evaluates the imported one under either load order. A call head only the builtin table or the bare slot could answer refuses as unbound.",
+          out_of_scope: "Method-call dispatch (spelling-is-not-identity); the v2 resolver's tables (names-bind-to-the-unique-declaration).",
+          handback: "eval_call reading recorded targets only, the bare slot deleted, the REDs enrolled, and the native-seven claims unchanged."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "One answer to which function a call means, shared by the interpreter and the emitter."),
+    ),
+    roadmap_node(
+      identity: "rn_RIC7KJVGYEL3OSNZQP7L44UGHM",
+      id: "refusals-are-not-erased-into-answers",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "src/v1/coercion.dag"),
+      line: ticket(t: fields(
+          headline: "A refusal reaching a fallback arm stays a refusal: no emitted spelling, Null, absent or leaf match stands in for it",
+          boundary: "Four places turn a computed refusal into a plausible answer. coerce_primitive_type, through realized_checkpoint, emits the bare source spelling for RealizationRefused at 22 emitter sites. The seed interpreter pads missing arguments, missing variant fields, out-of-range indexes and unkeyable map keys with Null or false (apply_closure, match_pattern, eval_index, raw_map_lookup), and eval_var evaluates a data item naming itself to its own name. v2 infer reads a contested provider as absent (infer_indexes_lookup, infer_resolved_payload and six more). v2 match coverage compares an arm's leaf name, not its declaring coproduct (infer_coproduct_arm_pattern_constructed).",
+          displaced_cost: "Silent wrongness, which gunbc.design_argument::guarantee_ladder places outside the ladder: an emitted type can bind an unrelated target type of the same name, evaluation continues on a fabricated Null, and a match can count as covered by name.",
+          first_slice: "coerce_primitive_type renders RealizationRefused as a located compile_error! carrying its cause, after counting how many emissions over the self-host closure reach that arm.",
+          red_control: "Per place, a specimen that reaches the former substitute and now refuses typed and located: a type whose realization is refused; an arity mismatch and a missing field under the interpreter; two providers for one name under infer; an arm naming Other.Foo against a scrutinee that declares Foo.",
+          out_of_scope: "A Null that is the seed's carrier for an omitted optional field, until that carrier is told apart (measured first).",
+          handback: "Each place refusing with its RED enrolled, and the self-host emission and native-seven claims unchanged except where a refusal is the correct new answer, each such case listed."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "Refusals already computed stop being thrown away."),
+    ),
+    roadmap_node(
+      identity: "rn_6P44OKAOKA2PA5WAPLGVA5GPHQ",
+      id: "spelling-is-not-identity",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "src/v1/05_emit_rust.dag"),
+      line: ticket(t: fields(
+          headline: "Declaration identity, not spelling, selects realizations, lowerings and target names",
+          boundary: "Spelling stands in for identity in: the emitter's checkpoint lookup by bare dag_name ahead of the identity-keyed arm (type_realization_decision); the name == trim arm of rust_host_string_op_fn_emit; method dispatch by spelling in eval_method_call and emit_typed_method_call, whose PlainMethodSemantics arm emits recv.method(args) verbatim; emit_typed_call's spelling intercepts; eval_cast comparing type spellings; v2 resolved_reference_identity turning any declaration whose leaf is a canonical symbol into the kernel atom; bound_spelling_from_map printing the source name when the target has none; nullary_coproduct_arm_binding_spelling emitting Parent::Leaf.",
+          displaced_cost: "Two declarations that share a leaf name can share a realization or a target name: an unrelated trim, same-named coproduct arms in two modules, a declaration whose name ends in a token-class name.",
+          first_slice: "Key the trim arm on its std.primitive_projection row as the neighbouring string_contains bridge already is, and make the PlainMethodSemantics arm refuse without a template as emit_rust_generic_method_call already does.",
+          red_control: "A second declaration named trim in another module keeps its authored body; a method with no template refuses at emission; two coproducts with one arm name in two modules emit distinct paths.",
+          out_of_scope: "Kernel type rows (one-standard-library and the kernel-type layer rule); the v2 AmbientBindingTable tiers (names-bind-to-the-unique-declaration).",
+          handback: "Each listed site keyed on declaration identity or refusing, with its RED enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "A leaf name stops standing in for the declaration it names."),
+    ),
+    roadmap_node(
+      identity: "rn_4OVFCEEVNHKDQFVIXSIEUMSEAQ",
+      id: "one-mechanism-per-question",
+      owner: "debt",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
+      line: ticket(t: fields(
+          headline: "Each listed question has one answering mechanism, and the second is deleted",
+          boundary: "Two mechanisms answer one question in: name lookup policy (v2.std.resolution_policy ImportScoped beside NamespaceOnlyY; the seed's ImportScoped resolver, reached only by tests); a file's dependencies (the loader's edges beside ReferenceSelectionTier, whose produce_one gives an unreadable or unaccounted file no references and so drops it from the typed-cache key); whether a file has imports (source_declares_import_lines beside the parsed imports); demand_acquire falling back to extract_import_paths; the workspace root (five arms across two stores, bind_checkout_root ignoring a late set); the seed build identity (commit or tree).",
+          displaced_cost: "Two answers to one question eventually disagree, and the disagreement surfaces far from either: a cache key missing a file's references, a run whose two roots differ, a binary stamped with an older commit.",
+          first_slice: "Delete the seed's ImportScoped resolver with its test-only setter, and make ReferenceSelectionTier produce_one refuse on Unaccounted.",
+          red_control: "An unreadable file in a closure refuses the run rather than leaving the cache key; reading the workspace root before it is bound refuses; v2 reference_check and the compiler bind one name the same way.",
+          out_of_scope: "The workspace manifest that replaces the root search (source-workspace-manifest); this member only makes the existing arms single and refusing.",
+          handback: "Each listed second mechanism deleted or refusing, with its RED enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "One authority per question, applied to the mechanisms that still answer twice."),
+    ),
+    roadmap_node(
+      identity: "rn_JAFCNIJNM5KNZCN7CR6XHWXOCQ",
+      id: "integrity-failures-refuse",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run/native_product_cache.rs"),
+      line: ticket(t: fields(
+          headline: "A cache or receipt that fails its integrity check refuses and is counted, instead of widening to a full run",
+          boundary: "Two arms absorb integrity failures into the slow path. The pull-request fast lane (gunbc.read_set_restore fast_lane_decision_step) runs with continue-on-error, so a crashed decision or a corrupted restored unit becomes a full run with no classify line, and its rule is stated twice (fast_lane_decide and the emitted script). The native product cache (native_product_cache lookup) turns a hash or manifest mismatch under its SHA-256 key into a rebuild, and record_outcome can drop its receipt line silently.",
+          displaced_cost: "Store corruption and writer bugs stay hidden behind green, slower runs: the absorbing fallback of gunbc.design_argument::fail_closed, applied to caches.",
+          first_slice: "A native product cache mismatch quarantines the entry and refuses with a typed cause, and record_outcome exits on a failed write as demand_acquire read_set_record_to already does.",
+          red_control: "A planted byte flip in a stored product refuses naming its key; a planted malformed fast-lane unit reds the step with its cause; a missing unit or a changed input still selects the full run.",
+          out_of_scope: "Whether the fast lane exists or how it is keyed (gunbc.plans.read_set_convergence).",
+          handback: "Both arms refusing, the fast-lane rule stated once, and the REDs enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "A corrupted cache becomes a red, not a slower green."),
+    ),
+    roadmap_node(
+      identity: "rn_R4PHG2GSMKRZUSEQKELGQFGPYM",
+      id: "environment-is-not-a-declared-fact",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/extdeps/git.dag"),
+      line: ticket(t: fields(
+          headline: "Environment presence and shell or-chains stop standing in for declared facts",
+          boundary: "Facts chosen by what happens to be set: ROOT from git rev-parse or else pwd, emitted about 130 times from extdeps.git git_toplevel_shell_subexpr_with_fallback beside a strict twin; the instrument-dispatch memory guard reading an unreadable memory.max as max; CI cargo taken from PATH when the isolated one is absent; user_work_scope classifying a process CiExempt by GITHUB_ACTIONS before reading its cgroup; select_access_token_source choosing a principal by which variables exist; malformed GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES and GUNBC_MEMORY_BUDGET_BYTES ignored; heal coordinates and the host-cap release host chosen by expression truthiness.",
+          displaced_cost: "A run does something other than what it was asked without saying so: it builds against an unintended root or toolchain, admits an unbounded job, presents an unintended principal, or drops an operator's mistyped request.",
+          first_slice: "Emit the strict git_toplevel_shell_subexpr at every site and delete the fallback variant from extdeps.git, where it is also policy inside an interface layer.",
+          red_control: "An emitted workflow with git unavailable refuses before any step reads ROOT; an unreadable memory.max refuses the dispatch; a malformed override refuses naming the variable; a missing isolated cargo refuses ToolchainHomesNotIsolated.",
+          out_of_scope: "The authorization pattern itself (gunbc.auth.authorization_pattern_selection), beyond the selector reading a declared principal.",
+          handback: "Each listed site refusing or reading a declared input, with its RED enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "What a run acts on is declared, not inferred from what happens to be set."),
+    ),
+    roadmap_node(
       identity: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE",
       id: "printed-chassis-python-kernel-retirement",
       owner: "debt",
@@ -9385,6 +9512,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
     // gunb.ai: the refresh waits on the cutover, so the content is written once, in gunbc (merry-eagle-717, 2026-11-24).
     edge(child: "gunb-ai-content-refresh", parent: "gunb-ai-deploy-cutover"),
+    // Fallback retirement (2026-11-26, gunbc.design_ruling::standing_fallbacks_are_retired_in_priority_order_2026_11_26):
+    // the two name members delete the seed's global pool of bare names on the claim route and in the interpreter,
+    // which namespace-legacy-choice-retirement names among the mechanisms it removes, so it waits on both.
+    edge(child: "namespace-legacy-choice-retirement", parent: "claim-route-loads-by-layout-demand"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "interpreter-evaluates-the-resolved-call-target"),
   ], guarantee_ladder_edges())
 }
 
