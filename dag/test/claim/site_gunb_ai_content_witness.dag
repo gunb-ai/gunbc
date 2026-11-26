@@ -7,8 +7,8 @@ module test.claim.site_gunb_ai_content_witness
 // serializes it through extdeps.languages.html's FAIL-CLOSED emitter, so escaping and ordering
 // are exercised on the route the served page will actually take.
 //
-// Consumer: claim-run —
-//   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_content_witness.dag --claim-run
+// Consumer: the claim route —
+//   gunbc test //test/claim/site_gunb_ai_content_witness:<test fn>   (one operand per test fn)
 //
 // RED CONTROLS, RUN against the compiler (not asserted — a control that only deletes a field
 // fails to typecheck and proves nothing). The per-control outcome table (which claim reddened,

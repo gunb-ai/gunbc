@@ -3718,6 +3718,38 @@ fn classify_test_operands(
     })
 }
 
+/// `gunbc.target_invocation` `admit_resolvable_exact_targets`, mirrored: an exact label the registry
+/// does not bind, whose module resolves in the roots, moves to the claim route as a `SingleTarget`.
+/// The registry is asked first, so a bound instrument subject keeps its producer, and an unbound label
+/// whose module does not resolve stays exact and is refused as `TargetIsUnknown`. Both questions are
+/// parameters, so the controls ask the step without a registry or a corpus.
+fn admit_resolvable_exact_targets(
+    classes: TestOperandClasses,
+    registry_binds: &dyn Fn(&Label) -> bool,
+    module_resolves: &dyn Fn(&Label) -> bool,
+) -> TestOperandClasses {
+    let (exact, moved): (Vec<Label>, Vec<Label>) = classes
+        .exact
+        .into_iter()
+        .partition(|label| registry_binds(label) || !module_resolves(label));
+    let mut claim = classes.claim;
+    claim.extend(moved.into_iter().map(TargetPattern::SingleTarget));
+    TestOperandClasses {
+        exact,
+        native: classes.native,
+        claim,
+        selected: classes.selected,
+    }
+}
+
+/// Whether the instrument registry binds this exact label (`gunbc.instrument_targets`).
+fn instrument_registry_binds(label: &Label) -> bool {
+    let key = render_label(label);
+    instrument_registry()
+        .iter()
+        .any(|(candidate, _)| render_label(candidate) == key)
+}
+
 /// THE OPTION REFUSAL, KEPT OUT OF THE DISPATCH SO IT CAN BE ASKED WITHOUT RUNNING ANYTHING: an option
 /// belonging to the claim route, spelled on a batch that is not one, is refused with the reason that names
 /// the route it landed on.
@@ -3780,6 +3812,51 @@ pub fn test_verb(options: &TestInvocationOptions) -> InvocationOutcome {
     {
         Ok(classes) => classes,
         Err(refused) => return refused,
+    };
+    // AN EXACT CLAIM OUTSIDE `//test/claim/...` (a pinned oracle under dag/test/manual, a parse control
+    // under src/v1/tests/claim) is admitted by its module resolving in the roots the batch would read.
+    // The corpus is indexed only when some exact label is unbound, so an instrument run pays nothing,
+    // and the index it fills is the process-shared one the claim route reads next.
+    let classes = if classes
+        .exact
+        .iter()
+        .any(|label| !instrument_registry_binds(label))
+    {
+        let roots = if options.source_roots.is_empty() {
+            cli_run::witness_layer_roots()
+        } else {
+            options.source_roots.clone()
+        };
+        // A CORPUS THAT CANNOT BE INDEXED LEAVES THE QUESTION UNANSWERED, AND THAT IS WHAT IS REPORTED:
+        // whether an unbound label names a claim is unknown, so the run is the subject unreached with
+        // the index's own cause -- never `TargetIsUnknown`, which would name a real label a typo
+        // (gunbc.design_argument::fail_closed: every degradation typed and located).
+        let modules = match cli_run::claim_route_module_paths(&roots) {
+            Ok(modules) => modules,
+            Err(cause) => {
+                let unbound: Vec<String> = classes
+                    .exact
+                    .iter()
+                    .filter(|label| !instrument_registry_binds(label))
+                    .map(render_label)
+                    .collect();
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!(
+                        "gunbc test: {} is bound to no instrument, and whether it names a claim \
+                         could not be decided because the claim corpus ({}) did not index — no \
+                         observation\n  cause: {cause}",
+                        unbound.join(", "),
+                        roots.join(", ")
+                    ),
+                };
+            }
+        };
+        admit_resolvable_exact_targets(classes, &instrument_registry_binds, &|label: &Label| {
+            modules.contains(&label.package_segments.join("."))
+        })
+    } else {
+        classes
     };
 
     if classes.selected_is_empty() {
@@ -5496,6 +5573,76 @@ mod test_batch_admission_controls {
             native_route_default_pattern().expect("the seed build must hand over its boundary"),
             claim_route_universe(),
         )
+    }
+
+    const CANARY: &str =
+        "//test/manual/roadmap_launch_canary_oracle:roadmap_launch_canary_oracle_completed";
+
+    fn classified(operands: &[&str]) -> TestOperandClasses {
+        let (native, claim) = universes();
+        let operands: Vec<String> = operands.iter().map(|o| o.to_string()).collect();
+        match classify_test_operands(&operands, &native, &claim) {
+            Ok(classes) => classes,
+            Err(refused) => panic!("the fold refused: {}", refused.message),
+        }
+    }
+
+    /// `test.claim.target_invocation_exact_claim_admission_witness` `an_unbound_exact_label_whose_module_resolves_is_a_claim`,
+    /// on the mirror: only the canary's module resolves, so the typo beside it stays exact.
+    #[test]
+    fn an_unbound_exact_label_whose_module_resolves_is_a_claim() {
+        let routed = admit_resolvable_exact_targets(
+            classified(&[CANARY, "//test/manual/roadmap_launch_canary_oracle_typo:x"]),
+            &|_| false,
+            &|label: &Label| render_label(label) == CANARY,
+        );
+        assert_eq!(routed.exact.len(), 1);
+        assert_eq!(
+            render_label(&routed.exact[0]),
+            "//test/manual/roadmap_launch_canary_oracle_typo:x"
+        );
+        assert_eq!(routed.claim.len(), 1);
+        assert!(
+            !routed.is_claim_selection(),
+            "a batch holding an unknown exact stays mixed"
+        );
+    }
+
+    /// Review 98733: a corpus that does not index leaves "is this label a claim?" unanswered, so the
+    /// run is the subject unreached carrying the index's cause -- never `TargetIsUnknown`.
+    #[test]
+    fn an_unindexable_corpus_is_the_subject_unreached_not_an_unknown_target() {
+        let root = scratch_claim_root(
+            "unindexable_exact_label",
+            &[("headerless.dag", "fn not_a_module() -> Bool { true }\n")],
+        );
+        let mut options = request(&[CANARY]);
+        options.source_roots = vec![root];
+        let out = test_verb(&options);
+        assert_eq!(
+            out.termination,
+            Termination::SubjectUnreached,
+            "{}",
+            out.message
+        );
+        assert!(out.message.contains("did not index"), "{}", out.message);
+        assert!(!out.message.contains("unknown"), "{}", out.message);
+    }
+
+    #[test]
+    fn an_unbound_exact_label_whose_module_does_not_resolve_stays_unknown() {
+        let routed = admit_resolvable_exact_targets(classified(&[CANARY]), &|_| false, &|_| false);
+        assert_eq!((routed.exact.len(), routed.claim.len()), (1, 0));
+    }
+
+    #[test]
+    fn a_registry_bound_label_keeps_its_producer_even_when_a_module_resolves() {
+        let routed = admit_resolvable_exact_targets(
+            classified(&["//gunbc/instruments:self-host"]),
+            &instrument_registry_binds,
+            &|_| true,
+        );
+        assert_eq!((routed.exact.len(), routed.claim.len()), (1, 0));
     }
 
     /// The fold, as `test_verb` uses it. `InvocationOutcome` carries no `Debug`, so a refusal is reported
