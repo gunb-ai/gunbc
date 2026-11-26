@@ -339,9 +339,9 @@ fn flex_aws_card_use(stats: JsonValue, rows: List<FlexAwsRentedRow>, instance_id
 
 fn flex_aws_rented_unplaceable(rented: JsonValue, model: NonEmptyStr) -> Int? {
   match flex_aws_field(v: rented, key: "alias") {
-    Present { value: JsonString { value: alias } } => match flex_aws_field(v: rented, key: "unplaceable_by_model") {
+    Present { value: JsonString { value: alias_name } } => match flex_aws_field(v: rented, key: "unplaceable_by_model") {
       Present { value: v } => match flex_aws_json_object_members(v: v) {
-        Present { value: ms } => flex_aws_unplaceable_for(by_model: ms, alias: alias, model: model)
+        Present { value: ms } => flex_aws_unplaceable_for(by_model: ms, alias_name: alias_name, model: model)
         Absent => none
       }
       Absent => none
@@ -361,8 +361,8 @@ fn flex_aws_json_object_members(v: JsonValue) -> List<JsonKeyValue>? {
 
 // THE ROUTER'S READING, for the cards we own. Every field is required: a stats answer missing one is refused,
 // never read as no demand or as an unused card.
-fn flex_aws_unplaceable_for(by_model: List<JsonKeyValue>, alias: String, model: NonEmptyStr) -> Int? {
-  fold(by_model |> filter(m => (m.key == alias) || (m.key == (model as String))), init: Present { value: 0 }, f: (acc, m) => match acc {
+fn flex_aws_unplaceable_for(by_model: List<JsonKeyValue>, alias_name: String, model: NonEmptyStr) -> Int? {
+  fold(by_model |> filter(m => (m.key == alias_name) || (m.key == (model as String))), init: Present { value: 0 }, f: (acc, m) => match acc {
     Absent => acc
     Present { value: n } => match flex_aws_json_number(v: m.value) { Present { value: k } => Present { value: n + k }  Absent => none }
   })

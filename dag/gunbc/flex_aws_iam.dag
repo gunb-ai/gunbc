@@ -315,14 +315,14 @@ fn flex_aws_provisioner_policy_json() -> String { aws_iam_policy_document_json(d
 // --arg out_dir=<dir>), so the document applied is the document this module states. Each write refuses
 // loudly; a partial directory is reported, never left to look complete.
 fn render_policies(out_dir: String) -> ProcessExit {
-  let loop = Filesystem.Write(path: join([out_dir, "/flex-loop-policy.json"], ""), content: flex_aws_loop_policy_json())
+  let loop_written = Filesystem.Write(path: join([out_dir, "/flex-loop-policy.json"], ""), content: flex_aws_loop_policy_json())
   let trust = Filesystem.Write(path: join([out_dir, "/flex-card-trust-policy.json"], ""), content: flex_aws_card_trust_policy_json())
   let card = Filesystem.Write(path: join([out_dir, "/flex-card-policy.json"], ""), content: flex_aws_card_policy_json())
   let fis_trust = Filesystem.Write(path: join([out_dir, "/flex-fis-trust-policy.json"], ""), content: flex_aws_fis_trust_policy_json())
   let fis = Filesystem.Write(path: join([out_dir, "/flex-fis-policy.json"], ""), content: flex_aws_fis_policy_json())
   let provisioner = Filesystem.Write(path: join([out_dir, "/flex-provisioner-policy.json"], ""), content: flex_aws_provisioner_policy_json())
-  if !loop.success {
-    exit_failure(reason: concat("THE LOOP POLICY COULD NOT BE WRITTEN: ", loop.error))
+  if !loop_written.success {
+    exit_failure(reason: concat("THE LOOP POLICY COULD NOT BE WRITTEN: ", loop_written.error))
   } else if !trust.success {
     exit_failure(reason: concat("THE CARD TRUST POLICY COULD NOT BE WRITTEN: ", trust.error))
   } else if !card.success {

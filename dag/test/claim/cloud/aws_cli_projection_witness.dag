@@ -44,7 +44,7 @@ test fn the_six_projections_read_their_recorded_shapes() -> Bool {
     AwsCliReadRefused { cause: _ } => false
   })
   && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceId\":\"i-0abc\",\"InstanceType\":\"g7e.2xlarge\",\"Placement\":\{\"AvailabilityZone\":\"us-east-1a\"},\"State\":\{\"Code\":16,\"Name\":\"running\"},\"InstanceLifecycle\":\"spot\",\"SpotInstanceRequestId\":\"sir-1\",\"LaunchTime\":\"2026-10-23T08:00:00+00:00\",\"Tags\":[\{\"Key\":\"gunbc-flex-owner\",\"Value\":\"gunbc-flex\"}]}]}]}") {
-    AwsCliReadOk { value: is } => match is.first() {
+    AwsCliReadOk { value: found } => match found.first() {
       Present { value: i } => ((i.instance_id as String) == "i-0abc") && (match i.state.name { AwsEc2Running => true  _ => false })
         && (match i.instance_lifecycle { Present { value: AwsEc2LifecycleSpot } => true  _ => false }) && (length(i.tags) == 1)
       Absent => false
