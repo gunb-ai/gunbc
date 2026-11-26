@@ -617,7 +617,24 @@ fn draw_gaps_of(c: CapCandidate) -> List<AxisGap> {
 }
 
 fn candidate_entries(field: List<CapCandidate>) -> List<ParetoEntry> {
-  map(field, c => candidate_entry(c: c))
+  let axes = funded_axes_for(field: field)
+  map(field, c => pareto_entry_for_selection(c: c, axes: axes))
+}
+
+// The entry a selection is allowed to weigh. Every obligation the candidate carries is a gap (see
+// `draw_gaps_of` -- the census the witness pins), but an entry only GAPS axes this selection funds: a gap
+// naming an axis nobody in the field has read can neither excuse nor block, and std.pareto refuses such an
+// entry as a contradiction rather than letting it decorate the row (dag/std/pareto.dag, the unfunded-gap
+// check). The unread other-subject reading is not lost by this filter -- where it stops a verdict it stops it
+// UP FRONT, in the fold's bound-and-feed checks, which answer with the read obligation itself.
+fn pareto_entry_for_selection(c: CapCandidate, axes: List<SelectionAxis>) -> ParetoEntry {
+  let e = candidate_entry(c: c)
+  ParetoEntry {
+    identity: e.identity,
+    display_label: e.display_label,
+    readings: e.readings,
+    missing_inputs: filter(e.missing_inputs, g => any(axes, a => same_axis(a: g.axis, b: a.identity))),
+  }
 }
 
 // ── THE CONSTRAINT THE ASK SERVES ──────────────────────────────────────────────────────────────────
