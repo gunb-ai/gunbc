@@ -801,6 +801,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "a_refused_reservation_is_censused_never_charged" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "a_refused_reservation_is_censused_never_charged",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_recovery_write_on_a_never_charged_slot_says_nothing_is_held" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_recovery_write_on_a_never_charged_slot_says_nothing_is_held",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "a_terminal_slot_with_an_unconsultable_ledger_stays_unknown" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "a_terminal_slot_with_an_unconsultable_ledger_stays_unknown",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attempt_past_its_declared_window_is_censused_as_a_write" },
       entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
       function: "an_attempt_past_its_declared_window_is_censused_as_a_write",

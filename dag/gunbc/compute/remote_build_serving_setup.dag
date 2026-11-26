@@ -62,7 +62,7 @@ import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuild
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 import extdeps.ssh.keys { authorized_key_entry_line }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, CatalogLegNeverCharged, recover_catalog_leg_reading,
 }
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -1808,6 +1808,7 @@ fn serving_seat_census_deviations(leg: RecoverCatalogLegReading) -> List<Serving
       fold(es, init: [], f: (acc, e) => match e {
         CatalogLegStale { reference: r } => concat(acc, [StaleSeatDetected { reference: r }])
         CatalogLegHeld { reference: _ } => acc
+        CatalogLegNeverCharged { reference: _ } => acc
       })
     RecoverCatalogLegUnknown { detail: _ } => []
     RecoverCatalogLegDeferred { reason: r } => [StaleSeatCensusDeferred { reason: r }]
