@@ -220,7 +220,7 @@ test fn witness_a_wire_inconsistent_leg_is_never_read_as_not_attempted() -> Bool
     observed: HostEffectArgvWireInconsistent { fault: OverrunWithoutDeadline },
   ) {
     DeployedTreeLegWireInconsistent { cause: c } =>
-      string_contains(s: c, pattern: "DISPATCHED")
+      string_contains(s: c, pattern: "dispatched")
         && string_contains(s: c, pattern: "inconsistent wire shape")
         && !string_contains(s: c, pattern: "never attempted")
     DeployedTreeLegNotAttempted { reason: _ } => false
