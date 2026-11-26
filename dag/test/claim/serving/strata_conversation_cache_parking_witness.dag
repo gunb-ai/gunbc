@@ -36,7 +36,7 @@ import extdeps.strata.serve_flags {
   StrataConversationCache,
   StrataConversationCacheBudget, StrataConversationCacheOff, StrataConversationCacheUnset,
   StrataConversationCacheUnread,
-  StrataConversationCacheMebibytes, StrataConversationCacheMebibytesBuilt,
+  StrataConversationCacheMebibytesBuilt,
   StrataConversationCacheMebibytesNonPositive, strata_conversation_cache_mebibytes,
   strata_conversation_cache_mebibytes_from_int, strata_conversation_cache_mebibytes_value,
   strata_conversation_cache_words, strata_names_a_conversation_cache,

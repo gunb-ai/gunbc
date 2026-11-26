@@ -99,34 +99,42 @@ type StrataExpertResidency
 // of an argv as read -- is the arm a serving launch must refuse (gunbc.serving.serving_replica_profile
 // strata_launch_parking_agreement).
 //
-// THE BUDGET IS A COMPOSITION OF std.measure's OWN PARTS, not a measure concept of its own: exactly what
-// `std.measure::FiniteByteSize` is -- `Measure<Memory, One, PositiveMeasureCount>` -- at the mebi scale, so
-// `Measure<Memory, Mebi, PositiveMeasureCount>`. A bound quantity is positive by construction, and here that
-// matters twice over: the engine reads `--conversation-cache-mib 0` as the OFF word, which is what
-// `StrataConversationCacheOff` renders WITH ITS REASON, so a zero-MiB budget is not a very small cache but
-// the other arm wearing a budget's name. Under `std.measure::Mebibyte` (`Measure<Memory, Mebi, Nat>`) zero was
-// a value a row could write; over `PositiveMeasureCount` it has no constructor -- unwritable rather than
-// checked (gunbc.design_argument::fail_closed, gunbc.design_argument::guarantee_ladder).
+// THE BUDGET IS NOT A MEASURE CONCEPT OF ITS OWN, AND THIS MODULE DECLARES NO MEASURE TYPE: the bound is
+// spelled with `std.measure`'s own exported parts -- `Measure<Memory, Mebi, PositiveMeasureCount>` -- at the
+// field and in the constructor's signature, the way `extdeps.accounting.budget` and
+// `extdeps.bmc.pid_control_program` build `Measure { count: ... }`. Under gunbc.design_argument::how_to_work
+// an added name must say whether it is a transparent reference, a restriction, a distinct identity or an
+// independent fork: here the answer is that no name is added at all, so the quantity stays `std.measure`'s
+// identity and nothing can drift from it (gunbc.design_argument::minimize_redundancy: "net concepts must not
+// grow by re-invention"). It is the mebi sibling of what `std.measure::FiniteByteSize` is for bytes.
 //
-// WHY COMPOSED HERE AND NOT ALIASED IN std.measure BESIDE FiniteByteSize -- a declared divergence, because
-// gunbc.design_argument::minimize_redundancy asks for the concept graph first and the concept graph WAS
-// searched: every one of std.measure's 138 types and 282 functions, `FiniteByteSize` and `finite_byte_size`
-// among them, is mirrored by hand in src/v1/stage0/src/std_measure.rs, the counterpart the Rust emission
-// route resolves against. A name added there is not a free alias; it is a 139th type carrying a mirror to
-// write and keep true in a substrate file. Composing the exported parts inside the module that owns the flag
-// is established practice (extdeps.accounting.budget and extdeps.bmc.pid_control_program build
-// `Measure { count: ... }` the same way), and the unit -- mebibytes -- is a fact of
-// `--conversation-cache-mib`, which is this module's subject (external upstream decomposition).
-type StrataConversationCacheMebibytes = Measure<Memory, Mebi, PositiveMeasureCount>
+// The count being POSITIVE is not decoration; it is this flag's own fact. The engine reads
+// `--conversation-cache-mib 0` as the OFF word, which is what `StrataConversationCacheOff` renders together
+// with the reason its author chose -- so a zero-MiB budget is not a very small cache, it is the other arm
+// wearing a budget's name, and the serving agreement would record a launch that parks nothing as agreeing to
+// park K conversations. Under `std.measure::Mebibyte` (`Measure<Memory, Mebi, Nat>`) zero was a value a row
+// could write; over `PositiveMeasureCount` it has no constructor -- unwritable rather than checked
+// (gunbc.design_argument::fail_closed, gunbc.design_argument::guarantee_ladder).
+//
+// WHY SPELDE HERE RATHER THAN ALIASED IN std.measure BESIDE FiniteByteSize -- a declared divergence, with its
+// authority named. A new public concept in `std.measure` is not a free alias there: every one of its 138
+// types and 282 functions, `FiniteByteSize` and `finite_byte_size` among them, has a hand-written
+// counterpart in src/v1/stage0/src/std_measure.rs, the seed mirror the Rust emission route resolves
+// against, and the v1 seed is semantics-frozen -- so the alias buys one consumer a substrate file to write
+// and keep true. The pick is recorded as the manager's ruling on 2026-11-26 over review 98940's second
+// option; if a second consumer ever needs the same bound, the concept goes to `std.measure` with its mirror,
+// which is where a generic positive-Mebibyte measure properly belongs.
 
 // What a MiB figure READ from somewhere (an argv, a doc, an operator note) is until it is checked: zero and
 // anything below it come back as the non-positive arm naming what was observed, because a read that saw a
 // zero has read the OFF word and must route to `StrataConversationCacheOff`, not to a budget.
 type StrataConversationCacheMebibytesBuild
-  = StrataConversationCacheMebibytesBuilt { budget: StrataConversationCacheMebibytes }
+  = StrataConversationCacheMebibytesBuilt { budget: Measure<Memory, Mebi, PositiveMeasureCount> }
   | StrataConversationCacheMebibytesNonPositive { observed: Int }
 
-fn strata_conversation_cache_mebibytes(count: PositiveMeasureCount) -> StrataConversationCacheMebibytes {
+fn strata_conversation_cache_mebibytes(
+  count: PositiveMeasureCount,
+) -> Measure<Memory, Mebi, PositiveMeasureCount> {
   Measure { count: count }
 }
 
@@ -141,14 +149,14 @@ fn strata_conversation_cache_mebibytes_from_int(observed: Int) -> StrataConversa
 
 // The count as an Int, for rendering the flag's word: measure_count hands back the positive count it
 // carries, and reading a positive count is total -- there is no zero case to handle, which is the whole point.
-fn strata_conversation_cache_mebibytes_value(budget: StrataConversationCacheMebibytes) -> Int {
+fn strata_conversation_cache_mebibytes_value(budget: Measure<Memory, Mebi, PositiveMeasureCount>) -> Int {
   positive_measure_count_value(count: measure_count(budget))
 }
 
 type StrataConversationCache
   // A bounded cache: K conversations parked inside N Mebibyte of host RAM. N is positive by construction --
   // see above -- so this arm can never be the engine's off word wearing a budget's name.
-  = StrataConversationCacheBudget { budget: StrataConversationCacheMebibytes, slots: PositiveSlotCount }
+  = StrataConversationCacheBudget { budget: Measure<Memory, Mebi, PositiveMeasureCount>, slots: PositiveSlotCount }
   // The engine parks nothing. Spelled ON THE COMMAND LINE as the docs' own off word, so a launch that
   // chose it says so in its argv instead of relying on a build default; the reason names why a launch
   // would choose it (a benchmark cell measuring the cold path, for instance).
