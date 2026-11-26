@@ -82,9 +82,15 @@ red control: mistyping the first declared row's byte size turns the leg nonzero 
 ```
 
 The `.dag` `parse_population_reconcile_*` arms are **not** that tree comparison — over hand-built reference row
-sets they prove only that the comparison predicate DISCRIMINATES (`parse_population_reconcile_predicate_refuses_bad_row_holds`,
-plus the by-name `parse_population_roster_red_control_mistyped_row_fails` in the same claim_batch, both **parses +
-required lane** in CI). Reading the real tree and failing by name on the real 170 rows is the open item, not done here.
+sets they prove only that the comparison predicate DISCRIMINATES — `parse_population_reconcile_predicate_refuses_bad_row_holds`
+and, over a real carrier-shaped row with one byte size mistyped, `parse_population_cardinality_refuses_mistyped_real_row_holds`
+(warm-fox F5: the earlier red control was a plain `fn` with zero call sites that no claim route could ever execute,
+and its assertion was inverted for a refusal leg — it asserted the unreconciled count was `0`, which is false by
+construction, so as a leg it could only ever FAIL. It is now a `test fn` asserting the count is NOT zero, so every
+leg in the batch HELDs and the negative is carried by an assertion inside a held leg over a named planted input).
+Current leg set: 14 `test fn`s, zero plain-fn legs. Status for all of them: **parses + required lane**; execution
+on srv1 through the limiter is the open item. Reading the real tree and failing by name on the real 170 rows is
+likewise open, not done here.
 
 **Route A is the merge path.** `gunbc compile --target rust` over this carrier already emits all 170 rows as
 typed Rust literals to `src/v1/stage0/src/gunbc_parse_population_baseline_roster.rs` (reproduced in §4b), so the
@@ -94,20 +100,27 @@ the question bold-cat-668's measurement-first planning row (owner compiler-self-
 becomes a new emitted verb; anything reaching the seed goes to the operator first. **Route B (operator scaffold
 approval outside the diff) is DECLINED** (neat-badger-614, 2026-11-26) and is not a path forward.
 
-**The drop is rostered, and its guard can fail (review 98901 F1/F2).** Per `gunbc.design_argument::guarantee_ladder`
-("Declared drops are rostered in `gunbc.rung_drop`") the gap is a row of the drop roster —
-`gunbc.rung_drop.parse_population_carrier_reader_beside_grammar`
-(`dag/gunbc/rung_drop/parse_population_carrier_reader_beside_grammar.dag`): previous rung 4 (structurally
-guaranteed — the one grammar route reads a data binding), temporary rung 1 (mitigatable — typed predicates with
-a discriminating pair over hand-built slices, no executable reader of the real 170 rows), reason
-`ReplacementStaged` naming route A (`rn_VDAPYNAW2T3U26OZ5JUHRBVC6`, plan PR #17116), and a restoration trigger
-that names **THE CAPABILITY restored** (an emitted declared route that evaluates a named data binding and
-returns its rows typed — meta-obligation 3), not the planning row itself; the carrier holds no copy of the text
-(`single_authority`). Its consumer renders the row into a ledger line, and the witness guard is a discriminating
-pair, not a presence check (the earlier `!= ""` guard was green by construction and was deleted): GREEN — the
-rendered line contains the row identity and the capability text; RED — the shared extraction applied to a
-planted `Retired` row (a representable forbidden state: retired while the reconciliation is unexecuted, with a
-non-empty trigger text) yields `""`, so an extraction that ignored the standing arm would be caught.
+
+**The gap is a rostered STALL, and its guard can fail (review 98901 F1/F2; review 98937 F2).** This class was
+first recorded as a rung DROP with `previous: StructurallyGuaranteed` — and that rung was **never held**, so
+the ledger would have shown a regression from a state that never existed (rung inflation in reverse). The
+honest record per `gunbc.design_argument::guarantee_ladder` (no untracked stall) is a class **below its
+ceiling with a named next-rung trigger**:
+`gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall`
+(`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag`) — current rung 1
+(mitigatable: typed predicates with a discriminating pair over hand-built slices; no executable reader of the
+real 170 rows), ceiling 4 (structurally guaranteed: the one grammar route reads a data binding), blocker
+`ClimbableButUnbuilt`, and a next-rung trigger naming **THE CAPABILITY** (an emitted declared route that
+evaluates a named data binding and returns its rows typed — a call, not a text parse). Route A is carried as
+a modelled *awaiting referent* and labelled honestly: a **planned** row in **draft** plan PR #17116, **not on
+main** at this head (`rn_VDAPYQNAW2T3U26OZ5JUHRBVC6` resolves to zero files at origin/main today; the staffed
+route fires the trigger, not the plan). The carrier holds no copy of the text (`single_authority`); its
+consumer renders the row's capability into a ledger line, and the witness carries the discriminating pair, not
+a presence check (the earlier `!= ""` guard was green by construction and was deleted; the first red control
+asserted real==planted and failed under BOTH worlds — warm-fox F4 — so its polarity is now fixed): GREEN —
+the rendered line contains the row identity and the capability text; RED — the extraction applied to a planted
+row whose trigger is a bare `NextRungTrigger` outside the declared constructors yields `""`, so an extraction
+that ignored the declared shape is caught. Correct world: HELD/HELD; broken world: HELD/FAILED.
 
 ### 4b. Emitted-roster reproduction — how the compiler already evaluates the named binding
 
@@ -226,13 +239,14 @@ Additionally 4 heavy-slot touches refused instantly at argument validation (wall
   carrier reader and hand reconciliation were **removed from the PR**. Consequence for the honesty seam: the
   carrier↔tree reconciliation and the roster-driven staging are **gaps pending route A**, not executed checks —
   every "executed runner / committed runner / green-by-execution run link" claim in the review-98443 and
-  review-98730 bullets below is historical (those runners are no longer in the diff). The rung drop
-  The drop is ROSTERED per `gunbc.design_argument::guarantee_ladder` at
-  `gunbc.rung_drop.parse_population_carrier_reader_beside_grammar`
-  (`dag/gunbc/rung_drop/parse_population_carrier_reader_beside_grammar.dag`, review 98901 F2 — the carrier
-  holds no copy of its text), stating plainly that no executed reader of the rows ships here;
-  its claimed rung is that the typed `.dag` predicates model and discriminate the selection order over hand-built
-  slices. **Route B (operator scaffold sanction) is declined** (neat-badger-614); route A (bold-cat-668's
+  review-98730 bullets below is historical (those runners are no longer in the diff). The gap is ROSTERED as a
+  stall per `gunbc.design_argument::guarantee_ladder` at
+  `gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall`
+  (`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag`, review 98901 F2 and
+  98937 F2 — first filed as a rung drop, converted because its `previous: StructurallyGuaranteed` recorded a rung
+  that was never held; the carrier holds no copy of its text), stating plainly that no executed reader of the rows
+  ships here; its claimed rung is that the typed `.dag` predicates model and discriminate the selection order over
+  hand-built slices. **Route B (operator scaffold sanction) is declined** (neat-badger-614); route A (bold-cat-668's
   measurement-first planning row) is the only path, and §4b shows `gunbc compile` already emits the 170 rows as
   typed Rust, so route A needs no new Rust. No heavy acquisition was used for the split.
 
@@ -251,9 +265,11 @@ Additionally 4 heavy-slot touches refused instantly at argument validation (wall
      `parse_population_total_count` (its only callers were those three). No consumer remained (§4a's reconciliation
      leg, not a String report, is now the load-bearing surface).
   2. Replaced the planted `byte_size(count: 999)` red control with a **real-wrong-row** red control
-     (`parse_population_roster_red_control_mistyped_row_fails`) and added the discriminating comparison-predicate
-     arms (`parse_population_reconcile_predicate_refuses_bad_row_holds`); the real carrier↔tree comparison moved to
-     the executed runner `test/parse_population_baseline_roster/run_evidence.sh` (review 98730).
+     (`parse_population_cardinality_refuses_mistyped_real_row_holds`, promoted to a `test fn` per warm-fox F5)
+     and added the discriminating comparison-predicate arms
+     (`parse_population_reconcile_predicate_refuses_bad_row_holds`); the real carrier↔tree comparison had moved to
+     the executed runner `test/parse_population_baseline_roster/run_evidence.sh` (review 98730) and that runner has
+     since been deleted from the PR (route B declined), so the comparison is the stall's open item again.
   3. Stripped the load-bearing status/authorization/review-number prose out of the carrier `//` comments to
      one-line pointers (`gunbc.design_argument::source_annotations`).
   **The claim name-set therefore changed** (old executed set included `parse_population_roster_red_control_refuses`,

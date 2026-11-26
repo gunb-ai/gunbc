@@ -5,9 +5,9 @@ import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
 import std.algebra { count_where, fold_list, list_push }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration }
-import gunbc.rung_drop.parse_population_carrier_reader_beside_grammar {
-  parse_population_carrier_reader_beside_grammar,
+import gunbc.guarantee_stall { NextRungTrigger }
+import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall {
+  parse_population_carrier_reader_beside_grammar_stall,
 }
 
 // THE PARSE-POPULATION BASELINE ROSTER: the single typed authority for the two fixed parse
@@ -23,13 +23,17 @@ import gunbc.rung_drop.parse_population_carrier_reader_beside_grammar {
 // by BLOB SIZE from the tree objects (git ls-tree -r -l <sha> -- dag src/v2), sorted DESCENDING by size
 // then ASCENDING by path for a stable tiebreak. Positions 1..5 = FiveLargest; 6..170 = OneHundredSixtyFive.
 //
-// LOAD-BEARING, RECONCILED AGAINST THE TREE (gunbc.design_argument::consumption): the 170 rows are tied to
-// the tree by an EXECUTED reconciliation leg in the measurement report — the carrier rows are diffed
-// against git ls-tree -r -l <pinned_sha> -- dag src/v2 (top 170 by that sort): GREEN diff rc 0 means every
-// path AND byte size equals the tree; a single mistyped row drives it RED (rc nonzero). That mistyped real
-// row is the red control (a real wrong row, not a planted constant), and the parse_population_reconcile_*
-// predicates below are its discriminating carrier. Authorization, review history and the acquisition record
-// live in the PR body and its comments, not in this header (gunbc.design_argument::source_annotations).
+// THE TREE TIE IS NOT ESTABLISHED IN THIS MERGE (gunbc.design_argument::guarantee_ladder (no untracked stall):
+// the reported rung equals the rung established by executed evidence). NO EXECUTED READER of these 170 rows
+// ships here -- a `.dag` function cannot read the tree and CI executes no claims -- so the rows are declared
+// at rung 1 (mitigatable): the typed predicates below model and DISCRIMINATE the selection order over
+// hand-built slices; the reconciliation against `git ls-tree -r -l <pinned_sha> -- dag src/v2` (path AND blob
+// byte size per row, where a single mistyped row must turn it red BY NAME) is a declared GAP on the stall row
+// gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall, whose next-rung trigger names
+// the capability that closes it. A shell reader beside the grammar was drafted and WITHDRAWN (review 98836).
+// This header claims no executed reconciliation and no green diff. Authorization, review history and the
+// acquisition record live in the PR body and its comments, not in this header
+// (gunbc.design_argument::source_annotations).
 // The tree sha the populations were selected and measured over (origin/main at baseline time).
 data parse_population_baseline_pinned_sha: String =
   "65230868362de3efc0ddfeeaeef5d83eeb2fa385"
@@ -590,7 +594,8 @@ fn parse_population_correct_real_row_slice() -> List<ParsePopulationRow> {
 // of all 170 rows against `git ls-tree` at the pinned sha is NOT executed in this merge: the shell runner
 // that did it was withdrawn (warm-fox-517 split ruling; review 98809), a `.dag` function cannot read the tree
 // and CI runs no claims. That 170-to-tree reconciliation is declared withdrawn pending route A in
-// parse_population_carrier_reader_rung_drop; these arms only prove the comparison PREDICATE discriminates.
+// gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall; these arms only prove the
+// comparison PREDICATE discriminates.
 // ACCEPT arm: the predicate reports zero unreconciled rows when declared equals the reference row-set.
 fn parse_population_reconcile_accepts_correct_slice() -> Bool {
   parse_population_unreconciled_row_count(
@@ -606,33 +611,33 @@ fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
     tree: parse_population_correct_real_row_slice()) >= 1
 }
 
-// THE EXTRACTION THE LEDGER LINE AND THE WITNESS SHARE: the restoration trigger is readable ONLY when
-// the rostered row is Standing with a TYPED declaration. Any other standing (Retired, Dissolved,
-// Superseded) or a demotion to authored prose yields "" -- and then the witness guard goes RED, so the
-// capability text cannot be quietly deleted while the 170-to-tree reconciliation is still unexecuted
-// (review 98901 F1: presence-of-a-prefix is a decoration; the discriminating pair is the guard).
-fn parse_population_carrier_reader_beside_grammar_restoration_trigger() -> String {
-  match parse_population_carrier_reader_beside_grammar.standing {
-    Standing { declaration: TypedDeclaration { previous: _, temporary: _, reason: _, population: _, restoration_trigger: t } } => t
-    _ => ""
+// THE EXTRACTION THE LEDGER LINE AND THE WITNESS SHARE: the next-rung trigger's capability is readable ONLY
+// through the declared NextRungTrigger constructor. Any other shape yields "" -- and the witness red control
+// asserts exactly that -- so the capability text cannot be quietly deleted or bypassed while the 170-to-tree
+// reconciliation is still unexecuted (review 98901 F1: presence-of-a-prefix is a decoration; the
+// discriminating pair is the guard).
+fn parse_population_carrier_reader_beside_grammar_stall_capability() -> String {
+  match parse_population_carrier_reader_beside_grammar_stall.next_rung_trigger {
+    NextRungTrigger { capability: c, awaiting: _ } => c
   }
 }
 
-// DECLARED RUNG DROP -- ROSTERED, NOT A LOCAL STRING (review 98901 F2; gunbc.design_argument::guarantee_ladder:
-// "Declared drops are rostered in gunbc.rung_drop"). The row is the FILE
-// dag/gunbc/rung_drop/parse_population_carrier_reader_beside_grammar.dag (single authority for the five fields:
-// previous rung 4 structurally guaranteed -- the one grammar route reads a data binding; temporary rung 1
-// mitigatable -- typed predicates discriminate over hand-built slices, no executable reader of the real 170
-// rows); its restoration trigger names THE CAPABILITY restored, not a promise. Background (warm-fox-517 split
-// ruling, reviews 98809/98836): the shell scaffolds, their awk/grep/sed reader and the hand reconciliation are
-// OUT of this merge -- a second parser beside the grammar could mis-parse a field without changing its line
-// count, so the count guard caught a dropped row but not a wrong field. NO EXECUTED READER of these rows ships
-// in this merge: a `.dag` function cannot read the tree and CI runs no claims. The consumer below renders the
-// rostered row into a ledger line; the witness guards it with a discriminating pair (red when the row loses its
-// typed restoration trigger). Bounded: discharges when the staffed route A capability lands, not on an
-// open-ended future capability.
+// DECLARED STALL -- ROSTERED, NOT A LOCAL STRING (review 98937 F2: this class was first written as a rung
+// DROP with previous: StructurallyGuaranteed, and that rung was NEVER HELD -- recording a wanted rung as a
+// previous one is rung inflation in reverse. The honest record per gunbc.design_argument::guarantee_ladder
+// (no untracked stall) is a class below its ceiling with a named next-rung trigger). The row is the FILE
+// dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag (single authority):
+// current rung 1 mitigatable -- typed predicates discriminate the selection order over hand-built slices,
+// no executable reader of the real 170 rows; ceiling 4 structurally guaranteed -- the one grammar route reads
+// a data binding; blocker ClimbableButUnbuilt. The route-A tracking row is labelled honestly: a PLANNED row
+// in DRAFT plan PR #17116, not on main at this head. Background (warm-fox-517 split ruling, review 98836):
+// the shell scaffolds, their awk/grep/sed reader and the hand reconciliation are OUT of this merge -- a
+// second parser beside the grammar could mis-parse a field without changing its line count. The consumer
+// below renders the rostered row's capability into a ledger line; the witness guards it with a discriminating
+// pair (red when the extraction stops honoring the declared trigger shape). Bounded: climbs when the STAFFED
+// capability lands, not on an open-ended future capability and not on the plan row reaching done.
 fn parse_population_carrier_reader_rung_drop_ledger_line() -> String {
   concat(
-    concat("rung-drop: ", parse_population_carrier_reader_beside_grammar.identity),
-    concat(" | ", parse_population_carrier_reader_beside_grammar_restoration_trigger()))
+    concat("rung-stall: ", "gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall"),
+    concat(" | ", parse_population_carrier_reader_beside_grammar_stall_capability()))
 }

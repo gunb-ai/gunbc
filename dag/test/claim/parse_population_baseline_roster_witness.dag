@@ -1,11 +1,10 @@
 module test.claim.parse_population_baseline_roster_witness
 
-import std.types { Bool, NonEmptyStr, String }
-import std.algebra { FreeSemigroup, string_contains }
-import gunbc.rung_drop {
-  RungDrop, Standing, TypedDeclaration, Retired, RetiredTypedDeclaration, Enumerated, DeletedWithoutReplacement,
-}
-import gunbc.guarantee_rung { Mitigatable }
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import gunbc.parse_population_baseline_roster {
   parse_population_cardinality_accepts_real,
   parse_population_cardinality_refuses_planted_extra_row,
@@ -27,7 +26,7 @@ import gunbc.parse_population_baseline_roster {
   parse_population_top_n_breaks_tie_by_path,
   parse_population_selection_refuses_misordered_tie,
   parse_population_carrier_reader_rung_drop_ledger_line,
-  parse_population_carrier_reader_beside_grammar_restoration_trigger,
+  parse_population_carrier_reader_beside_grammar_stall_capability,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -136,63 +135,55 @@ test fn parse_population_reconcile_predicate_refuses_bad_row_holds() -> Bool {
     && parse_population_reconcile_refuses_mistyped_slice()
 }
 
-// REAL-WRONG-ROW RED CONTROL (replaces the former planted byte_size(count: 999); review 98443 says the
-// red control must be a real wrong row, not a planted constant). Invoked by name in the SAME claim_batch
-// as the PASS witnesses: it asserts the MISTYPED real-row slice reconciles fully to the correct tree,
-// which is FALSE (one real row's byte size is wrong), so claim_batch reports exactly one FAIL-by-name line
-// while the witnesses PASS — proving claim_batch reports a real wrong row as FAIL, not PASS
-// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
-fn parse_population_roster_red_control_mistyped_row_fails() -> Bool {
+// REAL-WRONG-ROW REFUSAL, REWRITTEN AS A HELD LEG (warm-fox F5; review 98443 lineage). The former
+// parse_population_roster_red_control_mistyped_row_fails was a plain fn with ZERO call sites -- the claim
+// route selects test fns, so it was a comment, not a control -- and its polarity was inverted for a refusal
+// leg: it asserted the mistyped slice reconciles FULLY (== 0), which is false by construction, so as a leg
+// it could only ever FAIL and its FAIL could not be told apart from a genuine bug. Now the refusal is what
+// HELDs: over the named planted input (the mistyped real-row slice), the unreconciled count is NOT zero.
+// Every leg in this batch now HELDs; the negative is an assertion inside a held leg over a named planted
+// input (design_argument::fail_closed).
+test fn parse_population_cardinality_refuses_mistyped_real_row_holds() -> Bool {
   parse_population_unreconciled_row_count(
     declared: parse_population_mistyped_real_row_slice(),
-    tree: parse_population_correct_real_row_slice()) == 0
+    tree: parse_population_correct_real_row_slice()) != 0
 }
 
 
-// THE RUNG DROP GUARD IS DISCRIMINATING, NOT A DECORATION (review 98901 F1; design_argument::fail_closed:
-// "a discriminating input that goes red when the behavior is wrong"). GREEN: the ledger line renders the
-// ROSTERED row (gunbc.rung_drop.parse_population_carrier_reader_beside_grammar) -- identity plus the typed
-// restoration trigger, which must name THE CAPABILITY (the word "CAPABILITY" is what the guarantee_ladder
-// meta-obligation 3 requires the trigger to state). RED CASE in the sibling fn: a row demoted to authored
-// prose -- the forbidden state the drop must not be able to enter silently -- extracts to "", so the same
-// extraction that passes on the real row fails on the planted row. A check that cannot fail was deleted.
+// THE STALL GUARD IS DISCRIMINATING, NOT A DECORATION (review 98901 F1; design_argument::fail_closed: "a
+// discriminating input that goes red when the behavior is wrong"). GREEN: the ledger line renders the
+// ROSTERED stall row (gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall) -- row
+// identity plus the next-rung capability, which must name THE CAPABILITY (the word "CAPABILITY" is what the
+// trigger must state, and stall_trigger_admission refuses an empty one).
 test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
-  string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "parse_population_carrier_reader_beside_grammar") && string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "CAPABILITY")
+  string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "parse_population_carrier_reader_beside_grammar_stall") && string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "CAPABILITY")
 }
 
-// RED CONTROL: the shared extraction applied to a planted row whose declaration is authored prose must
-// yield "" (the ledger line would lose the capability text) -- proving the green guard above responds to
-// the row's declaration SHAPE, not to a prefix that is always present. Paired by name with the green test
-// above, in the same claim_batch.
-test fn parse_population_rung_drop_trigger_extraction_refuses_prose_row_fails() -> Bool {
-  parse_population_carrier_reader_beside_grammar_restoration_trigger()
-    == parse_population_prose_demoted_trigger_probe()
+// RED CONTROL, POLARITY FIXED (warm-fox F4): the earlier form asserted real-extraction == planted-extraction,
+// which FAILS under BOTH the correct and the shape-blind implementation (two different strings either way)
+// -- a control that cannot tell the broken world from the working one. The discriminating assertion is the
+// planted row extracting to "": it HELDs today (the extraction matches the declared NextRungTrigger shape
+// and the planted trigger is a bare record outside that match) and breaks the moment the extraction stops
+// honoring the declared shape. Correct world: HELD/HELD. Broken world: HELD/FAILED.
+test fn parse_population_stall_capability_extraction_refuses_planted_row_holds() -> Bool {
+  parse_population_planted_trigger_probe() == ""
 }
 
-// THE PLANTED FORBIDDEN STATE: the drop RETIRED while the 170-to-tree reconciliation is still unexecuted.
-// It carries a non-empty trigger text, so an extraction that matched the trigger field without checking
-// the standing arm would return that text here and the paired green test would go red -- the match must
-// discriminate Standing+Typed from every other standing, which is what makes the guard able to fail
-// (design_argument::guarantee_ladder "green by construction" is exactly what this pair refuses).
-data parse_population_planted_retired_row: RungDrop = RungDrop {
-  identity: "parse_population_carrier_reader_beside_grammar" as NonEmptyStr,
-  subject: "planted: retired while unexecuted",
-  declared: "2026-11-26",
-  standing: Retired {
-    trigger_fired: "PLANTED -- must never stand while the reconciliation is unexecuted" as NonEmptyStr,
-    declaration: RetiredTypedDeclaration {
-      previous: Mitigatable,
-      temporary: Mitigatable,
-      reason: DeletedWithoutReplacement,
-      population_at_retirement: Enumerated { members: FreeSemigroup { head: "planted member", tail: [] } },
-      restoration_trigger: "CAPABILITY: planted text that a shape-blind extraction would wrongly accept"
-    }
-  }
+// THE PLANTED FORBIDDEN STATE: a stall whose next_rung_trigger is a BARE NextRungTrigger record built
+// outside the declared constructors -- the shape the extraction must refuse. Its capability text is
+// non-empty, so an extraction that reached past the declared shape (or returned the field unconditionally)
+// would yield this text instead of "" and the held leg above goes red.
+data parse_population_planted_stall_row: GuaranteeStall = GuaranteeStall {
+  subject: "planted: bare trigger record outside the declared constructors",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["planted member"] },
+  next_rung_trigger: NextRungTrigger { capability: "CAPABILITY: planted text that a shape-blind extraction would wrongly accept", awaiting: [] }
 }
 
-fn parse_population_prose_demoted_trigger_probe() -> String {
-  match parse_population_planted_retired_row.standing {
-    Standing { declaration: TypedDeclaration { previous: _, temporary: _, reason: _, population: _, restoration_trigger: t } } => t
-    _ => ""
+fn parse_population_planted_trigger_probe() -> String {
+  match parse_population_planted_stall_row.next_rung_trigger {
+    NextRungTrigger { capability: c, awaiting: _ } => c
   }
 }
