@@ -38,3 +38,7 @@ The signature and checked body of `answer` are separate proposed questions. A bo
 ## Deliberately wrong prior answer
 
 After the original helper has been restored, place the digest of the real edited helper's answer under the original input key, with a valid integrity check for that key. The caller should still report an equal hit. The helper should report a hit with a different fresh answer, return the original fresh answer digest, and preserve the disagreeing record for inspection. The program should exit 0. Flipping an integrity byte in that same record should instead report a corrupt observation and the same program result. This control tests whether a wrong prediction is observable through the CLI, even when command success alone would hide it.
+
+## An unchanged file with a different occurrence allocator
+
+On a full fresh front-end call, changing the helper's one-digit integer literal should preserve the complete authored occurrence transport for this fixed-shape edit. Prepending a second file with a named declaration should move the helper's occurrence IDs, even though its bytes, logical path and full newline index stay equal. Compare the same ordered occurrences in the helper by authored spelling and source span. The second prediction challenges using file contents alone as the key for occurrence allocation.

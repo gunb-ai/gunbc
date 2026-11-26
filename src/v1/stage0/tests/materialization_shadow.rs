@@ -141,10 +141,10 @@ fn sample<'a>(
             (&event.input_digest, &event.output_digest),
             (&first.input_digest, &first.output_digest)
         );
-        let subsequent = if lookup == "corrupt" {
-            ("corrupt", "unavailable")
-        } else {
+        let subsequent = if lookup == "miss" {
             ("hit", "equal")
+        } else {
+            (lookup, comparison)
         };
         assert_eq!(
             (&*event.lookup, &*event.comparison),
@@ -199,8 +199,8 @@ fn fresh_process_predictions_match_observed_compiler_results() {
     let uncached = run(&case, None, 7);
     assert!(uncached.events.is_empty());
     assert_eq!(
-        (uncached.code, uncached.stdout),
-        (edited.code, edited.stdout)
+        (uncached.code, &uncached.stdout),
+        (edited.code, &edited.stdout)
     );
     assert!(
         uncached.stderr.contains("observed changed helper")
@@ -215,10 +215,29 @@ fn fresh_process_predictions_match_observed_compiler_results() {
         "absent",
     );
 
+    // Plant the previously observed changed answer at the baseline key, as if a proposed
+    // key had omitted the literal. Recompute record integrity to exercise semantic disagreement.
+    use sha2::{Digest, Sha256};
     let record = store.join("newline-index-v1").join(&helper.input_digest);
-    let mut bytes = fs::read(&record).unwrap();
-    bytes[0] ^= 1;
-    fs::write(record, bytes).unwrap();
+    let changed_answer = hex::decode(&changed.output_digest).unwrap();
+    let mut integrity = Sha256::new();
+    integrity.update(b"newline-index-shadow-v1");
+    integrity.update(hex::decode(&helper.input_digest).unwrap());
+    integrity.update(&changed_answer);
+    let mut planted = changed_answer;
+    planted.extend_from_slice(&integrity.finalize());
+    fs::write(&record, &planted).unwrap();
+    let disagreement = run(&case, Some(&store), 0);
+    sample(&case, &disagreement, "entry.dag", "hit", "equal");
+    assert_eq!(
+        sample(&case, &disagreement, "helper.dag", "hit", "different").output_digest,
+        helper.output_digest
+    );
+    assert_eq!(disagreement.stdout, baseline.stdout);
+    assert_eq!(fs::read(&record).unwrap(), planted);
+
+    planted[32] ^= 1;
+    fs::write(&record, &planted).unwrap();
     let corrupt = run(&case, Some(&store), 0);
     sample(&case, &corrupt, "entry.dag", "hit", "equal");
     assert_eq!(
@@ -226,6 +245,7 @@ fn fresh_process_predictions_match_observed_compiler_results() {
         helper.output_digest
     );
     assert_eq!(corrupt.stdout, baseline.stdout);
+    assert_eq!(fs::read(&record).unwrap(), planted);
     fs::remove_dir_all(&case.dir).unwrap();
 }
 
@@ -235,7 +255,7 @@ fn fresh_process_predictions_match_observed_compiler_results() {
 fn body_edits_change_some_compiler_answers_and_preserve_others() {
     use std::rc::Rc;
     use v1_compiler::v1_compiler_compile::{
-        compile_to_resolved, dag_parse_environment, front_end_sources, SourceFile,
+        compile_to_resolved, dag_parse_environment, front_end_sources, FrontendResult, SourceFile,
     };
     use v1_compiler::v1_compiler_normalize::normalize_graph;
     use v1_compiler::v1_compiler_tokenize::tokenize_artifact;
@@ -271,6 +291,39 @@ fn body_edits_change_some_compiler_answers_and_preserve_others() {
         original.intern_table.authored_token_ordinals,
         edited.intern_table.authored_token_ordinals
     );
+    assert_eq!(original.occurrence_transport, edited.occurrence_transport);
+
+    let prefixed = front_end_sources(Rc::new(im::vector![source("earlier", 3), first.clone()]));
+    assert!(prefixed.graph.is_some());
+    assert_eq!(original.newline_indices[0], prefixed.newline_indices[1]);
+    let helper_occurrences = |front: &FrontendResult| {
+        front
+            .occurrence_transport
+            .index
+            .entries
+            .iter()
+            .map(|entry| &entry.projection)
+            .filter(|p| p.diagnostic_span.file == "helper.dag")
+            .map(|p| {
+                (
+                    p.authored_name.clone(),
+                    p.diagnostic_span.clone(),
+                    p.occurrence.value,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = helper_occurrences(&original);
+    let after = helper_occurrences(&prefixed);
+    assert!(!before.is_empty());
+    assert_eq!(before.len(), after.len());
+    for ((name, span, old_id), (later_name, later_span, new_id)) in before.iter().zip(&after) {
+        assert_eq!((name, span), (later_name, later_span));
+        assert!(
+            old_id < new_id,
+            "expected a shifted allocator for {name} at {span:?}"
+        );
+    }
     for front in [original, edited] {
         let indices = front
             .newline_indices
