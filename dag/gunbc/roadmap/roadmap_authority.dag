@@ -3588,7 +3588,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "A declaration's open concerns reach whoever edits or reviews it",
           boundary: "Operator observation 2026-11-26: when comments are removed, authors leave them as data instead (a string holding a long warning), so they are desperate to leave warnings, and that is a symptom. The symptom's cause: a comment is the only channel sure to be in front of the next editor of that code, and a roadmap item is not. When a change touches a declaration, the roadmap items citing it are put in the author's brief and the reviewer's input, so a warning written as a plan item is read at least as reliably as a comment.",
           displaced_cost: "Without this, removing comments loses the warnings, so authors keep smuggling them back and review fights the symptom forever.",
-          first_slice: "For a diff, compute the declarations it touches and the roadmap items citing them (roadmap-items-cite-declarations), and print them in the review input for gunbc pull requests.",
+          first_slice: "For a diff, compute the declarations it touches and the roadmap items citing them (roadmap-items-cite-declarations), and carry them into the factory's worker and reviewer context as evidence inputs (harness-prompt-context-model).",
           red_control: "A planted roadmap item citing a declaration a test diff touches appears in that diff's review input; an item citing an untouched declaration does not.",
           out_of_scope: "Turning a warning that states an invariant into a type or refusal; that is the invariant's own fix, which comment-uses-have-homes routes to its typed carrier.",
           handback: "Briefs and review inputs carrying the touched declarations' open items, observed on a real review."
@@ -3602,12 +3602,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/harness/harness_guidance.dag"),
       line: ticket(t: fields(
           headline: "Every agent's comment guidance is projected from the one ruling",
-          boundary: "Agents read guidance from several places: gunbc.harness.harness_guidance and harness_review_guidance, the ctrl repository's AGENTS.md and CODING.md, the gunbc reviewer prompt at ctrl scripts/chatgpt-reviewer/prompts/gunbc.md, and the daily workspace guidance. They must agree. Today ctrl CODING.md tells authors to name a cache's lifetime and invalidation in code comments, which the direction reverses. Each is projected from comment-uses-have-homes, not hand-copied, so the rule changes once.",
+          boundary: "The daily workspace is the factory: its worker and reviewer prompts are projections of typed guidance inputs (harness-prompt-context-model), so the ruling enters there as one guidance input, beside gunbc.harness.harness_guidance and harness_review_guidance. The ctrl session dashboard is the legacy route being retired: while it still dispatches, its AGENTS.md, CODING.md and gunbc reviewer prompt (scripts/chatgpt-reviewer/prompts/gunbc.md) are brought into agreement and get no further investment. Today ctrl CODING.md tells authors to name a cache's lifetime in code comments, which the direction reverses.",
           displaced_cost: "Guidance copies drift, and an agent obeying one copy is rejected by a reviewer reading another.",
-          first_slice: "List every guidance surface agents and reviewers read, in both repositories and the daily workspace, with what each says about comments today.",
+          first_slice: "List every guidance surface the factory's workers and reviewers read and every one the legacy dashboard still serves, with what each says about comments today; make the factory's the projection and correct the legacy ones by hand until they retire.",
           red_control: "A guidance surface stating a comment rule different from the ruling is detected, not discovered in review.",
           out_of_scope: "Guidance on any topic other than comments.",
-          handback: "The surfaces enumerated and each projected from the ruling."
+          handback: "The surfaces enumerated, the factory's projected from the ruling, and the legacy ones in agreement until they retire."
         )),
       parent: in_project(project: "source-carries-no-comments", contribution: "Authors and reviewers read one rule."),
     ),
