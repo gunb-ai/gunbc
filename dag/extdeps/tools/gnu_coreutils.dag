@@ -73,6 +73,33 @@ fn ls_almost_all_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program(), arguments: ["-1", "-A", "--", path])
 }
 
+// THE NAMES OF THE DIRECT CHILDREN OF A DIRECTORY, EACH TERMINATED BY NUL AND NOTHING ELSE:
+// `ls -A --zero` -- ls(1) `-A, --almost-all` (dot entries included, the implied `.` and `..`
+// omitted) and `--zero` (end each name with NUL instead of a newline; this row admits GNU
+// coreutils 9.0 as the minimum -- older versions may not know the option, and that refusal exits
+// non-zero, which its consumers read as unobservable, never as empty; `-A` is written explicitly
+// rather than relying on any implied default). THE BOUNDARY-PRESERVING listing: NUL
+// cannot occur inside a name -- the kernel admits every byte but `/` and NUL in a name
+// (path_resolution(7)) -- so an entry may hold spaces, tabs, or newlines and a reader that trims
+// nothing sees a whitespace-only name as a name and a newline-bearing name as ONE entry. WHY THIS
+// ROW AND NOT `find DIR -mindepth 1 -maxdepth 1 -printf '%f\0'`: find stats the entries it walks
+// to decide what it has, so a readable-but-not-searchable directory (mode 0444; read enumerates,
+// search resolves, path_resolution(7)) makes find exit non-zero with an error even though its
+// names are listable -- measured on this host: on a 0444 directory, find answers "Permission
+// denied" with exit 1 where `ls -A --zero` prints the NUL-terminated names and exits 0. ls answers
+// from readdir(3) and, where the filesystem reports entry types (d_type: ext4, tmpfs), it does
+// not stat children at all. The caveat is two-sided and both consumers fail closed on it: a
+// listing that exits NON-ZERO -- an older coreutils refusing `--zero`, a filesystem without
+// d_type under a parent that cannot be stat-ed, an unreadable or missing directory -- is read by
+// its consumers as THIS LISTING DID NOT ANSWER, never as empty and never as "the name is not
+// there" (ls(1) EXIT STATUS: 2 for serious trouble, including an invalid option or an absent
+// operand). CONSUMERS: witness_tree_parent_listing_state (membership by exact equality against
+// the NUL-terminated entries) and witness_directory_listing_is_provably_empty (zero entries FROM
+// A LISTING THAT RAN) in test.claim.roadmap.witness_supplied_instance.
+fn ls_child_names_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-A", "--zero", "--", path])
+}
+
 // mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
 // X's replaced), mode 0700, and prints its path; it refuses rather than reuse an existing name
 // (coreutils manual, "mktemp invocation"). That exclusive creation is what makes the directory one

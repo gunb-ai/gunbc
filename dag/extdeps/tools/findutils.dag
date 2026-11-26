@@ -260,25 +260,6 @@ fn find_symlink_targets_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-type", "l", "-printf", "l %P -> %l\\n"])
 }
 
-// THE NAMES OF THE DIRECT CHILDREN OF A DIRECTORY, EACH ONE TERMINATED BY NUL AND NOTHING ELSE
-// (find(1) -mindepth 1 -maxdepth 1 -printf '%f\0'). This is the BOUNDARY-PRESERVING listing: the
-// terminator find itself writes between entries is NUL, and no file name can contain NUL -- the
-// kernel admits every byte except `/` and NUL in a name (path_resolution(7)) -- so an entry may hold
-// spaces, tabs, or newlines and a reader never mistakes those for a boundary. The line-oriented
-// listings (`ls -1`, `find -printf '%f\n'`) split exactly such names at the wrong place: a name with
-// a newline becomes two bogus entries, and a reader that trims reads a name of whitespace as no name
-// at all. %f (find(1), "Format Directives") is the entry's name with the starting point removed, so
-// the word between terminators is exactly one entry name and nothing else. `-mindepth 1` excludes the
-// starting directory itself; `-maxdepth 1` confines the walk to the direct children. EXIT STATUS
-// (find(1)): 0 means every requested directory was walked and every entry written; non-zero means the
-// listing did not complete, and a consumer must read non-zero as "this listing did not answer", never
-// as "empty" or "not named". CONSUMERS: witness_tree_parent_listing_state (membership is exact
-// equality against the named entries, no trimming) and witness_directory_listing_is_provably_empty
-// (zero entries FROM A LISTING THAT RAN) in test.claim.roadmap.witness_supplied_instance.
-fn find_child_names_command(dir: String) -> ArgvCommand {
-  argv_command(program: find_program(), arguments: [dir, "-mindepth", "1", "-maxdepth", "1", "-printf", "%f\\0"])
-}
-
 // THE REGULAR FILES UNDER A ROOT WITH THEIR SIZE AND MODIFICATION TIME, ONE
 // `<size>\t<mtime>\t<relative path>` LINE EACH, AND NOTHING READ BUT METADATA. Every -printf
 // directive here is answered from the inode find already holds from its own stat(2) of the entry

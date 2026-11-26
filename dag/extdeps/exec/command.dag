@@ -181,11 +181,6 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
-    // THE BYTE-EXACT CHILD LISTING for the witness component walk (test.claim.roadmap.witness_supplied_instance
-    // `witness_tree_parent_listing_state`, `witness_directory_listing_is_provably_empty`): `-mindepth 1
-    // -maxdepth 1 -printf '%f\0'` names every entry with NUL framing, the framing that survives names holding
-    // spaces, tabs and newlines. Same already-admitted `find` program, read-only, no write fold.
-    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_child_names_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_direct_children_metadata_command"),
     // THE INDEPENDENT FRAMING COUNT for the tree-install readback (the newline-framing fix): two
     // read-only `-printf .` enumerations whose bounds match the metadata walks they count. Same
@@ -329,6 +324,12 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_links_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
+    // THE BYTE-EXACT CHILD LISTING for the witness component walk (test.claim.roadmap.witness_supplied_instance
+    // `witness_tree_parent_listing_state`, `witness_directory_listing_is_provably_empty`): `-A --zero` names
+    // every entry with NUL framing, the framing that survives names holding spaces, tabs and newlines, and
+    // answers from readdir where `find` would stat children and fail over a listable-but-not-searchable
+    // parent. Same already-admitted `ls` program, read-only, no write fold.
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_child_names_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_regroup_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_group_writable_command"),

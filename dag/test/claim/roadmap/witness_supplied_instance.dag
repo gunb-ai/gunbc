@@ -36,7 +36,7 @@ import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, whoami_command,
   install_file_mode_command, mkdir_parents_command,
   realpath_canonicalize_missing_command, rm_recursive_force_command,
-  ls_almost_all_one_per_line_command,
+  ls_almost_all_one_per_line_command, ls_child_names_command,
 }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 // THE TWO READINGS A BASE NEEDS AND THE ANCESTRY GUARD CANNOT GIVE IT -- what the name IS, and who it
@@ -49,7 +49,6 @@ import extdeps.tools.stat {
 }
 import extdeps.tools.findutils {
   find_untrusted_entries_command, find_tree_entry_metadata_command, find_symlink_targets_command,
-  find_child_names_command,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -783,8 +782,9 @@ type WitnessTreeComponentState =
   | WitnessTreeComponentMissing {}
   | WitnessTreeComponentUnobservable { cause: String }
 
-// THE ENTRIES OF A NUL-TERMINATED `%f` LISTING, as words. find terminates every entry INCLUDING the last,
-// so splitting on NUL leaves exactly one trailing empty word to drop -- and only that trailing one. No real
+// THE ENTRIES OF A NUL-TERMINATED CHILD-NAME LISTING (`ls -A --zero`), as words. The listing terminates
+// every entry INCLUDING the last, so splitting on NUL leaves exactly one trailing empty word to drop -- and
+// only that trailing one. No real
 // entry name is empty (a zero-character name cannot exist in a directory) and no name contains NUL (the
 // kernel admits every byte but `/` and NUL in a name, path_resolution(7)), so the words between terminators
 // ARE the entry names, spaces, tabs, and newlines kept AS CONTENT. Nothing here trims: a whitespace-only
@@ -798,12 +798,16 @@ fn witness_listed_child_names(stdout: String) -> List<String> {
   }
 }
 
-// DOES A SUCCESSFUL LISTING OF `parent` NAME `wanted`? A listing that could not start, or that the host
-// refused (exit non-zero), is UNOBSERVABLE -- never "the name is not there". Membership is EXACT EQUALITY
+// DOES A SUCCESSFUL LISTING OF `parent` NAME `wanted`? The listing is `ls -A --zero` (row law at
+// extdeps.tools.gnu_coreutils.ls_child_names_command): it answers from readdir, so a readable-but-not-
+// searchable (0444) parent still names its entries, and a listing is not required to stat children. A
+// listing that could not start, or that the host refused (exit non-zero -- an unreadable or missing
+// directory, an older coreutils that refuses `--zero`, a filesystem whose d_type gap makes ls stat
+// children and fail), is UNOBSERVABLE -- never "the name is not there". Membership is EXACT EQUALITY
 // against the NUL-terminated entries: `v2` is not satisfied by `av2x`, a name of one space is satisfied
 // only by a name of one space, and a name holding a newline is one whole name.
 fn witness_tree_parent_listing_state(parent: String, wanted: String) -> WitnessTreeComponentState {
-  let probe = find_child_names_command(dir: parent)
+  let probe = ls_child_names_command(path: parent)
   let read = shell.Exec.RunArgvOutcome(
     program: probe.program.invocation as String,
     arguments: probe.arguments,
@@ -946,7 +950,7 @@ fn witness_tree_destination_absence_is_positive(canonical: String, names: List<S
 // ENTRIES: zero entries, from a NUL-terminated listing that RAN (exit 0). A whitespace-only name is an
 // entry, so a directory holding one entry named " " is NOT provably empty; nothing here trims.
 fn witness_directory_listing_is_provably_empty(path: String) -> Bool {
-  let probe = find_child_names_command(dir: path)
+  let probe = ls_child_names_command(path: path)
   let read = shell.Exec.RunArgvOutcome(
     program: probe.program.invocation as String,
     arguments: probe.arguments,
