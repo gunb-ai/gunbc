@@ -373,27 +373,42 @@ fn main() {
     // THE OUTER BOUNDARY STARTS HERE (§5a amendment A), before argv decode: the CLI prints the
     // invocation rows on its return path (see `cli_run::pre_entry_phase`).
     v1_compiler::cli_run::pre_entry_phase::record_invocation_start();
-    let cli = v1_compiler::gunbc_cli_dispatch_generated::parse_cli(GUNBC_BUILD_IDENTITY);
+    v1_compiler::cli_run::bind_seed_build_identity(GUNBC_BUILD_IDENTITY);
+    let cli = parse_cli();
     let host = RetainedCliHost {
         dry_run: cli.dry_run,
     };
     v1_compiler::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)
 }
 
-// The one place the commit stamp is read (test.claim.entry_authority_witness: only the
-// retained-host main may name it). The library receives it at run time, so a commit that changes
-// no library source does not change the library's compilation.
+// THE ONE PLACE THE COMMIT STAMP IS READ (#test.claim.entry_authority_witness::ea_seed_build_identity_marker:
+// only the retained-host main may name it). The library never reads it: a compile-time read there
+// put the commit into the library's dep-info, so every commit recompiled the library even when no
+// library source moved. This binary hands it over at run time -- to clap as the version, and to
+// `cli_run` for the bootstrap receipt -- so only the binary's own compilation moves with the commit.
 const GUNBC_BUILD_IDENTITY: &str = env!("GUNBC_BUILD_IDENTITY");
+
+fn cli_command() -> clap::Command {
+    <v1_compiler::gunbc_cli_dispatch_generated::Cli as clap::CommandFactory>::command()
+        .version(GUNBC_BUILD_IDENTITY)
+}
+
+fn parse_cli() -> v1_compiler::gunbc_cli_dispatch_generated::Cli {
+    let mut command = cli_command();
+    let mut matches = command.clone().get_matches();
+    match <v1_compiler::gunbc_cli_dispatch_generated::Cli as clap::FromArgMatches>::from_arg_matches_mut(
+        &mut matches,
+    ) {
+        Ok(cli) => cli,
+        Err(error) => error.format(&mut command).exit(),
+    }
+}
 
 struct RetainedCliHost {
     dry_run: bool,
 }
 
 impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliHost {
-    fn build_identity(&self) -> &'static str {
-        GUNBC_BUILD_IDENTITY
-    }
-
     fn retained_host_kernel(
         &self,
         source_roots: Vec<String>,
@@ -970,9 +985,9 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use super::GUNBC_BUILD_IDENTITY;
+    use super::{cli_command, GUNBC_BUILD_IDENTITY};
     use clap::Parser;
-    use v1_compiler::gunbc_cli_dispatch_generated::{cli_command, Cli};
+    use v1_compiler::gunbc_cli_dispatch_generated::Cli;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY. Written
     // against this file's private `extract_module_path`, deleted by the fork closure, they pin
     // `cli_run`'s behaviour and now assert it there. Deleting them with the function would
@@ -987,10 +1002,7 @@ mod tests {
 
     #[test]
     fn version_surface_reports_the_exact_source_commit() {
-        assert_eq!(
-            cli_command(GUNBC_BUILD_IDENTITY).get_version(),
-            Some(GUNBC_BUILD_IDENTITY)
-        );
+        assert_eq!(cli_command().get_version(), Some(GUNBC_BUILD_IDENTITY));
         let identity = GUNBC_BUILD_IDENTITY;
         let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
         assert_eq!(commit.len(), 40);

@@ -16,19 +16,6 @@ pub struct Cli {
     pub dry_run: bool,
 }
 
-pub fn cli_command(build_identity: &'static str) -> clap::Command {
-    <Cli as clap::CommandFactory>::command().version(build_identity)
-}
-
-pub fn parse_cli(build_identity: &'static str) -> Cli {
-    let mut command = cli_command(build_identity);
-    let mut matches = command.clone().get_matches();
-    match <Cli as clap::FromArgMatches>::from_arg_matches_mut(&mut matches) {
-        Ok(cli) => cli,
-        Err(error) => error.format(&mut command).exit(),
-    }
-}
-
 #[derive(Subcommand)]
 pub enum Commands {
     /// Compile .dag source files to a target language
@@ -151,7 +138,6 @@ pub enum Commands {
 }
 
 pub trait CliDispatchHost {
-    fn build_identity(&self) -> &'static str;
     fn retained_host_kernel(
         &self,
         source_roots: Vec<String>,
@@ -230,7 +216,6 @@ pub fn dispatch<H: CliDispatchHost>(
             vec![("program".to_string(), program)],
             "receipt_path",
             ".gunbc-build-receipts",
-            __gunbc_dispatch_executor_0.build_identity(),
         ),
         (Commands::Converge { .. }, true) => {
             eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
@@ -263,7 +248,6 @@ pub fn dispatch<H: CliDispatchHost>(
             ],
             "receipt_path",
             ".gunbc-converge-receipts",
-            __gunbc_dispatch_executor_0.build_identity(),
         ),
         (
             Commands::Test {

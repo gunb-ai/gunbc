@@ -20399,38 +20399,6 @@ fn emit_cli_dispatch_host_method(sub: CliSubcommandRow, method: String) -> Strin
   concat("    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> !;\n")
 }
 
-// WHERE THE BUILD IDENTITY IS BOUND. `gunbc --version` and a bootstrap receipt both report the
-// exact source commit (#gunbc.cli_dispatch_surface::CliVersionIdentity), which build.rs binds as
-// GUNBC_BUILD_IDENTITY. Only the retained-host main names it
-// (#test.claim.entry_authority_witness::ea_seed_build_identity_marker):
-// the generated dispatch module lives in the library, and a compile-time read there made the
-// library's compilation depend on the commit, so every commit rebuilt it even when no library
-// source changed. The library therefore receives the identity at run time -- the clap command
-// takes it as its version, and the dispatch reads it from the host -- and only the binary's own
-// compilation moves with the commit.
-fn emit_cli_dispatch_build_identity_method() -> String {
-  "    fn build_identity(&self) -> &'static str;\n"
-}
-
-fn emit_retained_host_build_identity_method() -> String {
-  "    fn build_identity(&self) -> &'static str {\n        env!(\"GUNBC_BUILD_IDENTITY\")\n    }\n"
-}
-
-fn emit_cli_runtime_version_fns() -> String {
-  concat(
-    "pub fn cli_command(build_identity: &'static str) -> clap::Command {\n",
-    "    <Cli as clap::CommandFactory>::command().version(build_identity)\n",
-    "}\n\n",
-    "pub fn parse_cli(build_identity: &'static str) -> Cli {\n",
-    "    let mut command = cli_command(build_identity);\n",
-    "    let mut matches = command.clone().get_matches();\n",
-    "    match <Cli as clap::FromArgMatches>::from_arg_matches_mut(&mut matches) {\n",
-    "        Ok(cli) => cli,\n",
-    "        Err(error) => error.format(&mut command).exit(),\n",
-    "    }\n",
-    "}")
-}
-
 fn emit_candidate_cli_host_method(sub: CliSubcommandRow, method: String) -> String {
   let fields = modeled_subcommand_bound_fields(sub: sub)
   let params = fields |> map(field => concat(field, ": ", cli_dispatch_field_type(sub: sub, field: field))) |> join(separator: ", ")
@@ -20507,7 +20475,6 @@ fn emit_candidate_cli_host(crate_name: String) -> String {
   concat(
     "struct CandidateCliHost;\n\n",
     "impl ", crate_name, "::gunbc_cli_dispatch_generated::CliDispatchHost for CandidateCliHost {\n",
-    emit_retained_host_build_identity_method(),
     methods,
     "}\n\n")
 }
@@ -20536,7 +20503,7 @@ fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, 
         "        (Commands::", sub.variant, " { .. }, _) => { eprintln!(\"REFUSED: ", successor, " is not wired\"); std::process::exit(2); },")
       CliKnownOperationNoRealization { operation } => concat(
         "        (Commands::", sub.variant, " { .. }, _) => { eprintln!(\"REFUSED: known operation, no realization: ", operation.module_path, ".", operation.decl_name, "\"); std::process::exit(2); },")
-      CliInvokesBootstrapDagOperation { binding } => emit_bootstrap_dag_operation_match_arm(sub: sub, binding: binding, crate_name: crate_name, executor_name: executor_name)
+      CliInvokesBootstrapDagOperation { binding } => emit_bootstrap_dag_operation_match_arm(sub: sub, binding: binding, crate_name: crate_name)
       CliRetainedHostKernel => ""
       CliDelegatesToHostFn { symbol: _ } => ""
       CliInvokesBoundTargetProducer => ""
@@ -20544,6 +20511,12 @@ fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, 
   }
 }
 
+// THE GENERATED DISPATCH CARRIES NO BUILD IDENTITY. It is compiled into the library, and a
+// compile-time read of `GUNBC_BUILD_IDENTITY` there put the commit into the library's dep-info, so
+// every commit recompiled it (#gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path::build_cache_key_includes_the_absolute_checkout_path).
+// The `--version` string is the commit (#gunbc.cli_dispatch_surface::CliVersionIdentity) and is
+// set at run time by the retained-host main, the only main that may name the stamp
+// (#test.claim.entry_authority_witness::ea_seed_build_identity_marker).
 fn emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name: String, rows: List<CliSubcommandRow>, executor_name: String) -> TextFile {
   let variants = rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: 0)) |> join(separator: "\n")
   let host_methods = rows |> flat_map(sub => match cli_dispatch_host_method_name(sub: sub) {
@@ -20558,9 +20531,8 @@ fn emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name: String, rows
       "// Authority: gunbc.cli_dispatch_surface.\n\n",
       "use clap::\{Parser, Subcommand};\n\n",
       emit_cli_root_struct(binary_name: gunbc_cli_binary_name(), about: gunbc_cli_about(), public: true), "\n\n",
-      emit_cli_runtime_version_fns(), "\n\n",
       "#[derive(Subcommand)]\npub enum Commands {\n", variants, "\n}\n\n",
-      "pub trait CliDispatchHost {\n", emit_cli_dispatch_build_identity_method(), host_methods, "}\n\n",
+      "pub trait CliDispatchHost {\n", host_methods, "}\n\n",
       "pub fn dispatch<H: CliDispatchHost>(command: Commands, dry_run: bool, ", executor_name, ": &H) -> ! {\n    match (command, dry_run) {\n",
       arms, "\n    }\n}\n")
   }
@@ -21583,7 +21555,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
   let header = concat(
     "// Generated by v1 compiler -- do not edit.\n\n",
     "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
-    concat("use clap::", "Subcommand", ";\n")
+    concat("use clap::", "{", "Parser, Subcommand", "}", ";\n")
   )
   let crate_use = if has_services {
     concat("use ", crate_name, "::dry_run::DryRunMode;\n")
@@ -21597,7 +21569,12 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
     concat(emit_main_pipeline_fns(crate_name: crate_name, pipeline_module: pipeline_module), emit_candidate_cli_host(crate_name: crate_name)),
     concat(
       "fn main() {\n",
-      "    let cli = ", crate_name, "::gunbc_cli_dispatch_generated::parse_cli(env!(\"GUNBC_BUILD_IDENTITY\"));\n",
+      "    let mut command = <", crate_name, "::gunbc_cli_dispatch_generated::Cli as clap::CommandFactory>::command().version(env!(\"GUNBC_BUILD_IDENTITY\"));\n",
+      "    let mut matches = command.clone().get_matches();\n",
+      "    let cli = match <", crate_name, "::gunbc_cli_dispatch_generated::Cli as clap::FromArgMatches>::from_arg_matches_mut(&mut matches) {\n",
+      "        Ok(cli) => cli,\n",
+      "        Err(error) => error.format(&mut command).exit(),\n",
+      "    };\n",
       "    let host = CandidateCliHost;\n",
       "    ", crate_name, "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n",
       "}\n"), "\n",
@@ -24239,7 +24216,7 @@ fn cli_option_rust_type(opt: CliOptionRow) -> String {
   }
 }
 
-fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBootstrapDagOperationBinding, crate_name: String, executor_name: String) -> String {
+fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBootstrapDagOperationBinding, crate_name: String) -> String {
   let operation = admitted_bootstrap_operation_declaration(identity: binding.operation)
   let fields = modeled_subcommand_bound_fields(sub: sub)
   let binds = fields |> join(separator: ", ")
@@ -24262,7 +24239,6 @@ fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBoo
       "            vec![", public_args, "],\n",
       "            \"", binding.receipt.parameter, "\",\n",
       "            \"", binding.receipt.path, "\",\n",
-      "            ", executor_name, ".build_identity(),\n",
       "        ),") }
   }
 }
