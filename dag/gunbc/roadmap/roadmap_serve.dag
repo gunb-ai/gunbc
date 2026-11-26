@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_serve
 
-import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection_for_instance }
 import gunbc.roadmap.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
 import gunbc.roadmap.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
 import gunbc.roadmap.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
@@ -165,7 +165,7 @@ import gunbc.roadmap.roadmap_component {
 }
 import gunbc.roadmap.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
-  roadmap_site_healthz_body_for_release,
+  roadmap_site_healthz_body_for_release_over,
 }
 import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
@@ -1557,6 +1557,7 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
 // equal text with another operation identity is an intentional second comment.
 fn serve_issue_comment_response_over(
   instance: HostDashboardInstance,
+  plan: fn() -> RoadmapAuthorityProjection,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
@@ -1567,7 +1568,7 @@ fn serve_issue_comment_response_over(
     observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit =>
-      if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+      if !issue_detail_node_exists(proj: plan(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
       else { serve_issue_comment_permitted(instance: instance, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
   }
 }
@@ -1766,7 +1767,7 @@ fn roadmap_serve_invoke_over(
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
     SpecimenPageHandler => serve_page_response(page: specimen_page())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
-    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
+    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release_over(plan: plan(), release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
         status: 200,
@@ -1785,7 +1786,7 @@ fn roadmap_serve_invoke_over(
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
-    IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueCommentHandler => serve_issue_comment_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCloseHandler => serve_issue_close_response_over(instance: instance, plan: plan, request: request, params: params, read: serve_close_pr_readback)
     IssueRetireHandler => serve_issue_retire_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueQueryHandler => serve_issue_query(instance: instance, request: request)
@@ -1813,7 +1814,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: fn() { roadmap_plan_projection() },
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -1979,7 +1980,7 @@ fn roadmap_serve_selection_response_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: fn() { roadmap_plan_projection() },
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -2173,7 +2174,7 @@ fn roadmap_serve_respond_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: fn() { roadmap_plan_projection() },
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
@@ -2261,9 +2262,10 @@ fn roadmap_serve_handle(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv1_live_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv1_live_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2295,9 +2297,10 @@ fn roadmap_serve_handle_door(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv1_live_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv1_live_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2317,9 +2320,10 @@ fn roadmap_serve_handle_macbook_local(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = macbook_local_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: macbook_local_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2339,9 +2343,10 @@ fn roadmap_serve_handle_srv1_lab(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv1_lab_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv1_lab_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2367,9 +2372,10 @@ fn roadmap_serve_handle_srv1_lab_agent_door(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv1_lab_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv1_lab_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2389,9 +2395,10 @@ fn roadmap_serve_handle_srv2_preview(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv2_preview_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv2_preview_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2414,9 +2421,10 @@ fn roadmap_serve_handle_srv2_deploy(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv2_deploy_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv2_deploy_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -2436,9 +2444,10 @@ fn roadmap_serve_handle_srv2_lab(
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
+  let instance = srv2_lab_dashboard_instance()
   roadmap_serve_handle_over(
-    instance: srv2_lab_dashboard_instance(),
-    plan: fn() { roadmap_plan_projection() },
+    instance: instance,
+    plan: fn() { roadmap_plan_projection_for_instance(instance: instance) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
