@@ -1183,47 +1183,7 @@ fn run_verb(
         };
     };
 
-    let resolve_started = std::time::Instant::now();
-    // Demand-acquired layout closure is the only `gunbc run` resolve. Whole-tree
-    // `resolve_entry_graph` stays the compile / floor consumer, not a run fallback.
-    // The typecheck owes bodies only for what the requested functions reach.
-    let requested: Vec<String> = if !functions.is_empty() {
-        functions.to_vec()
-    } else {
-        vec!["main".to_string()]
-    };
-    let resolved =
-        cli_run::resolve_entry_graph_demand_acquired_scoped(source_roots, entry_file, &requested);
-    report_pre_entry_phases(
-        resolve_started.elapsed(),
-        source_roots,
-        resolved.as_ref().ok().map(|(_, si)| si.len()),
-    );
-    let (graph, source_indices) = match resolved {
-        Ok(resolved) => resolved,
-        Err(cause) => {
-            return Verdict {
-                status: 1,
-                message: Some(format!(
-                    "error: resolve failed for {entry_file}\n  cause: {cause}"
-                )),
-            };
-        }
-    };
-
-    // The SAME total classification the compile path uses — blocking vs advisory, with
-    // advisory derived as (total - blocking) so no diagnostic is counted by neither.
-    if has_blocking_diagnostics(graph.diagnostics.as_ref()) {
-        let blocking = blocking_diagnostic_count(graph.diagnostics.as_ref());
-        let advisory = graph.diagnostics.len() - blocking;
-        return Verdict {
-            status: 1,
-            message: Some(format!(
-                "error: {entry_file} has {blocking} blocking diagnostic(s) ({advisory} advisory); \
-             refusing to evaluate"
-            )),
-        };
-    }
+    let to_run = functions_to_run(functions);
 
     // DATED RECORD (claim-execution cutover, gunbc.plans.claim_execution_consolidation): this verb
     // once ran claims under `--claim-run`, and a defect in its mode selection let a mocked effect
@@ -1235,9 +1195,27 @@ fn run_verb(
     // entrypoints, so they cannot diverge again). Claims are no longer executed here at all: the
     // `gunbc test` route is the one claim entrypoint and carries that fail-closed rule.
     let execution_mode = cli_run::execution_mode_for(None, false, dry_run);
-    let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
-
-    let to_run = functions_to_run(functions);
+    // THE ONE EXECUTION ROUTE (`cli_run::load_entry_for_functions`): the demand-acquired closure,
+    // scoped to the functions this run executes, is the only resolve -- for this verb and for
+    // every bootstrap operation row. Whole-tree `resolve_entry_graph` stays the compile / floor
+    // consumer, never a run fallback. The resolve refuses every interpreter-blocking diagnostic
+    // itself, so no second gate over the same set follows it here.
+    let (graph, ctx) = match cli_run::load_entry_for_functions(
+        source_roots,
+        entry_file,
+        &to_run,
+        execution_mode,
+    ) {
+        Ok(loaded) => loaded,
+        Err(cause) => {
+            return Verdict {
+                status: 1,
+                message: Some(format!(
+                    "error: resolve failed for {entry_file}\n  cause: {cause}"
+                )),
+            };
+        }
+    };
 
     // ONE LOAD, MANY FUNCTIONS. Each function's verdict is decided exactly as it was when a run
     // executed one; the run's verdict is the FIRST non-zero status, and the run stops at the first
@@ -1279,97 +1257,13 @@ fn run_verb(
     verdict
 }
 
-/// Print the pre-entry phase receipt (`cli_run::pre_entry_phase`): the tree-scaled phases
-/// recorded where they ran, then the closure-scaled resolve stages from `ResolveStageNanos`,
-/// then the inclusive resolve window they sit inside. Printed whether resolve succeeded or
-/// refused, because a refusal after minutes of preparation is exactly the run whose cost
-/// the operator most needs attributed.
-fn report_pre_entry_phases(
-    resolve_inclusive: std::time::Duration,
-    source_roots: &[String],
-    closure_files: Option<usize>,
-) {
-    use cli_run::pre_entry_phase::{record, take_lines, PhaseScale};
-    let st = cli_run::resolve_stage_totals();
-    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
-    for (name, nanos) in [
-        ("closure_load", st.load),
-        ("closure_parse", st.parse),
-        ("closure_resolve", st.resolve),
-        ("closure_normalize", st.normalize),
-        ("closure_typecheck", st.typecheck_compute),
-        ("closure_parent_envs", st.parent_envs),
-        ("closure_reconcile_assembly", st.reconcile_assembly),
-        ("closure_ownership", st.ownership),
-    ] {
-        record(name, PhaseScale::Closure, ns(nanos));
-    }
-    // Reconcile sub-rows whose INPUT is the pool, not the closure: per source root
-    // the same-tree bare underlay and its variant base. They sit inside reconcile but
-    // outside every closure row above, so without these lines a small-closure run
-    // reported seconds of tree-scale work as an unexplained gap between the phase sum
-    // and `resolve_entry_graph_inclusive`.
-    for (name, nanos) in [
-        (
-            "reconcile_root_bare_underlay",
-            st.assembly_root_symbol_index,
-        ),
-        ("reconcile_root_variant_base", st.assembly_root_variant_base),
-    ] {
-        record(name, cli_run::pre_entry_phase::index_scale(), ns(nanos));
-    }
-    record(
-        "resolve_entry_graph_inclusive",
-        PhaseScale::Closure,
-        resolve_inclusive,
-    );
-    for line in take_lines() {
-        eprintln!("{line}");
-    }
-    // POPULATIONS beside the times: `pool_modules` is the whole-tree indexed pool
-    // (or `refused` when that index was never built — demand-acquired `gunbc run`
-    // does not walk it). `demand_acquired_modules` is the layout-closure set.
-    // `closure_files` is the resolved graph's source-index size.
-    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
-        .map_or("refused".to_string(), |n| n.to_string());
-    let demand = cli_run::pre_entry_phase::demand_acquired_modules()
-        .map_or("refused".to_string(), |n| n.to_string());
-    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
-    eprintln!(
-        "[pre-entry] population pool_modules={pool_modules} closure_files={closure} demand_acquired_modules={demand}"
-    );
-    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
-    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
-    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
-    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
-        let usage = unsafe { usage.assume_init() };
-        let ms = |t: libc::timeval| t.tv_sec as i64 * 1000 + t.tv_usec as i64 / 1000;
-        eprintln!(
-            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
-            ms(usage.ru_utime),
-            ms(usage.ru_stime),
-            cli_run::peak_rss_vhwm_bytes()
-                .map_or("refused".to_string(), |b| (b / 1024).to_string())
-        );
-    }
-}
-
 fn run_one_function(
     ctx: &v1_compiler::v1_interpreter::InterpContext,
     function: &str,
     entry_file: &str,
     run_args: &[(String, String)],
 ) -> Verdict {
-    let bound = match cli_run::bind_run_args_for_entry(ctx, function, run_args) {
-        Ok(bound) => bound,
-        Err(message) => {
-            return Verdict {
-                status: 2,
-                message: Some(format!("error: {message}")),
-            };
-        }
-    };
-    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, &bound, true) {
+    match cli_run::run_named_function(ctx, function, run_args) {
         // The verdict a `.dag` entry returns IS the run's outcome. A Bool is an ordinary value
         // and says nothing about success: claims are executed by the `gunbc test` route, not here. `cli_run::classify_exit`
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
@@ -1444,9 +1338,22 @@ fn run_one_function(
                 }
             }
         }
-        // An evaluation error is a failed run: exit 1. The claim route's NO-OBSERVATION (exit 2)
-        // discipline for a refused host effect lives with the `gunbc test` route now.
-        Err(err) => Verdict {
+        // An argument the declared parameter types do not admit is no observation: exit 2.
+        Err(cli_run::NamedFunctionRefusal::ArgumentRefused(message)) => Verdict {
+            status: 2,
+            message: Some(format!("error: {message}")),
+        },
+        // An absent function or an evaluation error is a failed run: exit 1. The claim route's
+        // NO-OBSERVATION (exit 2) discipline for a refused host effect lives with the
+        // `gunbc test` route now.
+        Err(cli_run::NamedFunctionRefusal::FunctionAbsent) => Verdict {
+            status: 1,
+            message: Some(format!(
+                "error: evaluating {function} in {entry_file}\n  cause: no function \
+                 `{function}` is declared in the loaded closure"
+            )),
+        },
+        Err(cli_run::NamedFunctionRefusal::EvaluationFailed(err)) => Verdict {
             status: 1,
             message: Some(format!(
                 "error: evaluating {function} in {entry_file}\n  cause: {err:?}"

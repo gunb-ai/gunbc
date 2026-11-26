@@ -799,6 +799,24 @@ The roster *Conformance* reviews against, from `gunbc.design_argument` `conforma
   - `v2.compiler.body_lowering_fold::BodyLoweredTree`
   - `v2.compiler.module_acquisition::HeldSourceRead`
 
+### Invocation
+
+**Owns.** How a command, workflow step or target producer requests evaluation of a declared .dag function: identifying the callable in the caller's source context, binding supplied arguments to the declaration's parameters, and declaring how the caller supplies inputs and how a returned value or a failure before any value exists is reported (gunbc.design_ruling::dag_invocation_is_one_conformance_pattern, operator 2026-11-26). gunbc run is the caller-specified form; every other spelling is a command binding, and an alias is a transparent reference only.
+
+**Boundaries.**
+
+- The declaration owns its parameter and return contract; the operation or producer owns the effects and evidence it promises.
+- Faithful execution and receipt readback once a request is admitted belong to materialization / realization.
+- A producer whose contract is evidence from a built process (native serve, native claim) is not a binding of this pattern; interpreted reads inside it are.
+- Entry-path derivation applies to repository-owned bindings; direct run under caller-supplied roots may name an entry the repository layout gives no path.
+- No command-binding carrier is a home yet: gunbc.cli_dispatch_surface CliBootstrapDagOperationBinding and gunbc.target_binding CliWireProgramProducer author an entry path beside the declaration they name, which is the shape this domain refuses, so a new binding does not copy them; a binding carrier becomes a home once it derives its path from declaration identity (gunbc.plans.dag_invocation_is_one_pattern).
+
+**Existing authorities**
+
+- **Callable identity and arguments** — the declaration a request names, its derived entry path, and the CLI argument boundary
+  - `gunbc.ci.ci_run_step_target::GunbcRunStepTarget`
+  - `gunbc.cli_invoke::NamedArgument`
+
 ## Reference: product names
 
 Each product word is anchored on one declaration (`gunbc.product_names`), and means that declaration and nothing else; a word used for something its anchor does not cover is a nickname (`gunbc.design_argument::single_authority`). This roster is read, never extended by prose: a new word is a new row with an anchor that resolves.

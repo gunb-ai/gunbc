@@ -43,6 +43,12 @@ data upload_artifact_v6_0_0: ActionRelease = ActionRelease {
 
 // Each declaration below was read from the action.yml blob at the release's commit
 // (extdeps.github.action_release action_manifest_of), 2026-09-18.
+// v7.0.0 is the release actions/upload-pages-artifact v5.0.0 runs as a nested step (its action.yml pins
+// bbbca2ddaa5d8feaa63e36b76fdaad77386f024f), read so that composite's nested use joins a declaration.
+data upload_artifact_v7_0_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "upload-artifact", tag: "v7.0.0", commit: "bbbca2ddaa5d8feaa63e36b76fdaad77386f024f", subdirectory: none
+}
+
 data upload_artifact_manifest_readings: List<ActionManifestReading> = [
   ActionManifestReading {
     action_release: upload_artifact_v4_6_2,
@@ -50,6 +56,11 @@ data upload_artifact_manifest_readings: List<ActionManifestReading> = [
   },
   ActionManifestReading {
     action_release: upload_artifact_v6_0_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+  // Read from action.yml at bbbca2ddaa5d8feaa63e36b76fdaad77386f024f (`using: 'node24'`), 2026-11-24.
+  ActionManifestReading {
+    action_release: upload_artifact_v7_0_0,
     declared: JavaScriptAction { node_major: 24 },
   },
 ]
