@@ -28,6 +28,7 @@ import gunbc.guarantee_probe_corpus {
   guarantee_probe_rows,
   active_v1_compile_probe_row,
   probe_row_expectation_holds,
+  observation_is_blocking_refusal,
   probe_expectation_is_below_floor_hole,
   guarantee_probe_below_floor_hole_rows,
   build_v1_compile_receipt,
@@ -166,6 +167,22 @@ fn blocking_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> C
   census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
 }
 
+// Count blocking rows of the given class whose subject_name contains the pattern.
+// ParseError diagnostics carry their message text (truncated to 80) as subject_name;
+// this helper lets a leg assert not just that the refusal exists but that it NAMES
+// the specific defect (the census route does not expose span/location as a queryable
+// field; the subject is the strongest available discriminator beyond class + count).
+fn named_blocking_count(source: String, wanted_class: String, subject_pattern: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => r.blocking && (r.diagnostic_class as String) == wanted_class
+                      && string_contains(s: r.subject_name, pattern: subject_pattern))
+        |> count
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
 data generic_instantiation_hole_source: String = "module probe_floor_generic_inst\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: \"not an int\" } }\n"
 data generic_instantiation_monomorphic_source: String = "module probe_floor_generic_mono\ntype Plain { inner: Int }\nfn f() -> Plain { Plain { inner: \"not an int\" } }\n"
 data generic_instantiation_green_source: String = "module probe_floor_generic_green\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: 1 } }\n"
@@ -250,10 +267,15 @@ test fn floor_record_completeness_green_control_is_clean() -> Bool {
     && total_row_count_is_zero(census: census_of(source: record_completeness_green_source))
 }
 
-test fn floor_parse_list_separator_omission_is_still_silent() -> ProcessExit {
+// RETIRED: floor_parse_list_separator_omission_is_still_silent asserted 0 ParseError rows
+// on the omitted-separator source -- a hole-enrolling asset that passed only while the compiler
+// was wrong. Replaced by floor_parse_list_separator_omission_refuses which asserts the wall:
+// exactly 1 ParseError on the same source, proving the separator refusal is compiled in.
+test fn floor_parse_list_separator_omission_refuses() -> ProcessExit {
   census_verdict_all([
-    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)),
-    blocking_verdict(source: parse_list_separator_hole_source, wanted: "ParseError", holds: fn(n) { n == 0 })
+    census_premise("the probe row's expectation holds after the separator wall", row_holds(probe: floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)),
+    blocking_verdict(source: parse_list_separator_hole_source, wanted: "ParseError", holds: fn(n) { n == 1 }),
+    census_premise("exactly 1 blocking ParseError on the omission fixture, subject_name contains \"expected separator\"", named_blocking_count(source: parse_list_separator_hole_source, wanted_class: "ParseError", subject_pattern: "expected separator") == 1)
   ])
 }
 
@@ -287,7 +309,10 @@ test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
   }
 }
 
-test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
+// FLIPPED WITH THE WALL: previously asserted observation_is_clean (acceptance as the observation)
+// on the omitted-separator source, passing only while the compiler silently accepted juxtaposition.
+// Now asserts the blocking refusal, matching the updated corpus expectation (ExpectBlockingRefusal).
+test fn floor_hole_receipt_records_refusal_as_the_observation() -> Bool {
   match active_v1_compile_probe_row(probe: floor_parse_list_separator_hole_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
@@ -296,7 +321,7 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
         subject_revision: synthetic_program_subject_revision(source: parse_list_separator_hole_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      observation_is_clean(o: receipt.observed)
+      observation_is_blocking_refusal(o: receipt.observed, wanted: "ParseError" as NonEmptyStr)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
     Absent => false
   }
@@ -309,7 +334,6 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_parse_list_separator_hole_probe as String,
   ]
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1

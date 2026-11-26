@@ -6893,11 +6893,7 @@ fn parse_expr_list_until_acc(tokens: TokenStream, ctx: ParseContext, end_expecte
         if at_end_after || tok_is_eof(tok: token_stream_first(stream: next)) {
           parse_expr_list_until_acc(tokens: next, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
         } else {
-          let found = match token_stream_first(stream: next) {
-            Present { value: t } => token_display_name(token: t)
-            Absent => "EOF"
-          }
-          ExprsResult { exprs: [], tokens: next, ctx: r.ctx, err: Present { value: parse_error(msg: concat("expected separator ',' between list elements, found ", found), span: token_span(tok: token_stream_first(stream: next))) } }
+          parse_expr_list_until_acc(tokens: next, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
         }
       }
     }
