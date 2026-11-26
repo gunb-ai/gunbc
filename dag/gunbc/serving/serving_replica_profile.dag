@@ -36,7 +36,7 @@ import std.measure {
   ByteSize, Millisecond, MoneyAmountMicro, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
   PositiveSlotCount, TokenCount, TokensPerSecond, Watt,
   byte_size, byte_size_count, millisecond, money_amount_micro, positive_slot_count,
-  positive_measure_count, positive_measure_count_from_int, token_count, token_count_value, tokens_per_second,
+  positive_measure_count, positive_measure_count_from_int, token_count, tokens_per_second,
   tokens_per_second_count, watt_count,
 }
 import std.algebra { string_contains }
@@ -553,7 +553,7 @@ fn replica_shaped(p: ServingReplicaProfile, a: ServingCapacityAnchor) -> Serving
   within_gpu_kv_pool(
     shape: serving_capacity_shape(a: a, p: serving_conversation_policy),
     pool: p.gpu_kv_pool,
-    context: token_count_value(t: serving_conversation_policy.anchor_context),
+    context: serving_conversation_policy.anchor_context,
   )
 }
 

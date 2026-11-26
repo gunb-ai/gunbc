@@ -36,7 +36,7 @@ import gunbc.serving.serving_replica_profile {
 import gunbc.serving.serving_capacity_anchor {
   GrantAdmits, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
   ServingShapeRefusalReason, ShapeLeastRateBelowPolicyAtConcurrency, ShapeGrantRefused,
-  HeldByGpuKvPool,
+  TurnsByGpuKvPool,
   engine_warm_swap, serving_conversation_policy,
 }
 import gunbc.serving.serving_host_memory {
@@ -321,7 +321,7 @@ test fn a_refused_grant_refuses_both_the_router_row_and_the_engine_launch() -> B
 // router row's cap both become 1, never the shape's throughput 2. This is the regression guard against re-applying
 // the pool floor at a router-only renderer: there the router cap would drop to 1 while the engine's --parallel still
 // reserved 2 -- the one-number-two-ends split #17060 closed, recurring one boundary later
-// (gunbc.design_argument::single_authority). The bound records the pool won it (HeldByGpuKvPool), distinguishing
+// (gunbc.design_argument::single_authority). turns_bound records the pool won it (TurnsByGpuKvPool), distinguishing
 // the floor from the throughput and grant terms.
 test fn a_binding_gpu_kv_pool_floors_both_ends_to_the_pool() -> Bool {
   let layout = srv3_layout_granting(2)
@@ -332,10 +332,10 @@ test fn a_binding_gpu_kv_pool_floors_both_ends_to_the_pool() -> Bool {
   }
   // The engine end: --parallel floors to the pool (1), not the shape's throughput 2.
   launch_slots(launch: replica_engine_launch(p: srv3_strata_profile_binding_kv_pool, layout: layout, group: srv3_fixture_group())) == 1
-    // The router end: the naming's shape turns floor to the pool, and the bound records the pool won.
+    // The router end: the naming's shape turns floor to the pool, and turns_bound records the pool won.
     && match router_dev_replica_shape(n: n, layout: layout) {
-         ServingShapeEstimated { deployment: _, turns: t, held: _, bound: HeldByGpuKvPool { pool_tokens: _ }, cold_reread: _, standings: _ } => t == 1
-         ServingShapeDerived { deployment: _, turns: t, held: _, bound: HeldByGpuKvPool { pool_tokens: _ }, cold_reread: _ } => t == 1
+         ServingShapeEstimated { deployment: _, turns: t, held: _, turns_bound: TurnsByGpuKvPool { pool_tokens: _ }, cold_reread: _, standings: _ } => t == 1
+         ServingShapeDerived { deployment: _, turns: t, held: _, turns_bound: TurnsByGpuKvPool { pool_tokens: _ }, cold_reread: _ } => t == 1
          _ => false
        }
 }
