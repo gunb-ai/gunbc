@@ -189,3 +189,50 @@ entries that run, via `project_ci_floor_witness_entries` (`src/v1/stage0/src/cli
 by who calls whom in .dag." So the acceptance condition for this row is not "the check exists and is
 green", it is **"a red check blocks a PR"** — demonstrated by pushing one of §6's reds and watching the
 lane refuse it. Anything less than that witness is the extdeps gate's history repeated.
+
+## 11. THE PRECISION DEBUG — six false-positive classes, what cured them, and what did not
+
+The instrument parses, resolves in 1.2–4.8 s over 53 modules, runs, and reports. It is not yet shippable:
+pointed at six real files it reports 189 / 206 / 32 / 11 / 89 / 723 label refusals where the truth is zero
+(every one of those files compiles and its own witness lanes are green), so the red-vs-green delta that is
+this row's whole acceptance condition cannot be demonstrated yet. The current draft is kept at
+`/tmp/call_shape_dag_draft.dag`, out of the tree; the tree gets no instrument that cries wolf. What was
+cured, in the order found, each by pointing the instrument at a real file and reading every refusal:
+
+1. **A fragment with no `:` is a positional argument, not a label.** `provides_only(capabilities:
+   [CargoCapability, RustcCapability, ...])` cut at the first `)` and split on commas handed back the list's
+   own elements, and the instrument refused `gunb_ai_pages_workflow.dag` twice for "passing RustcCapability"
+   to a function whose only parameter is `capabilities`. Cured; the same rule applied to the declared side.
+2. **A comment is not code.** Full-line comments were scanned, so `remote_build_serve.dag` refused for
+   "passing command" from a prose line, and this file refused `std.algebra.trim` for "passing prefix" and
+   "passing pattern" — text taken from its own header's list of verified primitives. Cured by dropping
+   full-line comments, then also stripping `//` to end-of-line.
+3. **Nested-call labels are not the outer callee's.** `trim(s: cs_after(s: t, marker: "{"))` attributed
+   `marker` to `trim`. Cured by keeping only fragments at depth zero — counting `()`, `{}` and `[]`.
+4. **The argument list must be cut at its MATCHING `)`, not the first one.** This was the miss that matters:
+   with first-`)` cutting, `gunbc_run_step_script_for_target(source_roots: ..., target:
+   gunbc_run_step_target(module: ..., function: "..."), receipt_rel: none, claim_run: false)` ended the
+   argument list at the nested call's close, so `claim_run` was invisible and the instrument was SILENT on
+   the exact `claim_run` shape it exists to catch. Cured by accumulating pieces until the paren count that
+   `name(` established returns to zero — and the counter must count PARENTHESES ONLY there: counting braces
+   and brackets too made the walk run past the call's close and harvest labels from later calls ("minute
+   from std.measure passes all_failed"). (a) and (3) were found while this file refused itself; (4) was
+   found only by running the red control, which is why the row's acceptance condition is a demonstrated red.
+5. **String literals — NOT the cause I took it for.** Blanking string contents (the oracle's R3 rule) was
+   applied on the hypothesis that an unbalanced `(` inside a shell-script literal was letting the walk run
+   on; it moved 723 to 723 and 92 to 89. Either the rule is right and something else dominates, or the rule
+   is not what this language needs. Untested hypothesis, recorded as such.
+6. **OPEN: the harvest that remains.** 723 refusals on `remote_build_client.dag`, all against `trim` from
+   `std.algebra` (declared parameter `s`), carrying labels `stdout`, `stderr`, `text`, `fetched`, `work`,
+   `detail`, `keep`, `delimiter`, `pattern`, `start`, `prefix` — the labels of dozens of *other* functions.
+   That signature says the walk for `trim(` still runs across call boundaries somewhere, and I could not
+   reproduce it by reading. The next step is not another guess: add a temporary trace entry that prints, for
+   one (file, callee) pair, the harvested body text — read it, find the shape, fix that, and only then
+   re-verify against the oracle per file. The oracle is the calibration precisely so that guessing is not
+   the method: for these six files the Python oracle's refusal counts are the expected numbers, and the
+   .dag instrument must equal them, file by file, before anything is enrolled.
+
+The budget facts (§9) are unaffected by any of this: the closure is 53 modules and the resolve is 1.2–4.8 s,
+because none of the precision work pulls in a hub. The rule for whoever continues: every fix must be
+demonstrated by the RED firing and the GREEN arms staying at zero on these six files, and a fix that reduces
+a count without the red firing is not a fix, it is a mute button.
