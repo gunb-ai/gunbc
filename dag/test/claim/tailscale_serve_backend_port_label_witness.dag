@@ -7,7 +7,7 @@
 //   there was no fold to consume). It now consumes std.types checked_port, so 0 (reserved) and 70000
 //   (outside RFC 793 / RFC 9293's 16-bit field) refuse, a non-numeric label refuses, and a real
 //   service port admits.
-// RUN: gunbc run --claim-run --entry dag/test/claim/tailscale_serve_backend_port_label_witness.dag --function <test fn> --source-root dag --source-root src/v2
+// RUN: gunbc test //test/claim/tailscale_serve_backend_port_label_witness:<test fn>
 // EXPECT: each test fn answers true on the discriminating input.
 module test.claim.tailscale_serve_backend_port_label_witness
 

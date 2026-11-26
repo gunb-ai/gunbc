@@ -7,6 +7,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
   ByteSize, byte_size, byte_size_count, token_count,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  gibibyte_count,
 }
 import gunbc.host.host_memory_carrier { HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.serving.serving_host_memory {
@@ -17,6 +18,7 @@ import gunbc.serving.serving_host_memory {
   serving_host_memory_verdict, serving_engine_cache_allowance, engine_warm_sessions, conversation_snapshot_bytes,
   strata_iq3_s_snapshot_cost, host_6ce85c_serving_memory_observed, host_6ce85c_engine_as_launched,
   srv1_vllm_engine_memory, srv3_strata_engine_memory, srv4_serving_engine_memory, serving_engine_missing,
+  srv1_lmcache_l1_configured, srv1_lmcache_l1_bytes, srv1_replica_container_memory_cap, serving_reading_bytes_or_zero,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -165,5 +167,29 @@ test fn witness_shared_host_rows_name_their_unread_figures() -> Bool {
     && serving_engine_missing(e: srv3_strata_engine_memory).length() == 0
     && serving_engine_missing(e: srv4_serving_engine_memory).length() == 0
     && !is_absent_count(x: engine_warm_sessions(e: srv4_serving_engine_memory, cost: strata_iq3_s_snapshot_cost, context: token_count(count: 80000)))
+}
+
+// SRV1'S ENGINE RECORD CITES THE LAUNCH SHAPE IT DESCRIBES — IT NO LONGER ANSWERS FOR THE KV RAM TIER.
+// Until class B4 this row carried its own LMCache L1 figure (100 GB, read 2026-10-30 off
+// ~/strata-test/srv1_lil_serve.sh) and its own container cap (130g), while gunbc.serving.srv1_serving_replica_layout
+// rendered `LMCACHE_L1_GB=12` and `--memory=32g` into the container that actually booted. Two answers to one
+// question, and the row nobody rendered from was the one that read "the engine's cache is 100 GB". Both figures
+// are CITED from the rows that decide them now, so this record moves with the launch shape or not at all.
+// (serving_replica_configuration and serving_replica_profile read the tier through this record, which is why
+// the copy mattered: they were being shown a number no renderer had ever emitted.)
+test fn the_srv1_engine_record_cites_the_launch_shape_it_describes() -> Bool {
+  let e = srv1_vllm_engine_memory
+  serving_reading_bytes_or_zero(r: e.conversation_cache) == srv1_lmcache_l1_bytes
+    // the authority is typed in the unit the engine's knob takes it in (review 98748), and the record
+    // cites the bytes that row derives -- a unit carried only in a name would let this line stay true
+    // while the unit silently moved
+    && gibibyte_count(g: srv1_lmcache_l1_configured) == 48
+    && byte_size_count(b: srv1_lmcache_l1_bytes) == 48 * 1073741824
+    && serving_reading_bytes_or_zero(r: e.memory_cap) == srv1_replica_container_memory_cap
+    && serving_reading_bytes_or_zero(r: e.memory_max) == srv1_replica_container_memory_cap
+    // docker's --memory-swap equals --memory, so the ceiling is absolute: no swap allowance, and the cap the
+    // host budget charges the pair against is the same row.
+    && byte_size_count(b: serving_reading_bytes_or_zero(r: e.swap_cap)) == 0
+    && byte_size_count(b: srv1_lmcache_l1_bytes) > 0
 }
 

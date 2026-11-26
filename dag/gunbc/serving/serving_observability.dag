@@ -1,0 +1,340 @@
+module gunbc.serving.serving_observability
+
+import std.types { String, NonEmptyStr, List, Bool, Port }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.proxy.openresty {
+  NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
+  LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
+  ObservedFrontLocation, observed_front_serves, ObservedFrontRoster, ObservedRoster, ObservedRosterUnreadable,
+  UnreadableReason,
+}
+// The required-route PATHS are taken from the engine's own route declarations, not re-typed here
+// (gunbc.design_argument::single_authority, ::external_upstreams -- "keep its real names, model what the API actually
+// returns"). The per-engine front forwards the fleet's advertised OpenAI-compatible surface as read by the named
+// consumers below; those path spellings are owned by the engine model, so they are imported rather than forked.
+import extdeps.vllm.server { vllm_route_models, vllm_route_metrics, vllm_route_chat_completions }
+
+// ── WHAT A FLEET READER CAN SEE ABOUT A SERVING ENGINE, THROUGH WHICH BOUNDARY, WITH WHAT STANDING ──
+//
+// A serving engine answers on its own port, but a fleet reader does not reach that port directly: it
+// reaches the engine through the engine's TLS FRONT DOOR -- the nginx proxy that stands in front of the
+// engine on its host (srv4's daily engine at /opt/gunbc-serving/srv4-daily/nginx.conf). Which routes
+// that front forwards is what decides whether the fleet can read the engine at all, and until this row
+// nothing in the model produced that route set. THE EARLIEST UNJUSTIFIED BOUNDARY is the front door's
+// forwarded-route set (gunbc.design_argument::earliest_unjustified_boundary): srv4's hand-managed proxy
+// forwards /v1/ and answers `return 404` to everything else, so the fleet cannot read srv4's /metrics.
+//
+// WHICH ROW SHOULD HAVE RENDERED IT, AND WHY IT DID NOT. gunbc.serving.router_proxy_config renders the
+// ROUTER's byte door (the authz callout on srv1) -- a different proxy with a different contract, not
+// this front door. gunbc.serving.serving_front_door is the APPLICATION seat-permit door (the HMAC grant
+// that lets a caller forward one request), not the nginx front in front of one engine. No srv4
+// daily-engine module renders the front. So the per-engine TLS front door had NO producing row, and a
+// hand-authored proxy that drops a route nobody re-derived from a consumer could not be refused: the
+// metrics route was never a CONSUMED requirement, so nothing joined it to the readers who need it
+// (gunbc.design_argument::consumption). This module is the named home for that boundary.
+//
+// CONSTRUCTION, NOT VALIDATION (gunbc.design_argument::guarantee_ladder, ::fail_closed). The front door
+// is RENDERED FROM THE ROSTER: engine_front_proxy_config takes no forwarded-route list, so a front that
+// omits a consumed route has NO CONSTRUCTOR -- it is unrenderable, not checked after the fact. A
+// hand-managed proxy that actually drops a route is a DIFFERENT authority (the observed host config); it
+// is reconciled against the roster by engine_front_unserved_consumers, which names the consumers whose
+// reads are blocked. Checking an OBSERVED set against the authority is reconciliation, not a restatement
+// of the authority; the authority itself has exactly one representation, the roster.
+//
+// WHO CONSUMES /metrics (the consumption answer the boundary needs). Not the router (the router is one
+// of the readers that CANNOT reach srv4's /metrics today). Each required route carries its consumer as a
+// typed DeclarationRef (a rename/deletion of a consumer is a decidable break -- gunbc.design_argument::
+// single_authority, ::source_annotations). The consumer reference is READ by engine_front_unserved_consumers,
+// whose ONLY caller today is this module's claim witness at the declared frontier; no production route
+// executes it yet, and the claim does not assert one (gunbc.design_argument::epistemic_humility). The
+// roster, not this fold, is the authority. A route may have SEVERAL readers, so each route names ALL of them
+// (the operator's 2026-11-25 finding: a single-reader roster named only engine_progress_read for /metrics and so
+// MISSED that withholding /metrics also blocks the availability probe). The readers: the metrics route is consumed
+// by BOTH gunbc.serving.engine_progress::engine_progress_read (the two-/metrics-body stall reading) AND
+// gunbc.serving.serving_availability::serving_availability_bracketing_read (whose probe is the models read bracketed
+// by metrics-launch reads, so it needs /metrics and /v1/models); the models route by
+// gunbc.serving.serving_availability::serving_availability_bracketing_read; the chat route by
+// gunbc.serving.serving_front_door::front_door_admit.
+//
+// CONSUMER (declared frontier, gunbc.design_argument::consumption). engine_front_unserved_consumers is read today by
+// this module's claim witness; engine_front_proxy_config is consumed by the engine-front emitter that renders the
+// front from it -- gunbc.serving.srv4_daily_engine_front::srv4_engine_front_render (stacked PR #17103), which produces
+// srv4's front bytes through this function so /metrics cannot be dropped, and whose divergence reconciliation reads
+// the roster's readers. That emitter is a RENDERER, not yet a deploy: it refuses while srv4's front parameters are
+// Unread. The frontier dissolves when the live-deploy leg deploys those rendered bytes and retires the hand-managed
+// /opt/gunbc-serving/*/nginx.conf -- the next-rung trigger on the ledger row. Until then the module is a frontier,
+// exactly as gunbc.serving.router_proxy_config is a declared frontier to gunbc.live_deploy.apply_legs.
+
+// A route the fleet must be able to reach THROUGH the front door, and the declarations of EVERY reader that
+// consumes it -- typed references, not names spelled in prose, so a renamed consumer is decidable. A route may have
+// SEVERAL readers, so it carries a LIST: /metrics is read both by the progress stall reader and by the availability
+// probe. Naming one reader per route was the defect -- with /metrics withheld, a single-reader roster reported only
+// engine_progress_read blocked and missed serving_availability_bracketing_read, which reads /metrics too. The route
+// keeps all its readers; the render still emits exactly ONE location per path (engine_front_locations folds the
+// roster by path, so a route with several readers does NOT duplicate its location).
+type EngineFrontRoute = EngineFrontRoute {
+  path: NonEmptyStr
+  consumers: List<DeclarationRef>
+}
+
+// THE REQUIRED-ROUTE ROSTER: the single authority for what a fleet reader must reach through a serving
+// engine's front door. The render is built from exactly this list, so omitting a route is not a choice a
+// caller can make. srv4's proxy omitted /metrics precisely because it was hand-written against one reader
+// and never re-derived from this set.
+// The roster's paths come from the engine route model (extdeps.vllm.server), not new literals -- single authority.
+// CONFORMANCE note (gunbc.design_argument::conformance, "diverges with a stated reason"): this is the fleet's
+// engine-NEUTRAL advertised surface, defined by its named consumers, so it is not any single engine's route list. The
+// two OpenAI paths are conformance-fixed -- vllm, ninfer and strata each re-declare "/v1/models" and
+// "/v1/chat/completions" identically (extdeps.ninfer.ninfer_serve, extdeps.strata.strata_server) -- and are taken from
+// the vllm spelling here. "/metrics" is vllm's metrics route (vllm_route_metrics); the fleet's availability and
+// progress readers require a /metrics on every engine's front, which is exactly the srv4 blind spot this class names.
+data engine_front_required_routes: List<EngineFrontRoute> = [
+  EngineFrontRoute {
+    path: vllm_route_chat_completions.path,
+    consumers: [ decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit") ],
+  },
+  EngineFrontRoute {
+    path: vllm_route_models.path,
+    consumers: [ decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read") ],
+  },
+  // /metrics has TWO readers, not one: the progress stall reader and the availability probe (whose bracketing read
+  // is a models read between two metrics-launch reads, so it consumes /metrics as well as /v1/models). srv4's
+  // hand-managed front withholding /metrics blocks BOTH -- that is the operator's 2026-11-25 finding.
+  EngineFrontRoute {
+    path: vllm_route_metrics.path,
+    consumers: [
+      decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
+      decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read"),
+    ],
+  },
+]
+
+// The only way a correct front fails to render: an admitted-token refusal, carrying THE INPUT nginx_token
+// refused -- not a placeholder. There is no OmitsRequiredRoute arm, because a front that omits a required
+// route cannot be authored at all (guarantee_ladder).
+type EngineFrontProxyRefusal = InvalidToken { token: NonEmptyStr }
+
+type EngineFrontProxyVerdict
+  = EngineFrontProxyRendered { text: String }
+  | EngineFrontProxyRefused { refusal: EngineFrontProxyRefusal }
+
+// The builder's result. A refusal LOCATES the failing input (fail_closed: "a wrong answer is a loud, typed,
+// located error ... every degradation is typed, located and countable"), so the caller reports which argument
+// nginx_token refused rather than a generic sentence. Returning Optional here would throw away that location.
+type EngineFrontBuild
+  = Built { directives: List<NginxDirective> }
+  | RefusedToken { token: NonEmptyStr }
+
+// RENDER THE FRONT FROM THE ROSTER. No forwarded parameter: the server block always proxies every route a
+// named consumer requires. A front missing /metrics is unrenderable, so the srv4 misconfiguration has no
+// constructor rather than being a case a check must catch.
+fn engine_front_proxy_config(
+  bind_address: NonEmptyStr,
+  listen_port: Port,
+  tls_cert: NonEmptyStr,
+  tls_key: NonEmptyStr,
+  engine_host: NonEmptyStr,
+  engine_port: Port,
+) -> EngineFrontProxyVerdict {
+  match engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port) {
+    RefusedToken { token: t } => EngineFrontProxyRefused { refusal: InvalidToken { token: t } }
+    Built { directives: rows } => EngineFrontProxyRendered { text: render_nginx_directives(rows: rows) }
+  }
+}
+
+// One location per REQUIRED route proxy_passing to the engine, wrapped in the TLS server. Built from the
+// roster alone. Each input passes through nginx_token; the first that refuses is returned by name, so the
+// refusal is located on the failing argument.
+fn engine_front_server_directives(
+  bind_address: NonEmptyStr,
+  listen_port: Port,
+  tls_cert: NonEmptyStr,
+  tls_key: NonEmptyStr,
+  engine_host: NonEmptyStr,
+  engine_port: Port,
+) -> EngineFrontBuild {
+  match nginx_token(text: bind_address as String) {
+    Absent => RefusedToken { token: bind_address }
+    Present { value: bind } =>
+      match nginx_token(text: tls_cert as String) {
+        Absent => RefusedToken { token: tls_cert }
+        Present { value: cert } =>
+          match nginx_token(text: tls_key as String) {
+            Absent => RefusedToken { token: tls_key }
+            Present { value: key } =>
+              match nginx_token(text: engine_host as String) {
+                Absent => RefusedToken { token: engine_host }
+                Present { value: host } =>
+                  match engine_front_locations(engine_host_token: host, engine_port: engine_port) {
+                    RefusedToken { token: t } => RefusedToken { token: t }
+                    Built { directives: locations } =>
+                      Built {
+                        directives: [
+                          ServerBlock {
+                            body: concat(
+                              [ ListenTlsOn { address: bind, port: listen_port }, SslCertificate { path: cert }, SslCertificateKey { path: key } ],
+                              locations,
+                            ),
+                          },
+                        ] as List<NginxDirective>,
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn engine_front_locations(
+  engine_host_token: NginxToken,
+  engine_port: Port,
+) -> EngineFrontBuild {
+  fold(
+    engine_front_required_routes,
+    init: Built { directives: [] as List<NginxDirective> },
+    f: (acc, r) => match acc {
+      RefusedToken { token: t } => RefusedToken { token: t }
+      Built { directives: accs } =>
+        match nginx_token(text: r.path as String) {
+          Absent => RefusedToken { token: r.path }
+          Present { value: loc } =>
+            Built {
+              directives: concat(accs, [
+                LocationBlock {
+                  matching: PrefixMatch { path: loc },
+                  body: [ ProxyHttpVersion11, ProxyPassToHost { host: engine_host_token, port: engine_port, path: loc } ],
+                },
+              ]),
+            }
+        }
+    },
+  )
+}
+
+// The reconciliation's verdict over an OBSERVED front. A front that cannot be read -- a location whose path failed to
+// tokenise, or one whose matcher this model does not rank (regex, ^~, @) -- REFUSES the verdict, located at that
+// location with a typed reason: we will not call a route served merely because the location that would have decided
+// it was unreadable (fail_closed: a failed read refuses, it never widens to a plausible verdict). A readable front
+// names which required routes it does NOT serve, and which readers that shuts out. Keeping blocked_routes (not just
+// readers) is what lets a caller see that a prefix-carried route like /v1/models is SERVED, distinct from a route
+// whose only reader is shared with a blocked one.
+type EngineFrontUnservedVerdict =
+    UnservedFront { blocked_routes: List<NonEmptyStr>, blocked_readers: List<DeclarationRef> }
+  | ObservedFrontUnreadable { location: String, reason: UnreadableReason }
+
+// Reconcile an OBSERVED hand-managed front door -- its location roster, stated the way the host states it -- against
+// the route roster: which required routes the host front does NOT forward, and whose reads that shuts out. This is
+// the class made decidable -- it names who srv4 shut out. A route can have several readers, so every reader of
+// every missing route is named, WITHOUT repetition (serving_availability_bracketing_read reads both /v1/models AND
+// /metrics and is named once). Serving is decided by nginx's own rule -- longest prefix wins, and a `return 404`
+// location serves nothing (extdeps.proxy.openresty::observed_front_serves) -- NOT by string equality on hand-expanded
+// paths. The srv4 host writes a `location /v1/` PREFIX carrying /v1/models and /v1/chat/completions, so those ARE
+// served while /metrics is not; an exact string match would have mis-called the prefix-carried routes blocked. An
+// UNREADABLE observation (a malformed path, or an unmodelled matcher -- regex, ^~, @) refuses the verdict rather than
+// reporting a smaller roster whose "served" answers may be wrong.
+fn engine_front_unserved_consumers(observed: ObservedFrontRoster) -> EngineFrontUnservedVerdict {
+  match observed {
+    ObservedRosterUnreadable { location: l, reason: r } => ObservedFrontUnreadable { location: l, reason: r }
+    ObservedRoster { locations: locs } => UnservedFront {
+      blocked_routes: unserved_route_paths(locations: locs),
+      blocked_readers: unserved_reader_refs(locations: locs),
+    }
+  }
+}
+
+// Which required routes the observed front does not serve.
+fn unserved_route_paths(locations: List<ObservedFrontLocation>) -> List<NonEmptyStr> {
+  map(
+    filter(engine_front_required_routes, r => !observed_front_serves(locations: locations, route: r.path as String)),
+    r => r.path,
+  )
+}
+
+// Which readers the unserved routes shut out, without repetition.
+fn unserved_reader_refs(locations: List<ObservedFrontLocation>) -> List<DeclarationRef> {
+  fold(
+    filter(engine_front_required_routes, r => !observed_front_serves(locations: locations, route: r.path as String)),
+    init: [] as List<DeclarationRef>,
+    f: (acc, r) => append_new_consumers(acc: acc, consumers: r.consumers),
+  )
+}
+
+// Append each consumer not already named, so a reader of several missing routes is reported once. Declarations are
+// compared by their reference equality (std.decl_ref::declaration_ref_eq), not by a hand-written name string.
+fn append_new_consumers(acc: List<DeclarationRef>, consumers: List<DeclarationRef>) -> List<DeclarationRef> {
+  fold(
+    consumers,
+    init: acc,
+    f: (a, c) => if any(a, x => declaration_ref_eq(a: x, b: c)) { a } else { concat(a, [c]) }
+  )
+}
+
+// Walk the server/location tree and collect every ProxyPassToHost target path.
+fn engine_front_proxied_paths(ds: List<NginxDirective>) -> List<String> {
+  fold(ds, init: [] as List<String>, f: (acc, d) => concat(acc, match d {
+    ServerBlock { body: b } => engine_front_proxied_paths(ds: b)
+    LocationBlock { matching: _, body: b } => engine_front_proxied_paths(ds: b)
+    ProxyPassToHost { host: _, port: _, path: p } => [ (p as String) ]
+    _ => [] as List<String>
+  }))
+}
+
+// Does the rendered front proxy `route` to the engine? Structural, over the directive list, so the witness
+// proves the proxy_pass really carries the route rather than grepping rendered bytes.
+fn engine_front_proxies_route(ds: List<NginxDirective>, route: NonEmptyStr) -> Bool {
+  any(engine_front_proxied_paths(ds: ds), p => p == (route as String))
+}
+
+// The named consumers carried on a required route, exposed for the ledger and the witness to assert against without
+// re-spelling the references (single authority -- the roster holds them, everything else reads them). A route can
+// have several readers, so this returns the WHOLE list, not one pick: /metrics yields both the progress reader and
+// the availability reader.
+fn engine_front_route_consumers(path: NonEmptyStr) -> List<DeclarationRef> {
+  match first(filter(engine_front_required_routes, r => (r.path as String) == (path as String))) {
+    Present { value: r } => r.consumers
+    Absent => [] as List<DeclarationRef>
+  }
+}
+
+// ── ITEM (2): THE PER-CAUSE COLD-TOKEN BREAKDOWN -- AN INSTRUMENT TO BUILD, NOT YET (DECLARED FRONTIER) ──
+//
+// The 2026-11-24 per-cause cold-token attribution (same-card intact / same-card rewritten / rebound (moved)
+// / no-probe) was produced ad hoc (/tmp/rlog.py over the router's prefixprobe/usageprobe/upgrade-move lines;
+// /tmp/snap.py and /tmp/delta.py differencing engine /metrics; the Strata per-request reuse line). Its honest
+// standing: it SHOULD become a named instrument, but NOT YET -- a declared frontier with a named trigger, not
+// a refusal (gunbc.design_argument::consumption -- consumed by a named later change with its trigger).
+//   - CONSUMER: gunbc.plans.fabric_serving_scheduler (PR #17076, pending operator merge), done-when 4 -- the
+//     resident-prefix-vs-fairness decision that prices the ~0% GPU-resident-hit / ~112k-token reload regime.
+//   - DISCRIMINATOR: a turn's reused tokens vs its prompt tokens, per cause.
+//   - PRODUCER (missing -- the trigger): the inputs are the HAND-MANAGED router's TEMPORARY prefixprobe/
+//     usageprobe lines (item 3); gunbc.serving.router_realization emits no such observation. It becomes a row
+//     in gunbc.instrument_targets when class B5's modelled router emits prefix-overlap / token-usage facts --
+//     which is what ties item (2) to item (3).
+// So no instrument_targets row and no gate type are built ahead of a producer that does not exist; the
+// admission rule is consumed from its owner, not restated (gunbc.design_argument::single_authority):
+// gunbc.design_document::ci_contract_blocks -- a new wide instrument must first name its real consumer,
+// discriminator and acceptable cost (all three are named above; only the producer is absent). An
+// instrument_targets row is a `gunbc test <label>` run on dispatch (gunbc.instruments.instrument_dispatch_
+// workflow), NOT a rostered CI job, so the job-roster and CI-budget closures do NOT bear on it and are not
+// reasons here. The decision and reason live ONCE in the owning ledger row
+// (gunbc.recurring_failure_mode.a_hand_managed_proxy_edge_drops_a_route_its_consumers_read). The measured
+// per-cause counts stand as an operator-observed receipt of that session
+// (extdeps.external_authority::CitedFigureStanding), never deduced facts
+// (gunbc.design_argument::epistemic_humility).
+
+// ── ITEM (3): THE ROUTER's prefixprobe/usageprobe LINES -- WHERE THEIR STANDING BELONGS ─────────────
+//
+// The prefixprobe/usageprobe lines the 2026-11-24 cold-token attribution was built on are marked TEMPORARY
+// (2026-10-27/28, calm-crab-645) in the HAND-MANAGED srv1 ~/router/nginx.conf, yet they carried all of the
+// day's attribution. Their standing is a transient receipt of the hand-managed router, NOT a fact of the
+// modelled router: gunbc.serving.router_realization emits no log line, so they must not be read as if the
+// modelled router produced them. Their removal belongs to the modelled router's realization -- class B5
+// (gunbc.serving.router_realization / turn_admission / serving_relocation) -- which must first carry the same
+// prefix-overlap and token-usage facts as typed observations on the authority that decides the move.
+//
+// That standing is RECORDED IN THE OWNING MODEL, the recurring-failure-mode ledger row
+// (a_hand_managed_proxy_edge_drops_a_route_its_consumers_read), which is a consumed row. This module carries
+// no standing type for it: the only consumer would be a fold in the B5 router realization (a fork B5 owns, not
+// this PR), and a typed record here that no fold reads is a row no fold reads -- dangling
+// (gunbc.design_argument::consumption). So item (3) is a recorded receipt in the ledger, not a carrier here.

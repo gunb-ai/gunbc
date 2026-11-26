@@ -16,7 +16,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContex
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
 import gunbc.host_command_binding {
-  CommandHost, FleetSshCommandHost, HostLeg, LegNotDispatched, LegAnswered, HostTransportKind, FleetSshTransport, host_run,
+  CommandHost, FleetSshCommandHost, HostLeg, LegNotDispatched, LegAnswered, LegUnanswered, HostTransportKind, FleetSshTransport, host_run,
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
   CreationNotRequested,
 }
@@ -356,6 +356,7 @@ fn remote_first_field(stdout: String) -> String {
 fn digest_of_sha256sum(measure: HostLeg) -> String? {
   match measure {
     LegNotDispatched { reason: _ } => none
+    LegUnanswered { cause: _ } => none
     LegAnswered { exit_code: c, stdout: o, stderr: _ } =>
       if c != 0 { none } else {
         match sha256_hex_digest(hex: remote_first_field(stdout: o)) {
@@ -369,6 +370,7 @@ fn digest_of_sha256sum(measure: HostLeg) -> String? {
 fn sha256sum_unread_reason(measure: HostLeg) -> String {
   match measure {
     LegNotDispatched { reason: r } => concat("sha256sum never dispatched: ", r)
+    LegUnanswered { cause: c } => concat("sha256sum dispatched but got no answer: ", c)
     LegAnswered { exit_code: c, stdout: o, stderr: e } =>
       if c != 0 {
         concat("sha256sum exit=", to_string(c), " ", trim(s: e))
@@ -384,6 +386,8 @@ fn member_reading_after_extract(extract: HostLeg) -> MemberReading? {
   match extract {
     LegNotDispatched { reason: r } =>
       Present { value: MemberUnread { reason: concat("xorriso extract never dispatched: ", r) } }
+    LegUnanswered { cause: c } =>
+      Present { value: MemberUnread { reason: concat("xorriso extract dispatched but got no answer: ", c) } }
     LegAnswered { exit_code: c, stdout: _, stderr: e } =>
       if c != 0 {
         Present { value: MemberUnread { reason: concat("xorriso extract exit=", to_string(c), " ", trim(s: e)) } }
@@ -452,6 +456,7 @@ fn census_mapped_attributes_on(host: CommandHost, iso_path: NonEmptyStr) -> Stri
   let listed = answer_on(host: host, command: xorriso_list_long_command(iso_path: iso_path, first_path: census_mapped_seed_path, more_paths: census_mapped_member_paths))
   match listed {
     LegNotDispatched { reason: r } => concat("UNREAD: xorriso -lsl never dispatched: ", r)
+    LegUnanswered { cause: c } => concat("UNREAD: xorriso -lsl dispatched but got no answer: ", c)
     LegAnswered { exit_code: c, stdout: o, stderr: e } =>
       if c != 0 {
         concat("UNREAD: xorriso -lsl exit=", to_string(c), " ", trim(s: e))
