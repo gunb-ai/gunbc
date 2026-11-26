@@ -70,7 +70,7 @@ data hostile_index_listing_source: String = "module probe_amt_hostile_index_list
 
 data old_caller_listing_call_source: String = "module probe_amt_old_caller_listing_call\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringListingRead, AttemptMeteringListingUnreadable, attempt_metering_listing }\nfn old_caller() -> Bool { match attempt_metering_listing(root: \"/tmp/caller-chooses\", what: \"records\") { AttemptMeteringListingRead { names: _ } => true, AttemptMeteringListingUnreadable { detail: _ } => false } }\n"
 
-data lawful_listing_call_source: String = "module probe_amt_lawful_listing_call\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringListingRead, AttemptMeteringListingUnreadable, attempt_metering_listing_of, attempt_metering_listing }\nfn lawful(store: AttemptMeteringStore) -> Bool { match attempt_metering_listing_of(store: store) { AttemptMeteringListingRead { names: _ } => true, AttemptMeteringListingUnreadable { detail: _ } => false } }\n"
+data lawful_listing_call_source: String = "module probe_amt_lawful_listing_call\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringListingRead, AttemptMeteringListingUnreadable, attempt_metering_listing_of, attempt_metering_index_listing }\nfn lawful(store: AttemptMeteringStore) -> Bool { match attempt_metering_listing_of(store: store) { AttemptMeteringListingRead { names: _ } => true, AttemptMeteringListingUnreadable { detail: _ } => false } }\n"
 data control_import_source: String = "module probe_amt_control_import\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, attempt_metering_listing_of }\nfn f(store: AttemptMeteringStore) -> Bool { true }\n"
 
 fn blocking_rows(source: String) -> Int {
