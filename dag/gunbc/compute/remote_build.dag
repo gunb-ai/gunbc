@@ -20,7 +20,7 @@ import gunbc.compute.work_request {
   WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
-  SubjectUnresolved, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
+  SubjectUnresolved, ClaimRequestSubjectUnnameable, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
   SeatStopObservationUnrenderable,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -38,6 +38,13 @@ import gunbc.persistent_instance_roots { RemoteBuildServing, persistent_instance
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_wire {
+  remote_build_protocol_word, RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully,
+  ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
+  remote_build_serve_exit_code, remote_build_serve_ending_word,
+  openssh_connection_failed_exit_code, remote_build_split_answer, remote_build_serve_cli_function,
+  remote_build_ending_of_answer,
+}
 import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
   RevocationStanding, RevocationAccepted,
@@ -241,7 +248,6 @@ fn remote_build_execution_requirements(architecture: Architecture?) -> Execution
 // set admits, so the canonical rendering of a Label is always one portable word, and a label that
 // needs quoting was never a label.
 
-data remote_build_protocol_word: NonEmptyStr = "remote-build-v1"
 data remote_build_compile_word: NonEmptyStr = "compile"
 data remote_build_claims_word: NonEmptyStr = "claims"
 data remote_build_gate_word: NonEmptyStr = "gate"
@@ -520,7 +526,9 @@ fn remote_build_serving_instance(host: HostIdentity) -> HostDashboardInstance {
       binding: admitted_single_session_binding(selection: CodexDefaultAccount, evidence: codex_roadmap_account_evidence),
     },
     serve_binary: serve_binary,
-    serve_function: "remote_build_serve_cli" as NonEmptyStr,
+    // The name the serving route runs, read from the wire module that renders the command which carries
+    // it -- the two spellings cannot now drift apart.
+    serve_function: remote_build_serve_cli_function,
     listen_host: "127.0.0.1" as NonEmptyStr,
     listen_port: 18085,
     tmux_server: dashboard_named_tmux_server(instance_id: id),
@@ -920,83 +928,7 @@ data remote_build_admitted_client_keys: List<RemoteBuildClientKey> = [
 // accepts its identity file iff the derived public half matches any admitted key.
 data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_admitted_client_keys, k => k.public_key)
 
-// ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
-//
-// The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the
-// provider's document, and exits with the ending's code. The client reads the answer from the header,
-// not from the code alone: the serving process is the gunbc binary, whose own refusals (an unreadable
-// source root, an entry that does not load or typecheck) also exit 1 or 2 before this contract runs,
-// so a bare code cannot tell "the work failed" from "this host could not even start" (review 95521).
-// An answer is admitted only when the header is present AND its ending's code is the exit code; every
-// other combination is a host that did not run this contract, and moves the request on. 255 with no
-// header is OpenSSH's own connection failure (ssh(1), EXIT STATUS). Both directions read THIS table.
-type RemoteBuildServeEnding
-  = ServeServed
-  | ServeWorkEndedUnsuccessfully
-  | ServeRequestRefused
-  | ServeHostFull
-  | ServeWorkInFlight
-  | ServeHostCannotServe
-  | ServeReady
 
-fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
-  match e {
-    ServeServed => 0
-    ServeWorkEndedUnsuccessfully => 1
-    ServeRequestRefused => 2
-    ServeHostFull => 3
-    ServeWorkInFlight => 4
-    ServeHostCannotServe => 5
-    ServeReady => 6
-  }
-}
-
-fn remote_build_serve_ending_word(e: RemoteBuildServeEnding) -> NonEmptyStr {
-  match e {
-    ServeServed => "served"
-    ServeWorkEndedUnsuccessfully => "work-ended-unsuccessfully"
-    ServeRequestRefused => "request-refused"
-    ServeHostFull => "host-full"
-    ServeWorkInFlight => "work-in-flight"
-    ServeHostCannotServe => "host-cannot-serve"
-    ServeReady => "ready"
-  }
-}
-
-data remote_build_serve_endings: List<RemoteBuildServeEnding> = [
-  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
-]
-
-fn remote_build_serve_header(e: RemoteBuildServeEnding) -> String {
-  join([remote_build_protocol_word as String, " ending=", remote_build_serve_ending_word(e: e) as String], "")
-}
-
-fn remote_build_serve_ending_of_header(line: String) -> RemoteBuildServeEnding? {
-  remote_build_serve_endings |> filter(e => remote_build_serve_header(e: e) == line) |> first
-}
-
-data openssh_connection_failed_exit_code: Int = 255
-
-fn remote_build_split_answer(stdout: String) -> RemoteBuildAnswerText {
-  let lines = split(s: stdout, delimiter: "\n")
-  RemoteBuildAnswerText {
-    header: match lines |> first { Present { value: l } => l  Absent => "" },
-    body: join(lines |> skip(n: 1), "\n"),
-  }
-}
-
-type RemoteBuildAnswerText {
-  header: String
-  body: String
-}
-
-// ── THE PROBE: REACHABILITY THAT CANNOT START WORK ───────────────────────────────────────────────────
-//
-// Whether a host is reachable and runs this contract is asked FIRST, with a request that names no work:
-// the serving entry answers it after admitting its instance and before reading any operation, so no
-// probe answer can follow a started producer. Only a probe failure moves a request to the next host;
-// after the work request is sent, a lost or inconsistent answer is HostOutcomeUnknown.
-data remote_build_probe_text: NonEmptyStr = "remote-build-v1 probe"
 
 type RemoteBuildProbe
   = ProbeReady
@@ -1005,7 +937,7 @@ type RemoteBuildProbe
 
 fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
   let answer = remote_build_split_answer(stdout: stdout)
-  match remote_build_serve_ending_of_header(line: answer.header) {
+  match remote_build_ending_of_answer(stdout: stdout) {
     Present { value: ServeReady } =>
       if exit_code == remote_build_serve_exit_code(e: ServeReady) {
         ProbeReady
@@ -1041,7 +973,7 @@ fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
 // host runs the contract, so a missing answer here is not evidence that the work did not start.
 fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
   let answer = remote_build_split_answer(stdout: stdout)
-  match remote_build_serve_ending_of_header(line: answer.header) {
+  match remote_build_ending_of_answer(stdout: stdout) {
     Absent =>
       HostOutcomeUnknown { detail: join(["the request was sent and the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
     Present { value: ending } =>
@@ -1115,6 +1047,7 @@ fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBui
     ToolchainUnobserved { detail: _ } => ServeHostCannotServe
     ToolchainMismatchRefused { field: _, declared: _, observed: _ } => ServeHostCannotServe
     SubjectUnresolved { detail: _ } => ServeHostCannotServe
+    ClaimRequestSubjectUnnameable { entry: _, function: _, reason: _ } => ServeRequestRefused
     UnitLaunchRefused { cause: _ } => ServeHostCannotServe
     SeatStopObservationUnrenderable { detail: _ } => ServeHostCannotServe
     DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeHostCannotServe

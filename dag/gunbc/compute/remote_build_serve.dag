@@ -17,19 +17,16 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.host_capacity {
   host_capacity_home_for_host, HostCapacityHomeFound, HostCapacityHomeUnknown,
 }
-import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io {
-  Filesystem,
   FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
 }
 import gunbc.source_root_read { source_root_read_file }
 import extdeps.languages.json.emit { JsonValue, JsonObject, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
-import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
-import gunbc.fleet.fleet_posix_accounts {
-  fleet_posix_remote_build_user, fleet_posix_remote_build_supplementary_groups,
-  fleet_posix_compute_ledger_group_name, fleet_posix_compute_ledger_group_gid,
+import gunbc.compute.remote_build_serve_principal {
+  RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
+  remote_build_serve_principal,
 }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, dispatch_capability_program }
 import gunbc.compute.attempt_lifecycle { DirectInvocation }
@@ -39,6 +36,12 @@ import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_document,
   provide_result_host_record, host_record_was_written, host_record_wire, provide_result_succeeded,
 }
+import gunbc.compute.remote_build_wire {
+  RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
+  ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code,
+  remote_build_serve_header, remote_build_serve_answer, remote_build_leg_is_probe,
+  remote_build_ssh_command_variable, remote_build_serve_front_door_run_words,
+}
 import gunbc.compute.remote_build {
   RemoteBuildWork, RemoteBuildWorkDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
   remote_build_request_refusal_text, remote_build_source_ref_name, remote_build_work_operation,
@@ -46,9 +49,7 @@ import gunbc.compute.remote_build {
   RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
   RemoteBuildCandidate, remote_build_candidates,
   RemoteBuildClientKey, remote_build_admitted_client_keys,
-  RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
-  ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code, remote_build_ending_of_outcome, remote_build_serve_header,
-  remote_build_probe_text, remote_build_dependency_operation,
+  remote_build_ending_of_outcome, remote_build_dependency_operation,
 }
 
 // ── THE SERVING ENTRY: WHAT THE REMOTE-BUILD KEY'S FORCED COMMAND RUNS ──────────────────────────────
@@ -79,7 +80,6 @@ import gunbc.compute.remote_build {
 //   7. the provider runs the operation on that commit, exactly as the local route would;
 //   8. the header, the provider's document, and the ending's exit code.
 
-data remote_build_ssh_command_variable: NonEmptyStr = "SSH_ORIGINAL_COMMAND"
 
 // The host is resolved first only because the principal check needs the ledger's service user; nothing
 // is read from the request until the principal is admitted. WHO THE LEDGER BELONGS TO IS NOT A SECOND
@@ -128,8 +128,15 @@ fn remote_build_serve_on(instance: HostDashboardInstance) -> CliWireResponse {
   match shell.Env.Get(name: remote_build_ssh_command_variable).value {
     Absent => remote_build_serve_answer(ending: ServeRequestRefused, text: "remote-build: no request (SSH_ORIGINAL_COMMAND is unset)")
     Present { value: text } =>
-      if trim(text) == (remote_build_probe_text as String) {
-        remote_build_serve_answer(ending: ServeReady, text: concat("remote-build: ready on ", instance.instance_id as String))
+      if remote_build_leg_is_probe(raw: text) {
+        // THE PROBE IS ANSWERED AT THE FRONT DOOR, AND ONLY THERE. "ready" is the client's licence to
+        // send work, and it must mean "the entry that answers this is the entry whose closure stops at
+        // the probe" -- an entry that carries the whole request path may not mint it (the cost this
+        // route paid was exactly a probe that resolved the request closure: srv1, 2026-11-25). The
+        // ending is the one the client reads as "ask the next host", never an absence: a host whose
+        // authorized_keys still names THIS entry has not converged the front door, and the walk must
+        // move on rather than treat a stale install as a ready host.
+        remote_build_serve_answer(ending: ServeHostCannotServe, text: "remote-build: the probe is answered by the front door (gunbc.compute.remote_build_serve_front_door)")
       } else {
         match remote_build_decode_request(text: text) {
           RemoteBuildRequestRefused { cause } =>
@@ -144,75 +151,6 @@ fn remote_build_candidate_for_host(host: String) -> RemoteBuildCandidate? {
   remote_build_candidates() |> filter(c => c.host as String == host) |> first
 }
 
-// ── THE SERVING PRINCIPAL, READ BACK ────────────────────────────────────────────────────────────────
-//
-// The account and its group are created by hand (fleet_posix_remote_build_user says why), so the serving
-// entry does not trust that the hand step matched the rows: it reads its own effective uid and groups
-// and judges them with the fleet's one principal judgment (gunbc.fleet.fleet_job_principal
-// job_principal_reading, which refuses a root-equivalent or unnameable group), then requires all of:
-//   - the uid is the declared account's, so a key placed under any other account serves nothing;
-//   - every declared supplementary group is held, by name, and the ledger group by its declared gid;
-//   - /etc/group lists the host's ledger service user as a member of the ledger group, the other half
-//     of the share gunbc.compute.host_capacity compute_capacity_area declares.
-// A missing membership would otherwise be served and fail late, at the first reservation in the shared
-// ledger (review 95574); this boundary already holds /etc/group, so it refuses there.
-type RemoteBuildServePrincipal
-  = RemoteBuildServePrincipalAdmitted
-  | RemoteBuildServePrincipalRefused { reason: String }
-
-fn remote_build_serve_principal_of(status: String, group_file: String, service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
-  match job_principal_reading(status: status, group_file: group_file) {
-    JobPrincipalRefused { reason } => RemoteBuildServePrincipalRefused { reason: reason }
-    JobPrincipalAdmitted { effective_uid, gids, groups } =>
-      if effective_uid != fleet_posix_remote_build_user.uid {
-        RemoteBuildServePrincipalRefused { reason: join(["effective uid ", to_string(value: effective_uid), " is not ", fleet_posix_remote_build_user.name as String, " (uid ", to_string(value: fleet_posix_remote_build_user.uid), ")"], "") }
-      } else {
-        let missing = fleet_posix_remote_build_supplementary_groups |> filter(g => !(groups |> any(n => n as String == g as String)))
-        if count(missing) > 0 {
-          RemoteBuildServePrincipalRefused { reason: concat("the account does not hold its declared group(s): ", join(map(missing, g => g as String), ",")) }
-        } else if !(gids |> any(g => g == fleet_posix_compute_ledger_group_gid)) {
-          RemoteBuildServePrincipalRefused { reason: join([fleet_posix_compute_ledger_group_name as String, " is not gid ", to_string(value: fleet_posix_compute_ledger_group_gid), " here"], "") }
-        } else {
-          remote_build_ledger_group_lists(group_file: group_file, service_user: service_user)
-        }
-      }
-  }
-}
-
-fn remote_build_ledger_group_lists(group_file: String, service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
-  match etc_group_entry_named(entries: etc_group_entries(text: group_file), name: fleet_posix_compute_ledger_group_name) {
-    Absent => RemoteBuildServePrincipalRefused { reason: concat(fleet_posix_compute_ledger_group_name as String, " is not in /etc/group") }
-    Present { value: e } =>
-      if e.members |> any(m => m as String == service_user as String) {
-        RemoteBuildServePrincipalAdmitted
-      } else {
-        RemoteBuildServePrincipalRefused { reason: join(["the ledger's service user ", service_user as String, " is not a member of ", fleet_posix_compute_ledger_group_name as String], "") }
-      }
-  }
-}
-
-fn remote_build_serve_principal(service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
-  let status = Filesystem.Read(path: "/proc/self/status")
-  let groups = Filesystem.Read(path: "/etc/group")
-  if !status.success {
-    RemoteBuildServePrincipalRefused { reason: concat("/proc/self/status is unreadable: ", status.error) }
-  } else if !groups.success {
-    RemoteBuildServePrincipalRefused { reason: concat("/etc/group is unreadable: ", groups.error) }
-  } else {
-    remote_build_serve_principal_of(status: status.content, group_file: groups.content, service_user: service_user)
-  }
-}
-
-fn remote_build_serve_answer(ending: RemoteBuildServeEnding, text: String) -> CliWireResponse {
-  let code = remote_build_serve_exit_code(e: ending)
-  // The bytes go to an SSH channel read by a program, not to a terminal: the header line the client
-  // reads the answer from (gunbc.compute.remote_build remote_build_answer_from_exit), then the document,
-  // written as-is rather than projected through a terminal capability.
-  CliWirePrintable {
-    bytes: join([remote_build_serve_header(e: ending), "\n", text, "\n"], ""),
-    exit: if code == 0 { ExitSuccess } else { ExitFailure { code: code, reason: "" } },
-  }
-}
 
 fn remote_build_git(instance: HostDashboardInstance, args: List<String>) -> ComputeExec {
   compute_exec(
@@ -439,6 +377,12 @@ fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
 // disables forwarding, the pty, X11 and the user rc; the forced command replaces whatever the client
 // asked to run.
 
+// EVERY LEG ARRIVES HERE FIRST, AT THE FRONT DOOR: the words name
+// gunbc.compute.remote_build_serve_front_door, which answers a probe from its own tiny closure and hands
+// a request to the serving entry (that module says why an entry that carries the request path may not
+// answer a probe). The words are the wire module's one rendering, shared with the hand-off, so the two
+// can never drift to different binaries or checkouts.
+//
 // THE COMMAND STARTS IN THE SERVING CHECKOUT. sshd runs a forced command as the account's login shell
 // with -c (extdeps.ssh.openssh_remote_command openssh_remote_command_execution), from the account's
 // home, and `gunbc run` binds its workspace root by discovery from the directory it starts in, refusing
@@ -448,16 +392,11 @@ fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
 // 2026-11-15, by the first live probe). The directory and the words are rendered by that module's one
 // quoting rule, never spliced as shell text here (review 95657).
 fn remote_build_forced_command_words(candidate: RemoteBuildCandidate) -> List<NonEmptyStr> {
-  let instance = candidate.instance
-  let repo = instance.repo_root as String
-  [
-    instance.serve_binary as NonEmptyStr, "run",
-    "--source-root", concat(repo, "/dag") as NonEmptyStr,
-    "--source-root", concat(repo, "/src/v2") as NonEmptyStr,
-    "--entry", concat(repo, "/dag/gunbc/compute/remote_build_serve.dag") as NonEmptyStr,
-    "--function", "remote_build_serve_cli",
-    "--arg", concat("host=", candidate.host as String) as NonEmptyStr,
-  ]
+  remote_build_serve_front_door_run_words(
+    serve_binary: candidate.instance.serve_binary as NonEmptyStr,
+    repo_root: candidate.instance.repo_root as NonEmptyStr,
+    host: candidate.host as String,
+  )
 }
 
 fn remote_build_forced_command_text(candidate: RemoteBuildCandidate) -> NonEmptyStr {

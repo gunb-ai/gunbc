@@ -36,8 +36,10 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_bui
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
 import gunbc.compute.remote_build_serve {
-  RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused, remote_build_serve_principal_of,
   RemoteBuildServeLedgerOwner, ServeLedgerOwnerDeclared, ServeLedgerOwnerUndeclared, remote_build_serve_ledger_owner,
+}
+import gunbc.compute.remote_build_serve_principal {
+  RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused, remote_build_serve_principal_of,
 }
 
 // HERMETIC CONTROLS for the remote-build account (operator, 2026-11-15): the account row, the principal

@@ -27,8 +27,8 @@ import gunbc.design.palette { swatch_paint, swatches_of }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues }
 
 // Renders-and-checks the LAYOUT layer (gunbc.design_argument::fail_closed: a witness goes red when the layer
-// breaks). Consumer: claim-run —
-//   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_layout_witness.dag --claim-run
+// breaks). Consumer: the claim route —
+//   gunbc test //test/claim/site_gunb_ai_layout_witness:<test fn>   (one operand per test fn)
 // Every claim is a property of a RENDERED ballot page or of the rules the pages are
 // generated from, never of a type. Where a claim exists because a weaker one let a
 // defect through, the RED control is named in place.

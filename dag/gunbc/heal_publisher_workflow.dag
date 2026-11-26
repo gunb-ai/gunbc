@@ -289,7 +289,6 @@ fn heal_publisher_phase_script(
           source_roots: profile.roster.source_roots,
           entry: phase.entry as String,
           function: phase.function as String,
-          claim_run: false,
           receipt_rel: none
         )
       )

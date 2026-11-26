@@ -8,8 +8,7 @@ module test.claim.compute.remote_build_serving_setup_witness
 // gunbc.design_argument::fail_closed). The paired control proves the opposite direction:
 // a CONFIRMED-absent read (test exit 1) IS a divergence the apply should write — so we have
 // not collapsed real drift into indeterminate either. Run:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/compute/remote_build_serving_setup_witness.dag --claim-run
+//   gunbc test //test/claim/compute/remote_build_serving_setup_witness:<test fn>   (one operand per test fn)
 
 import std.types { Bool, String, FilePath }
 import std.optional { Present, Absent }
