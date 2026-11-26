@@ -35,8 +35,13 @@ data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = gunb
 // prod-role serve entry once, with the release pair the run itself built, and publishes the verdict
 // beside the plan receipt; the swap transaction consumes it by identity instead of paying the cold
 // resolve again (prod gap 1, failure b).
+// THE PLAN JOB'S SERVE-ENTRY VERDICT PRODUCER lives in its own module
+// (gunbc.live_deploy.plan_serve_entry_verdict): it reads the SAME CI apply selection the deploy job
+// answers with, so it needs gunbc.live_deploy.apply, which already imports the verdict product
+// (gunbc.live_deploy.pre_swap_admission) -- a producer inside either of those two would be a cycle or
+// would make the apply route the author of a plan artifact.
 data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = gunbc_run_step_target(
-  module: "gunbc.live_deploy.pre_swap_admission",
+  module: "gunbc.live_deploy.plan_serve_entry_verdict",
   function: "record_plan_serve_entry_compile_verdict",
 )
 

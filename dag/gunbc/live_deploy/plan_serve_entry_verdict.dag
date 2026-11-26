@@ -1,0 +1,400 @@
+module gunbc.live_deploy.plan_serve_entry_verdict
+
+// THE PLAN JOB'S SERVE-ENTRY VERDICT, PRODUCED OVER THE WHOLE WET-DEPLOYABLE ROSTER.
+//
+// WHY THIS MODULE EXISTS AS ITS OWN. The producer needs TWO authorities at once: the apply route's
+// own selection (gunbc.live_deploy.apply live_deploy_desired_apply_selection, the fold
+// live_deploy_apply_desired_wet_from_ci itself uses to pick its deployment) and the verdict product
+// (gunbc.live_deploy.pre_swap_admission). apply.dag already imports pre_swap_admission for the
+// pre-swap admission, so the producer cannot live in pre_swap_admission without a cycle, and it
+// cannot live in apply.dag without making the apply route the author of a plan-job artifact. It is
+// the third module, pointing at both: the row set and the document stay one motion, and neither
+// existing module gains a duty it did not have.
+//
+// THE ROW SET HAS ONE AUTHORITY. "Roster rows that can be wet-deployed" is NOT a list written here
+// and not a filter beside the selection: plan_covered_roster_rows walks gunbc.live_deploy.desired
+// desired_deployment_roster and asks, for each row, the SAME live_deploy_desired_apply_selection
+// (instance_id, access) the CI deploy job answers with -- under the same ci_deploy_srv1_access the
+// deploy entry binds. A row the selection refuses is not wet-deployable by this access and gets no
+// row in the document; the refusal is still PRINTED, so an unexplained absence is impossible.
+//
+// DEDUPE BY COMPUTATION IDENTITY BEFORE ADDING A COMPILE (demand_before_materialization). The
+// compile is the ~22-minute served-command witness, so it is paid once per DISTINCT
+// (source_revision, entry, argv_digest, compiler_bin_sha256_hex), never once per roster row: the
+// demand fold below materializes one demand per distinct identity and each roster row REFERENCES
+// that result. The worker prints every row's key tuple and the distinct count from the real roster
+// it is compiling, so the cost of the row set is auditable from the plan log rather than argued:
+// adding ~22 minutes per row is admitted only for rows whose identity truly differs.
+//
+// THE SCHEMA CUT IS ONE MOTION. This producer writes live-deploy-serve-entry-verdict/v2 (a row per
+// covered roster row) and pre_swap_admission is its only reader; there is no dual-read and no v1
+// fallback. A plan artifact written under v1 and read by a v2 deploy refuses with the typed schema
+// mismatch in gunbc.live_deploy.pre_swap_admission -- the expected behaviour across the cutover.
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.algebra { trim }
+import std.integer { int_to_decimal_string }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.actions_run_binding { actions_step_summary_append }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  selected_deployment_spec,
+  desired_deployment_roster,
+  instance_id_text,
+}
+import gunbc.live_deploy.spec { deployment_serve_source_roots }
+import gunbc.live_deploy.apply {
+  live_deploy_desired_apply_selection,
+  DesiredApplySelected,
+  DesiredApplyRefused,
+}
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access, DeployAccess }
+import gunbc.live_deploy.pre_swap_admission {
+  ServeEntryCompileVerdict,
+  ServeEntryCompileAdmitted,
+  ServeEntryCompileBlocked,
+  ServeEntryCompileUnobserved,
+  ServeEntryVerdictRecord,
+  serve_entry_verdict_document_json,
+  serve_entry_verdict_path,
+  serve_entry_argv_digest,
+  observe_served_command_reaches_bind,
+  observe_checkout_head_hex,
+  serve_entry_blocking_summary,
+  probe_serve_entry_verdict_dir,
+  ServeEntryVerdictDirWritable,
+  ServeEntryVerdictDirRefused,
+  serve_entry_verdict_dir_refusal_text,
+}
+import gunbc.instruments.host_prelude { witness_bin_release_path }
+import extdeps.git
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum {
+  sha256sum_file_digest_via_shell,
+  Sha256FileDigest,
+  Sha256FileDigestUnavailable,
+}
+import extdeps.languages.json.emit { serialize_json }
+
+// THE COMPUTATION IDENTITY OF ONE SERVE COMPILE: the four fields the swap re-checks, which are
+// exactly the things that make two compiles the same work. Two roster rows that agree here are the
+// same program over the same bytes with the same compiler, and paying the witness twice for them
+// would be a cost with no claim on it.
+type ServeEntryCompileIdentity {
+  source_revision: String,
+  entry: String,
+  argv_digest: String,
+  compiler_bin_sha256_hex: String,
+}
+
+// ONE DEMAND: a distinct identity, plus the row that first asked for it (the representative whose
+// spec the served command runs). The demand list is the dedupe's product -- the compile is added
+// per demand, never per row.
+type ServeEntryCompileDemand {
+  identity: ServeEntryCompileIdentity,
+  row: DesiredDeployment,
+}
+
+// A COMPILE, ANSWERED: the identity it was run for and the carried verdict. Each roster row
+// REFERENCES one of these by identity; no row re-runs anything.
+type ServeEntryCompileResult {
+  identity: ServeEntryCompileIdentity,
+  compile: ServeEntryCompileVerdict,
+}
+
+fn serve_entry_compile_identity_of(row: DesiredDeployment, source_revision: String, compiler_bin_sha256_hex: String) -> ServeEntryCompileIdentity {
+  let spec = selected_deployment_spec(row: row)
+  ServeEntryCompileIdentity {
+    source_revision: source_revision,
+    entry: spec.service.serve_entry as String,
+    argv_digest: serve_entry_argv_digest(spec: spec),
+    compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+  }
+}
+
+fn serve_entry_compile_identity_equal(a: ServeEntryCompileIdentity, b: ServeEntryCompileIdentity) -> Bool {
+  a.source_revision == b.source_revision
+    && a.entry == b.entry
+    && a.argv_digest == b.argv_digest
+    && a.compiler_bin_sha256_hex == b.compiler_bin_sha256_hex
+}
+
+// THE KEY TUPLE, AS PRINTED TEXT -- one line per row, so the plan log can be read against the cost
+// it bought. Built from the identity itself, never from a parallel description.
+fn serve_entry_compile_identity_text(row: DesiredDeployment, identity: ServeEntryCompileIdentity) -> String {
+  join([
+    "serve-entry compile identity: host=", row.target.host.identity as String,
+    " instance=", instance_id_text(id: row.instance.instance_id),
+    " source_revision=", identity.source_revision,
+    " entry=", identity.entry,
+    " argv_digest=", identity.argv_digest,
+    " compiler_bin_sha256_hex=", identity.compiler_bin_sha256_hex,
+  ], "")
+}
+
+// THE DEMAND FOLD: walk the roster rows in order, and add a demand only when no earlier row asked
+// for the same computation. This is the dedupe -- it happens BEFORE any compile is materialized, so
+// a second row with the same identity cannot add a second compile by construction.
+fn plan_serve_entry_compile_demands(
+  rows: List<DesiredDeployment>,
+  source_revision: String,
+  compiler_bin_sha256_hex: String,
+) -> List<ServeEntryCompileDemand> {
+  fold(
+    rows,
+    init: [] as List<ServeEntryCompileDemand>,
+    f: (acc, row) => {
+      let identity = serve_entry_compile_identity_of(
+        row: row,
+        source_revision: source_revision,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+      )
+      if any(acc, d => serve_entry_compile_identity_equal(a: d.identity, b: identity)) {
+        acc
+      } else {
+        concat(acc, [ServeEntryCompileDemand { identity: identity, row: row }])
+      }
+    },
+  )
+}
+
+// THE ANSWER FOR ONE ROW, referenced by identity. No demand matches only if the caller handed back
+// results it did not run -- which is a caller bug, and it FAILS CLOSED into an unobserved verdict
+// naming the identity rather than into someone else's compile answer.
+fn plan_serve_entry_compile_for_identity(
+  results: List<ServeEntryCompileResult>,
+  identity: ServeEntryCompileIdentity,
+) -> ServeEntryCompileVerdict {
+  fold(
+    results,
+    init: ServeEntryCompileUnobserved {
+      detail: join(["no serve-entry compile was run for entry ", identity.entry, " argv_digest ", identity.argv_digest], ""),
+    },
+    f: (acc, r) => match acc {
+      ServeEntryCompileAdmitted => ServeEntryCompileAdmitted
+      ServeEntryCompileBlocked { blocking, diagnostics } =>
+        ServeEntryCompileBlocked { blocking: blocking, diagnostics: diagnostics }
+      ServeEntryCompileUnobserved { detail: _ } =>
+        if serve_entry_compile_identity_equal(a: r.identity, b: identity) {
+          r.compile
+        } else {
+          acc
+        }
+    },
+  )
+}
+
+// THE ROSTER ROWS THE PLAN COVERS, from the deploy job's own selection -- never a second list. The
+// refusals are RETURNED ALONGSIDE the rows: a row that drops out of the covered set must be
+// explainable from the log, not merely absent.
+type PlanCoveredRosterRows {
+  rows: List<DesiredDeployment>,
+  refusals: List<String>,
+}
+
+fn plan_covered_roster_rows(access: DeployAccess) -> PlanCoveredRosterRows {
+  fold(
+    desired_deployment_roster(),
+    init: PlanCoveredRosterRows { rows: [] as List<DesiredDeployment>, refusals: [] as List<String> },
+    f: (acc, row) =>
+      match live_deploy_desired_apply_selection(
+        instance_id: instance_id_text(id: row.instance.instance_id),
+        access: access,
+      ) {
+        DesiredApplySelected { deployment } =>
+          PlanCoveredRosterRows {
+            rows: concat(acc.rows, [deployment]),
+            refusals: acc.refusals,
+          }
+        DesiredApplyRefused { reason } =>
+          PlanCoveredRosterRows {
+            rows: acc.rows,
+            refusals: concat(acc.refusals, [join([instance_id_text(id: row.instance.instance_id), ": ", reason], "")]),
+          }
+      },
+  )
+}
+
+// WHAT THE WORKER PRINTS, built from the covered rows, their key tuples, the distinct count and the
+// rows the selection refused. One pure function: the printed block, the evidence file and the
+// witness all read the SAME text, so nothing can print a claim the model did not compute.
+fn plan_serve_entry_compile_report(covered: PlanCoveredRosterRows, demands: List<ServeEntryCompileDemand>, source_revision: String, compiler_bin_sha256_hex: String) -> String {
+  let row_lines = map(
+    covered.rows,
+    row => serve_entry_compile_identity_text(
+      row: row,
+      identity: serve_entry_compile_identity_of(
+        row: row,
+        source_revision: source_revision,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+      ),
+    ),
+  )
+  let refusal_lines = map(covered.refusals, r => join(["serve-entry verdict: roster row not covered by the CI apply selection -- ", r], ""))
+  join(
+    concat(
+      concat(
+        [join(["live_deploy: record_plan_serve_entry_compile_verdict — covered roster rows: ", int_to_decimal_string(value: covered.rows.length()), ", distinct serve-entry compiles: ", int_to_decimal_string(value: demands.length()), " (one served-command witness per distinct identity)"], "")],
+        row_lines,
+      ),
+      refusal_lines,
+    ),
+    "\n",
+  )
+}
+
+// THE DOCUMENT ROWS: one per covered roster row, addressed by that row's own host and instance, and
+// each REFERENCING the compile its identity earned. A row never copies another row's entry, argv
+// digest or compile: the fields come from the row's own spec and the result of its own identity.
+fn plan_serve_entry_verdict_records(
+  covered: PlanCoveredRosterRows,
+  results: List<ServeEntryCompileResult>,
+  source_revision: String,
+  compiler_bin_sha256_hex: String,
+) -> List<ServeEntryVerdictRecord> {
+  map(
+    covered.rows,
+    row => {
+      let identity = serve_entry_compile_identity_of(
+        row: row,
+        source_revision: source_revision,
+        compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+      )
+      ServeEntryVerdictRecord {
+        subject_host: row.target.host.identity as String,
+        instance_id: instance_id_text(id: row.instance.instance_id),
+        source_revision: identity.source_revision,
+        entry: identity.entry,
+        argv_digest: identity.argv_digest,
+        compiler_bin_sha256_hex: identity.compiler_bin_sha256_hex,
+        compile: plan_serve_entry_compile_for_identity(results: results, identity: identity),
+      }
+    },
+  )
+}
+
+// THE ONE REFUSAL TEXT for a compile that did not reach the bind stage, naming WHICH row failed --
+// with one document covering several rows, an unnamed failure would leave the operator guessing
+// which instance to re-plan.
+fn plan_serve_entry_compile_refusal_text(record: ServeEntryVerdictRecord) -> String {
+  match record.compile {
+    ServeEntryCompileBlocked { blocking, diagnostics } =>
+      join(["live_deploy: record_plan_serve_entry_compile_verdict — the served command for ", record.subject_host, ":", record.instance_id, " did not reach the bind stage cleanly; ", int_to_decimal_string(value: blocking), " blocking: ", serve_entry_blocking_summary(diagnostics: diagnostics)], "")
+    ServeEntryCompileUnobserved { detail } =>
+      join(["live_deploy: record_plan_serve_entry_compile_verdict — the served command for ", record.subject_host, ":", record.instance_id, " did not reach the bind stage: ", detail], "")
+    ServeEntryCompileAdmitted => ""
+  }
+}
+
+fn plan_serve_entry_first_unadmitted(records: List<ServeEntryVerdictRecord>) -> Bool {
+  any(records, r => match r.compile {
+    ServeEntryCompileAdmitted => false
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => true
+    ServeEntryCompileUnobserved { detail: _ } => true
+  })
+}
+
+// PLAN-JOB ENTRY (fleet-converge job, after the plan step, before the artifact upload): run the
+// served command with the release pair the run itself built, ONCE PER DISTINCT COMPUTATION IDENTITY
+// over the wet-deployable roster, and publish the v2 verdict document beside the plan receipt so
+// every row's swap consumes its own answer by identity. The served command runs to a clean bind
+// refusal on an absent-parent unix listener; reaching that refusal is what admits the release (it
+// checks exactly what the served run checks -- the entry plus the served handler's reach -- and
+// materializes nothing). A blocked or unobserved run fails the PLAN RUN here, where the fold
+// belongs -- the deploy chain then never starts, and the run-pointer admission names the refused
+// plan run. The destination is admitted BEFORE any witness runs (pull/16891#issuecomment-7103879443).
+fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
+  match probe_serve_entry_verdict_dir() {
+    ServeEntryVerdictDirRefused { dir, reason } =>
+      exit_failure(reason: serve_entry_verdict_dir_refusal_text(dir: dir, reason: reason))
+    ServeEntryVerdictDirWritable => record_plan_serve_entry_verdict_after_dir_admitted()
+  }
+}
+
+fn record_plan_serve_entry_verdict_after_dir_admitted() -> ProcessExit {
+  let covered = plan_covered_roster_rows(access: ci_deploy_srv1_access)
+  if covered.rows.length() == 0 {
+    exit_failure(reason: join([
+      "live_deploy: record_plan_serve_entry_compile_verdict — the desired roster yielded no row the CI apply selection accepts, so the serve-entry verdict has no subject; selection refusals: ",
+      join(covered.refusals, " | "),
+    ], ""))
+  } else {
+    let root = git.Inspect.Toplevel()
+    let root_path = root.path as String
+    let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
+    match sha256sum_file_digest_via_shell(path: bin as NonEmptyStr) {
+      Sha256FileDigestUnavailable { path: wanted, reason } =>
+        exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the pair build produced no digestable gunbc at ", wanted as String, ": ", reason], ""))
+      Sha256FileDigest { digest } => {
+        let source_revision = observe_checkout_head_hex()
+        let bin_hex = digest.hex as String
+        // THE PRINT COMES BEFORE THE FIRST COMPILE: the log carries what the plan is about to spend
+        // before it spends it, so an unexpected row set is visible without waiting ~22 minutes.
+        let demands = plan_serve_entry_compile_demands(rows: covered.rows, source_revision: source_revision, compiler_bin_sha256_hex: bin_hex)
+        let _ = actions_step_summary_append(block: plan_serve_entry_compile_report(covered: covered, demands: demands, source_revision: source_revision, compiler_bin_sha256_hex: bin_hex))
+        let results = map(
+          demands,
+          d => ServeEntryCompileResult {
+            identity: d.identity,
+            compile: observe_served_command_reaches_bind(
+              repo_root: root_path,
+              bin_path: bin,
+              roots: deployment_serve_source_roots,
+              spec: selected_deployment_spec(row: d.row),
+              release_revision: source_revision,
+              stderr_sink: join([serve_entry_verdict_path(), ".", instance_id_text(id: d.row.instance.instance_id), ".child-stderr"], ""),
+            ),
+          },
+        )
+        let records = plan_serve_entry_verdict_records(
+          covered: covered,
+          results: results,
+          source_revision: source_revision,
+          compiler_bin_sha256_hex: bin_hex,
+        )
+        let path = serve_entry_verdict_path()
+        let write = Filesystem.Write(path: path, content: serialize_json(v: serve_entry_verdict_document_json(rows: records)))
+        if !write.success {
+          exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — could not write ", path, ": ", write.error], ""))
+        } else if plan_serve_entry_first_unadmitted(records: records) {
+          exit_failure(reason: plan_serve_entry_compile_refusal_text(record: plan_serve_entry_first_unadmitted_record(records: records)))
+        } else {
+          ExitSuccess
+        }
+      }
+    }
+  }
+}
+
+// THE FIRST ROW THAT DID NOT ADMIT, for the refusal above. The fold names the FIRST offender so the
+// reason text is stable across runs of the same input; every other unadmitted row is still in the
+// document the plan produced, and the operator can read all of them there.
+fn plan_serve_entry_first_unadmitted_record(records: List<ServeEntryVerdictRecord>) -> ServeEntryVerdictRecord {
+  fold(
+    records,
+    init: ServeEntryVerdictRecord {
+      subject_host: "",
+      instance_id: "",
+      source_revision: "",
+      entry: "",
+      argv_digest: "",
+      compiler_bin_sha256_hex: "",
+      compile: ServeEntryCompileUnobserved { detail: "no unadmitted record found" },
+    },
+    f: (acc, r) => match r.compile {
+      ServeEntryCompileAdmitted => acc
+      ServeEntryCompileBlocked { blocking, diagnostics } =>
+        if acc.instance_id == "" {
+          r
+        } else {
+          acc
+        }
+      ServeEntryCompileUnobserved { detail: _ } =>
+        if acc.instance_id == "" {
+          r
+        } else {
+          acc
+        }
+    },
+  )
+}

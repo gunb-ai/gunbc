@@ -5265,6 +5265,13 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
       value: [
         kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
         kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        // THE ADMITTED PLAN POINTER, handed to the wet process under the ONE name the pointer admission
+        // reads (gunbc.fleet.fleet_converge_plan_revision fleet_converge_plan_pointer_env_name). The admit
+        // step (admit_plan_run_pointer) ran earlier in this job on this same required input, so its
+        // presence in the wet process IS "this transaction has an admitted plan" -- the fact the
+        // serve-entry compile arm keys on. It is the same input the receipt identity passes under
+        // rlm_plan_run_id_env_name; the two names are two duties, and neither substitutes for the other.
+        kv(key: fleet_converge_plan_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
         kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
         kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
       ]
@@ -5494,6 +5501,13 @@ fn fleet_converge_desired_instance_deploy_step() -> Step {
     env: Present { value: [
       kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
       kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+      // THE ADMITTED PLAN POINTER for the instance-scoped deploy, under the ONE name the pointer
+      // admission reads (gunbc.fleet.fleet_converge_plan_revision fleet_converge_plan_pointer_env_name):
+      // this job's admit step ran admit_plan_run_pointer on this same required input before this step, so
+      // the pointer's presence in the wet process is the fact the serve-entry compile arm keys on -- and
+      // it is what puts the LAB row on the verdict arm instead of the ~22-minute cold compile that killed
+      // deploy2 run 45749803682 at the 60-minute bound. NOT the receipt-identity variable below.
+      kv(key: fleet_converge_plan_pointer_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
       kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
       kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
       kv(key: live_deploy_ci_instance_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
