@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.access.posix { posix_shell_permits_command_execution }
+import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user, fleet_posix_remote_build_supplementary_groups, fleet_posix_remote_build_home,
   fleet_posix_compute_ledger_group_name, fleet_posix_compute_ledger_group_gid,
@@ -14,7 +15,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv2_deploy_dashboard_instance,
   dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
   dashboard_instance_is_disjoint_from_public_builtins, host_capacity_ledger_home,
+  capacity_ledger_directory_owner, capacity_ledger_legacy_owner_frontier,
+  capacity_ledger_owner_for_membership, capacity_ledger_entry_owner_read_instrument,
+  CapacityLedgerFrontierDischarge, ReadNotYetPerformed, ReadProvedClear,
+  capacity_ledger_frontier_confers_operator_ownership, ReOwnRulingNotYetMade, ReOwnRulingMade,
 }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, SameUserRegroupToDeclaredGroup, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgidSticky, DirectoryOwnerAllEveryoneTraverse }
 import std.measure { ByteSize, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor }
@@ -25,7 +31,7 @@ import gunbc.compute.host_capacity {
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
   compute_capacity_root,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7, operator_host_srv14 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
@@ -323,4 +329,122 @@ test fn srv3_and_srv4_reserve_in_the_one_host_ledger() -> Bool {
     (ledger.subject.home.instance_root as String) == "/opt/gunbc"
       && (compute_capacity_root_carrier(home: ledger.subject.home) as String) == "/opt/gunbc/compute/capacity"
   })
+}
+
+// ── per-host ledger owner: the single-authority witnesses ─────────────────────────────────────────
+
+// (1) srv3/srv4's ledger rows are BYTE-IDENTICAL to what the old universal rule produced. The legacy
+// frontier keeps them under the operator login; if the frontier were removed or the discriminator
+// changed, this reds. This is the byte-identity preservation witness.
+test fn srv3_and_srv4_ledger_owner_is_legacy_operator_preserving_byte_identity() -> Bool {
+  ["srv3", "srv4"] |> all(name => {
+    let owner = capacity_ledger_directory_owner(host: (name as String) as NonEmptyStr)
+    (owner.user as String) == (fleet_posix_operator_user.name as String)
+      && (owner.group as String) == (fleet_posix_operator_user.name as String)
+  })
+}
+
+// (2) The serving-model claims (fresh-host group members are all converge-ensured; the deduped desired
+// settles against the single observed member; a stray member deviates) live in the SERVING sweep,
+// test.claim.compute.remote_build_serving_setup_witness, which imports the serving model this exercises
+// (partition by module). They are kept out of the account sweep deliberately: pulling remote_build_serving_setup
+// into the account graph blew its compile from ~65s past timeout, and they are serving-model claims, not
+// account-model claims.
+
+// (3) The discriminator IS THE FRONTIER'S OWN MEMBERSHIP — never the live-roster or candidate row. A
+// fresh host joins the candidate row and then the serving roster as it converges; if the ledger owner
+// were keyed on either, a freshly-converged host would re-own (gunbc-build → briansrls) on the next run.
+fn owner_is_build_account(o: PosixOwnerNames) -> Bool { (o.user as String) == (fleet_posix_remote_build_user.name as String) }
+fn owner_is_operator(o: PosixOwnerNames) -> Bool { (o.user as String) == (fleet_posix_operator_user.name as String) }
+
+// Discriminating control: ken and butch ARE serving candidates (remote_build_host_is_serving_candidate is
+// true — that is the very status that "flips on admission"), yet their owner is the remote-build account,
+// NOT the operator. An implementation keyed on remote_build_host_is_serving_candidate would return the
+// operator for them and go red here. And srv3/srv4 — which ARE on the live roster AND in the frontier —
+// resolve to the operator only because they are in the frontier. So the owner is the operator iff the
+// host is in the frontier (and carries no dashboard instance); candidate/roster status never decides it.
+test fn the_owner_discriminator_is_the_frontier_not_the_candidate_or_roster_row() -> Bool {
+  // ken/butch are serving CANDIDATES, yet not operator-owned — candidate/roster status does not decide.
+  remote_build_host_is_serving_candidate(host: operator_host_e2d4b7)
+    && remote_build_host_is_serving_candidate(host: operator_host_srv14)
+    && owner_is_build_account(capacity_ledger_directory_owner(host: "host-e2d4b7" as NonEmptyStr))
+    && owner_is_build_account(capacity_ledger_directory_owner(host: "srv14" as NonEmptyStr))
+    // the frontier members (srv3/srv4) ARE operator-owned, and they are exactly the non-instance hosts
+    // whose owner is the operator — the frontier is the authority, not the roster.
+    && owner_is_operator(capacity_ledger_directory_owner(host: "srv3" as NonEmptyStr))
+    && owner_is_operator(capacity_ledger_directory_owner(host: "srv4" as NonEmptyStr))
+    && all(capacity_ledger_legacy_owner_frontier.members, h => owner_is_operator(capacity_ledger_directory_owner(host: (h as String) as NonEmptyStr)))
+}
+
+// (4) The frontier's retirement condition is CONSUMED DATA, not a comment or a dangling field
+// (source_annotations: a dissolution condition belongs in a typed carrier AND is exercised; consumption: a
+// row no fold reads is dangling; guarantee_ladder: discriminating reds). The single consumer
+// capacity_ledger_frontier_confers_operator_ownership reads ALL THREE discharge fields on the route the
+// owner function runs — entry_owner_read, read_instrument (compared against the designated instrument), and
+// re_own_ruling — and the frontier retires only when all three say so. This witness drives every arm so no
+// gate can be gutted to a constant or the instrument check removed without going red.
+//   - positive control: the LIVE discharge confers operator ownership (srv3/srv4 stay byte-identical);
+//   - all three gates satisfied → does NOT confer (the frontier CAN discharge);
+//   - RED (instrument gate): proved-clear by a WRONG instrument still confers → read_instrument is load-bearing;
+//   - RED (read gate): right instrument + landed ruling but read NOT yet performed still confers → the read
+//     is required;
+//   - RED (ruling gate): right instrument + proved-clear read but NO landed ruling still confers → a read
+//     alone cannot re-own a live ledger; the ruling is required. Each gate is independently discriminated.
+test fn the_frontier_discharge_is_consumed_and_falsifiable() -> Bool {
+  let live = capacity_ledger_legacy_owner_frontier.discharge
+  // The fixture ruling names THIS witness module, not a fabricated gunbc.design_ruling row (epistemic
+  // humility: do not assert a citation that exists nowhere) — any ReOwnRulingMade value exercises the gate.
+  let fixture_ruling = decl_ref(module_path: "test.claim.compute.remote_build_account_witness", decl_name: "the_frontier_discharge_is_consumed_and_falsifiable")
+  // positive control: the live discharge keeps the frontier operator-owned.
+  capacity_ledger_frontier_confers_operator_ownership(discharge: live)
+    // the live state is precisely un-discharged on all three gates.
+    && match live.entry_owner_read { ReadNotYetPerformed => true ReadProvedClear => false }
+    && match live.re_own_ruling { ReOwnRulingNotYetMade => true ReOwnRulingMade { ruling: _ } => false }
+    && declaration_ref_eq(a: live.read_instrument, b: capacity_ledger_entry_owner_read_instrument)
+    // FULL discharge — all three gates satisfied — does NOT confer operator ownership. Discriminating: a
+    // consumer that ignored any gate (always true) fails here.
+    && !capacity_ledger_frontier_confers_operator_ownership(discharge: CapacityLedgerFrontierDischarge {
+         entry_owner_read: ReadProvedClear,
+         read_instrument: capacity_ledger_entry_owner_read_instrument,
+         re_own_ruling: ReOwnRulingMade { ruling: fixture_ruling },
+       })
+    // RED: a proved-clear read by the WRONG instrument still confers ownership (the instrument gate is live).
+    && capacity_ledger_frontier_confers_operator_ownership(discharge: CapacityLedgerFrontierDischarge {
+         entry_owner_read: ReadProvedClear,
+         read_instrument: decl_ref(module_path: "test.claim.compute.remote_build_account_witness", decl_name: "not_the_designated_read_instrument"),
+         re_own_ruling: ReOwnRulingMade { ruling: fixture_ruling },
+       })
+    // RED: right instrument + landed ruling but the read has NOT yet been performed still confers ownership.
+    && capacity_ledger_frontier_confers_operator_ownership(discharge: CapacityLedgerFrontierDischarge {
+         entry_owner_read: ReadNotYetPerformed,
+         read_instrument: capacity_ledger_entry_owner_read_instrument,
+         re_own_ruling: ReOwnRulingMade { ruling: fixture_ruling },
+       })
+    // RED: right instrument + a proved-clear read but NO landed ruling still confers ownership — a
+    // read alone cannot re-own a live ledger; the ruling gate is required, not inferred.
+    && capacity_ledger_frontier_confers_operator_ownership(discharge: CapacityLedgerFrontierDischarge {
+         entry_owner_read: ReadProvedClear,
+         read_instrument: capacity_ledger_entry_owner_read_instrument,
+         re_own_ruling: ReOwnRulingNotYetMade,
+       })
+}
+
+// (4b) The frontier decision keys on the DECLARED MEMBERSHIP, not the live serving roster. The shipped
+// frontier [srv3, srv4] is coincident with remote_build_serving_hosts, so the real data cannot separate the
+// two authorities; capacity_ledger_owner_for_membership is the pure frontier decision and this witness drives
+// it with a membership list that DISAGREES with the roster. srv3 IS on the serving roster (red control below
+// confirms remote_build_host_is_serving(srv3)), yet with an EMPTY membership the pure decision hands srv3 the
+// build account — a roster-keyed implementation would instead hand srv3 the operator login and go red here.
+test fn the_frontier_keys_on_membership_not_the_serving_roster() -> Bool {
+  let empty_members: List<HostIdentity> = []
+  // positive: a real member, un-discharged, gets the operator login.
+  owner_is_operator(capacity_ledger_owner_for_membership(host: "srv3" as NonEmptyStr, members: [operator_host_srv3], discharge: capacity_ledger_legacy_owner_frontier.discharge))
+    // RED CONTROL: srv3 is on the live serving roster (so a roster-keyed authority would call it operator)…
+    && remote_build_host_is_serving(host: "srv3" as NonEmptyStr)
+    // …but the frontier decision, given an empty membership, hands srv3 the BUILD account. A roster-keyed
+    // implementation returns operator here regardless of the members argument — this is the discriminator.
+    && owner_is_build_account(capacity_ledger_owner_for_membership(host: "srv3" as NonEmptyStr, members: empty_members, discharge: capacity_ledger_legacy_owner_frontier.discharge))
+    // a rostered-in-name host that is a member with the membership list given gets operator (membership wins
+    // over any roster read, in both directions).
+    && owner_is_operator(capacity_ledger_owner_for_membership(host: "srv4" as NonEmptyStr, members: [operator_host_srv4], discharge: capacity_ledger_legacy_owner_frontier.discharge))
 }
