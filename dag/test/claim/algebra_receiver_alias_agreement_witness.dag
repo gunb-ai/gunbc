@@ -4,85 +4,77 @@ import std.types { String }
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_verdict_all }
 
-// THE ALIAS-NOMINAL AGREEMENT PAIR for roadmap node method-receiver-normalization
-// (rn_TMC5UFTYNMSBMS7FLXYIVQCSRE). dag/std/types.dag declares `type List<element> =
-// FreeMonoid<element>`, so the alias spelling and the nominal spelling denote the SAME type.
-// Before receiver normalization closed, the alias spelling keyed a MethodNotFound refusal
-// (subject rendering "Coproduct(FreeMonoid)") that the nominal spelling never raised: that
-// refusal WAS the bug's spelling, so the old refusal fixtures in algebra_receiver_alias_witness
-// passed only while the compiler was wrong. This witness asserts the decidable shape instead:
-// the two spellings AGREE in both directions -- the correct program is accepted under both, and
-// a bogus method refuses under both. A change that accepted both spellings but stopped refusing
-// the bogus method, or that refused the bogus method under only one spelling, has not made the
-// receiver decidable; it has moved the guess, and these legs are what says so. Each leg asserts
-// an OBSERVED census count (a census that cannot run returns UNOBSERVED through census_verdict,
-// which is not a pass), so neither an empty projection nor an unarmed builtin can green this
-// vacuously.
+// THE ALIAS/NOMINAL DECIDABILITY PAIR for roadmap node method-receiver-normalization
+// (rn_TMC5UFTYNMSBMS7FLXYIVQCSRE), per the lane ruling of 2026-11-26: the alias-return
+// receiver REFUSES with its own cause while the nominal spelling is ACCEPTED. dag/std/types.dag
+// declares `type List<element> = FreeMonoid<element>`, so both spellings denote the same type;
+// the row's red_control names the alias fixtures as keeps-refusing negatives ("each with its own
+// cause"), and main currently ACCEPTS the alias-return program with zero blocking diagnostics --
+// measured: compiling the exact string is rc 0, the census observes 0 blocking rows. That
+// zero-blocked acceptance is the live hole this witness claims.
 //
-// WHY THE OLD FIXTURE STRINGS CANNOT BE REUSED: the refusal-fixture sources in
-// algebra_receiver_alias_witness separate statements with ';', which the current parser lexes as
-// an Unknown token (parse-failed at the ';', fail-closed). Executed evidence: their embedded
-// programs fail to parse on the current binary, so their observed counts measure the rot, not
-// the resolution. Every embedded program here separates statements with newlines, the
-// documented shape, verified to compile on the current binary.
+// WHY NO FIXTURE HERE CAN GREEN VACUOUSLY (the ';' lesson, executed evidence): a refusal count
+// is only quoted BESIDE its own counts -- each refusing side asserts BOTH the named-cause count
+// AND the total blocking count for that exact source string. The retired fixtures' strings
+// separate statements with ';' which the current parser lexes as Unknown (parse-failed,
+// fail-closed), so they reported "census observed 0" from a rot cause, not from resolution; their
+// refusals could not have fired. Every embedded program below separates statements with newlines
+// (the documented shape, verified to compile rc 0 on the current binary), and a source that fails
+// to parse today raises a ParseError blocking row -- which would break the total-count assertion
+// at 1 while the named-cause assertion separately requires MethodNotFound, so neither a
+// non-parsing fixture nor a differently-diagnosed refusal can pass this leg.
 //
-// MEASURED RESIDUE this pair does NOT hide: the MethodNotFound MESSAGE renders the receiver
-// differently per spelling -- 'Container(List,Primitive(Int))' (alias) vs 'Node(FreeMonoid<Primitive(Int)>)'
-// (nominal), seen by compiling the bogus programs standalone on the current binary. The census
-// subject is the METHOD NAME (the histogram key's name half), so the agreement pair below keys on
-// the method and stays spelling-neutral; the render asymmetry itself is the alias-leaf residue
-// tracked on the gunbc#7484 roster, not this node's to close.
+// RENDER ASYMMETRY, measured and explained: the bogus pair refuses MethodNotFound under BOTH
+// spellings (exactly 1 blocking row each) but the diagnostic renders the alias receiver as
+// 'Container(List,Primitive(Int))' and the nominal as 'Node(FreeMonoid<Primitive(Int)>)'. The
+// wall's decision (method_existence_decision, src/v1/04_infer.dag:9125) keys on
+// kernel_profile_lookup(authored_name_at(recv)) -- authored names "List" and "FreeMonoid" both
+// canonicalize through container_kind_canonical (src/v1/04_types.dag:262-279, which resolves a
+// container template to its canonical alias spelling), so the DECISION reaches the same profile
+// row for both spellings and the refusal is symmetric. The rendering comes from node_type_shape
+// of the type node each spelling produced (alias regrounds to a canonical Container carrier,
+// reground_alias_carrier_identity; the nominal application stays a Node application). It is a
+// surface trace of the alias-leaf residue on the gunbc#7484 roster, NOT the mechanism of the
+// return hole: had the alias been expanded where the nominal was not on the decision side, the
+// two spellings would diverge (one refusing, one admitted) -- they do not (1 vs 1).
 
-// Same program, one variable: the declared return's spelling, alias.
+// The hole's program, alias spelling. Parses clean on the current binary; the node row says it
+// must refuse with the coproduct-keyed MethodNotFound cause its retired fixture named.
 data alias_return_source: String = "module alias_agree_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 
-// Nominal spelling of the same declared type.
+// The control: nominal spelling of the same program, accepted with zero blocking rows.
 data nominal_return_source: String = "module nominal_agree_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 
-// The same program bound through a record field, alias spelling (newline statements).
-data alias_field_source: String = "module alias_agree_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: List<Int> }\nfn asks() -> List<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n  b.values }\n"
-
-// The nominal-field control: one variable, the field's declared spelling.
-data nominal_field_source: String = "module nominal_agree_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: FreeMonoid<Int> }\nfn asks() -> FreeMonoid<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n  b.values }\n"
-
-// The bogus-method pair: identical to the acceptance sources except the last expression calls a
-// method that exists nowhere on the bound receiver. Both spellings must refuse; each leg pins
-// the subject rendering the current binary emits for that spelling (see the header note).
+// The bogus-method pair: identical to the acceptance programs except the last expression calls a
+// method that exists nowhere on the bound receiver. The refusal fires under BOTH spellings today
+// -- the discriminating wall that must not be lost when the return hole closes.
 data alias_bogus_method_source: String = "module alias_agree_bogus\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let l: List<Int> = [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) })\n  l.totally_absent_method() }\n"
 
 data nominal_bogus_method_source: String = "module nominal_agree_bogus\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { let l: FreeMonoid<Int> = [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) })\n  l.totally_absent_method() }\n"
 
-// AGREEMENT, accepting direction: the alias return and the nominal return must return the SAME
-// verdict -- total blocking census zero for both. This is the pair that replaces the retired
-// alias_return_is_a_refusal_fixture: agreement, not a hole-enrolled refusal.
-test fn alias_and_nominal_return_agree_by_accepting() -> ProcessExit {
+// THE PAIR, one process, both directions: the alias-return receiver refuses with its OWN cause
+// (MethodNotFound keyed at 'Coproduct(FreeMonoid)' -- the cause the row's fixture named), with its
+// total blocking count asserted beside the cause (exactly 1, so a ParseError cannot masquerade as
+// the refusal), while the nominal spelling is accepted (total blocking 0). RED ON MAIN TODAY:
+// the alias side observes 0 blocking rows -- that acceptance is the hole this node closes.
+test fn alias_return_refuses_with_its_own_cause_and_nominal_is_accepted() -> ProcessExit {
   census_verdict_all([
-    census_verdict(census: total_blocking_census(source: alias_return_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: blocking_subject_census(source: alias_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"), holds: fn(n) { n >= 1 }),
+    census_verdict(census: total_blocking_census(source: alias_return_source), holds: fn(n) { n == 1 }),
     census_verdict(census: total_blocking_census(source: nominal_return_source), holds: fn(n) { n == 0 })
-  ])
+])
 }
 
-// AGREEMENT, accepting direction through a record field: same verdict (zero) for both spellings.
-// Replaces the retired alias_field_is_a_refusal_fixture and its no-observation companion.
-test fn alias_and_nominal_field_agree_by_accepting() -> ProcessExit {
-  census_verdict_all([
-    census_verdict(census: total_blocking_census(source: alias_field_source), holds: fn(n) { n == 0 }),
-    census_verdict(census: total_blocking_census(source: nominal_field_source), holds: fn(n) { n == 0 })
-  ])
-}
-
-// AGREEMENT, refusing direction: the bogus method must refuse under BOTH spellings, each >= 1.
-// The census subject projection (cli_run/compile_clean.rs, the name half of
-// compile_clean_diagnostic_histogram_key) puts the METHOD NAME in subject_name for MethodNotFound,
-// so the key pins "totally_absent_method" -- the same subject under both spellings, which is what
-// agreement means here. Measured on the current binary: each spelling observes exactly 1 blocking
-// row of that class at that subject, and 1 blocking row in total, so the refusal is discriminating:
-// the acceptance pair above (same programs minus the bogus call) observes 0 under both spellings.
-// If this leg reads zero for either spelling, the receiver is still frontier-admitted rather than
-// decided -- the discriminating half.
+// THE WALL THAT MUST SURVIVE THE FIX: an absent method on the bound coproduct receiver refuses
+// under BOTH spellings, with the census subject (the histogram key's name half for MethodNotFound
+// is the METHOD NAME, src/v1/stage0/src/cli_run/compile_clean.rs) pinned to 'totally_absent_method',
+// and each spelling's total blocking count printed beside the cause at exactly 1 -- measured on
+// the current binary. A repair that makes both silent, or drops either count, has moved the guess.
 test fn bogus_method_refuses_under_both_spellings() -> ProcessExit {
   census_verdict_all([
     census_verdict(census: blocking_subject_census(source: alias_bogus_method_source, wanted_class: "MethodNotFound", wanted_subject: "totally_absent_method"), holds: fn(n) { n >= 1 }),
-    census_verdict(census: blocking_subject_census(source: nominal_bogus_method_source, wanted_class: "MethodNotFound", wanted_subject: "totally_absent_method"), holds: fn(n) { n >= 1 })
-  ])
+    census_verdict(census: total_blocking_census(source: alias_bogus_method_source), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: nominal_bogus_method_source, wanted_class: "MethodNotFound", wanted_subject: "totally_absent_method"), holds: fn(n) { n >= 1 }),
+    census_verdict(census: total_blocking_census(source: nominal_bogus_method_source), holds: fn(n) { n == 1 })
+])
 }
