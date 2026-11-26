@@ -7,6 +7,7 @@ import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
   ObservedFrontLocation, observed_front_serves, ObservedFrontRoster, ObservedRoster, ObservedRosterUnreadable,
+  UnreadableReason,
 }
 
 // ── WHAT A FLEET READER CAN SEE ABOUT A SERVING ENGINE, THROUGH WHICH BOUNDARY, WITH WHAT STANDING ──
@@ -197,15 +198,16 @@ fn engine_front_locations(
   )
 }
 
-// The reconciliation's verdict over an OBSERVED front. A front that cannot be read -- a location whose path failed
-// to tokenise -- REFUSES the verdict and names the offending path: we will not call a route served merely because
-// the location that would have refused it was unreadable (fail_closed: a failed read refuses, it never widens to a
-// plausible verdict). A readable front names which required routes it does NOT serve, and which readers that shuts
-// out. Keeping blocked_routes (not just readers) is what lets a caller see that a prefix-carried route like
-// /v1/models is SERVED, distinct from a route whose only reader is shared with a blocked one.
+// The reconciliation's verdict over an OBSERVED front. A front that cannot be read -- a location whose path failed to
+// tokenise, or one whose matcher this model does not rank (regex, ^~, @) -- REFUSES the verdict, located at that
+// location with a typed reason: we will not call a route served merely because the location that would have decided
+// it was unreadable (fail_closed: a failed read refuses, it never widens to a plausible verdict). A readable front
+// names which required routes it does NOT serve, and which readers that shuts out. Keeping blocked_routes (not just
+// readers) is what lets a caller see that a prefix-carried route like /v1/models is SERVED, distinct from a route
+// whose only reader is shared with a blocked one.
 type EngineFrontUnservedVerdict =
     UnservedFront { blocked_routes: List<NonEmptyStr>, blocked_readers: List<DeclarationRef> }
-  | ObservedFrontUnreadable { path: String }
+  | ObservedFrontUnreadable { location: String, reason: UnreadableReason }
 
 // Reconcile an OBSERVED hand-managed front door -- its location roster, stated the way the host states it -- against
 // the route roster: which required routes the host front does NOT forward, and whose reads that shuts out. This is
@@ -215,10 +217,11 @@ type EngineFrontUnservedVerdict =
 // location serves nothing (extdeps.proxy.openresty::observed_front_serves) -- NOT by string equality on hand-expanded
 // paths. The srv4 host writes a `location /v1/` PREFIX carrying /v1/models and /v1/chat/completions, so those ARE
 // served while /metrics is not; an exact string match would have mis-called the prefix-carried routes blocked. An
-// UNREADABLE observation (a malformed location path) refuses the verdict rather than reporting a smaller roster.
+// UNREADABLE observation (a malformed path, or an unmodelled matcher -- regex, ^~, @) refuses the verdict rather than
+// reporting a smaller roster whose "served" answers may be wrong.
 fn engine_front_unserved_consumers(observed: ObservedFrontRoster) -> EngineFrontUnservedVerdict {
   match observed {
-    ObservedRosterUnreadable { path: p } => ObservedFrontUnreadable { path: p }
+    ObservedRosterUnreadable { location: l, reason: r } => ObservedFrontUnreadable { location: l, reason: r }
     ObservedRoster { locations: locs } => UnservedFront {
       blocked_routes: unserved_route_paths(locations: locs),
       blocked_readers: unserved_reader_refs(locations: locs),

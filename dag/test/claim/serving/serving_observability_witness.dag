@@ -6,7 +6,8 @@ import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.proxy.openresty {
   ObservedFrontRoster, observed_front_locations,
-  observed_prefix, observed_exact, Serves, Rejects,
+  observed_prefix, observed_exact, observed_unmodeled, Serves, Rejects,
+  Regex, PathDidNotTokenise, MatcherNotModelled,
 }
 import gunbc.serving.serving_observability {
   engine_front_required_routes,
@@ -71,6 +72,16 @@ fn malformed_metrics_location() -> ObservedFrontRoster {
   ])
 }
 
+// A host whose refusal on /metrics is a REGEX location (`location ~ ^/metrics { return 404; }`) beside a catch-all
+// proxy. The model does not rank regex, so this cannot be transcribed as a prefix -- coercing it would let `/` win
+// and falsely report /metrics served. Observing the regex must refuse the whole roster (operator adversarial check).
+fn regex_metrics_over_proxying_root() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/", action: Serves),
+    observed_unmodeled(pattern: "/metrics", matcher: Regex),
+  ])
+}
+
 // A front that EXACTLY-matches /metrics to the engine while its `/` prefix refuses everything else. This is the
 // discriminating use of observed_exact: nginx ranks an exact match above any prefix, so /metrics is served even
 // though the catch-all prefix would refuse it -- the exact arm of the matching rule, otherwise unexercised.
@@ -97,7 +108,7 @@ test fn srv4_observed_front_blocks_exactly_the_metrics_readers() -> Bool {
         && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
         && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
         && consumer_count_in(list: readers, ref: chat_reader_ref()) == 0
-    ObservedFrontUnreadable { path: _ } => false
+    ObservedFrontUnreadable { location: _, reason: _ } => false
   }
 }
 
@@ -107,7 +118,7 @@ test fn a_front_that_proxies_root_serves_everything() -> Bool {
   match engine_front_unserved_consumers(observed: complete_observed_locations()) {
     UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
       length(routes) == 0 && length(readers) == 0
-    ObservedFrontUnreadable { path: _ } => false
+    ObservedFrontUnreadable { location: _, reason: _ } => false
   }
 }
 
@@ -122,16 +133,30 @@ test fn a_reader_of_several_missing_routes_is_named_once() -> Bool {
         && consumer_count_in(list: readers, ref: chat_reader_ref()) == 1
         && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
         && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
-    ObservedFrontUnreadable { path: _ } => false
+    ObservedFrontUnreadable { location: _, reason: _ } => false
   }
 }
 
 // FAIL-CLOSED (review 98708): an observation whose path fails to tokenise is NOT silently dropped -- dropping it
 // would let the catch-all `/` proxy win and falsely report /metrics served, the exact misconfiguration this class
-// catches. The whole roster is REFUSED and the malformed path is named, so no verdict is built on a partial read.
+// catches. The whole roster is REFUSED, located at that path with a typed reason, so no verdict is built on a partial read.
 test fn a_malformed_observation_refuses_the_verdict_and_names_the_path() -> Bool {
   match engine_front_unserved_consumers(observed: malformed_metrics_location()) {
-    ObservedFrontUnreadable { path: p } => (p as String) == "/metrics;bad"
+    ObservedFrontUnreadable { location: l, reason: r } =>
+      (l as String) == "/metrics;bad" && match r { PathDidNotTokenise => true MatcherNotModelled => false }
+    UnservedFront { blocked_routes: _, blocked_readers: _ } => false
+  }
+}
+
+// FAIL-CLOSED (operator adversarial check 2026-11-25): nginx ranks regex (~ / ~*), `^~` and named @ locations
+// differently from prefix/exact. A host `location ~ ^/metrics { return 404; }` beside `location / { proxy_pass }`
+// cannot be transcribed as a prefix -- coercing it would read /metrics as served, the same silent widen as a dropped
+// 404 block. The model refuses instead: an unmodelled matcher makes the roster unreadable, located at that location,
+// so the catch-all proxy cannot be trusted to have served /metrics.
+test fn an_unmodelled_matcher_refuses_the_roster_and_is_located() -> Bool {
+  match engine_front_unserved_consumers(observed: regex_metrics_over_proxying_root()) {
+    ObservedFrontUnreadable { location: l, reason: r } =>
+      (l as String) == "/metrics" && match r { MatcherNotModelled => true PathDidNotTokenise => false }
     UnservedFront { blocked_routes: _, blocked_readers: _ } => false
   }
 }
@@ -149,7 +174,7 @@ test fn an_exact_location_serves_its_route_over_a_refusing_prefix() -> Bool {
         && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 0
         && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
         && consumer_count_in(list: readers, ref: chat_reader_ref()) == 1
-    ObservedFrontUnreadable { path: _ } => false
+    ObservedFrontUnreadable { location: _, reason: _ } => false
   }
 }
 
