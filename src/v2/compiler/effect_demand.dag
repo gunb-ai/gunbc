@@ -12,8 +12,9 @@ import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import std.algebra { Cons, Empty, fold_list, length, list_append, list_reverse }
 import std.integer { int_to_decimal_string }
 import v2.std.integer { Int }
-import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.node { Symbol, symbol_lexeme, symbol_intern_lexeme }
 import v2.std.text { String, string_join }
+import std.coercion { unicode_scalar_unfold }
 import v2.std.qualified_name {
   QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string
 }
@@ -1801,7 +1802,7 @@ fn filesystem_effect_debt_site_identity(site: FilesystemEffectSite) -> String {
   string_join(fields: [
     qualified_name_to_dotted_string(qn: site.module),
     "#",
-    symbol_lexeme(sym: site.enclosing_declaration),
+    unicode_scalar_unfold(xs: symbol_lexeme(sym: site.enclosing_declaration)),
     "#",
     int_to_decimal_string(value: site.site_occurrence)
   ], separator: "")
@@ -1918,7 +1919,7 @@ fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
             "offender ",
             qualified_name_to_dotted_string(qn: site.module),
             "#",
-            symbol_lexeme(sym: site.enclosing_declaration),
+            unicode_scalar_unfold(xs: symbol_lexeme(sym: site.enclosing_declaration)),
             "#",
             int_to_decimal_string(value: site.site_occurrence)
           ], separator: "")
