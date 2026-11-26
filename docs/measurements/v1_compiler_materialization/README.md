@@ -19,3 +19,18 @@ Use one private workspace, the same compiler executable, two reached source file
 A hit with a different fresh result fails the experiment, regardless of the predicted outcome. A miss is a lookup fact. Calling its recomputation equal requires a comparable, independently produced baseline result. A compiler stage the request never reached has no hit/miss outcome. This experiment predicts no Rust emission on the interpreted `run` path.
 
 The integration test owns the executable assertions. The final criterion for a shared store is a real second worker with an empty local store, admitted shared bytes, fresh execution of the checkout check, and a deliberately mismatched checkout refusal. Copying a directory on one host cannot establish that criterion. For a later serving change, compare ordinary outcomes to forced-cold outcomes and measure full wall time including lookup, verification and hydration. Shadow mode recomputes every product; producer calls avoided in this experiment are zero.
+
+## Independent compiler-section predictions
+
+For the next bounded comparison, call the existing stage0 front end and normalizer with a single input `fn answer() -> Int { 1 }`, then replace the same-width literal with `2`. Compare the actual answers the compiler returns on those inputs. This experiment asks about *answer equality*. It does not claim a store lookup for questions with no shadow hook.
+
+| Compiler question | Candidate dependency or context | Prediction for `1` → `2` |
+| --- | --- | --- |
+| Lexing | Source bytes, logical file, grammar | Token answers differ in the literal |
+| Complete newline index | Logical path and source bytes | Offsets equal, character codes differ |
+| Intern table after parsing | Ordered internable token spellings, initial table, parse context | Equal. Integer literals are neither identifiers nor keywords |
+| Authored token ordinal allocation | Initial allocator state, ordered parse shape and allocation decisions | Equal for this fixed-shape edit |
+| Normalization diagnostics | Resolved module, source index and normalizer semantics | Equal (both empty). This predicts only the diagnostic projection, not equality of the entire graph |
+| Leaf-to-owner index produced by reconciliation | Set of `(declaration leaf, owning module)` pairs | Equal; add `other` with another `answer` and the same leaf should become ambiguous |
+
+The signature and checked body of `answer` are separate proposed questions. A body-only change can leave the former equal while changing the latter. Rust emission needs an explicit emit request; `gunbc run` provides no emission sample. A full cross-worker experiment additionally needs the producer/toolchain and result-format compatibility established for that host.
