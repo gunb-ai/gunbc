@@ -15417,15 +15417,10 @@ pub fn rest_operation_result_type(
 }
 
 pub fn annotated_let_declared_type(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    if ((texpr.type_annotation.clone() != std::option::Option::None)
-        && crate::v1_compiler_infer_types::is_type_expr_annotation(
-            texpr.type_annotation.clone().clone().unwrap(),
-        ))
-    {
-        Some(texpr.type_annotation.clone().clone().unwrap())
-    } else {
-        std::option::Option::None
-    }
+    // RED PROBE v2: discard the annotated let's declared annotation for ALL THREE
+    // consumers (expected, conformance, bound type) -- reverts #10820 on this
+    // never-merged probe branch. RedProbe per roadmap_status.dag:78.
+    std::option::Option::None
 }
 
 pub fn annotated_let_bound_type(declared: Option<Rc<Node>>, val_type: Rc<Node>) -> Rc<Node> {

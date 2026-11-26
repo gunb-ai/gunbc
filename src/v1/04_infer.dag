@@ -9976,11 +9976,10 @@ fn rest_operation_result_type(resolution: KnownMethodResolution, site: SourceSpa
 // an expansion whose children are members, not type arguments, so later algebra
 // instantiation cannot recover ReceiverElement.
 fn annotated_let_declared_type(texpr: Node) -> Node? {
-  if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
-    Present { value: texpr.type_annotation.value }
-  } else {
-    none
-  }
+  // RED PROBE v2: discard the annotated let's declared annotation for ALL THREE
+  // consumers (expected, conformance, bound type) -- reverts #10820 on this
+  // never-merged probe branch. RedProbe per roadmap_status.dag:78.
+  none
 }
 
 fn annotated_let_bound_type(declared: Node?, val_type: Node) -> Node {
