@@ -1,0 +1,40 @@
+module test.claim.record_literal_declared_type_inhabitance_witness
+
+import std.types { String, Bool, Int, List }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows_of_class, census_total_count,
+}
+
+// Replaces src/v1/tests/src/record_literal_declared_type_inhabitance_test.rs. A record literal whose
+// type is not the declared type at a return, a data initializer, a let and an alias position is
+// refused as TypeMismatch (four wrong literals, four blocking rows), and the same four positions with
+// the right literal produce no diagnostic of any severity. Both sources are handed to the compiler
+// through the diagnostic census, so the witness reads the class of each refusal and not only that
+// something refused. The census measures the compile with the type-reference measure armed, a path
+// the Rust test (compile_sources) does not arm: it is the same pipeline family, not the same call.
+
+data red_source: String = "module record_red\ntype ZzA \{ x: Int }\ntype ZzB \{ y: Int }\ntype ZzAlias = ZzA\nfn wrong_return() -> ZzA \{ ZzB \{ y: 1 } }\ndata wrong_data: ZzA = ZzB \{ y: 2 }\nfn wrong_let() -> Int \{ let v: ZzA = ZzB \{ y: 3 } 1 }\nfn wrong_alias() -> ZzAlias \{ ZzB \{ y: 4 } }\n"
+
+data green_source: String = "module record_green\ntype ZzA \{ x: Int }\ntype ZzAlias = ZzA\nfn right_return() -> ZzA \{ ZzA \{ x: 1 } }\ndata right_data: ZzA = ZzA \{ x: 2 }\nfn right_let() -> Int \{ let v: ZzA = ZzA \{ x: 3 } 1 }\nfn right_alias() -> ZzAlias \{ ZzA \{ x: 4 } }\n"
+
+fn mismatch_count(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "TypeMismatch"))
+  }
+}
+
+fn all_diagnostics(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+  }
+}
+
+test fn each_wrong_record_literal_at_return_data_let_and_alias_is_refused() -> Bool {
+  mismatch_count(c: compile_dag_diagnostic_census(red_source)) == 4
+}
+
+test fn matching_literals_at_the_same_four_positions_are_not_refused() -> Bool {
+  all_diagnostics(c: compile_dag_diagnostic_census(green_source)) == 0
+}

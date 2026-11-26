@@ -2624,7 +2624,8 @@ data witness_floor_workflow: Workflow = {
       pull_requests: none,
       issues: none,
       actions: none,
-      id_token: none
+      id_token: none,
+      pages: none
     }
   },
   jobs: list_append(left: witness_floor_lane_jobs(), right: [required_lanes_aggregate_job()])

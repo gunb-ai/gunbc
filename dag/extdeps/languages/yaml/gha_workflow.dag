@@ -55,7 +55,10 @@ fn workflow_permissions_yaml(perms: WorkflowPermissions) -> YamlValue {
         optional_permission_key(key: "issues", level: perms.issues),
         concat(
           optional_permission_key(key: "actions", level: perms.actions),
-          optional_permission_key(key: "id-token", level: perms.id_token)
+          concat(
+            optional_permission_key(key: "id-token", level: perms.id_token),
+            optional_permission_key(key: "pages", level: perms.pages)
+          )
         )
       )
     )

@@ -19,6 +19,7 @@ import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApi
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, srv1_serving_startup_ground }
 import gunbc.serving.serving_enrollment { ServingRouteUnresolved }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
@@ -118,8 +119,15 @@ data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
   hardware: lil_serve_hardware_rtx_pro_6000_pcie,
   environment: [
     lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "12" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "125" as NonEmptyStr),
+    // Both tiers come from their authority rows (gunbc.serving.serving_host_memory::
+    // srv1_lmcache_l1_configured / srv1_lmcache_l2_configured, both typed Gibibyte) rather than from a literal written here.
+    // The "12" that used to sit in this slot was the 2026-11-08 reading, copied: the boot launcher had moved to
+    // 48 on 2026-11-24 and this row — which serving_provision_derivation::srv1_serving_launch_for_port copies
+    // into every provisioned container's environment — had not, so a container provisioned from the model would
+    // have come up with a quarter of the tier the eviction contract needs. The dated capture of the older
+    // reading is kept, as a capture, in gunbc.serving.srv1_serving_launch_witness::observed_cmd_tail.
+    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: srv1_lmcache_l1_gb_value()),
+    lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: srv1_lmcache_l2_gb_value()),
     lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),

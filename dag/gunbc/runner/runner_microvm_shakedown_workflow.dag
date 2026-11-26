@@ -206,6 +206,7 @@ fn microvm_shakedown_job(script: String) -> Job {
         issues: none,
         actions: none,
         id_token: none,
+        pages: none,
       }
     }
   }

@@ -674,6 +674,7 @@ fn shadow_gate_job() -> Job {
       issues: none,
       actions: none,
       id_token: Present { value: PermWrite },
+      pages: none,
     }},
     concurrency: none,
     timeout_minutes: Present { value: shadow_gate_timeout_minutes },
@@ -779,9 +780,9 @@ fn expected_hosted_runner_shadow_gate_yml_with(workflow: Workflow) -> ShadowGate
 
 // ── THE CLI ────────────────────────────────────────────────────────────────────────────────────────
 //
-//   gunbc run --source-root dag --source-root src/v2 \
+//   gunbc --dry-run run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/witness/hosted_runner_shadow_gate_workflow.dag \
-//     --function shadow_gate_emit_cli --claim-run
+//     --function shadow_gate_emit_cli
 
 fn shadow_gate_emit_cli() -> ProcessExit {
   match generated_workflow_provenance_header(a: HostedRunnerShadowGateYamlArtifact) {
