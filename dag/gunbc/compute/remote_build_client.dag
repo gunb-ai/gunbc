@@ -41,7 +41,7 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused, FleetSshCredentialAdmissionEmpty,
   verify_fleet_ssh_credential_admitted_any, fleet_ssh_credential_verification_refusal_reason,
 }
-import gunbc.compute.work_provider_local { ComputeExec, ComputeExecOk, ComputeExecFailed }
+import gunbc.compute.compute_exec { ComputeExec, ComputeExecOk, ComputeExecFailed }
 import gunbc.compute.test_run {
   SnapshotResolved, SnapshotRefused, snapshot_worktree, TreeListed, TreeListingRefused, list_tree, show_file, test_exec,
 }

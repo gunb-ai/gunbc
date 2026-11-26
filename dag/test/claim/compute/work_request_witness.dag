@@ -44,9 +44,10 @@ import std.materialization_provider {
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
 import std.measure { byte_size }
+import gunbc.compute.compute_exec { ComputeExecOk }
 import gunbc.compute.work_provider_local {
   compute_work_identity, compute_execution_identity, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
-  ComputeExecOk, ComputeExecFailed, compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
+  compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
   ComputeMemoized, ComputeRecomputed, compute_store_read_decide, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused,
   ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, is_compute_command_refused,
   compute_command_argv_words_of, NoComputeDependency,

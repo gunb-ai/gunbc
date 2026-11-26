@@ -1,5 +1,6 @@
 module gunbc.compute.work_provider_local
 
+import gunbc.compute.compute_exec { ComputeExec, ComputeExecOk, ComputeExecFailed }
 import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
 import gunbc.compute.compute_attempt_slots_root {
   compute_attempt_slots, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
@@ -264,10 +265,6 @@ fn compute_layout_in(instance: HostDashboardInstance, store_root: Materializatio
     records: records,
   }
 }
-
-type ComputeExec
-  = ComputeExecOk { stdout: String, stderr: String }
-  | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }
 
 // The unit launch has its own refusal carrier: the systemd-run builder's typed cause, carried from
 // the one site that can produce it. compute_exec's shared reading never refuses.

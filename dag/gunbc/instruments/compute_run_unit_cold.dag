@@ -34,6 +34,7 @@ import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_log_path, compute_work_consumption_path }
+import gunbc.compute.compute_exec { ComputeExecOk, ComputeExecFailed }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_build_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,

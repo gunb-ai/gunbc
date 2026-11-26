@@ -1,0 +1,34 @@
+module gunbc.compute.compute_exec
+
+// THE ONE SHAPE OF A LOCAL PROCESS RESULT, DECLARED WHERE BOTH SIDES CAN REACH IT CHEAPLY.
+//
+// ComputeExec is read by both halves of the compute route: the host-side provider that runs a
+// build on a seat (gunbc.compute.work_provider_local, which declared it until this file was cut
+// out of it), and the requesting side, which shells out to git in a worktree to snapshot a tree
+// and to read a file back (gunbc.compute.test_run's snapshot helpers, used by
+// gunbc.compute.remote_build_client). A result with three fields therefore had an author on one
+// side and a forced tenant on the other: to name `ComputeExecOk { stdout, stderr }` the requesting
+// side had to import the provider's whole machine -- seat census, attempt slots, work records, the
+// producer lease, runner slot allocation, the materialization budget machine -- because a module's
+// entry closure is everything its imports reach, per module and not per function.
+//
+// That is authored duplication of a DEMAND, not a recurrence that needs a provider
+// (gunbc.design_argument::demand_before_materialization: the first question is whether the
+// repetition is shared work that should be carried or shared, and a type both sides read is
+// exactly that), so the repair is at the earliest unjustified boundary
+// (gunbc.design_argument::earliest_unjustified_boundary): the declaration's home, not a cache in
+// front of the resolve. The declaration MOVES here -- std.types is this file's only import -- and
+// work_provider_local imports this module, so there is still one authority for the shape
+// (gunbc.design_argument::single_authority) and no consumer decides it twice.
+//
+// MECHANICAL MOVE ONLY. The three lines below are byte-identical to the ones removed from
+// dag/gunbc/compute/work_provider_local.dag:268-270; every consumer's import was re-pointed in the
+// same commit, and no behaviour, receipt, or answer changes. Evidence: the witness lanes that read
+// the type (//test/claim/compute/output_capture_absence_wet_witness and
+// //test/claim/compute/work_request_witness) hold at the same tally as before the move.
+
+import std.types { String, Int }
+
+type ComputeExec
+  = ComputeExecOk { stdout: String, stderr: String }
+  | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }

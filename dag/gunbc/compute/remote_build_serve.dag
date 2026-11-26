@@ -31,8 +31,9 @@ import gunbc.compute.remote_build_serve_principal {
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, dispatch_capability_program }
 import gunbc.compute.attempt_lifecycle { DirectInvocation }
 import gunbc.compute.work_request { TargetIsExecutingHost, WorkOperation }
+import gunbc.compute.compute_exec { ComputeExec, ComputeExecOk, ComputeExecFailed }
 import gunbc.compute.work_provider_local {
-  ComputeExec, ComputeExecOk, ComputeExecFailed, compute_exec,
+  compute_exec,
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_document,
   provide_result_host_record, host_record_was_written, host_record_wire, provide_result_succeeded,
 }
