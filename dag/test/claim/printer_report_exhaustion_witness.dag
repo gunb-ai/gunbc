@@ -14,7 +14,7 @@ module test.claim.printer_report_exhaustion_witness
 // and the matching claim below turns false on its contains-assertions. Both mutations were run
 // and reverted in-PR; the head carries the honest arms.
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int }
 import std.process { ExitFailure }
 import gunbc.command_runner { ProcessCaptureOutcome }
 import extdeps.shell.exec { ProcessCaptured, ProcessOutputPresent }
@@ -58,11 +58,11 @@ test fn an_outstanding_report_leak_rides_the_exhaustion_refusal() -> Bool {
 // attempt's leak forward across the seven replacement captures: the standing it returns is
 // Outstanding, naming the leak. Red before the fold existed (the walk was welded to the credential
 // and untestable), and red on any fold_cleanup drop.
-fn partial_read(remaining: Int) -> PrinterReportCapture {
+fn partial_read(remaining: Int) -> String {
   join(["{\"print\":{\"gcode_state\":\"RUNNING\",\"partial\":\"attempt-", to_string(remaining), "\"}"], "")
 }
 
-fn complete_read(remaining: Int) -> PrinterReportCapture {
+fn complete_read(remaining: Int) -> String {
   join(["{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"job.3mf\",\"print_error\":0,\"read\":\"attempt-", to_string(remaining), "\"}"], "")
 }
 

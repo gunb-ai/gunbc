@@ -2,7 +2,7 @@ module test.claim.runner.runner_browser_toolchain_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import std.algebra { length, join, string_contains, trim }
+import std.algebra { length, string_contains, trim }
 import extdeps.shell
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
 import extdeps.tools.mkdir { mkdir_parents_command }

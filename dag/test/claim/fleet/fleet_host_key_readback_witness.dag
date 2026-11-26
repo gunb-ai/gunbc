@@ -11,7 +11,7 @@ module test.claim.fleet.fleet_host_key_readback_witness
 // not a re-implemented classifier, is what goes red.
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import std.algebra { string_contains, join, map }
+import std.algebra { string_contains, map }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.chmod { chmod_set_mode_command }
