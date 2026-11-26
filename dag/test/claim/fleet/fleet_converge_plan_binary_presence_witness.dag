@@ -15,7 +15,7 @@
 // no remote host.
 module gunbc.test.claim.fleet.fleet_converge_plan_binary_presence_witness
 
-import std.prelude { Bool, String, Int, any, all, split, map, filter, join, concat, trim, to_string, none, some, Present, Absent, Option }
+import std.prelude { Bool, String, Int, any, all, split, map, filter, join, concat, trim, to_string, Present, Absent, Option }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, ExitCode }
 import std.result { Result, Ok, Err }
 import std.ordering { Ordering, Less, Equal, Greater }
