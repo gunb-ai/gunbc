@@ -49,7 +49,7 @@ import gunbc.fleet.fleet_power_circuit {
 }
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, ConditionRead, ConditionUnread,
-  DecodeRead, DecodeUnread, DrawRead, DrawUnread,
+  DecodeRead, DecodeUnread, DrawRead, DrawUnread, ShareRead, ShareUnread,
   SmClockCeiling, CappedWithin, CeilingUnread, Unlocked, PowerAsk, AskUnstated, CircuitRelief,
   candidate_cap, candidate_is_on,
 }
@@ -76,7 +76,7 @@ type ActuationRequest {
 }
 
 // THE PRICED ACTUATION. One arm admits, and its fields cannot be filled in without a candidate: the watt
-// value the converge writes is read out of `candidate` (see `priced_cap_of`), the candidate must be on the
+// value the converge writes is read out of `candidate` (`candidate_cap`), the candidate must be on the
 // machine being actuated, and `circuit` is the circuit the ASK NAMED, matched by identity against the
 // constraints demonstrated on this host -- never the first circuit on a list. `still_owed` carries what this
 // actuation admits but has not read -- today the card's thermal state, which conditions the reading the
@@ -251,7 +251,13 @@ fn unread_consequence_owed(candidate: CapCandidate) -> List<NonEmptyStr> {
     DecodeUnread { read_obligation: o } => join(["decode: ", o as String], "")
   }
   let draw_entry = match candidate.draw {
-    DrawRead { draw_low: _, draw_high: _, samples: _, sensor: _, throttle_share_note: _, observed_on: _, standing: _ } => ""
+    DrawRead { draw_low: _, draw_high: _, samples: _, subject: _, throttle_share: sh, observed_on: _, standing: _ } =>
+      match sh {
+        ShareRead { power_capped: _, instrument: _ } => ""
+        // The power-capped share is owed as a reading of its own: its watts without the share cannot be
+        // read as cap-bound, and priced_draw_step already refuses the step across it.
+        ShareUnread { read_obligation: o } => join(["draw: ", o as String], "")
+      }
     DrawUnread { read_obligation: o } => join(["draw: ", o as String], "")
   }
   filter([decode_entry, draw_entry], e => e != "")
@@ -423,20 +429,11 @@ fn candidate_pricing(
   filter(candidates, c => candidate_is_on(c: c, host: host) && candidate_watts(c: c) == watt_count(w: cap)).first()
 }
 
-// The watt value the converge is allowed to write, read out of the priced candidate. There is no path from a
-// bare Watt to a device write that goes around this.
-fn priced_cap_of(a: ActuationAdmission) -> Optional<Watt> {
-  match a {
-    ActuationPriced { actuation: p } => Present { value: candidate_cap(c: p.candidate) }
-    NoDemonstratedConstraint { request: r, warrant: _ } => Present { value: r.cap }
-    UnpricedActuationRefused { request: _, circuits: _, missing: _ } => Absent
-    ActuationValueMismatchRefused { request: _, candidate_label: _, mismatches: _ } => Absent
-    ActuationConsequenceUnreadRefused { request: _, owed: _ } => Absent
-    ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => Absent
-    ActuationAskUnservedRefused { request: _, candidate_label: _, asked_for: _, demonstrated: _ } => Absent
-  }
-}
-
+// There is no accessor between an admission and the watt value: the converge matches this sum and reads
+// `candidate_cap` of the candidate the admitting arm carries, so there is no path from a bare Watt to a
+// device write that goes around the priced candidate. `actuation_admits` is the single derived yes/no, kept
+// for the boot-unit census and the witnesses, which want the verdict and not a value; it matches the same
+// seven arms, and nothing independently decides admission beside it.
 fn actuation_admits(a: ActuationAdmission) -> Bool {
   match a {
     ActuationPriced { actuation: _ } => true

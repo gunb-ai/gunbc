@@ -52,7 +52,7 @@ import gunbc.fleet.gpu_cap_priced_actuation {
   ActuationPriced, NoDemonstratedConstraint, UnpricedActuationRefused, ActuationValueMismatchRefused,
   ActuationConsequenceUnreadRefused, ActuationAskUnstatedRefused, ActuationAskUnservedRefused,
   price_the_actuation, price_the_actuation_against, actuation_admits, actuation_refusal_text,
-  actuation_still_owed, priced_cap_of, under_demonstrated_constraint, demonstrated_constraints_on,
+  actuation_still_owed, under_demonstrated_constraint, demonstrated_constraints_on,
 }
 
 data live_uuid: NonEmptyStr = "GPU-30000000-0000-4000-8000-000000000004" as NonEmptyStr
@@ -122,10 +122,6 @@ test fn the_priced_cap_and_ceiling_is_admitted_at_the_priced_value() -> Bool {
   match a {
     ActuationPriced { actuation: p } =>
       admitted(a)
-        && match priced_cap_of(a: a) {
-            Present { value: c } => watt_count(w: c) == 30
-            Absent => false
-          }
         && watt_count(w: candidate_cap(c: p.candidate)) == 30
         // The receipt names the circuit the ASK served, by identity -- not whichever circuit the constraint
         // list happened to put first.

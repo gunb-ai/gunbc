@@ -25,6 +25,12 @@ module gunbc.fleet.gpu_power_cap_boot_state
 //     readback into a `CapRealization` of its own; that join is gone, because a module that was not the
 //     converge could only ever have produced an answer the converge disagreed with.
 //
+// WHERE THE BOOT SIDE GATES, AND WHERE IT DOES NOT REACH. A cap carried by a declared boot unit -- the srv1 and
+// ken units -- is gated here: a unit whose cap line has no priced candidate fails to render its drop-in. The
+// surge-strip members declare no boot units at all, so their caps arrive only through the converge, which is
+// gated for every host. A unit that does not exist cannot be gated, and `PresenceUnread` is not "no unit": an
+// unmodeled boot channel is a modeling obligation on this home, not a covered path it can claim.
+//
 // DISPOSITION OF #16047 (landed 2026-11-08 as d79a9db7addb, after this PR was opened). This module consumes it
 // rather than duplicating it: the apply-and-read-back path and the generated `gunbc-srv1-gpu-power-cap.service`
 // are theirs, and what is kept here is the part their model does not describe -- the unit actually installed on

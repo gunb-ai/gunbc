@@ -25,11 +25,10 @@ import gunbc.serving.gpu_power_state_policy {
 }
 import std.optional { Optional }
 import gunbc.serving.gpu_power_cap_pricing {
-  CapCandidate, PowerAsk, priced_candidates_on, recorded_ask_for_host,
+  CapCandidate, PowerAsk, candidate_cap, priced_candidates_on, recorded_ask_for_host,
 }
 import gunbc.fleet.gpu_cap_priced_actuation {
-  actuation_admits, actuation_refusal_text, actuation_still_owed,
-  price_the_admitted_cap, priced_cap_of,
+  ActuationPriced, NoDemonstratedConstraint, actuation_refusal_text, price_the_admitted_cap,
 }
 import gunbc.fleet.gpu_power_cap_boot_state {
   PowerCapBootUnit, cap_boot_unit_for, boot_unit_restores_unpriced_cap,
@@ -233,7 +232,7 @@ fn gpu_cap_admission_line(admission: GpuCapAdmission, ports: GpuCapPorts) -> Gpu
 // showed up, and it must keep doing that for any value that legitimately reached it. What is gated is the
 // step BEFORE it -- whether a value may be put on the card at all. `gpu_cap_priced_admission_line` asks
 // gunbc.fleet.gpu_cap_priced_actuation, and only on an admission does it call the fold, and with the watt
-// value read back out of the priced candidate (`priced_cap_of`) rather than the one it was handed: an actuation
+// value `candidate_cap` of the candidate the admitting arm carries rather than the one it was handed: an actuation
 // whose written value could drift from the value that was weighed is the same defect wearing a different hat.
 //
 // THE BOOT UNIT IS CHECKED TOO, AND THAT IS NOT BELT-AND-BRACES. An installed boot unit re-writes its own
@@ -262,15 +261,23 @@ fn gpu_cap_priced_admission_line(
         candidates: candidates,
         ask: ask,
       )
-      if actuation_admits(a: admission_answer) {
-        match priced_cap_of(a: admission_answer) {
-          Absent => gpu_cap_refused_line(board: b, uuid: u, cap: c, cause: "the gate admitted the actuation and named no watt value to write")
-          Present { value: to_write } =>
-            let written = gpu_cap_outcome_line(board: b, uuid: u, cap: to_write, outcome: converge_gpu_cap_over(uuid: u, cap: to_write, ports: ports).outcome)
-            gpu_cap_line_with_owed(line: written, owed: actuation_still_owed(a: admission_answer))
-        }
-      } else {
-        gpu_cap_refused_line(board: b, uuid: u, cap: c, cause: actuation_refusal_text(a: admission_answer))
+      // ONE MATCH DECIDES. The converge does not ask the admission a yes/no question and then look the
+      // value up a second way: it matches the sum, and each arm answers for itself. On ActuationPriced the
+      // watt written is `candidate_cap` of the candidate the admitting arm CARRIES -- there is no accessor
+      // between the weighed value and the device, and no arm under which the gate could admit and name no
+      // value (an earlier shape of this function kept one and needed an unreachable branch for it).
+      match admission_answer {
+        ActuationPriced { actuation: p } =>
+          let to_write = candidate_cap(c: p.candidate)
+          let written = gpu_cap_outcome_line(board: b, uuid: u, cap: to_write, outcome: converge_gpu_cap_over(uuid: u, cap: to_write, ports: ports).outcome)
+          gpu_cap_line_with_owed(line: written, owed: p.still_owed)
+        NoDemonstratedConstraint { request: r, warrant: w } =>
+          // Nothing is priced anywhere on this host -- no carried circuit has opened or stated a bound --
+          // so the request's own value is written, and the warrant is printed beside it saying how much of
+          // that admission rests on nobody having read the circuit yet.
+          let written = gpu_cap_outcome_line(board: b, uuid: u, cap: r.cap, outcome: converge_gpu_cap_over(uuid: u, cap: r.cap, ports: ports).outcome)
+          gpu_cap_line_with_owed(line: written, owed: [w])
+        _ => gpu_cap_refused_line(board: b, uuid: u, cap: c, cause: actuation_refusal_text(a: admission_answer))
       }
     GpuCapOutsideDeviceRange { board: b, cap: c, minimum: lo, maximum: hi } =>
       GpuCapLine { text: join(["gpu power cap ", b as String, " at ", to_string(watt_count(w: c)), " W: REFUSED: outside the device's reported range ", to_string(watt_count(w: lo)), "-", to_string(watt_count(w: hi)), " W; nothing is clamped"], ""), refused: true }
