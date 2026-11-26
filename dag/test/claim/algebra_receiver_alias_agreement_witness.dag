@@ -7,8 +7,8 @@ import gunbc.compile_census_probe { blocking_subject_census, total_blocking_cens
 // THE ALIAS/NOMINAL DECIDABILITY EVIDENCE for roadmap node method-receiver-normalization
 // (rn_TMC5UFTYNMSBMS7FLXYIVQCSRE), per the lane ruling of 2026-11-26 (bold-pike-529). The
 // alias-return acceptance HOLE is NOT claimed here: a merged claim must state what is true today,
-// and today main ACCEPTS the alias-return program with zero blocking diagnostics (executed:
-// DID-NOT-HOLD 'census observed 0', rc=1 -- recorded in the node handback as the row's observed
+// and today main ACCEPTS the alias-return program with zero blocking diagnostics
+// (the executed DID-NOT-HOLD line is recorded in the node handback as the row's observed
 // red). The hole's typed carrier is the corpus row
 // method-established-surface-alias-return-silent-acceptance-hole in gunbc.guarantee_probe_corpus
 // (ExpectSilentAcceptanceHole with its bounded flip trigger), following the parse-separator
@@ -26,7 +26,7 @@ import gunbc.compile_census_probe { blocking_subject_census, total_blocking_cens
 // (parse-failed, fail-closed -- proven by compiling the exact strings standalone), so their
 // "census observed 0" measured string rot, not resolution. Every embedded program below separates
 // statements with newlines (the documented shape; each string verified to compile on the current
-// binary: rc 0 clean for the acceptance program, rc 1 with the named refusal for the bogus ones),
+// binary: clean for the acceptance program, refused by name for the bogus ones),
 // and each refusing side asserts its total blocking count BESIDE the named cause (== 1), so a
 // source that fails to parse today raises a ParseError row that breaks the count assertion, and a
 // differently-diagnosed refusal breaks the named-cause assertion. Neither a non-parsing fixture
@@ -35,10 +35,9 @@ import gunbc.compile_census_probe { blocking_subject_census, total_blocking_cens
 // RENDER ASYMMETRY, measured and explained (not a footnote -- it was investigated to the decision
 // side): the bogus pair refuses MethodNotFound under BOTH spellings, but the diagnostic renders
 // the alias receiver as 'Container(List,Primitive(Int))' and the nominal as
-// 'Node(FreeMonoid<Primitive(Int)>)'. The wall's decision (method_existence_decision,
-// src/v1/04_infer.dag:9125) keys on kernel_profile_lookup(authored_name_at(recv)), and
-// container_kind_canonical (src/v1/04_types.dag:262-279) canonicalizes the authored names 'List'
-// and 'FreeMonoid' to the SAME profile row, so both spellings reach the same authority and refuse
+// 'Node(FreeMonoid<Primitive(Int)>)'. The wall's decision (method_existence_decision) keys on
+// kernel_profile_lookup over the authored receiver name, and container_kind_canonical
+// canonicalizes the authored names 'List' and 'FreeMonoid' to the SAME profile row, so both spellings reach the same authority and refuse
 // identically -- symmetric 1 vs 1, executed. The different strings are node_type_shape renderings
 // of two IR carriers (alias regrounds to a Container carrier via reground_alias_carrier_identity;
 // the nominal application stays a Node application): a surface trace of the alias-leaf residue on
@@ -55,7 +54,7 @@ data alias_bogus_method_source: String = "module alias_agree_bogus\nimport std.t
 data nominal_bogus_method_source: String = "module nominal_agree_bogus\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { let l: FreeMonoid<Int> = [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) })\n  l.totally_absent_method() }\n"
 
 // The nominal spelling of the alias-return program is ACCEPTED: total blocking 0. Executed HELD
-// outcome=Pass rc=0 on the main-built binary; must stay true after the repair.
+// Must stay true after the repair.
 test fn nominal_return_is_accepted() -> ProcessExit {
   census_verdict_all([
     census_verdict(census: total_blocking_census(source: nominal_return_source), holds: fn(n) { n == 0 })
@@ -63,9 +62,8 @@ test fn nominal_return_is_accepted() -> ProcessExit {
 }
 
 // THE WALL THAT MUST SURVIVE THE FIX: an absent method on the bound coproduct receiver refuses
-// under BOTH spellings. The census subject for MethodNotFound is the METHOD NAME (the name half
-// of compile_clean_diagnostic_histogram_key, src/v1/stage0/src/cli_run/compile_clean.rs), pinned
-// to 'totally_absent_method', with each spelling's total blocking count printed beside the cause
+// under BOTH spellings. The census subject for MethodNotFound is the METHOD NAME (the name
+// half of the diagnostic histogram key), pinned to 'totally_absent_method', with each spelling's total blocking count printed beside the cause
 // at exactly 1 -- measured on the current binary, symmetric 1 vs 1. A repair that makes both
 // spellings silent has not made the receiver decidable; it has moved the guess, and this leg --
 // paired with the nominal acceptance above -- is what says so.
