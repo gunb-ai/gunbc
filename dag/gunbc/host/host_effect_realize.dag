@@ -3856,9 +3856,18 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
 // the arms, so each says which of the two happened. The third arm, RunArgvTransportUnanswered, is
 // NOT a "no leg ran" carrier: it means the leg WAS dispatched and its reply could not be read (it
 // overran its deadline, or came back in an inconsistent wire shape), so the effect on the host is
-// unknown. Effectful consumers must treat the effect as unknown (run the readback, keep the standing
-// uncertain), never as "not started"/"not run"; read-only consumers refuse or report not-observed with
-// the typed cause. The discriminator is the typed cause, never a string match on `reason`.
+// unknown. The graded contract every consumer must honour, in order of strength:
+//  (1) never describe the leg as "not started"/"not run"/"refused" -- it was sent;
+//  (2) never claim the effect did NOT happen (no "not installed"/"not running"/"not started"/"absent"
+//      read back off this arm); and
+//  (3) an effectful consumer that HAS an independent readback for the effect MUST run it and settle on
+//      that reading (the service-slot start's ActiveState readback, the user-session linger readback, the
+//      listener's ListenerOutcomeUnobserved, the spark grant's sudoers readback).  Consumers that have no
+//      readback fall back to "do not proceed" (false / not-succeeded / blocked), which is sound -- it
+//      never fabricates success -- but leaves the standing unconfirmed.  Which effectful consumers still
+//      lack a readback is tracked as a row in gunbc.recurring_failure_mode (transport-runner
+//      dispatched-unknown consumers), not left implicit.  Read-only/render consumers report not-observed
+//      with the typed cause.  The discriminator is the typed cause, never a string match on `reason`.
 type RunArgvTransportUnansweredCause
   = TransportUnansweredOverran
   | TransportUnansweredWireInconsistent
@@ -6366,7 +6375,7 @@ fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: Strin
     RunArgvTransportRefused { reason: r } => Present { value: join(["sha256sum of ", binary, " was refused: ", r], "") }
     // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
     // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: join(["sha256sum of ", binary, " was refused: ", r], "") }
+    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: join(["sha256sum of ", binary, " was dispatched but its reply could not be read: ", r], "") }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code != 0 {
         Present { value: join(["sha256sum could not read ", binary, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
@@ -6490,7 +6499,7 @@ fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcom
     RunArgvTransportRefused { reason: r } => join([why, " | diagnosis could not run: ", r], "")
     // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
     // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: r } => join([why, " | diagnosis could not run: ", r], "")
+    RunArgvTransportUnanswered { cause: _, reason: r } => join([why, " | the diagnosis leg was dispatched but its reply could not be read: ", r], "")
     RunArgvTransportObserved { observed: o } =>
       join([why, "\n--- control-process diagnosis ---\n", deploy_apply_status_tail(text: concat(o.stdout, o.stderr))], "")
   }

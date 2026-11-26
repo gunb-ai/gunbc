@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of every effectful consumer of a dispatched-but-unreadable transport leg settling that leg's effect on an INDEPENDENT readback over the same transport, rather than resting on do-not-proceed, so a sent command never leaves the host's standing merely unconfirmed." } },
+
+  receipts: [
+    "**an outcome that says 'the leg was sent and its reply could not be read' is folded to a do-not-proceed value by a consumer that already holds the means to settle the effect, so the uncertainty the carrier was built to preserve is silently dropped a second time.** gunbc.design_argument::fail_closed: a leg dispatched whose reply is unreadable keeps its uncertainty about effects (gunbc.design_argument::method_separate_order_compose: a timeout/lost reply keeps effect uncertainty whenever the transport cannot establish what happened). The carrier (gunbc.host.host_effect_realize RunArgvTransportUnanswered, and the sibling LegUnanswered / DeployedTreeLegWireInconsistent / TypedArgvExecWireInconsistent arms of the 4th-arm family) names the uncertainty with a typed cause. The class here is NOT the fold-to-Refused (that is retired); it is a consumer that correctly refuses to read the leg as not-run, yet then returns false / blocked / not-succeeded WITHOUT running the independent readback it already has, leaving the standing unconfirmed where it could have been settled.",
+
+    "INVALID STATE: a transport leg dispatched and answered with an inconsistent wire shape (or a deadline overrun) reaches a consumer that owns a readback for that effect -- the service-slot ActiveState, the user-session linger reading, the listener's own end, the sudoers/install/digest readback -- and the consumer returns a do-not-proceed verdict as if no further evidence were available.",
+
+    "HARM: the run neither claims the effect happened nor learns whether it did. The operator is left with an effect that may have landed and a standing that never settles, and any later reconciliation re-pays the question at interest. It is NOT fail-open -- do-not-proceed never fabricates success -- so it hides as 'conservative' while quietly forgoing evidence the code already had.",
+
+    "DISTINGUISHING FACT: the consumer's Unanswered arm returns false/none/blocked, AND the same consumer (or one it composes) already issues a read command over the same transport for the very effect in question. The distinction from the sound default is whether that readback exists and was skipped.",
+
+    "RECEIPT (round-2 review 99008 on gunbc#17119, against head c293def): the 4th-arm family gave RunArgvTransportOutcome a dispatched-unknown arm and routed effectful consumers by name to readbacks (the service-slot start's systemctl ActiveState in gunbc.runner.runner_service_slot_start, the user-session linger reading in gunbc.runner.runner_user_session, the listener end in gunbc.runner.runner_qualification_attempt_run and gunbc.runner.runner_service_slot_controller, the sudoers removal readback in gunbc.spark.managed_grant_install, the spec-account post-write getent in gunbc.runner.runner_host_file_converge). The reviewer found that ~41 further consumer arms, cloned from the refused/killed arms, fold to false/none/blocked without a readback. Most are reads or genuine do-not-proceeds and are sound; the effectful ones among them are this class and are the open follow-up.",
+
+    "WHAT THIS IS NOT. It is not unresolved_callee_conflated_with_dispatched_elsewhere (a wrong identity); it is not bool_projection_over_a_typed_carrier (a lossy read of an existing carrier; here the carrier is already typed). It is not the retired fold-to-RunArgvTransportRefused: those arms were the class this family retired, and are gone. It is not a regression: the cloned arms kept the pre-existing overrun behaviour, which already did not read back.",
+
+    "RULE: where a consumer of a dispatched-but-unreadable leg holds an independent readback for that leg's effect, it runs the readback and settles on its reading; it may rest on do-not-proceed only when no such readback exists.",
+
+    "RUNG FOUND AT: below the ladder (the drop is silent -- a do-not-proceed verdict looks conservative and reads as correct, so no reviewer or exit flags it).",
+
+    "CEILING: structurally guaranteed when every effectful consumer of a dispatched-unknown leg settles on a readback (gunbc.design_argument::fail_closed); below that, do-not-proceed is the sound floor and this row tracks the consumers still above it."
+  ],
+
+  evidence: [],
+}
