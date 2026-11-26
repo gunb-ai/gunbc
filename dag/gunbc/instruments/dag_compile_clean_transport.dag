@@ -2,7 +2,7 @@ module gunbc.instruments.dag_compile_clean_transport
 
 import extdeps.shell
 import extdeps.rust.cargo { cargo_default_target_dir }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc

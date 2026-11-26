@@ -1926,6 +1926,11 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on, reason } =>
       join(["revoked the acceptance on ", revoked_on as String, " (",
         roadmap_acceptance_revocation_disposition_word(d: disposition), "): ", reason as String], "")
+    // The merge of an accepted head, captioned in the ledger's own voice: the day is the event's own
+    // merged_at, the thread and head are the merge evidence's own -- the page words what the log states,
+    // it invents nothing (the acceptance above stays the only "done" record).
+    PullRequestMergedEvent { merge } =>
+      join(["merged the pull request on ", merge.merged_at as String, " -- ", merge.pr_url as String, " at head ", merge.head_sha as String], "")
   }
 }
 
@@ -2082,7 +2087,7 @@ type IssueStreamEntry
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  AcceptanceRecordedEvent { receipt: _, evidence: _ } => false  AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  RedTreeRecorded { observation: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  AcceptanceRecordedEvent { receipt: _, evidence: _ } => false  AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  RedTreeRecorded { observation: _ } => false  PullRequestMergedEvent { merge: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
@@ -2185,6 +2190,10 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
     ReceiptReferenced { obligation: _, address: _, verdict: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     RedTreeRecorded { observation: _ } =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+    // A merge of an accepted head is not a publication either: the durable event stays on the log and
+    // the ledger row carries it; this row does not pretend a merge is a returned result.
+    PullRequestMergedEvent { merge: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
@@ -3565,10 +3574,11 @@ fn issue_close_form_nodes(node_id: String, command_context: IssueFormContext) ->
         issue_operator_text(name: "pr", label: "Merged pull request #", value: "", placeholder: "14189"),
         issue_operator_text(name: "witness_module", label: "Red-control witness module", value: "", placeholder: "test/claim/..."),
         issue_operator_text(name: "witness_fn", label: "Red-control witness fn", value: "", placeholder: "witness_executes"),
+        issue_operator_text(name: "red_kind", label: "RED STANDING (required): on_main or probe — the arm is SAID, never guessed", value: "", placeholder: "on_main or probe"),
         issue_operator_text(name: "red_at", label: "Commit where the witness FAILED (40 hex)", value: "", placeholder: "40 lowercase hex"),
         issue_operator_text(name: "green_at", label: "Commit where the witness PASSED (40 hex)", value: "", placeholder: "40 lowercase hex"),
-        issue_operator_text(name: "red_base", label: "PROBE ONLY: main commit the probe breaks (leave BOTH this and the ref empty to record the red as observed on main)", value: "", placeholder: "40 lowercase hex, or empty"),
-        issue_operator_text(name: "probe_ref", label: "PROBE ONLY: durable ref red-control/<row-id>", value: "", placeholder: "red-control/<row-id>, or empty"),
+        issue_operator_text(name: "red_base", label: "PROBE arm ONLY: main commit the probe breaks (blank for an on_main close — a red_base with no red_kind is refused, not read as a probe)", value: "", placeholder: "40 lowercase hex, or empty"),
+        issue_operator_text(name: "probe_ref", label: "PROBE arm ONLY: durable ref red-control/<row-id> (blank for an on_main close)", value: "", placeholder: "red-control/<row-id>, or empty"),
         issue_operator_text(name: "first_artifact", label: "First handback artifact", value: "", placeholder: "commit, PR, report, or artifact name"),
         issue_operator_text(name: "further_artifacts", label: "Further artifacts (newline-separated)", value: "", placeholder: "optional"),
       ]),

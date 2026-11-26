@@ -1,8 +1,8 @@
 module test.claim.serving.serving_relocation_witness
 
 // The nine tail scenarios for fabric-governed conversation relocation, as pure model witnesses
-// (run with: gunbc run --source-root dag --source-root src/v2 --entry
-//  dag/test/claim/serving/serving_relocation_witness.dag --claim-run). Each pins the decision the
+// (run with: gunbc test //test/claim/serving/serving_relocation_witness:<test fn>, one operand per
+//  claim). Each pins the decision the
 // model must reach — stay, move, defer, evacuate, recover, reconcile — and names the rule whose
 // removal flips it. These are MODEL witnesses, not executed router relocation; the router-observable
 // cases are the R-S3 frontier's acceptance in //gunbc/instruments:router-proxy-falsifier (not yet written).

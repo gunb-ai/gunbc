@@ -41,6 +41,7 @@ import std.content_hash { serialize_content_hash, Fnv1a64 }
 import std.decimal { decimal_digit_char }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_array, json_object, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text }
 import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
 // The capacity constant the close's own growth guard uses — the same budget the log's readers enforce.
 import gunbc.fabric.fabric_event_log { event_log_read_budget }
@@ -71,6 +72,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEventEnvelope, roadmap_event_kind_word, roadmap_retired_node_ids_of, RoadmapRetiredNodeIds,
   RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_acceptance_receipt_members,
+  event_member_string, event_member_object, event_member_nonempty, roadmap_acceptance_receipt_decode,
+  roadmap_red_control_read, RoadmapRedControlRead, RedControlReadValue, RedControlReadRefused,
+  roadmap_acceptance_revocation_disposition_decode, AcceptanceRevocationDisposition,
   roadmap_acceptance_migration_identity, roadmap_acceptance_migration_event_node,
   roadmap_acceptance_migration_problems, roadmap_migration_retirement_ids,
   roadmap_cutover_string_lists_agree,
@@ -78,13 +82,13 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
-  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
-  load_roadmap_acceptance_event_history_from_carrier_text
+  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused
 }
 
 // ── THE WIRE LINE ────────────────────────────────────────────────────────────────────────────────
-// The receipt -> canonical-line direction of the carrier codec. The parser side is the trusted
-// native seed; this produces exactly what that seed admits: {"variant":"acceptance_recorded",
+// The receipt -> canonical-line direction of the carrier codec; its reading side is this module's
+// roadmap_operator_acceptance_line_parse below, which reads through the event log's own member readers.
+// This produces exactly what that reader admits: {"variant":"acceptance_recorded",
 // "receipt":{...}} with the six receipt members, the red_control/handback tagged sub-objects, and
 // criteria_digest in lowercase hex16 (the parser's validate_hex16 law). Member order is fixed, so
 // the same receipt always serializes byte-identically — the determinism the close's replay relies
@@ -109,6 +113,118 @@ fn roadmap_operator_acceptance_receipt_line(receipt: RoadmapAcceptanceReceipt) -
       json_kv("variant", json_string("acceptance_recorded")),
       json_kv("receipt", json_object(roadmap_acceptance_receipt_members(r: receipt))),
     ]))
+  }
+}
+
+// THE LINE, READ BY THE MODEL THAT WRITES IT. This direction used to be the native seed's
+// (gunbc.roadmap.roadmap_acceptance_history_carrier parse_roadmap_acceptance_event_history_jsonl), and the
+// seed kept its own copy of the member names. When the ruling made an executed red control carry its
+// red_at/green_at pair, the modeled writer gained the members and the seed did not: the operator's law then
+// WROTE a line its own reader refused (an unknown field), and an old-spelling line parsed into a value the
+// modeled types had no field for, so the first match on it died with an unhandled null. One grammar, two
+// owners, and the divergence was invisible until a run said so. The read now goes through the SAME readers
+// the fold uses for a durable row — gunbc.roadmap.roadmap_event_log roadmap_red_control_read,
+// red_observation_read and roadmap_acceptance_receipt_decode — so the line a dictation produces and the
+// event the fold reads can no more disagree than two readings of one function can.
+//
+// WHAT IS WRITTEN STAYS READABLE, WHAT IS NEW MUST SPELL. A row recorded before the pair existed is read as
+// the standing it actually holds (RedControlTreeUnrecorded), never as evidence and never as a refusal —
+// append-only history is not rewritten to satisfy a later law. A line being offered NOW is refused WITH
+// WORDS at the arm that fails: the log's readers answer `none` to every unspellable control, and this route
+// is where the ruling says the recorder must give "a named diagnostic"
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+type RoadmapAcceptanceLineParse
+  = AcceptanceLineParsed { line: RoadmapAcceptanceEvent }
+  | AcceptanceLineRefused { reason: NonEmptyStr }
+
+fn roadmap_operator_acceptance_line_parse(text: String) -> RoadmapAcceptanceLineParse {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => AcceptanceLineRefused { reason: join(["the line is not one JSON document: ", json_document_gap_text(gap: gap)]) }
+    JsonDocumentParsed { value: doc } =>
+      match event_member_string(doc: doc, key: "variant") {
+        Absent => AcceptanceLineRefused { reason: "an acceptance line names its variant" }
+        Present { value: word } =>
+          if (word as String) == "acceptance_recorded" { roadmap_operator_acceptance_recorded_line_parse(doc: doc) }
+          else if (word as String) == "acceptance_revoked" { roadmap_operator_acceptance_revoked_line_parse(doc: doc) }
+          else { AcceptanceLineRefused { reason: join(["the line's variant is neither of the two the operator law spells (acceptance_recorded, acceptance_revoked): ", word as String]) } }
+      }
+  }
+}
+
+fn roadmap_operator_acceptance_recorded_line_parse(doc: JsonValue) -> RoadmapAcceptanceLineParse {
+  match event_member_object(doc: doc, key: "receipt") {
+    Absent => AcceptanceLineRefused { reason: "an acceptance line carries its receipt under \"receipt\"" }
+    Present { value: receipt } =>
+      match event_member_nonempty(doc: receipt, key: "node") {
+        Absent => AcceptanceLineRefused { reason: "the receipt names no node" }
+        Present { value: node } =>
+          match event_member_object(doc: receipt, key: "red_control") {
+            Absent => AcceptanceLineRefused { reason: "the receipt names no red control" }
+            Present { value: red } =>
+              match event_member_string(doc: red, key: "variant") {
+                Absent => AcceptanceLineRefused { reason: "the red control names no variant" }
+                Present { value: red_variant } =>
+                  match roadmap_red_control_read(red: red, variant: red_variant) {
+                    RedControlReadRefused { detail: why } => AcceptanceLineRefused { reason: join(["the receipt's red control: ", why as String]) }
+                    // The control spells. The rest of the receipt is then read by the log's own reader, so
+                    // nothing here re-spells it: a digest that is not hex16, an undelivered handback, an
+                    // empty accepted_by or a day that is not a calendar day is the fold's refusal, quoted.
+                    RedControlReadValue { control: _ } =>
+                      match roadmap_acceptance_receipt_decode(node: node, doc: doc, key: "receipt") {
+                        Absent => AcceptanceLineRefused { reason: "the receipt does not spell a closable acceptance: its criteria digest, handback, accepted_by or accepted_on is missing, empty, or malformed" }
+                        Present { value: parsed } => AcceptanceLineParsed { line: AcceptanceRecorded { receipt: parsed } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A REVOCATION LINE, same discipline: every member the revocation law requires is asked for by name, and
+// the words say which one was missing.
+fn roadmap_operator_acceptance_revoked_line_parse(doc: JsonValue) -> RoadmapAcceptanceLineParse {
+  match event_member_object(doc: doc, key: "exact_prior_receipt") {
+    Absent => AcceptanceLineRefused { reason: "a revocation line carries the receipt it revokes under \"exact_prior_receipt\"" }
+    Present { value: prior } =>
+      match event_member_nonempty(doc: prior, key: "node") {
+        Absent => AcceptanceLineRefused { reason: "the revoked receipt names no node" }
+        Present { value: node } =>
+          match roadmap_acceptance_receipt_decode(node: node, doc: doc, key: "exact_prior_receipt") {
+            Absent => AcceptanceLineRefused { reason: "the revoked receipt does not spell a closable acceptance: its criteria digest, red control, handback, accepted_by or accepted_on is missing, empty, or malformed" }
+            Present { value: receipt } =>
+              match event_member_object(doc: doc, key: "disposition") {
+                Absent => AcceptanceLineRefused { reason: "a revocation line names the disposition that withdrew the acceptance" }
+                Present { value: disposition } =>
+                  match event_member_string(doc: disposition, key: "variant") {
+                    Absent => AcceptanceLineRefused { reason: "the disposition names no variant" }
+                    Present { value: word } =>
+                      match roadmap_acceptance_revocation_disposition_decode(word: word) {
+                        Absent => AcceptanceLineRefused { reason: join(["the disposition is not one of the standings the law spells: ", word]) }
+                        Present { value: disposition_value } =>
+                          match event_member_nonempty(doc: doc, key: "revoked_by") {
+                            Absent => AcceptanceLineRefused { reason: "a revocation line names who revoked it" }
+                            Present { value: revoked_by } =>
+                              match event_member_nonempty(doc: doc, key: "revoked_on") {
+                                Absent => AcceptanceLineRefused { reason: "a revocation line names the day it revoked" }
+                                Present { value: revoked_on } =>
+                                  match event_member_nonempty(doc: doc, key: "reason") {
+                                    Absent => AcceptanceLineRefused { reason: "a revocation line gives its reason" }
+                                    Present { value: reason } => AcceptanceLineParsed { line: AcceptanceRevoked {
+                                      exact_prior_receipt: receipt,
+                                      disposition: disposition_value,
+                                      reason: reason,
+                                      revoked_by: revoked_by,
+                                      revoked_on: revoked_on,
+                                    } }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -211,13 +327,9 @@ fn roadmap_operator_acceptance_parse_tail(lines: List<String>) -> RoadmapAccepta
     f: (acc, entry) => match acc {
       RoadmapAcceptanceTailBad { line_index: i, detail: d } => RoadmapAcceptanceTailBad { line_index: i, detail: d }
       RoadmapAcceptanceTailOk { events: got } =>
-        match load_roadmap_acceptance_event_history_from_carrier_text(text: entry) {
-          RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: d as NonEmptyStr }
-          RoadmapAcceptanceEventHistoryLoaded { events: parsed } =>
-            match parsed.first() {
-              Absent => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: "line parsed to no event" as NonEmptyStr }
-              Present { value: e } => RoadmapAcceptanceTailOk { events: concat(got, [e]) }
-            }
+        match roadmap_operator_acceptance_line_parse(text: entry) {
+          AcceptanceLineRefused { reason: r } => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: r }
+          AcceptanceLineParsed { line: e } => RoadmapAcceptanceTailOk { events: concat(got, [e]) }
         }
     }
   )
@@ -655,7 +767,7 @@ fn roadmap_operator_close_append(
             },
             recorded_at: roadmap_operator_render_civil_date(date: roadmap_operator_date_from_epoch_secs(secs: inputs.at)))
           match applied.result {
-            EventAppended { id } => CloseWritten { event_id: id }
+            EventAppended { id, published_as: _ } => CloseWritten { event_id: id }
             EventAlreadyPresent { id } => CloseAlreadyRecorded { event_id: id }
             EventAppendRefused { id: _, step, reason } => CloseRefused {
               reason: CloseChainWriteRefused { step: step as NonEmptyStr, reason: reason as NonEmptyStr } }

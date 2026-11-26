@@ -1,4 +1,5 @@
 module test.claim.machine_intake.ampere_nvparam_console_observation_witness
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
