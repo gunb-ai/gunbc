@@ -8,7 +8,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, artifact_path, artifact_directory,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact,
   InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
-  BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, DriftWatchWorkflowYamlArtifact,
+  BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, Fci1BoundedExecutionContextArtifact,
   RunnerHostSudoersArtifact
@@ -22,6 +22,7 @@ import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, Hea
 import gunbc.fleet.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
 import gunbc.witness.hosted_runner_shadow_gate_workflow { expected_hosted_runner_shadow_gate_yml, ShadowGateWorkflowGenerated, ShadowGateWorkflowGenerationRefused }
 import gunbc.drift_watch_workflow { expected_drift_watch_workflow_yml, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
+import gunbc.site.gunb_ai_pages_workflow { expected_gunb_ai_pages_workflow_yml, GunbAiPagesWorkflowGenerated, GunbAiPagesWorkflowGenerationRefused }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
 import gunbc.gitignore_emit { expected_gitignore }
@@ -66,6 +67,7 @@ fn tier_o_fixed_artifacts() -> List<GeneratedArtifact> {
     BranchRunGrantBrokerWorkflowYamlArtifact,
     HostedRunnerShadowGateYamlArtifact,
     DriftWatchWorkflowYamlArtifact,
+    GunbAiPagesWorkflowYamlArtifact,
     GitignoreArtifact,
     GitattributesArtifact,
     GithooksPrePushArtifact,
@@ -127,6 +129,10 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
     DriftWatchWorkflowYamlArtifact => match expected_drift_watch_workflow_yml() {
       DriftWatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
       DriftWatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
+    }
+    GunbAiPagesWorkflowYamlArtifact => match expected_gunb_ai_pages_workflow_yml() {
+      GunbAiPagesWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
+      GunbAiPagesWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     GitignoreArtifact => TierOArtifactProduced { content: expected_gitignore() }
     GitattributesArtifact => match expected_gitattributes() {

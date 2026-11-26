@@ -718,6 +718,7 @@ jobs:
           GUNBC_HOSTNAME_CONVERGE_MODE: ${{ github.event.inputs.mode }}
           FLEET_CONVERGE_HOSTNAME_TARGET: ${{ github.event.inputs.subject_host }}
           FLEET_CONVERGE_HOSTNAME_PEER: ${{ github.event.inputs.host }}
+        if: github.event.inputs.mode == 'hostname_converge'
         timeout-minutes: 5
       - name: Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)
         run: |

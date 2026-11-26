@@ -53,9 +53,8 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // Rung: mitigatable. Next-rung trigger: a witness home whose source roots reach `src/v1`, or a host
 // builtin exposing the parser's transport the way `compile_dag_diagnostic_census` exposes diagnostics.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
-//     --entry src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag \
-//     --function bare_nullary_variant_references_are_carried_by_the_parser_transport_holds
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 \
+//     //v1/tests/claim/bare_variant_reference_occurrence_control_test:bare_nullary_variant_references_are_carried_by_the_parser_transport_holds
 
 // THE SUBJECT. Two bare nullary variant references -- `ZqxProbeRed` in a let initializer and `ZqxYes`
 // in tail position -- and one type reference, `ZqxAnswer`. Names are deliberately corpus-unique so the

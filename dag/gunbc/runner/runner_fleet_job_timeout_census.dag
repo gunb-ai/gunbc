@@ -73,12 +73,14 @@ import gunbc.generated_artifact {
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
   DriftWatchWorkflowYamlArtifact,
+  GunbAiPagesWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact,
   HostedRunnerShadowGateYamlArtifact,
   ReleaseBinsConsumerCheckScriptArtifact,
 }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
+import gunbc.site.gunb_ai_pages_workflow { gunb_ai_pages_workflow }
 import gunbc.heal_workflow { heal_workflow_of }
 import gunbc.heal_publisher_workflow { heal_publisher_census_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow_of }
@@ -221,7 +223,15 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
           }
         }
       )
-    )
+    ),
+    // gunb_ai_pages is handed over as a plain committed row: its producer gunb_ai_pages_workflow() returns a
+    // Workflow directly (it is not a run-step emitter this change retyped), so it carries no emission refusal and
+    // needs no arm in fleet_census_emissions. branch_run_grant_broker, by contrast, is retyped to
+    // branch_run_grant_broker_workflow_of() -> Outcome<Workflow> and reaches this census through the emissions
+    // ledger above, so it is deliberately NOT repeated here as a plain row.
+    [
+      FleetWorkflowCensusRow { artifact: GunbAiPagesWorkflowYamlArtifact, workflow: gunb_ai_pages_workflow() },
+    ]
   )
 }
 

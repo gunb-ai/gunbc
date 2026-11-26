@@ -1,0 +1,411 @@
+// THE ENGINE-SLOTS / ROUTER-CAP SINGLE-AUTHORITY WITNESS (class B3, 2026-11-24).
+// One number -- a replica's admitted concurrency -- had two homes: the Strata engine's --parallel
+// (written by hand, reserving VRAM per slot) and the router row's cap (derived from the capacity shape).
+// srv3 ran slots 8 beside cap 4 (4,642 experts resident, ~6.6 tok/s per conversation); ken ran cap 4
+// with the engine unmodeled (1.0 tok/s per stream). The repair makes the JOINED ADMISSION -- the capacity
+// shape at the grant of the layout being projected (serving_replica_profile::replica_admission_named) --
+// the ONE authority both ends read (engine: replica_engine_launch; router: router_dev_replica_shape), and
+// removes the writable slot field from the production launch record. The 2026-11-25 operator review found
+// the last split -- the engine reading the profile's grant while the router joined the projected layout --
+// and its reduced-grant and refused-grant controls are here. These claims pin BOTH ends to the one
+// derivation and carry the 2026-11-24 measurements (with their standing) as the price of the choice. The
+// class is filed as
+// gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them.
+module test.claim.serving.replica_engine_admission_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { fold_list }
+import std.nat { Nat }
+import std.measure {
+  PositiveSlotCount, positive_slot_count_value, token_count, token_count_value,
+  tokens_per_second, tokens_per_second_count, millisecond,
+}
+import std.optional { Optional, Present, Absent }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.strata.serve_flags { StrataServeFlags, strata_serve_flag_words }
+import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading }
+import gunbc.serving.serving_replica_profile {
+  ConcurrencyObservation, ConcurrencyScope, PerStream, PerMachine,
+  EngineLaunchDerived, EngineLaunchEstimated, EngineLaunchRefused, EngineLaunchRefusalReason,
+  LaunchParametersUnread, LaunchShapeRefused, LaunchTurnsZero,
+  ReplicaEngineLaunch, ReplicaAcrossDevices, ReplicaModel, ReplicaParallelism, ReplicaFigures, FiguresOnRow,
+  ServingReplicaProfile, StrataEngine, StrataModel,
+  card_of, replica_engine_launch, replica_admission_named,
+  srv3_strata_profile, srv4_strata_profile, strata_concurrency_price_observations,
+}
+import gunbc.serving.serving_capacity_anchor {
+  GrantAdmits, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
+  ServingShapeRefusalReason, ShapeLeastRateBelowPolicyAtConcurrency, ShapeGrantRefused,
+  engine_warm_swap, serving_conversation_policy,
+}
+import gunbc.serving.serving_host_memory {
+  ServingEngineMemory, ConversationSnapshotCost,
+  srv3_strata_engine_memory, srv3_strata_snapshot_cost,
+}
+import gunbc.serving.serving_layout {
+  ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingReplicaConfig,
+  ServingSharedArtifact, srv3_grant, srv3_layout, srv3_routed_expert_artifact,
+}
+import gunbc.serving.router_dev_policy { router_dev_replica_shape, router_dev_srv3_namings }
+import gunbc.serving.strata_ada_pair_cell {
+  srv3_iq3_s_artifact, srv3_strata_launch_parameters, srv3_strata_flags,
+}
+import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import gunbc.fleet.fleet_host_identity { HostIdentity, operator_host_srv3 }
+import gunbc.recurring_failure_mode.engine_slots_written_beside_the_admission_that_bounds_them {
+  engine_slots_written_beside_the_admission_that_bounds_them,
+}
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// ── THE POSITIVE CONTROLS: ONE NUMBER, BOTH ENDS ──────────────────────────────────────────────────
+
+fn launch_slots(launch: ReplicaEngineLaunch) -> Int {
+  match launch {
+    EngineLaunchDerived { slots: s } => positive_slot_count_value(slots: s)
+    EngineLaunchEstimated { slots: s, standings: _ } => positive_slot_count_value(slots: s)
+    EngineLaunchRefused { deployment: _, reason: _ } => 0
+  }
+}
+
+// A refusal has NO flags: no arm of this helper fabricates a record. The only flag-consuming claim
+// matches Present and goes false on Absent (gunbc.design_argument::fail_closed).
+fn launch_flags(launch: ReplicaEngineLaunch) -> Optional<StrataServeFlags> {
+  match launch {
+    EngineLaunchDerived { flags: f, slots: _ } => Present { value: f }
+    EngineLaunchEstimated { flags: f, slots: _, standings: _ } => Present { value: f }
+    EngineLaunchRefused { deployment: _, reason: _ } => Absent
+  }
+}
+
+fn launch_is_estimated(launch: ReplicaEngineLaunch) -> Bool {
+  match launch {
+    EngineLaunchEstimated { flags: _, slots: _, standings: ss } => count(ss) > 0
+    EngineLaunchDerived { flags: _, slots: _ } => false
+    EngineLaunchRefused { deployment: _, reason: _ } => false
+  }
+}
+
+fn is_shape_refusal(launch: ReplicaEngineLaunch, want: ServingShapeRefusalReason) -> Bool {
+  match launch {
+    EngineLaunchRefused { deployment: _, reason: LaunchShapeRefused { reason: r } } => reason_is(r: r, want: want)
+    EngineLaunchRefused { deployment: _, reason: _ } => false
+    EngineLaunchDerived { flags: _, slots: _ } => false
+    EngineLaunchEstimated { flags: _, slots: _, standings: _ } => false
+  }
+}
+
+fn reason_is(r: ServingShapeRefusalReason, want: ServingShapeRefusalReason) -> Bool {
+  match r {
+    ShapeLeastRateBelowPolicyAtConcurrency => match want { ShapeLeastRateBelowPolicyAtConcurrency => true _ => false }
+    _ => match want { ShapeLeastRateBelowPolicyAtConcurrency => false _ => true }
+  }
+}
+
+// Words of a flag after its literal: "--parallel 2" renders as ["--parallel", "2"].
+type FlagScan {
+  prev: String
+  found: String
+}
+
+fn flag_value(words: List<String>, flag: String) -> String {
+  let last = fold(words, init: FlagScan { prev: "", found: "" }, f: (acc, w) =>
+    if acc.found != "" {
+      acc
+    } else if acc.prev == flag {
+      FlagScan { prev: w, found: w }
+    } else {
+      FlagScan { prev: w, found: "" }
+    })
+  last.found
+}
+
+// ── THE PROJECTED LAYOUT THE CONTROLS JOIN ON ─────────────────────────────────────────────────────
+// The 2026-11-25 operator review found the last split of this class: the router capped on the grant of the
+// layout BEING PROJECTED while the engine recomputed from the grant written on the profile row. The two
+// consumers now run one joined admission (serving_replica_profile::replica_admission_named); these fixtures
+// project srv3's production layout row with a chosen grant so the claims can watch BOTH ends follow it.
+
+fn srv3_fixture_group() -> NonEmptyStr { "strata-pool" as NonEmptyStr }
+
+// srv3's real layout row with its strata-pool group's grant set to `conversations`; replicas, RAM and
+// evidence stay the production row's -- the controls vary the grant and nothing else.
+fn srv3_layout_granting(conversations: Nat) -> ServingLayoutResult {
+  match srv3_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
+      ServingLayoutConfigured {
+        replicas: map(rs, c => if (c.group as String) == (srv3_fixture_group() as String) {
+          ServingReplicaConfig { group: c.group, devices: c.devices, memory_max: c.memory_max, swap_max: c.swap_max, retention_budget: c.retention_budget, admitted_conversations: conversations, active_slots: conversations, max_context: c.max_context }
+        } else { c }),
+        unallocated_ram: u,
+        evidence: e,
+      }
+    ServingLayoutRefused { refusal: _ } => srv3_layout
+  }
+}
+
+// A projection that does not carry the replica's group at all -- the join must refuse, at both ends.
+fn srv3_layout_without_the_group() -> ServingLayoutResult {
+  match srv3_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
+      ServingLayoutConfigured { replicas: filter(rs, c => (c.group as String) != (srv3_fixture_group() as String)), unallocated_ram: u, evidence: e }
+    ServingLayoutRefused { refusal: _ } => srv3_layout
+  }
+}
+
+// POSITIVE CONTROL 1: srv3's production engine launch carries 2 slots -- the joined admission's turns from
+// the one 26 tok/s-at-2-way reading, the policy's 10 tok/s floor, and the projected layout's 2-conversation
+// grant -- and its argv renders --parallel 2. The figures are borrowed readings, so the reservation is an
+// ESTIMATE launch carrying its standing; the derivation never promotes an estimate into a derived figure.
+test fn srv3_engine_launch_derives_two_slots_from_the_shape() -> Bool {
+  let layout = srv3_layout_granting(2)
+  let launch = replica_engine_launch(p: srv3_strata_profile, layout: layout, group: srv3_fixture_group())
+  launch_slots(launch: launch) == 2
+    && launch_is_estimated(launch: launch)
+    && match launch_flags(launch: launch) {
+      Present { value: f } => flag_value(words: strata_serve_flag_words(flags: f), flag: "--parallel") == "2"
+      Absent => false
+    }
+}
+
+// POSITIVE CONTROL 2: the joined admission's turns and the engine's slots are the SAME derivation, not two
+// numbers that happen to agree: ask the admission and the launch on one profile under one layout and compare.
+// The router row's cap renders exactly this admission's turns (router_dev_shaped's OwnedCap { turns }), so
+// cap == slots holds by derivation.
+test fn engine_slots_and_shape_turns_are_one_number() -> Bool {
+  let layout = srv3_layout_granting(2)
+  match replica_admission_named(p: srv3_strata_profile, layout: layout, deployment: "srv3-strata", group: srv3_fixture_group()) {
+    ServingShapeEstimated { deployment: _, turns: t, held: _, bound: _, cold_reread: _, standings: _ } =>
+      launch_slots(launch: replica_engine_launch(p: srv3_strata_profile, layout: layout, group: srv3_fixture_group())) == (t as Int)
+    ServingShapeDerived { deployment: _, turns: t, held: _, bound: _, cold_reread: _ } =>
+      launch_slots(launch: replica_engine_launch(p: srv3_strata_profile, layout: layout, group: srv3_fixture_group())) == (t as Int)
+    ServingShapeRefused { deployment: _, reason: _ } => false
+  }
+}
+
+// A STRATA ROW WITH NO READ PARAMETERS RENDERS NO LAUNCH: srv4's launched parameters sit in its memory
+// rows' prose with a read obligation; the derivation refuses to name them rather than invent argv.
+test fn unread_parameters_refuse_the_launch_rather_than_inventing_argv() -> Bool {
+  match replica_engine_launch(p: srv4_strata_profile, layout: srv3_layout_granting(2), group: srv3_fixture_group()) {
+    EngineLaunchRefused { deployment: d, reason: LaunchParametersUnread { obligation: o } } =>
+      d == "srv4-strata" && (o as String) != ""
+    EngineLaunchRefused { deployment: _, reason: _ } => false
+    EngineLaunchDerived { flags: _, slots: _ } => false
+    EngineLaunchEstimated { flags: _, slots: _, standings: _ } => false
+  }
+}
+
+// ── THE DISCRIMINATING REDS: THE 2026-11-24 OPERATING POINT REFUSES THE SHAPE AND THE LAUNCH ──
+
+// The fixture: srv3's row with the throughput read at FOUR-way -- the shape the fleet actually ran
+// before 19:56 UTC on 2026-11-24 (router cap 4 with the engine reserving 8 slots). The same 26 tok/s
+// aggregate read at 4 puts every stream at ~6.5, below the policy's 10 tok/s floor, so the arm must
+// refuse: no production row can reserve 4 slots for a fleet whose policy asks 10 tok/s per stream. The
+// PROFILE's own grant quote stays at the operator's 2-way operating point (2 conversations) -- the
+// concurrency under test arrives through the PROJECTED LAYOUT, which is exactly the operator review's
+// discriminator: a profile that alone derives 2 slots must refuse when the layout it is projected onto
+// grants 4. What this refusal establishes is exactly the rung the failure-mode row declares: the
+// 2026-11-24 OPERATING POINT can no longer be the shape of a production launch through
+// replica_engine_launch -- the turns derive from the readings and the projected layout's grant, and the
+// readings fail the policy floor at 4-way. It does NOT establish that a second slot count cannot be
+// written anywhere: strata_launch_with_parallel is public and a raw StrataServeFlags is still
+// constructible (the cell record does exactly that, with 8). Below-the-ladder on the production path
+// until a production route runs this derivation -- the witnesses keep the model side honest, and the
+// row's trigger_capability names the two rungs up (production consumer, then host read-back join).
+fn srv3_variant_read_at(concurrency: Nat, aggregate: Nat) -> ServingReplicaProfile {
+  ServingReplicaProfile {
+    id: "srv3-strata",
+    host: operator_host_srv3,
+    engine_kind: StrataEngine,
+    model: StrataModel {
+      artifact: srv3_iq3_s_artifact,
+      artifact_standing: TranscribedUncited { read_obligation: "fixture: digests read on srv3" },
+      flags: Present { value: srv3_strata_launch_parameters },
+      flags_standing: Present { value: TranscribedUncited { read_obligation: "fixture" } },
+    },
+    gpu: map(srv3_grant.devices, d => card_of(d: d)),
+    parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
+    context_window: serving_fleet_context_cap,
+    figures: FiguresOnRow {
+      context: token_count(count: 100000),
+      throughput: ThroughputOperatorReading {
+        tokens_per_second: tokens_per_second(count: aggregate),
+        at_concurrency: concurrency,
+        standing: TranscribedUncited { read_obligation: "fixture reading at the named concurrency" },
+      },
+      cold_prefill: Present { value: tokens_per_second(count: 838) },
+      cold_prefill_standing: TranscribedUncited { read_obligation: "fixture" },
+    },
+    warm_ladder: [engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: TranscribedUncited { read_obligation: "fixture" })],
+    // The profile's OWN quote: the operator's 2-way operating point. The concurrency under test comes from
+    // the projected layout's grant (the claims below), never from this field -- that is the split closed.
+    grant: GrantAdmits { conversations: 2 },
+    engine_memory: Present { value: srv3_strata_engine_memory },
+    expert_artifact: Present { value: srv3_routed_expert_artifact },
+    monthly_cost: Absent,
+    monthly_cost_standing: Absent,
+  }
+}
+
+// RED 1 (the misconfiguration, refused): the 4-way arm sits below the per-stream floor and the engine
+// launch refuses rather than rendering a slot count the policy cannot price. The 4-way arrives as the
+// PROJECTED LAYOUT's grant -- the profile quotes 2-way, so only the join can produce this refusal.
+test fn the_2026_11_24_four_way_state_refuses_the_engine_launch() -> Bool {
+  is_shape_refusal(
+    launch: replica_engine_launch(p: srv3_variant_read_at(concurrency: 4, aggregate: 26), layout: srv3_layout_granting(4), group: srv3_fixture_group()),
+    want: ShapeLeastRateBelowPolicyAtConcurrency,
+  )
+}
+
+// RED 2 (the accepted positive control beside it): the SAME aggregate read at the concurrency the
+// operator chose -- 2-way, where the 2026-11-24 readings sat 13.6-15.8 tok/s per stream, above the
+// floor -- derives exactly the 2 slots the host now runs. This goes red if slots ever decouple from
+// turns again, in either direction.
+test fn the_two_way_operating_point_derives_two_slots() -> Bool {
+  launch_slots(launch: replica_engine_launch(p: srv3_variant_read_at(concurrency: 2, aggregate: 26), layout: srv3_layout_granting(2), group: srv3_fixture_group())) == 2
+}
+
+// THE OPERATOR REVIEW'S REDUCED-GRANT CONTROL (2026-11-25): the same 2-turn srv3 profile projected onto a
+// layout that grants ONE conversation. The router's cap and the engine's --parallel both follow the layout:
+// the admission's turns are 1 (the router row renders its cap as OwnedCap { turns } of exactly this shape,
+// router_dev_policy::router_dev_shaped_under) and the engine renders --parallel 1. This goes red if either
+// end ever reads a grant other than the projected layout's -- the old engine read of the profile's quote
+// would say 2 here.
+test fn a_reduced_grant_caps_the_router_and_the_engine_at_one() -> Bool {
+  let layout = srv3_layout_granting(1)
+  match first(router_dev_srv3_namings()) {
+    Present { value: n } =>
+      (match router_dev_replica_shape(n: n, layout: layout) {
+        ServingShapeEstimated { deployment: _, turns: t, held: _, bound: _, cold_reread: _, standings: _ } => t == 1
+        _ => false
+      })
+      && launch_slots(launch: replica_engine_launch(p: srv3_strata_profile, layout: layout, group: n.group)) == 1
+      && match launch_flags(launch: replica_engine_launch(p: srv3_strata_profile, layout: layout, group: n.group)) {
+        Present { value: f } => flag_value(words: strata_serve_flag_words(flags: f), flag: "--parallel") == "1"
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE OPERATOR REVIEW'S REFUSED-GRANT CONTROL: a projection that does not carry the replica's group refuses
+// at BOTH ends -- the router's shape refuses (ShapeGrantRefused) and the engine launch refuses with it.
+// Neither end falls back to the profile's own quote (gunbc.design_argument::fail_closed).
+test fn a_refused_grant_refuses_both_the_router_row_and_the_engine_launch() -> Bool {
+  let layout = srv3_layout_without_the_group()
+  match first(router_dev_srv3_namings()) {
+    Present { value: n } =>
+      (match router_dev_replica_shape(n: n, layout: layout) {
+        ServingShapeRefused { deployment: _, reason: ShapeGrantRefused { detail: _ } } => true
+        _ => false
+      })
+      && match replica_engine_launch(p: srv3_strata_profile, layout: layout, group: n.group) {
+        EngineLaunchRefused { deployment: _, reason: LaunchShapeRefused { reason: ShapeGrantRefused { detail: _ } } } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// The controls above key the layout by the group the PRODUCTION naming row carries -- a rename cannot let
+// them pass by joining on a group nobody projects.
+test fn the_controls_join_on_the_group_the_router_row_names() -> Bool {
+  match first(router_dev_srv3_namings()) {
+    Present { value: n } => (n.group as String) == (srv3_fixture_group() as String) && n.name == (srv3_strata_profile.id as String)
+    Absent => false
+  }
+}
+
+// THE BENCHMARK CELL KEEPS ITS OWN CONCURRENCY: the cell measures throughput AT a concurrency, so its
+// --parallel is the experiment's independent variable, not an admission. The repair removed the writable
+// number from PRODUCTION rows only; cutting it from the cell would delete the experiment.
+test fn the_benchmark_cell_still_writes_its_own_concurrency() -> Bool {
+  positive_slot_count_value(slots: srv3_strata_flags.parallel) == 8
+}
+
+// ── THE PRICE THE ROWS CARRY (observations, not facts) ────────────────────────────────────────────
+// The stream figures read at 4-way -- the concurrency the hand-written router cap imposed -- sit BELOW
+// the conversation policy's floor; the figures read at the 2-way operating point sit above it. The
+// comparison is made HERE, against serving_conversation_policy.min_stream_rate, on every arm these
+// claims select: no reading is exempted by its concurrency and no threshold is hard-coded beside the
+// policy's own number. The shape's refusal arithmetic and the operator's hand tuning agree because they
+// are the same arithmetic -- that is what prices concurrency as a selection rather than a knob
+// (gunbc.design_argument::selection_precedes_convergence).
+
+fn is_n_way_stream(o: ConcurrencyObservation, n: Nat) -> Bool {
+  match o.scope {
+    PerStream => positive_slot_count_value(slots: o.concurrency) == n
+    PerMachine => false
+  }
+}
+
+fn every_stream_below(o: List<ConcurrencyObservation>, rate: Nat) -> Bool {
+  fold(o, init: true, f: (acc, x) => acc && match x.scope {
+    PerStream => tokens_per_second_count(r: x.tokens_per_second) < rate
+    PerMachine => true
+  })
+}
+
+fn every_stream_at_or_above(o: List<ConcurrencyObservation>, rate: Nat) -> Bool {
+  fold(o, init: true, f: (acc, x) => acc && match x.scope {
+    PerStream => tokens_per_second_count(r: x.tokens_per_second) >= rate
+    PerMachine => true
+  })
+}
+
+fn floor_rate() -> Nat {
+  tokens_per_second_count(r: serving_conversation_policy.min_stream_rate)
+}
+
+test fn four_way_streams_measured_below_the_policy_floor() -> Bool {
+  let four = filter(strata_concurrency_price_observations, o => is_n_way_stream(o: o, n: 4))
+  count(four) > 0 && every_stream_below(o: four, rate: floor_rate())
+}
+
+test fn two_way_streams_measured_at_or_above_the_policy_floor() -> Bool {
+  let two = filter(strata_concurrency_price_observations, o => is_n_way_stream(o: o, n: 2))
+  count(two) > 0 && every_stream_at_or_above(o: two, rate: floor_rate())
+}
+
+// THE AGGREGATE PRICE, as the addendum pairs it: a machine at 4-way (srv3, 14 tok/s relayed) barely beat
+// a machine at 1-way (srv4, 11) -- quadrupling the streams bought barely one stream's more. If a future
+// edit makes concurrent streams look like a multiplier on these cards, this claim goes red: the rows
+// themselves falsify the claim of "little aggregate gain", as the reconciled instrument must.
+fn machine_aggregate(deployment: String, concurrency: Nat) -> Optional<Nat> {
+  fold(strata_concurrency_price_observations, init: Absent, f: (acc, x) =>
+    match acc {
+      Present { value: n } => Present { value: n }
+      Absent => match x.scope {
+        PerMachine => if x.deployment == deployment && positive_slot_count_value(slots: x.concurrency) == concurrency { Present { value: tokens_per_second_count(r: x.tokens_per_second) } } else { Absent }
+        PerStream => Absent
+      }
+    })
+}
+
+test fn four_streams_barely_beat_one_stream_per_machine() -> Bool {
+  match machine_aggregate(deployment: "srv3-strata", concurrency: 4) {
+    Present { value: four_way } => match machine_aggregate(deployment: "srv4-strata", concurrency: 1) {
+      Present { value: one_way } => four_way > one_way && four_way < 2 * one_way
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// -- the recurring_failure_mode row this PR files, read back through its module.
+
+// The row exists, names the class once, and carries its rung reading: found below the
+// ladder (the fleet ran the state), standing below the ladder on the production path with the ceiling
+// StructurallyGuaranteed -- the host read-back join that would close it is named, not built.
+fn the_failure_mode_row_names_the_class_and_its_rung() -> Bool {
+  let row = engine_slots_written_beside_the_admission_that_bounds_them
+  let named = row.identity == "engine_slots_written_beside_the_admission_that_bounds_them"
+  let rung_ok = match row.rung {
+    RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: _ } } => true
+    _ => false
+  }
+  let receipt_count = fold_list(xs: row.receipts, empty: 0, cons: (acc, r) => acc + 1)
+  named && rung_ok && (receipt_count >= 6)
+}

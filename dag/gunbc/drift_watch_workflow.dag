@@ -163,7 +163,8 @@ data drift_watch_permissions: WorkflowPermissions = WorkflowPermissions {
   pull_requests: none,
   issues: none,
   actions: none,
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 fn drift_watch_job(row: ProjectionDrift) -> Outcome<Job> {

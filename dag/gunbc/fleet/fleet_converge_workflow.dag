@@ -1618,6 +1618,7 @@ fn fleet_converge_build_job() -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermWrite }, // release-bins retention deletes cache entries (option A, msg_66b5d26e); THIS JOB ONLY
         id_token: none,
+        pages: none,
       }
     },
   }
@@ -1755,6 +1756,7 @@ fn fleet_converge_plan_revision_job() -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: none,
+        pages: none,
       }
     },
   }
@@ -5757,6 +5759,7 @@ data fleet_converge_srv1_root_mutation_job_permissions: WorkflowPermissions = Wo
   issues: none,
   actions: Present { value: PermRead },
   id_token: Present { value: PermWrite },
+  pages: none,
 }
 
 // A srv1 ROOT-MUTATION JOB IS ADMITTED ONLY FOR host == srv1, AT THE JOB: the WIF step and the
@@ -7042,6 +7045,7 @@ fn fleet_converge_mtcollins1_boot_job() -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -7375,6 +7379,7 @@ fn fleet_converge_job_with_steps(steps: List<Outcome<Step>>) -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   })
@@ -7488,6 +7493,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -7776,6 +7782,7 @@ fn fleet_converge_branch_run_grant_await_job() -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: none,
+        pages: none,
       }
     },
   }
@@ -8313,6 +8320,7 @@ fn fleet_converge_fleet_keypair_mint_job() -> Outcome<Job> {
         issues: none,
         actions: none,
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     },
       })
@@ -8753,6 +8761,7 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
         issues: none,
         actions: none,
         id_token: none,
+        pages: none,
       }
     }
   }
@@ -8809,6 +8818,7 @@ fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     }
   }
@@ -9561,6 +9571,7 @@ fn fleet_converge_arrival_converge_job() -> Outcome<Job> {
         issues: none,
         actions: Present { value: PermRead },
         id_token: Present { value: PermWrite },
+        pages: none,
       }
     },
   }
@@ -9668,6 +9679,7 @@ fn fleet_converge_review_sheet_converge_job() -> Outcome<Job> {
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: none, id_token: Present { value: PermWrite },
+      pages: none,
     } },
   }
       )
@@ -9714,6 +9726,7 @@ fn fleet_converge_namecheap_observe_job() -> Outcome<Job> {
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+      pages: none,
     } },
   }
       )
@@ -9822,6 +9835,7 @@ fn fleet_converge_printer_job() -> Outcome<Job> {
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+      pages: none,
     } },
   }
             )
@@ -9898,7 +9912,7 @@ data fleet_converge_gcp_iam_bootstrap_apply_job_gate: Expression = LogicalAnd {
 data fleet_converge_gcp_iam_bootstrap_apply_job_if: String = serialize_expression(expression: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
 
 fn fleet_converge_gcp_iam_bootstrap_permissions() -> WorkflowPermissions {
-  WorkflowPermissions { contents: Present { value: PermRead }, pull_requests: none, issues: none, actions: Present { value: PermRead }, id_token: Present { value: PermWrite } }
+  WorkflowPermissions { contents: Present { value: PermRead }, pull_requests: none, issues: none, actions: Present { value: PermRead }, id_token: Present { value: PermWrite }, pages: none }
 }
 
 fn fleet_converge_gcp_iam_bootstrap_concurrency() -> ConcurrencySpec {
@@ -10251,6 +10265,11 @@ fn fleet_converge_hostname_converge_readopt_step() -> Outcome<Step> {
 
 // THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target, or
 // a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
+// It runs only on mode=hostname_converge, like its sibling hostname steps: on every other mode the entry
+// answers "not this mode; nothing to gate" after a ~5 minute demand-acquired resolve, under a 5 minute
+// deadline, so the build job of an unrelated mode passed or timed out on runner speed alone (measured
+// 2026-11-26: 4m55s srv3-04 pass; 5m03s-5m04s on srv1-07/08/09, four timeouts on apply and
+// desired_instance_deploy runs 45731925410 and 45736282462).
 fn fleet_converge_hostname_converge_dispatch_admission_step() -> Outcome<Step> {
   bind_outcome(
     o: gunbc_ci_hostname_converge_invoke(target: gunbc_ci_hostname_converge_dispatch_admission_target),
@@ -10270,7 +10289,7 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Outcome<Step> {
       ]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
   })

@@ -1,0 +1,46 @@
+module extdeps.github.action.deploy_pages
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release { ActionRelease, ActionManifestReading, JavaScriptAction }
+
+// actions/deploy-pages: deploys the `github-pages` artifact of the running workflow to the repository's
+// GitHub Pages site. It requires the job's token to carry `pages: write` and `id-token: write`, and the
+// job to run in the `github-pages` environment (the action's README, read 2026-11-24).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/deploy-pages"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.deploy_pages",
+      decl_name: "deploy_pages_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data deploy_pages_v5_0_1: ActionRelease = ActionRelease {
+  owner: "actions", repo: "deploy-pages", tag: "v5.0.1", commit: "368f82528645a54fb793d4d04e342629a3f51346", subdirectory: none
+}
+
+// Read from action.yml at 368f82528645a54fb793d4d04e342629a3f51346 (`using: 'node24'`), 2026-11-24.
+data deploy_pages_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: deploy_pages_v5_0_1,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+]
+
+// The deployment environment the action deploys into. GitHub creates it when Pages is enabled with a
+// workflow source, and its protection rules decide which branches may deploy.
+data github_pages_environment: String = "github-pages"
