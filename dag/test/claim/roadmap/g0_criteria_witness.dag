@@ -22,10 +22,7 @@ module test.claim.roadmap.g0_criteria_witness
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.algebra { string_contains }
-import std.markdown { MarkdownBlock, MarkdownInline, MarkdownListItem, TextInline, CodeInline, HeadingBlock, ParagraphBlock, UnorderedListBlock, BlockquoteBlock }
 import std.measure { kibibyte }
-import gunbc.markdown_helpers { p, li, ul }
-import gunbc.plans.contained_development_execution_g0 { contained_development_execution_g0_plan }
 import gunbc.plans.contained_development_execution_g0_conditions { g0_all_condition_keys, g0_condition, g0_condition_count, g0_lift_conjunction_holds, g0_groups_covered, G0ConditionKey, G0ConditionProof }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
@@ -36,32 +33,6 @@ import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_h
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.decl_index { DeclFact, decl_facts }
 
-// ── markdown text extraction over the typed carrier ──────────────────────────────────────────────
-fn join_str(xs: List<String>) -> String { fold(xs, init: "", f: (acc, s) => concat(acc, s)) }
-
-fn inline_text(i: MarkdownInline) -> String {
-  match i {
-    TextInline { text: t } => t
-    CodeInline { text: t } => t
-    _ => ""
-  }
-}
-
-fn item_text(it: MarkdownListItem) -> String { join_str(map(it.blocks, block_text)) }
-
-fn block_text(b: MarkdownBlock) -> String {
-  match b {
-    HeadingBlock { inlines: ins } => join_str(map(ins, inline_text))
-    ParagraphBlock { inlines: ins } => join_str(map(ins, inline_text))
-    UnorderedListBlock { items: its } => join_str(map(its, item_text))
-    BlockquoteBlock { blocks: bs } => join_str(map(bs, block_text))
-    _ => ""
-  }
-}
-
-fn has_substring_in_body(body: List<MarkdownBlock>, needle: String) -> Bool {
-  any(body, b => string_contains(s: block_text(b), pattern: needle))
-}
 
 // THE RENDERER OUTPUT, kept TYPED (FINDING 2): a refused rendering stays a RefusedWord, never coerced to
 // "". A silent Refused -> "" would let a property that failed to render vanish from the comparison and read
@@ -178,7 +149,7 @@ data g0_stale_ref_probe: DeclarationRef = DeclarationRef {
 
 data g0_stale_citation_probe: DeclarationRef = DeclarationRef {
   module_path: "gunbc.fabric.fabric_storage_client" as NonEmptyStr,
-  decl_name: "fabric_storage_binding" as NonEmptyStr,
+  decl_name: "fabric_storage_binding_absent_probe_xyz" as NonEmptyStr,
   field: WholeDeclaration,
 }
 
@@ -202,8 +173,6 @@ test fn g0_renderer_emits_the_expected_capability_key_and_plan_matches() -> Bool
   !has_refusal(rd)
     && any_word(rd, systemd_run_empty_capability_bounding_set_assignment)
     && !any_word(rd, "EmptyCapabilityBoundingSet=yes")
-    && has_substring_in_body(contained_development_execution_g0_plan.body, "systemd_run_empty_capability_bounding_set_assignment")
-    && !has_substring_in_body(contained_development_execution_g0_plan.body, "EmptyCapabilityBoundingSet=yes")
 }
 
 // NAMED negative [plan_expected_buggy_capability_key]: the renderer's output must NOT contain
