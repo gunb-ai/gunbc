@@ -3916,6 +3916,21 @@ fn host_effect_argv_outcome_of(typed: TypedArgvExecOutcome) -> HostEffectArgvOut
 // keeps the very same reason text the fold used before this file grew a third carrier, so every caller
 // on RunArgvTransportOutcome reads exactly what it read before.  Callers that must distinguish a killed
 // leg from an unattempted one use run_argv_over_host_effect_transport_preserving_overrun instead.
+//
+// SHOULD BE GENERALIZED, NOT NOW.  RunArgvTransportOutcome has only the two arms its own comment (above
+// `type RunArgvTransportOutcome`) promises: RunArgvTransportRefused means "NO LEG RAN".  A leg that WAS
+// dispatched but whose reply came back unreadable/self-inconsistent (the wire-inconsistent arm below),
+// like the killed leg (the overrun arm), is NOT "no leg ran" -- its effect is unknown.  Both collapse
+// into RunArgvTransportRefused here, carrying a reason that names the real cause but NOT the uncertainty,
+// so an effectful consumer that switches on the arm (re-dispatch / report-not-attempted) reads a sent
+// leg as not-sent.  This is the same class of loss this family retires, on the transport-runner carrier.
+// It is left as-is for THIS PR (PR-1 of the staged 4th-arm family: arm + producer + HostLeg mapper +
+// converge reload consumer) because RunArgvTransportOutcome has ~24 effectful consumers, all of which
+// must decide the new arm explicitly.  NEXT-RUNG TRIGGER: the next PR in this family gives
+// RunArgvTransportOutcome a dispatched-unknown arm (or migrates the effectful callers to the four-arm
+// HostEffectArgvOutcome via run_argv_over_host_effect_transport_preserving_overrun) and updates every
+// exhaustive match; until then the read/observe adapters that already collapse an overrun the same way
+// (CodexRuntimeStep, BuildCacheRead -- "no usable observation", no effect to keep uncertain) are correct.
 fn run_argv_transport_outcome_of(preserving: HostEffectArgvOutcome) -> RunArgvTransportOutcome {
   match preserving {
     HostEffectArgvObserved { observed: o } => RunArgvTransportObserved { observed: o }
@@ -3931,6 +3946,11 @@ fn run_argv_transport_outcome_of(preserving: HostEffectArgvOutcome) -> RunArgvTr
   }
 }
 
+// SHOULD BE GENERALIZED, NOT NOW: same loss as run_argv_transport_outcome_of above -- a dispatched
+// leg whose reply was unreadable (wire-inconsistent), like a killed leg (overrun), collapses into
+// RunArgvTransportRefused whose carrier comment promises "NO LEG RAN". See the NEXT-RUNG TRIGGER block
+// there for the follow-up (give RunArgvTransportOutcome a dispatched-unknown arm / migrate effectful
+// callers to the four-arm preserving carrier), tracked in the next PR of this staged 4th-arm family.
 fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
   match typed {
   TypedArgvExecOverran { deadline: d } =>
