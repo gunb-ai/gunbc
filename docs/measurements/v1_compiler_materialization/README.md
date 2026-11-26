@@ -8,6 +8,12 @@ When `GUNBC_MATERIALIZATION_SHADOW_DIR` is set, a cold miss records the fresh an
 
 The predictions and captured results below describe the initial observation-only experiment. The integration test `fresh_process_predictions_match_observed_compiler_results` exercises the stricter acceptance above.
 
+### Binding an observation to its producer
+
+Each event includes `compiler_image_sha256`, the same image digest the observer uses in the question key. On Linux the observer opens `/proc/self/exe`. The fresh-process harness compares the events to the SHA-256 of the executable delivered by its own build. An empty trace cannot establish the pairing. The negative control executes a byte-distinct copy with identical code and compares the two fresh answers before requiring rejection of the image pairing. Set `GUNBC_SHADOW_STALE_CONTROL_IMAGE` to the absolute path of an independently built, image-reporting seed to run the same control across real builds.
+
+A producer may compare the image in this trace with the image it recorded at the end of a controlled build. The separately measured Cargo source/configuration candidate is experimental. Its dependency coverage and the original two-build result are described in [the compiler-rebuild measurement](RESULTS.md#compiler-rebuild). The executable digest remains the compiler input to the shadow key.
+
 ## Predictions, before observations
 
 Use one private workspace, the same compiler executable, two reached source files (entry and helper), and a fresh OS process for each invocation. Each edit starts from the named baseline. Compare the same logical file and compiler question across processes. Start with an empty private shadow directory. No production read of a saved result is permitted in this experiment.

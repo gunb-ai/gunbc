@@ -32,6 +32,7 @@ struct Probe {
 
 pub(super) struct Round {
     directory: PathBuf,
+    compiler_image_sha256: String,
     probes: Vec<Probe>,
 }
 
@@ -165,7 +166,11 @@ pub(super) fn begin(sources: &[Rc<SourceFile>]) -> Result<Option<Round>, String>
             }
         })
         .collect();
-    Ok(Some(Round { directory, probes }))
+    Ok(Some(Round {
+        directory,
+        compiler_image_sha256: hex::encode(image),
+        probes,
+    }))
 }
 
 pub(super) fn observe(
@@ -213,6 +218,7 @@ pub(super) fn observe(
             };
         let event = serde_json::json!({
             "question": QUESTION, "logical_source": source.path,
+            "compiler_image_sha256": round.compiler_image_sha256,
             "input_digest": hex::encode(probe.key), "output_digest": hex::encode(fresh),
             "lookup": lookup, "comparison": comparison, "bytes": bytes,
             "producer_ns": null, "lookup_ns": probe.lookup_ns,
@@ -331,6 +337,7 @@ fn missing_or_undeliverable_observations_refuse_the_round() {
     let index = crate::v1_std_core::build_newline_index("sample.dag".into(), "a".into());
     let round = |probes| Round {
         directory: PathBuf::new(),
+        compiler_image_sha256: hex::encode([0u8; 32]),
         probes,
     };
     let probe = || Probe {

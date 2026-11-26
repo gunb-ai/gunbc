@@ -19,6 +19,7 @@ fn main() -> ProcessExit {
 #[derive(Debug, Deserialize)]
 struct Event {
     question: String,
+    compiler_image_sha256: String,
     logical_source: String,
     input_digest: String,
     output_digest: String,
@@ -80,8 +81,17 @@ fn write_helper(case: &Experiment, literal: i32) {
 }
 
 fn run(case: &Experiment, store: Option<&Path>, expected_code: i32) -> Reading {
+    run_image(
+        case,
+        Path::new(env!("CARGO_BIN_EXE_gunbc")),
+        store,
+        expected_code,
+    )
+}
+
+fn run_image(case: &Experiment, image: &Path, store: Option<&Path>, expected_code: i32) -> Reading {
     let src = case.dir.join("src");
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_gunbc"));
+    let mut cmd = Command::new(image);
     cmd.current_dir(&case.repo).env_remove(STORE_ENV).arg("run");
     for root in &case.source_roots {
         cmd.arg("--source-root").arg(root);
@@ -107,6 +117,27 @@ fn run(case: &Experiment, store: Option<&Path>, expected_code: i32) -> Reading {
         stdout: output.stdout,
         events,
     }
+}
+
+/// Compare events with the producer's run-owned executable before attributing a command to it.
+fn require_producer_image(reading: &Reading, producer: &Path) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    if reading.events.is_empty() {
+        return Err("no shadow observations".into());
+    }
+    let mut image = fs::File::open(producer).map_err(|error| error.to_string())?;
+    let mut digest = Sha256::new();
+    std::io::copy(&mut image, &mut digest).map_err(|error| error.to_string())?;
+    let expected = hex::encode(digest.finalize());
+    for event in &reading.events {
+        if event.compiler_image_sha256 != expected {
+            return Err(format!(
+                "compiler image mismatch: expected {expected}, observed {}",
+                event.compiler_image_sha256
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn sample<'a>(
@@ -203,6 +234,10 @@ fn a_new_provider_under_an_admitted_root_refuses_before_shadow_observation() {
         assert_eq!(causes, [expected.as_str()], "{}", refused.stderr);
         assert!(refused.stdout.is_empty());
         assert!(refused.events.is_empty());
+        assert_eq!(
+            require_producer_image(&refused, Path::new(env!("CARGO_BIN_EXE_gunbc"))).unwrap_err(),
+            "no shadow observations"
+        );
         assert!(!refused.stderr.contains("[materialization-shadow-error]"));
     }
 
@@ -216,6 +251,7 @@ fn fresh_process_predictions_match_observed_compiler_results() {
     let case = create_experiment();
     let store = case.dir.join("store");
     let baseline = run(&case, Some(&store), 0);
+    require_producer_image(&baseline, Path::new(env!("CARGO_BIN_EXE_gunbc"))).unwrap();
     let entry = sample(&case, &baseline, "entry.dag", "miss", "absent");
     let helper = sample(&case, &baseline, "helper.dag", "miss", "absent");
 
@@ -319,6 +355,46 @@ fn fresh_process_predictions_match_observed_compiler_results() {
     assert!(disabled.events.is_empty());
     assert_eq!(disabled.stdout, baseline.stdout);
     fs::remove_dir_all(&case.dir).unwrap();
+}
+
+// ELF permits trailing bytes. This control executes two distinct images with identical code and
+// version output. The measured SHA must still distinguish them. An independent prior build can
+// be supplied instead to replay the same stale-producer control across builds.
+#[cfg(target_os = "linux")]
+#[test]
+fn identical_answers_from_a_different_compiler_image_refuse_the_pairing() {
+    use std::io::Write;
+    let case = create_experiment();
+    let producer = Path::new(env!("CARGO_BIN_EXE_gunbc"));
+    let alternate = if let Some(path) = std::env::var_os("GUNBC_SHADOW_STALE_CONTROL_IMAGE") {
+        PathBuf::from(path)
+    } else {
+        let path = case.dir.join("alternate-gunbc");
+        fs::copy(producer, &path).unwrap();
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(b"\0shadow-image-negative-control")
+            .unwrap();
+        path
+    };
+    let store = case.dir.join("store");
+    let fresh = run_image(&case, producer, Some(&store), 0);
+    let stale = run_image(&case, &alternate, Some(&store), 0);
+    require_producer_image(&fresh, producer).unwrap();
+    require_producer_image(&stale, &alternate).unwrap();
+    // Matching answers, command output, and ordinary success cannot stand in for image identity.
+    for file in ["entry.dag", "helper.dag"] {
+        let before = sample(&case, &fresh, file, "miss", "absent");
+        let after = sample(&case, &stale, file, "miss", "absent");
+        assert_eq!(before.output_digest, after.output_digest);
+        assert_ne!(before.input_digest, after.input_digest);
+    }
+    assert_eq!(fresh.stdout, stale.stdout);
+    let reason = require_producer_image(&stale, producer).unwrap_err();
+    assert!(reason.starts_with("compiler image mismatch:"), "{reason}");
+    fs::remove_dir_all(case.dir).unwrap();
 }
 
 /// Independent of the shadow observer: compare fresh, typed compiler answers over a controlled
