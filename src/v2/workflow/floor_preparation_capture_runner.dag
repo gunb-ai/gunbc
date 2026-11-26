@@ -1194,6 +1194,22 @@ fn floor_preparation_capture_run() -> String {
       Absent {} => false
     }
     let splice_ok = phase_rows_present && splice_written
+    // THE RETAINED LOG IS WRITTEN BEFORE THE CLAIMS LEG, NOT AFTER IT. The witness
+    // floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log reads this file from
+    // inside the claims leg; while the write sat in the terminal block, the witness could only
+    // ever see a PREVIOUS run's bytes or none -- a permanent structural FAIL no capture could
+    // clear. Both legs are complete at this point, so the raw evidence exists; writing it before
+    // the gates decide anything is what the "LEG OUTPUT, not verdict output" comment has always
+    // claimed. Writing it is still not a pass: the terminal gate refuses without clean legs.
+    let legs_clean = untrimmed_record.clean
+      && (length(xs: survivors) == 0 || graded_record.clean)
+    let retained_write = if legs_clean {
+      (Filesystem.Write(
+        path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
+        content: retained)).success
+    } else {
+      false
+    }
     let claims_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
       ["--entry", floor_preparation_witness_module,
@@ -1292,15 +1308,10 @@ fn floor_preparation_capture_run() -> String {
     // still refuses without them reading green.
     // A skipped graded leg (nothing survived the untrimmed pass) is CLEAN BY CONSTRUCTION: there
     // was nothing to re-run. Stated, not assumed -- the receipts print 'skipped entries=0'.
-    let legs_clean = untrimmed_record.clean
-      && (length(xs: survivors) == 0 || graded_record.clean)
+    // The write itself already happened BEFORE the claims leg (see RETAINED WRITE ABOVE); this
+    // receipt only reports what that write reported to itself (review 97945).
     let write_receipt = if legs_clean {
-      // Each write reports ITSELF (review 97945): the retained artifact has its own receipt;
-      // there is no second committed copy to write anymore.
-      let w1 = Filesystem.Write(
-        path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
-        content: retained)
-      if w1.success { "retained=written" } else { "retained=WRITE_FAILED" }
+      if retained_write { "retained=written" } else { "retained=WRITE_FAILED" }
     } else { "retained=skipped legs not clean" }
     let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
     if !report_ok || length(xs: missing) > 0 || !splice_ok {
