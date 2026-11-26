@@ -1,0 +1,5 @@
+HOT srv1 load (40.44)
+=== STAGE P2 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 1/12 acquired by eager-koi-371 at 2026-11-26T03:41:56Z: bash stageP2_probe.sh
+STAGE P2 RC=0 (real heavy-slot rc; never a pipe)

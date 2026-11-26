@@ -24,7 +24,8 @@ import v2.compiler.effect_demand {
   filesystem_wall_compile_gate_trigger,
   filesystem_effect_reach_census,
   filesystem_effect_direct_reach_wall_holds,
-  filesystem_effect_callee_matches_identity
+  filesystem_effect_callee_matches_identity,
+  filesystem_effect_debt_contract_distinct_count
 }
 // THE REAL ROSTER AND THE WALL ITSELF, from the module that owns the row identity, the roster and the
 // predicate (review 98562 finding 2: no second row type, no hand-written adapter, no restated
@@ -49,19 +50,28 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.std.optional { Absent, Optional, Present }
 import v2.extdeps.languages.dag {
+  dag_binding_branded_atom_identity,
+  dag_lex_token_symbol,
   dag_language_model,
   import_binding_rows_from_decl_node,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
   qualified_name_from_module_node
 }
 import v2.std.namespace_alias { AliasBindingRow }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
-import std.algebra { Cons, Empty, fold_list, length, string_contains }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
+import std.algebra { Cons, Empty, fold_list, length, list_append, string_contains }
+import std.coercion { unicode_scalar_fold }
 import std.types { Bool, List, NonEmptyStr }
 import v2.std.text { String }
 import v2.std.node {
   Node,
   node_subtree_nodes,
+  symbol_eq,
   symbol_intern_lexeme,
   symbol_lexeme,
   TypeNode,
@@ -69,6 +79,8 @@ import v2.std.node {
   node_synthetic
 }
 import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved, closure_declarations_demand }
+import v2.std.node_query { find_named_child }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -250,7 +262,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
           == qualified_name_from_dotted_string(
             dotted: concat(
               qualified_name_to_dotted_string(qn: self_host_read_roster_manifest_site.module),
-              concat(".", symbol_lexeme(sym: self_host_read_roster_manifest_site.enclosing_declaration))
+              concat(".", unicode_scalar_fold(xs: symbol_lexeme(sym: self_host_read_roster_manifest_site.enclosing_declaration)))
             )
           )
       }
@@ -262,7 +274,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
           == qualified_name_from_dotted_string(
             dotted: concat(
               qualified_name_to_dotted_string(qn: self_host_fold_side_bytes_site.module),
-              concat(".", symbol_lexeme(sym: self_host_fold_side_bytes_site.enclosing_declaration))
+              concat(".", unicode_scalar_fold(xs: symbol_lexeme(sym: self_host_fold_side_bytes_site.enclosing_declaration)))
             )
           )
       }
@@ -447,9 +459,9 @@ test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
   match filesystem_reach_self_host_roster {
     ReachedFreePrimitiveDirectly { site: site, cause: cause } =>
       (qualified_name_to_dotted_string(qn: site.module) == "v2.compiler.self_host")
-        && (symbol_lexeme(sym: site.enclosing_declaration) == "read_roster_manifest")
+        && symbol_eq(a: symbol_intern_lexeme(lexeme: "read_roster_manifest"), b: site.enclosing_declaration)
         && (site.site_occurrence == 1)
-        && (symbol_lexeme(sym: cause) == "filesystem_read_reached_outside_filesystem_handler")
+        && symbol_eq(a: symbol_intern_lexeme(lexeme: "filesystem_read_reached_outside_filesystem_handler"), b: cause)
     ReachedThroughHandler { site: _ } => false
   }
 }
@@ -641,8 +653,7 @@ test fn filesystem_derived_census_refuses_neither_the_homonym_nor_a_non_filesyst
   (any(
     xs: report.reaches,
     predicate: fn(r) {
-      symbol_lexeme(sym: filesystem_effect_reach_site(reach: r).enclosing_declaration)
-        == "local_filesystem_read_holder"
+      symbol_eq(a: symbol_intern_lexeme(lexeme: "local_filesystem_read_holder"), b: filesystem_effect_reach_site(reach: r).enclosing_declaration)
     }
   ) == false)
     && (length(xs: report.reaches) == 4)
@@ -947,7 +958,7 @@ fn corpus_resolved_authored_type(type_text: String, bindings: List<AliasBindingR
       if acc != type_text {
         acc
       } else {
-        if symbol_lexeme(sym: row.binding) == type_text {
+        if unicode_scalar_fold(xs: symbol_lexeme(sym: row.binding)) == type_text {
           qualified_name_to_dotted_string(qn: row.target)
         } else {
           acc
@@ -955,6 +966,99 @@ fn corpus_resolved_authored_type(type_text: String, bindings: List<AliasBindingR
       }
     }
   )
+}
+
+// THE SANCTIONED READERS, NOT A HAND WALK (review 98995 finding on the fabricated walk; manager
+// 2026-11-26 correction: Node carries {kind, children, occurrence_id} -- there is NO .uses and NO
+// .name field, so the prior reader was fabricated and is GONE, not patched). The uses clause and its
+// entries are read through the grammar's own capture machinery -- parse_subtree_find_production_captured
+// over the emitted production identities the compiler itself enumerates (v2.compiler.body_lowering_fold
+// body_lower_is_structure_preserved_emitted names ^dag_surface_uses_clause and ^dag_surface_uses_entry),
+// and dotted names through parse_qualified_name_segments_from_capture, the same reader
+// v2.extdeps.languages.dag alias_binding_row_target_from_decl uses. Absent clause or entry yields zero
+// rows (a fn without `uses` authors no restatement row); a present-but-malformed capture REJECTS with
+// the segments reader's own diagnostic -- fail_closed, no silent drop.
+// THE SANCTIONED READERS, NOT A HAND WALK (review 98995; manager 2026-11-26: Node is {kind, children,
+// occurrence_id} -- the earlier .uses/.name walk was fabricated and is GONE, not patched). The walk
+// filters fn declarations by the production identity the parse bridge stamps on the node
+// (v2.std.grammar parse_production_emitted_identity_optional, the reader v2.extdeps.languages.dag
+// import_binding_rows_from_decl_node uses), finds the uses clause and entry through the capture
+// machinery (parse_subtree_find_production_captured over the emitted production identities
+// v2.compiler.body_lowering_fold enumerates: ^dag_surface_uses_clause, ^dag_surface_uses_entry), reads
+// the alias through the branded-atom reader the decoder itself uses for declaration names
+// (v2.extdeps.languages.dag dag_binding_branded_atom_identity over the entry's left projection -- the
+// same projection v2.std.grammar parse_qualified_name_segments_from_capture trusts), and the contract
+// type through that segments reader over the ^dag_surface_qualified_name capture. Absent clause =>
+// zero rows (a fn without `uses` authors no restatement row); a PRESENT clause whose entry or name
+// cannot be read REJECTS -- fail_closed, no silent drop. The blindness guard claim
+// (every_authorized_restatement_identity_is_found_in_the_corpus) is what turns a wrong reader shape
+// red instead of green: it demands every authorized roster identity be found among these tree-derived
+// arrivals.
+fn witness_uses_rows(decl: Node, module_path: String, bindings: List<AliasBindingRow>) -> Outcome<List<DemandRestatementRowIdentity>> {
+  match parse_subtree_find_production_captured(root: decl, emitted: ^dag_surface_uses_clause) {
+    ParseSubtreeAbsent => outcome_accepted(value: [])
+    ParseSubtreeFound { captured: clause_capture } =>
+      match parse_subtree_find_production_captured(root: clause_capture, emitted: ^dag_surface_uses_entry) {
+        ParseSubtreeAbsent => outcome_accepted(value: [])
+        ParseSubtreeFound { captured: entry_capture } =>
+          match find_named_child(root: entry_capture, name: ^grammar_sequence_left_node_projection) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: alias_node, diagnostics: _ } =>
+              match witness_alias_atom(node: alias_node) {
+                Present { value: alias_sym } =>
+                  match parse_subtree_find_production_captured(root: entry_capture, emitted: ^dag_surface_qualified_name) {
+                    ParseSubtreeAbsent =>
+                      outcome_rejected(d: Diagnostic {
+                        reason: ^named_child_missing,
+                        at: node_locus(node: entry_capture),
+                        correction: Unavailable { reason: ExternalContractUnknown }
+                      })
+                    ParseSubtreeFound { captured: contract_capture } =>
+                      match parse_qualified_name_segments_from_capture(qn_capture: contract_capture, root: entry_capture) {
+                        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                        Accepted { value: contract_segments, diagnostics: _ } =>
+                          outcome_accepted(value: [
+                            DemandRestatementRowIdentity {
+                              module_path: module_path as NonEmptyStr,
+                              declaration: unicode_scalar_fold(xs: symbol_lexeme(sym: alias_sym)) as NonEmptyStr,
+                              alias: unicode_scalar_fold(xs: symbol_lexeme(sym: alias_sym)) as NonEmptyStr,
+                              authored_type: corpus_resolved_authored_type(
+                                type_text: qualified_name_to_dotted_string(qn: qualified_name_from_string_segments(segments: contract_segments)),
+                                bindings: bindings
+                              ) as NonEmptyStr
+                            }
+                          ])
+                      }
+                  }
+                Absent =>
+                  outcome_rejected(d: Diagnostic {
+                    reason: ^named_child_missing,
+                    at: node_locus(node: alias_node),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  })
+              }
+          }
+      }
+  }
+}
+
+// THE ALIAS ATOM, ONE ROUTE (single_authority): branded first -- the binding brand the decoder's own
+// name reader uses -- then the plain atom identity, and only where the plain atom is not a bare token
+// class (dag_lex_token_symbol rejects those, so a token node can never masquerade as a name).
+fn witness_alias_atom(node: Node) -> Optional<Symbol> {
+  match dag_binding_branded_atom_identity(node: node) {
+    Present { value: branded } => Present { value: branded }
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: sym } =>
+          if dag_lex_token_symbol(sym: sym) {
+            Absent
+          } else {
+            Present { value: sym }
+          }
+        Absent => Absent
+      }
+  }
 }
 
 fn corpus_rows_for_witness(w: DagSourceReadWitness) -> Outcome<List<DemandRestatementRowIdentity>> {
@@ -970,47 +1074,28 @@ fn corpus_rows_for_witness(w: DagSourceReadWitness) -> Outcome<List<DemandRestat
             f: fn(module_qn) {
               let module_path = qualified_name_to_dotted_string(qn: module_qn)
               let bindings = corpus_import_bindings(module_root: artifact.tree)
-              outcome_accepted(
-                value: fold_list(
-                  xs: node_subtree_nodes(root: artifact.tree),
-                  empty: [],
-                  cons: fn(acc, node) {
-                    if length(xs: node.uses) == 0 {
-                      acc
-                    } else {
-                    if node.name == "" {
-                      acc
-                    } else {
-                      concat(
-                        acc,
-                        fold_list(
-                          xs: node.uses,
-                          empty: [],
-                          cons: fn(use_acc, use_entry) {
-                            match use_entry.children {
-                              Cons { head: resource, tail: _ } =>
-                                if resource.name == "" {
-                                  use_acc
-                                } else {
-                                  Cons {
-                                    head: DemandRestatementRowIdentity {
-                                      module_path: module_path as NonEmptyStr,
-                                      declaration: node.name as NonEmptyStr,
-                                      alias: use_entry.name as NonEmptyStr,
-                                      authored_type: corpus_resolved_authored_type(type_text: resource.name, bindings: bindings) as NonEmptyStr
-                                    },
-                                    tail: use_acc
-                                  }
-                                }
-                              Empty => use_acc
-                            }
+              fold_list(
+                xs: node_subtree_nodes(root: artifact.tree),
+                empty: outcome_accepted(value: [] as List<DemandRestatementRowIdentity>),
+                cons: fn(acc, node) {
+                  bind_outcome(
+                    o: acc,
+                    f: fn(got) {
+                      match parse_production_emitted_identity_optional(node: node) {
+                        Present { value: emitted_id } =>
+                          if emitted_id != ^dag_surface_fn_decl {
+                            outcome_accepted(value: got)
+                          } else {
+                            bind_outcome(
+                              o: witness_uses_rows(decl: node, module_path: module_path, bindings: bindings),
+                              f: fn(rows) { outcome_accepted(value: list_append(left: got, right: rows)) }
+                            )
                           }
-                        )
-                      )
+                        Absent => outcome_accepted(value: got)
+                      }
                     }
-                    }
-                  }
-                )
+                  )
+                }
               )
             }
           )
@@ -1028,7 +1113,7 @@ data corpus_restatement_arriving: Outcome<List<DemandRestatementRowIdentity>> =
     f: fn(ingest) {
       fold_list(
         xs: ingest,
-        empty: outcome_accepted(value: []),
+        empty: outcome_accepted(value: [] as List<DemandRestatementRowIdentity>),
         cons: fn(acc, w) {
           bind_outcome(
             o: acc,
@@ -1172,8 +1257,7 @@ fn census_discharge_verdict() -> Bool {
     && (any(
       xs: report.offenders,
       predicate: fn(o) {
-        symbol_lexeme(sym: filesystem_effect_reach_site(reach: o).enclosing_declaration)
-          == "door_ledger_row"
+        symbol_eq(a: symbol_intern_lexeme(lexeme: "door_ledger_row"), b: filesystem_effect_reach_site(reach: o).enclosing_declaration)
       }
     ) == false)
     // ...and the CONTRACT still demands the dropped member, so the join refuses -- the census

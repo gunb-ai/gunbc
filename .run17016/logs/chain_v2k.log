@@ -1,0 +1,19 @@
+LAUNCHER_HOST=cf0f1a6997e9 LAUNCHER_BOOT=c095c0cd
+LAUNCHER_CMD: run_stage.sh a8d7e7a4eab815982f75a3b086bb084ad822f942 stage2 stage2_run.sh 
+HOT srv1 load1min=42.43 (>=40), waiting
+=== STAGE stage2 at HEAD a8d7e7a4eab815982f75a3b086bb084ad822f942; holders at acquire-time:
+    PID=335322 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/usr/bin/dash
+    PID=335348 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/usr/bin/time
+    PID=335350 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/home/briansrls/scratch/valiant-badger-417/main-tree/target/release/gunbc
+    PID=583911 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-565001.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/home/briansrls/scratch/quiet-lynx-18/gunbc/target/release/gunbc
+    PID=634973 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-605024.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/bash
+    PID=806889 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-605024.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/home/briansrls/scratch/zesty-koi-131/zkfinal2/target/release/gunbc
+    PID=810487 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-810451.scope, CWD=/home/briansrls/scratch/wise-fox-453/red EXE=/usr/bin/bash
+    PID=810513 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-810451.scope, CWD=/home/briansrls/scratch/wise-fox-453/red EXE=/home/briansrls/scratch/wise-fox-453/target-red/release/gunbc
+    PID=825541 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-825472.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/usr/bin/bash
+    PID=825553 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-825472.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/home/briansrls/scratch/quiet-lynx-18/gunbc/target/release/gunbc
+    PID=918568 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-918552.scope, CWD=/home/briansrls/scratch/clever-carp-758/sweep_b6b6740d1f3 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/cargo
+    PID=934690 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-918552.scope, CWD=/home/briansrls/scratch/clever-carp-758/sweep_b6b6740d1f3 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    QUEUE:
+SSH_CHILD_PID=20503 LAUNCH_UTC=2026-11-26T15:46:00Z OUT=logs/stage2_a8d7e7a4eab.out
+STAGE stage2 RC=6 (real heavy-slot rc; never a pipe's) END_UTC=2026-11-26T15:46:00Z

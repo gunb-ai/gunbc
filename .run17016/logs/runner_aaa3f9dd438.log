@@ -1,0 +1,62 @@
+[pre-push] cargo fmt --all --check
+remote: 
+remote: Create a pull request for 'head-aaa3f9dd43886b3edabd0206e8176bc7ed0542ab' on GitHub by visiting:        
+remote:      https://github.com/gunb-ai/gunbc/pull/new/head-aaa3f9dd43886b3edabd0206e8176bc7ed0542ab        
+remote: 
+03:37:14 LSREMOTE_OK head-aaa3f9dd438
+03:37:14 FETCH floor main (plain git, no slot)
+03:37:14 FETCH head tree (plain git, no slot)
+03:37:14 === stage 0b (stage0b_floor_bin.sh) head=aaa3f9dd438
+HOT srv1 load (50.96)
+=== STAGE 0b at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:16Z: bash stage0b_floor_bin.sh
+STAGE 0b RC=0 (real heavy-slot rc; never a pipe)
+03:39:16 stage 0b rc=0
+03:39:21 === stage 1 (stage1_build.sh) head=aaa3f9dd438
+=== STAGE 1 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:22Z: bash stage1_build.sh
+STAGE 1 RC=0 (real heavy-slot rc; never a pipe)
+03:39:22 stage 1 rc=0
+03:39:27 === stage G (stageG_gate.sh) head=aaa3f9dd438
+=== STAGE G at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:28Z: bash stageG_gate.sh
+STAGE G RC=0 (real heavy-slot rc; never a pipe)
+03:39:29 stage G rc=0
+03:39:34 === stage 2 (stage2_module.sh) head=aaa3f9dd438
+=== STAGE 2 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:35Z: bash stage2_module.sh
+STAGE 2 RC=0 (real heavy-slot rc; never a pipe)
+03:39:37 stage 2 rc=0
+03:39:42 === stage 2b (stage2b_floorsrc.sh) head=aaa3f9dd438
+=== STAGE 2b at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:43Z: bash stage2b_floorsrc.sh
+STAGE 2b RC=0 (real heavy-slot rc; never a pipe)
+03:39:43 stage 2b rc=0
+03:39:48 === stage P1 (stageP1_probe.sh) head=aaa3f9dd438
+=== STAGE P1 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:49Z: bash stageP1_probe.sh
+STAGE P1 RC=0 (real heavy-slot rc; never a pipe)
+03:39:50 stage P1 rc=0
+03:39:55 === stage P2 (stageP2_probe.sh) head=aaa3f9dd438
+HOT srv1 load (40.44)
+=== STAGE P2 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 1/12 acquired by eager-koi-371 at 2026-11-26T03:41:56Z: bash stageP2_probe.sh
+STAGE P2 RC=0 (real heavy-slot rc; never a pipe)
+03:41:57 stage P2 rc=0
+03:42:02 === stage F (stageF_floor.sh) head=aaa3f9dd438
+HOT srv1 load (40.56)
+HOT srv1 load (42.66)
+HOT srv1 load (41.05)
+HOT srv1 load (42.00)
+HOT srv1 load (48.90)
+HOT srv1 load (41.61)
+HOT srv1 load (45.58)
+03:56:08 stage F rc=143
+03:56:08 STOP nonzero rc at stage F

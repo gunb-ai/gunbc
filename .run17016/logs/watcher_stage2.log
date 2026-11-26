@@ -1,0 +1,31 @@
+[2026-11-26T16:18:49Z] GUARD SCAN at release (verbatim):
+    PID=1060999 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1060978.scope, CWD=/home/briansrls/scratch/eager-heron-455/gunbc EXE=/usr/bin/bash
+    PID=1126112 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1126097.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/home/briansrls/scratch/quiet-lynx-18/gunbc/target/release/gunbc
+    PID=1157776 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1157637.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/usr/bin/bash
+    PID=1157784 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1157637.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/home/briansrls/scratch/quiet-lynx-18/gunbc/target/release/gunbc
+    PID=1184579 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1184453.scope, CWD=/home/briansrls/scratch/wise-fox-453/head EXE=/usr/bin/bash
+    PID=1184599 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1184453.scope, CWD=/home/briansrls/scratch/wise-fox-453/head EXE=/home/briansrls/scratch/wise-fox-453/target-head/release/gunbc
+    PID=1218427 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1218275.scope, CWD=/home/briansrls EXE=/usr/bin/bash
+    PID=1218454 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1218275.scope, CWD=/home/briansrls/scratch/silent-lark-263/gunbc EXE=/usr/bin/bash
+    PID=1218455 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1218275.scope, CWD=/home/briansrls EXE=/usr/bin/tee
+    PID=1218770 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1218275.scope, CWD=/home/briansrls/scratch/silent-lark-263/gunbc EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/cargo
+    PID=1233297 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1218275.scope, CWD=/home/briansrls/scratch/silent-lark-263/gunbc EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    PID=1239946 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1218275.scope, CWD=/home/briansrls/scratch/silent-lark-263/gunbc EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    PID=1283426 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1283405.scope, CWD=/home/briansrls/scratch/wise-fox-453/red EXE=/usr/bin/bash
+    PID=1283435 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1283405.scope, CWD=/home/briansrls/scratch/wise-fox-453/red EXE=/home/briansrls/scratch/wise-fox-453/target-red/release/gunbc
+    PID=1296477 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1060978.scope, CWD=/home/briansrls/scratch/eager-heron-455/gunbc EXE=/usr/bin/timeout
+    PID=1296478 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1060978.scope, CWD=/home/briansrls/scratch/eager-heron-455/gunbc EXE=/home/briansrls/scratch/eager-heron-455/gunbc/target/release/gunbc
+    PID=1300385 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1300344.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/bash
+    PID=1300647 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1300344.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/cargo
+    PID=1303313 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1300344.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    PID=1318547 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1318524.scope, CWD=/home/briansrls/scratch/clever-carp-758/sweep_b6b6740d1f3 EXE=/home/briansrls/scratch/clever-carp-758/sweep_b6b6740d1f3/target/release/gunbc
+    PID=335322 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/usr/bin/dash
+    PID=964837 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-964818.scope, CWD=/home/briansrls/scratch/wise-fox-453/head EXE=/usr/bin/bash
+    PID=964844 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-964818.scope, CWD=/home/briansrls/scratch/wise-fox-453/head EXE=/home/briansrls/scratch/wise-fox-453/target-head/release/gunbc
+    PID=984593 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/usr/bin/time
+    PID=984595 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/home/briansrls/scratch/valiant-badger-417/main-tree/target/release/gunbc
+    QUEUE:
+[2026-11-26T16:18:49Z] acquiring stage2
+LAUNCHER_HOST=cf0f1a6997e9 LAUNCHER_BOOT=c095c0cd
+LAUNCHER_CMD: run_stage.sh a8d7e7a4eab815982f75a3b086bb084ad822f942 stage2 stage2_run.sh 34
+HOT srv1 load1min=47.28 (>=40), waiting

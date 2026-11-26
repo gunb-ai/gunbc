@@ -1,0 +1,73 @@
+CHAIN_V2_START_UTC=2026-11-26T11:44:18Z CHAIN_PID=4003 HEAD=a8d7e7a4eab815982f75a3b086bb084ad822f942
+=== EVIDENCE BLOCK 1: stage script sha256 + byte counts (local) ===
+3bcb5793fe952071d467d947cd13b5260d13d3447639978da61d941244ce978e  stage_common.sh
+2ab9beb5f3af1517613e15fc1cd846612f1892617413aec5f7a241d4fa05c775  run_stage.sh
+70db7fc7d5a52f4f823880108f2445c9d5e9accbcd3117183f62b98af4c8d536  stage0_main_tree.sh
+ea24e4b177c3b08435c8bf6237b27614b86d6daa1537d48198fbbfd43c69d44e  stage_fetch.sh
+62cc8af1eab7f44ef6310cbef856431ec5a68ce87300015ce7835baf2c3ab828  stage1_build.sh
+8c5f612b60ede3c17947ca4d9b7ab9e2fc6b9aa3ddbaf1f4f6b26683f21cfd97  stage2_module.sh
+3b974e3cab38e249c3fc3280939774563fe82ee970c8ed6a6b9afaf0f355097e  stageG_gate.sh
+b4000187126cdd419d52e8c5917fb92731bd3f811d6aef31bd7381fe7f07425c  stageP1_probe.sh
+535c2f15e606193d8b56d9ba60917b7e5138cefb25b6a81449bacbb5c908a168  stageP2_probe.sh
+27b610c4da487987cf60cbecf0fee1427529df1661ece7194875fcbd11e87cce  stage0b_floor_bin.sh
+21ab8f6559ca834fdd53a3fbf7c5c58b05ed0fef634444ddcfcfc78bcbfea811  stage2b_floorsrc.sh
+6caae64d3685aa1ad839c4f19c4d09a8d7991dcc55251dd4a264c8c297922b44  stageF_floor.sh
+ 1053 stage_common.sh
+ 2294 run_stage.sh
+ 1342 stage0_main_tree.sh
+ 1057 stage_fetch.sh
+  941 stage1_build.sh
+ 2954 stage2_module.sh
+ 2646 stageG_gate.sh
+ 1837 stageP1_probe.sh
+ 2007 stageP2_probe.sh
+  905 stage0b_floor_bin.sh
+ 1323 stage2b_floorsrc.sh
+ 1345 stageF_floor.sh
+19704 total
+=== EVIDENCE BLOCK 1b: same on srv1 (must match) ===
+3bcb5793fe952071d467d947cd13b5260d13d3447639978da61d941244ce978e  stage_common.sh
+2ab9beb5f3af1517613e15fc1cd846612f1892617413aec5f7a241d4fa05c775  run_stage.sh
+70db7fc7d5a52f4f823880108f2445c9d5e9accbcd3117183f62b98af4c8d536  stage0_main_tree.sh
+ea24e4b177c3b08435c8bf6237b27614b86d6daa1537d48198fbbfd43c69d44e  stage_fetch.sh
+62cc8af1eab7f44ef6310cbef856431ec5a68ce87300015ce7835baf2c3ab828  stage1_build.sh
+8c5f612b60ede3c17947ca4d9b7ab9e2fc6b9aa3ddbaf1f4f6b26683f21cfd97  stage2_module.sh
+3b974e3cab38e249c3fc3280939774563fe82ee970c8ed6a6b9afaf0f355097e  stageG_gate.sh
+b4000187126cdd419d52e8c5917fb92731bd3f811d6aef31bd7381fe7f07425c  stageP1_probe.sh
+535c2f15e606193d8b56d9ba60917b7e5138cefb25b6a81449bacbb5c908a168  stageP2_probe.sh
+27b610c4da487987cf60cbecf0fee1427529df1661ece7194875fcbd11e87cce  stage0b_floor_bin.sh
+21ab8f6559ca834fdd53a3fbf7c5c58b05ed0fef634444ddcfcfc78bcbfea811  stage2b_floorsrc.sh
+6caae64d3685aa1ad839c4f19c4d09a8d7991dcc55251dd4a264c8c297922b44  stageF_floor.sh
+ 1053 stage_common.sh
+ 2294 run_stage.sh
+ 1342 stage0_main_tree.sh
+ 1057 stage_fetch.sh
+  941 stage1_build.sh
+ 2954 stage2_module.sh
+ 2646 stageG_gate.sh
+ 1837 stageP1_probe.sh
+ 2007 stageP2_probe.sh
+  905 stage0b_floor_bin.sh
+ 1323 stage2b_floorsrc.sh
+ 1345 stageF_floor.sh
+19704 total
+SRV1_HASHES_RC=0
+=== EVIDENCE BLOCK 2: stage 0 (no slot) with real rc ===
+HOST=srv1
+BOOT=c095c0cd
+SELF_CGROUP=0::/user.slice/user-1000.slice/session-251361.scope, PID=2511095
+FETCH_RC=0
+ORIGIN_MAIN=a93c6559c97025dc268af50e872b3741510a1a40
+BASE_REVPARSE_RC=0 BASE_REVPARSE_OUT=d196f49052362ff8b3ac32d60928bd99f3f3be4a
+MERGE_BASE_IS_ANCESTOR_RC=0
+MAIN_TREE_PRESENT
+d196f49052362ff8b3ac32d60928bd99f3f3be4a
+STAGE0_RC=0
+HOST=srv1
+BOOT=c095c0cd
+SELF_CGROUP=0::/user.slice/user-1000.slice/session-251362.scope, PID=2511215
+FETCH_RC=0
+HEAD_RESOLVE_RC=0
+WORKTREE_ADD_RC=128
+STAGE_FETCH_RC=8
+CHAIN_STOP stage_fetch rc=8

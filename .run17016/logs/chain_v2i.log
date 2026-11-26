@@ -1,0 +1,24 @@
+LAUNCHER_HOST=cf0f1a6997e9 LAUNCHER_BOOT=c095c0cd
+LAUNCHER_CMD: run_stage.sh a8d7e7a4eab815982f75a3b086bb084ad822f942 stage2 stage2_run.sh 
+=== STAGE stage2 at HEAD a8d7e7a4eab815982f75a3b086bb084ad822f942; holders at acquire-time:
+    PID=335322 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/usr/bin/dash
+    PID=335348 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/usr/bin/time
+    PID=335350 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-318308.scope, CWD=/home/briansrls/scratch/valiant-badger-417/pr-tree EXE=/home/briansrls/scratch/valiant-badger-417/main-tree/target/release/gunbc
+    PID=372282 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-339223.scope, CWD=/home/briansrls/scratch/wise-fox-453/red EXE=/home/briansrls/scratch/wise-fox-453/target-head/release/gunbc
+    PID=3967382 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-3967358.scope, CWD=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122 EXE=/usr/bin/bash
+    PID=583911 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-565001.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/home/briansrls/scratch/quiet-lynx-18/gunbc/target/release/gunbc
+    PID=597371 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-579748.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/bash
+    PID=634973 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-605024.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/bash
+    PID=663878 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-642829.scope, CWD=/home/briansrls/scratch/lively-fox-770/tree-probe EXE=/usr/bin/bash
+    PID=761441 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-727945.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/usr/bin/bash
+    PID=761448 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-727945.scope, CWD=/home/briansrls/scratch/quiet-lynx-18/gunbc EXE=/home/briansrls/scratch/quiet-lynx-18/gunbc/target/release/gunbc
+    PID=764099 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-757754.scope, CWD=/home/briansrls/scratch/bold-ibex-678/mainred EXE=/home/briansrls/scratch/bold-ibex-678/mainred/target/release/gunbc
+    PID=775976 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-3967358.scope, CWD=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122 EXE=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122/target/release/gunbc
+    PID=778867 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-642829.scope, CWD=/home/briansrls/scratch/lively-fox-770/tree-probe EXE=/usr/bin/timeout
+    PID=778868 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-642829.scope, CWD=/home/briansrls/scratch/lively-fox-770/tree-probe EXE=/home/briansrls/scratch/lively-fox-770/target-probe/release/gunbc
+    PID=788123 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-579748.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/time
+    PID=788124 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-579748.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/timeout
+    PID=788125 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-579748.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/home/briansrls/scratch/tidy-hawk-691/shared-target/release/gunbc
+    QUEUE:
+SSH_CHILD_PID=19314 LAUNCH_UTC=2026-11-26T15:28:58Z OUT=logs/stage2_a8d7e7a4eab.out
+STAGE stage2 RC=1 (real heavy-slot rc; never a pipe's) END_UTC=2026-11-26T15:28:58Z

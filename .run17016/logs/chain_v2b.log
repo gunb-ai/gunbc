@@ -1,0 +1,118 @@
+CHAIN_V2_START_UTC=2026-11-26T11:59:09Z CHAIN_PID=5049 HEAD=a8d7e7a4eab815982f75a3b086bb084ad822f942
+=== EVIDENCE BLOCK 1: stage script sha256 + byte counts (local) ===
+3bcb5793fe952071d467d947cd13b5260d13d3447639978da61d941244ce978e  stage_common.sh
+2ab9beb5f3af1517613e15fc1cd846612f1892617413aec5f7a241d4fa05c775  run_stage.sh
+70db7fc7d5a52f4f823880108f2445c9d5e9accbcd3117183f62b98af4c8d536  stage0_main_tree.sh
+15033999681ce34e8c801c19c729091af5054ab6ddb9ca8e7fc1655d61f337bc  stage_fetch.sh
+62cc8af1eab7f44ef6310cbef856431ec5a68ce87300015ce7835baf2c3ab828  stage1_build.sh
+8c5f612b60ede3c17947ca4d9b7ab9e2fc6b9aa3ddbaf1f4f6b26683f21cfd97  stage2_module.sh
+3b974e3cab38e249c3fc3280939774563fe82ee970c8ed6a6b9afaf0f355097e  stageG_gate.sh
+b4000187126cdd419d52e8c5917fb92731bd3f811d6aef31bd7381fe7f07425c  stageP1_probe.sh
+535c2f15e606193d8b56d9ba60917b7e5138cefb25b6a81449bacbb5c908a168  stageP2_probe.sh
+27b610c4da487987cf60cbecf0fee1427529df1661ece7194875fcbd11e87cce  stage0b_floor_bin.sh
+21ab8f6559ca834fdd53a3fbf7c5c58b05ed0fef634444ddcfcfc78bcbfea811  stage2b_floorsrc.sh
+6caae64d3685aa1ad839c4f19c4d09a8d7991dcc55251dd4a264c8c297922b44  stageF_floor.sh
+ 1053 stage_common.sh
+ 2294 run_stage.sh
+ 1342 stage0_main_tree.sh
+ 1057 stage_fetch.sh
+  941 stage1_build.sh
+ 2954 stage2_module.sh
+ 2646 stageG_gate.sh
+ 1837 stageP1_probe.sh
+ 2007 stageP2_probe.sh
+  905 stage0b_floor_bin.sh
+ 1323 stage2b_floorsrc.sh
+ 1345 stageF_floor.sh
+19704 total
+=== EVIDENCE BLOCK 1b: same on srv1 (must match) ===
+3bcb5793fe952071d467d947cd13b5260d13d3447639978da61d941244ce978e  stage_common.sh
+2ab9beb5f3af1517613e15fc1cd846612f1892617413aec5f7a241d4fa05c775  run_stage.sh
+70db7fc7d5a52f4f823880108f2445c9d5e9accbcd3117183f62b98af4c8d536  stage0_main_tree.sh
+15033999681ce34e8c801c19c729091af5054ab6ddb9ca8e7fc1655d61f337bc  stage_fetch.sh
+62cc8af1eab7f44ef6310cbef856431ec5a68ce87300015ce7835baf2c3ab828  stage1_build.sh
+8c5f612b60ede3c17947ca4d9b7ab9e2fc6b9aa3ddbaf1f4f6b26683f21cfd97  stage2_module.sh
+3b974e3cab38e249c3fc3280939774563fe82ee970c8ed6a6b9afaf0f355097e  stageG_gate.sh
+b4000187126cdd419d52e8c5917fb92731bd3f811d6aef31bd7381fe7f07425c  stageP1_probe.sh
+535c2f15e606193d8b56d9ba60917b7e5138cefb25b6a81449bacbb5c908a168  stageP2_probe.sh
+27b610c4da487987cf60cbecf0fee1427529df1661ece7194875fcbd11e87cce  stage0b_floor_bin.sh
+21ab8f6559ca834fdd53a3fbf7c5c58b05ed0fef634444ddcfcfc78bcbfea811  stage2b_floorsrc.sh
+6caae64d3685aa1ad839c4f19c4d09a8d7991dcc55251dd4a264c8c297922b44  stageF_floor.sh
+ 1053 stage_common.sh
+ 2294 run_stage.sh
+ 1342 stage0_main_tree.sh
+ 1057 stage_fetch.sh
+  941 stage1_build.sh
+ 2954 stage2_module.sh
+ 2646 stageG_gate.sh
+ 1837 stageP1_probe.sh
+ 2007 stageP2_probe.sh
+  905 stage0b_floor_bin.sh
+ 1323 stage2b_floorsrc.sh
+ 1345 stageF_floor.sh
+19704 total
+SRV1_HASHES_RC=0
+=== EVIDENCE BLOCK 2: stage 0 (no slot) with real rc ===
+HOST=srv1
+BOOT=c095c0cd
+SELF_CGROUP=0::/user.slice/user-1000.slice/session-252239.scope, PID=2674855
+FETCH_RC=0
+ORIGIN_MAIN=a93c6559c97025dc268af50e872b3741510a1a40
+BASE_REVPARSE_RC=0 BASE_REVPARSE_OUT=d196f49052362ff8b3ac32d60928bd99f3f3be4a
+MERGE_BASE_IS_ANCESTOR_RC=0
+MAIN_TREE_PRESENT
+d196f49052362ff8b3ac32d60928bd99f3f3be4a
+STAGE0_RC=0
+HOST=srv1
+BOOT=c095c0cd
+SELF_CGROUP=0::/user.slice/user-1000.slice/session-252240.scope, PID=2674926
+FETCH_RC=0
+HEAD_RESOLVE_RC=0
+a8d7e7a4eab815982f75a3b086bb084ad822f942
+TREE_PRESENT head-a8d7e7a4eab815982f75a3b086bb084ad822f942
+STAGE_FETCH_RC=0
+=== EVIDENCE BLOCK 3: acquisitions, one per job, in order ===
+LAUNCHER_HOST=cf0f1a6997e9 LAUNCHER_BOOT=c095c0cd
+LAUNCHER_CMD: run_stage.sh a8d7e7a4eab815982f75a3b086bb084ad822f942 stage1 stage1_build.sh 
+=== STAGE stage1 at HEAD a8d7e7a4eab815982f75a3b086bb084ad822f942; holders at acquire-time:
+    PID=2168134 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2168111.scope, CWD=/home/briansrls EXE=/usr/bin/bash
+    PID=2355279 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2355258.scope, CWD=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122 EXE=/usr/bin/bash
+    PID=2355357 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2355258.scope, CWD=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122 EXE=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122/target/release/gunbc
+    PID=2475903 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/bash
+    PID=2475992 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/timeout
+    PID=2475993 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/tee
+    PID=2475994 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/home/briansrls/scratch/zesty-koi-131/zkfinal2/target/release/gunbc
+    PID=2582765 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/bash
+    PID=2643332 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/time
+    PID=2643334 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/timeout
+    PID=2643335 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/home/briansrls/scratch/tidy-hawk-691/shared-target/release/gunbc
+    PID=2656776 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2168111.scope, CWD=/home/briansrls/scratch/quiet-carp-72/tree EXE=/home/briansrls/scratch/quiet-carp-72/tree/target/release/gunbc
+    PID=2658491 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2658473.scope, CWD=/home/briansrls/scratch/clever-carp-758/a93c6559c970 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/cargo
+    PID=2665078 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2658473.scope, CWD=/home/briansrls/scratch/clever-carp-758/a93c6559c970 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    PID=2670685 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2658473.scope, CWD=/home/briansrls/scratch/clever-carp-758/a93c6559c970 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    QUEUE:
+SSH_CHILD_PID=5078 LAUNCH_UTC=2026-11-26T11:59:18Z OUT=logs/stage1_a8d7e7a4eab.out
+STAGE stage1 RC=0 (real heavy-slot rc; never a pipe's) END_UTC=2026-11-26T11:59:22Z
+CHAIN_STEP stage1 rc=0 at 2026-11-26T11:59:22Z
+LAUNCHER_HOST=cf0f1a6997e9 LAUNCHER_BOOT=c095c0cd
+LAUNCHER_CMD: run_stage.sh a8d7e7a4eab815982f75a3b086bb084ad822f942 stage2 stage2_module.sh 
+=== STAGE stage2 at HEAD a8d7e7a4eab815982f75a3b086bb084ad822f942; holders at acquire-time:
+    PID=2168134 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2168111.scope, CWD=/home/briansrls EXE=/usr/bin/bash
+    PID=2355279 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2355258.scope, CWD=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122 EXE=/usr/bin/bash
+    PID=2355357 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2355258.scope, CWD=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122 EXE=/home/briansrls/scratch/bright-newt-348/build_c7e6687dc122/target/release/gunbc
+    PID=2475903 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/bash
+    PID=2475992 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/timeout
+    PID=2475993 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/usr/bin/tee
+    PID=2475994 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2475890.scope, CWD=/home/briansrls/scratch/zesty-koi-131/zkfinal2 EXE=/home/briansrls/scratch/zesty-koi-131/zkfinal2/target/release/gunbc
+    PID=2582765 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/bash
+    PID=2643332 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/time
+    PID=2643334 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/usr/bin/timeout
+    PID=2643335 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2582745.scope, CWD=/home/briansrls/scratch/tidy-hawk-691/tree-exact EXE=/home/briansrls/scratch/tidy-hawk-691/shared-target/release/gunbc
+    PID=2656776 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2168111.scope, CWD=/home/briansrls/scratch/quiet-carp-72/tree EXE=/home/briansrls/scratch/quiet-carp-72/tree/target/release/gunbc
+    PID=2658491 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2658473.scope, CWD=/home/briansrls/scratch/clever-carp-758/a93c6559c970 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/cargo
+    PID=2665078 CG=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2658473.scope, CWD=/home/briansrls/scratch/clever-carp-758/a93c6559c970 EXE=/home/briansrls/.rustup/toolchains/1.93.0-aarch64-unknown-linux-gnu/bin/rustc
+    QUEUE:
+SSH_CHILD_PID=5103 LAUNCH_UTC=2026-11-26T11:59:29Z OUT=logs/stage2_a8d7e7a4eab.out
+STAGE stage2 RC=6 (real heavy-slot rc; never a pipe's) END_UTC=2026-11-26T11:59:30Z
+CHAIN_STEP stage2 rc=6 at 2026-11-26T11:59:30Z
+CHAIN_STOP after stage2 rc=6

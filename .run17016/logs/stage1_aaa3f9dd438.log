@@ -1,0 +1,4 @@
+=== STAGE 1 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
+    
+heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:22Z: bash stage1_build.sh
+STAGE 1 RC=0 (real heavy-slot rc; never a pipe)
