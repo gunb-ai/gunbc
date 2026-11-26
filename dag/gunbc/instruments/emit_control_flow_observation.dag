@@ -10,16 +10,16 @@ import gunbc.instruments.emit_control_flow_subjects { cf_measurement_rows }
 
 // THE GREEN ENTRY of the control-flow family: every row here is expected to hold, so its exit code means
 // something. The red controls are NOT in this entry -- they are their own target,
-// #gunbc.instrument_targets::emit_control_flow_violation_label, bound by its own binding row through
-// #gunbc.instrument_targets::emit_control_flow_violation_binding -- because an entry that carries rows
+// `emit_control_flow_violation_label` in gunbc.instrument_targets, bound by its own binding row through
+// `emit_control_flow_violation_binding` in gunbc.instrument_targets -- because an entry that carries rows
 // designed to fail can only ever exit non-zero, and a non-zero exit that happens whether the meter works
 // or is broken carries no information. The pair is the instrument: green exits 0, red exits 1, and the
 // two differ in exactly the rows they name.
 //
 // The subject bodies, the metered windows and both judgements come from
-// #gunbc.instruments.emit_control_flow_subjects::cf_measurement_rows, the one home they have; the row
+// `cf_measurement_rows` in gunbc.instruments.emit_control_flow_subjects, the one home they have; the row
 // shapes, the calibration pair, the audit rows and the report grammar come from
-// #gunbc.instruments.allocation_battery::battery_report, which all four families compose and which
+// `battery_report` in gunbc.instruments.allocation_battery, which all four families compose and which
 // declares no pipeline entry so that both of this family's entries can import it.
 //
 // OPERATIONS AND BYTES ONLY, the limit of the meter: no traversal count, no per-phase lifetime. Where a
@@ -33,7 +33,7 @@ data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 // named and the v2 result reads unqualified)". Nobody has asked the emitted-compiler door to emit this
 // subject, so the row reads unqualified and names the refusal the door records today, both of them named
 // in src/v1/stage0/src/cli_run/native_lane_runner.rs by the constants the instrument that owns that door
-// holds against (#gunbc.instrument_targets::v2_native_cli_label). The claim a later gate can run by name
+// holds against (`v2_native_cli_label` in gunbc.instrument_targets). The claim a later gate can run by name
 // is that same registered label, over this family's subject module.
 fn v2_subject_claim() -> String {
   "gunbc test //gunbc/instruments:v2-native-cli over subject dag/gunbc/instruments/emit_control_flow_subjects.dag"

@@ -9,7 +9,7 @@ import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, bat
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CARRIER SUBJECTS of the building-block battery (roadmap row
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization): the
+// `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority, id emission-building-block-realization): the
 // collection operation families -- sequence build, element read and sequential traversal under
 // PersistentSequenceCarrier, and index build, lookup and traversal under PersistentMapCarrier -- plus one
 // retained-snapshot block per carrier. Subject bodies and metered pairs only: no report, no pipeline entry,
@@ -17,11 +17,11 @@ import gunbc.emit_state_threading_specimen { spec_build }
 //
 // WHAT THIS GROUP IS EXPECTED TO SHOW, said before the run rather than after it. The carrier vocabulary
 // calls PersistentSequenceCarrier and PersistentMapCarrier production-realized and CaseApplicable
-// (#gunbc.emit_copy_qualification::carrier_realized refuses only DeepCloningSequenceCarrier), while the two
+// (`carrier_realized` in gunbc.emit_copy_qualification refuses only DeepCloningSequenceCarrier), while the two
 // ordinary collections a .dag specimen can reach share by reference-count bump and copy wholesale on
 // update. So the measured reading for the persistent-carrier rows is expected to DISAGREE with the
 // applicability verdict, and that disagreement is this battery's finding rather than a specimen defect. It
-// is carried as a ROW, not as prose: #gunbc.instruments.emit_carrier_subjects::carrier_disagreement_row.
+// is carried as a ROW, not as prose: `carrier_disagreement_row` in gunbc.instruments.emit_carrier_subjects.
 // The reported state for any leg that comes back the other way -- a persistent carrier measured CHEAP
 // where the reading says wholesale copy, or refused where the vocabulary says realized -- is a stop and
 // report, not a specimen edit, and that row going red is how it is noticed.
@@ -40,7 +40,7 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // at the emitter: the index is remade by a call to its own function, which keeps the violation (the index
 // is still materialized once per key the traversal visits) and gives the borrow a concrete type. The
 // emitter-side defect is a finding for the row that owns lowering,
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes id emission-ownership-facts-survive-lowering,
+// `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority id emission-ownership-facts-survive-lowering,
 // not something this battery repairs.
 
 data car_cardinality: Int = 24
@@ -257,7 +257,7 @@ fn car_window(subject: CarSubject, src: List<Int>) -> BatteryWindow uses counter
 // THE FINDING, as a row rather than as prose: the vocabulary calls the persistent carriers realized and
 // applicable while the measurement reads retaining a version as a wholesale copy. The row holds while
 // those two statements disagree, both sides read from their own authority -- the reading from the meter,
-// the verdict from the carrier through #gunbc.emit_building_block_contracts::contract_is_applicable. If
+// the verdict from the carrier through `contract_is_applicable` in gunbc.emit_building_block_contracts. If
 // either side moves the row goes red by name, which is the stop-and-report the header promises: a
 // vocabulary that stopped calling these carriers realized has to be reconciled with this battery, not
 // quietly contradicted by it.

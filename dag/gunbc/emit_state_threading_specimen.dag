@@ -5,7 +5,7 @@ import std.optional { Optional, Present, Absent }
 
 // EMISSION-MINIMUM-COST building block: observation and state threading (roadmap node
 // emission-building-block-realization, first slice). Shape taken from the roadmap first_slice wording
-// (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, the row whose id is
+// (`declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority, the row whose id is
 // "emission-building-block-realization": "a small nonescaping result and cursor advanced in a
 // repeated walk ... an owned record accumulator carrying unchanged context"): a cursor over one
 // retained source advanced by a scalar index, and a wide record accumulator rebuilt each step with two
@@ -14,7 +14,7 @@ import std.optional { Optional, Present, Absent }
 // absence is stated here as the specimen's own limitation, not as evidence carried from somewhere else:
 // no check reads this comment, so nothing may depend on it for correctness. Producing the profile is the
 // deliverable of the plan row whose id is "emission-real-consumer-profiles"
-// (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes); when it lands, this shape is re-picked from
+// (`declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority); when it lands, this shape is re-picked from
 // it and this sentence is re-sourced. Until then the shape's only source is the first_slice wording cited
 // above, and it says nothing about what the real consumer population costs.
 // STANDING: the emitted step meets the declared reference operation count (re-derived on every run of

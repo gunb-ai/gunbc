@@ -10,13 +10,13 @@ import gunbc.instruments.emit_value_shape_subjects { bb_measurement_rows }
 // THE GREEN ENTRY of the value-shape family: a Value in its three named shapes and the generic instance
 // over a scalar and over a nontrivial payload. Every row here is expected to hold, so its exit code means
 // something; the red controls are their own target,
-// #gunbc.instrument_targets::emit_value_shape_violation_label, because an entry carrying rows designed to
+// `emit_value_shape_violation_label` in gunbc.instrument_targets, because an entry carrying rows designed to
 // fail can only exit non-zero and an exit that cannot vary measures nothing.
 //
-// Bodies and windows: #gunbc.instruments.emit_value_shape_subjects::bb_measurement_rows. Row shapes,
-// calibration, audit and report grammar: #gunbc.instruments.allocation_battery::battery_report. The
+// Bodies and windows: `bb_measurement_rows` in gunbc.instruments.emit_value_shape_subjects. Row shapes,
+// calibration, audit and report grammar: `battery_report` in gunbc.instruments.allocation_battery. The
 // population judgements are the carrier's own, reached through
-// #gunbc.emit_building_block_contracts::contract_verdict -- this battery never judges applicability
+// `contract_verdict` in gunbc.emit_building_block_contracts -- this battery never judges applicability
 // itself, and the discrimination row below is what refuses if it ever stops asking.
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver

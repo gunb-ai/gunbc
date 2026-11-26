@@ -7,7 +7,7 @@ import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, bat
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE ACCUMULATOR SUBJECTS of the building-block battery (roadmap row
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization): a
+// `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority, id emission-building-block-realization): a
 // Loop with a record accumulator, a field read, a record rebuild with one field changed, and a local and
 // an escaping closure. This module holds the SUBJECT BODIES and the metered pairs only -- no report, no
 // pipeline entry -- so the family's green entry and its red entry measure the same bodies through the
@@ -45,7 +45,7 @@ fn acc_init(context: List<Int>) -> AccRecord {
 
 // THE LOOP WITH A RECORD ACCUMULATOR, contract arm: one accumulator threaded through the walk; `context`
 // and `tag` are carried by reference to the enclosing value, so a step's cost is bounded by the field that
-// changes. Same fold shape as the accepted specimen's #gunbc.emit_state_threading_specimen::spec_walk_tokens.
+// changes. Same fold shape as the accepted specimen's `spec_walk_tokens` in gunbc.emit_state_threading_specimen.
 fn acc_fold_step(seed: AccRecord, xs: List<Int>) -> Int {
   let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
     AccRecord { pos: acc.pos + 1, total: acc.total + x, context: acc.context, tag: acc.tag }

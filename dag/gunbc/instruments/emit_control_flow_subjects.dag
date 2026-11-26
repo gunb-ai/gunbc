@@ -7,7 +7,7 @@ import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, bat
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CONTROL-FLOW SUBJECTS of the building-block battery (roadmap row
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization):
+// `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority, id emission-building-block-realization):
 // a Transform, a Branch, a Bind, and a Match in each of the two states the boundary names, on an owned
 // temporary and on a borrowed shared sum. This module holds the SUBJECT BODIES and the metered pairs and
 // nothing else -- no report, no pipeline entry -- because the family's green entry and its red entry must

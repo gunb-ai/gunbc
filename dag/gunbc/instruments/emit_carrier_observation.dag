@@ -9,13 +9,13 @@ import gunbc.instruments.emit_carrier_subjects { car_measurement_rows }
 // THE GREEN ENTRY of the carrier family: sequence build, element read and sequential traversal under
 // PersistentSequenceCarrier, and index build, lookup and traversal under PersistentMapCarrier, each with
 // its retained-snapshot block. Every row here is expected to hold, so its exit code means something; the
-// red controls are their own target, #gunbc.instrument_targets::emit_carrier_violation_label, because an
+// red controls are their own target, `emit_carrier_violation_label` in gunbc.instrument_targets, because an
 // entry carrying rows designed to fail can only exit non-zero and an exit that cannot vary measures
 // nothing.
 //
 // Bodies, windows and the family's finding row:
-// #gunbc.instruments.emit_carrier_subjects::car_measurement_rows. Row shapes, calibration, audit and
-// report grammar: #gunbc.instruments.allocation_battery::battery_report. The finding is the carrier's own
+// `car_measurement_rows` in gunbc.instruments.emit_carrier_subjects. Row shapes, calibration, audit and
+// report grammar: `battery_report` in gunbc.instruments.allocation_battery. The finding is the carrier's own
 // disagreement -- the vocabulary calls the persistent carriers realized while the meter reads a wholesale
 // copy -- and it is a row, not a comment, so a leg that comes back the other way is noticed.
 

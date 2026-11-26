@@ -9,11 +9,11 @@ import gunbc.instruments.emit_accumulator_subjects { acc_measurement_rows }
 // THE GREEN ENTRY of the accumulator family: a Loop with a record accumulator, a field read, a record
 // rebuild with one field changed, and a local and an escaping closure. Every row here is expected to
 // hold, so its exit code means something; the red controls are their own target,
-// #gunbc.instrument_targets::emit_accumulator_violation_label, because an entry carrying rows designed to
+// `emit_accumulator_violation_label` in gunbc.instrument_targets, because an entry carrying rows designed to
 // fail can only exit non-zero, and an exit that cannot vary measures nothing.
 //
-// Bodies and windows: #gunbc.instruments.emit_accumulator_subjects::acc_measurement_rows. Row shapes,
-// calibration, audit and report grammar: #gunbc.instruments.allocation_battery::battery_report, which
+// Bodies and windows: `acc_measurement_rows` in gunbc.instruments.emit_accumulator_subjects. Row shapes,
+// calibration, audit and report grammar: `battery_report` in gunbc.instruments.allocation_battery, which
 // all four families compose and which declares no pipeline entry so both entries of a family can import
 // it. OPERATIONS AND BYTES ONLY: the meter states no traversal count and no per-phase lifetime.
 

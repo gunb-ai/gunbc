@@ -11,8 +11,8 @@ import gunbc.instruments.emit_carrier_subjects { car_red_rows }
 // build, index build and both traversals, a copy of the unchanged context in element read, index lookup
 // and the map snapshot, and an owning retain added to the observation in the sequence snapshot.
 //
-// Its own target, #gunbc.instrument_targets::emit_carrier_violation_label with
-// #gunbc.instrument_targets::emit_carrier_violation_binding, so the pair can exit differently. If this
+// Its own target, `emit_carrier_violation_label` in gunbc.instrument_targets with
+// `emit_carrier_violation_binding` in gunbc.instrument_targets, so the pair can exit differently. If this
 // entry ever exits 0 the meter has stopped discriminating and the family's green rows are readings of a
 // broken instrument.
 

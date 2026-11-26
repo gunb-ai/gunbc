@@ -11,8 +11,8 @@ import gunbc.instruments.emit_accumulator_subjects { acc_red_rows }
 // nothing else: a per-step allocation of the accumulator, a copy of the unchanged context through a field
 // read and a rebuild, and an owning retain added to a local closure's observation.
 //
-// Its own target, #gunbc.instrument_targets::emit_accumulator_violation_label with
-// #gunbc.instrument_targets::emit_accumulator_violation_binding, so the pair can exit differently. If this
+// Its own target, `emit_accumulator_violation_label` in gunbc.instrument_targets with
+// `emit_accumulator_violation_binding` in gunbc.instrument_targets, so the pair can exit differently. If this
 // entry ever exits 0 the meter has stopped discriminating and the family's green rows are readings of a
 // broken instrument.
 

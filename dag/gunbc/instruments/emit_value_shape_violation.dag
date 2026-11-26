@@ -11,8 +11,8 @@ import gunbc.instruments.emit_value_shape_subjects { bb_red_rows }
 // to a scalar read, a record rebuilt to read one field, a variant payload copied to match, and a generic
 // payload materialized or copied at the boundary.
 //
-// Its own target, #gunbc.instrument_targets::emit_value_shape_violation_label with
-// #gunbc.instrument_targets::emit_value_shape_violation_binding, so the pair can exit differently. If this
+// Its own target, `emit_value_shape_violation_label` in gunbc.instrument_targets with
+// `emit_value_shape_violation_binding` in gunbc.instrument_targets, so the pair can exit differently. If this
 // entry ever exits 0 the meter has stopped discriminating and the family's green rows are readings of a
 // broken instrument.
 

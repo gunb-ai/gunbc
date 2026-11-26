@@ -116,7 +116,7 @@ type BuildingBlockContract {
 // it is derived from the field and nothing decides anything with it. Counting uses string equality because
 // sum-member equality on this runtime carries a documented false-adjudication class
 // (recurring_failure_mode/optional_equality_answers_by_representation) and slug equality is what the carrier
-// itself does for refusals (#gunbc.emit_copy_qualification::structural_inapplicability_slug).
+// itself does for refusals (`structural_inapplicability_slug` in gunbc.emit_copy_qualification).
 type ViolatingForm =
     OwningRetainAddedToObservation
   | PerStepAllocation
@@ -219,11 +219,11 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
 
     // ── T4 carriers, run against the stand-ins that exist ───────────────────────────────────
     // The two persistent members are run as what the production emitter can actually build for them:
-    // #gunbc.emit_copy_qualification_fixture_gen::carrier_type_text realizes PersistentSequenceCarrier as
+    // `carrier_type_text` in gunbc.emit_copy_qualification_fixture_gen realizes PersistentSequenceCarrier as
     // List<Int> and PersistentMapCarrier as Map<String, Int>. The expectation this leg is written to test
     // is the carrier model's own, read from the declarations rather than quoted from a report:
-    // #gunbc.emit_copy_qualification::carrier_realized calls these two realized while
-    // #gunbc.emit_copy_qualification::carrier_is_record says neither is a record, and the stand-ins share on
+    // `carrier_realized` in gunbc.emit_copy_qualification calls these two realized while
+    // `carrier_is_record` in gunbc.emit_copy_qualification says neither is a record, and the stand-ins share on
     // clone through a reference count and copy on update. A specimen that goes red here is the row
     // succeeding, not a failing worker.
         // observation: build a sequence once at the declared cardinality
@@ -440,7 +440,7 @@ fn applicability_discriminates(f: BuildingBlockFamily) -> Bool {
 // same four answers the allocation instrument gives -- availability, the span, whether the
 // span is above the declared reference, and whether it is within it -- over the types
 // std.realization_measurement owns. They are NOT copied: they have one home, and it is
-// #gunbc.allocation_observation_render::span_operations, an entry-free module both this
+// `span_operations` in gunbc.allocation_observation_render, an entry-free module both this
 // vocabulary and that instrument import. This module declares no pipeline entry either,
 // so neither import puts a second entry in any closure.
 
