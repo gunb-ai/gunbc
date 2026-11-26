@@ -1,4 +1,0 @@
-=== STAGE 2 at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
-    
-heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:35Z: bash stage2_module.sh
-STAGE 2 RC=0 (real heavy-slot rc; never a pipe)

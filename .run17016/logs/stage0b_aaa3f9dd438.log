@@ -1,5 +1,0 @@
-HOT srv1 load (50.96)
-=== STAGE 0b at HEAD aaa3f9dd43886b3edabd0206e8176bc7ed0542ab; holders:
-    
-heavy-slot: slot 3/12 acquired by eager-koi-371 at 2026-11-26T03:39:16Z: bash stage0b_floor_bin.sh
-STAGE 0b RC=0 (real heavy-slot rc; never a pipe)
