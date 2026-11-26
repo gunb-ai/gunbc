@@ -19,7 +19,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.storage.types { PcieLink, Gen4 }
 import extdeps.nvidia.management_library { nvml_clocks_event_mask, NvmlClocksEventSwThermalSlowdown, NvmlClocksEventSwPowerCap }
 import extdeps.strata.serve_flags {
-  StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
+  StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
+  StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
   StrataConversationCacheBudget,
 }
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
@@ -121,23 +122,25 @@ fn fx_gpu(uuid: String) -> ObservedGpu {
 }
 
 fn fx_flags(pool_workers: Nat?) -> StrataServeFlags {
-  StrataServeFlags {
-    kv_format: StrataKvQ4_0,
-    kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
-    max_context: token_count(count: 229376),
+  strata_launch_with_parallel(
+    parameters: StrataLaunchParameters {
+      kv_format: StrataKvQ4_0,
+      kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
+      max_context: token_count(count: 229376),
+      batch_groups: Present { value: StrataBatchGroupsAuto },
+      pool_workers: pool_workers,
+      stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
+      experts: StrataExpertsMapped,
+      vram_reserve: none,
+      // THE FIXTURE NAMES ITS PARKED-CONVERSATION BUDGET rather than leaving it to the build: this cell's
+      // receipt is about pool_workers, and the cache pair is a fixture like the rest -- but a fixture that
+      // OMITTED the pair would read as a launch that parks nothing (extdeps.strata.serve_flags
+      // strata_conversation_cache_words), which is the fail-open default this class is about, so the fixture
+      // states a budget. 1024 MiB across the same slot count the cell runs.
+      conversation_cache: StrataConversationCacheBudget { budget: mebibyte(count: 1024), slots: positive_slot_count(count: positive_measure_count(predecessor: 7)) },
+    },
     parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
-    batch_groups: Present { value: StrataBatchGroupsAuto },
-    pool_workers: pool_workers,
-    stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
-    experts: StrataExpertsMapped,
-    vram_reserve: none,
-    // THE FIXTURE NAMES ITS PARKED-CONVERSATION BUDGET rather than leaving it to the build: this cell's
-    // receipt is about pool_workers, and the cache pair is a fixture like the rest -- but a fixture that
-    // OMITTED the pair would read as a launch that parks nothing (extdeps.strata.serve_flags
-    // strata_conversation_cache_words), which is the fail-open default this class is about, so the fixture
-    // states a budget. 1024 MiB across the same slot count the cell runs.
-    conversation_cache: StrataConversationCacheBudget { budget: mebibyte(count: 1024), slots: positive_slot_count(count: positive_measure_count(predecessor: 7)) },
-  }
+  )
 }
 
 fn fx_cell(gpus: List<ObservedGpu>, engines: Nat, gpus_per_engine: Nat, pool_workers: Nat?) -> ServingCellIdentity {

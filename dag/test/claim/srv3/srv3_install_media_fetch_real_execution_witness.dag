@@ -7,7 +7,7 @@ import gunbc.artifact_acquisition {
   AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
 }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_state_root { isolated_host_state_tree }
 import gunbc.provisioning.install_media_store { install_media_store, install_media_store_path, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_install_path, install_media_part_path, install_media_parent_directory }

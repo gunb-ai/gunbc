@@ -86,7 +86,7 @@ import extdeps.storage.device_identification { DeviceIdentificationAdmitted, Dev
 import extdeps.tools.gnu_coreutils { cat_program }
 import extdeps.tools.stat { stat_program }
 import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkCrypt, LsblkDisk, LsblkLoop, LsblkLvm, LsblkOtherType, LsblkPart, LsblkRom, lsblk_program }
-import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, host_leg_of_typed_argv }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered, host_leg_of_typed_argv }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.runner.runner_host_file_converge { FleetHostFileSubject, LegElevated, run_fleet_host_leg }
 import gunbc.provisioning.install_target_disk { InstallTargetDisk, install_target_disk_pin }
@@ -551,6 +551,7 @@ fn network_install_host_reading(
   let macs = match evidence.link_list {
     LegAnswered { exit_code: _, stdout: link_list_stdout, stderr: _ } => InterfaceMacsObserved { macs: installed_host_mac_set(link_list_raw: link_list_stdout) }
     LegNotDispatched { reason: reason } => InterfaceMacsUnread { reason: reason as NonEmptyStr }
+    LegUnanswered { cause: c } => InterfaceMacsUnread { reason: join(["dispatched, no answer: ", c], "") as NonEmptyStr }
   }
   InstalledHostReading {
     interface_macs: macs
@@ -570,6 +571,9 @@ fn installed_host_record_reading(evidence: InstalledHostEvidence) -> InstallerRe
   match evidence.installer_record {
     LegNotDispatched { reason: reason } => InstallerRecordUnread {
       why: concat("stat on ", concat(subiquity_installed_autoinstall_record_path as String, concat(" was never dispatched: ", reason))) as NonEmptyStr
+    }
+    LegUnanswered { cause: c } => InstallerRecordUnread {
+      why: concat("stat on ", concat(subiquity_installed_autoinstall_record_path as String, concat(" was dispatched but got no answer: ", c))) as NonEmptyStr
     }
     LegAnswered { exit_code: exit, stdout: record_out, stderr: _ } =>
       if exit != 0 {
@@ -594,16 +598,19 @@ fn installed_host_record_reading(evidence: InstalledHostEvidence) -> InstallerRe
 fn installed_host_root_reading(target: InstallTargetDisk, evidence: InstalledHostEvidence) -> InstalledRootReading {
   match evidence.machine_id {
     LegNotDispatched { reason: reason } => InstalledRootUnread { why: concat("the /etc/machine-id leg was never dispatched: ", reason) as NonEmptyStr }
+    LegUnanswered { cause: c } => InstalledRootUnread { why: concat("the /etc/machine-id leg was dispatched but got no answer: ", c) as NonEmptyStr }
     LegAnswered { exit_code: _, stdout: machine_id_out, stderr: _ } =>
       if installed_host_machine_id_provisioned(machine_id_raw: machine_id_out) {
         match evidence.root_created {
           LegNotDispatched { reason: reason } => InstalledRootUnread { why: concat("the root-creation-time leg was never dispatched: ", reason) as NonEmptyStr }
+          LegUnanswered { cause: c } => InstalledRootUnread { why: concat("the root-creation-time leg was dispatched but got no answer: ", c) as NonEmptyStr }
           LegAnswered { exit_code: _, stdout: root_created_out, stderr: _ } =>
             match installed_host_created_at(root_created_raw: root_created_out) {
               Absent => InstalledRootUnread { why: installed_host_created_at_refusal(root_created_raw: root_created_out) }
               Present { value: created_at } =>
                 match evidence.block_report {
                   LegNotDispatched { reason: reason } => InstalledRootUnread { why: concat("the lsblk block-report leg was never dispatched: ", reason) as NonEmptyStr }
+                  LegUnanswered { cause: c } => InstalledRootUnread { why: concat("the lsblk block-report leg was dispatched but got no answer: ", c) as NonEmptyStr }
                   LegAnswered { exit_code: _, stdout: block_report_out, stderr: _ } => installed_host_root_from_report(
                     target: target,
                     report: installed_host_root_report(block_report_raw: block_report_out),

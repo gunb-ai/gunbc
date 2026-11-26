@@ -5,7 +5,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import extdeps.shell
 import extdeps.posix.signal
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.posix.process
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import gunbc.harness.harness_shell_job_policy { ShellJobSchedule }
