@@ -1855,9 +1855,13 @@ fn filesystem_effect_debt_contract_identity_strings() -> List<String> {
 // a duplicated pair reported n-2, not the number of distinct identities its own comment describes.
 // Now: the list is built ONCE and folded into an already-seen list; the count is the length of the
 // seen set, so four entries spelling three identities print 3, and a true duplicate is visible.
-fn filesystem_effect_debt_contract_distinct_count() -> Int {
+// The seen-set fold, GENERAL (eager-koi consequence rule: a fix that changes what a control MEANS
+// owes its own observation): the contract count below is this helper on the contract list, and the
+// witness exercises the helper directly where an entry occurs exactly twice (the case the old shape
+// got wrong: it returned n-2 there) and where nothing duplicates (the case it must not change).
+fn distinct_string_count(xs: List<String>) -> Int {
   length(xs: fold_list(
-    xs: filesystem_effect_debt_contract_identity_strings(),
+    xs: xs,
     empty: [],
     cons: fn(seen, identity) {
       if any(xs: seen, predicate: fn(other) { other == identity }) {
@@ -1867,6 +1871,10 @@ fn filesystem_effect_debt_contract_distinct_count() -> Int {
       }
     }
   ))
+}
+
+fn filesystem_effect_debt_contract_distinct_count() -> Int {
+  distinct_string_count(xs: filesystem_effect_debt_contract_identity_strings())
 }
 
 

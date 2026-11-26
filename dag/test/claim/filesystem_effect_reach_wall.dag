@@ -13,6 +13,7 @@ import v2.compiler.effect_demand {
   filesystem_effect_direct_reach_debt_contract,
   filesystem_effect_debt_join_holds,
   filesystem_effect_debt_contract_identity_strings,
+  distinct_string_count,
   filesystem_effect_debt_site_identity,
   filesystem_effect_reaches_from_phase1_rows,
   filesystem_effect_census_log,
@@ -1115,4 +1116,27 @@ test fn demand_restatement_real_retained_row_is_authorized() -> Bool {
       }
     Empty => false
   }
+}
+
+// =============================================================================================
+// DISTINCT-COUNT SEMANTIC ARMS (review 98769 finding 2, consequence rule from the lane manager: a
+// fix that changes what a control MEANS owes its own observation). The corrected control must be
+// SEEN moving where an entry occurs exactly twice -- the case the old shape got wrong, returning
+// n-2 (here: 1 for three entries spelling two identities) -- and SEEN unchanged where nothing
+// duplicates; empty counts 0, and 0 is never read as green.
+// =============================================================================================
+
+test fn distinct_count_moves_on_exactly_one_duplicated_pair() -> Bool {
+  (distinct_string_count(xs: ["wall#a#1", "wall#a#1", "wall#b#1"]) == 2)
+    && (distinct_string_count(xs: ["wall#a#1", "wall#b#1", "wall#c#1"]) == 3)
+    && (distinct_string_count(xs: []) == 0)
+}
+
+// THE CONTRACT ITSELF, duplicate-free by its own typed carrier: distinct count equals member count
+// over the SAME list the census log prints beside the refused count -- a future colliding entry
+// fails this arm where it is authored, not in a log someone has to notice.
+test fn debt_contract_identity_strings_are_duplicate_free() -> Bool {
+  let identities = filesystem_effect_debt_contract_identity_strings()
+  (filesystem_effect_debt_contract_distinct_count() == length(xs: identities))
+    && (length(xs: identities) == 4)
 }
