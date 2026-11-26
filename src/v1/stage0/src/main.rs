@@ -2,7 +2,7 @@
 
 #![allow(unused_parens, clippy::all, clippy::disallowed_macros)]
 
-use clap::{Parser, Subcommand};
+use clap::Subcommand;
 
 use im::HashMap;
 use std::rc::Rc;
@@ -373,11 +373,35 @@ fn main() {
     // THE OUTER BOUNDARY STARTS HERE (§5a amendment A), before argv decode: the CLI prints the
     // invocation rows on its return path (see `cli_run::pre_entry_phase`).
     v1_compiler::cli_run::pre_entry_phase::record_invocation_start();
-    let cli = v1_compiler::gunbc_cli_dispatch_generated::Cli::parse();
+    v1_compiler::cli_run::bind_seed_build_identity(GUNBC_BUILD_IDENTITY);
+    let cli = parse_cli();
     let host = RetainedCliHost {
         dry_run: cli.dry_run,
     };
     v1_compiler::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)
+}
+
+// THE ONE PLACE THE COMMIT STAMP IS READ (#test.claim.entry_authority_witness::ea_seed_build_identity_marker:
+// only the retained-host main may name it). The library never reads it: a compile-time read there
+// put the commit into the library's dep-info, so every commit recompiled the library even when no
+// library source moved. This binary hands it over at run time -- to clap as the version, and to
+// `cli_run` for the bootstrap receipt -- so only the binary's own compilation moves with the commit.
+const GUNBC_BUILD_IDENTITY: &str = env!("GUNBC_BUILD_IDENTITY");
+
+fn cli_command() -> clap::Command {
+    <v1_compiler::gunbc_cli_dispatch_generated::Cli as clap::CommandFactory>::command()
+        .version(GUNBC_BUILD_IDENTITY)
+}
+
+fn parse_cli() -> v1_compiler::gunbc_cli_dispatch_generated::Cli {
+    let mut command = cli_command();
+    let mut matches = command.clone().get_matches();
+    match <v1_compiler::gunbc_cli_dispatch_generated::Cli as clap::FromArgMatches>::from_arg_matches_mut(
+        &mut matches,
+    ) {
+        Ok(cli) => cli,
+        Err(error) => error.format(&mut command).exit(),
+    }
 }
 
 struct RetainedCliHost {
@@ -961,7 +985,8 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use clap::{CommandFactory, Parser};
+    use super::{cli_command, GUNBC_BUILD_IDENTITY};
+    use clap::Parser;
     use v1_compiler::gunbc_cli_dispatch_generated::Cli;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY. Written
     // against this file's private `extract_module_path`, deleted by the fork closure, they pin
@@ -977,11 +1002,8 @@ mod tests {
 
     #[test]
     fn version_surface_reports_the_exact_source_commit() {
-        assert_eq!(
-            Cli::command().get_version(),
-            Some(env!("GUNBC_BUILD_IDENTITY"))
-        );
-        let identity = env!("GUNBC_BUILD_IDENTITY");
+        assert_eq!(cli_command().get_version(), Some(GUNBC_BUILD_IDENTITY));
+        let identity = GUNBC_BUILD_IDENTITY;
         let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
         assert_eq!(commit.len(), 40);
         assert!(commit.bytes().all(|byte| byte.is_ascii_hexdigit()));

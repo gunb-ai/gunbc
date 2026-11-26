@@ -1584,6 +1584,7 @@ fn design_rulings() -> List<DesignRuling> {
     pxe_default_install_and_no_standing_erase_2026_11_10,
     runner_capacity_counts_only_when_observed_2026_11_10,
     pxe_witnesses_need_no_required_ci_2026_11_10,
+    github_actions_are_wound_down_entirely_2026_11_24,
     github_stays_the_code_repository_until_gunbhub_2026_11_24,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
@@ -1644,6 +1645,13 @@ data github_stays_the_code_repository_until_gunbhub_2026_11_24: DesignRuling = D
   decided: "2026-11-24",
   governs: decl_ref(module_path: "gunbc.plans.gunbhub_source_of_truth", decl_name: "gunbhub_source_of_truth_plan"),
   provenance: "Operator, directly to keen-dove-217 on 2026-11-24, after keen-dove-217 reported that remote builds move source through GitHub (gunbc.compute.remote_build_client pushes refs/remote-build/* to GitHub and the serving host fetches from it) and proposed a fabric-hosted origin. Verbatim: \"yeah that's a good point - i think \"github as a code repo\" for now is fine - i would make a separate track that is longer term for \"get onto gunbhub as code source of truth (using our own SCM) - we'd need a simple frontend/etc - we are not there yet.\" RULED, IN THOSE WORDS: GitHub as the code repository is fine for now; moving the source of truth onto gunbhub, using gunbc's own source control and a simple frontend, is a separate, longer-term track; it is not there yet. INTERPRETATION, NOT OPERATOR WORDS (keen-dove-217): the near-term move of identity and execution off GitHub does not wait on this track, and remote builds keep fetching source through GitHub until its cutover; the track's direction and done-when are gunbc.plans.gunbhub_source_of_truth, and its first work items are the existing native SCM rows (2-scm-*).",
+}
+
+data github_actions_are_wound_down_entirely_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "github_actions_are_wound_down_entirely_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.plans.github_actions_retirement", decl_name: "github_actions_retirement_plan"),
+  provenance: "Operator, directly to keen-dove-217 on 2026-11-24, after keen-dove-217 reported that the repository-wide github-actions workload-identity pool admits any same-repository workflow run (so a pull-request job can reach the srv3 BMC secret and the R2 token) and that the retired github-heal-publisher pool can still reach the bot app's key, and asked whether to open a fix narrowing them. Verbatim: \"i would skip it for now\" and \"we are rying to wind down github actions entirely - so i would note this as a clear deletion milestone\". RULED, IN THOSE WORDS: skip the narrowing fix for now; GitHub Actions is being wound down entirely; record it as a clear deletion milestone. INTERPRETATION, NOT OPERATOR WORDS (keen-dove-217): the exposure above is accepted until the deletion, not repaired in place; the deletion covers workflows, their emitters, runner registrations and every pool, secret and permission that exists to serve an Actions run; GitHub as the code repository is untouched by this ruling; the intention is gunbc.plans.github_actions_retirement and its milestone the roadmap row github-actions-deleted.",
 }
 
 // THE THREE OPERATOR DECISIONS THE BOOT AND MANAGEMENT EDGE INTENTION STANDS ON THAT WERE RECORDED

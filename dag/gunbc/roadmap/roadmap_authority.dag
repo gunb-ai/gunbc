@@ -1379,7 +1379,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ), on: "2026-11-19", note: "Source review at 398136026b345e087968a9db4ba42ec551c5ca4c (2026-11-19); source presence is not acceptance. v2.compiler.resolve already carries occurrence resolutions and a qualified-path route. AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol and AmbientPrimitiveAuthority still have live branches. Residual is eliminating those fallback authorities and establishing the seed reference-only loader, not creating qualified lookup from scratch. The same binding comparison serves names-homing; do not charge it once per spelling.")),
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Layer 0 of gunbc.plans.names_without_imports: the one rule that replaces the ambient tables and is the semantics import deletion needs."),
-      centering: plan(text: "Seed loader slice only, on a fleet host under the memory envelope: run gunbc run --dry-run --claim-run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/test/claim/lexical_scope.dag unchanged (29 claims), then with the entry's import member lists stripped, then with its import lines deleted and its references spelled by path. Hand back the three verdict sets and nothing else; the ruling on the seed loader is the operator's from those three. Change no production source."),
+      centering: plan(text: "Seed loader slice only, on a fleet host under the memory envelope: run gunbc --dry-run run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/test/claim/lexical_scope.dag --function <claim> once per claim, unchanged (29 claims; the Bool is in each run's refusal line), then with the entry's import member lists stripped, then with its import lines deleted and its references spelled by path. Hand back the three verdict sets and nothing else; the ruling on the seed loader is the operator's from those three. Change no production source."),
     ),
     roadmap_node(
       identity: "rn_9PXMHJ474EV2TEQ6MKEG198ZDJ",
@@ -8100,6 +8100,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "gunbhub_source_of_truth_plan: gunbc's own source control is the authority over what landed. Target: dag/gunbc/plans/gunbhub_source_of_truth.dag."),
     ),
     roadmap_node(
+      identity: "rn_S8GJNH5FEC0WXJVW1S1WTKGB69",
+      id: "github-actions-deleted",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/github_actions_retirement.dag"),
+      line: ticket(t: fields(
+        headline: "GitHub Actions is deleted: no workflows, no runners, no credential trusting an Actions token",
+        boundary: "The deletion milestone the operator asked for on 2026-11-24 (gunbc.design_ruling::github_actions_are_wound_down_entirely_2026_11_24). At this read main has nine workflows (branch-run-grant-broker, drift-watch, fleet-converge, heal-publish, heal, hosted-runner-shadow-gate, instrument-dispatch, microvm-shakedown, witnesses), each emitted from a .dag module, and gunbc.auth.github_gcp_federation admits GitHub's OIDC issuer into Google workload-identity pools. Each workflow's operation gets a named fabric route or is retired for want of a consumer; then the workflow, its emitter, the runner registrations and every pool, secret, environment and app permission that serves only Actions are deleted, not disabled. Moving the source repository off GitHub is not part of it.",
+        displaced_cost: "Actions stays a second execution authority and its identity tokens stay a trust root: today any same-repository pull-request job can reach the srv3 BMC secret and the R2 token through the repository-wide pool, an exposure the operator accepted until this deletion rather than narrowing it.",
+        first_slice: "Account for each of the nine workflows: its consumer, its fabric route or its retirement. Delete the retired github-heal-publisher pool and any workflow with no consumer first, since neither waits on the verdict switch.",
+        red_control: "OPEN: not yet measured. The pair to execute: after deletion a workflow file pushed on a branch runs nowhere and gets no token, and a token minted by any GitHub Actions run is refused by every Google project's security token service, read from the live estate; the required check on the same commit still publishes, from a fabric receipt.",
+        out_of_scope: "GitHub as the code repository, a separate question. Narrowing the pools before deletion, which the operator skipped.",
+        handback: "The per-workflow account, the deleted workflows, emitters, runner registrations and pools, and the live-estate read showing no provider admits the Actions issuer."
+      )),
+      parent: in_project(project: "work-execution-redesign", contribution: "The end of the old execution route: once the verdict comes from a fabric receipt, Actions is deleted rather than kept beside it."),
+      centering: plan(text: "github_actions_retirement_plan: gunbc runs no GitHub Actions. Target: dag/gunbc/plans/github_actions_retirement.dag."),
+    ),
+    roadmap_node(
       identity: "rn_G75EV6NFA5Y20CRRZKH42F629W",
       id: "empty-service-admissibility",
       owner: "self-host",
@@ -8627,6 +8644,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "github-actions-deleted", parent: "work-exec-5-ci-verdict-from-receipt"),
     edge(child: "gunbhub-simple-frontend", parent: "2-scm-p0-landing-spine"),
     edge(child: "gunbhub-authoritative-cutover", parent: "gunbhub-simple-frontend"),
     edge(child: "gunbhub-authoritative-cutover", parent: "2-scm-p0-landing-spine"),
