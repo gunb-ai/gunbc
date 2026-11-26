@@ -9176,7 +9176,25 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                 Present { value: guard } => body_lower_guard_branch(guard: guard, rest: rest)
                 Absent =>
               match body_lower_guard_optional(stmt: head) {
-                Present { value: statement_form } => body_lower_else_less_if_statement(guard: statement_form, rest: rest)
+                // A statement-form else-less `if` reaching THIS arm is not the guard idiom: the guard
+                // form (arm ends in a tail `return`, so the fall-through carries no value) was admitted
+                // above by body_lower_admitted_guard_optional. What remains here is an else-less `if`
+                // whose branch value has no consumer while the spine continues after it -- a produced
+                // value silently dropped outside it. Refused by the SAME located cause that refuses any
+                // other statement value preceding a following statement (gunbc.design_ruling
+                // value_disposition_and_named_binding_use_are_explicit_2026_11_23; the value-side twin
+                // of this refusal already exists at typing time for else-less-if DEMANDED as a value --
+                // v2.compiler.infer infer_branch_else_less_as_value_diagnostic via
+                // v2.std.compilers.target_model target_value_expr_reason_branch_else_less_as_value --
+                // and the tail path is untouched: a final else-less-if transfers its disposition to the
+                // enclosing context through body_lower_tail_statement_read).
+                Present { value: _statement_form } =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(
+                      reason: ^body_lowering_reason_statement_precedes_without_binding,
+                      n: head
+                    )
+                  )
                 Absent =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
