@@ -19,7 +19,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.storage.types { PcieLink, Gen4 }
 import extdeps.nvidia.management_library { nvml_clocks_event_mask, NvmlClocksEventSwThermalSlowdown, NvmlClocksEventSwPowerCap }
 import extdeps.strata.serve_flags {
-  StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
+  StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
+  StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
 }
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark {
@@ -120,17 +121,19 @@ fn fx_gpu(uuid: String) -> ObservedGpu {
 }
 
 fn fx_flags(pool_workers: Nat?) -> StrataServeFlags {
-  StrataServeFlags {
-    kv_format: StrataKvQ4_0,
-    kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
-    max_context: token_count(count: 229376),
+  strata_launch_with_parallel(
+    parameters: StrataLaunchParameters {
+      kv_format: StrataKvQ4_0,
+      kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
+      max_context: token_count(count: 229376),
+      batch_groups: Present { value: StrataBatchGroupsAuto },
+      pool_workers: pool_workers,
+      stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
+      experts: StrataExpertsMapped,
+      vram_reserve: none,
+    },
     parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
-    batch_groups: Present { value: StrataBatchGroupsAuto },
-    pool_workers: pool_workers,
-    stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
-    experts: StrataExpertsMapped,
-    vram_reserve: none,
-  }
+  )
 }
 
 fn fx_cell(gpus: List<ObservedGpu>, engines: Nat, gpus_per_engine: Nat, pool_workers: Nat?) -> ServingCellIdentity {

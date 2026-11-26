@@ -70,7 +70,7 @@ import gunbc.fabric.fabric_m0_origin_readback {
 // instrument), reached by the recipe below rather than by a roster row that would be inert.
 //
 // RECIPE, and it is the whole consumer today:
-//   gunbc run --claim-run --source-root dag --source-root src/v2 \
+//   gunbc --dry-run run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/fabric_m0_origin_readback_probe.dag --function probe
 // Run from the repository root -- the fixture paths are repository-relative.
 //

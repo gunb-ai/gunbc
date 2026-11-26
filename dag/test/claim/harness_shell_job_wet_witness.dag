@@ -6,7 +6,7 @@ import std.measure { second }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.posix.signal
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { pwd_command }
 import gunbc.command_runner { run_shell_command_capture, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }

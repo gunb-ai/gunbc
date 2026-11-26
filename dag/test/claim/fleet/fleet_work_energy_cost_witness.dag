@@ -10,14 +10,21 @@ import gunbc.fleet.fleet_host_power {
   fleet_host_power_roster, host_power_profile, power_is_measured,
   measured_host_count, inferred_host_count, srv1_power,
   MeasuredOnHost, InferredFromSimilarBuild, PowerProvenance,
+  confounded_host_power_readings, host_figure_is_still_inferred,
 }
+import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import std.measure { hertz_count }
 import gunbc.fleet.fleet_host_assembly { host_installed_components, psu_srv1, psu_srv1_b }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
 import product.placement_supply { physical_asset_identity_eq }
 import std.list { list_member }
+import gunbc.fleet.cpu_freq_cap_boot_state { cpu_freq_ceiling_standing_read }
 import gunbc.fleet.fleet_work_energy_cost {
   WorkEnergyCostOutcome, EnergyCostDerived, EnergyCostRefused, ReadingAppliesToSupersededAssembly,
+  DrawPowerStateAttribution, DrawAttributableToHostPowerState, DrawNotAttributableToHostPowerState,
+  CpuCeilingNotReadHolding, HostFigureStillInferredWhilePowerStateMoved,
   work_energy_cost, cost_micros, cost_rests_on_measured_power,
 }
 
@@ -179,4 +186,96 @@ test fn witness_cooled_inferred_host_prices_but_accelerated_inferred_host_refuse
     EnergyCostDerived { cost: _ } => false
   }
   srv3_ok && srv4_refuses
+}
+
+// THE 2026-11-24 STEP DOWN DID NOT BUY A MEASURED FIGURE. The operator read each Strata host's CPU package power
+// either side of the power caps going in -- srv4 101 W and then 39-42 W, srv3 65 W and then 29-31 W -- and the
+// load on the host moved between the two readings, so the step belongs to the caps and the quieter machine
+// together. Both halves are asserted at once, because they are one standing: every confounded reading names a host
+// whose roster figure is STILL the carried srv1 inference (provenance half -- promote srv3 or srv4 to
+// MeasuredOnHost on the strength of these numbers and this goes red), and each row's band is in the order the
+// operator reported it, later band below the earlier reading (transcription half -- flip 39 W and 42 W, or copy a
+// low figure into the profile, and it goes red too).
+test fn witness_confounded_cap_readings_leave_their_hosts_inferred() -> Bool {
+  confounded_host_power_readings.length() == 2
+    && confounded_host_power_readings.all(r =>
+      host_figure_is_still_inferred(host: r.host)
+        && watt_count(w: r.later_low_watts) < watt_count(w: r.later_high_watts)
+        && watt_count(w: r.later_high_watts) < watt_count(w: r.earlier_watts)
+        && string_contains(s: r.confound as String, pattern: "load")
+        && match host_power_profile(host: r.host) {
+          Absent => false
+          Present { value: p } =>
+            watt_count(w: p.draw) == 94
+              && match p.provenance {
+                InferredFromSimilarBuild { basis_host, basis_reason: _ } => (basis_host as String) == "srv1"
+                MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => false
+              }
+        })
+}
+
+// THE CAP STATE TRAVELS WITH THE PRICE. srv3 keeps pricing -- the roster's only figure for it is srv1's, and
+// refusing would leave its work unquotable rather than honest -- but the cost it produces now carries BOTH gaps
+// that separate that figure from the machine it runs on: the CPU ceiling applied on 2026-11-24 whose standing no
+// read has settled (with the unit, the applied figure, the part's rated clock, and the one read that would make
+// the figure attributable), and the cap-day wattage pair that moved together with the load (with the basis host
+// and what confounded it). srv2, which has no ceiling and no confounded pair, is the control: it answers
+// Attributable, so this is a claim about these hosts' state and not a label the fold stamps on everyone. If a
+// standing is ever promoted to read-holding, or one half of the confounded pair is promoted into the priced
+// figure, this reds -- which is the point: the cost can no longer say a figure describes a host whose clock
+// nobody has read.
+test fn witness_capped_hosts_price_while_their_power_state_stays_unattributed() -> Bool {
+  let srv3_attribution = match work_energy_cost(host: "srv3", duration: second(count: 600)) {
+    EnergyCostDerived { cost: c } => Present { value: c.power_state_attribution }
+    EnergyCostRefused { cause: _ } => Absent
+  }
+  let srv2_attribution = match work_energy_cost(host: "srv2", duration: second(count: 600)) {
+    EnergyCostDerived { cost: c } => Present { value: c.power_state_attribution }
+    EnergyCostRefused { cause: _ } => Absent
+  }
+  match srv3_attribution {
+    Absent => false
+    Present { value: a } => match a {
+      DrawAttributableToHostPowerState { host: _ } => false
+      DrawNotAttributableToHostPowerState { host: h, gaps } =>
+        (h as String) == "srv3"
+          && gaps.length() == 2
+          && gaps.any(g => match g {
+            CpuCeilingNotReadHolding {
+              host: gh, unit_path, applied_on, applied_ceiling, parts_rated_clock,
+              sits_below_the_parts_rated_clock, what_would_make_it_attributable,
+            } =>
+              (gh as String) == "srv3"
+                && (unit_path as String) == "/etc/systemd/system/cpu-freq-cap.service"
+                && (applied_on as String) == "2026-11-24"
+                && hertz_count(h: applied_ceiling) == 2000000000
+                && hertz_count(h: parts_rated_clock) == 3000000000
+                && sits_below_the_parts_rated_clock
+                && (what_would_make_it_attributable as String) == (cpu_freq_ceiling_standing_read as String)
+            HostFigureStillInferredWhilePowerStateMoved {
+              host: _, basis_host: _, observed_on: _, confound: _,
+            } => false
+          })
+          && gaps.any(g => match g {
+            CpuCeilingNotReadHolding {
+              host: _, unit_path: _, applied_on: _, applied_ceiling: _, parts_rated_clock: _,
+              sits_below_the_parts_rated_clock: _, what_would_make_it_attributable: _,
+            } => false
+            HostFigureStillInferredWhilePowerStateMoved {
+              host: gh, basis_host, observed_on, confound,
+            } =>
+              (gh as String) == "srv3"
+                && (basis_host as String) == "srv1"
+                && string_contains(s: observed_on as String, pattern: "2026-11-24")
+                && string_contains(s: confound as String, pattern: "load")
+          })
+    }
+  }
+    && match srv2_attribution {
+      Absent => false
+      Present { value: a } => match a {
+        DrawAttributableToHostPowerState { host: h } => (h as String) == "srv2"
+        DrawNotAttributableToHostPowerState { host: _, gaps: _ } => false
+      }
+    }
 }
