@@ -115,16 +115,16 @@ test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
   parse_population_duplicate_refuses_with_trivial_eq()
 }
 
-// CARRIER <-> TREE reconciliation, BOTH arms (the load-bearing instrument that ties these rows to the
-// tree; review 98443). ACCEPT: the correct real-row slice reconciles fully (zero unreconciled rows).
-// REFUSE: the same slice with one REAL row's byte size mistyped is NOT fully reconciled — a real wrong
-// row drives the refusal. This claim_batch test exercises ONLY the comparison predicate against
-// hand-built reference row-sets; it does NOT itself read `git ls-tree` and does NOT read the 170-row
-// roster (no filesystem in the language). The reconciliation of ALL 170 rows against
-// `git ls-tree -r -l <pinned_sha>` (green diff rc 0; a mistyped row drives it rc nonzero) is executed by
-// the committed runner test/parse_population_baseline_roster/run_evidence.sh — the last execution of that
-// path — recorded as a green-by-execution run link (legs A/B/C); gunbc CI executes no claims, so no CI
-// lane runs it. The name says exactly what THIS claim judges: the predicate refuses one bad row.
+// CARRIER <-> TREE comparison predicate, BOTH arms (review 98443). ACCEPT: the correct real-row slice
+// reconciles fully (zero unreconciled rows). REFUSE: the same slice with one REAL row's byte size mistyped
+// is NOT fully reconciled — a real wrong row drives the refusal. This claim_batch test exercises ONLY the
+// comparison predicate against hand-built reference row-sets; it does NOT itself read `git ls-tree` and does
+// NOT read the 170-row roster (no filesystem in the language). The reconciliation of ALL 170 rows against
+// `git ls-tree -r -l <pinned_sha>` is NOT executed in this merge: the awk/grep/sed shell runner that did it
+// was withdrawn (warm-fox-517 split ruling; review 98809), a `.dag` function cannot read the tree, and
+// gunbc CI executes no claims — so no lane runs it. That full reconciliation is declared WITHDRAWN pending
+// route A in parse_population_carrier_reader_rung_drop. What THIS claim judges is exactly its name: the
+// predicate refuses one bad row.
 test fn parse_population_reconcile_predicate_refuses_bad_row_holds() -> Bool {
   parse_population_reconcile_accepts_correct_slice()
     && parse_population_reconcile_refuses_mistyped_slice()
@@ -134,7 +134,7 @@ test fn parse_population_reconcile_predicate_refuses_bad_row_holds() -> Bool {
 // red control must be a real wrong row, not a planted constant). Invoked by name in the SAME claim_batch
 // as the PASS witnesses: it asserts the MISTYPED real-row slice reconciles fully to the correct tree,
 // which is FALSE (one real row's byte size is wrong), so claim_batch reports exactly one FAIL-by-name line
-// while the witnesses PASS — proving the runner reports a real wrong row as FAIL, not PASS
+// while the witnesses PASS — proving claim_batch reports a real wrong row as FAIL, not PASS
 // (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
 fn parse_population_roster_red_control_mistyped_row_fails() -> Bool {
   parse_population_unreconciled_row_count(
@@ -143,9 +143,9 @@ fn parse_population_roster_red_control_mistyped_row_fails() -> Bool {
 }
 
 
-// THE F2 RUNG DROP IS DECLARED AND READ: the carrier's regex-reader limitation
+// THE RUNG DROP IS DECLARED AND READ: the carrier's withdrawal-of-the-executed-reader gap
 // (parse_population_carrier_reader_rung_drop) is rendered by its consumer into a ledger line; this guard
-// fails if that limitation text is ever deleted while the runners still read the carrier by regex
+// fails if that gap text is ever deleted while the 170-to-tree reconciliation is still unwired
 // (source_annotations; review 98809 F2). Presence is the guard; the substance is the bounded-trigger text.
 test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
   parse_population_carrier_reader_rung_drop_ledger_line() != ""

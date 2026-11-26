@@ -54,90 +54,81 @@ It is emitted, not an interpreted stand-in: `target/release/gunbc test //gunbc/i
 
 ## 4. The two fixed populations (committed, byte-identity proven)
 
-The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`); its rostered claim `test.claim.parse_population_baseline_roster_witness` exercises the rule's self-consistency (count, ordering, uniqueness, partition) and the comparison predicate's discriminating arms. **The selection ALGORITHM is itself modelled and executed, not only commented** (review 98809 F1): `parse_population_selection_precedes` (byte size descending, then path ascending for the tiebreak) with its top-N window `parse_population_rows_outside_top_n` is checked by a discriminating pair (top-2 of `[30,20,10]` leaves exactly one outside; top-3 leaves none) and an equal-size path-tiebreak discriminator, so the shell `sort -k1,1nr -k2,2 | head` is transport applying a rule the carrier owns and tests, not the authority for it. Per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — and the **wall/RSS of every measured cell is timed by running the staged roots** (a row list cannot itself be timed). The tie between the declared rows and the tree is NOT established by a `.dag` claim (a `.dag` function cannot read the tree and CI runs no claims); it is established by an **executed shell runner** `test/parse_population_baseline_roster/run_evidence.sh` (§4a) that reads the pinned sha and the rows out of the carrier, compares them against `git ls-tree`, and refuses by name on any mismatch — this is the last execution of that path and its run link is recorded below. Per `gunbc.design_argument::consumption` the roster's executed consumer is that runner (and, in the measurement re-run, the staging step that builds the roots from `roster.path`); the `run_evidence.sh` header names the condition under which it dissolves. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
+The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`); its rostered claim `test.claim.parse_population_baseline_roster_witness` exercises the rule's self-consistency (count, ordering, uniqueness, partition) and the comparison predicate's discriminating arms. **The selection ALGORITHM is itself modelled and executed, not only commented** (review 98809 F1): `parse_population_selection_precedes` (byte size descending, then path ascending for the tiebreak) with its top-N window `parse_population_rows_outside_top_n` is checked by a discriminating pair (top-2 of `[30,20,10]` leaves exactly one outside; top-3 leaves none) and an equal-size path-tiebreak discriminator, so the shell `sort -k1,1nr -k2,2 | head` is transport applying a rule the carrier owns and tests, not the authority for it. Per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — and the **wall/RSS of every measured cell is timed by running the staged roots** (a row list cannot itself be timed). **The tie between the declared rows and the tree is NOT established in this merge.** A `.dag` function cannot read the tree, and CI executes no claims, so no `.dag` claim can do it; the shell runner that would (`run_evidence.sh`, which reads the pinned sha and rows out of the carrier and diffs them against `git ls-tree`) was **withdrawn from this PR** in the split ruled by warm-fox-517 (review 98836) — the `.dag` model, predicates and witness land here, the executed tree-reading consumer does not. Per `gunbc.design_argument::consumption` this is a named **gap**, not a claim of execution: the roster's 170-to-tree reconciliation is the open item that route A (bold-cat-668's measurement-first planning row, owner compiler-self-host) closes by reading the rows **through** `gunbc compile` rather than beside it. §4a records the author-side observation of the reconciliation and why it is not a committed check. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
 
-The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so roots are staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. The fixed harness stages those roots **from the roster**, not by hand: the committed runner `test/parse_population_baseline_roster/stage_roster_roots.sh` (§4b) reads the pinned sha and the rows out of the carrier, verifies each declared path exists and its blob byte size matches at the pinned sha, and only then copies the blobs — so a mistyped path or byte size aborts the staging and the verb never runs over a roster that does not match the tree. The baseline cells in §5 were produced (before this wiring landed) by staging the same pinned-sha tree under those governed dirs; each staged file is byte-identical to the same path at the pinned sha:
+The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so roots are staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. The baseline cells in §5 were produced by staging the pinned-sha tree under those governed dirs (the roster-driven staging runner that would build the roots from `roster.path` was withdrawn in the split; §9b); each staged file is byte-identical to the same path at the pinned sha:
 
 ```
 NAMED_POP=pop5    files=5   bytes=4575463   sha_mismatches=0
 NAMED_POP=pop165  files=165 bytes=29960631  sha_mismatches=0
 ```
 
-### 4a. Carrier↔tree reconciliation — executed by the committed runner (rendering; review 98443 / 98730)
+### 4a. Carrier↔tree reconciliation — the gap this split does NOT close (route A pending; review 98443 / 98730 / 98809 / 98836)
 
 The 170 roster rows are a hand-ordered list, so the load-bearing check is whether each declared `path` AND
 byte size equals the tree at the pinned sha — a comparison against `git ls-tree`, not the roster read back
-against itself. That comparison CANNOT live in `.dag` (no filesystem; CI executes no claims), so its last
-execution is the committed runner `test/parse_population_baseline_roster/run_evidence.sh`, which extracts the
-rows and the pinned sha out of the carrier (no second authority), runs `git ls-tree -r -l <sha> -- dag src/v2`,
-takes the top-170 by the selection sort, diffs, and drives its own red (a mistyped row must fail by name or
-the leg is vacuous). The block below is a **rendering of that runner's output**, not the check itself. Its
-dissolve-on marker (in the runner header) is the condition that retires it: emitted `bash_build` node kinds
-rendering the same extract/ls-tree/diff as a step, or an executed claim evaluator for tree-reading claims
-landing on the required path.
+against itself. That comparison CANNOT live in `.dag` (no filesystem; CI executes no claims). The shell runner
+that would have done it (`run_evidence.sh`) was **withdrawn from this PR** in the split: this merge ships the
+`.dag` model, its predicates and its witness, and NOT an executed tree-reading consumer. The reconciliation is
+therefore a **named gap**, closed by route A (below), not a claim of execution here.
 
-**The carrier read is a regex reader, declared as a rung drop (review 98809 F2).** Both runners pull the rows
-and constants out of the `.dag` **source** with `awk`/`grep`/`sed` — a second reader beside the grammar
-(`gunbc.design_argument::closed_grounded_substrate`: "one total decision procedure … N models, not N×M
-adapters"). What it cannot catch is a **misparsed field**: a row broken across two lines, or the sha moved onto
-the `data … =` line, silently changes what the awk extracts; the count guard catches a **dropped row** only, not
-a field parsed wrong. That gap is not hidden — it is carried as the typed rung drop
-`parse_population_carrier_reader_rung_drop` in the carrier (its consumer renders the limitation into a ledger
-line, guarded by a claim), naming the rung actually claimed (carrier predicates model + discriminate the
-selection order; the runner feeds them tree-derived `(path,bytes)`) versus the rung the contract wants (rows read
-**through** the compiler). Bounded trigger: a compiler CLI that evaluates `parse_population_baseline_rows` and
-prints it (route A, the planning row warm-fox-517 raises via neat-badger-614), or operator scaffold approval
-outside the diff (route B). The selection RULE the reader applies is not part of this gap — it is modelled and
-executed in `.dag` (F1, §4).
-
-Runner output (rendered), at pinned_sha `65230868362de3efc0ddfeeaeef5d83eeb2fa385`:
+What was observed author-side, on the pre-split runner, is recorded for continuity — it is an **author-side
+verification, not a committed executed check**, and no run link is claimed for it in this merge:
 
 ```
-== parse_population_baseline_pinned_sha (read from carrier): 65230868362de3efc0ddfeeaeef5d83eeb2fa385
-PASS: all 170 roster rows reconcile to git ls-tree at 65230868362de3efc0ddfeeaeef5d83eeb2fa385 (rc 0)
-PASS: red control discriminates -- mistyped byte size on dag/gunbc/roadmap/roadmap_authority.dag turns the leg red
+pinned_sha 65230868362de3efc0ddfeeaeef5d83eeb2fa385
+carrier-side rows = 170 ; tree-side (git ls-tree -r -l <sha> -- dag src/v2, top-170 by selection sort) = 170 ; diff rc 0
+red control: mistyping the first declared row's byte size turns the leg nonzero and names roadmap_authority.dag
 ```
 
-- **GREEN**: carrier side and tree side both 170 rows, diff rc **0** — every declared path and byte size is
-  byte-for-byte the tree.
-- **RED**: the runner mistypes the first declared row's byte size by one digit; the leg turns nonzero and
-  prints exactly that row (`roadmap_authority.dag`) by name. If a real wrong row did NOT turn it red, the
-  runner exits 1 (the leg would be vacuous). This real wrong row is the red control, replacing the former
-  planted `byte_size(count: 999)` (review 98443).
+The `.dag` `parse_population_reconcile_*` arms are **not** that tree comparison — over hand-built reference row
+sets they prove only that the comparison predicate DISCRIMINATES (`parse_population_reconcile_predicate_refuses_bad_row_holds`,
+plus the by-name `parse_population_roster_red_control_mistyped_row_fails` in the same claim_batch, both **parses +
+required lane** in CI). Reading the real tree and failing by name on the real 170 rows is the open item, not done here.
 
-The `.dag` `parse_population_reconcile_*` arms are NOT this comparison run against the tree — they prove only
-that the comparison predicate DISCRIMINATES over a hand-built reference row-set (`parse_population_reconcile_predicate_refuses_bad_row_holds`,
-plus a by-name `parse_population_roster_red_control_mistyped_row_fails` in the same claim_batch). Reading the
-tree and failing by name on the real 170 rows happens solely in the runner above.
+**Route A is the merge path.** `gunbc compile --target rust` over this carrier already emits all 170 rows as
+typed Rust literals to `src/v1/stage0/src/gunbc_parse_population_baseline_roster.rs` (reproduced in §4b), so the
+tree reconciliation can be driven from **compiler output** rather than a regex reader beside the grammar — no new
+Rust, no seed. Whether the consumer should instead read the binding through a proper emitted route is exactly
+the question bold-cat-668's measurement-first planning row (owner compiler-self-host) answers before anything
+becomes a new emitted verb; anything reaching the seed goes to the operator first. **Route B (operator scaffold
+approval outside the diff) is DECLINED** (neat-badger-614, 2026-11-26) and is not a path forward.
 
-The rendered output above is an author-side verification run of the runner (it proves the leg is not vacuous
-and prints the pinned sha read from the carrier by name). The BOOT-bearing srv1 run-link execution of the
-RUNNER `test/parse_population_baseline_roster/run_evidence.sh` at the final head (post-cutover), and the
-re-execution of the rostered claim there, are pending the cutover announcement plus a lane-manager acquisition GO.
+### 4b. Emitted-roster reproduction — how the compiler already evaluates the named binding
 
-### 4b. Roster-driven staging — the measurement-level consumer (route (a); review 98443-2 / 98730)
+This is the measurement input route A needs, run read-only by the worker, not an implementation decision.
 
-Reconciling the roster to the tree (§4a) still leaves the population feeding nothing if the roots are staged
-by hand. So the harness now consumes the roster at the level the row's claims are made: the committed runner
-`test/parse_population_baseline_roster/stage_roster_roots.sh <five|tail165|all>` reads `parse_population_baseline_pinned_sha`,
-`parse_population_five_largest_count` and `parse_population_expected_total_count` BY NAME out of the carrier, selects each
-population by rank (first `five_largest_count` rows = FiveLargest; ranks 6..170 = the size-tail sample), and for
-every row verifies the path exists at the pinned sha AND its blob byte size equals the declared bytes before
-copying it into a governed `…/dag` or `…/src/v2` tree dir. Any mismatch aborts staging and names that path, so the
-verb never runs over a roster that does not match the tree — the wrong row turns the VERB INPUT red at the
-measurement level, not only at the reconcile level. It holds no second roster table (single authority, `fail_closed`).
-Its SCAFFOLD dissolve-on header names both retirement triggers, matching the accepted precedent.
+Command (free compile gate, no heavy slot; the emitted directory is named and removed after):
 
-Author-side validation (host-independent, no slot):
+```
+gunbc compile --entry dag/gunbc/parse_population_baseline_roster.dag \
+  --source-root dag --source-root src/v2 --target rust \
+  --output-dir .pp-emitted-roster-measurement
+rc=0   (0 blocking, 768 advisory)
+```
 
-- `five` GREEN: staged 5 of 5, bytes **4575463** (equals the roster's five-population byte total exactly),
-  `sha_mismatches=0`, rc **0**; staged paths span `dag/` and `src/v2/` (four + one, as Population 1 spans both roots).
-- `five --selftest-mistype` RED: first row's declared byte size flipped to 0 → staged **4 of 5**, rc **1**, the
-  byte-mismatch line names that path. The guard refuses a real wrong row.
+Emitted roster file, measured from disk (this turn's run; `bytes` is NOT a stable contract — the emitted header
+carries a `generated_at` timestamp, so the file size drifts a few hundred bytes run to run; the load-bearing
+observation is the row/path content, not the byte count):
 
-The srv1 BOOT-bearing staging-plus-verb leg (populations staged through this script, then the parse-population verb
-run over the staged roots) is tranche-2 acquisition A, at the final head, post-cutover; its red control is the same
-`--selftest-mistype` refusal, run on srv1 with its own rc.
+```
+src/v1/stage0/src/gunbc_parse_population_baseline_roster.rs
+  bytes = 41550            (read from disk; drifts with generated_at; order 41 KB, not a bound value)
+  path literals ("...dag" ...) = 189
+```
+
+The emitted rows carry the exact path in a single column, so the exact-path match cleanly separates the correct
+row from the substring decoy (this is the discriminating pair the transport must carry, verified against the
+emitted `.rs`):
+
+```
+exact-match "dag/gunbc/roadmap/roadmap_authority.dag"      -> 3 correct rows
+exact-match "dag/test/claim/roadmap/roadmap_authority.dag" -> 1 decoy row  (a naive substring grep conflates them)
+```
+
+The emitted roster `.rs` is **NOT committed at main** (main builds the roster from the `.dag` carrier). These
+counts are an observation of what the compiler already produces; they are input to the planning row, not a
+bound contract of this PR.
 
 ## 5. Cells — raw output, real rc, load alongside every cell
 
@@ -190,6 +181,20 @@ Productive heavy-slot acquisitions on srv1 (each its own slot, `HEAVY_OWNER=brig
 Additionally 4 heavy-slot touches refused instantly at argument validation (wall 0.00 s, no work: reference missing the verb token; reference missing `cd` to the checkout; `--receipts`/`--write-identity` and `--reuse-from` missing the required `--compiler`). Total slots touched = 13. This exceeds the lane-manager's planning estimate of 5; the excess is the 3-repeats-per-cell requirement and discovering that the reuse flags require `--compiler`. Every acquisition logged `heavy-slot: slot N/12 acquired by bright-hawk-891 at <ts>` as its first line and printed `uptime`/`nproc`/live slot holders alongside the cell.
 
 ### 9b. Later-stage acquisitions and the review-98443 code change
+
+- **SPLIT (review 98809 F1–F4 / 98836, ruled by warm-fox-517) — SUPERSEDES the "committed runner" bullets below.**
+  This merge lands only the `.dag` side: `dag/gunbc/parse_population_baseline_roster.dag`,
+  `dag/test/claim/parse_population_baseline_roster_witness.dag`, and this report. The two shell scaffolds
+  (`test/parse_population_baseline_roster/run_evidence.sh`, `…/stage_roster_roots.sh`) and their `awk`/`grep`/`sed`
+  carrier reader and hand reconciliation were **removed from the PR**. Consequence for the honesty seam: the
+  carrier↔tree reconciliation and the roster-driven staging are **gaps pending route A**, not executed checks —
+  every "executed runner / committed runner / green-by-execution run link" claim in the review-98443 and
+  review-98730 bullets below is historical (those runners are no longer in the diff). The rung drop
+  `parse_population_carrier_reader_rung_drop` now states plainly that no executed reader of the rows ships here;
+  its claimed rung is that the typed `.dag` predicates model and discriminate the selection order over hand-built
+  slices. **Route B (operator scaffold sanction) is declined** (neat-badger-614); route A (bold-cat-668's
+  measurement-first planning row) is the only path, and §4b shows `gunbc compile` already emits the 170 rows as
+  typed Rust, so route A needs no new Rust. No heavy acquisition was used for the split.
 
 - **Instrument-check leg (tranche 1)**: one further srv1 heavy-slot acquisition (`HEAVY_OWNER=bright-hawk-891`,
   `heavy-slot: slot 1/12 acquired bright-hawk-891 @2026-11-25T21:47:48Z`) ran `/usr/bin/time -v` (getrusage,

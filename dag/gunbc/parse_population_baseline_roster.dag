@@ -42,30 +42,27 @@ data parse_population_five_largest_count: Int = 5
 // must prove it measured; review 98328).
 data parse_population_expected_total_count: Int = 170
 
-// DECLARED RUNG DROP (review 98809 F2; warm-fox-517 ruling: the hole gets a typed rung drop with a
-// bounded trigger, the same carrier the sibling hand-shell scaffold uses at
-// gunbc/auth/approval_ci_step.dag:144). The committed runners
-// test/parse_population_baseline_roster/run_evidence.sh and stage_roster_roots.sh read
-// parse_population_baseline_pinned_sha, the counts and the 170 parse_population_baseline_rows out of THIS
-// .dag SOURCE with awk/grep/sed -- a SECOND READER beside the real grammar
-// (gunbc.design_argument::closed_grounded_substrate: "emission, ingestion and coercion are ONE total
-// decision procedure ... N models, not N x M adapters").
-// RUNG ACTUALLY CLAIMED: the carrier's typed predicates discriminate the modelled selection order
-// (parse_population_selection_precedes with its top-N and path-tiebreak pair, executed in the witness), and
-// the runner feeds them tree-derived (path, bytes); the tree comparison is the last execution of that path,
-// green-by-execution as a run link. RUNG THE CONTRACT WANTS: the rows are read THROUGH that single total
-// decision procedure -- the compiler. THE GAP is the regex reader.
-// WHAT IT CANNOT CATCH (review 98809): a MISPARSED FIELD. A row broken across two lines, or the sha moved
-// onto the `data ... =` line, silently changes what the awk extracts. The count guard
-// (carrier row count != parse_population_expected_total_count) catches a DROPPED row, not a field parsed
-// wrong. So the reconciliation is discriminating for omissions but not for a reformat that misparses a field.
-// BOUNDED TRIGGER -- DISSOLVES WHEN either: (route A) the rows are read through the compiler by a CLI that
-// evaluates parse_population_baseline_rows and prints it -- the compiler-CLI planning row warm-fox-517 is
-// raising through neat-badger-614 (id pending from that row); OR (route B) the operator grants scaffold
-// approval outside the diff, after which this reader is SANCTIONED scaffold carrying exactly this named
-// limitation. It is bounded: it discharges on that CLI or that ruling, not on an open-ended future capability.
+// DECLARED RUNG DROP (review 98809 F2; warm-fox-517 split ruling: the shell scaffolds, their awk/grep/sed
+// reader and the hand reconciliation are OUT of this merge, so this carrier carries the honest gap instead
+// of a scaffold that pretended to close it). NO EXECUTED READER of these rows ships in this PR: a `.dag`
+// function cannot read the tree (no filesystem in the language) and CI runs no claims, and the shell runner
+// that previously read parse_population_baseline_pinned_sha / the counts / the 170 rows from THIS .dag source
+// with awk/grep/sed -- a second reader beside the real grammar (gunbc.design_argument::closed_grounded_substrate)
+// -- has been withdrawn.
+// RUNG ACTUALLY CLAIMED (and EXECUTED in the witness): the carrier's typed predicates model and DISCRIMINATE
+// the selection order -- parse_population_selection_precedes with its top-N window and equal-size path-tiebreak
+// pair -- over hand-built row slices. The reconcile arms below exercise the comparison PREDICATE only.
+// RUNG THE CONTRACT WANTS: all 170 declared rows reconciled to `git ls-tree` at the pinned sha THROUGH that
+// single total decision procedure -- the compiler -- so a mistyped row turns red. THE GAP: that 170-to-tree
+// reconciliation is NOT executed anywhere in this merge; it is WITHDRAWN pending route A.
+// BOUNDED TRIGGER -- DISSOLVES WHEN route A lands: a compiler CLI evaluates parse_population_baseline_rows
+// and prints it, so the reconciliation runs THROUGH the compiler rather than beside it. Route A is the
+// measurement-first planning row owned by compiler-self-host (bold-cat-668, raised via neat-badger-614; id
+// pending from that row). Route B (operator scaffold approval outside the diff) is NOT an option here: it was
+// DECLINED by neat-badger-614, so it is deliberately absent as a dissolution path. It is bounded: it
+// discharges on that CLI, not on an open-ended future capability.
 data parse_population_carrier_reader_rung_drop: DissolutionCondition = unbound_dissolution(
-  description: "🟡 dissolve-on: run_evidence.sh and stage_roster_roots.sh read parse_population_baseline_rows / pinned_sha / counts from THIS .dag source by awk/grep/sed -- a second reader beside the grammar (closed_grounded_substrate). Claimed rung: carrier typed predicates model + discriminate the selection order (top-N by blob size, path tiebreak) and the runner feeds them tree-derived (path,bytes); contract rung: rows read THROUGH the compiler. Gap: the regex reader cannot catch a MISPARSED FIELD (a row split across lines, or the sha on the data line); the count guard catches a DROPPED row only. DISSOLVES WHEN a compiler CLI evaluates parse_population_baseline_rows and prints it (route A, the planning row warm-fox-517 raises via neat-badger-614), OR the operator grants scaffold approval outside the diff (route B).")
+  description: "🟡 dissolve-on: no executed reader of parse_population_baseline_rows ships in this merge -- a .dag function cannot read the tree and CI runs no claims, and the awk/grep/sed shell reader was WITHDRAWN (warm-fox-517 split ruling; review 98809). Claimed rung (executed in the witness): the carrier's typed predicates model and discriminate the selection order (top-N by blob size, path tiebreak) over hand-built slices, and the reconcile arms exercise the comparison predicate only. Contract rung: all 170 declared rows reconciled to git ls-tree at the pinned sha THROUGH the compiler, so a mistyped row turns red. Gap: that 170-to-tree reconciliation is not executed in this merge. DISSOLVES WHEN route A lands -- a compiler CLI evaluates parse_population_baseline_rows and prints it (the measurement-first planning row owned by compiler-self-host / bold-cat-668, raised via neat-badger-614). Route B (operator scaffold sanction outside the diff) is declined by neat-badger-614 and is not a dissolution path here. Bounded: discharges on that CLI, not an open-ended future capability.")
 
 // DECLARED DEPARTURE (gunbc.design_argument::epistemic_humility): the row calls the second population
 // "a 165-module sample"; as SELECTED it is NOT a uniform/stratified sample — it is the NEXT 165 files by
@@ -608,9 +605,10 @@ fn parse_population_correct_real_row_slice() -> List<ParsePopulationRow> {
 // These two arms exercise ONLY the comparison predicate over a HAND-BUILT reference row-set. They do not
 // read the tree (no filesystem in the language) and do not read the 170-row roster: they prove the predicate
 // DISCRIMINATES (accepts when declared == reference, refuses when one byte size is off). The real comparison
-// of all 170 rows against `git ls-tree` at the pinned sha is executed by the committed runner
-// test/parse_population_baseline_roster/run_evidence.sh (the last execution of that path), recorded as a
-// run link in the measurement report §4a; that runner reads parse_population_baseline_pinned_sha from HERE.
+// of all 170 rows against `git ls-tree` at the pinned sha is NOT executed in this merge: the shell runner
+// that did it was withdrawn (warm-fox-517 split ruling; review 98809), a `.dag` function cannot read the tree
+// and CI runs no claims. That 170-to-tree reconciliation is declared withdrawn pending route A in
+// parse_population_carrier_reader_rung_drop; these arms only prove the comparison PREDICATE discriminates.
 // ACCEPT arm: the predicate reports zero unreconciled rows when declared equals the reference row-set.
 fn parse_population_reconcile_accepts_correct_slice() -> Bool {
   parse_population_unreconciled_row_count(
@@ -630,7 +628,7 @@ fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
 // text is read by a real route rather than left an unchecked comment
 // (gunbc.design_argument::source_annotations; the same shape gunbc/auth/approval_ci_step.dag:205 uses for
 // its scaffold trigger). The witness guards this line is present, so the limitation cannot be deleted
-// while the runner still reads the carrier by regex.
+// while the 170-to-tree reconciliation is still withdrawn pending route A.
 fn parse_population_carrier_reader_rung_drop_ledger_line() -> String {
   concat("rung-drop: ", dissolution_description(condition: parse_population_carrier_reader_rung_drop))
 }
