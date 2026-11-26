@@ -3871,6 +3871,15 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
 type RunArgvTransportUnansweredCause
   = TransportUnansweredOverran
   | TransportUnansweredWireInconsistent
+
+// render a dispatched-but-unanswered leg by the kind of fault that left its effect unknown -- never as "not run",
+// "refused", or "not dispatched" (gunbc.design_argument::fail_closed: a sent leg is never reported as not-sent).
+fn run_argv_transport_unanswered_cause_phrase(cause: RunArgvTransportUnansweredCause, reason: String) -> String {
+  match cause {
+    TransportUnansweredOverran => "its reply was lost (the process group was killed before the host answered), so its effect is unknown; ",
+    TransportUnansweredWireInconsistent => "its reply carried an inconsistent wire shape, so its effect is unknown; ",
+  }
+}
 type RunArgvTransportOutcome
   = RunArgvTransportObserved { observed: ShellExecObserved }
   | RunArgvTransportRefused { reason: String }
@@ -8621,17 +8630,19 @@ fn live_deploy_ensure_package_fold(
         ),
         applied: intent,
       }
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: r } =>
+    // Dispatched, reply unreadable: the probe leg WAS sent to the host (gunbc.design_argument::fail_closed: a sent
+    // leg is never reported as "not run"/"refused"), but its reply could not be read, so the package's install-state
+    // is not established. The install leg, in contrast, was genuinely not dispatched (the caller passes the not-run
+    // outcome), because installing on an unestablished state would fabricate. Not-converged with the real cause.
+    RunArgvTransportUnanswered { cause: c, reason: r } =>
       NotConverged {
         reason: join(
           [
-            "host_effect_apply: live-deploy ensure-dependency refused before the install-state probe for package ",
+            "host_effect_apply: live-deploy ensure-dependency probe for package ",
             package as String,
-            " ran -- ",
-            r,
-            "; the install was not attempted either, and neither leg is reported as having run.",
+            " was dispatched but ",
+            run_argv_transport_unanswered_cause_phrase(cause: c, reason: r),
+            " the install-state is therefore not established, and the install leg was not dispatched.",
           ],
           "",
         ),
@@ -8724,12 +8735,13 @@ fn live_deploy_ensure_package_leg(
             install: live_deploy_leg_not_run_outcome(),
             intent: intent,
           )
-        // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-        // Same handling as the refused/killed leg here; the cause names the real fault.
-        RunArgvTransportUnanswered { cause: _, reason: r } =>
+        // Dispatched, reply unreadable: the probe leg WAS sent; its effect/state-reading is unknown. Pass the
+        // Unanswered through (never downgraded to Refused -- review 99020) so the fold reports the probe as
+        // dispatched-and-unknown. The install leg was genuinely not dispatched, so it stays the not-run outcome.
+        RunArgvTransportUnanswered { cause: c, reason: r } =>
           live_deploy_ensure_package_fold(
             package: package,
-            probe: RunArgvTransportRefused { reason: r },
+            probe: RunArgvTransportUnanswered { cause: c, reason: r },
             install: live_deploy_leg_not_run_outcome(),
             intent: intent,
           )
@@ -9046,17 +9058,16 @@ fn live_deploy_ensure_step_failure_line(step: String, subject: String, outcome: 
         ],
         "",
       )
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: r } =>
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown -- never "could not run".
+    RunArgvTransportUnanswered { cause: c, reason: r } =>
       join(
         [
-          "host_effect_apply: live-deploy ensure-dependency could not run its ",
+          "host_effect_apply: live-deploy ensure-dependency step ",
           step,
           " for ",
           subject,
-          " -- ",
-          r,
+          " was dispatched but ",
+          run_argv_transport_unanswered_cause_phrase(cause: c, reason: r),
         ],
         "",
       )
@@ -9091,14 +9102,14 @@ fn live_deploy_ensure_discard_line(outcome: RunArgvTransportOutcome) -> String {
         ],
         "",
       )
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: r } =>
+    // Dispatched, reply unreadable: the discard leg WAS sent; the scratch may or may not be gone -- effect unknown,
+    // never "did not run".
+    RunArgvTransportUnanswered { cause: c, reason: r } =>
       join(
         [
-          "the scratch discard did not run either -- ",
-          r,
-          "; the scratch directory may survive for later reclamation.",
+          "the scratch discard was dispatched but ",
+          run_argv_transport_unanswered_cause_phrase(cause: c, reason: r),
+          "the scratch directory may survive for later reclamation.",
         ],
         "",
       )
@@ -10268,10 +10279,15 @@ fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathEx
   match outcome {
     RunArgvTransportRefused { reason: why } =>
       PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: why } =>
-      PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
+    // Dispatched, reply unreadable: the `test` leg WAS sent; its answer could not be read, so existence is
+    // unreadable -- but it is not a refusal, and the leg is not described as never having run.
+    RunArgvTransportUnanswered { cause: c, reason: why } =>
+      PathExistenceUnreadable {
+        reason: join(
+          ["`test` on ", path, " was dispatched but ", run_argv_transport_unanswered_cause_phrase(cause: c, reason: why)],
+          "",
+        ) as NonEmptyStr,
+      }
     RunArgvTransportObserved { observed: o } =>
       path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
   }
@@ -11256,17 +11272,16 @@ fn compile_pool_install_step_failure_line(step: String, slice_unit: NonEmptyStr,
         ],
         "",
       )
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: why } =>
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown -- never "did not run".
+    RunArgvTransportUnanswered { cause: c, reason: why } =>
       join(
         [
-          "host_effect_apply: EnsureCompilePoolSlice did not run its ",
+          "host_effect_apply: EnsureCompilePoolSlice step ",
           step,
           " over ",
           slice_unit as String,
-          " -- ",
-          why,
+          " was dispatched but ",
+          run_argv_transport_unanswered_cause_phrase(cause: c, reason: why),
         ],
         "",
       )
@@ -11284,10 +11299,10 @@ fn compile_pool_install_discard_line(outcome: RunArgvTransportOutcome) -> String
       join([" (staged bytes discarded, exit ", to_string(o.exit_code), ")"], "")
     RunArgvTransportRefused { reason: why } =>
       join([" (the staged-byte discard did not run either -- ", why, ")"], "")
-    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
-    // Same handling as the refused/killed leg here; the cause names the real fault.
-    RunArgvTransportUnanswered { cause: _, reason: why } =>
-      join([" (the staged-byte discard did not run either -- ", why, ")"], "")
+    // Dispatched, reply unreadable: the discard leg WAS sent; whether the staged bytes are gone is unknown --
+    // never "did not run".
+    RunArgvTransportUnanswered { cause: c, reason: why } =>
+      join([" (the staged-byte discard was dispatched but ", run_argv_transport_unanswered_cause_phrase(cause: c, reason: why), ")"], "")
   }
 }
 
