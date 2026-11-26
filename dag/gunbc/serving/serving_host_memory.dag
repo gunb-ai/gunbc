@@ -7,6 +7,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, Memory, One,
   TokenCount, token_count, token_count_value,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  Gibibyte, gibibyte_count,
   Permille, permille, permille_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -371,9 +372,9 @@ data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapsh
 // at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log). The
 // bytes that stay warm are the configured size at the watermark, derived from the two readings. It evicts; it does
 // not refuse once full.
-data srv1_lmcache_l2_configured_gib: Nat = 125
+data srv1_lmcache_l2_configured: Gibibyte = gibibyte(count: 125)
 
-data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: srv1_lmcache_l2_configured_gib))
+data srv1_lmcache_l2_bytes: ByteSize = gibibyte_to_byte_size(g: srv1_lmcache_l2_configured)
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
@@ -408,9 +409,12 @@ data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 // provisioning row still carried the 2026-11-08 figure of 12, so a container provisioned from the model rather
 // than installed by hand would have come up with a quarter of the tier its contract needs. The dated capture of
 // that older reading is KEPT, as a capture, in gunbc.serving.srv1_serving_launch_witness::observed_cmd_tail.
-data srv1_lmcache_l1_configured_gib: Nat = 48
+// TYPED IN THE UNIT IT IS WRITTEN IN (review 98748): a `Nat` named `_gib` carries its unit in its name alone, and
+// std.measure already has the carrier for it -- gunbc.std.measure::Gibibyte, read back with gibibyte_count. The
+// bytes are derived, never written: srv1_lmcache_l1_bytes below.
+data srv1_lmcache_l1_configured: Gibibyte = gibibyte(count: 48)
 
-data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: srv1_lmcache_l1_configured_gib))
+data srv1_lmcache_l1_bytes: ByteSize = gibibyte_to_byte_size(g: srv1_lmcache_l1_configured)
 
 // The tier as its OWN KNOB spells it. The authority above is already a whole number of gibibytes, so this is a
 // read of that row and not a conversion — which is the point: neither launch path has to divide bytes back into
@@ -419,12 +423,12 @@ data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(co
 // entry (gunbc.serving.srv1_serving_launch::srv1_serving_launch) both take the tier from here, and
 // gunbc.serving.srv1_replica_rendered_boot_path_witness reads the operand out of BOTH and refuses if they differ.
 fn srv1_lmcache_l1_gb_value() -> NonEmptyStr {
-  to_string(srv1_lmcache_l1_configured_gib) as NonEmptyStr
+  to_string(gibibyte_count(g: srv1_lmcache_l1_configured)) as NonEmptyStr
 }
 
 // The disk tier's knob, spelled the same way for the same reason.
 fn srv1_lmcache_l2_gb_value() -> NonEmptyStr {
-  to_string(srv1_lmcache_l2_configured_gib) as NonEmptyStr
+  to_string(gibibyte_count(g: srv1_lmcache_l2_configured)) as NonEmptyStr
 }
 
 // THE CONTAINER'S HARD RAM CEILING, PER REPLICA — the same collapse applied to the number beside the tier.
@@ -440,12 +444,12 @@ fn srv1_lmcache_l2_gb_value() -> NonEmptyStr {
 data srv1_replica_container_memory_cap: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 72))
 
 data srv1_lmcache_l1_tier: ServingMemoryReading = ServingMemoryRead {
-  bytes: srv1_lmcache_l1_configured,
+  bytes: srv1_lmcache_l1_bytes,
   provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=48 each (the rendered args files installed on the host, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca read 2026-11-24; the launcher's START event reads L1 48G), was 12 GiB per replica from 2026-11-08 until that raise" as NonEmptyStr,
 }
 
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
-  bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_configured) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
+  bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_bytes) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
   provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=125 each (docker inspect, 2026-11-08) at the L2 eviction watermark 0.80 (serve.log eviction_controller)" as NonEmptyStr,
 }
 
@@ -518,7 +522,7 @@ data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
   // from the row now, so it cannot lag the launch shape again; the durability obligation the tier carries is
   // not this record's to state and is modelled at
   // gunbc.serving.srv1_serving_replica_layout::srv1_l1_staging_floor.
-  conversation_cache: ServingMemoryRead { bytes: srv1_lmcache_l1_configured, provenance: "CITED from srv1_lmcache_l1_configured (48 GiB, LMCACHE_L1_GB=48 in the installed args files, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca read 2026-11-24). Read here as its own figure until class B4: LMCache L1_GB=100 on 2026-10-30 (LMCache's GB taken as 10^9 bytes, an unconfirmed reading of the unit), 12 GiB in what the launcher rendered from 2026-11-08 — three values for one tier" as NonEmptyStr },
+  conversation_cache: ServingMemoryRead { bytes: srv1_lmcache_l1_bytes, provenance: "CITED from srv1_lmcache_l1_configured (48 GiB, LMCACHE_L1_GB=48 in the installed args files, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca read 2026-11-24). Read here as its own figure until class B4: LMCache L1_GB=100 on 2026-10-30 (LMCache's GB taken as 10^9 bytes, an unconfirmed reading of the unit), 12 GiB in what the launcher rendered from 2026-11-08 — three values for one tier" as NonEmptyStr },
   conversation_slots: Absent,
 }
 

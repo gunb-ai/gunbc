@@ -26,7 +26,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   BootSurvivalObservation, srv1_l1_staging_floor
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
-import gunbc.serving.serving_host_memory { srv1_lmcache_l1_configured, srv1_lmcache_l2_configured }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_bytes, srv1_lmcache_l2_bytes }
 import gunbc.serving.lil_serving_defects { srv1_f24_b12x_tp2_hang_defect }
 import gunbc.rung_drop.srv1_serving_boot_installer_is_adopted_not_staged { srv1_serving_boot_installer_is_adopted_not_staged }
 import gunbc.rung_drop { Standing, TypedDeclaration, AuthoredProse, Retired, Superseded, Dissolved }
@@ -353,9 +353,9 @@ test fn the_restore_path_carries_the_pre_contract_tier_and_says_so() -> Bool {
     contract: srv1_kv_staging_contract,
     config: srv1_admitted_launch_config
   ) { Accepted { value: v, diagnostics: _ } => byte_size_count(b: v), Rejected { diagnostics: _ } => 0 }
-  let tier_bytes = byte_size_count(b: srv1_lmcache_l1_configured)
+  let tier_bytes = byte_size_count(b: srv1_lmcache_l1_bytes)
   restore_l1_is_the_2026_11_08_shape
-    && srv1_lmcache_l1_configured == admitted_l1
+    && srv1_lmcache_l1_bytes == admitted_l1
     && tier_bytes > floor_bytes
     // the admitted tier clears the floor but not by an order of magnitude: it is a real buffer, not a token
     // gesture, and it is not so far above the floor that the floor stops being the thing that binds.

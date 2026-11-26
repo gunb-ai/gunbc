@@ -79,8 +79,8 @@ import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_
 import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.serving_host_memory {
-  ConversationSnapshotCost, conversation_snapshot_bytes, srv1_lmcache_l1_configured,
-  srv1_lmcache_l2_configured, srv1_replica_container_memory_cap, srv1_vllm_disk_snapshot_cost,
+  ConversationSnapshotCost, conversation_snapshot_bytes, srv1_lmcache_l1_bytes,
+  srv1_lmcache_l2_bytes, srv1_lmcache_l2_configured, srv1_replica_container_memory_cap, srv1_vllm_disk_snapshot_cost,
 }
 import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
@@ -529,7 +529,7 @@ fn srv1_replica_total_host_claim(budget: Srv1ReplicaHostBudget) -> ByteSize {
 // F26 rows and #16110 -- and is NOT budgeted here). See gunbc.serving.lil_serving_defects for the observed
 // defect receipts.
 data srv1_replica_host_budget: Srv1ReplicaHostBudget = Srv1ReplicaHostBudget {
-  l1_shm: srv1_lmcache_l1_configured,
+  l1_shm: srv1_lmcache_l1_bytes,
   ple_pinned: byte_size(count: 28776280832),
   anon: byte_size(count: 6442450944),
   // 72 GiB, CITED from srv1_replica_container_memory_cap (the cap's single authority, which this budget's own
@@ -770,7 +770,7 @@ data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
   kv_cache_dtype: Fp8E4m3,
   profile: "qwen38-flash-next" as NonEmptyStr,
   hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
-  lmcache_l1: srv1_lmcache_l1_configured,
+  lmcache_l1: srv1_lmcache_l1_bytes,
   max_model_len: 229376,
   image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
   lil_replicas: 1,
@@ -919,7 +919,7 @@ fn srv1_replica_gpu_uuid(replica: Srv1ServingReplicaSpec) -> Optional<NonEmptySt
 // and the rounding is gibibyte_ceiling (the one home for ByteSize -> GiB).
 fn srv1_lmcache_engine_env(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
   let l1 = concat("LMCACHE_L1_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))) as NonEmptyStr
-  let l2 = concat("LMCACHE_L2_GB=", to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))) as NonEmptyStr
+  let l2 = concat("LMCACHE_L2_GB=", to_string(gibibyte_count(g: srv1_lmcache_l2_configured))) as NonEmptyStr
   let l2_root = concat("LMCACHE_L2_ROOT=", config.lmcache_l2_placement.root) as NonEmptyStr
   let l2_workers = concat("LMCACHE_L2_WORKERS=", to_string(config.lmcache_l2_placement.workers)) as NonEmptyStr
   // The engine takes the flag as 1/0; the Bool is the policy, this is its encoding at the boundary.
@@ -1385,8 +1385,52 @@ fn srv1_l1_staging_requirement(config: Srv1LaunchConfig, headroom: ByteSize?) ->
 // discharge below can close, and until then nothing here may say the promise is kept.
 data srv1_l2_store_window_headroom: ByteSize? = Absent
 
-// The two unpriced terms, as named declarations rather than prose: a control asserts the gap BY BINDING THESE,
-// so renaming a term is a compile error at the control instead of a string that quietly stops matching.
+// THE CLOSED SUM THE GAP LIST WAS ALWAYS ASSUMING (review 98748). These terms used to be carried as
+// paragraph-length `NonEmptyStr`s and told apart by whole-string equality in the witness — so editing one
+// sentence silently changed WHICH term was missing, and the set of terms was a coproduct nobody had declared.
+// The identity is a variant now; the paragraph is attached to it as its reason, which is what prose is for
+// (gunbc.design_argument::source_annotations: "An invariant, receipt, event, ruling, citation, status, count or
+// dissolution condition belongs in a typed carrier… Prose is not forbidden; unclassified prose is.").
+type Srv1L1MissingTerm
+  = AdmittedPopulationUnbounded
+  | StoreWindowHeadroomUnpriced
+  | PriceExtrapolatedPastItsRead
+  | HoldsShortOfPricedRequirement
+
+// One gap = one variant + the sentence that explains it. A gap that needs numbers in its sentence (the shortfall)
+// carries the computed reason; the static terms carry the paragraphs below.
+type Srv1L1MissingGap { term: Srv1L1MissingTerm, reason: NonEmptyStr }
+
+// The identity a consumer matches on. Short and stable on purpose: this is what a log line or a consumer's switch
+// gets, and it is deliberately NOT the paragraph.
+fn srv1_l1_missing_term_name(term: Srv1L1MissingTerm) -> NonEmptyStr {
+  match term {
+    AdmittedPopulationUnbounded => "l1-population-unbounded"
+    StoreWindowHeadroomUnpriced => "l1-store-window-headroom-unpriced"
+    PriceExtrapolatedPastItsRead => "l1-price-extrapolated-past-its-read"
+    HoldsShortOfPricedRequirement => "l1-holds-short-of-priced-requirement"
+  }
+}
+
+// The rationale, attached to the variant instead of standing in for it.
+fn srv1_l1_missing_term_reason(term: Srv1L1MissingTerm) -> NonEmptyStr {
+  match term {
+    AdmittedPopulationUnbounded => srv1_l1_missing_admitted_population
+    StoreWindowHeadroomUnpriced => srv1_l1_missing_store_window_headroom
+    PriceExtrapolatedPastItsRead => srv1_l1_missing_price_extrapolated
+    // The static half of the shortfall's sentence. The gap the model actually raises carries the computed reason,
+    // with both numbers in it (srv1_l1_holds_short_of_gap).
+    HoldsShortOfPricedRequirement => "the tier holds less than the requirement the priced terms add up to"
+  }
+}
+
+// A static gap: one variant, one way to build it, and its reason comes from the variant rather than from a caller
+// who might paste the wrong paragraph.
+fn srv1_l1_gap(term: Srv1L1MissingTerm) -> Srv1L1MissingGap {
+  Srv1L1MissingGap { term: term, reason: srv1_l1_missing_term_reason(term: term) }
+}
+
+// The paragraphs, now ATTACHED to their variants rather than being their identities.
 data srv1_l1_missing_admitted_population: NonEmptyStr = "what bounds the population is the ROUTED-TURN cap, not the checkpoint population. srv1 DOES admit a per-replica concurrency: gunbc.serving.router_dev_policy emits an OwnedCap of 4 turns per replica and begin_turn is the one place a turn is reserved (its own comment: 'begin_turn is the ONE place a turn is reserved, and the only place ngx.ctx.counted is set'), so 8 sessions over a share width of 2 is not an unadmitted average. What no row relates is the OTHER half of the term: a checkpoint an eviction set down can still be owed its store after the turn that produced it has been released, so routed turns bound the DECODE population and not the bytes in flight, and the second in the pair this contract prices — the restore landing — is bounded by neither. Until a row states how long a store stays outstanding after its turn ends, the population the tier must stage is read from a measured run (8 / 2 = 4) and carried as MeasuredAverage: a floor at the average is a floor the next burst walks through, and the 2026-11-25 read (187 fresh-page deletes without a store on GPU1, 56 on GPU0, per 15 minutes) is that walk-through at 48 GiB." as NonEmptyStr
 
 data srv1_l1_missing_price_extrapolated: NonEmptyStr = "the staged population is priced by a straight line drawn from a read that stops at 150,000 tokens (ConversationSnapshotCost::observed_up_to) and spent at the admitted 229,376-token context: the per-token slope is the measured part and the fixed 512 MiB is the largest state bundle read at the OLD context, so a full-length conversation's bundle has never been measured. Carried as a term rather than corrected by a guess — the same humility rule that keeps the operator's figures as observations (gunbc.design_argument::epistemic_humility)." as NonEmptyStr
@@ -1400,7 +1444,7 @@ type Srv1KvTierDischarge
       holds: ByteSize
       // What the terms the model CAN price demand. A LOWER BOUND, named as one: the unpriced terms sit on top.
       requires_at_least: ByteSize
-      missing: List<NonEmptyStr>
+      missing: List<Srv1L1MissingGap>
     }
 
 // Which terms are still unpriced, as a list a control can assert against by BINDING the named rows below.
@@ -1413,21 +1457,21 @@ fn srv1_l1_missing_terms(
   population_admitted: Bool,
   headroom_priced: Bool,
   price_reaches_the_admitted_context: Bool
-) -> List<NonEmptyStr> {
+) -> List<Srv1L1MissingGap> {
   let unpriced_population = if population_admitted {
-    [] as List<NonEmptyStr>
+    [] as List<Srv1L1MissingGap>
   } else {
-    [ srv1_l1_missing_admitted_population ]
+    [ srv1_l1_gap(term: AdmittedPopulationUnbounded) ]
   }
   let unpriced_window = if headroom_priced {
-    [] as List<NonEmptyStr>
+    [] as List<Srv1L1MissingGap>
   } else {
-    [ srv1_l1_missing_store_window_headroom ]
+    [ srv1_l1_gap(term: StoreWindowHeadroomUnpriced) ]
   }
   let unpriced_shape = if price_reaches_the_admitted_context {
-    [] as List<NonEmptyStr>
+    [] as List<Srv1L1MissingGap>
   } else {
-    [ srv1_l1_missing_price_extrapolated ]
+    [ srv1_l1_gap(term: PriceExtrapolatedPastItsRead) ]
   }
   concat(concat(unpriced_population, unpriced_window), unpriced_shape)
 }
@@ -1437,20 +1481,23 @@ fn srv1_l1_missing_terms(
 // the held tier at 40: the shortfall had been computed (the comparison did add the headroom) and then thrown
 // away, because the number reported was the floor alone. The reading now quotes the priced total, and being
 // short of it is named with both numbers.
-fn srv1_l1_holds_short_of_term(holds: ByteSize, required: ByteSize) -> NonEmptyStr {
+fn srv1_l1_holds_short_of_gap(holds: ByteSize, required: ByteSize) -> Srv1L1MissingGap {
   // hoisted rather than nested: the term is a sentence, and its two numbers should be readable in the code too
   let short_by = byte_size_count(b: required) - byte_size_count(b: holds)
   let short_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: byte_size(count: short_by))))
-  concat(
-    "the tier holds ",
-    concat(
-      srv1_gib_text(size: holds),
+  Srv1L1MissingGap {
+    term: HoldsShortOfPricedRequirement,
+    reason: concat(
+      "the tier holds ",
       concat(
-        " against a priced requirement of ",
-        concat(srv1_gib_text(size: required), concat(" — short by ", concat(short_gib, " GiB")))
+        srv1_gib_text(size: holds),
+        concat(
+          " against a priced requirement of ",
+          concat(srv1_gib_text(size: required), concat(" — short by ", concat(short_gib, " GiB")))
+        )
       )
-    )
-  ) as NonEmptyStr
+    ) as NonEmptyStr,
+  }
 }
 
 fn srv1_l1_staging_discharge(config: Srv1LaunchConfig) -> Outcome<Srv1KvTierDischarge> {
@@ -1480,9 +1527,9 @@ fn srv1_l1_staging_discharge_with(config: Srv1LaunchConfig, headroom: ByteSize?)
         outcome_accepted(value: ContractDischarged { holds: holds, requires: requires })
       } else {
         let short_of = if byte_size_count(b: holds) < byte_size_count(b: requires) {
-          [ srv1_l1_holds_short_of_term(holds: holds, required: requires) ]
+          [ srv1_l1_holds_short_of_gap(holds: holds, required: requires) ]
         } else {
-          [] as List<NonEmptyStr>
+          [] as List<Srv1L1MissingGap>
         }
         outcome_accepted(
           value: ContractUndischarged {
@@ -1624,7 +1671,7 @@ fn srv1_kv_tier_verdict_with_headroom(
 // names it: ceiling would install a bigger tier than the row authorises, flooring a smaller one than the gate
 // just admitted — either way the bytes stop describing the config, so the ladder refuses instead
 // (gunbc.design_argument::fail_closed). srv1's tier is whole BY CONSTRUCTION — the authority is
-// gunbc.serving.serving_host_memory::srv1_lmcache_l1_configured_gib and the ByteSize is derived from it — so
+// gunbc.serving.serving_host_memory::srv1_lmcache_l1_configured (typed `Gibibyte`) and the ByteSize is derived from it as srv1_lmcache_l1_bytes — so
 // this term guards against a future edit rather than refusing anything today.
 fn srv1_tier_is_whole_gib(value: ByteSize) -> Bool {
   let total = byte_size_count(b: value)
@@ -2038,7 +2085,7 @@ fn srv1_bash_exit(code: String) -> Outcome<Node> {
 fn srv1_replica_container_command_lines(replica: Srv1ServingReplicaSpec, config: Srv1LaunchConfig) -> Outcome<List<String>> {
   let shape = srv1_replica_container_run_shape
   let l1_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: config.lmcache_l1)))
-  let l2_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured)))
+  let l2_gib = to_string(gibibyte_count(g: srv1_lmcache_l2_configured))
   let days = to_string(srv1_tls_validity_days_for_flag())
   // The driver probe sits inside double quotes in the START line, where bash still
   // performs command substitution -- that is the part this lane had to gain, and it is

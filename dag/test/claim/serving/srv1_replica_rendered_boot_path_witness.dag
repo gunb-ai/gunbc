@@ -68,13 +68,16 @@ import gunbc.serving.srv1_serving_replica_layout {
   Srv1KvTierPopulationSource, MeasuredAverage, AdmittedByRow, Srv1L2StorePolicy, CheckpointOnEvict,
   StoreAtCreation, StorePolicyUnread, srv1_l2_store_policy_reading,
   Srv1KvTierDischarge, ContractDischarged, ContractUndischarged, srv1_l1_staging_discharge,
-  srv1_l1_missing_admitted_population, srv1_l1_missing_store_window_headroom, srv1_l1_missing_price_extrapolated,
+  Srv1L1MissingTerm, Srv1L1MissingGap, AdmittedPopulationUnbounded, StoreWindowHeadroomUnpriced,
+  PriceExtrapolatedPastItsRead, HoldsShortOfPricedRequirement, srv1_l1_missing_term_name,
+  // the prose each variant carries, asserted on where the prose has to say something specific
+  srv1_l1_missing_price_extrapolated,
   srv1_replica_host_budget, Srv1ReplicaHostBudget, srv1_replica_total_host_claim, srv1_l1_staging_contract_identity,
   srv1_launch_admission, Srv1LaunchAdmission, Srv1LaunchAdmitted, Srv1LaunchRefused,
 }
 import gunbc.serving.serving_host_memory {
-  srv1_lmcache_l1_configured, srv1_lmcache_l2_configured, srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value,
-  srv1_lmcache_l1_configured_gib, serving_usable_ram_bytes_or_zero,
+  srv1_lmcache_l1_configured, srv1_lmcache_l1_bytes, srv1_lmcache_l2_configured, srv1_lmcache_l2_bytes,
+  srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value, serving_usable_ram_bytes_or_zero,
 }
 import gunbc.host.host_memory_observation { gunbc_ci_srv1_memtotal_measured }
 import gunbc.serving.serving_reservation { host_memory_reserved }
@@ -1083,12 +1086,12 @@ test fn the_admitted_tier_is_admitted_and_still_reports_the_contract_undischarge
     Accepted { value: d, diagnostics: _ } => match d {
       ContractDischarged { holds: _, requires: _ } => false
       ContractUndischarged { holds: h, requires_at_least: r, missing: m } =>
-        byte_size_count(b: h) == byte_size_count(b: srv1_lmcache_l1_configured)
+        byte_size_count(b: h) == byte_size_count(b: srv1_lmcache_l1_bytes)
           // the priced requirement is the population STAGEABLE IN BOTH DIRECTIONS (a checkpoint being stored, and
           // a returning conversation landing before the engine reads it), and it fits -- with the margin that
           // makes the burst sensitivity above the thing to watch, not a rounding error.
           && byte_size_count(b: r) < byte_size_count(b: h)
-          && byte_size_count(b: r) > byte_size_count(b: srv1_lmcache_l1_configured) / 2
+          && byte_size_count(b: r) > byte_size_count(b: srv1_lmcache_l1_bytes) / 2
           && length(m) == 3
           // Three distinct named terms, and all three of them: an indexed read would be optional (List indexing
           // returns T?), so the list is pinned by cardinality plus presence of each name — with length 3 and
@@ -1097,9 +1100,17 @@ test fn the_admitted_tier_is_admitted_and_still_reports_the_contract_undischarge
           // and the model is not allowed to answer that observation with a shorter gap list. The third is the
           // newest one -- the price is spent past the context it was read at (observed_up_to 150,000 against the
           // admitted 229,376), which is a degradation the reading must show rather than fold into the number.
-          && any(m, x => (x as String) == (srv1_l1_missing_admitted_population as String))
-          && any(m, x => (x as String) == (srv1_l1_missing_store_window_headroom as String))
-          && any(m, x => (x as String) == (srv1_l1_missing_price_extrapolated as String))
+          // THE GAP LIST IS A DECLARED COPRODUCT (srv1_serving_replica_layout::Srv1L1MissingTerm), so this control
+          // binds the VARIANTS -- precedent for `==` on a fieldless coproduct is srv1_boot_path_run_is_cold_start
+          // in the same module. Until this head it compared the whole PARAGRAPHS for equality, which meant a
+          // sentence edit silently changed which term was missing (review 98748). Renaming a variant is now a
+          // compile error here; rewording a reason cannot move a term.
+          && any(m, g => g.term == AdmittedPopulationUnbounded)
+          && any(m, g => g.term == StoreWindowHeadroomUnpriced)
+          && any(m, g => g.term == PriceExtrapolatedPastItsRead)
+          // and the reasons still travel with them, non-empty and specific where specificity is the claim
+          && any(m, g => g.term == PriceExtrapolatedPastItsRead
+            && string_contains(s: g.reason as String, pattern: "150,000"))
     }
     Rejected { diagnostics: _ } => false
   }
@@ -1149,11 +1160,11 @@ test fn a_cgroup_that_cannot_charge_the_tier_is_refused_as_the_cgroup_term() -> 
 // budget's shmem charge IS the tier row (not a copy of it), the arena sits above it, and the cgroup covers the
 // tier plus the process. Each conjunct fails if someone restates one of the three by hand.
 test fn the_tier_its_arena_and_its_cgroup_are_one_fact_not_three_numbers() -> Bool {
-  byte_size_count(b: srv1_replica_host_budget.l1_shm) == byte_size_count(b: srv1_lmcache_l1_configured)
-    && byte_size_count(b: srv1_replica_container_run_shape.shm_size) > byte_size_count(b: srv1_lmcache_l1_configured)
+  byte_size_count(b: srv1_replica_host_budget.l1_shm) == byte_size_count(b: srv1_lmcache_l1_bytes)
+    && byte_size_count(b: srv1_replica_container_run_shape.shm_size) > byte_size_count(b: srv1_lmcache_l1_bytes)
     && byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit)
-      >= byte_size_count(b: srv1_lmcache_l1_configured) + byte_size_count(b: srv1_replica_host_budget.anon)
-    && srv1_admitted_launch_config.lmcache_l1 == srv1_lmcache_l1_configured
+      >= byte_size_count(b: srv1_lmcache_l1_bytes) + byte_size_count(b: srv1_replica_host_budget.anon)
+    && srv1_admitted_launch_config.lmcache_l1 == srv1_lmcache_l1_bytes
 }
 
 // What the pair costs the host. Held as a control and not as a refusal, because this render has no business
@@ -1192,7 +1203,7 @@ test fn the_two_replicas_still_fit_srv1s_admitted_memory() -> Bool {
     && estimate < pair_ceilings
     && ceiling == 72 * 1073741824
     && byte_size_count(b: srv1_replica_container_run_shape.shm_size) == 56 * 1073741824
-    && byte_size_count(b: srv1_lmcache_l2_configured) == 125 * 1073741824
+    && byte_size_count(b: srv1_lmcache_l2_bytes) == 125 * 1073741824
 }
 
 // ── class B4, review 98546 ───────────────────────────────────────────────────────────────
@@ -1346,7 +1357,7 @@ test fn the_tier_operand_is_the_same_number_in_the_provisioning_launch_and_the_b
     Absent => false
     Present { value: e } => (e.value as String) == (srv1_lmcache_l2_gb_value() as String)
   }
-  srv1_lmcache_l1_configured_gib == 48
+  gibibyte_count(g: srv1_lmcache_l1_configured) == 48
     && provisioned_carries_the_authority
     && boot_carries_the_authority
     && l2_provisioned_ok
@@ -1480,12 +1491,15 @@ test fn a_priced_store_window_raises_the_gate_and_the_reading_to_the_same_number
   }
   let missing = match discharge {
     Accepted { value: ContractUndischarged { holds: _, requires_at_least: _, missing: m }, diagnostics: _ } => m
-    _ => [] as List<NonEmptyStr>
+    _ => [] as List<Srv1L1MissingGap>
   }
+  // the shortfall is the DECLARED variant carrying a computed reason with both numbers in it -- the identity is
+  // typed and the legibility is the reason, and this control checks each of them for what it is
   let names_the_shortfall = any(
     missing,
-    term => string_contains(s: term as String, pattern: "short by ")
-      && string_contains(s: term as String, pattern: "48 GiB")
+    g => g.term == HoldsShortOfPricedRequirement
+      && string_contains(s: g.reason as String, pattern: "short by ")
+      && string_contains(s: g.reason as String, pattern: "48 GiB")
   )
   priced == floor_only + byte_size_count(b: eight)
     && floor_only > 0
@@ -1516,7 +1530,8 @@ test fn a_tier_the_engine_cannot_be_told_in_whole_gibibytes_is_refused() -> Bool
   }
   gate == "l1-tier-not-whole-gib"
     && kv_refused_text(render: srv1_replica_engine_args_body(config: ragged), term: "l1-tier-not-whole-gib")
-    && srv1_tier_is_whole_gib(value: srv1_lmcache_l1_configured)
+    && srv1_tier_is_whole_gib(value: srv1_lmcache_l1_bytes)
+    && srv1_tier_is_whole_gib(value: srv1_lmcache_l2_bytes)
 }
 
 // THE DATED CAPTURES MUST STAY DISTINCT. The 2026-11-09 list is the evidence the cold-start and crash witnesses
