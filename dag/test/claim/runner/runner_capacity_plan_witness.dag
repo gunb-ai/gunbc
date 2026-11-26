@@ -25,6 +25,16 @@ import gunbc.runner.runner_capacity_plan {
 }
 import std.measure { measure_fit_count_floor, byte_size, byte_size_count }
 import std.optional { Present, Absent }
+import std.list { first_where }
+import gunbc.compute.host_capacity {
+  ComputeBuildPool,
+  host_capacity_build_seat,
+  build_pool_ruled_seat_count_for_host,
+  host_capacity_pool_slots_for_home,
+  user_work_slice_memory_max_for_host,
+  compute_pool_slots,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_ledger_home }
 import gunbc.runner.runner_slot_desired {
   build_pool_carve_is_due,
   host_carries_own_ledger,
@@ -298,6 +308,79 @@ test fn every_ruled_build_pool_host_is_ruled_out_of_ci_and_carries_no_ledger() -
     && all(ruled_build_pool_reservations, r =>
       host_ci_width_is_ruled_zero(host: r.host)
         && !host_carries_own_ledger(host: r.host))
+}
+
+// KEN (host-e2d4b7) UNDER THE ONE-SEAT RULING: THE POOL IS 22 GiB, NOT 44, AND THE SEAT FOLLOWS
+// THE RULING'S SEAT COUNT, NOT THE FLEET DIVISOR. gunbc.design_ruling::
+// ken_build_pool_one_seat_default_approved_2026_11_26 (approved BY DEFAULT on operator escalation
+// msg_5ffaed22-4d67-49a3-ace8-5fa55008c5a2 -- the row says so; it is not an operator verbatim) rules ken
+// out of CI with a build pool of one seat of the fleet per-build ceiling, 23622320128 B, beside the live
+// ken-strata engine. The seat-count half is the defect this row closes: divided by the fleet default
+// (compute_pool_slots = 2) the pool would be two 11 GiB seats, EACH UNDER THE MEASURED 18.2 GiB BUILD
+// PEAK, so every build on ken would OOM or be refused. Here the ruled division fits the peak in one seat
+// and the fleet division does not -- asserted as bytes, not prose. ROSTERING KEN NEVER REFUSES AT THE
+// CARVE: the carve would be due (ken carries no ledger of his own), the ruled amount outranks it, the
+// plan holds zero slots back, and the ruled-zero committed width clears at zero. While ken is off the
+// roster the row answers only in the table: every host-facing fn still answers the old facts (reservation
+// zero, seat conversion absent), so the ruling does not re-price a host the roster has not admitted --
+// the unrostered figure the surveying lane read (the 44 GiB unreserved user-work slice) stands until step 6.
+test fn ken_ruled_pool_is_one_ceiling_seat_and_the_carve_never_refuses_it() -> Bool {
+  match first_where(ruled_build_pool_reservations, r => (r.host as String) == "host-e2d4b7") {
+    Present { value: r } =>
+      (r.ruling.module_path as String) == "gunbc.design_ruling"
+        && (r.ruling.decl_name as String) == "ken_build_pool_one_seat_default_approved_2026_11_26"
+        && byte_size_count(b: r.reservation) == 23622320128
+        && byte_size_count(b: r.reservation) != 47244640256
+        && r.seats == 1
+    Absent => false
+  }
+    && all(ruled_build_pool_reservations, r => r.seats > 0)
+    && byte_size_count(b: byte_size(byte_size_count(b: byte_size(23622320128)) / 1)) == 23622320128
+    && byte_size_count(b: byte_size(byte_size_count(b: byte_size(23622320128)) / 2)) < 23622320128
+    && build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
+    && byte_size_count(
+      b: build_pool_reservation_of_ruling(
+        ruled: Present { value: byte_size(23622320128) },
+        carve_due: true,
+      )) == 23622320128
+    && host_ci_width_is_ruled_zero(host: operator_host_e2d4b7)
+    && remote_build_pool_slot_reservation(host: operator_host_e2d4b7) == 0
+    && match committed_width_after_reservation(
+      committed_slots: committed_width_of(host: operator_host_e2d4b7),
+      reserved_slots: remote_build_pool_slot_reservation(host: operator_host_e2d4b7),
+    ) {
+      CeilingCleared { committed_slots: c, reserved_slots: r, spendable_ceiling: s } =>
+        c == 0 && r == 0 && s == 0
+      ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } => false
+    }
+    && !remote_build_host_is_serving(host: operator_host_e2d4b7)
+    && host_build_pool_reservation(host: operator_host_e2d4b7) == byte_size(0)
+    && match build_pool_ruled_seat_count_for_host(host: operator_host_e2d4b7) {
+        Present { value: _ } => false
+        Absent => true
+      }
+}
+
+// THE ROSTERED-RULED SHAPE, PROVEN ON THE HOST THAT IS ALREADY ROSTERED (butch): the seat is the
+// ruling's division (192 GiB / 2 ruled seats = 96 GiB, the fleet divisor answers the same here -- the
+// butch seat-count question is its own plan item, not this row) and the user-work slice IS the ruled
+// pool. The appropriation multiplier is host-aware: an unruly host's home still multiplies by the fleet
+// constant, so the one-seat shape changes only the ruled host's own numbers.
+test fn the_ruled_rostered_seat_divides_by_the_ruling_and_the_slice_is_the_pool() -> Bool {
+  host_ci_width_is_ruled_zero(host: operator_host_srv14)
+    && byte_size_count(b: host_capacity_build_seat(host: operator_host_srv14)) == 103079215104
+    && byte_size_count(b: user_work_slice_memory_max_for_host(host: operator_host_srv14)) == 206158430208
+    && match build_pool_ruled_seat_count_for_host(host: operator_host_srv14) {
+        Present { value: n } => n == 2
+        Absent => false
+      }
+    && host_capacity_pool_slots_for_home(
+         home: host_capacity_ledger_home(
+           host: "host-e2d4b7" as NonEmptyStr,
+           build_seat: byte_size(23622320128),
+         ),
+         pool: ComputeBuildPool,
+       ) == compute_pool_slots
 }
 
 // THE UNROSTERED UNIT HOLDS BACK NOTHING, AND NEEDS NO ROW TO SAY SO. ken is enrolled for CI participation and

@@ -7,8 +7,8 @@ import std.list { first_where }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
-import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
-import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7 }
+import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, ken_build_pool_one_seat_default_approved_2026_11_26 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown }
 
 // THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
@@ -326,6 +326,11 @@ type RuledBuildPoolReservation {
   host: HostIdentity
   ruling: DeclarationRef
   reservation: ByteSize
+  // The seat count this ruling declares for its pool. RULLED, never derived: the
+  // fleet default (compute_pool_slots = 2) would split a ruling's pool by a number
+  // the ruling never chose -- ken's 22 GiB pool in two is 11 GiB seats, under its
+  // own measured 18.2 GiB build peak, so every build would OOM or be refused.
+  seats: Nat
 }
 
 data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
@@ -337,6 +342,22 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // ServingHostReservation. The quiescent read behind the release is
     // gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read (fleet-converge run 45321352046).
     reservation: byte_size(206158430208),
+    // Fleet-standard two-seat width; the seats-butch-fits question (8 seats of the
+    // per-build ceiling) is its own plan item, not settled here.
+    seats: 2,
+  },
+  RuledBuildPoolReservation {
+    host: operator_host_e2d4b7,
+    ruling: ken_build_pool_one_seat_default_approved_2026_11_26.reference,
+    // 22 GiB = one seat of the fleet per-build ceiling
+    // (gunbc.compute.roadmap_dashboard_instance::compute_build_memory_ceiling_default),
+    // the ruling's option A -- approved BY DEFAULT on operator escalation
+    // msg_5ffaed22-4d67-49a3-ace8-5fa55008c5a2, not by an operator answer. The pool
+    // lives beside the RUNNING ken-strata engine (~69 GiB RSS of 125 GiB at the
+    // 2026-11-26 14:18Z read); one ceiling-sized seat fits the measured 18.2 GiB
+    // build peak, and only one build fits. Fires only once the roster admits ken.
+    reservation: byte_size(23622320128),
+    seats: 1,
   },
 ]
 
@@ -345,6 +366,18 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
 fn host_ruled_build_pool_reservation(host: HostIdentity) -> ByteSize? {
   match first_where(ruled_build_pool_reservations, r => (r.host as String) == (host as String)) {
     Present { value: r } => Present { value: r.reservation }
+    Absent => Absent
+  }
+}
+
+// THE SEAT COUNT THE RULING DECLARES, or Absent when no ruling rules this host's pool and
+// the fleet default (compute_pool_slots) applies. host_capacity converts a ruled pool with
+// THIS number, never with the fleet default: a ruling that says "one seat of the per-build
+// ceiling" must not be split in two by a number it never chose -- the division that made
+// ken's 22 GiB ruling into two 11 GiB seats, each under his 18.2 GiB measured build peak.
+fn host_ruled_build_pool_seat_count(host: HostIdentity) -> Nat? {
+  match first_where(ruled_build_pool_reservations, r => (r.host as String) == (host as String)) {
+    Present { value: r } => Present { value: r.seats }
     Absent => Absent
   }
 }
