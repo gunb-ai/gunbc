@@ -13,7 +13,9 @@ module test.claim.roadmap.g0_criteria_witness
 // Each check is deterministic and fails its NAMED negative case in the same run (run --claim-run turns a
 // `test fn` returning false into exit 1). The two-sided bwrap enforcement probe is EXTERNAL lane evidence
 // (PR #16989 evidence comment, probe recorded by sha256 d9702374...); this witness feeds the modeled
-// verdict CONSTRUCTED tokens only (review 98584 FINDING 3) — nothing here executes the probe.
+// isolation chain -- the single token->Bool derivation helpers into the model rule
+// g0_two_sided_isolation_holds -- CONSTRUCTED tokens only (review 98584 FINDING 3, review 98783 TRIM);
+// nothing here executes the probe and no in-repo declaration joins or adopts any shell status.
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.algebra { string_contains }
@@ -27,8 +29,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused, systemd_run_empty_capability_bounding_set_assignment, LoadCredentialSetting }
-import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds, g0_two_sided_isolation_verdict }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds, g0_own_op_permitted, g0_protected_reachable, g0_sibling_reachable }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.decl_index { DeclFact, decl_facts }
 
@@ -188,48 +189,35 @@ test fn g0_renderer_propagates_a_refusal_as_a_typed_failure() -> Bool {
     && !any_word(render_readings(bad), "")
 }
 
-// ── CHECK 1 decision rule (the bwrap OBSERVATIONS are produced by the scaffold-marked shell witness) ─
-// NAMED negative [unmasked_boundary]: the same rule, given the unmasked observations (own op permitted
-// but protected + sibling reachable), must be false.
-test fn g0_isolation_predicate_accepts_enforced_and_rejects_unmasked() -> Bool {
-  let enforced = g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: false, sibling_reachable: false)
-  let unmasked = g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: true, sibling_reachable: true)
-  enforced && !unmasked
-}
-
-fn g0_verdict_is_success(p: ProcessExit) -> Bool {
-  match p {
-    ExitSuccess => true
-    _ => false
-  }
-}
-
-// The SOLE VERDICT consumed as a real consumer, on constructed per-probe return-code tokens, with a
-// discriminating input that goes RED (fail_closed): the enforced token set must be accepted; inverting ONE
-// protected fixture (protected_exec reachable) must be rejected; and a MISSING probe token must be a typed
-// located failure, not a silent denial. This is the in-.model proof that the verdict is the single authority
-// (review 98327), complementing the shell that feeds it the real bwrap observations.
-test fn g0_verdict_consumer_accepts_enforced_and_goes_red_when_broken() -> Bool {
-  let ok = g0_two_sided_isolation_verdict(
-    own_rc: "0", masked_entries: "0", sibling_rc: "1", protected_read_rc: "1", protected_exec_rc: "127",
-    enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
-    neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
-  let broken_mask = g0_two_sided_isolation_verdict(
-    own_rc: "0", masked_entries: "0", sibling_rc: "1", protected_read_rc: "1", protected_exec_rc: "0",
-    enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
-    neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
-  let missing = g0_two_sided_isolation_verdict(
-    own_rc: "0", masked_entries: "0", sibling_rc: "MISSING", protected_read_rc: "1", protected_exec_rc: "127",
-    enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
-    neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
-  let broken_named = match broken_mask {
-    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "ISOLATION_BREACHED:protected_reachable_under_mask")
-    _ => false
-  }
-  let missing_named = match missing {
-    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "MISSING_OR_UNPARSEABLE_OBSERVATION:sibling_rc")
-    _ => false
-  }
-  g0_verdict_is_success(ok) && !g0_verdict_is_success(broken_mask) && !g0_verdict_is_success(missing)
-    && broken_named && missing_named
+// ── CHECK 1 decision rule consumed via the single derivation chain ─────────────────────────
+// THE ISOLATION CHAIN consumed as a real consumer on CONSTRUCTED per-probe return-code tokens:
+// each raw token becomes an isolation fact exactly ONCE through the single derivation helpers
+// (g0_own_op_permitted / g0_protected_reachable / g0_sibling_reachable), and the model rule
+// g0_two_sided_isolation_holds applied to the derived Bools is THE isolation decision
+// (gunbc.design_argument::single_authority, review 98584 FINDING 1). Discriminating inputs
+// (gunbc.design_argument::fail_closed), NAMED negatives in the same run:
+//   [broken_mask]   -- the enforced token set (own op rc 0; protected probes refused rc 1/127;
+//                      sibling refused rc 1) turns the rule GREEN; inverting ONE protected
+//                      fixture (protected_exec rc 0) under the same tokens turns it RED.
+//   [own_op_denied] -- own op rc nonzero (the positive control missing) is also RED.
+//   [missing_token] -- an unparseable token ("MISSING") derives NOT-permitted, so it can never
+//                      fabricate permission (fail-closed parse, review 98327 FINDING 2).
+test fn g0_isolation_rule_consumer_accepts_enforced_and_rejects_broken_mask() -> Bool {
+  let good = g0_two_sided_isolation_holds(
+    own_op_permitted: g0_own_op_permitted(own_rc: "0"),
+    protected_reachable: g0_protected_reachable(protected_read_rc: "1", protected_exec_rc: "127"),
+    sibling_reachable: g0_sibling_reachable(sibling_rc: "1")
+  )
+  let broken = g0_two_sided_isolation_holds(
+    own_op_permitted: g0_own_op_permitted(own_rc: "0"),
+    protected_reachable: g0_protected_reachable(protected_read_rc: "1", protected_exec_rc: "0"),
+    sibling_reachable: g0_sibling_reachable(sibling_rc: "1")
+  )
+  let denied = g0_two_sided_isolation_holds(
+    own_op_permitted: g0_own_op_permitted(own_rc: "1"),
+    protected_reachable: g0_protected_reachable(protected_read_rc: "1", protected_exec_rc: "127"),
+    sibling_reachable: g0_sibling_reachable(sibling_rc: "1")
+  )
+  let unparseable_not_permitted = !g0_own_op_permitted(own_rc: "MISSING")
+  good && !broken && !denied && unparseable_not_permitted
 }

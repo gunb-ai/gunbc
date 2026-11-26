@@ -83,21 +83,8 @@ fn g0_groups_covered() -> Bool {
   all(g0_state_groups, group => count(g0_conditions_for_group(group)) > 0)
 }
 
-// The readable name of a state group (used to render the plan's done-when list FROM these rows, so the
-// prose is generated from the carrier rather than duplicating it).
-fn g0_group_label(g: G0StateGroup) -> String {
-  match g {
-    OperatorHome => "operator home"
-    Credentials => "credentials"
-    PrivilegeGroups => "privilege groups"
-    ControlPlaneStores => "control-plane stores"
-    SharedState => "shared state"
-  }
-}
-
-// The done-when conditions belonging to one group, read off the typed rows (matched by label so group
-// membership relies only on String equality, which is a documented primitive).
-// Membership is decided on the VARIANT, never on a rendered label (review 98676 FINDING 4;
+// The done-when conditions belonging to one group. Group membership is decided on the G0StateGroup
+// VARIANT directly, never on a rendered label (review 98676 FINDING 4;
 // gunbc.design_argument::fail_closed: making the wrong state unwritable beats catching it --
 // two labels edited to the same text cannot silently merge groups).
 fn g0_conditions_for_group(g: G0StateGroup) -> List<G0DoneWhenCondition> {
