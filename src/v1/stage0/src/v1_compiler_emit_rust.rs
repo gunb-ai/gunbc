@@ -48883,11 +48883,7 @@ pub fn entry_point_absent_refusal_text(crate_name: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(entry_point_absent_refusal_marker(), " -- crate ".to_string()), crate_name.clone()), " was emitted from a corpus that declares no compiler_pipeline_entry, so it is a library and there is nothing to run".to_string())
 }
 
-pub fn emit_cli_root_struct(
-    binary_name: String,
-    about: String,
-    public: bool,
-) -> String {
+pub fn emit_cli_root_struct(binary_name: String, about: String, public: bool) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
             v1_rt::concat(
@@ -48902,7 +48898,61 @@ pub fn emit_cli_root_struct(
         } else {
             "".to_string()
         };
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"".to_string()), binary_name.clone()), "\"".to_string()), about_attr.clone()), ")]\n".to_string()), visibility.clone()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    ".to_string()), visibility.clone()), "command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    ".to_string()), visibility.clone()), "dry_run: bool,\n".to_string()), "}".to_string())
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        v1_rt::concat(
+                                                                            "#[derive(Parser)]\n"
+                                                                                .to_string(),
+                                                                            "#[command(name = \""
+                                                                                .to_string(),
+                                                                        ),
+                                                                        binary_name.clone(),
+                                                                    ),
+                                                                    "\"".to_string(),
+                                                                ),
+                                                                about_attr.clone(),
+                                                            ),
+                                                            ")]\n".to_string(),
+                                                        ),
+                                                        visibility.clone(),
+                                                    ),
+                                                    "struct Cli {\n".to_string(),
+                                                ),
+                                                "    #[command(subcommand)]\n".to_string(),
+                                            ),
+                                            "    ".to_string(),
+                                        ),
+                                        visibility.clone(),
+                                    ),
+                                    "command: Commands,\n".to_string(),
+                                ),
+                                "    /// Run in dry-run mode (mock all service calls)\n"
+                                    .to_string(),
+                            ),
+                            "    #[arg(long, global = true)]\n".to_string(),
+                        ),
+                        "    ".to_string(),
+                    ),
+                    visibility.clone(),
+                ),
+                "dry_run: bool,\n".to_string(),
+            ),
+            "}".to_string(),
+        )
     }
 }
 
