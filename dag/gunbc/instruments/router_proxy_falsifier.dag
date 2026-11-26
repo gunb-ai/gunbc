@@ -21,7 +21,8 @@ import gunbc.serving.serving_replica_profile { srv3_strata_profile, srv_strata_p
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
-import gunbc.serving.flex_aws_router_rows { flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused }
+import gunbc.serving.flex_aws_router_rows { flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused, flex_aws_route_tallies, FlexAwsTalliesRead, FlexAwsTalliesUnread }
+import std.decimal { fixed_point_trimmed_wire }
 import product.fabric.flex_aws_apply { flex_aws_asks, FlexAwsDemandRouter }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
@@ -808,6 +809,52 @@ fn unpriced_entry_has_no_price(models: String, model: String) -> Bool {
   count(entries) == 1 && all(entries, e => !any(doc_members(v: e, key: "comparison_pricing"), q => count(doc_members(v: q, key: "output")) > 0))
 }
 
+// ---- usage_by_route readers (card facts) ----------------------------------------------------------------
+
+// aq1's card facts as the AWS loop's row writes them (gunbc.serving.flex_aws_router_rows flex_aws_row_billing_members).
+fn aq1_card_facts() -> String { ",\"hourly_usd\":3.6,\"billed_since_unix\":1700000000" }
+
+fn by_route_docs(text: String) -> List<JsonValue> { doc_members(v: body_doc(text: text, marker: "\"usage_all\""), key: "usage_by_route") }
+
+fn route_entries(text: String) -> List<JsonValue> {
+  fold(by_route_docs(text: text), init: row_none(), f: (acc, u) => fold(doc_members(v: u, key: "routes"), init: acc, f: (acc2, rs) => match rs {
+    JsonArray { elements } => list_append(left: acc2, right: elements)
+    _ => acc2
+  }))
+}
+
+fn route_named(text: String, name: String) -> List<JsonValue> {
+  filter(route_entries(text: text), e => member_is(v: e, key: "name", literal: concat(concat("\"", name), "\"")))
+}
+
+fn route_member_is(text: String, name: String, key: String, literal: String) -> Bool {
+  let es = route_named(text: text, name: name)
+  count(es) == 1 && all(es, e => member_is(v: e, key: key, literal: literal))
+}
+
+fn route_is(text: String, name: String, state: String) -> Bool { route_member_is(text: text, name: name, key: "state", literal: concat(concat("\"", state), "\"")) }
+
+// A whole-number member as an Int; -1 when it is absent, null or not a whole number.
+fn int_member(v: JsonValue, key: String) -> Int {
+  fold(doc_members(v: v, key: key), init: -1, f: (acc, m) => match m {
+    JsonNumber { lexeme: _ } => match parse_int(s: serialize_json(v: m)) { Present { value: n } => n  Absent => -1 }
+    _ => -1
+  })
+}
+
+fn route_int(text: String, name: String, key: String) -> Int {
+  fold(route_named(text: text, name: name), init: -1, f: (acc, e) => int_member(v: e, key: key))
+}
+
+// THE SPEND RULE, RECOMPUTED FROM THE DOCUMENT'S OWN FACTS: the row's rate (micros per hour) times the seconds from
+// its billing start to `stop_key` -- the document's now_unix for a listed row, the row's gone_unix for a gone one --
+// rounded to the nearest micro, printed as the router prints a micro figure. aq1's rate is 3.6 USD/h = 3600000.
+fn route_spend_holds(text: String, name: String, stop_key: String) -> Bool {
+  let stop = if stop_key == "now_unix" { fold(by_route_docs(text: text), init: -1, f: (acc, u) => int_member(v: u, key: "now_unix")) } else { route_int(text: text, name: name, key: stop_key) }
+  let since = route_int(text: text, name: name, key: "billed_since_unix")
+  (stop > since) && (since > 0) && route_member_is(text: text, name: name, key: "spend_usd", literal: fixed_point_trimmed_wire(value: (3600000 * (stop - since) + 1800) / 3600, decimals: 6))
+}
+
 fn occurrences(s: String, needle: String) -> Int {
   if needle == "" { 0 } else { count(split(s: s, delimiter: needle)) - 1 }
 }
@@ -1164,7 +1211,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let zero_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   // 10. RENTED ADMISSION (mark 4327): warm-1 takes aq1's one retained conversation; warm-2, new, is refused although
   // aq1 has three free active slots, and the router must call it demand no rented row can place.
-  let w14 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-admission.json", content: dev_upstreams_json_rented_admission(mark: "4327", aq: dev_aq_row(name: "aq1", extra: ",\"retain\":1")))
+  // aq1 declares its card facts (an hourly rate and a billing start), as the AWS loop writes them for a rented card.
+  let w14 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-admission.json", content: dev_upstreams_json_rented_admission(mark: "4327", aq: dev_aq_row(name: "aq1", extra: aq1_card_facts() + ",\"retain\":1")))
   let admission_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-rented-admission.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
   let admission_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
   let admission_models = await_models(mark: "4327", n: 20)
@@ -1173,11 +1221,18 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let warm_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   // 10b. THE CARD WITHDRAWN (mark 4328): aq1 stays in the file out of service, as the AWS loop leaves a withdrawn
   // card's row; warm-1 comes back with its explicit model and must be re-placed on aq2, not refused 409.
-  let w15 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-withdrawn.json", content: dev_upstreams_json_rented_admission(mark: "4328", aq: dev_aq_row(name: "aq1", extra: ",\"retain\":1,\"in_service\":false") + dev_aq_row(name: "aq2", extra: "")))
+  let w15 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-withdrawn.json", content: dev_upstreams_json_rented_admission(mark: "4328", aq: dev_aq_row(name: "aq1", extra: aq1_card_facts() + ",\"retain\":1,\"in_service\":false") + dev_aq_row(name: "aq2", extra: "")))
   let withdrawn_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-rented-withdrawn.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
   let withdrawn_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
   let withdrawn_models = await_models(mark: "4328", n: 20)
   let resumed = dev_request(key: "ck-falsifier", session: "warm-1", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let withdrawn_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 10c. THE CARD GONE (mark 4329): aq1 leaves the file. Its tallies and facts stay in the meter, its state gone.
+  let w16 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-gone.json", content: dev_upstreams_json_rented_admission(mark: "4329", aq: dev_aq_row(name: "aq2", extra: "")))
+  let gone_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-rented-gone.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let gone_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let gone_models = await_models(mark: "4329", n: 20)
+  let gone_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   // The pricing turns run AFTER every stats read: a quoted-model turn and an m-a turn would otherwise add to the
   // owned tallies those cases pin.
   let priced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-1", "-d", model_body(model: "Qwen3.8-Flash-Next"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
@@ -1226,7 +1281,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // reports usage, so every owned turn here must land as UNMEASURED rather than as zero tokens -- a
     // missing count is never a zero -- and with no quote row for these models the comparison figures are
     // absent, not invented. Owned spend is zero by construction.
-    case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 20 && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 22 && occurrences(s: dev_stats, needle: "\"comparison_pricing\"") == 2 && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
+    case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 20 + count(filter(route_entries(text: dev_stats), e => member_is(v: e, key: "billing", literal: "\"owned\""))) && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 22 + count(route_entries(text: dev_stats)) && occurrences(s: dev_stats, needle: "\"comparison_pricing\"") == 2 && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
     // Effort is translated by the ROW dialect, per upstream model, before the body leaves the router.
     // A DRAINED ENGINE IS UNREACHABLE, NOT MERELY UNPOPULAR. g1 is in the file with in_service false and
     // no server behind its port: if the flag were ignored the turn would be proxied there and read 502,
@@ -1291,6 +1346,25 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_a_retention_full_rented_row_is_demand_the_allocator_buys_for", held: w14.success && admission_copy.exit_code == 0 && admission_reloaded.exit_code == 0 && contains(s: admission_models, p: "4327") && contains(s: warm_1, p: "auth=Bearer kaq1") && contains(s: warm_1, p: "\n200 exit=0") && contains(s: warm_2, p: "\n429 exit=0") && contains(s: warm_stats, p: "\"full\":false") && (rented_unplaceable_for(text: warm_stats, model: "m-q") == 1) && rented_asks(text: warm_stats, model: "m-q"), observed: concat(one_line(s: warm_2), one_line(s: warm_stats))),
     // A WITHDRAWN RENTED ROW IS KNOWN, NOT A CONFLICT (review of e50999ce): warm-1's binding names aq1, now out of
     // service; it resumes with its explicit model and is re-placed on aq2, where the unknown-row rule answered 409.
+    // CARD FACTS (operator 2026-11-26): each row the meter knows is listed in usage_by_route with its state and the
+    // facts its row declared. aq1 (3.6 USD/h since 1700000000) while routed: in service, its rate and start as
+    // declared, its spend the rate times the hours to the document's own now, its one turn timed. Withdrawn: resting,
+    // cap 0, still priced. Removed from the file: gone, its turn and its rate kept, its spend stopped at gone_unix. The
+    // owned row a spends 0; aq2, rented with no declared rate, spends null -- never 0. The AWS loop's reader takes the
+    // gone row's tallies from this real document.
+    case_of(identity: "dev_usage_by_route_carries_each_rows_card_facts", held: w16.success && gone_copy.exit_code == 0 && gone_reloaded.exit_code == 0 && contains(s: gone_models, p: "4329")
+      && route_is(text: warm_stats, name: "aq1", state: "in_service") && route_member_is(text: warm_stats, name: "aq1", key: "billing", literal: "\"rented\"")
+      && route_member_is(text: warm_stats, name: "aq1", key: "hourly_usd", literal: "3.6") && route_member_is(text: warm_stats, name: "aq1", key: "billed_since_unix", literal: "1700000000")
+      && route_member_is(text: warm_stats, name: "aq1", key: "requests", literal: "1") && route_member_is(text: warm_stats, name: "aq1", key: "gone_unix", literal: "null")
+      && route_int(text: warm_stats, name: "aq1", key: "first_turn_unix") > 1700000000 && route_int(text: warm_stats, name: "aq1", key: "last_turn_unix") >= route_int(text: warm_stats, name: "aq1", key: "first_turn_unix")
+      && route_spend_holds(text: warm_stats, name: "aq1", stop_key: "now_unix")
+      && route_member_is(text: warm_stats, name: "a", key: "spend_usd", literal: "0") && route_member_is(text: warm_stats, name: "a", key: "hourly_usd", literal: "null")
+      && route_is(text: withdrawn_stats, name: "aq1", state: "resting") && route_member_is(text: withdrawn_stats, name: "aq1", key: "cap", literal: "0") && route_spend_holds(text: withdrawn_stats, name: "aq1", stop_key: "now_unix")
+      && route_is(text: withdrawn_stats, name: "aq2", state: "in_service") && route_member_is(text: withdrawn_stats, name: "aq2", key: "spend_usd", literal: "null") && route_member_is(text: withdrawn_stats, name: "aq2", key: "hourly_usd", literal: "null")
+      && route_is(text: gone_stats, name: "aq1", state: "gone") && route_int(text: gone_stats, name: "aq1", key: "gone_unix") > 1700000000 && route_member_is(text: gone_stats, name: "aq1", key: "requests", literal: "1")
+      && route_member_is(text: gone_stats, name: "aq1", key: "hourly_usd", literal: "3.6") && route_spend_holds(text: gone_stats, name: "aq1", stop_key: "gone_unix")
+      && (match flex_aws_route_tallies(body: stats_line(text: gone_stats), name: "aq1") { FlexAwsTalliesRead { members: ms } => serialize_json(v: json_object(members: ms)).contains("\"requests\": 1,")  FlexAwsTalliesUnread { cause: _ } => false }),
+      observed: concat(one_line(s: warm_stats), concat(" | ", one_line(s: gone_stats)))),
     case_of(identity: "dev_a_binding_to_an_out_of_service_rented_row_is_re_placed", held: w15.success && withdrawn_copy.exit_code == 0 && withdrawn_reloaded.exit_code == 0 && contains(s: withdrawn_models, p: "4328") && contains(s: resumed, p: "auth=Bearer kaq2") && contains(s: resumed, p: "\n200 exit=0"), observed: one_line(s: resumed)),
     case_of(identity: "dev_refused_turns_are_stranded_demand_cleared_on_success", held: contains(s: pending_stats, p: "\"m-r\":\{") && contains(s: pending_stats, p: "\"m-s\":\{") && contains(s: pending_stats, p: "\"oldest_s\"") && contains(s: own_after, p: "\n200 exit=0") && !contains(s: cleared_stats, p: "\"m-s\":\{") && contains(s: cleared_stats, p: "\"m-r\":\{"), observed: one_line(s: pending_stats)),
     case_of(identity: "dev_rented_turns_are_metered_and_the_rented_pool_reported", held: contains(s: rented_stats, p: "\"usage_all\"") && contains(s: rented_stats, p: "\"billing\":\"rented\"") && contains(s: rented_stats, p: "\"unmeasured_requests\":11") && contains(s: rented_stats, p: "\"rented\":\{") && contains(s: rented_stats, p: "\"full\":"), observed: one_line(s: rented_stats)),
@@ -1393,6 +1467,7 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_retention_refuses_a_new_session_and_a_bound_session_returns",
     "dev_rented_demand_reads_into_the_allocator",
     "dev_a_retention_full_rented_row_is_demand_the_allocator_buys_for",
+    "dev_usage_by_route_carries_each_rows_card_facts",
     "dev_a_binding_to_an_out_of_service_rented_row_is_re_placed",
     "dev_refused_turns_are_stranded_demand_cleared_on_success",
     "dev_rented_turns_are_metered_and_the_rented_pool_reported",

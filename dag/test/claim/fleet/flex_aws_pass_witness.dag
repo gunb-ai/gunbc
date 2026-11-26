@@ -7,17 +7,20 @@ import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.optional { Present, Absent }
 import std.measure { MoneyPerHour, money_amount_micro, money_per_hour_micros }
 import extdeps.currency.currency { Usd }
-import extdeps.cloud.aws_ec2 { AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Terminated }
+import extdeps.cloud.aws_ec2 { AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Terminated, AwsEc2Running, AwsEc2LifecycleSpot, AwsEc2SpotPrice }
 import extdeps.cloud.aws_cli { AwsCliReadOk, AwsCliReadRefused, AwsSsmParameterListed }
-import product.fabric.flex_aws_row { FlexAwsCandidate, FlexAwsSpot }
-import product.fabric.flex_aws_apply { FlexAwsLaunch, FlexAwsHold, FlexAwsDrain, FlexAwsDrainIdle }
-import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse }
+import product.fabric.flex_aws_row { FlexAwsCandidate, FlexAwsSpot, FlexAwsRegionObserved, FlexAwsRegionRefused }
+import product.fabric.flex_aws_apply { FlexAwsLaunch, FlexAwsHold, FlexAwsDrain, FlexAwsDrainIdle, FlexAwsTerminateDrained, FlexAwsTerminateNeverReady }
+import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse, FlexAwsTalliesRead, FlexAwsTalliesUnread }
+import extdeps.languages.json.emit { json_kv, json_int, json_null }
 import gunbc.fleet.flex_aws_pass {
   flex_aws_reload_owed, flex_aws_inventory_gate, flex_aws_intent_gate,
   FlexAwsIntent, FlexAwsIntentOpen, FlexAwsIntentUnreadable, FlexAwsIntentNone, flex_aws_intent_json, flex_aws_intent_of,
   flex_aws_open_intent_at, flex_aws_name_intent_at,
   flex_aws_intent_step, FlexAwsIntentListed, FlexAwsIntentWaiting, FlexAwsIntentAskAgain, FlexAwsIntentLapsed,
   flex_aws_orphans, flex_aws_region_provisioned, flex_aws_weights_revision,
+  flex_aws_launch_unix, flex_aws_card_rate, FlexAwsOwnedIn, FlexAwsRegionScan, FlexAwsRegionScanned, FlexAwsRegionSkipped, FlexAwsQueueRead, FlexAwsQueueRefused,
+  FlexAwsCardLedger, flex_aws_card_ledger_json, flex_aws_write_card_ledger_at,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -138,4 +141,99 @@ test fn an_opened_purchase_is_named_in_place_and_never_opened_twice() -> Bool {
   let back = Filesystem.Read(path: path)
   (opened == "") && (again == "another purchase is already recorded") && (named == "")
     && (match flex_aws_intent_of(text: back.content) { FlexAwsIntentOpen { intent: i } => (i.instance_id == "i-0new") && (i.created_unix == 1795575540)  _ => false })
+}
+
+// ---- what a card costs, and the record kept when it is released ---------------------------------------
+
+// A card as the roster reads it: running, spot unless said otherwise, launched at `launched`.
+fn card_in(id: String, zone: String, launched: String, spot: Bool) -> AwsEc2Instance {
+  AwsEc2Instance {
+    instance_id: id as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
+    placement: AwsEc2Placement { availability_zone: zone as NonEmptyStr },
+    state: AwsEc2InstanceState { code: 16, name: AwsEc2Running },
+    state_reason: none, instance_lifecycle: if spot { Present { value: AwsEc2LifecycleSpot } } else { none }, spot_instance_request_id: none,
+    launch_time: launched, public_ip_address: none, tags: [],
+  }
+}
+
+// THE BILLING START IS THE LAUNCH TIME, READ BY THE RFC 3339 READER, in the spelling the AWS CLI prints; a launch time
+// that does not parse is no start at all. RED: answering 0 (or now) for an unreadable time.
+test fn a_cards_billing_start_is_its_launch_time_or_unread() -> Bool {
+  (unix_or_negative(t: flex_aws_launch_unix(i: card_in(id: "i-0a", zone: "us-east-1b", launched: "2026-11-25T02:59:00+00:00", spot: true))) == now_unix - 60)
+    && (unix_or_negative(t: flex_aws_launch_unix(i: card_in(id: "i-0a", zone: "us-east-1b", launched: "2026-11-25T02:59:00.000Z", spot: true))) == now_unix - 60)
+    && (unix_or_negative(t: flex_aws_launch_unix(i: card_in(id: "i-0a", zone: "us-east-1b", launched: "yesterday", spot: true))) == -1)
+}
+
+fn spot_price(zone: String, micros: Int) -> AwsEc2SpotPrice {
+  AwsEc2SpotPrice { availability_zone: zone as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, product_description: "Linux/UNIX" as NonEmptyStr, spot_price: rate(micros: micros), timestamp: "2026-11-25T02:58:00+00:00" }
+}
+
+fn observed_scan(region: String, prices: List<AwsEc2SpotPrice>) -> FlexAwsRegionScan {
+  FlexAwsRegionScan { region: region as NonEmptyStr, owned: AwsCliReadOk { value: [] }, launchable: FlexAwsRegionScanned {
+    quota: 8,
+    observation: FlexAwsRegionObserved { region: region as NonEmptyStr, offerings: [], types: [], prices: prices, spot_quota_vcpus: 8, on_demand_quota_vcpus: 0, owned: [] },
+    queue: FlexAwsQueueRefused { cause: "not read in this witness" }, provisioned: AwsCliReadRefused { cause: "not read in this witness" },
+  } }
+}
+
+fn micros_of(r: MoneyPerHour?) -> Int { match r { Present { value: x } => money_per_hour_micros(q: x) as Int  Absent => -1 } }
+
+fn at(region: String, zone: String, spot: Bool) -> FlexAwsOwnedIn {
+  FlexAwsOwnedIn { region: region as NonEmptyStr, instance: card_in(id: "i-0a", zone: zone, launched: "2026-11-25T02:59:00+00:00", spot: spot) }
+}
+
+fn unix_or_negative(t: Int?) -> Int { match t { Present { value: x } => x  Absent => -1 } }
+
+// THE RATE A CARD IS BILLED AT IS THE SPOT PRICE OBSERVED FOR ITS OWN ZONE AND TYPE, IN ITS OWN REGION: a card in
+// us-east-1b reads us-east-1b's price, not us-east-1a's; a card in a region this pass did not observe, a card in a zone
+// no price was answered for, and a card that is not spot have no rate -- absent, never zero or a neighbour's price.
+// RED: reading the first price of the region, or defaulting to 0, fails an arm.
+test fn a_cards_rate_is_its_own_zones_observed_spot_price_or_unread() -> Bool {
+  let scans = [
+    observed_scan(region: "us-east-1", prices: [spot_price(zone: "us-east-1a", micros: 1111111), spot_price(zone: "us-east-1b", micros: 2350500)]),
+    FlexAwsRegionScan { region: "eu-west-2" as NonEmptyStr, owned: AwsCliReadOk { value: [] }, launchable: FlexAwsRegionSkipped { why: "no spot quota" } },
+  ]
+  (micros_of(r: flex_aws_card_rate(scans: scans, o: at(region: "us-east-1", zone: "us-east-1b", spot: true))) == 2350500)
+    && (micros_of(r: flex_aws_card_rate(scans: scans, o: at(region: "us-east-1", zone: "us-east-1c", spot: true))) == -1)
+    && (micros_of(r: flex_aws_card_rate(scans: scans, o: at(region: "us-east-1", zone: "us-east-1b", spot: false))) == -1)
+    && (micros_of(r: flex_aws_card_rate(scans: scans, o: at(region: "eu-west-2", zone: "eu-west-2a", spot: true))) == -1)
+}
+
+fn ledger(hourly: Int, since: Int, read: Bool) -> FlexAwsCardLedger {
+  FlexAwsCardLedger {
+    instance_id: "i-0a" as NonEmptyStr, region: "us-east-1" as NonEmptyStr, zone: "us-east-1b" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
+    billed_since_unix: if since < 0 { none } else { Present { value: since } }, terminated_unix: now_unix, why: FlexAwsTerminateDrained { drain_seconds: 120 },
+    hourly: if hourly < 0 { none } else { Present { value: rate(micros: hourly) } },
+    tallies: if read { FlexAwsTalliesRead { members: [json_kv(key: "requests", value: json_int(n: 7)), json_kv(key: "first_turn_unix", value: json_null())] } } else { FlexAwsTalliesUnread { cause: "router stats unread: the CLI exited 7" } },
+  }
+}
+
+// A RELEASED CARD'S RECORD IS ONE JSON LINE: what the card was, its billing start and end, why it was let go (the
+// decision's own wire), its rate and its spend -- rate x billed seconds, to the nearest micro: 3.6 USD/h over 1.5 h
+// is 5.4 -- and the router's tallies as read. A rate or a start the pass could not read leaves rate and spend null;
+// tallies not read are recorded unread with their cause, never as zeros.
+// RED: a spend computed from a zero rate (or a zero start) when either is unread; tallies_unread dropped or written as
+// a tallies object.
+test fn a_released_cards_record_carries_its_cost_and_the_routers_tallies() -> Bool {
+  let full = flex_aws_card_ledger_json(l: ledger(hourly: 3600000, since: now_unix - 5400, read: true))
+  let unpriced = flex_aws_card_ledger_json(l: ledger(hourly: -1, since: now_unix - 5400, read: false))
+  let unstarted = flex_aws_card_ledger_json(l: ledger(hourly: 3600000, since: -1, read: true))
+  full.contains("\"instance_id\": \"i-0a\"") && full.contains("\"row\": \"aws-i-0a\"") && full.contains("\"instance_type\": \"g7e.2xlarge\"")
+    && full.contains(concat("\"billed_since_unix\": ", to_string(now_unix - 5400))) && full.contains(concat("\"terminated_unix\": ", to_string(now_unix)))
+    && full.contains("\"terminate_reason\": \"drained drain_s=120\"") && full.contains("\"hourly_usd\": 3.6,") && full.contains("\"spend_usd\": 5.4,")
+    && full.contains("\"tallies\": \{\"requests\": 7, \"first_turn_unix\": null}") && !full.contains("tallies_unread") && !full.contains("\n")
+    && unpriced.contains("\"hourly_usd\": null") && unpriced.contains("\"spend_usd\": null") && unpriced.contains("\"tallies_unread\": \"router stats unread: the CLI exited 7\"") && !unpriced.contains("\"tallies\":")
+    && unstarted.contains("\"billed_since_unix\": null") && unstarted.contains("\"hourly_usd\": 3.6,") && unstarted.contains("\"spend_usd\": null")
+}
+
+// REAL EXECUTION of the record write, in a scratch directory: a card's record is created whole, once; a second write
+// for the same card is refused rather than overwriting the first, and the file reads back as the one line written.
+// RED: a plain Write here would answer written twice and keep the second record.
+test fn a_released_cards_record_is_written_once() -> Bool {
+  let path = concat(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_flex_ledger.XXXXXX").path, "/card-ledger-i-0a.json")
+  let first = flex_aws_write_card_ledger_at(path: path, l: ledger(hourly: 3600000, since: now_unix - 5400, read: true))
+  let second = flex_aws_write_card_ledger_at(path: path, l: ledger(hourly: -1, since: now_unix - 5400, read: false))
+  let back = Filesystem.Read(path: path)
+  first.starts_with("ledger=written ") && second.starts_with("ledger=kept (already recorded) ")
+    && (back.content == concat(flex_aws_card_ledger_json(l: ledger(hourly: 3600000, since: now_unix - 5400, read: true)), "\n"))
 }

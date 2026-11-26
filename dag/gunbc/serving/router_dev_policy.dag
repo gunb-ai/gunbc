@@ -182,6 +182,32 @@ fn router_dev_init_lines(state_dir: String, model_alias: String) -> List<String>
     "ROUTER_KEYS = \{}",
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
+    // CARD FACTS (operator 2026-11-26: "make sure the router knows that stuff so we can tell if [the rented cards are]
+    // useful/working well"). Each row's model, billing, declared hourly rate and billing start are remembered BY ROW
+    // NAME in the meter, so a card's tallies stay attributable after its row rests (in_service false) or leaves the
+    // file (gone). The rate and the start are the ROW's own fields -- the AWS loop writes them for the cards it rents
+    // (gunbc.serving.flex_aws_router_rows flex_aws_row_json) -- and a row that does not declare one is not given one:
+    // what it no longer declares is forgotten, never kept from an earlier file or filled with zero. The rate is held
+    // in micros, the meter's integer representation, converted once here from the row's decimal. A name remembered
+    // as listed that this file no longer carries becomes gone, once, at the first init that misses it.
+    "do",
+    "  local present = \{}",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    local k = '" + router_route_key_root() + "' .. u.name .. ':'",
+    "    present[u.name] = true",
+    "    state:set(k .. 'model', u.model)",
+    "    state:set(k .. 'billing', u.overflow and 'rented' or 'owned')",
+    "    local rate, since = tonumber(u.hourly_usd), tonumber(u.billed_since_unix)",
+    "    if rate and rate >= 0 then state:set(k .. 'hourly_micro', math.floor(rate * 1000000 + 0.5)) else state:delete(k .. 'hourly_micro') end",
+    "    if since and since >= 0 then state:set(k .. 'billed_since', math.floor(since)) else state:delete(k .. 'billed_since') end",
+    "    state:set(k .. 'listed', u.in_service == false and 'resting' or 'in_service')",
+    "    state:delete(k .. 'gone_at')",
+    "  end",
+    "  for _, key in ipairs(state:get_keys(0)) do",
+    "    local name = key:match('^" + router_route_key_root() + "(.+):listed$')",
+    "    if name and not present[name] and state:get(key) ~= 'gone' then state:set(key, 'gone') state:set('" + router_route_key_root() + "' .. name .. ':gone_at', math.floor(ngx.now())) end",
+    "  end",
+    "end",
     "ROUTER_ALIAS = '" + model_alias + "'",
     // Reasoning-effort dialect per upstream MODEL, rendered from the effort_effects rows on the
     // upstream list. The alias and each engine accept a different set of effort names, and an engine
@@ -517,9 +543,10 @@ fn router_dev_header_lines() -> List<String> {
 // THE USAGE METER. Three rules make the tally worth reading, and all three live in the model:
 //
 // * OWNED AND RENTED TURNS ARE BOTH TALLIED, UNDER SEPARATE KEYS, AND ONLY AGAINST A QUOTE. A rented turn is
-//   billed by the hour through ctrl, so its tally is token volume and a comparison value, never spend (that is
-//   a second ledger for one fact, gunbc.design_argument::single_authority): stats `usage` is owned only and `usage_all` adds rented. An owned
-//   card costs nothing per turn, so actual spend is zero and only the comparison value is a number.
+//   billed by the hour, not per turn, so its per-model tally is token volume and a comparison value, never spend:
+//   stats `usage` is owned only and `usage_all` adds rented. An owned card costs nothing per turn, so actual spend
+//   is zero and only the comparison value is a number. A rented ROW's spend is the hourly fact its row declares
+//   (usage_by_route), never a per-turn figure; where the row declares no rate the router states none.
 // * A CACHED TOKEN IS DISCOUNTED ONLY IF THE ENGINE REPORTED IT. prompt_tokens_details.cached_tokens is
 //   tracked separately from its VALUE: a turn whose engine never declared cache_reported is counted as
 //   cache_unreported rather than silently valued at zero cached tokens, which would understate the
@@ -531,6 +558,11 @@ fn router_dev_header_lines() -> List<String> {
 // The counters live in the shared dict under one prefix, keyed by model, so they survive a reload and a
 // worker boundary; the epoch is set once at init so a reader can tell a zero from an untouched counter.
 fn router_usage_key_root() -> String { "meter:v2:" }
+
+// THE PER-ROW METER (usage by route, hand-added live 2026-11-25, modeled 2026-11-26): the same counters again, keyed
+// by the upstream ROW's name rather than its model, so one card's turns are readable apart from every other card of
+// its model. Under the same root, so the epoch above dates them too; the row's card facts sit beside its counters.
+fn router_route_key_root() -> String { router_usage_key_root() + "route:" }
 
 // How long a refused conversation counts as stranded demand without retrying.
 fn router_dev_pending_ttl() -> Second { second(count: 150) }
@@ -600,28 +632,36 @@ fn router_dev_log_lines() -> List<String> {
     "state:incr('status:' .. tostring(ngx.status), 1, 0)",
     "local u = ngx.ctx.route",
     "if u then",
-    "  local k = '" + router_usage_key_root() + "' .. (u.overflow and 'rented' or 'owned') .. ':' .. u.model .. ':'",
+    // ONE TURN, TALLIED TWICE: under its model (usage, usage_all) and under its row (usage_by_route). Both keys get
+    // every counter from the one `tally` below, so the two views cannot count a turn differently.
+    "  local keys = \{'" + router_usage_key_root() + "' .. (u.overflow and 'rented' or 'owned') .. ':' .. u.model .. ':', '" + router_route_key_root() + "' .. u.name .. ':'}",
+    "  local function tally(counter, n) for _, k in ipairs(keys) do state:incr(k .. counter, n, 0) end end",
     "  local usage = ngx.ctx.usage",
-    "  state:incr(k .. 'requests', 1, 0)",
+    "  tally('requests', 1)",
+    // CARD FACTS: the row's first and last finished turn, in whole seconds, so its useful life and idle time are
+    // readable from the meter (a released card keeps them: the row's name is the key).
+    "  local now = math.floor(ngx.now())",
+    "  state:add(keys[2] .. 'first_turn', now)",
+    "  state:set(keys[2] .. 'last_turn', now)",
     "  if ngx.status ~= 200 or not ngx.ctx.usage_complete then",
-    "    state:incr(k .. 'failed', 1, 0)",
+    "    tally('failed', 1)",
     "  elseif usage and not ngx.ctx.usage_error then",
     // The value is summed in micros so the running total stays an integer count; the only decimal is the
     // one the stats document prints.
     "    local p = router_comparison(u.model)",
-    "    state:incr(k .. 'measured', 1, 0)",
-    "    state:incr(k .. 'prompt', usage.prompt, 0)",
-    "    state:incr(k .. 'generated', usage.generated, 0)",
-    "    state:incr(k .. 'cached', usage.cached, 0)",
-    "    if not usage.cache_reported then state:incr(k .. 'cache_unreported', 1, 0) end",
+    "    tally('measured', 1)",
+    "    tally('prompt', usage.prompt)",
+    "    tally('generated', usage.generated)",
+    "    tally('cached', usage.cached)",
+    "    if not usage.cache_reported then tally('cache_unreported', 1) end",
     "    if p then",
     "      local micros = ((usage.prompt - usage.cached) * p.input_micro + usage.cached * p.cached_micro + usage.generated * p.output_micro) / 1000000",
-    "      state:incr(k .. 'value_micro', math.floor(micros + 0.5), 0)",
+    "      tally('value_micro', math.floor(micros + 0.5))",
     "    else",
-    "      state:incr(k .. 'unpriced', 1, 0)",
+    "      tally('unpriced', 1)",
     "    end",
     "  else",
-    "    state:incr(k .. 'unmeasured', 1, 0)",
+    "    tally('unmeasured', 1)",
     "  end",
     "end",
     // Health ejection: a 5xx, 401 or 403 from an engine takes it out of the pick for a span instead of
@@ -725,6 +765,59 @@ fn router_dev_stats_lines() -> List<String> {
     "end",
     "out.usage = meter",
     "out.usage_all = all",
+    // USAGE BY ROUTE (version 1; its reader, ctrl's session dashboard, refuses any other version): one entry per row
+    // the meter knows -- every row in the file (state in_service or resting) and every row it remembers that the file
+    // no longer carries (state gone) -- with the row's counters as the log phase wrote them and its CARD FACTS.
+    // A row's spend is its declared hourly rate times the hours from its declared billing start to its gone time
+    // (or now, while the file still carries it), rounded to the nearest micro: zero for an owned row, null for a
+    // rented row that declared no rate or no start -- never a zero standing for an unread fact. Counters with no
+    // remembered facts (written before the facts were) are listed apart under unattributed, never given a guessed
+    // billing. A row with no priced turn has no comparison value, as in usage above: absent, not zero.
+    "local route_root = '" + router_route_key_root() + "'",
+    "local now_unix = math.floor(ngx.now())",
+    "local function route_row(name, u, listed)",
+    "  local k = route_root .. name .. ':'",
+    "  local billing = u and (u.overflow and 'rented' or 'owned') or state:get(k .. 'billing')",
+    "  local rate, since, gone, last = state:get(k .. 'hourly_micro'), state:get(k .. 'billed_since'), state:get(k .. 'gone_at'), state:get(k .. 'last_turn')",
+    "  local spend = cjson.null",
+    "  if billing == 'owned' then spend = 0 elseif rate and since then spend = math.floor(rate * math.max(0, ((listed == 'gone' and gone) or now_unix) - since) / 3600 + 0.5) / 1000000 end",
+    "  local value_micro = state:get(k .. 'value_micro')",
+    "  return \{",
+    "    name = name, state = listed, model = u and u.model or state:get(k .. 'model'), billing = billing,",
+    "    tier = u and (u.tier or 0) or 0, cap = (u and listed == 'in_service') and (u.cap or 0) or 0,",
+    "    active = u and active(u) or (state:get('active:' .. name) or 0), unavailable = state:get('unavailable:' .. name) and true or false,",
+    "    requests = state:get(k .. 'requests') or 0,",
+    "    measured_requests = state:get(k .. 'measured') or 0,",
+    "    unmeasured_requests = state:get(k .. 'unmeasured') or 0,",
+    "    failed_requests = state:get(k .. 'failed') or 0,",
+    "    unpriced_requests = state:get(k .. 'unpriced') or 0,",
+    "    prompt_tokens = state:get(k .. 'prompt') or 0,",
+    "    completion_tokens = state:get(k .. 'generated') or 0,",
+    "    cached_prompt_tokens = state:get(k .. 'cached') or 0,",
+    "    cache_unreported_requests = state:get(k .. 'cache_unreported') or 0,",
+    "    comparison_value_usd = value_micro and value_micro / 1000000 or nil,",
+    "    first_turn_unix = state:get(k .. 'first_turn') or cjson.null, last_turn_unix = last or cjson.null,",
+    "    idle_s = last and math.max(0, now_unix - last) or cjson.null,",
+    "    hourly_usd = rate and rate / 1000000 or cjson.null, billed_since_unix = since or cjson.null,",
+    "    gone_unix = gone or cjson.null, spend_usd = spend}",
+    "end",
+    "local by_route = \{version = 1, epoch = meter.epoch, now_unix = now_unix, routes = \{}, unattributed = \{}}",
+    "local known = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do known[u.name] = true by_route.routes[#by_route.routes + 1] = route_row(u.name, u, u.in_service == false and 'resting' or 'in_service') end",
+    "for _, key in ipairs(state:get_keys(0)) do",
+    "  local name = key:match('^" + router_route_key_root() + "(.+):listed$')",
+    "  if name and not known[name] then known[name] = true by_route.routes[#by_route.routes + 1] = route_row(name, nil, state:get(key)) end",
+    "end",
+    "for _, key in ipairs(state:get_keys(0)) do",
+    "  local name = key:match('^" + router_route_key_root() + "(.+):requests$')",
+    "  if name and not known[name] then",
+    "    known[name] = true",
+    "    local k = route_root .. name .. ':'",
+    "    local value_micro = state:get(k .. 'value_micro')",
+    "    by_route.unattributed[#by_route.unattributed + 1] = \{name = name, requests = state:get(k .. 'requests') or 0, failed_requests = state:get(k .. 'failed') or 0, prompt_tokens = state:get(k .. 'prompt') or 0, completion_tokens = state:get(k .. 'generated') or 0, cached_prompt_tokens = state:get(k .. 'cached') or 0, comparison_value_usd = value_micro and value_micro / 1000000 or nil, first_turn_unix = state:get(k .. 'first_turn') or cjson.null, last_turn_unix = state:get(k .. 'last_turn') or cjson.null}",
+    "  end",
+    "end",
+    "out.usage_by_route = by_route",
     // STRANDED DEMAND: distinct conversations refused now, by requested model, with the age of the oldest.
     "local pend = \{by_model = \{}, total = 0}",
     "for _, k in ipairs(state:get_keys(0)) do",
