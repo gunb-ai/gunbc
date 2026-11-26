@@ -3540,12 +3540,28 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Source carries no comments: what a comment was for gets a home that is checked",
           boundary: "Operator direction 2026-11-26: \"we will probably be banning comments in the long run - they are basically dual representations better left out of the code completely (moreso left to planning items/etc, not the literal code)\". A comment restates what code or a plan owns, and nothing checks they agree. Specimen: target_invocation_host said a bare claim label selects a package; the code selected nothing. At 4507527721b about 507,000 of 2.78 million .dag lines and 31,000 of 415,000 seed Rust lines are comments.",
-          approach: "Members: comment-uses-have-homes (the ruling), roadmap-items-cite-declarations, concerns-surface-where-code-is-edited, comment-guidance-is-one-authority, review-rejects-new-comments. The legitimate uses are served before any comment is removed: a removal with no home for what it said loses the concern instead of fixing it.",
+          approach: "Members: comments-are-audited-by-use, comment-uses-have-homes (the ruling), roadmap-items-cite-declarations, concerns-surface-where-code-is-edited, comment-guidance-is-one-authority, review-rejects-new-comments. The direction is decided and does not wait on the audit (operator: one bad comment is reason enough to remove them all and change guidance); guidance and review change now. The audit decides where each use goes, and existing comments are removed as their uses get homes, so a concern is never lost.",
           red_control: "Deleting comments with no disposition is not this project; neither is moving them into String data rows, which DESIGN section 4c already measured as the worse outcome.",
           displaced_cost: "A reader trusts the comment, the code does something else, and the cost is paid as trial runs; a concern written beside the code is never ranked, so it is never fixed.",
           handback: "The ruling, each use with its home consumed, guidance projected from one authority, and review refusing new comments."
         )),
       parent: in_project(project: "debt-payoff", contribution: "One representation per fact: the code says what it does, and concerns and reasons live where they are ranked and checked."),
+    ),
+    roadmap_node(
+      identity: "rn_Q25LGLM7BGBAI26VSSY3TRI3V4",
+      id: "comments-are-audited-by-use",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: fields(
+          headline: "An audit of what the comments in this repository are actually used for, and what the code looks like without them",
+          boundary: "Two readings, both over the seed Rust and the .dag corpus. A census: every comment classified by use (restatement, rationale, concern about the implementation, invariant or warning, temporary-arm note, disabled code, commentary disguised as a String), with counts and specimens per use, and each wrong comment found counted with what it got wrong. A specimen: representative modules shown with their comments stripped, read for what is lost; each loss is either a home the ruling must provide or a fix in the code itself, a name or type that should have said it.",
+          displaced_cost: "Without the census the ruling guesses at the uses; without the specimen nobody sees whether the code stands without its comments.",
+          first_slice: "Classify a stratified sample from both corpora, including target_invocation_host, and strip comments from three modules of different kinds (seed host Rust, a std .dag module, a v2 compiler stage) for the operator to read.",
+          red_control: "A census that only counts comment lines, without a use per comment and the wrong ones named, does not discharge this member.",
+          out_of_scope: "Deciding whether comments go: the direction is decided.",
+          handback: "The census by use with specimens and the wrong comments found, and the stripped modules with each loss dispositioned."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "The homes are designed from what comments are really used for."),
     ),
     roadmap_node(
       identity: "rn_ACSSRQVGDUJLCPX65TKP6TKTWQ",
@@ -3556,8 +3572,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "A ruling gives every legitimate use of a comment a checked home, revising DESIGN section 4c",
           boundary: "Comments often carry an author's concern about the implementation. That concern is either fixed now, by stopping and replanning, which the ruling states as the expected move rather than a failure, or it becomes a roadmap item citing the declaration it concerns. Why-this-shape rationale goes to a ruling or plan row; an invariant, lifetime or invalidation story goes to the typed carrier that owns it; a temporary arm is a scaffold admission; a restatement of the code is deleted; generated help text is data.",
           displaced_cost: "Without a home per use, a ban either loses the concerns or pushes them into prose rows nothing reads.",
-          first_slice: "Census a sample of seed and .dag comments by those uses, so the ruling's list is measured, then draft the ruling with the operator.",
-          red_control: "A comment kind found in the census with no home in the ruling is an open question, not an implied deletion.",
+          first_slice: "Draft the ruling with the operator from comments-are-audited-by-use: its census fixes the list of uses, and its uncommented specimens show what code must say for itself.",
+          red_control: "A use found in the audit with no home in the ruling gets a home designed; it is never grounds for keeping comments.",
           out_of_scope: "Moving any comment before the ruling lands.",
           handback: "The ruling, DESIGN section 4c regenerated from it, and the census."
         )),
@@ -3604,7 +3620,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "Every agent's comment guidance is projected from the one ruling",
           boundary: "The daily workspace is the factory: its worker and reviewer prompts are projections of typed guidance inputs (harness-prompt-context-model), so the ruling enters there as one guidance input, beside gunbc.harness.harness_guidance and harness_review_guidance. The ctrl session dashboard is the legacy route being retired: while it still dispatches, its AGENTS.md, CODING.md and gunbc reviewer prompt (scripts/chatgpt-reviewer/prompts/gunbc.md) are brought into agreement and get no further investment. Today ctrl CODING.md tells authors to name a cache's lifetime in code comments, which the direction reverses.",
           displaced_cost: "Guidance copies drift, and an agent obeying one copy is rejected by a reviewer reading another.",
-          first_slice: "List every guidance surface the factory's workers and reviewers read and every one the legacy dashboard still serves, with what each says about comments today; make the factory's the projection and correct the legacy ones by hand until they retire.",
+          first_slice: "Change the guidance now, ahead of the ruling: no new comments, and a concern is fixed or planned. List every surface the factory's workers and reviewers read and every one the legacy dashboard still serves, with what each says about comments today; make the factory's a projection and correct the legacy ones by hand until they retire.",
           red_control: "A guidance surface stating a comment rule different from the ruling is detected, not discovered in review.",
           out_of_scope: "Guidance on any topic other than comments.",
           handback: "The surfaces enumerated, the factory's projected from the ruling, and the legacy ones in agreement until they retire."
