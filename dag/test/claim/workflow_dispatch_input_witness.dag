@@ -444,19 +444,25 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
 // The bootstrap mode is the runner-side shape of the workstation apply: same prelude as the grant
 // install (fleet key agent, per-target administrator credential file), one target per run.
 test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_its_entry() -> Bool {
-  let invoke = gunbc_ci_spark_bootstrap_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
-    && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
-    && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
-    && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
+  match outcome_accepted_value(gunbc_ci_spark_bootstrap_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
+        && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
+        && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
+        && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
+  }
 }
 
 // Serving apply is retired (hardware sold): the step refuses rather than invoking a deleted entry.
 test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
-  let invoke = gunbc_ci_spark_serving_apply_invoke()
-  string_contains(s: invoke, pattern: "DGX Spark serving path retired")
-    && string_contains(s: invoke, pattern: "exit 1")
-    && !string_contains(s: invoke, pattern: "pair_serving_apply")
+  match outcome_accepted_value(gunbc_ci_spark_serving_apply_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "DGX Spark serving path retired")
+        && string_contains(s: invoke, pattern: "exit 1")
+        && !string_contains(s: invoke, pattern: "pair_serving_apply")
+  }
 }
 
 // ── THE DARK INSTALL REACHES srv1 UNDER THE RUNNER PRINCIPAL ────────────────────────────────
@@ -482,9 +488,12 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // deletion, which is gunbc.design_argument::fail_closed's construction over validation -- guarding a door that no
 // longer exists is the weaker half of the pair, not an addition to it.
 test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
-  let invoke = gunbc_ci_approval_broker_dark_install_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet")
-    && !string_contains(s: invoke, pattern: "apply_dispatch")
+  match outcome_accepted_value(gunbc_ci_approval_broker_dark_install_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet")
+        && !string_contains(s: invoke, pattern: "apply_dispatch")
+  }
 }
 
 // AND THE JOB SELECTS ON THE MODE THAT THE MENU OFFERS. A roster row whose job guards on a
@@ -498,14 +507,17 @@ test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
-  let invoke = gunbc_ci_org_actions_inspect_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_inspection.dag --function org_actions_inspect_wet")
-    && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
-    && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
-    && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
-    && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
-    && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
-    && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
+  match outcome_accepted_value(gunbc_ci_org_actions_inspect_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_inspection.dag --function org_actions_inspect_wet")
+        && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
+        && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
+        && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
+        && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
+        && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
+        && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
+  }
 }
 
 
@@ -942,15 +954,18 @@ test fn a_guest_image_build_is_keyed_to_its_own_run_not_the_executor_host() -> B
 // never publish the artifact the accessor pin cites; (3) the wet itself must be what runs. The runner.temp
 // spelling is the one the runner actually substitutes -- the same file uses it 32 other times.
 test fn the_srv15_versions_read_step_is_the_model_projection() -> Bool {
-  let invoke = gunbc_ci_srv15_bmc_secret_versions_read_invoke()
   let yml = expected_fleet_converge_yml_content()
-  string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_receipt.dag")
-    && string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_read_wet")
-    && !string_contains(s: invoke, pattern: "gcp-iam-converge-auth-header")
-    && !string_contains(s: invoke, pattern: "approval-submission-mac-key")
-    && !string_contains(s: invoke, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE")
-    && string_contains(s: yml, pattern: "path: $\{\{ runner.temp \}\}/srv15-bmc-secret-versions-receipt.json")
-    && !string_contains(s: yml, pattern: "path: $\{\{ env.RUNNER_TEMP \}\}/srv15-bmc-secret-versions-receipt.json")
+  match outcome_accepted_value(gunbc_ci_srv15_bmc_secret_versions_read_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_receipt.dag")
+        && string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_read_wet")
+        && !string_contains(s: invoke, pattern: "gcp-iam-converge-auth-header")
+        && !string_contains(s: invoke, pattern: "approval-submission-mac-key")
+        && !string_contains(s: invoke, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE")
+        && string_contains(s: yml, pattern: "path: $\{\{ runner.temp \}\}/srv15-bmc-secret-versions-receipt.json")
+        && !string_contains(s: yml, pattern: "path: $\{\{ env.RUNNER_TEMP \}\}/srv15-bmc-secret-versions-receipt.json")
+  }
 }
 
 // THE READ STEP'S TOKEN IS ITS OWN DECLARED DEPENDENCY, always iam-observe (manager ruling, after
