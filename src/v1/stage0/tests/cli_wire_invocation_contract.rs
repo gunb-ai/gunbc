@@ -4,9 +4,59 @@ use std::path::Path;
 use std::process::Command;
 use v1_compiler::cli_run::target_invocation_host::{test_verb, Termination, TestInvocationOptions};
 
+/// Refuse the declared phases before touching the native subject. A dormant UNIX
+/// phase has a deliberately ill-typed body that a whole-reader check would reject.
+fn install_refusing_native_probe(root: &Path) {
+    let optional = root.join("dag/std");
+    std::fs::create_dir_all(&optional).unwrap();
+    std::fs::write(
+        optional.join("optional.dag"),
+        "module std.optional\ntype Optional<T> = Absent | Present { value: T }\n",
+    )
+    .unwrap();
+    let gunbc = root.join("dag/gunbc");
+    std::fs::create_dir_all(gunbc.join("instruments")).unwrap();
+    std::fs::write(
+        gunbc.join("instruments/native_serve_fixture.dag"),
+        "module gunbc.instruments.native_serve_fixture\n",
+    )
+    .unwrap();
+    std::fs::write(
+        gunbc.join("instrument_targets.dag"),
+        r#"module gunbc.instrument_targets
+import std.optional { Optional, Present }
+fn native_serve_probe_reader_for_entry(entry: String) -> Optional<String> {
+  Present { value: "dag/gunbc/fixture_probe.dag" }
+}
+fn native_serve_probe_declared_names_for_entry(entry: String) -> List<String> { ["unjudged phase"] }
+fn native_serve_probe_runs_peer(entry: String) -> Bool { false }
+fn native_serve_probe_runs_refused_launch(entry: String) -> Bool { false }
+fn native_serve_probe_runs_deadline_exit(entry: String) -> Bool { false }
+fn native_serve_probe_runs_unix_socket(entry: String) -> Bool { false }
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        gunbc.join("fixture_probe.dag"),
+        r#"module gunbc.fixture_probe
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> { declared }
+fn native_serve_probe_requests(peer_port: Int) -> List<String> { [] }
+fn native_serve_probe_launch_argv() -> List<String> { [] }
+fn native_serve_probe_standing() -> Bool { true }
+fn native_serve_probe_unix_launch_argv(socket_path: String) -> Int { false }
+"#,
+    )
+    .unwrap();
+}
+
 #[test]
 fn interpreted_bindings_keep_their_result_contracts() {
-    let root = std::env::temp_dir().join(format!("gunbc-cli-wire-contract-{}", std::process::id()));
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("gunbc-cli-wire-{}-{stamp}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
     let dag = root.join("dag/gunbc/ci");
     let workflow = root.join("src/v2/workflow");
     std::fs::create_dir_all(&dag).unwrap();
@@ -36,6 +86,7 @@ fn interpreted_bindings_keep_their_result_contracts() {
          fn rehome_controls_wire() -> CliWireResponse { CliWirePrintable { bytes: \"first reading!\", exit: ExitSuccess } }\n\
          fn second() -> CliWireResponse { CliWirePrintable { bytes: \"second reading!\", exit: ExitSuccess } }\n",
     ).unwrap();
+    install_refusing_native_probe(&root);
     // This integration binary owns the process workspace. Enter the target dispatcher
     // below its host-level freshness gate, so the fixture tests the actual termination enum.
     let previous = std::env::current_dir().unwrap();
@@ -63,6 +114,11 @@ fn interpreted_bindings_keep_their_result_contracts() {
         "first reading!",
     );
 
+    instrument(
+        "native-serve",
+        Termination::Refused,
+        "cause=PhaseUnsatisfied",
+    );
     let run = |entry: &Path, functions: &[&str], status, expected: &[&str]| {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_gunbc"));
         cmd.args(["run", "--source-root", "src/v2", "--entry"])
