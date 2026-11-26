@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_witness_module_outside_the_required_lanes_never_gets_resolved
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_witness_module_outside_the_required_lanes_never_gets_resolved: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_witness_module_outside_the_required_lanes_never_gets_resolved" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "resolution of a claim module is performed by SOMETHING THAT RUNS. Name the module on an admitted required lane (required_gate_prefixes or required_gate_authored_modules), or add a required-lane claim that resolves it as its subject, so an unresolved callee in a witness import block is reported by the gate instead of sitting in the tree. WHEN THIS FIRES: an import fault in this family is found by the required lane at the moment it is introduced, and this row's next-rung trigger is discharged by the gate's own refusal rather than by a session discovering it through a funded acquisition." as NonEmptyStr,
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a claim module that no required lane names can be unresolvable, and nothing reports it. The gate roster decides what is executed (after the 2026-09-19 nominal-roster ruling the required floor executes only modules matching required_gate_prefixes or required_gate_authored_modules), so a module outside both is never resolved by any run — a resolve-time fault inside it is invisible to CI, to the required lane, and to every rung derived from it.",
+    "SPECIMEN, MEASURED 2026-11-25 at head 47b6ef2374edea105c1f52cb3269618d90637f00: #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes calls distinct_string_count directly, and the file's import block from gunbc.guarantee_measurement imported only that module's wrapper fns, never the callee itself. Every acquisition of the module therefore died at resolve with the hard diagnostic 'effect summary incomplete: call to distinct_string_count ... has no established callee identity' at the call site — including the acquisitions claimed by earlier work on this node, which cannot have executed the leg they reported.",
+    "WHY IT SAT UNNOTICED, READ NOT INFERRED: the only files in the repository that name test.claim.guarantee_probe_corpus_witness are artifacts/rung-drops/required_lanes_do_not_resolve_product_layer_modules_2026-09-20.txt lines 1908 and 1910. The artifact that records the decline is the only thing that mentions the module, so the module's unresolvability had no consumer that could notice it.",
+    "FIX ON RECORD: commit a7f633d757c added the callee to the import block. After it the module resolves and the leg executes for the first time; its first real verdict was a FAIL carrying the counted uncovered population, and the naming face #test.claim.guarantee_probe_corpus_witness::dark_suite_partition_names_the_uncovered_rows now prints want/got counts and the offending ids instead of an unexplained FAIL.",
+    "GENERIC FORM, which is why this is a failure MODE and not an anecdote: the defect class is 'a fault that only execution can report, in a module no required lane executes'. Its detection cost is one funded heavy-slot acquisition per discovery, paid by whoever happens to run the module; its silent cost is any claim about that module's verdicts made without executing it. The fix is not to repair declarations — the live_tree_disposition notes in #gunbc.guarantee_probe_corpus are correct and must not be retyped — it is to give the module a consumer that runs.",
+  ],
+  evidence: [],
+}

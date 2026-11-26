@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_field_read_through_an_optional_value_is_accepted_at_the_projection
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_field_read_through_an_optional_value_is_accepted_at_the_projection: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_field_read_through_an_optional_value_is_accepted_at_the_projection" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the field-projection arm of the optionality relation: extend optional_at_required_obligation_diags (src/v1/04_infer.dag) so a field read THROUGH an optional is decided at the PROJECTION position, the way the direct call-argument position already decides it. WHEN THIS FIRES: the twin leg #test.claim.guarantee_floor_class_probe_witness::floor_cardinality_seam_field_projection_through_optional_is_still_silent stops being a silent acceptance and becomes a refusal, and is re-ranked as a regression control beside its discriminating call-argument refusal; it is never deleted while it is still green, because deleting a green hole leg is how a hole becomes invisible." as NonEmptyStr,
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a record declares a field with optional cardinality (parent: Level?), and a dot projection reads a field THROUGH that optional value (l.parent.id). Absent carries no fields, so the read has no meaning on that branch; v1.compiler.infer ACCEPTS the read and the whole program with zero diagnostics, producing the field type THROUGH the optional (String? here) as if the projection were total.",
+    "MEASURED, released main compiler (release-bins claim_batch sha256 632e3c6ab7608f4b6b61963783bcff10ff3888e9410004666a61a907dd4a394b, the same manifest copy carried as a typed value in #test.claim.live_deploy.release_pair_deliver_cli_witness::real_manifest_head; provenance run 45087227390, tree 816396255c99-era), 2026-11-23: module probe_floor_cs_hole 'type Level { id: String, parent: Level? } fn probe(l: Level) -> String? { l.parent.id }' compiles with 0 diagnostics while the required-field twin (l.id) is the only one with a value on every branch. The same optional value at a direct call-argument position IS refused (DeclaredTypeNotInhabited: declared Primitive(Level), produced Optional<Primitive(Level)>), so the inhabittance check runs and this hole is position-specific to the projection.",
+    "INSTRUMENT OF RECORD, same released compiler: #test.claim.optional_field_read_admission_gap_witness::class_blocking_count returns 0 blocking rows for the projection fixture and at least 1 for the call-argument fixture. That asymmetry on one axis is what makes the enrolled probe pair a measurement of this gap rather than an assertion of it.",
+    "OWNER OF THE FIX, cited not restated: the projection arm is claimed by roadmap row identity rn_MDGKH2UR7XGMNPT3AMWLAXVFO2 (id floor-optional-projection-wall, owner compiler-guarantee). Its status, dispatch, carriers and landing order live in that row and are deliberately not copied here -- a copy disagrees with its row the moment either moves.",
+    "EXECUTED, released main compiler: the six legs of this class -- #test.claim.guarantee_floor_class_probe_witness::floor_cardinality_seam_field_projection_through_optional_is_still_silent, ::floor_cardinality_seam_call_argument_refuses_proving_harness_is_live, ::floor_cardinality_seam_green_control_is_clean, ::floor_cardinality_seam_hole_receipt_joins_its_v1_compile_path, ::counted_below_floor_hole_rows_match_declared_count, ::every_below_floor_hole_row_is_one_of_the_declared_holes -- ran 2026-11-25 on srv1 (boot c095c0cd) through heavy-slot under HEAVY_OWNER quiet-carp-72: 6 PASS, 0 FAIL, 356-byte run set read from file. Binary claim_batch sha256 fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe, verified against release-bins.manifest rc 0 (pack provenance run 45588971859, head 90455b33b870); executed tree 97950fee4146101ba85127fdb301931ea45f383c. Raw PASS lines and the exact claim_batch invocation: gunbc#16893 issuecomment-7165606551.",
+    "ENROLLMENT, gunbc#16893 (ladder-probe-corpus, 2026-11-23): the hole is counted, not asserted - probe floor-cardinality-seam-field-projection-through-optional-hole (ExpectSilentAcceptanceHole) with the required-field green control (floor-cardinality-seam-required-field-read-green) and the call-argument refusal control (floor-cardinality-seam-call-argument-refusal-control), executed in dag/test/claim/guarantee_floor_class_probe_witness.dag through the row oracle (silent_hole_holds/row_holds), red-control pair banked at red_at 2116b15a on red_base e09090f2 (counted below-floor hole rows 3 vs declared 4 when the hole greens without its wall).",
+    "ADJACENT, NOT THIS CLASS: gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared is the CONVERSE direction (an optional standing AT a required position - the call-argument side, which refuses and is used above as this row's discriminating control, not a silent acceptance); gunbc.recurring_failure_mode nested_field_read_through_a_binder_of_an_inferred_generic_result is a deep read through an incompletely-substituted generic binder with no optional involved; gunbc.recurring_failure_mode record_value_escapes_declared_optional_return is an optional-return escape, a different position.",
+    "RUNG: found BELOW THE LADDER (a silent acceptance on the real acceptance path). CEILING: STRUCTURALLY GUARANTEED - the receiver's optionality is a modeled type state (Optional<Primitive> at the projection receiver) and the read is decidable against it, so the projection can be made to refuse at check time; not structurally impossible: the source can still write the read today. NEXT TRIGGER: the rung field.",
+  ],
+  evidence: [],
+}
