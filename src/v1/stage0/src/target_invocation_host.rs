@@ -2234,9 +2234,38 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
 /// the contract (the operand's doc, the generated help, and
 /// `gunbc.design_ruling::claim_execution_has_one_v1_entrypoint`) so the refusal says why, not just that.
 fn claim_route_all_refusal_rendered(operand: &str) -> String {
+    let package = operand
+        .strip_suffix(":all")
+        .or_else(|| operand.strip_suffix(":*"))
+        .unwrap_or(operand);
     format!(
-        "gunbc test: {operand} names a package-wide target set (`:all`/`:*`), which is not a claim selection on the claim route; cause: ClaimRouteAllNotAClaimSelection -- name each claim by its exact label, or take a whole package or subtree by its own form; `:all` is refused here so one entrypoint keeps one selection rule"
+        "gunbc test: {operand} names a package-wide target set (`:all`/`:*`), which is not a claim selection on the claim route; cause: ClaimRouteAllNotAClaimSelection -- name each claim by its exact label, or take every claim under the package with `{package}/...`; `:all` is refused here so one entrypoint keeps one selection rule"
     )
+}
+
+/// What an empty claim selection says when an operand was a single label. A bare `//test/claim/x` is
+/// bazel shorthand for the one claim `//test/claim/x:x`, so reading it as "the module's claims" selects
+/// nothing; the note names the subtree form that does select the module, so the refusal carries the
+/// correction instead of leaving the reader to find it.
+fn claim_route_empty_selection_note(patterns: &[TargetPattern]) -> String {
+    let subtrees: Vec<String> = patterns
+        .iter()
+        .filter_map(|pattern| match pattern {
+            TargetPattern::SingleTarget(label) => {
+                Some(format!("`//{}/...`", label.package_segments.join("/")))
+            }
+            TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => None,
+        })
+        .collect();
+    if subtrees.is_empty() {
+        " — the pattern selected no discovered claim".to_string()
+    } else {
+        format!(
+            " — the pattern selected no discovered claim; an exact label names one claim, and every \
+             claim of its module is {}",
+            subtrees.join(", ")
+        )
+    }
 }
 
 /// `gunbc.discovery_census` `claim_route_universe`, mirrored: `//test/claim/...`, the subtree
@@ -2555,9 +2584,9 @@ fn run_claim_selection(
         };
     }
     let note = if fold.verdicts.is_empty() {
-        " — the pattern selected no discovered claim"
+        claim_route_empty_selection_note(patterns)
     } else {
-        ""
+        String::new()
     };
     InvocationOutcome {
         termination: fold.termination(),
@@ -3686,8 +3715,9 @@ fn classify_test_operands(
                 // that silently expanded `:all` into the package's claims was the defect. A claim is named
                 // exactly by label, or a whole package/subtree is taken by its own form -- never `:all`.
                 // `PackageTargets` is exactly the `:all`/`:*` spelling (parse_target_pattern strips those
-                // suffixes into it), so this refuses `:all` while leaving a bare package (SingleTarget) and
-                // a subtree (`/...`, SubtreeTargets) admitted, as the operand doc permits.
+                // suffixes into it), so this refuses `:all` while leaving a single label (SingleTarget; a bare
+                // `//test/claim/x` is bazel shorthand for `//test/claim/x:x`, not the module) and a subtree
+                // (`/...`, SubtreeTargets, which does take the module) admitted, as the operand doc says.
                 TargetPattern::PackageTargets(_) => {
                     return Err(InvocationOutcome {
                         termination: Termination::Refused,
@@ -5966,11 +5996,17 @@ mod test_batch_admission_controls {
     /// population (a package's claims), so it is not the "outside every universe" refusal; it is refused
     /// because one entrypoint keeps one selection rule, per the operand doc, the generated help, and
     /// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint. The typed cause is named so the refusal
-    /// says why. A bare package and a subtree (`/...`) remain admissible; only `:all`/`:*` refuses.
+    /// says why, and it names the subtree form that does take the package. A single label and a subtree
+    /// (`/...`) remain admissible; only `:all`/`:*` refuses.
     #[test]
     fn a_package_wide_all_refuses_on_the_claim_route() {
         let all = refused(&["//test/claim/x:all"]);
         assert_eq!(all.termination, Termination::Refused);
+        assert!(
+            all.message.contains("`//test/claim/x/...`"),
+            "{}",
+            all.message
+        );
         assert!(
             all.message.contains("ClaimRouteAllNotAClaimSelection"),
             "{}",
@@ -5986,6 +6022,21 @@ mod test_batch_admission_controls {
         // A subtree over the same package stays admitted (the operand doc permits it).
         let subtree = admitted(&["//test/claim/x/..."]);
         assert_eq!(subtree.claim.len(), 1);
+    }
+
+    /// AN EMPTY SELECTION FROM A SINGLE LABEL NAMES THE FORM THAT TAKES THE MODULE. A bare
+    /// `//test/claim/a/b` is the one claim `b` of module `a/b`; when it selects nothing the note says so
+    /// and names `//test/claim/a/b/...`, while a selection made only of subtrees keeps the plain note.
+    /// The plain phrase stays in both, because `claim_batch_unobserved_exit_witness` reads it.
+    #[test]
+    fn an_empty_single_label_selection_names_the_subtree_form() {
+        let bare = parse_target_pattern("//test/claim/a/b").expect("a bare label parses");
+        let note = claim_route_empty_selection_note(&[bare]);
+        assert!(note.contains("selected no discovered claim"), "{note}");
+        assert!(note.contains("`//test/claim/a/b/...`"), "{note}");
+        let subtree = parse_target_pattern("//test/claim/a/b/...").expect("a subtree parses");
+        let plain = claim_route_empty_selection_note(&[subtree]);
+        assert_eq!(plain, " — the pattern selected no discovered claim");
     }
 
     /// A SET FORM OUTSIDE EVERY UNIVERSE REFUSES RATHER THAN WIDENING: `//not/a/universe/...` names no
