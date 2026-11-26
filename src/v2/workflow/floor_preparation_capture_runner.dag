@@ -410,13 +410,19 @@ fn floor_preparation_spawn_slot(bound: Second, binary: String, args: List<String
 // to a digest plus a 16 KiB TAIL (src/v1/stage0/src/bounded_shell_host_drain.rs), so a leg's
 // in-memory stderr is a tail, not a transcript: run8's two whole-tree legs came back truncated
 // at exactly 16383 bytes with their early pool-phase lines gone, and the in-memory streams could
-// not be the fold's or the gate's input. Each claim_batch leg therefore runs under
-// /usr/bin/script -qef LOG -- ... (util-linux, argv form -- no shell string is built), which
-// writes the child's COMPLETE interleaved stream to a file in the checkout. -e forwards the
-// child's exit status, so the observation's rc is still the leg's real rc, and the inner
-// timeout(1) -- in SECONDS -- bounds claim_batch itself; the outer timeout guards a wedged pty.
+// not be the fold's or the gate's input. Each claim_batch leg therefore runs under the pinned
+// leg driver, which writes the child's COMPLETE interleaved stream to a file in the checkout and
+// execs the child so the observation's rc is still the leg's real rc; the inner timeout(1) -- in
+// SECONDS -- bounds claim_batch itself; the outer timeout guards a wedged runner.
+// THE PATH IS UNIQUE PER ATTEMPT. A log at a fixed path can be overwritten between the fold's
+// read and a later poll -- run9e's gate saw 8 PASS lines while the same path later showed none,
+// and a log that reads differently at two times is not evidence (review ruling, 2026-11-26).
+// FLOOR_RUN_TAG, set by the acquisition script and printed in its header, namespaces the name;
+// when unset the name is unchanged, so an untagged caller still gets the documented file.
 fn floor_preparation_leg_log_path(label: String) -> String {
-  concat(concat(floor_preparation_runner_root(), "/"), concat(label, ".log"))
+  let tag = floor_preparation_env_value(name: "FLOOR_RUN_TAG")
+  let stem = if tag == "" { label } else { concat(concat(label, "-"), tag) }
+  concat(concat(floor_preparation_runner_root(), "/"), concat(stem, ".log"))
 }
 
 fn floor_preparation_spawn_slot_captured(label: String, bound: Second, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
