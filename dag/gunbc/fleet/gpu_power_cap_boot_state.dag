@@ -25,6 +25,17 @@ module gunbc.fleet.gpu_power_cap_boot_state
 //     readback into a `CapRealization` of its own; that join is gone, because a module that was not the
 //     converge could only ever have produced an answer the converge disagreed with.
 //
+// WHERE THE BOOT SIDE GATES, AND WHERE IT DOES NOT REACH. A cap carried by a declared boot unit -- the srv1 and
+// ken units -- is gated at the boot-unit census the converge runs (`gpu_cap_boot_unit_refusal`): a unit holding
+// a cap line with no priced candidate is REFUSED BY NAME, which fails the converge run, which keeps the units
+// that Require it -- the serving side -- from starting. What the model does NOT do is render unit files: it
+// mints none, so there is no render step to fail, and the installed unit's own `nvidia-smi -pl` line is host
+// state that Part A records. Deriving the unit file itself from the priced candidate is the failure-mode row's
+// next-rung trigger, not a guarantee this module may claim. The surge-strip members declare no boot units at
+// all, so their caps arrive only through the converge, which is gated for every host; a unit that does not
+// exist cannot be gated, and `PresenceUnread` is not "no unit" -- an unmodeled boot channel is a modeling
+// obligation on this home, not a covered path it can claim.
+
 // WHAT THIS MODULE HOLDS BESIDE SRV1'S TRANSCRIBED UNIT (2026-11-24, closed up at the final-state pass). srv3,
 // srv4 and ken carry caps the operator applied by hand, and those readings have a different shape: a path, a
 // rule, a wattage, a persistence claim and a digest -- no systemctl state, and no transcription except where the
@@ -35,6 +46,7 @@ module gunbc.fleet.gpu_power_cap_boot_state
 // transcribed line list (ken_t10_power_cap_script_lines), each folded against the host's digest. What stays
 // unread stays named: srv3's drop-in bytes (digest read, the file moved under the day) and ken's cap-unit bytes. Both reach every card on their host, which is why they answer a consumer asking "what cap does
 // this host put on its cards?" through `host_wide_gpu_cap_watts`, while srv1's one-card unit answers no such question.
+
 //
 // DISPOSITION OF #16047 (landed 2026-11-08 as d79a9db7addb, after this PR was opened). This module consumes it
 // rather than duplicating it: the apply-and-read-back path and the generated `gunbc-srv1-gpu-power-cap.service`
@@ -62,6 +74,11 @@ import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
   current_gpu_device_observations, current_gpu_device_observations_of,
   gpu_device_observation_board, gpu_device_observation_default,
+}
+import gunbc.serving.gpu_power_cap_pricing { CapCandidate, PowerAsk }
+import gunbc.fleet.gpu_cap_priced_actuation {
+  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, price_the_request,
+  ClockLineUnpricedRefused,
 }
 
 // A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
@@ -112,6 +129,119 @@ type CapApplicationClaim {
   to_watts: Watt
   said_by: NonEmptyStr
   read_on: NonEmptyStr
+}
+
+// ── THE UNIT'S OWN CAP LINES, PRICED ──────────────────────────────────────────────────────────────
+//
+// WHY THE BOOT MECHANISM IS GATED AT ALL. This module states no realization -- an installed unit and its own
+// journal line say somebody ASKED for a cap at boot, and nothing more. That is exactly what makes it dangerous
+// next to a pricing gate: a unit is a script that writes its watt value again at every boot, so a unit holding
+// a cap nobody priced would reinstate the unpriced value the next time the machine came up and the converge's
+// refusal would be theatre. So each cap line of a unit is put through the same gate as an admission, with the
+// watts and the UUID the unit itself carries.
+//
+// THE CEILING GAP, STATED RATHER THAN PAPERED OVER. The units this module holds write `-pl` only; no modeled
+// unit writes an SM clock ceiling with `-lgc`. A request built from one of these lines therefore carries
+// `ceiling: Absent`, which the gate reads as "the card is left to boost", matching a candidate whose clock is
+// `Unlocked`. When a unit that locks a clock is installed, `BootCapCommand` must grow the ceiling as a field
+// and this function must pass it -- the same realization obligation named on gunbc.serving.gpu_power_cap_pricing
+// for the ceiling and for `scaling_max_freq`, and it is named there once rather than being invented differently here.
+
+type BootCapActuation {
+  command: BootCapCommand
+  board: PhysicalAssetIdentity?
+  admission: ActuationAdmission
+}
+
+fn boot_command_actuation(
+  unit: PowerCapBootUnit,
+  command: BootCapCommand,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> BootCapActuation {
+  BootCapActuation {
+    command: command,
+    board: board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid),
+    // THE SAME LOOKUP THE CONVERGE USES, NOT A COPY OF IT. The unit hands over the request its cap line
+    // actually is and the rows; which candidate prices that operating point is decided once, in
+    // gunbc.fleet.gpu_cap_priced_actuation -- a private filter here would be a second rule about what counts
+    // as this operating point, and the boot path and the converge path would drift apart (#gunbc.design_argument::single_authority).
+    // The verbatim line is asked first whether it pins the clock: it is the only record of what the unit
+    // writes, and pricing an -lgc line as if it left the clock unlocked would fabricate the fact the header
+    // exists to protect (#gunbc.design_argument::fail_closed).
+    admission: if string_contains(s: command.line.as_written as String, pattern: "-lgc") {
+      ClockLineUnpricedRefused {
+        request: boot_command_request(unit: unit, command: command),
+        line: command.line.as_written,
+      }
+    } else {
+      price_the_request(
+        request: boot_command_request(unit: unit, command: command),
+        candidates: candidates,
+        ask: ask,
+      )
+    },
+  }
+}
+
+// The request a cap line IS: watts, and -- because the caller has already established the verbatim line
+// writes no clock lock -- an actuation that leaves the SM clock to find itself. That last field is derived
+// from the verbatim line, not asserted beside it; a unit that does pin the clock never reaches this function.
+fn boot_command_request(unit: PowerCapBootUnit, command: BootCapCommand) -> ActuationRequest {
+  ActuationRequest {
+    host: unit.host,
+    board: board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid),
+    gpu_uuid: command.addressed_gpu_uuid,
+    cap: command.target_watts,
+    ceiling: Absent,
+  }
+}
+
+fn boot_unit_cap_actuations(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> List<BootCapActuation> {
+  map(unit.cap_commands, c => boot_command_actuation(unit: unit, command: c, candidates: candidates, ask: ask))
+}
+
+// The unit's cap lines that the gate would refuse, in order. An empty list is the only answer that lets the
+// converge treat the unit as harmless.
+fn boot_unit_unpriced_commands(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> List<BootCapActuation> {
+  filter(boot_unit_cap_actuations(unit: unit, candidates: candidates, ask: ask), a => !actuation_admits(a: a.admission))
+}
+
+fn boot_unit_admits_every_command(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> Bool {
+  boot_unit_unpriced_commands(unit: unit, candidates: candidates, ask: ask).length() == 0
+}
+
+// The converge's question: would this unit put an unpriced value back on the card at the next boot? Present
+// carries the line's own address and the gate's reason, so the refusal is actionable.
+fn boot_unit_restores_unpriced_cap(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> NonEmptyStr? {
+  let unpriced = boot_unit_unpriced_commands(unit: unit, candidates: candidates, ask: ask)
+  match unpriced.first() {
+    Absent => Absent
+    Present { value: a } => Present {
+      value: join([
+        "its cap line for ", a.command.addressed_gpu_uuid as String, " at ",
+        to_string(watt_count(w: a.command.target_watts)), " W is refused by the pricing gate: ",
+        actuation_refusal_text(a: a.admission),
+        "; the unit would write it at the next boot (", unit.unit_path as String, ")",
+      ], "") as NonEmptyStr,
+    }
+  }
 }
 
 fn cap_boot_unit_for(host: HostIdentity) -> PowerCapBootUnit? {
