@@ -85,7 +85,6 @@ fn gunb_ai_pages_render_step() -> Step {
     run: gunbc_run_step_script_for_target(
       source_roots: witness_layer_roots,
       target: gunbc_run_step_target(module: "gunbc.site.gunb_ai_site", function: "site_write_main"),
-      claim_run: false,
       receipt_rel: none
     ),
     shell: none,
