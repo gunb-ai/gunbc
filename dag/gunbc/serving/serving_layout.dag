@@ -14,7 +14,7 @@ import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, Ho
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread,
   ServingEngineMemory, ServingDedicatedHostMemory, ServingMemoryVerdict, ServingMemoryFits,
-  serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing,
+  serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing, serving_reading_known_bytes,
   ConversationSnapshotCost, conversation_snapshot_bytes, strata_iq3_s_snapshot_cost, serving_engine_swap_bound,
   host_6ce85c_serving_memory_observed, srv4_serving_engine_memory, srv4_strata_snapshot_cost,
   srv3_strata_engine_memory, srv3_strata_snapshot_cost,
@@ -504,16 +504,6 @@ fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendPr
   })
 }
 
-// A memory reading's figure when it HAS one; Absent for ServingMemoryUnread, where the floor/occupancy relation
-// is undecidable and nothing is claimed (an unread CHARGED side is refused by serving_layout_inputs).
-fn serving_hold_figure_bytes(r: ServingMemoryReading) -> ByteSize? {
-  match r {
-    ServingMemoryRead { bytes: b, provenance: _ } => Present { value: b }
-    ServingMemoryAssumed { bytes: b, reason: _ } => Present { value: b }
-    ServingMemoryUnread { reason: _ } => Absent
-  }
-}
-
 // NO EVICTABLE TIER MAY BE CHARGED BELOW WHAT IT CANNOT GIVE BACK: an evictable host-RAM hold whose occupancy is
 // below its own floor is a contradiction between the row's two figures, and the budget would bill the cgroup less
 // than the resident-by-definition part of the tier. The full WHY, and why max() re-billing was rejected, is on
@@ -523,8 +513,8 @@ fn serving_artifact_hold_fault(g: ServingResourceGrant) -> ServingLayoutRefusal?
     Present { value: v } => Present { value: v }
     Absent => match a.host_ram {
       Present { value: r } => match r.holds {
-        ArtifactHeldEvictable { bound_by: _, floor: fl, occupies: oc } => match serving_hold_figure_bytes(r: fl) {
-          Present { value: fb } => match serving_hold_figure_bytes(r: oc) {
+        ArtifactHeldEvictable { bound_by: _, floor: fl, occupies: oc } => match serving_reading_known_bytes(r: fl) {
+          Present { value: fb } => match serving_reading_known_bytes(r: oc) {
             Present { value: ob } => if byte_size_count(b: ob) < byte_size_count(b: fb) {
               Present { value: ServingArtifactHoldBelowFloor { host: g.host, artifact: a.name, floor: fb, occupies: ob } }
             } else { Absent }

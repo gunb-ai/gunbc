@@ -101,6 +101,19 @@ fn serving_reading_bytes_or_zero(r: ServingMemoryReading) -> ByteSize {
   }
 }
 
+// The figure a reading HAS, or Absent when it is unread -- the third reading accessor beside
+// serving_reading_bytes_or_zero (which invents a zero for a LOWER BOUND only) and serving_reading_missing. A rule
+// that RELATES two figures (floor <= occupies, in serving_layout's hold gate) must ABSTAIN on an unread figure
+// rather than compare against a fabricated zero: comparing an unread figure to a sibling would either refuse a
+// legitimate absence or pass a real violation, so it returns Option and the caller decides what an absence means.
+fn serving_reading_known_bytes(r: ServingMemoryReading) -> ByteSize? {
+  match r {
+    ServingMemoryRead { bytes: b, provenance: _ } => Present { value: b }
+    ServingMemoryAssumed { bytes: b, reason: _ } => Present { value: b }
+    ServingMemoryUnread { reason: _ } => Absent
+  }
+}
+
 fn serving_reading_assumption(r: ServingMemoryReading) -> List<NonEmptyStr> {
   match r {
     ServingMemoryAssumed { bytes: _, reason: why } => [why]
