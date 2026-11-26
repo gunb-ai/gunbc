@@ -396,20 +396,35 @@ test fn a_stray_member_the_converge_does_not_ensure_refuses_at_plan_time() -> Bo
   }
 }
 
-// (3) The discriminator does NOT flip on roster admission. A host's ledger owner is decided by the
-// declared frontier, never by remote_build_host_is_serving (the live roster), because a fresh host
-// joins that roster AFTER its converge succeeds — a roster-keyed rule would re-own a freshly-converged
-// host (gunbc-build back to briansrls) on the very next run. For ken/butch (not on the roster, not in
-// the frontier) the owner is gunbc-build; the frontier membership is what could ever give a host
-// briansrls, and it excludes them.
-test fn the_owner_discriminator_does_not_flip_on_roster_admission() -> Bool {
-  let ken_owner = capacity_ledger_directory_owner(host: "host-e2d4b7" as NonEmptyStr)
-  let butch_owner = capacity_ledger_directory_owner(host: "srv14" as NonEmptyStr)
+// (3) The discriminator IS THE FRONTIER'S OWN MEMBERSHIP — never the live-roster or candidate row. A
+// fresh host joins the candidate row and then the serving roster as it converges; if the ledger owner
+// were keyed on either, a freshly-converged host would re-own (gunbc-build → briansrls) on the next run.
+// Discriminating control: ken and butch ARE serving candidates (remote_build_host_is_serving_candidate is
+// true — that is the very status that "flips on admission"), yet their owner is the remote-build account,
+// NOT the operator. An implementation keyed on remote_build_host_is_serving_candidate would return the
+// operator for them and go red here. And srv3/srv4 — which ARE on the live roster AND in the frontier —
+// resolve to the operator only because they are in the frontier. So the owner is the operator iff the
+// host is in the frontier (and carries no dashboard instance); candidate/roster status never decides it.
+test fn the_owner_discriminator_is_the_frontier_not_the_candidate_or_roster_row() -> Bool {
   let is_build_account = o => (o.user as String) == (fleet_posix_remote_build_user.name as String)
-  let ken_in_frontier = any(capacity_ledger_legacy_owner_frontier, h => (h as String) == "host-e2d4b7")
-  let butch_in_frontier = any(capacity_ledger_legacy_owner_frontier, h => (h as String) == "srv14")
-  is_build_account(ken_owner)
-    && is_build_account(butch_owner)
-    && !ken_in_frontier
-    && !butch_in_frontier
+  let is_operator = o => (o.user as String) == (fleet_posix_operator_user.name as String)
+  // ken/butch are serving CANDIDATES, yet not operator-owned — candidate/roster status does not decide.
+  remote_build_host_is_serving_candidate(host: operator_host_e2d4b7)
+    && remote_build_host_is_serving_candidate(host: operator_host_srv14)
+    && is_build_account(capacity_ledger_directory_owner(host: "host-e2d4b7" as NonEmptyStr))
+    && is_build_account(capacity_ledger_directory_owner(host: "srv14" as NonEmptyStr))
+    // the frontier members (srv3/srv4) ARE operator-owned, and they are exactly the non-instance hosts
+    // whose owner is the operator — the frontier is the authority, not the roster.
+    && is_operator(capacity_ledger_directory_owner(host: "srv3" as NonEmptyStr))
+    && is_operator(capacity_ledger_directory_owner(host: "srv4" as NonEmptyStr))
+    && all(capacity_ledger_legacy_owner_frontier.members, h => is_operator(capacity_ledger_directory_owner(host: (h as String) as NonEmptyStr)))
+}
+
+// (4) The frontier's retirement condition lives on a typed carrier, not a comment (source_annotations,
+// guarantee_ladder: no untracked stall). The discharge row names both the live ledger read that must
+// report no operator-owned entry and the ruling that re-owns the directories; this witness binds those
+// fields so the condition cannot be deleted or gutted without going red.
+test fn the_frontier_discharge_condition_is_a_named_typed_carrier() -> Bool {
+  (capacity_ledger_legacy_owner_frontier.discharge.ledger_read as String) != ""
+    && (capacity_ledger_legacy_owner_frontier.discharge.re_own_ruling as String) != ""
 }
