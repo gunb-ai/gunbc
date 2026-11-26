@@ -663,11 +663,13 @@ data srv4_engine_l1_cap_drop_in_observation_2026_11_24: ServingHostConfigObserva
   sha256_computed_on_host: "eb2b16e57eea76f2dd534c0bbb7aa016024462ad580cfb3836a1e8fad8bf581b" as NonEmptyStr,
   what_it_holds: "MemoryHigh=96G and MemoryMax=112G on the daily engine's service -- srv3's numbers, up from the 56G/64G the 2026-11-09 repair left. The file's own comments date the raise and name the cause: the mmap-ed experts' page cache is charged to this cgroup, so at 64G the conversation cache had ~2-3 GB of room and refused to park every conversation, re-reading 75-95k-token prompts cold every turn; the slice above (gunbc-srv4-daily.slice) caps at 96G/120G." as NonEmptyStr,
   backup: "the 2026-11-09 drop-in it replaced is not listed as kept; the engine config beside it is, as engine.json.bak-20261109-pre-mmap (named in srv4_serving_engine_memory's provenance)" as NonEmptyStr,
-  standing: DeclaredDivergenceFromTheModelRow {
-    model_row: "srv4_serving_engine_memory (memory_cap 56 GiB / memory_max 64 GiB, read 2026-11-09)" as NonEmptyStr,
-    diverging_fields: ["memory_cap" as NonEmptyStr, "memory_max" as NonEmptyStr],
-    why: "The operator raised the cap to srv3's 96G/112G on 2026-11-24, which supersedes the figure the 2026-11-09 direction left in place (gunbc.design_ruling::srv3_experts_mmap_under_service_cap) while keeping that direction -- experts mmap-ed under a service cap -- intact. The operator's word for the raise is recorded as its own ruling: gunbc.design_ruling::srv4_expert_l1_cap_raised_to_srv3s_2026_11_24." as NonEmptyStr,
-    owed_by: "the srv4 memory-budget class (B2): the ceiling must be DERIVED from the parts that share it (the mmap-ed expert page cache, the conversation-cache budget and the 2560 MiB park floor this module carries) rather than hand-set at a round number, and memory_max here is the figure gunbc.serving.serving_reservation charges srv4's runner seat for -- srv4 also serves CI (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci), and the fleet's precedent for changing a serving ceiling is the opposite direction (gunbc.design_ruling::ken_strata_memory_trim_buys_two_build_seats_2026_11_19, which trimmed one to free seats). Repainting these two fields without that derivation and that seat arithmetic would move a CI budget on a transcription." as NonEmptyStr,
+  // The divergence this pass filed is CLOSED: the model row now carries the operator's figures,
+  // derived from the terms that share the cgroup rather than hand-set -- the debt this row's
+  // owed_by named has been paid by the srv4 memory-budget class (gunbc.serving.serving_layout::
+  // serving_cgroup_terms refuses a cap whose terms do not fit), and srv4's runner seat is charged
+  // from srv4_serving_engine_memory.memory_max itself, not restated (gunbc.serving.serving_reservation).
+  standing: FieldsAgreeWithTheModelRow {
+    model_row: "srv4_serving_engine_memory (memory_cap 96 GiB / memory_max 112 GiB -- the operator's 2026-11-24 raise, the figure this pass read on the host; the ceiling derived from its terms)" as NonEmptyStr,
   },
 }
 
