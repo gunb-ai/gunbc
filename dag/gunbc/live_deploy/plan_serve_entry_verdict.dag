@@ -406,6 +406,12 @@ fn record_plan_serve_entry_verdict_after_dir_admitted() -> ProcessExit {
 // THE FIRST ROW THAT DID NOT ADMIT, for the refusal above. The fold names the FIRST offender so the
 // reason text is stable across runs of the same input; every other unadmitted row is still in the
 // document the plan produced, and the operator can read all of them there.
+// THE FOLD NEEDS AN INIT OF THE RECORD TYPE, and the only value that cannot be confused with a real
+// row is the all-empty one (no host carries an empty identity, no selection picks an empty instance).
+// Review 98977, point 1, on record: this placeholder is UNREACHABLE in practice -- the sole caller
+// gates on plan_serve_entry_first_unadmitted(records) == true, so the fold always replaces it with a
+// real unadmitted row before its value is ever read. The "no unadmitted record found" detail is a
+// tripwire, not a route: reaching the text in a refusal would mean the gate and the fold disagree.
 fn plan_serve_entry_first_unadmitted_record(records: List<ServeEntryVerdictRecord>) -> ServeEntryVerdictRecord {
   fold(
     records,
