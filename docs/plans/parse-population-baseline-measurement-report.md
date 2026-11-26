@@ -114,16 +114,38 @@ observation is the row/path content, not the byte count):
 ```
 src/v1/stage0/src/gunbc_parse_population_baseline_roster.rs
   bytes = 41550            (read from disk; drifts with generated_at; order 41 KB, not a bound value)
-  path literals ("...dag" ...) = 189
 ```
+
+**189 path literals ≠ 170 rows — and the count that is correct is 170, not 189.** A file-wide grep for
+`"[^"]*\.dag"` returns **189**, but the roster models exactly **170** rows. The other **19** are *not* roster
+rows: they are the selection-rule **discriminator fixtures** the carrier also emits —
+`probe/tie_a.dag`(×3), `probe/tie_b.dag`(×3), `probe/small.dag`(×2), `probe/middle.dag`(×2),
+`probe/large.dag`(×2), `probe/planted_extra.dag`(×1) — plus the real paths the hand-built
+`parse_population_mistyped_real_row_slice` / `parse_population_correct_real_row_slice` slices repeat for the
+reconcile discriminator (`roadmap_authority.dag`, `roadmap_belt_actuate.dag`, `e1_receipt_markings.dag`, ×2 each).
+**189 − 19 = 170.**
+
+**The exact matcher a route-A transport MUST use (so it cannot ship a roster 19 short or long):** count the
+`path` column **scoped to the body of the single function `pub fn parse_population_baseline_rows()`**, delimited
+by the next `pub fn` — not the whole file. Measured against the emitted `.rs`:
+
+```
+rows in parse_population_baseline_rows() (path column, fn-scoped)  = 170   <- CORRECT
+file-wide "[^"]*\.dag" literals                                     = 189   <- WRONG (includes discriminator fixtures)
+```
+
+The column is `path` and the scope is the roster function only. `parse_population_expected_total_count()` already
+emits `170` as a typed literal, so the transport should compare its fn-scoped `path` count against that emitted
+constant rather than against any file-wide count.
 
 The emitted rows carry the exact path in a single column, so the exact-path match cleanly separates the correct
 row from the substring decoy (this is the discriminating pair the transport must carry, verified against the
-emitted `.rs`):
+emitted `.rs`) — the same trap as the count: a naive substring match on the correct path also hits the decoy:
 
 ```
 exact-match "dag/gunbc/roadmap/roadmap_authority.dag"      -> 3 correct rows
-exact-match "dag/test/claim/roadmap/roadmap_authority.dag" -> 1 decoy row  (a naive substring grep conflates them)
+exact-match "dag/test/claim/roadmap/roadmap_authority.dag" -> 1 decoy row
+substring  "roadmap/roadmap_authority.dag"                 -> 4 (both)  <- the trap; match the full path column, not a substring
 ```
 
 The emitted roster `.rs` is **NOT committed at main** (main builds the roster from the `.dag` carrier). These
