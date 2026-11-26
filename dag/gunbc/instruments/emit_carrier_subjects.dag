@@ -58,7 +58,7 @@ fn car_sequence_build(xs: List<Int>) -> List<Int> {
   fold(xs, init: [], f: (acc, x) => list_push(acc, x))
 }
 
-// Violating (PerStepAllocation): each step COPIES the accumulator it was given and pushes onto the copy,
+// Violating: each step COPIES the accumulator it was given and pushes onto the copy,
 // keeping the previous one alive until the step returns. Same elements in, same list out, one sequence
 // allocated per step instead of one append per step.
 fn car_sequence_build_retains_prefixes(xs: List<Int>) -> List<Int> {
@@ -75,7 +75,7 @@ fn car_element_read(xs: List<Int>) -> Int {
   }
 }
 
-// Violating (CopyOfUnchangedContext): the whole sequence is copied before the single element is read.
+// Violating: the whole sequence is copied before the single element is read.
 fn car_element_read_copies_sequence(xs: List<Int>) -> Int {
   let copied = fold(xs, init: [], f: (acc, x) => list_push(acc, x))
   match get(xs: copied, index: 3) {
@@ -91,7 +91,7 @@ fn car_traversal(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + x)
 }
 
-// Violating (PerStepAllocation): the sequence is rebuilt on every step of the traversal.
+// Violating: the sequence is rebuilt on every step of the traversal.
 fn car_traversal_rebuilds_per_step(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + (fold(xs, init: 0, f: (inner, y) => inner + (y * 0)) + x))
 }
@@ -106,7 +106,7 @@ fn car_sequence_snapshot(xs: List<Int>) -> Int {
   (count(snapshot) + count(updated)) + car_element_read(xs: updated)
 }
 
-// Violating (OwningRetainAddedToObservation): the snapshot is read repeatedly AFTER the update, so the
+// Violating: the snapshot is read repeatedly AFTER the update, so the
 // observation keeps an owning retain on the pre-update sequence alive across the mutation, which is the
 // state where copy-on-write has to copy.
 fn car_sequence_snapshot_retained(xs: List<Int>) -> Int {
@@ -132,7 +132,7 @@ fn car_index_build() -> Int {
   count(car_keys()) + (match map_get(built, "k3") { Present { value: v } => v  Absent => 0 - 1 })
 }
 
-// Violating (PerStepAllocation): the index is rebuilt from scratch for every key instead of extended, so
+// Violating: the index is rebuilt from scratch for every key instead of extended, so
 // construction is quadratic in the number of keys.
 fn car_index_build_remakes_per_key() -> Int {
   let built = fold(car_keys(), init: empty_map(), f: (acc, k) => fold(car_keys(), init: empty_map(), f: (inner, j) => map_insert(inner, j, count(car_keys()))))
@@ -147,7 +147,7 @@ fn car_index_lookup() -> Int {
   match map_get(index, "k3") { Present { value: v } => v  Absent => 0 - 1 }
 }
 
-// Violating (CopyOfUnchangedContext): the index is rebuilt in order to look up one key.
+// Violating: the index is rebuilt in order to look up one key.
 fn car_index_lookup_rebuilds_index() -> Int {
   let index = car_build_index()
   let remade = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
@@ -168,7 +168,7 @@ fn car_remake_index() -> Map<String, Int> {
   fold(car_keys(), init: empty_map(), f: (inner, j) => map_insert(inner, j, count(car_keys())))
 }
 
-// Violating (PerStepAllocation): the index is rematerialized for every key the traversal visits.
+// Violating: the index is rematerialized for every key the traversal visits.
 fn car_index_traversal_remakes_per_key() -> Int {
   fold(car_keys(), init: 0, f: (acc, k) =>
     acc + (match map_get(car_remake_index(), k) {
@@ -187,7 +187,7 @@ fn car_index_snapshot() -> Int {
   (match map_get(snapshot, "k3") { Present { value: v } => v  Absent => 0 - 1 }) + (match map_get(updated, "k9") { Present { value: v } => v  Absent => 0 - 1 })
 }
 
-// Violating (CopyOfUnchangedContext): the snapshot is taken by copying the whole index key by key, so
+// Violating: the snapshot is taken by copying the whole index key by key, so
 // retaining a version costs a full rebuild rather than a reference-count bump.
 fn car_index_snapshot_copies_whole_index() -> Int {
   let index = car_build_index()

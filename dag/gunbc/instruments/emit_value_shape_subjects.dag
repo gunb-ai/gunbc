@@ -64,7 +64,7 @@ fn bb_payload_of(src: List<Int>) -> BbTriple {
 }
 
 // A record rebuild with one field changed, read straight back: the boundary's named block, and the
-// row's third violating form ("a copy of the unchanged context") when it stands in for a field read.
+// shape a field read takes when the record is rebuilt to get it rather than read.
 fn bb_rebuild(p: BbTriple, k: Int) -> BbTriple {
   BbTriple { xs: p.xs, k: k, log: p.log }
 }

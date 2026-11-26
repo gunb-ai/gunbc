@@ -88,8 +88,9 @@ type CfSubject =
   | CfMatchBorrowedSharedSum
   | CfMatchBorrowedRetainedAfterMatch
 
-// ONE PATH FOR EVERY ARM. The violating variants are the row's three named forms: an owning retain
-// added to an observation, a per-step allocation, and a copy of the unchanged context.
+// ONE PATH FOR EVERY ARM: contract arm and violating arm differ only in the subject tag, so a red row
+// cannot be blamed on a different path. The form an arm exhibits is the typed `violation_form` on its
+// roster row in gunbc.emit_building_block_contracts.
 fn run_cf_subject(subject: CfSubject, src: List<Int>) -> List<Int> {
   let n = cf_scalar_of(src: src)
   let payload = cf_payload_of(src: src)

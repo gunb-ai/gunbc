@@ -7,9 +7,9 @@ import gunbc.instruments.emit_carrier_subjects { car_red_rows, car_control_rows 
 
 // THE RED ENTRY of the carrier family: the same subject bodies, through the same meter, judged the
 // opposite way -- each violating arm asked whether it sits WITHIN its contract arm, false by construction.
-// All eight blocks appear, so every carrier contract has been shown red: per-step allocation in sequence
-// build, index build and both traversals, a copy of the unchanged context in element read, index lookup
-// and the map snapshot, and an owning retain added to the observation in the sequence snapshot.
+// All eight blocks appear, so every carrier contract has been shown red. Which violating form an arm
+// exhibits is stated once, on that row's typed `violation_form` in
+// gunbc.emit_building_block_contracts; a reader who wants it per block reads it there, not here.
 //
 // Its own target, `emit_carrier_violation_label` in gunbc.instrument_targets with
 // `emit_carrier_violation_binding` in gunbc.instrument_targets, so the pair can exit differently. If this

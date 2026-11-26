@@ -53,7 +53,7 @@ fn acc_fold_step(seed: AccRecord, xs: List<Int>) -> Int {
   end.total + end.pos
 }
 
-// THE LOOP, violating arm (PerStepAllocation): a fresh accumulator is materialized every step from a
+// THE LOOP, violating arm: a fresh accumulator is materialized every step from a
 // fresh pass over the whole context, so the accumulator is allocated per step instead of moved per step.
 // Same fold, same xs, same returned scalar; the only difference is that the carried value is rebuilt from
 // the context each step.
@@ -70,7 +70,7 @@ fn acc_field_read(row: AccRow) -> Int {
   row.width
 }
 
-// THE FIELD READ, violating arm (CopyOfUnchangedContext): the whole enclosing record is rebuilt in order
+// THE FIELD READ, violating arm: the whole enclosing record is rebuilt in order
 // to read one field, so the unchanged context is copied through the read.
 fn acc_field_read_rebuilds(row: AccRow) -> Int {
   let rebuilt = AccRow { label: row.label, width: row.width, context: row.context }
@@ -83,7 +83,7 @@ fn acc_rebuild_one_field(row: AccRow) -> Int {
   changed.width
 }
 
-// THE RECORD REBUILD, violating arm (CopyOfUnchangedContext): the field that does not change is pushed
+// THE RECORD REBUILD, violating arm: the field that does not change is pushed
 // through an extra fold over the context before the rebuild, copying the unchanged context. The extra pass
 // is the whole difference from the contract arm: same fields, same returned width, but the unchanged
 // context is walked to make a value that is then multiplied by zero, so the work is real and the answer
@@ -101,7 +101,7 @@ fn acc_local_closure(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + scale(x))
 }
 
-// THE LOCAL CLOSURE, violating arm (OwningRetainAddedToObservation): the same local computation, but the
+// THE LOCAL CLOSURE, violating arm: the same local computation, but the
 // observed value is materialized once per application instead of read once, so the observation retains a
 // payload it never needed.
 fn acc_local_closure_retains(xs: List<Int>) -> Int {
@@ -122,7 +122,7 @@ fn acc_escaping_closure(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + add(x))
 }
 
-// THE ESCAPING CLOSURE, violating arm (CopyOfUnchangedContext): the escaping callable reads the unchanged
+// THE ESCAPING CLOSURE, violating arm: the escaping callable reads the unchanged
 // context too, so escaping costs the whole payload rather than the scalar it returns.
 fn acc_escaping_closure_copies_context(xs: List<Int>) -> Int {
   let row = acc_row_of(n: 3)
