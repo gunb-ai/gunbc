@@ -87,7 +87,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, anchored_ssh_target, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
-import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
@@ -1850,6 +1850,7 @@ fn observe_fleet_host_administrator_privilege(
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegAdministratorPrivilegeProbe) {
   TypedArgvExecOverran { deadline: d } => AdministratorPrivilegeRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => AdministratorPrivilegeRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => AdministratorPrivilegeRefused { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
@@ -1871,6 +1872,7 @@ fn observe_fleet_host_paths(
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegRootOnlyFind { paths: paths, kind: kind }) {
   TypedArgvExecOverran { deadline: d } => PathsUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => PathsUnobservable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       classify_root_only_paths(requested: paths, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
@@ -1988,6 +1990,7 @@ fn observe_fleet_host_file_mode(
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegFileModeFind { path: file.path as String, mode: file.mode }) {
   TypedArgvExecOverran { deadline: d } => PathsUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => PathsUnobservable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       classify_root_only_paths(requested: [file.path as String], exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
@@ -2044,6 +2047,7 @@ fn observe_fleet_host_file_content(
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegMetadataProbe { path: file.path as String }) {
   TypedArgvExecOverran { deadline: d } => HostFileUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => HostFileUnobservable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
     TypedArgvExecConverged { result: metadata } =>
       match fleet_host_file_settled_standing(st: observe_fleet_host_file_path(
@@ -2200,6 +2204,7 @@ fn observe_runner_slot_population(
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegListServiceUnits) {
   TypedArgvExecOverran { deadline: d } => SlotPopulationUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => SlotPopulationUnobservable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => SlotPopulationUnobservable { reason: why }
     TypedArgvExecConverged { result: listed } =>
       if !listed.success {
@@ -2208,6 +2213,7 @@ fn observe_runner_slot_population(
         let units = runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: runner_slot_units_from_list_units(stdout: listed.stdout))
         match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegShowSlotProperties { units: units }) {
         TypedArgvExecOverran { deadline: d } => SlotPopulationUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+        TypedArgvExecWireInconsistent { fault: f } => SlotPopulationUnobservable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
           TypedArgvExecRefused { reason: why } => SlotPopulationUnobservable { reason: why }
           TypedArgvExecConverged { result: shown } =>
             if !shown.success {
@@ -2221,6 +2227,7 @@ fn observe_runner_slot_population(
                 RetireeCgroupEventsArgv { argv: argv } =>
                   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegRetireeCgroupEvents { argv: argv }) {
                   TypedArgvExecOverran { deadline: d } => CgroupEventsBatchUnread { cause: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+                  TypedArgvExecWireInconsistent { fault: f } => CgroupEventsBatchUnread { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
                     TypedArgvExecRefused { reason: why } => CgroupEventsBatchUnread { cause: why }
                     TypedArgvExecConverged { result: ev } => CgroupEventsBatchRead { stdout: ev.stdout, stderr: ev.stderr }
                   }
@@ -2247,6 +2254,7 @@ fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSsh
     RunnerHostDeployFound { deploy: d } =>
       match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: d.job_user }) {
       TypedArgvExecOverran { deadline: d } => JobUserUidUnobserved { cause: concat("getent passwd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+      TypedArgvExecWireInconsistent { fault: f } => JobUserUidUnobserved { cause: concat("getent passwd leg refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
         TypedArgvExecRefused { reason: why } => JobUserUidUnobserved { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
         TypedArgvExecConverged { result: r } =>
           runner_job_user_uid_reading(job_user: d.job_user, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
@@ -2289,6 +2297,7 @@ fn observe_deploy_slot_account(subject: RunnerHostFileSubject, context: FleetSsh
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: deploy_slot_job_user }) {
   TypedArgvExecOverran { deadline: d } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+  TypedArgvExecWireInconsistent { fault: f } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
     TypedArgvExecConverged { result: r } => classify_deploy_slot_account_read(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
@@ -2331,6 +2340,7 @@ fn converge_deploy_slot_account(
       DeploySlotAccountCreate =>
         match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) }) {
         TypedArgvExecOverran { deadline: d } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+        TypedArgvExecWireInconsistent { fault: f } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
           TypedArgvExecRefused { reason: why } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", why) as NonEmptyStr }
           TypedArgvExecConverged { result: r } =>
             match observe_deploy_slot_account(subject: subject, context: context) {
@@ -2410,6 +2420,7 @@ fn observe_runner_spec_account(subject: RunnerHostFileSubject, context: FleetSsh
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: login }) {
   TypedArgvExecOverran { deadline: d } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+  TypedArgvExecWireInconsistent { fault: f } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
     TypedArgvExecConverged { result: r } => classify_runner_spec_account_read(login: login, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
@@ -2439,6 +2450,7 @@ fn converge_runner_spec_account(
             AdministratorPrivilegeAvailable =>
               match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
               TypedArgvExecOverran { deadline: d } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+              TypedArgvExecWireInconsistent { fault: f } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
                 TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", why) as NonEmptyStr }
                 TypedArgvExecConverged { result: r } =>
                   match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
@@ -2693,6 +2705,7 @@ fn classify_runner_slot_tree_owned(slot_dir: String, exit_code: Int, stdout: Str
 fn observe_runner_slot_tree_owned(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, target: RunnerSlotTreeTarget) -> Bool? {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: runner_slot_tree_owned_find_argv(target: target) }) {
   TypedArgvExecOverran { deadline: d } => none
+  TypedArgvExecWireInconsistent { fault: f } => none
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => classify_runner_slot_tree_owned(slot_dir: target.slot_dir as String, exit_code: r.exit_code, stdout: r.stdout)
   }
@@ -2705,6 +2718,7 @@ fn observe_runner_slot_tree_owned(subject: RunnerHostFileSubject, context: Fleet
 fn observe_runner_slot_tree_presence(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, target: RunnerSlotTreeTarget) -> RunnerSlotTreePresence {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: runner_slot_tree_presence_argv(slot_dir: target.slot_dir as String) }) {
   TypedArgvExecOverran { deadline: d } => TreePresenceUnreadable { cause: join(["the existence read was refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)], "") }
+  TypedArgvExecWireInconsistent { fault: f } => TreePresenceUnreadable { cause: join(["the existence read was refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)], "") }
     TypedArgvExecRefused { reason: why } => TreePresenceUnreadable { cause: join(["the existence read was refused: ", why], "") }
     TypedArgvExecConverged { result: r } => classify_runner_slot_tree_presence(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr, entry: runner_slot_tree_presence_entry(slot_dir: target.slot_dir as String))
   }
@@ -2731,6 +2745,7 @@ fn classify_runner_slot_tree_release(exit_code: Int) -> Bool? {
 fn observe_runner_slot_tree_release(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, target: RunnerSlotTreeTarget, runner_release: ActionsRunnerRelease) -> Bool? {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: runner_slot_tree_release_argv(target: target, runner_release: runner_release) }) {
   TypedArgvExecOverran { deadline: d } => none
+  TypedArgvExecWireInconsistent { fault: f } => none
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => classify_runner_slot_tree_release(exit_code: r.exit_code)
   }
@@ -3028,6 +3043,7 @@ fn settle_unprovisioned_slot_loop_over(subject: RunnerHostFileSubject, context: 
     // A read that ran past its ceiling admitted nothing: the stop is not attempted, and the install is
     // refused rather than taken as proof the unit is quiet.
     TypedArgvExecOverran { deadline: d } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: typed_argv_exec_overran_reason(leg_hint: "slot stop-admission read", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: typed_argv_exec_wire_inconsistent_reason(leg_hint: "slot stop-admission read", fault: f) }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
         LoopRefusedForInstall { unit: unit, step: "stop-admission", why: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
@@ -3286,6 +3302,7 @@ fn run_deploy_slot_read_leg(route: DeploySlotReadRoute, leg: DeploySlotReadLeg) 
     DeploySlotReadOverFleetEdge { subject: subject, context: context } =>
       match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: deploy_slot_read_leg_over_the_edge(leg: leg)) {
       TypedArgvExecOverran { deadline: d } => DeploySlotReadLegRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => DeploySlotReadLegRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
         TypedArgvExecRefused { reason: why } => DeploySlotReadLegRefused { reason: why }
         TypedArgvExecConverged { result: r } => DeploySlotReadLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
       }
@@ -3573,6 +3590,7 @@ fn observe_retired_residue(subject: RunnerHostFileSubject, context: FleetSshExec
   let readings = map(names, n => ResiduePathReading { path: n, standing: retired_path_standing_over(subject: subject, context: context, path: n) })
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegResidueLoadState { unit: residue.unit }) {
   TypedArgvExecOverran { deadline: d } => ResidueUnobservable { cause: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => ResidueUnobservable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => ResidueUnobservable { cause: why }
     TypedArgvExecConverged { result: r } => classify_retired_residue(load_state_exit: r.exit_code, load_state: r.stdout, readings: readings)
   }
@@ -3591,6 +3609,7 @@ fn retire_leg(subject: RunnerHostFileSubject, context: FleetSshExecutionContext,
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: argv }) {
   TypedArgvExecOverran { deadline: d } => Present { value: concat(step, concat(": ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d))) }
+  TypedArgvExecWireInconsistent { fault: f } => Present { value: concat(step, concat(": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f))) }
     TypedArgvExecRefused { reason: why } => Present { value: concat(step, concat(": ", why)) }
     TypedArgvExecConverged { result: r } =>
       if r.success { none } else { Present { value: join([step, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
@@ -3626,6 +3645,7 @@ type RetireLeg {
 fn retired_path_standing_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> FleetHostFilePathStanding {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegMetadataProbe { path: path }) {
   TypedArgvExecOverran { deadline: d } => HostFilePathUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => HostFilePathUnreadable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
     TypedArgvExecConverged { result: m } =>
       observe_fleet_host_file_path(subject: fleet_subject_of(s: subject), context: context, path: path, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
@@ -3820,6 +3840,7 @@ fn create_fleet_host_absent_ancestors(
     let failed = list_flat_map(planned.observation.absent_ancestors, d =>
       match run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: fleet_host_ancestor_directory_argv(path: d) }) {
       TypedArgvExecOverran { deadline: d } => [join([d, ": ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)], "")]
+      TypedArgvExecWireInconsistent { fault: f } => [join([d, ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)], "")]
         TypedArgvExecRefused { reason: why } => [join([d, ": ", why], "")]
         TypedArgvExecConverged { result: r } =>
           if r.exit_code == 0 { [] } else { [join([d, ": exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "")] }
@@ -3893,6 +3914,7 @@ fn reload_runner_host_manager(
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: systemctl_daemon_reload_argv() }) {
   TypedArgvExecOverran { deadline: d } => ManagerReloadRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => ManagerReloadRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f) }
     TypedArgvExecRefused { reason: why } => ManagerReloadRefused { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
@@ -4776,6 +4798,7 @@ fn classify_dropin_override(candidates: List<NonEmptyStr>, exit_code: Int, stdou
 fn read_dropin_override_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, units: List<NonEmptyStr>, written: List<FleetHostFileDesired>, exempt: List<NonEmptyStr>) -> DropinOverrideReading {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: [DropInPathsProperty])) {
   TypedArgvExecOverran { deadline: d } => DropinsUnread { cause: concat("systemctl show DropInPaths: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) }
+  TypedArgvExecWireInconsistent { fault: f } => DropinsUnread { cause: concat("systemctl show DropInPaths: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) }
     TypedArgvExecRefused { reason: r } => DropinsUnread { cause: concat("systemctl show DropInPaths: ", r) }
     TypedArgvExecConverged { result: shown } =>
       if shown.exit_code != 0 { DropinsUnread { cause: join(["systemctl show DropInPaths exited ", to_string(shown.exit_code)], "") } }
@@ -4788,6 +4811,7 @@ fn read_dropin_override_over(subject: RunnerHostFileSubject, context: FleetSshEx
             if length(candidates) == 0 { DropinsNoLaterSetter } else {
               match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: subject.target, context: context, argv: grep_files_with_fixed_strings_argv(patterns: keys, paths: candidates)) {
               TypedArgvExecOverran { deadline: d } => DropinsUnread { cause: concat("grep over the later drop-ins: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) }
+              TypedArgvExecWireInconsistent { fault: f } => DropinsUnread { cause: concat("grep over the later drop-ins: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) }
                 TypedArgvExecRefused { reason: r } => DropinsUnread { cause: concat("grep over the later drop-ins: ", r) }
                 TypedArgvExecConverged { result: g } => classify_dropin_override(candidates: candidates, exit_code: g.exit_code, stdout: g.stdout)
               }

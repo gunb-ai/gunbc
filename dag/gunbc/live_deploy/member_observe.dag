@@ -25,7 +25,7 @@ import extdeps.tools.ls { ls_long_numeric_entries_command }
 import std.env_binding { EnvSet }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.host.host_effect_realize { run_typed_argv_transport }
-import gunbc.typed_argv_exec {  TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
   deployment_directory_demands,
@@ -279,6 +279,7 @@ fn host_entry_lookup_reading(path: String) -> FilesystemEntryLookup {
 fn peer_entry_lookup_reading(transport: HostEffectTransport, path: String, privilege: ListingPrivilege) -> FilesystemEntryLookup {
   match run_typed_argv_transport(argv: entry_lookup_leg_argv(path: path, privilege: privilege), transport: transport) {
   TypedArgvExecOverran { deadline: d } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", typed_argv_exec_overran_reason(leg_hint: "member observe", deadline: d)], "") }
+  TypedArgvExecWireInconsistent { fault: f } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe", fault: f)], "") }
     TypedArgvExecRefused { reason: reason } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", reason], "") }
     TypedArgvExecConverged { result: result } => filesystem_entry_lookup_reading_of_exit(path: path, exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr)
   }

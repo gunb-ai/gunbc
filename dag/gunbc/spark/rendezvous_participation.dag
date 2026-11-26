@@ -13,7 +13,7 @@ import extdeps.systemd.unit_file {
   ReadinessFromActiveState, ReadinessEstablishedByService, ReadinessNotEstablished,
   systemd_readiness_from_active_state,
 }
-import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import std.algebra { Cons, Empty, length }
@@ -154,6 +154,8 @@ fn observe_declared_rank_host_reach(
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: ss_established_to_peer_argv(peer: peer)) {
     TypedArgvExecOverran { deadline: d } =>
       DeclaredRankHostReachUnread { host: host, declared_rank: declared_rank, cause: join(["the ss leg did not run: ", typed_argv_exec_overran_reason(leg_hint: "spark rendezvous", deadline: d)], "") }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      DeclaredRankHostReachUnread { host: host, declared_rank: declared_rank, cause: join(["the ss leg did not run: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark rendezvous", fault: f)], "") }
     TypedArgvExecRefused { reason: why } =>
       DeclaredRankHostReachUnread { host: host, declared_rank: declared_rank, cause: join(["the ss leg did not run: ", why], "") }
     TypedArgvExecConverged { result: r } =>

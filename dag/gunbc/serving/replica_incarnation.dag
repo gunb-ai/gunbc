@@ -21,7 +21,7 @@ import gunbc.host.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
   ProcfsReadStat, ProcfsReadPidStat, GetconfClockTicksPerSecond, Sha256SumFile,
 }
-import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
 
 // WHICH HOST PROCESS ANSWERED, READ ON THE HOST, FOR A REPLICA THAT RUNS AS A PLAIN PROCESS. A rented
@@ -193,6 +193,7 @@ fn after_host_facts(transport: HostEffectTransport, launch: ReplicaEndpointLaunc
     FleetSsh { target: target, context: context , kind: kind} =>
       match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: pgrep_match_full_command_line_argv(pattern: engine_pattern)) {
       TypedArgvExecOverran { deadline: d } => replica_incarnation_unread(cause: join(["the pgrep leg did not run: ", typed_argv_exec_overran_reason(leg_hint: "replica incarnation", deadline: d)], ""))
+      TypedArgvExecWireInconsistent { fault: f } => replica_incarnation_unread(cause: join(["the pgrep leg did not run: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "replica incarnation", fault: f)], ""))
         TypedArgvExecRefused { reason: why } => replica_incarnation_unread(cause: join(["the pgrep leg did not run: ", why], ""))
         TypedArgvExecConverged { result: r } =>
           match pgrep_scan_outcome(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {

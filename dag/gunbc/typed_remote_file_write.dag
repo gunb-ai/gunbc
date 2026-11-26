@@ -8,14 +8,14 @@ import extdeps.sudo.visudo { visudo_check_arguments }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  }
 import gunbc.fleet.fleet_known_hosts_anchor {
   ProvisioningLeg,
   FleetSshExecutionContext,
@@ -661,6 +661,8 @@ fn typed_remote_file_step(
         FleetPrincipalLegRefused { cause: why } => TypedRemoteFileStepLegRefused { cause: why }
         FleetPrincipalLegOverran { session: _, deadline: d } =>
           TypedRemoteFileStepLegRefused { cause: typed_argv_exec_overran_reason(leg_hint: "typed remote file step", deadline: d) }
+        FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+          TypedRemoteFileStepLegRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "typed remote file step", fault: f) }
         FleetPrincipalLegRan { session: _, result: r } => TypedRemoteFileStepRan { result: r }
       }
   }

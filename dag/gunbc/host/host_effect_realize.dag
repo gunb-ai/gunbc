@@ -203,6 +203,8 @@ import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecOverran,
+  TypedArgvExecWireInconsistent,
+  typed_argv_exec_wire_inconsistent_reason,
   TypedArgvExecRefused,
 }
 import extdeps.bmc.types { RedfishSystemAction }
@@ -1592,6 +1594,10 @@ fn codex_runtime_typed_argv_step(
         CodexRuntimeStepRefused {
           reason: host_effect_typed_argv_overran_reason(leg_hint: "codex runtime", deadline: d),
         }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        CodexRuntimeStepRefused {
+          reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "codex runtime", fault: f),
+        }
     TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
   }
 }
@@ -1947,6 +1953,10 @@ fn srv3_predicate_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3HostPred
         Srv3PredicateUnobserved {
           reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 predicate", deadline: d),
         }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        Srv3PredicateUnobserved {
+          reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "srv3 predicate", fault: f),
+        }
     TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
@@ -1975,6 +1985,8 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
       }
       TypedArgvExecOverran { deadline: d } =>
         Srv3TokenUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 token", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        Srv3TokenUnobserved { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "srv3 token", fault: f) }
     TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
@@ -2716,6 +2728,8 @@ fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransp
     Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
     Present { value: TypedArgvExecOverran { deadline: d } } =>
       Srv3PredicateUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "dpkg query", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      Srv3PredicateUnobserved { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "dpkg query", fault: f) }
     Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
     Present { value: TypedArgvExecConverged { result: r } } =>
       match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
@@ -3912,6 +3926,10 @@ fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransp
     RunArgvTransportRefused {
       reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
     }
+    TypedArgvExecWireInconsistent { fault: f } =>
+    RunArgvTransportRefused {
+      reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "transport argv", fault: f),
+    }
     TypedArgvExecRefused { reason: why } =>
       RunArgvTransportRefused {
         reason: join(
@@ -4674,6 +4692,11 @@ fn reconcile_ssh_argv_exec_outcome(
           reason: host_effect_typed_argv_overran_reason(leg_hint: "ssh argv exec", deadline: d),
           applied: intent,
         }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        NotConverged {
+          reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "ssh argv exec", fault: f),
+          applied: intent,
+        }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -4823,6 +4846,11 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
       TypedArgvExecOverran { deadline: d } =>
         NotConverged {
           reason: host_effect_typed_argv_overran_reason(leg_hint: "sudo nopasswd grant list", deadline: d),
+          applied: intent,
+        }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        NotConverged {
+          reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "sudo nopasswd grant list", fault: f),
           applied: intent,
         }
     TypedArgvExecRefused { reason: why } =>
@@ -9027,6 +9055,10 @@ fn realize_live_deploy_dispatch_readback_on_host(
             reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (ssh)", deadline: d),
             applied: intent,
         }
+        TypedArgvExecWireInconsistent { fault: f } => NotConverged {
+            reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "live-deploy digest readback (ssh)", fault: f),
+            applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
     FleetSsh { target: t, context: c, kind: kind} =>
@@ -9044,6 +9076,10 @@ fn realize_live_deploy_dispatch_readback_on_host(
             body: r.stdout,
               )
           TypedArgvExecOverran { deadline: d } => NotConverged {
+            reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (fleet)", deadline: d),
+            applied: intent,
+        }
+        TypedArgvExecWireInconsistent { fault: f } => NotConverged {
             reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (fleet)", deadline: d),
             applied: intent,
         }
@@ -9559,6 +9595,8 @@ fn build_cache_typed_argv_read(
       }
       TypedArgvExecOverran { deadline: d } =>
         BuildCacheReadRefused { reason: host_effect_typed_argv_overran_reason(leg_hint: "build cache read", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        BuildCacheReadRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "build cache read", fault: f) }
     TypedArgvExecRefused { reason: why } => BuildCacheReadRefused { reason: why }
   }
 }

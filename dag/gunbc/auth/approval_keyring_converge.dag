@@ -43,7 +43,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetLegKind
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write { NoValidation,
   typed_remote_file_write_seal, converge_typed_remote_file,
@@ -189,6 +189,8 @@ fn keyring_elevated_exec(
   match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: keyring_elevated_argv(command: command)) {
   TypedArgvExecOverran { deadline: d } =>
     exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", typed_argv_exec_overran_reason(leg_hint: "approval keyring", deadline: d)))))
+    TypedArgvExecWireInconsistent { fault: f } =>
+    exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "approval keyring", fault: f)))))
     TypedArgvExecRefused { reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", why))))
     TypedArgvExecConverged { result: r } =>

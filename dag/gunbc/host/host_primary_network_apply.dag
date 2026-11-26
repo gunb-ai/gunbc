@@ -33,7 +33,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal, converge_typed_remote_file, TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
   typed_remote_file_step, TypedRemoteFileStepRan, TypedRemoteFileStepArgvRefused, TypedRemoteFileStepLegRefused,
 }
-import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_converge_executor_subject_split {
@@ -219,6 +219,7 @@ fn primary_leg(subject: FleetHostFileSubject, context: FleetSshExecutionContext,
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: command }) {
   TypedArgvExecOverran { deadline: d } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", typed_argv_exec_overran_reason(leg_hint: "host primary network", deadline: d)], "") as NonEmptyStr }
+  TypedArgvExecWireInconsistent { fault: f } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "host primary network", fault: f)], "") as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", why], "") as NonEmptyStr }
     TypedArgvExecConverged { result: r } => PrimaryLegAnswered { exit_code: r.exit_code, stdout: r.stdout }
   }

@@ -76,7 +76,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import extdeps.http.client
 import extdeps.http.client { http_client_get_argv, http_client_localhost_connect_timeout_flag, http_client_get_with_status_argv, http_client_get_unix_socket_argv, http_client_max_time_flag }
 import extdeps.ietf.http_semantics { http_status_class_of, HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError }
@@ -274,6 +274,7 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
         error: "http client GET over ssh failed"
       )
       TypedArgvExecOverran { deadline: d } => HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => HealthzProbeRefused { probe_error: typed_argv_exec_wire_inconsistent_reason(leg_hint: "live deploy readiness", fault: f) }
     TypedArgvExecRefused { reason: why } => HealthzProbeRefused { probe_error: why }
   }
 }
@@ -290,6 +291,7 @@ fn healthz_effective_read_from_status_outcome(outcome: TypedArgvExecOutcome) -> 
         error: "http client GET over ssh failed"
       )
       TypedArgvExecOverran { deadline: d } => HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => HealthzProbeRefused { probe_error: typed_argv_exec_wire_inconsistent_reason(leg_hint: "live deploy readiness", fault: f) }
     TypedArgvExecRefused { reason: why } => HealthzProbeRefused { probe_error: why }
   }
 }

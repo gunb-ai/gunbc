@@ -255,7 +255,7 @@ fn reload_uncertain(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, reloa
     DropInRemovalUnconfirmed { detail: d } => concat("the drop-in is NOT confirmed absent: ", d)
   }
   let reload_cause = match reloaded {
-    LegUnanswered { cause: c } => concat("systemctl reload ssh was DISPATCHED but its reply was lost (it overran its deadline), so whether sshd took the drop-in is not known: ", c)
+    LegUnanswered { cause: c } => concat("systemctl reload ssh was DISPATCHED but its reply was lost, so whether sshd took the drop-in is not known: ", c)
     LegNotDispatched { reason: r } => concat("systemctl reload ssh was never dispatched, so sshd was not reloaded: ", r)
     LegAnswered { exit_code: _, stdout: _, stderr: _ } => concat("systemctl reload ssh exited nonzero, so whether sshd took the drop-in is not known: ", answer_text(a: reloaded))
   }

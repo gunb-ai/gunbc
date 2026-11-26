@@ -22,12 +22,12 @@ import gunbc.host.host_effect {
   EmitArtifactThenThinRun,
 }
 import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetLegKind,FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { 
+import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh,
   typed_argv_exec_over_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
@@ -346,6 +346,8 @@ fn host_operation_outcome_from_exec(
       HostOperationObserved { stdout: r.stdout, success: r.success, stderr: r.stderr }
       TypedArgvExecOverran { deadline: d } =>
         HostOperationRefused { operation: host_operation_label(operation: operation), reason: typed_argv_exec_overran_reason(leg_hint: "host operation", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+        HostOperationRefused { operation: host_operation_label(operation: operation), reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "host operation", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       HostOperationRefused { operation: host_operation_label(operation: operation), reason: why }
   }

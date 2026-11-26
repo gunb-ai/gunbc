@@ -6,7 +6,8 @@ import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
 import std.measure { second }
-import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecOverran }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
+import extdeps.ssh.session { SshSessionWireFault, OverrunWithoutDeadline }
 import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered, host_leg_of_typed_argv }
 import gunbc.host.export_host_reader_converge {
   ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
@@ -349,4 +350,49 @@ test fn an_unobserved_removal_is_still_confirmed_absent_by_valid_reads() -> Bool
     LegOverride { leg: "drop_in_listing", answer: absent() }])
   word(o: r.outcome) == "rolled-back"
     && reloads(r: r) == 2
+}
+
+// ── CONTROL: a wire-inconsistent reload is NOT "not dispatched" ──────────────────────────────────
+// (follow-up of #16984, root_generalization). The command WAS sent; the reply arrived with an
+// inconsistent wire shape; the effect is UNKNOWN. host_leg_of_typed_argv must map it to LegUnanswered
+// (with the wire-fault cause), and reload_uncertain must run the recovery readbacks. This control is
+// RED before the 4th arm existed: the wire fault arrived as TypedArgvExecRefused, mapped to
+// LegNotDispatched, and the reload arm said "sshd was NOT reloaded" (skipping the recovery readbacks).
+
+// Feed a TypedArgvExecWireInconsistent through the REAL mapper into the converge fold.
+fn wire_inconsistent_via_real_mapper(fault: SshSessionWireFault) -> HostLeg {
+  host_leg_of_typed_argv(outcome: TypedArgvExecWireInconsistent { fault: fault })
+}
+
+// CONTROL 1: the real mapper produces LegUnanswered (not LegNotDispatched) from a wire-inconsistent outcome.
+test fn the_real_mapper_maps_wire_inconsistent_to_leg_unanswered() -> Bool {
+  let leg = wire_inconsistent_via_real_mapper(fault: OverrunWithoutDeadline)
+  match leg {
+    LegUnanswered { cause: c } => string_contains(s: c, pattern: "dispatched but its reply carried an inconsistent wire shape")
+    LegNotDispatched { reason: _ } => false
+    LegAnswered { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+// CONTROL 2: a wire-inconsistent reload goes through the converge fold into reload_uncertain,
+// the recovery readbacks run (fresh-login, sshd-T stages appear), and the cause does NOT say "deadline".
+test fn a_wire_inconsistent_reload_enters_reload_uncertain_with_recovery_readbacks() -> Bool {
+  let wire_leg = wire_inconsistent_via_real_mapper(fault: OverrunWithoutDeadline)
+  let r = run(overrides: [LegOverride { leg: "reload", answer: wire_leg }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "reload-uncertain"
+    && reloads(r: r) == 1
+    && stages(r: r).contains("fresh-login")
+    && stages(r: r).contains("sshd-T")
+    && string_contains(s: text, pattern: "DISPATCHED but its reply was lost")
+    && !string_contains(s: text, pattern: "never dispatched, so sshd was not reloaded")
+    && !string_contains(s: text, pattern: "overran its deadline")
+}
+
+// CONTROL 3: a wire-inconsistent reload does NOT claim "sshd was not reloaded" (the pre-fix lie).
+test fn a_wire_inconsistent_reload_never_claims_sshd_was_not_reloaded() -> Bool {
+  let wire_leg = wire_inconsistent_via_real_mapper(fault: OverrunWithoutDeadline)
+  let r = run(overrides: [LegOverride { leg: "reload", answer: wire_leg }])
+  let text = render_export_host_reader_run(r: r)
+  !string_contains(s: text, pattern: "was not reloaded")
 }

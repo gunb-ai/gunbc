@@ -296,6 +296,7 @@ fn agent_backed_probe_success(host: String, principal: String, argv: List<String
   match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: argv) {
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecOverran { deadline: d } => false
+    TypedArgvExecWireInconsistent { fault: f } => false
     TypedArgvExecRefused { reason: _ } => false
   }
 }

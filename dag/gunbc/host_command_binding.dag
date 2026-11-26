@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget, FleetSshExecutionContext, ssh_target_wire }
-import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write { NoValidation,
   converge_typed_remote_file, typed_remote_file_write_seal,
@@ -33,10 +33,11 @@ type CommandHost
 // - LegNotDispatched: NO process was started for it -- the local runner could not spawn it, or the
 //   typed-argv transport refused it BEFORE sending (gunbc.fleet.fleet_bootstrap_principal_session
 //   FleetPrincipalLegRefused: the invocation was never made). Nothing ran, so nothing can have changed.
-// - LegUnanswered: the command WAS DISPATCHED but the transport never got an answer (the leg overran its
-//   wall-clock ceiling). The effect is UNKNOWN: the remote command may already have run. It must never be
-//   read as not-happened (gunbc.design_argument::fail_closed; method_separate_order_compose: a timeout
-//   keeps the uncertainty about effects whenever the transport cannot establish what happened).
+// - LegUnanswered: the command WAS DISPATCHED but the transport did not get a usable answer (the leg
+//   overran its wall-clock ceiling, OR the reply arrived with an inconsistent wire shape). The effect is
+//   UNKNOWN: the remote command may already have run. It must never be read as not-happened
+//   (gunbc.design_argument::fail_closed; method_separate_order_compose: a timeout keeps the uncertainty
+//   about effects whenever the transport cannot establish what happened).
 // - LegAnswered: the host answered with an exit code.
 type HostLeg
   = LegNotDispatched { reason: String }
@@ -45,14 +46,8 @@ type HostLeg
 
 fn host_leg_of_typed_argv(outcome: TypedArgvExecOutcome) -> HostLeg {
   match outcome {
-  TypedArgvExecOverran { deadline: d } => LegUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
-    // SHOULD BE GENERALIZED, NOT NOW (gunbc.design_argument::root_generalization). GAP: a POST-INVOCATION
-    // SessionWireInconsistent still arrives as TypedArgvExecRefused (fleet_bootstrap_principal_session maps
-    // the wire fault to FleetPrincipalLegRefused), so it lands here as LegNotDispatched even though the
-    // command was in fact dispatched and its effect is unknown -- it belongs in LegUnanswered. TRIGGER:
-    // #16984 merged. FOLLOW-UP: a staged PR adding a 4th TypedArgvExecOutcome / FleetPrincipalLegOutcome arm
-    // for "dispatched, no answer" that host_leg_of_typed_argv maps to LegUnanswered, distinguishing it from
-    // proven pre-dispatch refusal. OWNER: vivid-tern-749. SWEEPER: bright-ibex-807.
+    TypedArgvExecOverran { deadline: d } => LegUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } => LegUnanswered { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "host command binding", fault: f) }
     TypedArgvExecRefused { reason: r } => LegNotDispatched { reason: r }
     TypedArgvExecConverged { result: r } => LegAnswered { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
   }

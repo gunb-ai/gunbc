@@ -133,7 +133,7 @@ import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.typed_argv_exec { 
   TypedArgvExecConverged,
   TypedArgvExecRefused,
-  typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
@@ -634,6 +634,7 @@ fn tailscale_machine_name_set_leg(
     argv: sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: name)))
   ) {
   TypedArgvExecOverran { deadline: d } => SetLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => SetLegRefused { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale machine name", fault: f) }
     TypedArgvExecRefused { reason: reason } => SetLegRefused { detail: reason }
     TypedArgvExecConverged { result: result } =>
       if !result.success {

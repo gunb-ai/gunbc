@@ -12,7 +12,7 @@ import gunbc.typed_remote_file_write {
 import gunbc.typed_argv_exec { 
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 
 // WHAT A REALIZED EFFECT IS ALLOWED TO BE ON THE FAR SIDE.
@@ -77,6 +77,7 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
     RemoteArgvExecution { outcome: o } =>
       match o {
       TypedArgvExecOverran { deadline: d } => false
+      TypedArgvExecWireInconsistent { fault: f } => false
         TypedArgvExecRefused { reason: _ } => false
         TypedArgvExecConverged { result: r } => r.success
       }
@@ -125,6 +126,7 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
         RemoteArgvExecution { outcome: o } =>
           match o {
           TypedArgvExecOverran { deadline: d } => Present { value: typed_argv_exec_overran_reason(leg_hint: "remote operation", deadline: d) }
+          TypedArgvExecWireInconsistent { fault: f } => Present { value: typed_argv_exec_wire_inconsistent_reason(leg_hint: "remote operation", fault: f) }
             TypedArgvExecRefused { reason: why } => Present { value: why }
             TypedArgvExecConverged { result: r } =>
               Present {

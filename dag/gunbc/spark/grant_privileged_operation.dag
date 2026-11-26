@@ -35,8 +35,8 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_grant_reconcile {
   spark_retired_shared_inspect_dropin_name, spark_retired_shared_inspect_dropin_path, spark_modeled_inspect_grants,
@@ -61,7 +61,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmissionRefused,
 }
 import gunbc.host.host_effect_realize { run_typed_argv_transport, HostEffectTransport, FleetSsh }
-import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
@@ -638,6 +638,11 @@ fn run_privileged_step(
                     CredentialNotMaterialized {
                       lease: effective_lease,
                       cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
+                    }
+                  FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+                    CredentialNotMaterialized {
+                      lease: effective_lease,
+                      cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark grant privileged materialize", fault: f),
                     }
                 FleetPrincipalLegRan { session: _, result: result } =>
                   if result.success {
@@ -1259,6 +1264,7 @@ fn spark_grant_probe_outcome(
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
       TypedArgvExecOverran { deadline: d } => GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark privileged grant", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => GrantProbeRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark privileged grant", fault: f) }
         TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
         TypedArgvExecConverged { result: r } =>
           if r.success {

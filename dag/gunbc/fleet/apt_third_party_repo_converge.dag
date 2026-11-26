@@ -74,6 +74,7 @@ fn read_one_host_word(
     TypedArgvExecRefused { reason: _ } => Absent
     // An overrun answered nothing: Absent, the same as a refusal -- never a word guessed from the host.
     TypedArgvExecOverran { deadline: _ } => Absent
+    TypedArgvExecWireInconsistent { fault: f } => Absent
     TypedArgvExecConverged { result: r } =>
       if !r.success || !string_non_empty(value: trim(s: r.stdout)) {
         Absent
