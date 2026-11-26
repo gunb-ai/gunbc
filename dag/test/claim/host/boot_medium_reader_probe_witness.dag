@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import std.algebra { string_contains }
-import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
 import extdeps.github.actions { Job, RunStep, UsesStep }
@@ -23,12 +23,12 @@ import gunbc.host.boot_medium_reader_probe {
   ReaderProbeReceipt, ReaderProbeObserved, ReaderProbeRefused, ReaderProbeStage, ReaderProbeLockedAccountFact,
   LockedAccountRead, LockedAccountUnreadable, ReaderProbeForcedAnswer,
   ForcedAnswerHeld, ForcedAnswerImageUnreadable, ForcedAnswerMalformed, ForcedAnswerLoginRefused,
-  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ForcedAnswerNotDispatched, ReaderProbeRefusal, ProbeNotRefused,
-  ProbeAuthenticationRefused, ProbeTransportRefused, ProbeNotDispatched, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
-  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched,
+  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ForcedAnswerNotDispatched, ForcedAnswerUnanswered, ReaderProbeRefusal, ProbeNotRefused,
+  ProbeAuthenticationRefused, ProbeTransportRefused, ProbeNotDispatched, ProbeUnanswered, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
+  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched, StageUnanswered,
   boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class, reader_probe_answer_text,
   reader_probe_forced_command_masks, reader_probe_holds, reader_probe_locked_account_fact,
-  reader_probe_export_reading, ReaderProbeAdminReading, AdminReadable, AdminNotReadable, AdminNotDispatched, reader_shadow_field_is_locked, reader_probe_stage_text,
+  reader_probe_export_reading, ReaderProbeAdminReading, AdminReadable, AdminNotReadable, AdminNotDispatched, AdminUnanswered, reader_shadow_field_is_locked, reader_probe_stage_text,
   render_reader_probe_receipt,
 }
 
@@ -215,6 +215,7 @@ test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() 
     ProbeNotRefused => false
     ProbeAuthenticationRefused => false
     ProbeTransportRefused => false
+    ProbeUnanswered { cause: _ } => false
   }
     && !string_contains(s: reader_probe_answer_text(a: nd), pattern: "exit=")
     && match forced_of(a: nd) {
@@ -224,6 +225,7 @@ test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() 
          ForcedAnswerMalformed { evidence: _ } => false
          ForcedAnswerLoginRefused { evidence: _ } => false
          ForcedAnswerTransportBlocked { evidence: _ } => false
+         ForcedAnswerUnanswered { evidence: _ } => false
          ForcedAnswerUnexplained { evidence: _ } => false
        }
     && match fold_with(forced: nd, second: nd) {
@@ -245,6 +247,7 @@ test fn a_never_dispatched_admin_leg_survives_as_its_cause_not_an_exit() -> Bool
         && !string_contains(s: rep.admin_evidence as String, pattern: "exit=")
     AdminReadable => false
     AdminNotReadable => false
+    AdminUnanswered { cause: _ } => false
   }
 }
 
@@ -335,6 +338,7 @@ test fn the_tools_own_permission_denied_is_not_read_as_an_authentication_refusal
          ForcedAnswerMalformed { evidence: _ } => false
          ForcedAnswerUnexplained { evidence: _ } => false
          ForcedAnswerNotDispatched { evidence: _ } => false
+         ForcedAnswerUnanswered { evidence: _ } => false
          ForcedAnswerHeld { digest: _ } => false
        }
 }
@@ -353,6 +357,7 @@ test fn a_silent_non_zero_answer_invents_no_fact_and_refuses() -> Bool {
          ForcedAnswerLoginRefused { evidence: _ } => false
          ForcedAnswerTransportBlocked { evidence: _ } => false
          ForcedAnswerNotDispatched { evidence: _ } => false
+         ForcedAnswerUnanswered { evidence: _ } => false
        }
 }
 
@@ -525,11 +530,13 @@ test fn the_export_reading_records_which_polarity_it_saw_from_both_sides() -> Bo
     AdminReadable => true
     AdminNotReadable => false
     AdminNotDispatched { reason: _ } => false
+    AdminUnanswered { cause: _ } => false
   }
   let block_ok = match blocked.admin {
     AdminNotReadable => true
     AdminReadable => false
     AdminNotDispatched { reason: _ } => false
+    AdminUnanswered { cause: _ } => false
   }
   read_ok
     && string_contains(s: readable.admin_evidence as String, pattern: "admin leg asked as the reader account")
@@ -596,7 +603,7 @@ test fn the_hold_needs_the_mask_and_a_refusal_never_holds() -> Bool {
 // two stages ever collapse to one string, the transport/authentication split this file exists to enforce
 // collapses with them, silently.
 test fn every_stage_has_its_own_name() -> Bool {
-  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched], s => reader_probe_stage_text(stage: s))
+  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched, StageUnanswered], s => reader_probe_stage_text(stage: s))
   all(names, n => n != "") && all(names, n => filter(names, m => m == n).length() == 1)
 }
 

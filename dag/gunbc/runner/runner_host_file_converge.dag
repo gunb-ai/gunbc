@@ -2596,8 +2596,18 @@ fn runner_slot_tree_presence_entry(slot_dir: String) -> String {
 // THE RED CONTROL THE PARENT ASKED FOR: exit 1 carrying SUDO'S REFUSAL WORDS MUST NOT READ AS ABSENT.
 // (A sudo refusal prints "sudo: ..." on stderr and exits 1; ls's missing-directory answer exits 2 with
 // its own words and no entry on stdout.)
+// THE ONE ELEVATION-REFUSAL TEST (gunbc.design_argument::single_authority). `sudo -n` prints its own
+// "sudo:" word on stderr and exits 1 for its OWN refusal -- a bare exit code cannot tell that apart from
+// an existence answer, and reading a refused elevation as a real answer is a fail_closed violation. Any
+// elevated read whose stderr carries sudo's own word ESTABLISHED NOTHING. One authority, reused by
+// runner_slot_tree_presence below and by gunbc.host.export_host_reader_converge's removal readbacks --
+// a second copy of the "sudo:" match would be a second authority.
+fn elevated_read_refused_elevation(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "sudo:")
+}
+
 fn classify_runner_slot_tree_presence(exit_code: Int, stdout: String, stderr: String, entry: String) -> RunnerSlotTreePresence {
-  if string_contains(s: stderr, pattern: "sudo:") {
+  if elevated_read_refused_elevation(stderr: stderr) {
     TreePresenceUnreadable { cause: join(["the elevation itself refused: ", trim(s: stderr)], "") }
   } else if exit_code == 0 {
     if listing_contains_entry(stdout: stdout, name: entry) { TreePresent } else { TreeAbsent }
