@@ -45,7 +45,7 @@ import gunbc.site.markup { txt, el, el_class }
 // assets/site.css with no .dag home — the inventory's gap row; they are modelled
 // here instead of transcribed.
 //
-// Consumers (gunbc.design_argument::consumption): test.claim.site_gunb_ai_tokens_witness (claim-run: hue-set
+// Consumers (gunbc.design_argument::consumption): test.claim.site_gunb_ai_tokens_witness (the claim route: hue-set
 // admissibility, binding completeness as an identity join, contrast floors, and the
 // RENDERED review page — its :root block, modelled rules and landed type-scale wires),
 // gunbc.site.gunb_ai_tokens_review (renders review_render() to the srv1 review dir).

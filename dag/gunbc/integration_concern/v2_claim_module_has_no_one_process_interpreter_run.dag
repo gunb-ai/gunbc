@@ -1,0 +1,39 @@
+module gunbc.integration_concern.v2_claim_module_has_no_one_process_interpreter_run
+
+// One row of the integration-concern register. The roster derives it from this file
+// (module gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data v2_claim_module_has_no_one_process_interpreter_run: IntegrationConcern = IntegrationConcern {
+  identity: "v2_claim_module_has_no_one_process_interpreter_run",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.target_invocation", decl_name: "admit_test_operand"),
+    requirement: "a src/v2/test/claim module's claims can be evaluated by the SEED INTERPRETER in one process, each with a located verdict and an exit status that reads it, as gunbc run --claim-run did before the claim-execution cutover (gunb-ai/gunbc#16872). Since the cutover a //v2/... label is routed to the native test route by containment (the cutover's own rule: never send a //v2/... label to the interpreter), and the remaining interpreter route, gunbc --dry-run run --entry E --function F, evaluates one claim per process and reports its Bool only in the refusal line, exit 2 whatever the Bool. src/v1/tests/claim modules regained an exact-label claim-route run in the same lane (gunbc.target_invocation admit_resolvable_exact_targets); src/v2 modules did not, because the native route owns them.",
+    standing: RequirementUnestablished { decided_by: "the owner of roadmap node names-bind-to-the-unique-declaration says whether its seed-loader measurement (src/v2/test/claim/lexical_scope.dag, 29 claims, three source shapes) needs the seed interpreter's whole-module verdict set, or whether one gunbc --dry-run run per claim, or the native route (gunbc test //v2/test/claim/lexical_scope:all), answers the question that node asks" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_body"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_authority", decl_name: "declared_roadmap_nodes"),
+      decl_ref(module_path: "gunbc.target_invocation", decl_name: "admit_test_operand"),
+    ],
+  },
+  question: "Does the names-bind-to-the-unique-declaration seed-loader measurement need a one-process seed-interpreter run of a src/v2/test/claim module, and if so, is that a claim-route option on gunbc test or a separate instrument row?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "ad5c67a316f6c3415c37c8971fb7cf285e3a7eac",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.target_invocation", decl_name: "admit_test_operand") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_body") },
+        ],
+      },
+      account: "Found by lively-dove-824 while re-spelling the --claim-run instructions after #16872: on srv1 with a gunbc built at ad5c67a316f, gunbc --dry-run run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v1/tests/claim/keyword_pattern_binder_refusal_test.dag --function keyword_binder_refused_at_pattern_span_holds printed that the function returned true, not ProcessExit, and exited 2; the plan and node text were re-spelled to one such run per claim, which keeps the verdicts readable and loses the one-process run and the exit status.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
