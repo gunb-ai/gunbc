@@ -322,7 +322,7 @@ fn car_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "carrier", block_id: "index_traversal", own: index_traversal), violation_case(prefix: "carrier", block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal)],
       concat(
       [subject_case(prefix: "carrier", block_id: "persistent_map_carrier_snapshot", own: index_snapshot), violation_case(prefix: "carrier", block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)],
-      [carrier_disagreement_row(seq_snapshot: seq_snapshot, seq_snapshot_retained: seq_snapshot_retained, index_snapshot: index_snapshot, index_snapshot_copied: index_snapshot_copied)])))))))))))
+      [plain_row(c: carrier_disagreement_row(seq_snapshot: seq_snapshot, seq_snapshot_retained: seq_snapshot_retained, index_snapshot: index_snapshot, index_snapshot_copied: index_snapshot_copied))])))))))))))
 }
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Every block's violating

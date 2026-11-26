@@ -133,6 +133,28 @@ fn violating_form_exercised(slug: String) -> Int {
   count(building_block_contracts() |> filter(b => violating_form_slug(f: b.violation_form) == slug))
 }
 
+// THE AXIS A VIOLATING ARM IS JUDGED ON IS DERIVED HERE, from the roster field, and nowhere else. An
+// owning retain is invisible on the operations-and-bytes axis: the executed measurement at head
+// 1541d8af043722fc389f75cadc47f9a738e10a38 read violating_ops=38 equal to contract_arm_ops=38 and
+// violating_bytes=2648 equal to contract_arm_bytes=2648, while violating_kept=2 against contract_arm_kept=1.
+// The row's own boundary says owning retains, payload copies and collection copy-on-write are distinct
+// observations, so a retain judged on operations is measured on an axis it cannot move. The form -- a
+// typed field of the roster row, never restated by the battery -- decides the axis, and the battery
+// PRINTS the axis it judged on so a reader can see which judgement was made.
+fn retaining_rows_on_block(block_id: String) -> Int {
+  count(filter(building_block_contracts(), b => b.block == block_id && violating_form_slug(f: b.violation_form) == "owning_retain_added_to_observation"))
+}
+
+fn violation_axis_of_block(block_id: String) -> String {
+  if retaining_rows_on_block(block_id: block_id) > 0 { "retained_handles" } else { "operations_and_bytes" }
+}
+
+// Printed, never decided with: the form behind the axis, so a log line carries its own provenance. A
+// block missing from the roster prints no_roster_row rather than silently inheriting an axis.
+fn violation_form_slug_of_block(block_id: String) -> String {
+  fold(map(filter(building_block_contracts(), b => b.block == block_id), b => violating_form_slug(f: b.violation_form)), init: "no_roster_row", f: (acc, slug) => if acc == "no_roster_row" { slug } else { acc })
+}
+
 // A tuple that must be refused, with the refusal the carrier must name.
 type MispairedProbe {
   probe: String

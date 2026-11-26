@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
 import std.compiler_entry { NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import gunbc.emit_copy_qualification { StructuralInapplicability, structural_inapplicability_slug }
-import gunbc.emit_building_block_contracts { BuildingBlockFamily, building_block_contracts, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines, applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, building_block_contracts, violation_axis_of_block, violation_form_slug_of_block, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines, applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
 import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
 
 // THE ONE HOME FOR THE BATTERY MACHINERY the four building-block families share: the metered window,
@@ -81,13 +81,32 @@ fn subject_case(prefix: String, block_id: String, own: BatteryWindow) -> Battery
   })
 }
 
-// THE DISCRIMINATING ROW: the violating arm must sit strictly above its contract arm on the operations
-// counter, with both readings and both kept counts on the same line.
+fn kept_above(a: BatteryWindow, b: BatteryWindow) -> Bool {
+  a.kept_len > b.kept_len
+}
+
+// THE AXIS IS NOT CHOICE HERE. It is derived from the roster's typed violation_form by
+// violation_axis_of_block: a retain moves the retained-handle count, a copy moves the operations and
+// bytes. The axis and the form behind it are printed, so every line says which judgement it made.
+fn violation_above_on_axis(viol: BatteryWindow, arm: BatteryWindow, axis: String) -> Bool {
+  if axis == "retained_handles" { kept_above(a: viol, b: arm) } else { operations_above(a: viol.observation, b: arm.observation) }
+}
+
+fn violation_within_on_axis(viol: BatteryWindow, arm: BatteryWindow, axis: String) -> Bool {
+  if axis == "retained_handles" { !kept_above(a: viol, b: arm) } else { operations_within(a: viol.observation, b: arm.observation) }
+}
+
+fn axis_text(block_id: String) -> String {
+  concat(concat("discriminator=", violation_axis_of_block(block_id: block_id)), concat(" form=", violation_form_slug_of_block(block_id: block_id)))
+}
+
+// THE DISCRIMINATING ROW: the violating arm must sit strictly above its contract arm on the axis the
+// form predicts, with both readings, both kept counts, the axis and the form on the same line.
 fn violation_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> BatteryRow {
   metered_row(windows: [viol, contract_arm], c: AllocationCase {
     identity: concat(prefix, "_", block_id, "_violating_variant_above_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_above(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
+    held: is_observed(o: viol.observation) && violation_above_on_axis(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
+    observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id))
   })
 }
 
@@ -97,8 +116,8 @@ fn violation_case(prefix: String, block_id: String, viol: BatteryWindow, contrac
 fn violation_contract_holds_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> BatteryRow {
   metered_row(windows: [viol, contract_arm], c: AllocationCase {
     identity: concat(prefix, "_", block_id, "_violating_variant_within_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_within(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
+    held: is_observed(o: viol.observation) && violation_within_on_axis(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
+    observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id))
   })
 }
 
