@@ -2,6 +2,7 @@ module test.claim.parse_population_baseline_roster_witness
 
 import std.types { Bool, Int, String, List, CommitSha }
 import std.algebra { string_contains, fold_list }
+import std.measure { byte_size, microsecond }
 import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -28,8 +29,10 @@ import gunbc.parse_population_baseline_roster {
   parse_population_carrier_reader_rung_drop_ledger_line,
   parse_population_carrier_reader_beside_grammar_stall_capability,
   ParsePopulationMeasurementReceipt,
+  ParsePopulationCellMeasurement,
   parse_population_measurement_receipts,
   parse_population_receipts_are_publishable,
+  parse_population_receipt_durations_are_ordered,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -199,7 +202,26 @@ fn parse_population_planted_trigger_probe() -> String {
 // srv1 host) and is exactly five cells.
 test fn parse_population_measurement_receipts_record_the_sweep_holds() -> Bool {
   parse_population_receipts_are_publishable(receipts: parse_population_measurement_receipts)
+    && parse_population_receipt_durations_are_ordered(receipts: parse_population_measurement_receipts)
     && parse_population_receipt_count(receipts: parse_population_measurement_receipts) == 5
+}
+
+// RED half for the duration typing (review 98981): a WallStat whose min exceeds its max — the
+// representable forbidden state of a statistic recorded from the wrong end of the run list — must be
+// REFUSED by the ordering predicate. A String wall_seconds could not express this state at all
+// (anemic modeling); the typed triple makes it expressible AND refused.
+data parse_population_planted_reversed_stat_receipt: ParsePopulationMeasurementReceipt =
+  ParsePopulationMeasurementReceipt { cell: "PLANTED", population: "planted: min/max recorded swapped", runs: 3,
+    measurement: WallStat { min_wall: microsecond(count: 23300000),
+      median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 20160000) },
+    peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
+    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" }
+
+test fn parse_population_duration_ordering_refuses_reversed_triple_holds() -> Bool {
+  !parse_population_receipt_durations_are_ordered(receipts: [parse_population_planted_reversed_stat_receipt])
 }
 
 // RED half (fail_closed): a planted receipt with a nonzero rc — the representable forbidden state of
@@ -207,7 +229,9 @@ test fn parse_population_measurement_receipts_record_the_sweep_holds() -> Bool {
 // predicate. If publishability ever degrades to a constant readback, this leg goes red by name.
 data parse_population_planted_failed_receipt: ParsePopulationMeasurementReceipt =
   ParsePopulationMeasurementReceipt { cell: "PLANTED", population: "planted: rc nonzero recorded anyway", runs: 1,
-    wall_seconds: "1.0", peak_rss_kb: 1000, modules: 1, declared_refusals: 0, rc: 1,
+    measurement: WallStat { min_wall: microsecond(count: 1000000),
+      median_wall: microsecond(count: 1000000), max_wall: microsecond(count: 1000000) },
+    peak_rss: byte_size(count: 1024), modules: 1, declared_refusals: 0, rc: 1,
     binary_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as CommitSha,
     tree_sha: "0000000000000000000000000000000000000000" as CommitSha,
     host: "srv1.tailecbe08.ts.net",

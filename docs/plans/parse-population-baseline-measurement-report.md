@@ -190,7 +190,13 @@ and `parse_population_receipt_publishability_refuses_planted_failed_cell_holds` 
 execution pending A/B/C). `planning_has_one_home` bars this file from being a **plan** home — the plan
 (roadmap row, stall, route-A referent) lives in `.dag` carriers; what sits here is a measurement
 **transcript** — raw runner output no `.dag` route can produce — and per `source_annotations` the receipt
-FACTS now live typed, with this section rendering them.
+FACTS now live typed, with this section rendering them. Retyped per review 98981: peak RSS is a
+`ByteSize` (KiB x 1024), every duration a `std.measure` `Microsecond` (printed seconds x 1,000,000, exact
+at the printed 2 decimals), and the two timing kinds are sealed variants — `WallStat {min_wall, median_wall,
+max_wall}` for the repeated runs, `ProcessTimes {utime, stime, minor_faults, major_faults,
+voluntary_ctx_switches, involuntary_ctx_switches}` for the getrusage leg — so cell E's RSS fact is stated
+once, and the witness adds a second refusal leg: a planted reversed `min > max` triple is refused by
+`parse_population_receipt_durations_are_ordered` (a state prose in a String could not express).
 
 `rc` is taken from the command directly (`RC=$?` immediately after `/usr/bin/time … "$BIN" "$@"`), never through a pipe. The verb counts one extra module per population (166 for the staged 165, 10567 for 10562) — a stable +~5 offset from the enumeration, reported as the verb prints it.
 
