@@ -380,6 +380,31 @@ data w_circuit_tight: SharedPowerCircuit = SharedPowerCircuit {
   trips: [],
 }
 
+// THE SAME CIRCUIT, OVER-SUBSCRIBED AND WITHIN. A circuit opens on the SUM of its members; a per-member
+// bound guarantees that sum only while members x bound fits the cited rating. Two members x 150 W = 300 W on
+// a strip cited to 200 W is not one description of one circuit -- nothing a candidate reads can fix it, so the
+// fold must REFUSE it, not defer it and not quietly clamp it. The twin states 80 W (2 x 80 = 160 <= 200) and
+// must sail through the same checks, so the refusal discriminates on the inequality alone. Both carry srv4
+// (where the candidates sit) AND srv3 -- a member nobody filed a candidate for, which the product must still
+// count: the strip does not care that nobody measured h11 or srv3 when it opens.
+data w_circuit_oversubscribed: SharedPowerCircuit = SharedPowerCircuit {
+  identity: w_identity(name: "w-circuit-oversubscribed"),
+  label: "fixture circuit, rating 200 W cited, per-member bound 150 W, 2 members" as NonEmptyStr,
+  members: [operator_host_srv4, operator_host_srv3],
+  rating: RatingCited { carry_limit: watt(count: 200), standing: CitedToAuthority { authority: w_fixture_authority } },
+  member_draw_bound: BoundStated { draw_limit: watt(count: 150), standing: CitedToAuthority { authority: w_fixture_authority } },
+  trips: [],
+}
+
+data w_circuit_within: SharedPowerCircuit = SharedPowerCircuit {
+  identity: w_identity(name: "w-circuit-within"),
+  label: "fixture circuit, rating 200 W cited, per-member bound 80 W, 2 members" as NonEmptyStr,
+  members: [operator_host_srv4, operator_host_srv3],
+  rating: RatingCited { carry_limit: watt(count: 200), standing: CitedToAuthority { authority: w_fixture_authority } },
+  member_draw_bound: BoundStated { draw_limit: watt(count: 80), standing: CitedToAuthority { authority: w_fixture_authority } },
+  trips: [],
+}
+
 // THE FIXTURE CANDIDATES. Draws are sampled windows naming their sensor and their sample count, not cap
 // values: a cap is a bound on sustained draw and never a measurement of it. The expensive point draws 85-95 W
 // and the cheaper one 70-78 W, against the two fixture bounds above. The cheaper one sits CLEAR of the tight
@@ -476,6 +501,44 @@ data w_cap_30: GpuPowerCapSelection = OperatorDeclaredCap {
 }
 
 fn w_fixture_field() -> List<CapCandidate> { [w_expensive_candidate, w_cheaper_candidate] }
+
+// THE SUM IS THE CONSTRAINT, NOT THE MEMBER. 2 members x 150 W = 300 W on a circuit cited to 200 W: the
+// declared figures contradict each other before any candidate is weighed, and no reading closes the gap -- so
+// this is REFUSED, with the circuit, the product and the rating named, not deferred as missing evidence.
+test fn an_oversubscribed_member_bound_refuses_before_the_selection() -> Bool {
+  match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_oversubscribed, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_oversubscribed),
+    field: w_fixture_field(),
+  ) {
+    RealizationSelectionRefused { defects: ds } =>
+      (ds |> count) == 1
+        && match ds.first() {
+            Absent => false
+            Present { value: d } =>
+              string_contains(s: d as String, pattern: "oversubscribes" as String)
+                && string_contains(s: d as String, pattern: "2 members x 150 W = 300 W" as String)
+                && string_contains(s: d as String, pattern: "carry 200 W" as String)
+          }
+    _ => false
+  }
+}
+
+// AND THE TWIN FITS: same shape, bound 80 W (2 x 80 = 160 <= 200), the selection runs and names the cheaper
+// operating point -- the expensive one's 85-95 W host draw breaks the per-member bound, the 70-78 W one clears
+// it. The refusal above discriminates on the inequality, not on the fixture's shape.
+test fn a_member_bound_within_the_rating_is_not_refused() -> Bool {
+  match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_within, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_within),
+    field: w_fixture_field(),
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } =>
+      declaration_ref_identity(reference: c.identity).digest
+        == declaration_ref_identity(reference: w_cheaper_identity).digest
+    _ => false
+  }
+}
 
 // THE 1500 MHz LEVEL WITH ITS SHARE MISSING: every reading identical to srv4's chosen ceiling level except
 // the power-capped share, which was never written down. Used to show the fold NOTICES -- the same numbers

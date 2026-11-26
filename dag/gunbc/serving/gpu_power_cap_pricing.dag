@@ -26,7 +26,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_power_circuit {
   SharedPowerCircuit, BoundStated, BoundUnstated, MemberDrawBound, RatingUnread, circuit_carries, circuit_carry_limit,
-  circuit_label, circuit_member_draw_bound, circuit_rating_read_obligation, surge_strip,
+  circuit_label, circuit_member_draw_bound, circuit_members, circuit_rating_read_obligation, surge_strip,
 }
 import gunbc.serving.gpu_power_state_policy {
   GpuPowerCapSelection, OperatorDeclaredCap, SustainedPowerDraw, gpu_power_cap_selected,
@@ -180,6 +180,37 @@ fn circuit_bound_is_stated(circuit: SharedPowerCircuit) -> Bool {
   match circuit_member_draw_bound(c: circuit) {
     BoundStated { draw_limit: _, standing: _ } => true
     BoundUnstated { read_obligation: _ } => false
+  }
+}
+
+// A CIRCUIT OPENS ON THE SUM OF ITS MEMBERS, and a per-member bound -- obeyed -- guarantees that sum only
+// when members x bound fits the cited rating. Two declared figures that break that inequality do not survive
+// as one description of one circuit: no candidate reading can fix it, so the answer is a typed, located
+// refusal naming the circuit, both figures and their product -- never a silent clamp, and never a quietly
+// narrowed bound (fail_closed: no fabricated default; the aggregate constraint carried as if it were a local
+// one, the occupies-vs-floor shape). Latent today by construction: both fleet ratings are RatingUnread, so
+// those asks are answered with the read obligations above and this check is vacuous until a rating plate is
+// cited -- which is exactly when an over-generous member bound would otherwise pass unchecked.
+fn oversubscription_defects(circuit: SharedPowerCircuit) -> List<NonEmptyStr> {
+  match circuit_carry_limit(c: circuit) {
+    Absent => [] as List<NonEmptyStr>
+    Present { value: limit } => match circuit_member_draw_bound(c: circuit) {
+      BoundUnstated { read_obligation: _ } => [] as List<NonEmptyStr>
+      BoundStated { draw_limit: bound, standing: _ } =>
+        let member_count = circuit_members(c: circuit) |> count
+        let worst_sum = watt_count(w: bound) * member_count
+        if worst_sum > watt_count(w: limit) {
+          [join([
+            "the per-member draw bound stated for ", circuit_label(c: circuit),
+            " oversubscribes its cited rating: ", to_string(member_count), " members x ",
+            to_string(watt_count(w: bound)), " W = ", to_string(worst_sum),
+            " W on a circuit cited to carry ", to_string(watt_count(w: limit)),
+            " W; a circuit opens on the SUM of its members, and a per-member bound guarantees that sum only while members x bound is within the rating -- restate the bound within the rating, or read the rating plate the cited figure rests on and correct the rating",
+          ], "") as NonEmptyStr]
+        } else {
+          [] as List<NonEmptyStr>
+        }
+    }
   }
 }
 
@@ -722,9 +753,15 @@ fn price_power_cap_ask(
     }
     CircuitRelief { circuit: circuit, asked_on: _ } =>
       let obligations = circuit_obligations(circuit: circuit)
+      let oversub = oversubscription_defects(circuit: circuit)
       let on_circuit = filter(field, x => circuit_carries(c: circuit, host: x.host))
       if (obligations |> count) > 0 {
         SelectionNeedsEvidence { needs: map(obligations, g => UnfundedAxis { gap: g }) }
+      } else if (oversub |> count) > 0 {
+        // Refused, not deferred: the two declared figures contradict each other, and no reading of any
+        // candidate closes the gap. Only re-declaring one of them -- or reading the plate the rating
+        // stands on -- does.
+        RealizationSelectionRefused { defects: oversub }
       } else if (on_circuit |> count) == 0 {
         // A machine the circuit does not carry cannot relieve it, however good its numbers. The 2026-11-24
         // decision space contained ken's cards and srv1's; only the strip's members could price the strip's
