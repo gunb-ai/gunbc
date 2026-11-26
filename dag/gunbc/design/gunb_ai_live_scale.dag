@@ -14,8 +14,7 @@ import gunbc.design.scale { ScaleToken, ScaleValue, LengthValue, FontStackValue,
 // gunbc.design.gunb_ai_hues for colour): the served :root spells each once, in rem/ch, and the
 // stylesheet wire (gunbc.site.gunb_ai_css) and the site tokens (gunbc.site.gunb_ai_tokens) both read
 // these rows. A token that is meant to differ from its live source is a LiveScaleDeparture row with
-// its reason; no site token may differ silently.
-// Re-derive from `:root` in gunb-ai/frontend assets/site.css.
+// its reason; no site token may differ silently. These rows are the source of the served :root block.
 
 type LiveMeasure {
   name: String
