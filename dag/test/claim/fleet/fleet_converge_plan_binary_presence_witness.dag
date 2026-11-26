@@ -15,27 +15,11 @@
 // no remote host.
 module gunbc.test.claim.fleet.fleet_converge_plan_binary_presence_witness
 
-import std.prelude { Bool, String, Int, any, all, split, map, filter, join, concat, trim, to_string, Present, Absent, Option }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, ExitCode }
-import std.result { Result, Ok, Err }
-import std.ordering { Ordering, Less, Equal, Greater }
-import std.text { line_of }
-import std.net { Httpscheme }
-import std.time { Duration, seconds, minutes, hours, days }
-import std.filesystem { FilesystemReadResult, FilesystemWriteResult, FilesystemListResult, FilesystemEntry }
-import std.durable_compare_and_set { CasOutcome }
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { join, string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
 import extdeps.shell
-import extdeps.claude_cli
-import extdeps.codex_cli
-import extdeps.ssh
-import extdeps.posix.test_utility
-import extdeps.posix.shell_command_language
-import extdeps.tools.chmod
-import extdeps.tools.gnu_coreutils
-import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
-import gunbc.agent_adapter
-import gunbc.claude_headless
-import gunbc.codex_headless
 import gunbc.fleet.fleet_converge_plan_cli {
   BinaryPresence, BinaryPresenceKnown, BinaryPresenceUnreadable, binary_presence_of,
 }
