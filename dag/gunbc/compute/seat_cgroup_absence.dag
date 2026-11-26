@@ -24,6 +24,7 @@ module gunbc.compute.seat_cgroup_absence
 
 import std.types { String, NonEmptyStr }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
@@ -139,7 +140,15 @@ fn observe_seat_cgroup(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr) -> SeatC
 fn observe_seat_cgroup_end_proof(unit: NonEmptyStr) -> SeatCgroupEndProof {
   match compute_launching_uid() {
     Absent => SeatCgroupUnobservable { detail: "this route cannot name the uid whose user manager ran the seat, so its cgroup path cannot be derived" }
-    Present { value: uid } => seat_cgroup_end_proof(
-      standing: observe_seat_cgroup(mount: cgroup_v2_mount_point, uid: uid, unit: unit))
+    Present { value: uid } => match checked_int_to_nat(n: uid) {
+      // THE REVERSE CROSSING IS CHECKED, and a failed crossing is unobservable -- never an absence.
+      // This path decides whether a seat is released; an unchecked or negative uid would derive a
+      // cgroup path that belongs to no user, which is the wrong-spelling class the prefix guard
+      // exists for (std.checked_arithmetic::checked_int_to_nat, the one legal route Int back to Nat,
+      // as gunbc.compute.host_capacity compute_attempt_exit_spool_open already does for the same uid).
+      Absent => SeatCgroupUnobservable { detail: "the launching uid did not cross to a natural number, so no user manager's cgroup path is derivable from it" }
+      Present { value: uid_nat } => seat_cgroup_end_proof(
+        standing: observe_seat_cgroup(mount: cgroup_v2_mount_point, uid: uid_nat, unit: unit))
+    }
   }
 }
