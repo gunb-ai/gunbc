@@ -11,8 +11,8 @@ module test.claim.fleet_naming_witness
 // roster holds besides that one, because that is the state the draw was made against -- re-drawing against
 // a different prior set would be checking a different lottery.
 //
-// THE CLAIM RUNS AS A CLAIM: `gunbc run --claim-run --entry dag/test/claim/fleet_naming_witness.dag`,
-// where every `test fn` here executes over one load of one closure.
+// THE CLAIM RUNS AS A CLAIM: `gunbc test //test/claim/fleet_naming_witness:<test fn> ...`, one operand per
+// `test fn`, every one executed over one load of one closure.
 
 import std.types { Bool, Int, List, NonEmptyStr, Port, String }
 import std.algebra { list_append, list_map, string_contains }

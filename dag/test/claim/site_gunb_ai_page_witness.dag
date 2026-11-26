@@ -17,7 +17,7 @@ module test.claim.site_gunb_ai_page_witness
 // only to check the roster.
 //
 // RUN:
-//   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_page_witness.dag --claim-run
+//   gunbc test //test/claim/site_gunb_ai_page_witness:<test fn>   (one operand per test fn)
 //
 // RED CONTROLS, RUN against the compiler, each reddening the named test and no other, with the
 // baseline restored to green afterwards. A control that only deletes a field is not a control (it

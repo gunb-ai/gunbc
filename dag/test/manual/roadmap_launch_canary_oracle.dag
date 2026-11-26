@@ -9,9 +9,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE PINNED VALIDATION ORACLE OF THE ROADMAP LAUNCH CANARY (RLM-0, docs/plans/roadmap-launch-mvp-plan.md (deleted 2026-11-08)).
 // It lives under dag/test/manual, OUTSIDE gunbc.ci.ci_layer_roots witness_discovery_scan_dirs, on
 // purpose: it is RED on base by construction (the sentinel is `pending:` until the one authorized
-// task flips it), so it is the attempt's pinned oracle -- reached by
-// `gunbc run --claim-run --entry <this file> --function roadmap_launch_canary_oracle_completed`
-// through gunbc.roadmap.roadmap_launch_canary roadmap_launch_canary_execution_contract -- and never a
+// task flips it), so it is the attempt's pinned oracle -- the execution contract
+// (gunbc.roadmap.roadmap_launch_canary roadmap_launch_canary_execution_contract) spawns
+// `gunbc test //test/manual/roadmap_launch_canary_oracle:roadmap_launch_canary_oracle_completed`, an
+// exact claim the route admits because its module resolves in the roots
+// (gunbc.target_invocation admit_resolvable_exact_targets) -- and never a
 // required-floor row. The nonce is authored HERE, in the file the pin covers, so an agent cannot
 // green the oracle by editing the expected value: any edit to this file moves the pinned identity
 // (gunbc.roadmap.roadmap_validation_oracle validation_oracle_source_identity) and the verification refuses.

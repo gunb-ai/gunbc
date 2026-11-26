@@ -22,6 +22,10 @@ import gunbc.offline_local_recipe {
   every_recipe_names_a_declared_policy,
   offline_recipe_consumer_defects_well_formed,
   every_defect_row_has_a_recipe,
+  RecipeArgv,
+  RecipeArgvBuilt,
+  RecipeArgvNothingChosen,
+  RecipeArgvRefused,
   recipe_argv,
   recipe_argv_for_entry,
   argv_names_the_entry,
@@ -198,12 +202,30 @@ test fn every_measured_defect_row_is_well_formed_and_joined() -> Bool {
   offline_recipe_consumer_defects_well_formed() && every_defect_row_has_a_recipe()
 }
 
-// The rendered argv is the recipe: an entry subject renders a command that names its own
-// entry and carries its mode flag, and a HOME subject renders none, because a template
-// with no chosen resident has no command. The RED half of that pairing is the mode: a
-// hermetic recipe that rendered --wet would run live effects nobody declared.
+// THE RENDERED ARGV IS THE RECIPE, AND IT IS NOW THE ONE ROUTE'S WORDS. An entry subject renders
+// `gunbc test --source-root <root> ... <label> <mode words>`: it names its own entry as a LABEL admitted
+// by the route's identity rule, and it carries the mode the row asked for. A HOME subject renders no
+// command and SAYS WHY, which is a different state from refusing -- the legacy binary exited 2 on an
+// `--entry` with no `--function`, so a template with no chosen resident never had a runnable command,
+// and collapsing "nothing chosen" into "empty list" was how that stayed invisible. The RED half of the
+// pairing is unchanged and is still the mode: a hermetic recipe that rendered `--wet` would run live
+// effects nobody declared. Note the two kinds of check are now two functions:
+// `argv_names_the_entry` asks the identity question its name states, and `has_word` asks the word
+// question -- one helper doing both was how "names the entry" quietly stopped meaning that.
+fn has_word(argv: List<String>, word: String) -> Bool {
+  fold(argv, init: false, f: fn(found, w) { found || (w == word) })
+}
+
+fn recipe_words(state: RecipeArgv) -> List<String> {
+  match state {
+    RecipeArgvBuilt { argv: argv } => argv
+    RecipeArgvNothingChosen { subject: _, reason: _ } => []
+    RecipeArgvRefused { subject: _, operand: _, reason: _ } => []
+  }
+}
+
 test fn entry_recipe_argv_names_its_entry_and_its_mode() -> Bool {
-  let wet_argv = recipe_argv(
+  let wet = recipe_argv(
     row: OfflineLocalRecipeRow {
       policy: "probe_policy",
       subject: RecipeEntry { path: probe_subject_path() },
@@ -211,7 +233,7 @@ test fn entry_recipe_argv_names_its_entry_and_its_mode() -> Bool {
       mode: Wet
     }
   )
-  let hermetic_argv = recipe_argv(
+  let hermetic = recipe_argv(
     row: OfflineLocalRecipeRow {
       policy: "probe_policy",
       subject: RecipeEntry { path: probe_subject_path() },
@@ -219,11 +241,23 @@ test fn entry_recipe_argv_names_its_entry_and_its_mode() -> Bool {
       mode: Hermetic
     }
   )
-  argv_names_the_entry(argv: wet_argv, entry: probe_subject_path())
-    && argv_names_the_entry(argv: wet_argv, entry: "--wet")
-    && argv_names_the_entry(argv: wet_argv, entry: "probe_holds")
-    && argv_names_the_entry(argv: hermetic_argv, entry: probe_subject_path())
-    && !argv_names_the_entry(argv: hermetic_argv, entry: "--wet")
+  // A refusal is a RED here, not a pass: these rows name a claim module and a resident function, so a
+  // builder that cannot spell them has broken, and the claim must say so rather than compare empty lists.
+  match wet {
+    RecipeArgvRefused { subject: _, operand: _, reason: _ } => false
+    RecipeArgvNothingChosen { subject: _, reason: _ } => false
+    RecipeArgvBuilt { argv: wet_argv } => match hermetic {
+      RecipeArgvRefused { subject: _, operand: _, reason: _ } => false
+      RecipeArgvNothingChosen { subject: _, reason: _ } => false
+      RecipeArgvBuilt { argv: hermetic_argv } => argv_names_the_entry(argv: wet_argv, entry: probe_subject_path())
+        && has_word(argv: wet_argv, word: "--wet")
+        && has_word(argv: wet_argv, word: "probe_holds")
+        && has_word(argv: wet_argv, word: "gunbc")
+        && has_word(argv: wet_argv, word: "test")
+        && argv_names_the_entry(argv: hermetic_argv, entry: probe_subject_path())
+        && !has_word(argv: hermetic_argv, word: "--wet")
+    }
+  }
 }
 
 test fn home_recipe_renders_no_argv_until_a_resident_is_chosen() -> Bool {
@@ -233,11 +267,16 @@ test fn home_recipe_renders_no_argv_until_a_resident_is_chosen() -> Bool {
     selection: RecipeCallerChosen,
     mode: Hermetic
   }
-  (recipe_argv(row: home).length() == 0)
-    && argv_names_the_entry(
-      argv: recipe_argv_for_entry(row: home, entry: "dag/test/claim/long/some_resident_test.dag"),
+  // The two states are told apart, not both read off a length: HOME with no resident is NothingChosen,
+  // and the same row with a resident named renders an argv that names THAT entry.
+  match recipe_argv(row: home) {
+    RecipeArgvBuilt { argv: _ } => false
+    RecipeArgvRefused { subject: _, operand: _, reason: _ } => false
+    RecipeArgvNothingChosen { subject: _, reason: _ } => argv_names_the_entry(
+      argv: recipe_words(state: recipe_argv_for_entry(row: home, entry: "dag/test/claim/long/some_resident_test.dag")),
       entry: "dag/test/claim/long/some_resident_test.dag"
     )
+  }
 }
 
 // The one defect-row rule a refinement cannot decide, and its RED is still authorable

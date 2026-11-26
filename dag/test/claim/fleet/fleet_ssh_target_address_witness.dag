@@ -1,8 +1,9 @@
 module test.claim.fleet.fleet_ssh_target_address_witness
 
-import std.types { String, Bool, List, NonEmptyStr, Port }
-import std.optional { Present, Absent }
+import std.types { String, Bool, Int, List, NonEmptyStr, Port }
+import std.optional { Present, Absent, Optional }
 import std.measure { second_count }
+import std.content_hash { serialize_content_hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4, NetworkHostNameMalformed, NetworkHostIpv4Malformed }
@@ -15,6 +16,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetBareWordLeg, shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
   FleetLegKind, ProbeLeg, ActuationLeg, RepositoryConvergenceLeg, ProvisioningLeg,
   fleet_remote_leg_wall_deadline,
+  fleet_known_hosts_registry_identity, fleet_ssh_multiplex_control_path,
 }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
@@ -158,10 +160,128 @@ fn w_renders_over(hosts: List<WRecordedHost>) -> String {
   }
 }
 
+// THE TWO SPANS THIS PIN COULD NOT CARRY ACROSS AN ENROLLMENT, AND NO LONGER TRIES TO. Both are digests
+// over the enrolled known_hosts registry rather than facts about the port crossing: the key AND password
+// arm of every host carry -o UserKnownHostsFile=<attempt>-known-hosts-<registry digest>, a path
+// gunbc.fleet.fleet_known_hosts_anchor fleet_known_hosts_anchor_path mints from
+// fleet_known_hosts_registry_identity() over known_hosts_file_rows(), and the key arm carries
+// -o ControlPath=<job dir>/<socket name>, minted from a preimage that itself carries that registry
+// identity plus the anchor's materialized content identity. Every byte was honest when the recording was
+// taken, and the fleet moved since: #16802 landed a scanned host key and #16868 emptied the first-contact
+// hop list, and known_hosts_file_rows is enrollments PLUS fabric-rail rows PLUS first-contact rows -- so
+// one enrollment anywhere renumbers all twelve digest spans and all six socket names at once.
+// gunbc#15073 decoupled this claim's POPULATION from the live roster for exactly that hazard; these two
+// spans are its residue, and pinning them made a byte-identity control over the SHAPERS red on every
+// enrollment, which is how it was read as a shaper regression.
+//
+// WHAT THE CLAIM STILL MEANS: every byte around these spans is still pinned by the recording, and each
+// span is carried forward by the ONE authority that mints it in production -- so this claim deliberately
+// does NOT pin the digest values (their behavior is pinned where they are owned:
+// test.claim.fleet.fleet_known_hosts_anchor_witness w_a_different_registry_is_a_different_registry and
+// w_the_fleet_path_is_the_generalized_path_at_the_fleet_registry for the registry digest, and
+// test.claim.fleet.fleet_ssh_multiplexing_witness red_two_attempts_never_share_a_control_socket,
+// red_two_trust_registries_never_share_a_control_socket, red_two_anchor_contents_never_share_a_control_socket
+// for the socket name's discrimination). It refuses (Absent) rather than comparing when a recorded span is
+// missing from the pin at its expected count, so a dropped or mistyped span cannot pass vacuously, and
+// red_a_perturbed_non_digest_word_is_refused below is the control that the comparison still discriminates.
+data w_recorded_registry_digest: String = "2d6ff3f8c4823acd"
+
+type WRecordedControlPath {
+  host: String
+  path: String
+}
+
+data w_recorded_control_paths: List<WRecordedControlPath> = [
+  WRecordedControlPath { host: "srv1", path: "/home/runner/work/_temp/fleet-ssh-mux/eb0b0dbbd808d028d7daf428b9d5368a" },
+  WRecordedControlPath { host: "srv2", path: "/home/runner/work/_temp/fleet-ssh-mux/ccebbf5867e51ff3fb19cf7d75168db8" },
+  WRecordedControlPath { host: "srv3", path: "/home/runner/work/_temp/fleet-ssh-mux/73754080fa6f7443daa4f3db4e0a69b8" },
+  WRecordedControlPath { host: "srv4", path: "/home/runner/work/_temp/fleet-ssh-mux/1221a31476bbddaf5b8d09fb86b34658" },
+  WRecordedControlPath { host: "host-183527", path: "/home/runner/work/_temp/fleet-ssh-mux/8941190bdb55aae54d8f0e4133fce289" },
+  WRecordedControlPath { host: "host-3dde7f", path: "/home/runner/work/_temp/fleet-ssh-mux/87bc86d260d0b37b4cb7eeb91d7f5bcc" },
+]
+
+// replace, spelled from the two builtins the language carries.
+fn w_replace(haystack: String, from: String, to: String) -> String {
+  join(split(s: haystack, delimiter: from), to)
+}
+
+// How many times a span occurs in a string. Zero is the fail-closed signal above.
+fn w_occurrences(haystack: String, needle: String) -> Int {
+  split(s: haystack, delimiter: needle).count() - 1
+}
+
+// THE RECORDING AS IT MUST READ TODAY: every recorded byte, with ONLY the two digest-valued spans carried
+// forward by the authorities that mint them. Absent -- never a partial match -- when a recorded span is
+// not in the pin at its expected count.
+fn w_pin_upon_the_live_digests() -> Optional<String> {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => Absent
+    Present { value: ctx } =>
+      if w_occurrences(haystack: w_recorded_port_22_renders, needle: w_recorded_registry_digest) != 2 * w_recorded_hosts.count() {
+        Absent
+      } else {
+        let carried = w_replace(
+          haystack: w_recorded_port_22_renders,
+          from: w_recorded_registry_digest,
+          to: serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
+        )
+        fold(w_recorded_control_paths, init: Present { value: carried }, f: fn(acc, rec) {
+          match acc {
+            Absent => Absent
+            Present { value: b } =>
+              if w_occurrences(haystack: b, needle: rec.path) != 1 {
+                Absent
+              } else {
+                let owners = filter(w_recorded_hosts, r => r.host == rec.host)
+                if owners.count() != 1 {
+                  Absent
+                } else {
+                  match owners.first() {
+                    Absent => Absent
+                    Present { value: r } =>
+                      match fleet_ssh_target_at_standard_port(endpoint: r.endpoint, principal: fleet_automation_principal_login) {
+                        SshTargetRefused { endpoint: _, refusal: _ } => Absent
+                        SshTargetResolved { target: t } =>
+                          Present { value: w_replace(haystack: b, from: rec.path, to: fleet_ssh_multiplex_control_path(context: ctx, target: t) as String) }
+                      }
+                  }
+                }
+              }
+          }
+        })
+      }
+  }
+}
+
 // POSITIVE CONTROL: for every host the recording covers, at port 22, both shapers' argv and the receipt
-// wire are byte-identical to what they were before the target carried a port.
+// wire are byte-identical to what they were before the target carried a port, up to the two digest spans
+// above -- which the claim carries forward rather than pins.
 test fn every_recorded_host_renders_byte_identically_at_port_22() -> Bool {
-  w_renders_over(hosts: w_recorded_hosts) == w_recorded_port_22_renders
+  match w_pin_upon_the_live_digests() {
+    Absent => false
+    Present { value: expected } => w_renders_over(hosts: w_recorded_hosts) == expected
+  }
+}
+
+// THE COMPARISON STILL DISCRIMINATES (review, clever-raven-401). Carrying both digest spans forward from
+// their own authorities could have made the claim above compare two strings built from the same source and
+// pass whatever the shapers emitted. It does not: the recording remains the sole source of every other
+// byte, and this control perturbs NON-DIGEST words of the carried pin -- every key arm's BatchMode, and
+// every arm's User -- and requires the rendered argv to refuse each. A tautological comparison would be
+// green here; and the guards that each perturbation actually applied are themselves part of the claim, so
+// a perturbation that silently missed cannot pass either.
+test fn red_a_perturbed_non_digest_word_is_refused() -> Bool {
+  match w_pin_upon_the_live_digests() {
+    Absent => false
+    Present { value: expected } => {
+      let batch = w_replace(haystack: expected, from: "BatchMode=yes", to: "BatchMode=no")
+      let user = w_replace(haystack: expected, from: "User=gunbc-automation", to: "User=gunbc-automation-x")
+      w_occurrences(haystack: expected, needle: "BatchMode=yes") == w_recorded_hosts.count()
+        && w_occurrences(haystack: expected, needle: "User=gunbc-automation") == 2 * w_recorded_hosts.count()
+        && w_renders_over(hosts: w_recorded_hosts) != batch
+        && w_renders_over(hosts: w_recorded_hosts) != user
+    }
+  }
 }
 
 // THE SUPPLIED POPULATION IS A READING OF THE REAL PRODUCER: every recorded host is still enrolled and

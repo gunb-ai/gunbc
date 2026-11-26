@@ -30,6 +30,10 @@ fn boot_medium_fetch_render(medium: BootMedium, outcome: BootImageFetchOutcome) 
     BootImageAdmitted { path: _, digest: _ } => ExitSuccess
     BootImageAdmittedStagingRemains { path: p, digest: _, staging: st, reason: r } =>
       exit_failure(reason: concat("boot image ", medium.image_name as String, ": published and verified at ", p as String, " but the staging file ", st as String, " was not removed from the export: ", r))
+    // Published and verified; only the staging cleanup is unconfirmed (the rm's reply was lost). Do not claim it
+    // was "not removed" -- surface the uncertainty instead, and still fail so the residue is looked at.
+    BootImageAdmittedStagingUnconfirmed { path: p, digest: _, staging: st, reason: r } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": published and verified at ", p as String, " but whether the staging file ", st as String, " was removed from the export is UNCONFIRMED: ", r))
     BootImageFetchFailed { url: u } =>
       exit_failure(reason: concat("boot image ", medium.image_name as String, ": fetch failed for ", u as String))
     BootImageDigestUnreadable { path: p, reason: r } =>

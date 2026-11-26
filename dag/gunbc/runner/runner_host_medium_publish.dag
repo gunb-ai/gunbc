@@ -7,7 +7,7 @@ import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, readlink_command
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host_command_binding {
-  CommandHost, FleetSshCommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  CommandHost, FleetSshCommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, HostCommandUnanswered,
   host_command, host_command_outcome_text, host_label,
 }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
@@ -26,7 +26,7 @@ import gunbc.runner.runner_host_medium {
 }
 import gunbc.host_command_binding {
   LocalCommandHost, host_run, host_transport_kind, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
-  ScratchAcquired, ScratchNotAcquired, scratch_removed,
+  ScratchAcquired, ScratchNotAcquired, scratch_removed, ScratchOutcome,
 }
 import gunbc.host.host_effect_realize {
   tree_install_in_realm, TreeInstallStaged, ApprovalBrokerTreeInstallVerdict, TreeInstallConverged, TreeInstallRefused,
@@ -56,19 +56,40 @@ data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
   console_kernel_arg: mtcollins1_census_console_arg,
 }
 
+// THE ATTEMPT TO PUT THE IMAGE WHERE A REGISTRATION POINTS, AS ONE TYPED RESULT: not derived (the release was
+// never built), ran, or ran-with-a-cleanup-whose-reply-was-lost. The ran attempt carries the publication and the
+// served-link readback as TWO SEPARATE facts; the third arm carries, alongside them, the final scratch cleanup as
+// its OWN fact (fox round 3 at 649e7857). THE CLEANUP IS NOT THE PUBLICATION: when the final `rm` came back with
+// no reply after a completed publication and a verified link, the publication and the link STAY reported as what
+// they are -- only the cleanup is unknown -- and the attempt simply does not hold. Replacing the ran attempt with
+// "not attempted" there deleted a publication the receipt had to keep naming.
 type RunnerImagePublishAttempt
   = RunnerImageNotDerived { reason: String }
   | RunnerImagePublishRan { publication: SeededImagePublication, link: ServedLinkReading }
+  | RunnerImageCleanupUnverified { publication: SeededImagePublication, link: ServedLinkReading, scratch: ScratchOutcome }
 
 // THE SERVED LINK (gunbc.host.boot_medium_reader_key boot_medium_served_link_path) IS THIS PUBLISH'S TO
 // SET. The boot medium reader key is forced to sha256sum that one fixed path, so the publish that names
 // the runner image points the link at it and reads the link back. The link is set only after the
 // publication holds, so it never names an image that was not read back; the reading is readlink's
 // answer, which must be exactly the published path.
+//
+// SETTING THE LINK and VERIFYING IT are TWO facts and are never conflated. `ServedLinkPointsAt` is a
+// VERIFIED set (the readback came back with the published path). When the set ran fine but the READBACK
+// was lost, the link IS set -- we just did not see the confirmation -- so it is `ServedLinkSetUnverified`,
+// NOT "not set" (which would fabricate an absent link). When the SET command's own reply was lost, whether
+// the link moved is UNKNOWN -- `ServedLinkSetUnknown`, again not "not set". Only a never-dispatched or
+// failed set, or a publication that did not hold, is honestly `ServedLinkNotSet`.
 type ServedLinkReading
   = ServedLinkPointsAt { link_path: NonEmptyStr, target: NonEmptyStr }
   | ServedLinkNotSet { reason: String }
   | ServedLinkDisagrees { link_path: NonEmptyStr, expected: NonEmptyStr, read: String }
+  // The `ln` succeeded (the link WAS set) but the readback verification was lost/unconfirmed/not dispatched.
+  // The set fact stands; only its verification is missing. Never read as not-set.
+  | ServedLinkSetUnverified { link_path: NonEmptyStr, target: NonEmptyStr, reason: String }
+  // The `ln` was dispatched but its reply was lost / its effect unconfirmed: whether the link moved is
+  // unknown. Distinct from not-set (we did send the set) and from points-at (we did not verify it).
+  | ServedLinkSetUnknown { link_path: NonEmptyStr, target: NonEmptyStr, reason: String }
 
 fn published_image_path(p: SeededImagePublication) -> NonEmptyStr? {
   if seeded_image_publication_holds(p: p) {
@@ -89,17 +110,24 @@ fn served_link_after(publication: SeededImagePublication, set: fn(NonEmptyStr) -
     Absent => ServedLinkNotSet { reason: "the publication did not hold, so the served link was left as it was" }
     Present { value: path } =>
       match set(path) {
+        // The set itself completed -> the link IS set. The readback only CONFIRMS which target; losing it does
+        // not un-set the link.
         HostCommandDone { stdout: _ } =>
           match read() {
             HostCommandDone { stdout: o } =>
               if trim(s: o) == (path as String) { ServedLinkPointsAt { link_path: link, target: path } } else { ServedLinkDisagrees { link_path: link, expected: path, read: trim(s: o) } }
-            HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but could not be read back: ", host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e })) }
-            HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but its readback is unconfirmed: ", host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e })) }
-            HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("the link was set but its readback was not dispatched: ", r) }
+            HostCommandFailed { exit_code: c, stderr: e } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback failed: ", host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e })) }
+            HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback is unconfirmed: ", host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e })) }
+            HostCommandNotDispatched { reason: r } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback was not dispatched: ", r) }
+            HostCommandUnanswered { cause: r } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback got no answer: ", r) }
           }
+        // The set ran and FAILED -> the link was not moved by us; "not set" is honest.
         HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e }) }
-        HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e }) }
+        // The set was NEVER DISPATCHED -> nothing was sent -> the link was not moved by us; "not set" is honest.
         HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("not dispatched: ", r) }
+        // The set WAS dispatched but its effect is unknown -> whether the link moved is UNKNOWN, not "not set".
+        HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkSetUnknown { link_path: link, target: path, reason: host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e }) }
+        HostCommandUnanswered { cause: r } => ServedLinkSetUnknown { link_path: link, target: path, reason: concat("the set was dispatched but got no answer, so the served link may or may not have moved: ", r) }
       }
   }
 }
@@ -118,6 +146,10 @@ fn served_link_holds(l: ServedLinkReading) -> Bool {
     ServedLinkPointsAt { link_path: _, target: _ } => true
     ServedLinkNotSet { reason: _ } => false
     ServedLinkDisagrees { link_path: _, expected: _, read: _ } => false
+    // A set we could not verify, or whose set-reply was lost, does not COUNT as a held link -- but it is not
+    // the same as not-set; the publish simply cannot claim the link is confirmed in place.
+    ServedLinkSetUnverified { link_path: _, target: _, reason: _ } => false
+    ServedLinkSetUnknown { link_path: _, target: _, reason: _ } => false
   }
 }
 
@@ -126,6 +158,10 @@ fn render_served_link(l: ServedLinkReading) -> String {
     ServedLinkPointsAt { link_path: p, target: t } => join(["served_link=", p as String, "\nserved_link_target=", t as String, "\n"], "")
     ServedLinkNotSet { reason: r } => join(["served_link=not set\nserved_link_reason=", r, "\n"], "")
     ServedLinkDisagrees { link_path: p, expected: e, read: r } => join(["served_link=", p as String, "\nserved_link_disagrees=expected ", e as String, ", read ", r, "\n"], "")
+    // SET but not verified / set-reply lost: render the link path and say the SET stands while its VERIFICATION
+    // is missing -- never the "not set" line, which would claim an absent link we may well have created.
+    ServedLinkSetUnverified { link_path: p, target: t, reason: r } => join(["served_link=", p as String, "\nserved_link_set_unverified=expected ", t as String, "\nserved_link_reason=", r, "\n"], "")
+    ServedLinkSetUnknown { link_path: p, target: t, reason: r } => join(["served_link=unknown\nserved_link_set_unknown=expected ", t as String, "\nserved_link_reason=", r, "\n"], "")
   }
 }
 
@@ -144,6 +180,9 @@ fn runner_image_publication_on(host: CommandHost, image: RunnerHostMediumImage) 
 fn runner_image_attempt_holds(a: RunnerImagePublishAttempt) -> Bool {
   match a {
     RunnerImageNotDerived { reason: _ } => false
+    // THE CLEANUP IS ITS OWN FACT: a ran publication whose final `rm` never answered does not hold, and that is the
+    // ONLY thing it fails -- the publication and the link keep their own readings below.
+    RunnerImageCleanupUnverified { publication: _, link: _, scratch: _ } => false
     RunnerImagePublishRan { publication: p, link: l } =>
       seeded_image_publication_holds(p: p) && served_link_holds(l: l)
   }
@@ -152,6 +191,10 @@ fn runner_image_attempt_holds(a: RunnerImagePublishAttempt) -> Bool {
 fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
   match a {
     RunnerImageNotDerived { reason: r } => concat("publication=not attempted\npublication_reason=", r, "\n")
+    // The publication is REPORTED, with the link and the cleanup as the separate facts they are: the receipt names
+    // the published image, the verified link, and the scratch whose removal reply was lost.
+    RunnerImageCleanupUnverified { publication: p, link: l, scratch: o } =>
+      concat(render_seeded_image_publication(p: p), render_served_link(l: l), render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: o))
     RunnerImagePublishRan { publication: p, link: l } =>
       concat(render_seeded_image_publication(p: p), render_served_link(l: l))
   }
@@ -277,6 +320,49 @@ data mtcollins1_baked_release_export_template: NonEmptyStr = "/var/tmp/gunbc-mtc
 
 data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
 
+// THE DECISION THE WET PATH MAKES with the final cleanup leg's outcome, EXTRACTED so the witness passes the SAME
+// holding publication and verified link through it twice (fox round 4 at 5b5829eb, Blocker 3): a `RemovalUnanswered`
+// must keep both facts and still fail the run, and a `Removed` must keep both facts and let it succeed. A control
+// that CONSTRUCTS `RunnerImageCleanupUnverified` would stay green if the old decision -- replacing the whole ran
+// attempt with "not attempted" -- came back; going through THIS function is the only way the wet path turns a
+// completed publication into a ran-with-unverified-cleanup attempt, so that is what the control drives.
+fn runner_image_attempt_after_scratch(published: RunnerImagePublishAttempt, removed: ScratchOutcome) -> RunnerImagePublishAttempt {
+  match published {
+    RunnerImagePublishRan { publication: p, link: l } =>
+      if scratch_removed(o: removed) {
+        published
+      } else {
+        RunnerImageCleanupUnverified { publication: p, link: l, scratch: removed }
+      }
+    // Nothing was published, so there is nothing to keep: the refusal is the reason, and the cleanup is reported
+    // inside it rather than pretending to be the whole story.
+    RunnerImageNotDerived { reason: r } =>
+      if scratch_removed(o: removed) {
+        published
+      } else {
+        RunnerImageNotDerived { reason: concat(r, "; ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
+      }
+    RunnerImageCleanupUnverified { publication: _, link: _, scratch: _ } => published
+  }
+}
+
+// THE RECEIPT AND THE EXIT ARE PURE FUNCTIONS OF THE ATTEMPT (fox round 3 at 649e7857). The wet run below writes the
+// receipt and then decides its exit from THESE, so what a witness asserts about an attempt no hermetic host can
+// produce -- above all the publication and link that completed while only the final cleanup's reply was lost -- is
+// the string the operator reads and the exit the run takes: the receipt keeps the published image and the verified
+// link, names the cleanup path and its lost-reply cause, and the run still exits failure.
+fn mtcollins1_runner_image_receipt_of(a: RunnerImagePublishAttempt) -> String {
+  render_runner_image_attempt(a: a)
+}
+
+fn mtcollins1_runner_image_exit_of(a: RunnerImagePublishAttempt) -> ProcessExit {
+  if runner_image_attempt_holds(a: a) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 runner image publication did not hold:\n", mtcollins1_runner_image_receipt_of(a: a)))
+  }
+}
+
 // CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
 // consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
 // The receipt is written whatever the outcome and uploaded by the step that follows.
@@ -291,14 +377,12 @@ fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
           mtcollins1_runner_image_publish_at(revision: revision, export: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context }, target: bmc_boot_image_export.target, context: context)
       }
   }
-  let rendered = render_runner_image_attempt(a: attempt)
+  let rendered = mtcollins1_runner_image_receipt_of(a: attempt)
   let written = Filesystem.Write(path: mtcollins1_runner_image_receipt_path, content: rendered)
   if written.success == false {
     exit_failure(reason: concat("mtcollins1 runner image: the receipt could not be written: ", written.error, "\n", rendered))
-  } else if runner_image_attempt_holds(a: attempt) {
-    ExitSuccess
   } else {
-    exit_failure(reason: concat("mtcollins1 runner image publication did not hold:\n", rendered))
+    mtcollins1_runner_image_exit_of(a: attempt)
   }
 }
 
@@ -322,9 +406,9 @@ fn mtcollins1_runner_image_publish_at(revision: CommitSha, export: CommandHost, 
           runner_image_publication_on(host: export, image: runner_host_medium_image(host: mtcollins1_runner_host, baked: baked))
       }
       let removed = scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: export, command: rm_recursive_force_one_file_system_command(path: dir as String)))
-      if scratch_removed(o: removed) { published } else {
-        RunnerImageNotDerived { reason: concat("the export-host scratch was not removed after the publication (", render_runner_image_attempt(a: published), "): ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
-      }
+      // ONE decision, the same function the witness drives (fox round 4 at 5b5829eb, Blocker 3): a lost cleanup
+      // reply keeps a completed publication and its verified link and makes the attempt not hold.
+      runner_image_attempt_after_scratch(published: published, removed: removed)
     }
   }
 }

@@ -5,7 +5,7 @@ import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // THE SISTER DEFICIT OF THE REFUSAL-COUNT STALL, AND ITS CAUSE IS A DIFFERENT ONE. The enrolled
-// claim v2.test.claim.complexity.accumulator_copy_roster_gate_std
+// claim test.claim.complexity_accumulator_copy_roster_gate_std
 // roster_std_change_dag_zero_suspects_within_ratchet answers `Bool`, because `file_gate` answers
 // `Bool`: it collapses the typed `RosterGateDisposition` -- clean, suspects, refusal-budget, or
 // not-established -- into one bit. gunbc.design_argument::guarantee_ladder (rung honesty): a Bool establishes nothing about WHICH
@@ -33,7 +33,7 @@ data accumulator_copy_roster_gate_bool_names_no_suspect_stall: GuaranteeStall = 
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation { members: [
-    "v2.test.claim.complexity.accumulator_copy_roster_gate_std roster_std_change_dag_zero_suspects_within_ratchet file_gate Bool collapses four typed arms",
+    "test.claim.complexity_accumulator_copy_roster_gate_std roster_std_change_dag_zero_suspects_within_ratchet file_gate Bool collapses four typed arms",
   ] },
   next_rung_trigger: climbs_when(capability: "v2.lens.complexity_accumulator_copy.roster_gate exposes a route from a refused gate to the identities of the exceeding refusals -- file, function, and reason per refusal, carried typed (a Finding-shaped carrier or the RosterGateDisposition itself) -- and the enrolled claim prints them, so one red run names its own offenders without a hand-built probe claim")
 }

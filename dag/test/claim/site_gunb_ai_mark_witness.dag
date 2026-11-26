@@ -4,7 +4,7 @@ module test.claim.site_gunb_ai_mark_witness
 // produces (the same bytes mark_write writes) and ties them to the model rows they come from. There is
 // no comparison against a committed copy of the file: this module is the source of what gunb.ai serves.
 //
-// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_mark_witness.dag --claim-run
+// RUN: gunbc test //test/claim/site_gunb_ai_mark_witness:<test fn>   (one operand per test fn)
 //
 // Red controls are run against the compiler and reported in the PR body, not here.
 

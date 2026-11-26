@@ -4,7 +4,7 @@ module test.claim.site_gunb_ai_css_witness
 // writes, and each claim ties those bytes to the rows they are rendered from. There is no comparison
 // against a committed copy of the sheet: this module is the source of what gunb.ai serves.
 //
-// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_css_witness.dag --claim-run
+// RUN: gunbc test //test/claim/site_gunb_ai_css_witness:<test fn>   (one operand per test fn)
 //
 // Red controls are run against the compiler and reported in the PR body, not here.
 

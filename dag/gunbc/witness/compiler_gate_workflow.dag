@@ -92,8 +92,9 @@ import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, UsesStep, RunStep, WorkflowPermissions, PermRead, RunnerSpec, HostedRunner,
   SelfHosted, RunsOnExpression, github_event_name_pull_request,
-  WorkflowCall, WorkflowCallInput, CallInputBoolean
+  WorkflowCall, WorkflowCallInput, CallInputBoolean, Schedule
 }
+import extdeps.cron.schedule_model { CronSchedule, Exact, Wildcard }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted,
   WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action,
@@ -206,8 +207,9 @@ import gunbc.read_set_restore {
   fast_lane_reference_check_step_name,
 }
 import gunbc.parse_verdict_publish {
-  parse_verdict_publish_walk_step,
-  parse_verdict_publish_save_step,
+  materialization_audit_publish_if,
+  parse_verdict_publish_walk_step_guarded,
+  parse_verdict_publish_save_step_guarded,
   parse_verdict_publish_step_name,
   parse_verdict_save_step_name,
 }
@@ -293,8 +295,15 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
 // lane -- and a skipped required lane never reports, which stalls the merge queue for good. The
 // repository's Actions policy already requires approval for all external contributors; this is the
 // second wall.
+// THE SCHEDULE DOES NOT RUN THE REQUIRED JOB. The daily cron on this workflow exists solely to fire
+// the parse-verdict audit; a required job fired by the clock would burn a fleet hour per day judging
+// a commit nobody pushed -- and burn it twice a day if the audit is already the point of the run.
+// (The concurrency group cannot collide with a push: unlisted event names fall through to a per-run
+// group, `run-{run_id}`, so the scheduled run stands in its own group and queues nothing.) Every
+// event that is not the clock keeps running the gate exactly as before, and fork pull requests still
+// cannot reach the fleet.
 fn compiler_gate_fleet_job_condition() -> String {
-  join(["github.event_name != 'pull_request' || ", heal_same_repository_clause], "")
+  join(["github.event_name != 'schedule' && (github.event_name != 'pull_request' || ", heal_same_repository_clause, ")"], "")
 }
 
 // A pull-request run judges GitHub's MERGE REF (github.sha is refs/pull/N/merge on pull_request): the
@@ -695,6 +704,38 @@ fn compiler_gate_emit_build_notice_step() -> Step {
   }
 }
 
+// THE AUDIT'S OWN NOTICE, NEVER THE REQUIRED LANE'S. The audit job is not a required context: it
+// blocks no merge, and a scheduled run has no author whose change could have caused its red. The
+// required lane's lines ("BLOCKS your merge", "most likely yours") would be false there -- a
+// fabricated explanation at the one moment a stranger is reading (gunbc.design_argument::fail_closed;
+// process observability requires reports traceable to the facts and occurrences they describe).
+// These lines say what the lane is, what a red means, and what it does NOT gate.
+fn compiler_gate_parse_verdict_audit_notice_lines() -> List<String> {
+  list_append(
+    left: [
+      "parse-verdict-audit is the DAILY SCHEDULED MAIN AUDIT of the fresh parse-population walk and its receipt save (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24).",
+      "It is NOT a required check: a red here blocks no merge, and no pull-request author owns this run -- a scheduled audit has no author.",
+      "What a red means: this run's judged head of main failed the walk, the receipt save, or a subject arm before them. The required lane `v2-bootstrap` is a separate job and is unaffected by this one.",
+      "Consequence of leaving it red: the published parse-verdict receipts age past this lane's cadence (once daily is the freshness bound), and pull-request fast-lane reuse falls back to walking the nearest published ancestor. No gate degrades silently: the required lane still walks every module those receipts do not cover.",
+    ],
+    right: emit_build_memory_envelope_lines(ownership: gunbc_runner_slot_job_cgroup_ownership)
+  )
+}
+
+fn compiler_gate_parse_verdict_audit_notice_step() -> Step {
+  RunStep {
+    name: Present { value: "Why this scheduled audit is red, and what a red here means" },
+    id: none,
+    run: join(list_map(xs: compiler_gate_parse_verdict_audit_notice_lines(), f: emit_line_shell), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "failure()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(xs: required_ci_emitted_subject_obligations(), f: fn(subject) {
     CompilerGateBoundStep {
@@ -710,9 +751,11 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // default, and the `gunbc` binary the instruments are invoked through. NO NATIVE PRODUCT STORE STEP:
 // the job-private store root, the read and write federations and the save left with the 2026-10-09
 // ruling (header), because a job that may serve a restored final product cannot claim to have
-// emitted and built it. The parse-verdict publisher after the subject steps is a different store
+// emitted and built it. The parse-verdict publisher is a different store
 // (extdeps.cache.github_actions): it saves ParseVerdictRequest receipts after a passing live
-// parse-population on main only, via actions/cache/save, and never restores a compiler product.
+// parse-population on the default branch's clock only -- the scheduled audit job
+// (compiler_gate_parse_verdict_audit_job), not this job's tail since the operator ruling of
+// 2026-11-24 -- via actions/cache/save, and it never restores a compiler product.
 //
 // THE CARGO CACHE IS ORDINARY CARGO REUSE, which the same ruling leaves in place: the isolation step
 // wipes the job's CARGO_HOME on every run, so without it the seed build downloads the registry and
@@ -912,10 +955,15 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
 // needed to and each pull request based on that merge paid the full lane while it waited. The trust the old
 // position implied by ORDER ("everything earlier in the job was green") is now a condition on the steps
 // themselves: gunbc.read_set_publish fast_lane_publish_gate runs them only when both emit steps are green on
-// a default-branch push. A main run that fails the walk afterwards still reddens the required check on main,
-// still publishes no fresh parse-verdict receipts (that save stays behind the walk), and every pull request
-// re-runs parse-population with the CLI it restored, so a walk the unit's own CLI fails goes red on the
-// consumer. These steps stay OUT of the qualification floor below, which admits only prelude and subject
+// a default-branch push. The parse-population walk that used to sit behind these steps no longer runs
+// in this job at all (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24): the FRESH walk-and-publish arm moved to the
+// scheduled audit job. The required tail keeps restore/record/reuse, so a main run still walks every
+// module its receipts do not already cover and can still redden there; what moved is the unconditional
+// full re-walk with the run's own binary, and the freshness bound on published receipts became the
+// audit's cadence. The audit reddens on a walk its own CLI fails, and every pull request still re-runs
+// parse-population with the CLI it restored, so a walk the unit's own CLI fails goes red on the
+// consumer exactly as before. These steps stay OUT of the
+// qualification floor below, which admits only prelude and subject
 // steps and no step that can run past a failure.
 fn compiler_gate_fast_lane_publish_bound_steps() -> List<CompilerGateBoundStep> {
   [
@@ -1001,16 +1049,13 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
         role: capability_neutral,
         step_name: parse_verdict_reuse_walk_step_name,
       },
-      CompilerGateBoundStep {
-        step: parse_verdict_publish_walk_step(),
-        role: capability_neutral,
-        step_name: parse_verdict_publish_step_name,
-      },
-      CompilerGateBoundStep {
-        step: parse_verdict_publish_save_step(),
-        role: capability_neutral,
-        step_name: parse_verdict_save_step_name(),
-      },
+      // THE PUBLISH PAIR IS GONE FROM THE REQUIRED TAIL (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24). The walk it
+      // ran cost 512-646 s of this job's 3600 s cap (witnesses.yml step timings, runs 45488101298,
+      // 45488118062, 45490755718 -- all cancelled at ~3618 s on healthy srv1 runners at full speed,
+      // with the walk the step that never got to start), and the ruling moved it, coverage intact,
+      // to the scheduled audit job below. The restore/record/reuse steps stay: pull requests judge
+      // their own subject either way (a receipts miss re-parses from the tree), and the freshness
+      // bound on a published receipt set becomes the audit's cadence, one day.
       CompilerGateBoundStep {
         step: compiler_gate_emit_build_notice_step(),
         role: capability_neutral,
@@ -1018,6 +1063,117 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
       }
     ]
   )
+}
+
+// ═══ THE SCHEDULED PARSE-VERDICT AUDIT (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24, operator msg_9c5aaa2b) ═══
+//
+// WHAT MOVED AND WHY A JOB IN THIS WORKFLOW: the daily parse-population walk left the required job
+// (its 512-646 s is what pushed the required job past the 60-minute cap on healthy hosts), keeping
+// its argv, its cache key and its publish policy unchanged, and it now runs as a second job gated
+// to the clock. It lives in THIS workflow because it re-runs THIS lane's own chain -- same steps,
+// same admission path, same selected runner target, no second spelling of the build -- while a new
+// workflow file would need its own runner-group admission and a second surface to keep healthy for
+// one daily step. WHAT THE FLEET PAYS: one job-hour a day, in the group no push queues behind.
+//
+// THE CADENCE: once daily at 03:37Z, chosen off the fleet's quiet hours -- fleet-converge holds
+// 06:00Z and drift-watch 05:17Z -- so no schedule collides with another fleet-bound authority and
+// the audit adds its hour to slack capacity rather than to peak contention.
+data parse_verdict_audit_cron: CronSchedule = CronSchedule {
+  minute: Exact { value: 37 },
+  hour: Exact { value: 3 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+data parse_verdict_audit_job_id: String = "parse-verdict-audit"
+
+// THE AUDIT RUNS THE REQUIRED LANE'S OWN CHAIN, UNDISGUISED: the judged tree with the contract-stamp
+// guard and its evidence (the instruction/subject pairing is needed exactly as much on a scheduled
+// run -- gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions is a
+// SCHEDULED-ADJACENT split specimen), the fleet head's toolchain, the cargo cache, the seed build,
+// the homes guard, and both emitted subjects -- because the walk consumes the generation-one native
+// CLI the subject arm builds in THIS job. THREE THINGS ARE LEFT OUT, each by stated reason: the v1
+// unit-test typecheck (the required lane's coverage, not the walk's input), the fast-lane decision/
+// stage/checks (the audit publishes TO the unit's consumers and never consumes a unit; and a restored
+// unit must never be re-published as this run's fresh product -- gunbc.parse_verdict_publish's
+// fresh-product rule), and the parse-verdict restore/record/reuse steps (the audit IS the fresh walk;
+// restoring receipts to then save them would publish an ancestor's product under this run's key).
+// The failure notice is the AUDIT'S OWN (compiler_gate_parse_verdict_audit_notice_step), never the
+// required lane's: the audit blocks no merge and has no author, so the required lane's "BLOCKS your
+// merge" and "most likely yours" arms would fabricate ownership at the moment a reader needs facts
+// (gunbc.design_argument::fail_closed). A red 03:37Z run is still a report somebody has to read.
+// THE FAST-LANE CONDITIONS ARE NOT CARRIED IN, THEY ARE LEFT OUT: the required job hangs "unless the
+// fast lane reused" conditions on the seed build and the subject arms at ASSEMBLY time
+// (compiler_gate_fast_lane_guarded); the audit binds no decision step, so it deliberately assembles
+// those steps unconditioned -- every audit run builds, like the qualification floor
+// (compiler_gate_floor_steps_after_checkout). The only steps allowed to be condition-skipped here are
+// the publish pair, whose guards are passed in explicitly for exactly that reason.
+fn compiler_gate_parse_verdict_audit_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(
+    concat(
+      compiler_gate_fleet_judged_head_bound_steps(),
+      concat(
+        compiler_gate_fleet_toolchain_bound_steps(),
+        [
+          compiler_gate_cache_cargo_bound_step(),
+          compiler_gate_seed_build_bound_step(),
+          compiler_gate_homes_guard_bound_step(),
+        ],
+      ),
+    ),
+    concat(
+      compiler_gate_emit_build_subject_bound_steps(),
+      [
+        CompilerGateBoundStep {
+          step: parse_verdict_publish_walk_step_guarded(if_value: materialization_audit_publish_if()),
+          role: capability_neutral,
+          step_name: parse_verdict_publish_step_name,
+        },
+        CompilerGateBoundStep {
+          step: parse_verdict_publish_save_step_guarded(if_value: materialization_audit_publish_if()),
+          role: capability_neutral,
+          step_name: parse_verdict_save_step_name(),
+        },
+        CompilerGateBoundStep {
+          step: compiler_gate_parse_verdict_audit_notice_step(),
+          role: capability_neutral,
+          step_name: "Why this scheduled audit is red, and what a red here means",
+        },
+      ]
+    ),
+  )
+}
+
+fn compiler_gate_parse_verdict_audit_job_of(profile: RepositoryCiProfile) -> Job {
+  Job {
+    id: parse_verdict_audit_job_id,
+    name: none,
+    runner: ci_runner_target_spec(target: profile.roster.runner),
+    environment: none,
+    steps: list_map(xs: compiler_gate_parse_verdict_audit_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: Present { value: compiler_gate_required_job_env() },
+    outputs: none,
+    // SCHEDULE ONLY, AND NOT EVEN workflow_dispatch: a heal revalidation dispatch of this workflow
+    // would otherwise also burn an hour of fleet on an audit its verdict does not need. Pull requests
+    // never run this job, so pull requests still never publish -- the same policy edge
+    // materialization_audit_publish_if states at step grain, now stated at job grain too.
+    if_condition: Present { value: "github.event_name == 'schedule'" },
+    // THE SAME CEILING AS THE REQUIRED JOB, READ FROM THE SAME ROSTER ROW rather than copied: the
+    // audit's work is the required job's chain plus the walk, which is what that 60-minute cap
+    // measured on healthy hosts (runs 45473779590 and 45476598011 passed the same steps inside it).
+    // Reading the row keeps ci_job_budgets_closed_to_growth honest -- if the ceiling ever shrinks,
+    // the audit shrinks with it; nothing here can grow it.
+    timeout_minutes: Present { value: minute_count(m: profile.roster.timeout) },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: compiler_gate_permissions }
+  }
+}
+
+fn compiler_gate_parse_verdict_audit_job() -> Job {
+  compiler_gate_parse_verdict_audit_job_of(profile: gunbc_repository_ci_profile())
 }
 
 fn compiler_gate_emit_build_capability_closure_holds() -> Bool {
@@ -1173,7 +1329,10 @@ fn compiler_gate_workflow_of(profile: RepositoryCiProfile) -> Workflow {
   Workflow {
   name: witness_floor_workflow_name,
   run_name: none,
-  on: list_append(left: witness_floor_triggers(), right: [WorkflowCall { inputs: [compiler_gate_compose_caller_input] }]),
+  on: list_append(
+    left: list_append(left: witness_floor_triggers(), right: [WorkflowCall { inputs: [compiler_gate_compose_caller_input] }]),
+    right: [Schedule { cron: parse_verdict_audit_cron }]
+  ),
   concurrency: Present {
     value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
   },
@@ -1187,7 +1346,11 @@ fn compiler_gate_workflow_of(profile: RepositoryCiProfile) -> Workflow {
     kv(key: (compiler_gate_contract_stamp_env_key as String), value: yaml_string(s: compiler_gate_contract_stamp_yaml_value()))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-    jobs: [compiler_gate_required_job_of(profile: profile)]
+    // THE REQUIRED JOB, AND THE CLOCK'S AUDIT — two jobs, no third: the claim
+    // (test.claim.compiler_gate_emit_build_lane_witness the_workflow_runs_exactly_the_required_job_and_the_audit)
+    // admits exactly these two ids and reds on any other, so a regrown aggregate or a returned lane
+    // is a refusal, not a review miss.
+    jobs: [compiler_gate_required_job_of(profile: profile), compiler_gate_parse_verdict_audit_job_of(profile: profile)]
   }
 }
 
