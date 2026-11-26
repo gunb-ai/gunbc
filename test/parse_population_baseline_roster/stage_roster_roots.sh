@@ -17,6 +17,14 @@
 # re-asserts byte+path existence while staging, so the SAME wrong row that fails the reconcile also aborts
 # staging before the verb runs. Two legs, one roster, one authority.
 #
+# REGEX READ = DECLARED RUNG DROP (review 98809 F2); RANK SELECTION = MODELLED RULE (review 98809 F1).
+# Like run_evidence.sh, the rows/constants are read from the .dag source by awk/grep/sed -- a second reader
+# beside the grammar whose gap (a MISPARSED FIELD, which the count guard does not catch) is declared as the
+# typed rung drop parse_population_carrier_reader_rung_drop in the carrier with a bounded trigger. The rank
+# split below (first parse_population_five_largest_count = FiveLargest, the rest = size-tail) APPLIES the
+# selection order that is modelled and checked in the carrier (parse_population_selection_precedes + its
+# top-N/path-tiebreak discriminators), so this script is transport, not the authority for the rule.
+#
 # SCAFFOLD - dissolve-on (removal marker; both triggers named, per the accepted precedent
 # test/compiler_gate_contract_stamp/run_evidence.sh which is about ITS case, as this header is about ours):
 #   (1) RESIDUAL SHELL capability: once v2.extdeps.languages.bash_build emitted node kinds can render

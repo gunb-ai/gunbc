@@ -16,6 +16,12 @@ import gunbc.parse_population_baseline_roster {
   parse_population_unreconciled_row_count,
   parse_population_mistyped_real_row_slice,
   parse_population_correct_real_row_slice,
+  parse_population_roster_is_selected_sorted,
+  parse_population_top_n_excludes_overflow,
+  parse_population_top_n_accepts_full_window,
+  parse_population_top_n_breaks_tie_by_path,
+  parse_population_selection_refuses_misordered_tie,
+  parse_population_carrier_reader_rung_drop_ledger_line,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -70,6 +76,31 @@ test fn parse_population_ordering_refuses_ascending_holds() -> Bool {
   parse_population_ordering_refuses_ascending()
 }
 
+// THE SELECTION RULE AS A TYPED ALGORITHM (review 98809 F1). The rule "top N by blob size descending,
+// then path ascending for the tiebreak" was an unchecked comment plus a shell sort; it now lives in
+// the carrier and is EXECUTED here, so the shell runner is transport, not the authority for the rule
+// (how_to_work: "raw shell implementing semantics expressible in .dag"). The roster is checked against
+// its own modelled top-N order.
+test fn parse_population_selection_rule_is_modelled_holds() -> Bool {
+  parse_population_roster_is_selected_sorted()
+}
+
+// DISCRIMINATING PAIR for the top-N window: [30,20,10] top-2 leaves exactly one row outside, top-3
+// leaves none. A window that always said "inside" fails the first; "always outside" fails the second
+// (executed_red_control_names_its_failing_commit).
+test fn parse_population_top_n_window_discriminates_holds() -> Bool {
+  parse_population_top_n_excludes_overflow()
+    && parse_population_top_n_accepts_full_window()
+}
+
+// TIEBREAK IS MODELLED, not just size: at equal blob size the smaller path wins the slot. The
+// size-only ordering check above cannot distinguish two equal sizes; this claim proves the path
+// component of the comparator is real, so a stored order that breaks the path tiebreak turns red.
+test fn parse_population_selection_breaks_tie_by_path_holds() -> Bool {
+  parse_population_top_n_breaks_tie_by_path()
+    && parse_population_selection_refuses_misordered_tie()
+}
+
 // Disjointness/uniqueness over the whole roster via keyed_roster_build's Built arm.
 test fn parse_population_baseline_roster_is_unique_holds() -> Bool {
   parse_population_is_unique()
@@ -87,11 +118,13 @@ test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
 // CARRIER <-> TREE reconciliation, BOTH arms (the load-bearing instrument that ties these rows to the
 // tree; review 98443). ACCEPT: the correct real-row slice reconciles fully (zero unreconciled rows).
 // REFUSE: the same slice with one REAL row's byte size mistyped is NOT fully reconciled — a real wrong
-// row drives the refusal. This test exercises ONLY this predicate against hand-built reference row-sets;
-// it does NOT read `git ls-tree` and does NOT read the 170-row roster. The reconciliation of ALL 170 rows
-// against `git ls-tree -r -l <pinned_sha>` (green diff rc 0; a mistyped row drives it rc nonzero) is a
-// MANUAL check recorded in the measurement report §4a that NO lane runs — see review 98730 finding 1 and
-// the report's named limitation. The name says exactly what runs: the predicate refuses one bad row.
+// row drives the refusal. This claim_batch test exercises ONLY the comparison predicate against
+// hand-built reference row-sets; it does NOT itself read `git ls-tree` and does NOT read the 170-row
+// roster (no filesystem in the language). The reconciliation of ALL 170 rows against
+// `git ls-tree -r -l <pinned_sha>` (green diff rc 0; a mistyped row drives it rc nonzero) is executed by
+// the committed runner test/parse_population_baseline_roster/run_evidence.sh — the last execution of that
+// path — recorded as a green-by-execution run link (legs A/B/C); gunbc CI executes no claims, so no CI
+// lane runs it. The name says exactly what THIS claim judges: the predicate refuses one bad row.
 test fn parse_population_reconcile_predicate_refuses_bad_row_holds() -> Bool {
   parse_population_reconcile_accepts_correct_slice()
     && parse_population_reconcile_refuses_mistyped_slice()
@@ -107,4 +140,13 @@ fn parse_population_roster_red_control_mistyped_row_fails() -> Bool {
   parse_population_unreconciled_row_count(
     declared: parse_population_mistyped_real_row_slice(),
     tree: parse_population_correct_real_row_slice()) == 0
+}
+
+
+// THE F2 RUNG DROP IS DECLARED AND READ: the carrier's regex-reader limitation
+// (parse_population_carrier_reader_rung_drop) is rendered by its consumer into a ledger line; this guard
+// fails if that limitation text is ever deleted while the runners still read the carrier by regex
+// (source_annotations; review 98809 F2). Presence is the guard; the substance is the bounded-trigger text.
+test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
+  parse_population_carrier_reader_rung_drop_ledger_line() != ""
 }

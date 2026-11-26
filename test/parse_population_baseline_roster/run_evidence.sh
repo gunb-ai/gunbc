@@ -18,6 +18,14 @@
 # parse_population_baseline_pinned_sha OUT OF THE CARRIER and prints it BY NAME, so the constant's consumer
 # is an executed leg, not a claim about a run (review 98730 / warm-fox).
 #
+# THE REGEX READ IS A DECLARED RUNG DROP (review 98809 F2). This script reads the carrier rows/constants
+# with awk/grep/sed -- a second reader beside the grammar (closed_grounded_substrate). What it CANNOT catch
+# is a MISPARSED FIELD (a row split across lines, or the sha moved onto the `data` line); the count guard
+# catches a DROPPED row only. That gap is not hidden: it is declared as the typed rung drop
+# parse_population_carrier_reader_rung_drop in the carrier, with a bounded trigger (a compiler CLI that
+# evaluates parse_population_baseline_rows, route A; or operator scaffold approval, route B). The selection
+# RULE this script applies is NOT one of those gaps -- it is modelled and checked in the carrier (F1, above).
+#
 # SCAFFOLD - dissolve-on (the removal marker review 98730 asked for): retire this file when EITHER
 #   (1) v2.extdeps.languages.bash_build emitted node kinds can render extract / ls-tree / diff as an
 #       emitted step (same capability and rationale as test/compiler_gate_contract_stamp/run_evidence.sh), or
@@ -51,6 +59,11 @@ awk '/^data parse_population_baseline_rows: List<ParsePopulationRow> = \[/{f=1;n
 carrier_n="$(wc -l < "$carrier_rows")"
 
 # 3. the tree at that sha: top-170 .dag blobs under the two governed roots, byte-size desc then path.
+#    The ORDER RULE here (`sort -k1,1nr -k2,2 | head -N`) is TRANSPORT, not the authority: the selection
+#    algorithm is modelled and checked in the carrier (parse_population_selection_precedes with its
+#    top-N window parse_population_rows_outside_top_n and the path-tiebreak discriminators, executed in the
+#    witness as review 98809 F1). This sort must reproduce that modelled order; a carrier edit that changed
+#    the comparator turns the reconcile below red, and the witness catches a comparator degeneration.
 git ls-tree -r -l "$sha" -- dag src/v2 \
   | awk '$4 ~ /^[0-9]+$/ && $5 ~ /\.dag$/ {print $4"\t"$5}' \
   | sort -t"$(printf '\t')" -k1,1nr -k2,2 | head -"$expected_rows" > "$tree_top"

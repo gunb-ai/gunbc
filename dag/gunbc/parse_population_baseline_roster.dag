@@ -5,6 +5,7 @@ import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
 import std.algebra { count_where, fold_list, list_push }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 // THE PARSE-POPULATION BASELINE ROSTER: the single typed authority for the two fixed parse
 // populations named by roadmap row emission-real-consumer-profiles first_slice ("the 5 largest dag
@@ -40,6 +41,31 @@ data parse_population_five_largest_count: Int = 5
 // planted-row refusal so the count is discriminating, not a constant readback (warm-fox rule: a check
 // must prove it measured; review 98328).
 data parse_population_expected_total_count: Int = 170
+
+// DECLARED RUNG DROP (review 98809 F2; warm-fox-517 ruling: the hole gets a typed rung drop with a
+// bounded trigger, the same carrier the sibling hand-shell scaffold uses at
+// gunbc/auth/approval_ci_step.dag:144). The committed runners
+// test/parse_population_baseline_roster/run_evidence.sh and stage_roster_roots.sh read
+// parse_population_baseline_pinned_sha, the counts and the 170 parse_population_baseline_rows out of THIS
+// .dag SOURCE with awk/grep/sed -- a SECOND READER beside the real grammar
+// (gunbc.design_argument::closed_grounded_substrate: "emission, ingestion and coercion are ONE total
+// decision procedure ... N models, not N x M adapters").
+// RUNG ACTUALLY CLAIMED: the carrier's typed predicates discriminate the modelled selection order
+// (parse_population_selection_precedes with its top-N and path-tiebreak pair, executed in the witness), and
+// the runner feeds them tree-derived (path, bytes); the tree comparison is the last execution of that path,
+// green-by-execution as a run link. RUNG THE CONTRACT WANTS: the rows are read THROUGH that single total
+// decision procedure -- the compiler. THE GAP is the regex reader.
+// WHAT IT CANNOT CATCH (review 98809): a MISPARSED FIELD. A row broken across two lines, or the sha moved
+// onto the `data ... =` line, silently changes what the awk extracts. The count guard
+// (carrier row count != parse_population_expected_total_count) catches a DROPPED row, not a field parsed
+// wrong. So the reconciliation is discriminating for omissions but not for a reformat that misparses a field.
+// BOUNDED TRIGGER -- DISSOLVES WHEN either: (route A) the rows are read through the compiler by a CLI that
+// evaluates parse_population_baseline_rows and prints it -- the compiler-CLI planning row warm-fox-517 is
+// raising through neat-badger-614 (id pending from that row); OR (route B) the operator grants scaffold
+// approval outside the diff, after which this reader is SANCTIONED scaffold carrying exactly this named
+// limitation. It is bounded: it discharges on that CLI or that ruling, not on an open-ended future capability.
+data parse_population_carrier_reader_rung_drop: DissolutionCondition = unbound_dissolution(
+  description: "🟡 dissolve-on: run_evidence.sh and stage_roster_roots.sh read parse_population_baseline_rows / pinned_sha / counts from THIS .dag source by awk/grep/sed -- a second reader beside the grammar (closed_grounded_substrate). Claimed rung: carrier typed predicates model + discriminate the selection order (top-N by blob size, path tiebreak) and the runner feeds them tree-derived (path,bytes); contract rung: rows read THROUGH the compiler. Gap: the regex reader cannot catch a MISPARSED FIELD (a row split across lines, or the sha on the data line); the count guard catches a DROPPED row only. DISSOLVES WHEN a compiler CLI evaluates parse_population_baseline_rows and prints it (route A, the planning row warm-fox-517 raises via neat-badger-614), OR the operator grants scaffold approval outside the diff (route B).")
 
 // DECLARED DEPARTURE (gunbc.design_argument::epistemic_humility): the row calls the second population
 // "a 165-module sample"; as SELECTED it is NOT a uniform/stratified sample — it is the NEXT 165 files by
@@ -405,6 +431,117 @@ fn parse_population_ordering_refuses_ascending() -> Bool {
   parse_population_check_rows_ordered_descending(parse_population_rows_ascending()) == false
 }
 
+// ---- THE SELECTION RULE AS A TYPED ALGORITHM (review 98809 F1) ----
+// The rule "top N .dag blobs by BLOB SIZE descending, then PATH ascending for a stable tiebreak"
+// was an unchecked comment plus a shell `sort -k1,1nr -k2,2 | head`. That made the shell the
+// authority for the rule (how_to_work: "raw shell implementing semantics expressible in .dag").
+// The rule's ALGORITHM now lives here and is checked with a discriminating pair; the shell runner is
+// reduced to transport that hands over tree-derived (path, bytes) and applies this modelled order.
+// The comparator: a precedes b in the selection order iff a is strictly larger, or they tie and
+// a.path sorts first. measure_le gives ByteSize <=; String < gives the canonical path order (the same
+// order std.algebra string_compare_canonical declares). Int < bounds the top-N window.
+
+fn parse_population_selection_precedes(a: ParsePopulationRow, b: ParsePopulationRow) -> Bool {
+  let strictly_larger: Bool = measure_le(a: b.bytes, b: a.bytes) && (a.bytes == b.bytes) == false
+  let tie_earlier_path: Bool = (a.bytes == b.bytes) && (a.path < b.path)
+  strictly_larger || tie_earlier_path
+}
+
+// How many rows precede `row` in the modelled order -- its 0-based rank. A row is inside the top-N
+// window when its rank is < n, exactly the semantics of `sort ... | head n`.
+fn parse_population_preceding_count(
+    row: ParsePopulationRow, all: List<ParsePopulationRow>) -> Int {
+  count_where(xs: all, predicate: fn(other) {
+    parse_population_selection_precedes(a: other, b: row)
+  })
+}
+
+fn parse_population_row_in_top_n(
+    row: ParsePopulationRow, all: List<ParsePopulationRow>, n: Int) -> Bool {
+  parse_population_preceding_count(row: row, all: all) < n
+}
+
+fn parse_population_rows_outside_top_n(
+    all: List<ParsePopulationRow>, n: Int) -> Int {
+  count_where(xs: all, predicate: fn(r) {
+    parse_population_row_in_top_n(row: r, all: all, n: n) == false
+  })
+}
+
+// The roster-side full-rule ordering: adjacent pairs must satisfy the comparator, so a stored order
+// that breaks the PATH tiebreak (two equal sizes stored path-descending) turns red -- something the
+// size-only check_rows_ordered_descending cannot catch, because it ignores path.
+type ParseSelectedScan {
+  started: Bool
+  prev: ParsePopulationRow
+  ok: Bool
+}
+
+fn parse_population_rows_sorted_by_selection_rule(rows: List<ParsePopulationRow>) -> Bool {
+  let step = fold_list(xs: rows,
+    empty: ParseSelectedScan {
+      started: false, prev: ParsePopulationRow { path: "", bytes: byte_size(count: 0) }, ok: true,
+    },
+    cons: fn(acc, row) {
+      let in_order: Bool = if acc.started == false { true } else {
+        parse_population_selection_precedes(a: acc.prev, b: row)
+      }
+      ParseSelectedScan { started: true, prev: row, ok: acc.ok && in_order }
+    })
+  step.ok
+}
+
+fn parse_population_roster_is_selected_sorted() -> Bool {
+  parse_population_rows_sorted_by_selection_rule(parse_population_baseline_rows) == true
+}
+
+// DISCRIMINATORS. A top-N that always says "inside" or always "outside" is vacuous; these pins make
+// the algorithm itself fail if it degenerates (executed_red_control_names_its_failing_commit).
+//   top_n_excludes_overflow: [30,20,10] top-2 must leave exactly the smallest row outside -> 1.
+//   top_n_accepts_full_window: the same list top-3 leaves nothing outside -> 0.
+// A broken "everything is in" returns 0 for both (first pin fails); "everything is out" returns 3
+// for the second (second pin fails). Together they are discriminating, not a constant readback.
+fn parse_population_top_n_excludes_overflow() -> Bool {
+  parse_population_rows_outside_top_n(all: parse_population_rows_descending(), n: 2) == 1
+}
+
+fn parse_population_top_n_accepts_full_window() -> Bool {
+  parse_population_rows_outside_top_n(all: parse_population_rows_descending(), n: 3) == 0
+}
+
+// TIEBREAK DISCRIMINATOR. Two equal-size rows; the selection order keeps the smaller path. top-1
+// must keep "tie_a.dag" and drop "tie_b.dag"; a comparator that ignored path (the size-only check)
+// could not distinguish them.
+fn parse_population_tie_rows() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/tie_a.dag", bytes: byte_size(count: 30) },
+    ParsePopulationRow { path: "probe/tie_b.dag", bytes: byte_size(count: 30) },
+  ]
+}
+
+fn parse_population_top_n_breaks_tie_by_path() -> Bool {
+  parse_population_row_in_top_n(
+    row: ParsePopulationRow { path: "probe/tie_a.dag", bytes: byte_size(count: 30) },
+    all: parse_population_tie_rows(), n: 1) == true
+    && parse_population_row_in_top_n(
+      row: ParsePopulationRow { path: "probe/tie_b.dag", bytes: byte_size(count: 30) },
+      all: parse_population_tie_rows(), n: 1) == false
+}
+
+// The full-rule sorted check must REFUSE a stored order that breaks the path tiebreak (b before a at
+// equal size), which the size-only ordering check would wrongly accept.
+fn parse_population_tie_rows_misordered() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/tie_b.dag", bytes: byte_size(count: 30) },
+    ParsePopulationRow { path: "probe/tie_a.dag", bytes: byte_size(count: 30) },
+  ]
+}
+
+fn parse_population_selection_refuses_misordered_tie() -> Bool {
+  parse_population_rows_sorted_by_selection_rule(parse_population_tie_rows_misordered()) == false
+}
+
+
 
 
 // Path uniqueness CHECK: map each member to a KeyedRow keyed by its own path (the single stored
@@ -489,3 +626,11 @@ fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
     tree: parse_population_correct_real_row_slice()) >= 1
 }
 
+// CONSUMER of the rung-drop above: renders the declared limitation into a ledger line so the carrier
+// text is read by a real route rather than left an unchecked comment
+// (gunbc.design_argument::source_annotations; the same shape gunbc/auth/approval_ci_step.dag:205 uses for
+// its scaffold trigger). The witness guards this line is present, so the limitation cannot be deleted
+// while the runner still reads the carrier by regex.
+fn parse_population_carrier_reader_rung_drop_ledger_line() -> String {
+  concat("rung-drop: ", dissolution_description(condition: parse_population_carrier_reader_rung_drop))
+}
