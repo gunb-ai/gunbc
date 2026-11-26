@@ -31,11 +31,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE ARMS WERE RE-POINTED ONTO THE ACTING ROUTE, on the row owner's authority. That authority is
 // NOT recorded here on purpose: a record of an oracle move kept inside the oracle it moves is the
-// weakest place it can sit. It is kept where it can be checked — the row this witness serves,
-// roadmap_node shell-dag-live-deploy-install-owned in dag/gunbc/roadmap/roadmap_authority.dag, plus
-// the authorization comment on the pull request carrying this row's change, which quotes the relay.
-// No pull-request number is promised here: a promise about someone else's future merge rots, and one
-// such promise in this file outlived its own pull request as a closed one.
+// weakest place it can sit. WHAT THE TREE ITSELF SAYS AT THIS HEAD, because the row is not part of
+// this change: the governing row — roadmap_node shell-dag-live-deploy-install-owned in
+// dag/gunbc/roadmap/roadmap_authority.dag — STILL reads "The acceptance witness ... is authored,
+// pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved." That row
+// does not record this move, and a reader holding only this tree should not infer that it does. The
+// authorization lives OUTSIDE the diff, which is where gunbc.design_argument::fail_closed puts a
+// temporary deviation: the authorization comment on the pull request carrying this row's change, which
+// quotes the row owner's relay. No pull-request number is promised for the row rewrite either — that
+// rewrite is a separate planning change and not this PR's to land, and a promise about someone else's
+// future merge rots (one such promise in this file outlived its own pull request as a closed one).
 // What the move did is visible in this file, so nothing else needs asserting here: the three claim
 // names are UNCHANGED and the ledger lines compare one-for-one across it, and only what each arm
 // reads changed — the adversarial and benign arms now read the acting route, where an adversarial
@@ -65,10 +70,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // later consumer, and nothing acting will ever consume rendered install text, because the acting route
 // is typed argv out of the ownership provider: #gunbc.owned_directory::owned_directory_install_argv builds
 // the words and #gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv admits them before any dispatch
-// (searches and hit counts in the PR receipt). A later stage with its own contract —
-// #extdeps.ssh.session::ssh_session_exec_portable_words and, over the fleet leg,
-// #gunbc.fleet.fleet_bootstrap_principal_session::exec_as_fleet_principal — then hands the
-// admitted words to ssh, where the far side's shell re-parses them; nothing claims otherwise. So the
+// (searches and hit counts in the PR receipt). A later stage with its own contract then hands the
+// admitted words to ssh, where the far side's shell re-parses them; nothing here claims otherwise.
+// That stage is the ssh session module's portable-words step (module extdeps.ssh.session, symbol
+// ssh_session_exec_portable_words) and, over the fleet leg,
+// #gunbc.fleet.fleet_bootstrap_principal_session::exec_as_fleet_principal. The ssh one is left
+// UNMARKED deliberately, not by omission: the fast-lane reference check reads that module but does not
+// normalize it, so a marker there cannot resolve and would promise a verification that does not happen
+// (measured: one refusal, CI run 45722642679 job 139584631603, exit 1, while twelve other extdeps
+// marker targets repo-wide do resolve). So the
 // inert-path predicate goes WITH the display it guarded and is not ported to the acting route: the
 // hazard it guarded was a path spliced into SHELL TEXT, and under execve a path carrying ';' is a
 // filename, not a command. The display's own three arms in dag/test/claim/live_deploy/emit.dag were
