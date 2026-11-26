@@ -8,8 +8,12 @@ import gunbc.serving.flex_aws_router_rows {
   FlexAwsEnrollable, FlexAwsRowFacts, FlexAwsRowsConverged, FlexAwsRowsRefused,
   flex_aws_rows_converge, flex_aws_ca_converge, flex_aws_pem_blocks,
   flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused, FlexAwsRouterReading, FlexAwsCardUse, flex_aws_row_instance_ids,
-  FlexAwsRowsConverge,
+  FlexAwsRowsConverge, FlexAwsCardTallies, FlexAwsTalliesRead, FlexAwsTalliesUnread, flex_aws_card_tallies,
 }
+import std.measure { MoneyPerHour, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import extdeps.languages.json.emit { json_object, serialize_json }
+import gunbc.serving.router_dev_policy { router_dev_stats_lines }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -21,7 +25,12 @@ data first_party: String = "[\{\"name\": \"srv1-vllm\", \"scheme\": \"https\", \
 data facts: FlexAwsRowFacts = FlexAwsRowFacts { model: "Qwen3.8-Flash-Next" as NonEmptyStr, max_model_len: 229376, port: 18000, sni: "pool-card" as NonEmptyStr, cap: 4, retain: 8, tier: 0 }
 
 fn card(id: String, ip: String, body: String) -> FlexAwsEnrollable {
-  FlexAwsEnrollable { instance_id: id as NonEmptyStr, public_ip: ip as NonEmptyStr, cert_pem: join(["-----BEGIN CERTIFICATE-----\n", body, "\n-----END CERTIFICATE-----\n"], ""), pool_key: "pk" }
+  FlexAwsEnrollable { instance_id: id as NonEmptyStr, public_ip: ip as NonEmptyStr, cert_pem: join(["-----BEGIN CERTIFICATE-----\n", body, "\n-----END CERTIFICATE-----\n"], ""), pool_key: "pk", hourly: none, billed_since_unix: none }
+}
+
+// A card whose rate and billing start the pass read.
+fn billed_card(id: String, micros: Int, since: Int) -> FlexAwsEnrollable {
+  FlexAwsEnrollable { instance_id: id as NonEmptyStr, public_ip: "3.4.5.6" as NonEmptyStr, cert_pem: "-----BEGIN CERTIFICATE-----\nCCCC\n-----END CERTIFICATE-----\n", pool_key: "pk", hourly: Present { value: MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd } }, billed_since_unix: Present { value: since } }
 }
 
 data bundle: String = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n"
@@ -212,4 +221,90 @@ fn ca_keeps_the_unseen_certificate() -> Bool {
   let with_two = flex_aws_ca_converge(current: bundle, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC"), card(id: "i-0def", ip: "3.4.5.7", body: "DDDD")], keep_ids: []).text
   let kept = flex_aws_ca_converge(current: with_two, cards: [], keep_ids: ["i-0abc"]).text
   kept.contains("CCCC") && !kept.contains("DDDD") && kept.contains("AAAA")
+}
+
+// ---- what a card costs, as its row tells the router ------------------------------------------------------
+
+// A RENTED ROW CARRIES ITS RATE AND ITS BILLING START WHEN THE PASS READ THEM, AND OMITS THEM WHEN IT DID NOT
+// (operator 2026-11-26: the router must know what a card costs to say whether it earns it). The rate is rendered from
+// micros as a decimal USD numeral (2350500 -> 2.3505, a whole 3000000 -> 3); a card the pass could not price carries
+// neither field, never a zero, so the router reports its spend as null. And a withdrawn card's resting row KEEPS both,
+// so the router can still price the card after it stops routing to it.
+// RED: rendering an unread rate as 0 fails the second arm; dropping the members fails the first; a retire that
+// rebuilt the row from the routed shape fails the third.
+test fn a_rented_row_carries_its_rate_and_billing_start_only_when_read() -> Bool {
+  (match converge(current: first_party, cards: [billed_card(id: "i-0abc", micros: 2350500, since: 1795575540)], now: 1795575600) {
+    FlexAwsRowsConverged { text: t, added: _, retired: _, expired: _, changed: _, routed: _ } =>
+      t.contains("\"hourly_usd\": 2.3505") && t.contains("\"billed_since_unix\": 1795575540")
+        && (match converge(current: t, cards: [], now: 1795575700) {
+          FlexAwsRowsConverged { text: resting, added: _, retired: r, expired: _, changed: _, routed: _ } => (r == ["aws-i-0abc"]) && resting.contains("\"in_service\": false") && resting.contains("\"hourly_usd\": 2.3505") && resting.contains("\"billed_since_unix\": 1795575540")
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+    FlexAwsRowsRefused { cause: _ } => false
+  })
+  && (match converge(current: first_party, cards: [billed_card(id: "i-0abc", micros: 3000000, since: 1)], now: 2) {
+    FlexAwsRowsConverged { text: t, added: _, retired: _, expired: _, changed: _, routed: _ } => t.contains("\"hourly_usd\": 3,")
+    FlexAwsRowsRefused { cause: _ } => false
+  })
+  && (match converge(current: first_party, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], now: 1000) {
+    FlexAwsRowsConverged { text: t, added: _, retired: _, expired: _, changed: _, routed: _ } => t.contains("\"name\": \"aws-i-0abc\"") && !t.contains("hourly_usd") && !t.contains("billed_since_unix")
+    FlexAwsRowsRefused { cause: _ } => false
+  })
+}
+
+// ---- one card's tallies, as the router reports them -------------------------------------------------------
+
+// SUPPLIED: /router/stats usage_by_route as gunbc.serving.router_dev_policy renders it (version 1, one entry per row): one
+// card row with turns, priced at a comparison value, and a row with none (null turn times, no comparison value). The
+// render-to-reading run is the router proxy falsifier's dev_usage_by_route_carries_each_rows_card_facts, which feeds the
+// rendered router's real stats to flex_aws_route_tallies; it emits but its native crate does not build on the arm64
+// fleet (the pre-existing extdeps_runtime_abi_aapcs64 / std_measure emission failure), so it has not executed yet.
+fn route_stats(version: String, rows: String) -> String {
+  join(["\{\"rented\": \{}, \"usage_by_route\": \{\"version\": ", version, ", \"epoch\": \"1795570000\", \"routes\": ", rows, ", \"unattributed\": \{}}}"], "")
+}
+
+data busy_row: String = "\{\"name\": \"aws-i-0a\", \"state\": \"resting\", \"billing\": \"rented\", \"requests\": 7, \"failed_requests\": 1, \"prompt_tokens\": 7001, \"completion_tokens\": 3003, \"cached_prompt_tokens\": 5001, \"comparison_value_usd\": 0.002518, \"first_turn_unix\": 1795575000, \"last_turn_unix\": 1795575500, \"spend_usd\": 0.65}"
+
+data idle_row: String = "\{\"name\": \"aws-i-0b\", \"state\": \"in_service\", \"billing\": \"rented\", \"requests\": 0, \"failed_requests\": 0, \"prompt_tokens\": 0, \"completion_tokens\": 0, \"cached_prompt_tokens\": 0, \"first_turn_unix\": null, \"last_turn_unix\": null, \"spend_usd\": null}"
+
+fn tallies_text(t: FlexAwsCardTallies) -> String {
+  match t { FlexAwsTalliesRead { members: ms } => serialize_json(v: json_object(members: ms))  FlexAwsTalliesUnread { cause: c } => concat("UNREAD ", c) }
+}
+
+// A CARD'S TALLIES ARE THE ROUTER'S OWN NUMBERS, COPIED: the card's row is found by its name, every counter is the
+// router's lexeme, and a turn time the router wrote null -- or a comparison value it left out, no turn having been
+// priced -- is recorded null. RED: matching the first row rather than the card's would give i-0b's tallies i-0a's
+// counts; defaulting an absent field to 0 would make the idle card's comparison value 0.
+test fn a_cards_tallies_are_the_routers_own_numbers() -> Bool {
+  let body = route_stats(version: "1", rows: join(["[", busy_row, ", ", idle_row, "]"], ""))
+  (tallies_text(t: flex_aws_card_tallies(body: body, instance_id: "i-0a" as NonEmptyStr)) == "\{\"requests\": 7, \"failed_requests\": 1, \"prompt_tokens\": 7001, \"completion_tokens\": 3003, \"cached_prompt_tokens\": 5001, \"comparison_value_usd\": 0.002518, \"first_turn_unix\": 1795575000, \"last_turn_unix\": 1795575500}")
+    && (tallies_text(t: flex_aws_card_tallies(body: body, instance_id: "i-0b" as NonEmptyStr)) == "\{\"requests\": 0, \"failed_requests\": 0, \"prompt_tokens\": 0, \"completion_tokens\": 0, \"cached_prompt_tokens\": 0, \"comparison_value_usd\": null, \"first_turn_unix\": null, \"last_turn_unix\": null}")
+}
+
+// TALLIES THE ROUTER DID NOT GIVE ARE UNREAD, WITH THE CAUSE -- never a row of zeros: a router that predates the
+// per-row meter, a meter of another version, a card the router lists no row for (an empty list arrives as {}), and a
+// counter that is not a number. RED: any arm answering FlexAwsTalliesRead.
+fn unread(b: String, id: String, needle: String) -> Bool {
+  match flex_aws_card_tallies(body: b, instance_id: id as NonEmptyStr) { FlexAwsTalliesUnread { cause: c } => c.contains(needle)  FlexAwsTalliesRead { members: _ } => false }
+}
+
+test fn tallies_the_router_did_not_give_are_unread_with_their_cause() -> Bool {
+  unread(b: "\{\"rented\": \{}}", id: "i-0a", needle: "no usage_by_route")
+    && unread(b: route_stats(version: "2", rows: join(["[", busy_row, "]"], "")), id: "i-0a", needle: "not version 1")
+    && unread(b: route_stats(version: "1", rows: "\{}"), id: "i-0a", needle: "lists no row aws-i-0a")
+    && unread(b: route_stats(version: "1", rows: join(["[", busy_row, "]"], "")), id: "i-0z", needle: "lists no row aws-i-0z")
+    && unread(b: route_stats(version: "1", rows: "[\{\"name\": \"aws-i-0a\", \"requests\": \"seven\", \"failed_requests\": 0, \"prompt_tokens\": 0, \"completion_tokens\": 0, \"cached_prompt_tokens\": 0}]"), id: "i-0a", needle: "requests")
+    && unread(b: "not json", id: "i-0a", needle: "not one JSON document")
+}
+
+// A ROUTE ROW'S COMPARISON VALUE IS ALWAYS A NUMBER: the sum over its priced turns, 0 when it has none (its unpriced
+// turns are counted in unpriced_requests). The reader that consumes usage_by_route, ctrl's session dashboard
+// (scripts/session-dashboard/lib/owned_pool_cost.mjs parseRouteUsage), requires a finite non-negative value for every
+// counter in its COUNTERS list -- comparison_value_usd included -- on every row, and refuses the WHOLE per-card table
+// when one row lacks it, so an absent value on one idle card blanks every card. This reads the rendered stats Lua; its
+// executing route is the router proxy falsifier's dev_usage_by_route_carries_each_rows_card_facts (aq2, rented, with no
+// priced turn, must read 0), which does not yet build on the arm64 fleet.
+// RED: rendering the route row's value as `value_micro and value_micro / 1000000 or nil` (absent when unpriced).
+test fn a_route_rows_comparison_value_is_the_priced_sum_and_never_absent() -> Bool {
+  any(router_dev_stats_lines(), l => l.contains("comparison_value_usd = (value_micro or 0) / 1000000,"))
 }

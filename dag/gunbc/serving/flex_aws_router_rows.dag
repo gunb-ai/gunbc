@@ -4,7 +4,9 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim, length }
 import std.list { distinct_by_key, first_where }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonNumber, JsonBool, JsonArray, JsonObject, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonString, JsonNumber, JsonBool, JsonArray, JsonObject, json_kv, json_string, json_int, json_bool, json_array, json_object, json_null, json_number_from_lexeme_string, serialize_json }
+import std.measure { MoneyPerHour, money_per_hour_micros, money_micro_fraction_digits }
+import std.decimal { fixed_point_trimmed_wire }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
 
 // THE AWS SPOT CARDS AS RENTED ROWS OF THE SRV1 ROUTER (gunbc.plans.aws_spot_serving section 4, enroll).
@@ -27,11 +29,19 @@ data flex_aws_ca_tag: String = "# gunbc-flex "
 // router pins exactly that certificate; proxy_ssl_verify is on at depth 1), and the pool key the loop
 // minted for it. A card is enrollable only once all three are read AND it answered /health over the pinned
 // certificate; the pass decides that, this module only renders.
+//
+// AND WHAT IT COSTS, so the router can say whether a rented card earns its rate (operator 2026-11-26): the rate the
+// card is billed at and the second its billing began. Each is a reading the pass makes (gunbc.fleet.flex_aws_pass
+// flex_aws_card_billing: the spot price it observed for the card's zone and type, and the card's EC2 launch time),
+// and each is ABSENT when that reading failed -- the row then omits the field, and the router reports the card's
+// spend as null. Never a zero: a zero rate would read as a free card.
 type FlexAwsEnrollable {
   instance_id: NonEmptyStr
   public_ip: NonEmptyStr
   cert_pem: String
   pool_key: String
+  hourly: MoneyPerHour?
+  billed_since_unix: Int?
 }
 
 // THE ROW'S SERVING FACTS. They are the srv1 vLLM row's, because the card is the same RTX PRO 6000 running
@@ -52,7 +62,7 @@ type FlexAwsRowFacts {
 fn flex_aws_row_name(instance_id: NonEmptyStr) -> String { join([flex_aws_row_prefix, instance_id as String], "") }
 
 fn flex_aws_row_json(card: FlexAwsEnrollable, facts: FlexAwsRowFacts) -> JsonValue {
-  json_object(members: [
+  json_object(members: concat([
     json_kv(key: "name", value: json_string(s: flex_aws_row_name(instance_id: card.instance_id))),
     json_kv(key: "scheme", value: json_string(s: "https")),
     json_kv(key: "host", value: json_string(s: card.public_ip as String)),
@@ -67,7 +77,25 @@ fn flex_aws_row_json(card: FlexAwsEnrollable, facts: FlexAwsRowFacts) -> JsonVal
     json_kv(key: "key", value: json_string(s: card.pool_key)),
     json_kv(key: "retain", value: json_int(n: facts.retain)),
     json_kv(key: "tier", value: json_int(n: facts.tier)),
-  ])
+  ], flex_aws_row_billing_members(card: card)))
+}
+
+// The row's billing facts, in the router's names: `hourly_usd` a decimal USD numeral rendered from the rate's micros
+// (the router converts it back to micros once, at init), `billed_since_unix` whole seconds. A fact the pass could
+// not read is omitted, not written as zero (the router's reading of an absent field is null).
+fn flex_aws_row_billing_members(card: FlexAwsEnrollable) -> List<JsonKeyValue> {
+  concat(
+    match card.hourly {
+      Present { value: r } => match flex_aws_usd_number(micros: money_per_hour_micros(q: r) as Int) { Present { value: n } => [json_kv(key: "hourly_usd", value: n)]  Absent => [] }
+      Absent => []
+    },
+    match card.billed_since_unix { Present { value: t } => [json_kv(key: "billed_since_unix", value: json_int(n: t))]  Absent => [] })
+}
+
+// A micros amount as a JSON number of whole USD with at most six fraction digits (std.decimal's shortest fixed-point
+// spelling at the micro scale std.measure declares). Absent only for a negative amount, which a rate cannot be.
+fn flex_aws_usd_number(micros: Int) -> JsonValue? {
+  if micros < 0 { none } else { json_number_from_lexeme_string(s: fixed_point_trimmed_wire(value: micros, decimals: money_micro_fraction_digits)) }
 }
 
 fn flex_aws_row_name_of(row: JsonValue) -> String {
@@ -383,6 +411,82 @@ fn flex_aws_read_router_stats(body: String, instance_ids: List<NonEmptyStr>, mod
               let uses = flat_map(instance_ids, i => match flex_aws_card_use(stats: d, rows: rows, instance_id: i) { Present { value: u } => [u]  Absent => [] })
               if count(uses) != count(instance_ids) { FlexAwsStatsRefused { cause: "a withdrawn card's active counter is not a number" } }
               else { FlexAwsStatsReadOk { reading: FlexAwsRouterReading { unplaceable: unplaceable, rows: map(rows, r => r.name), cards: uses } } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---- one card's tallies, for the card ledger --------------------------------------------------------
+
+// WHAT THE ROUTER COUNTED ON ONE CARD, as it reports it in usage_by_route (gunbc.serving.router_dev_policy, version 1):
+// the row named for the card, its counters copied AS THE ROUTER WROTE THEM -- the ledger records the router's reading
+// and does not re-derive or round it. Unread, with its cause, when the stats carry no usage_by_route of version 1,
+// list no row for the card, or carry a field not of its type: never a row of zeros standing for a reading not made.
+type FlexAwsCardTallies
+  = FlexAwsTalliesRead { members: List<JsonKeyValue> }
+  | FlexAwsTalliesUnread { cause: String }
+
+// Counters the router always writes for a row it lists (zero is a counted zero there).
+data flex_aws_tally_counts: List<String> = ["requests", "failed_requests", "prompt_tokens", "completion_tokens", "cached_prompt_tokens"]
+
+// Fields the router writes null (no turn yet) or leaves absent (no priced turn): its own way of saying none, recorded
+// as null.
+data flex_aws_tally_optional: List<String> = ["comparison_value_usd", "first_turn_unix", "last_turn_unix"]
+
+fn flex_aws_is_number(v: JsonValue?) -> Bool {
+  match v { Present { value: JsonNumber { lexeme: _ } } => true  _ => false }
+}
+
+fn flex_aws_is_number_or_none(v: JsonValue?) -> Bool {
+  match v { Present { value: JsonNumber { lexeme: _ } } => true  Present { value: JsonNull } => true  Absent => true  _ => false }
+}
+
+fn flex_aws_field_or_null(v: JsonValue, key: String) -> JsonValue {
+  match flex_aws_field(v: v, key: key) { Present { value: x } => x  Absent => json_null() }
+}
+
+// A list as the router's encoder writes it: an EMPTY table is {} or [].
+fn flex_aws_json_list(v: JsonValue) -> List<JsonValue>? {
+  match v {
+    JsonArray { elements: es } => Present { value: es }
+    JsonObject { members: ms } => if count(ms) == 0 { Present { value: [] } } else { none }
+    _ => none
+  }
+}
+
+fn flex_aws_tallies_of(name: String, row: JsonValue) -> FlexAwsCardTallies {
+  let bad = concat(
+    flex_aws_tally_counts |> filter(k => !flex_aws_is_number(v: flex_aws_field(v: row, key: k))),
+    flex_aws_tally_optional |> filter(k => !flex_aws_is_number_or_none(v: flex_aws_field(v: row, key: k))))
+  if count(bad) > 0 { FlexAwsTalliesUnread { cause: join(["usage_by_route row ", name, " carries no number for ", join(bad, ",")], "") } }
+  else { FlexAwsTalliesRead { members: map(concat(flex_aws_tally_counts, flex_aws_tally_optional), k => json_kv(key: k, value: flex_aws_field_or_null(v: row, key: k))) } }
+}
+
+fn flex_aws_is_version_one(v: JsonValue) -> Bool {
+  match flex_aws_int_field(v: v, key: "version") { Present { value: n } => n == 1  Absent => false }
+}
+
+fn flex_aws_card_tallies(body: String, instance_id: NonEmptyStr) -> FlexAwsCardTallies {
+  flex_aws_route_tallies(body: body, name: flex_aws_row_name(instance_id: instance_id))
+}
+
+// Any row's tallies by its router name; a card's are its row's (flex_aws_card_tallies).
+fn flex_aws_route_tallies(body: String, name: String) -> FlexAwsCardTallies {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => FlexAwsTalliesUnread { cause: "router stats are not one JSON document" }
+    JsonDocumentParsed { value: d } => match flex_aws_field(v: d, key: "usage_by_route") {
+      Absent => FlexAwsTalliesUnread { cause: "router stats carry no usage_by_route" }
+      Present { value: u } => if !flex_aws_is_version_one(v: u) { FlexAwsTalliesUnread { cause: "usage_by_route is not version 1" } } else {
+        match flex_aws_field(v: u, key: "routes") {
+          Absent => FlexAwsTalliesUnread { cause: "usage_by_route carries no routes" }
+          Present { value: rv } => match flex_aws_json_list(v: rv) {
+            Absent => FlexAwsTalliesUnread { cause: "usage_by_route routes is not a list" }
+            Present { value: rows } => match first_where(rows, r => flex_aws_row_name_of(row: r) == name) {
+              Absent => FlexAwsTalliesUnread { cause: concat("usage_by_route lists no row ", name) }
+              Present { value: r } => flex_aws_tallies_of(name: name, row: r)
             }
           }
         }
