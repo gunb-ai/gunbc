@@ -1,5 +1,18 @@
 module v2.test.claim.provenance.parse_production_extent
 
+import std.algebra { Cons }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.optional { Absent, Present }
+import std.types { List }
+import v2.compiler.parse { grammar_validate_and_analyze, parse_production }
+import v2.std.compilers.lexing { Token }
+import v2.std.diagnostic { Accepted, ByteRange, Outcome, Rejected, Textual, WholeFile, invariant_port_locus }
+import v2.std.grammar { GrammarExpr, GrammarProduction, GrammarRoot, InfixLeft, InfixOperatorRow, InfixTable, Nonterminal, NotPredicate, Optional, Repeat, Sequence, StampClass, Terminal, grammar_atom, grammar_empty_sync_tokens }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.provenance { SourceExtentKnown, SourceExtentUnrepresentable, SpanIndex, span_index_extent }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CONTROL roadmap node parse-node-source-extent names: a position between a block's last

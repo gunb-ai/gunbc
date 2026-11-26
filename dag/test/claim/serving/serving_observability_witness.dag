@@ -1,0 +1,241 @@
+module test.claim.serving.serving_observability_witness
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.proxy.openresty {
+  ObservedFrontRoster, observed_front_locations,
+  observed_prefix, observed_exact, observed_unmodeled, Serves, Rejects,
+  Regex, PathDidNotTokenise, MatcherNotModelled,
+}
+import gunbc.serving.serving_observability {
+  engine_front_required_routes,
+  engine_front_server_directives, engine_front_proxies_route,
+  engine_front_route_consumers, engine_front_unserved_consumers,
+  EngineFrontUnservedVerdict, UnservedFront, ObservedFrontUnreadable,
+  engine_front_proxy_config, EngineFrontProxyRendered, EngineFrontProxyRefused, InvalidToken,
+  Built, RefusedToken,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The readers the roster names, as typed references the witness compares against (not a grep). The operator's
+// finding: srv4's front withholding /metrics blocks BOTH of its readers, so the model must name both.
+fn metrics_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read")
+}
+
+fn availability_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read")
+}
+
+fn chat_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit")
+}
+
+fn consumer_count_in(list: List<DeclarationRef>, ref: DeclarationRef) -> Int {
+  length(filter(list, c => declaration_ref_eq(a: c, b: ref)))
+}
+
+// srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) is a PREFIX location: it proxies
+// `location /v1/ { proxy_pass ... }` and answers every other request `location / { return 404; }`. This is the
+// observation AS THE HOST WRITES IT -- a /v1/ prefix that forwards, and a / prefix that refuses -- not a
+// hand-expanded list of the routes that prefix happens to carry. Whether a route is served is then decided by
+// nginx's own matching rule, so /v1/models and /v1/chat/completions come out served (the prefix covers them)
+// while /metrics comes out blocked (only the 404 location covers it).
+fn srv4_observed_locations() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/v1/", action: Serves),
+    observed_prefix(path: "/", action: Rejects),
+  ])
+}
+
+// A front that forwards everything (the reconciled, correct host state): a single `/` prefix that proxies.
+fn complete_observed_locations() -> ObservedFrontRoster {
+  observed_front_locations(observations: [ observed_prefix(path: "/", action: Serves) ])
+}
+
+// A front that refuses everything: a single `/` prefix that returns 404. This blocks every route, so the two
+// routes that share the availability reader (/v1/models and /metrics) would name it twice without deduping.
+fn all_rejected_locations() -> ObservedFrontRoster {
+  observed_front_locations(observations: [ observed_prefix(path: "/", action: Rejects) ])
+}
+
+// A host whose `return 404` on /metrics has a path that fails to tokenise, behind a catch-all proxy. This is the
+// reviewer's fail_closed scenario: a naive reader that DROPS the malformed location would let `/` win and falsely
+// report /metrics served -- the very misconfiguration the class exists to catch. Here the roster must be REFUSED.
+fn malformed_metrics_location() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/", action: Serves),
+    observed_prefix(path: "/metrics;bad", action: Rejects),
+  ])
+}
+
+// A host whose refusal on /metrics is a REGEX location (`location ~ ^/metrics { return 404; }`) beside a catch-all
+// proxy. The model does not rank regex, so this cannot be transcribed as a prefix -- coercing it would let `/` win
+// and falsely report /metrics served. Observing the regex must refuse the whole roster (operator adversarial check).
+fn regex_metrics_over_proxying_root() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/", action: Serves),
+    observed_unmodeled(pattern: "/metrics", matcher: Regex),
+  ])
+}
+
+// A front that EXACTLY-matches /metrics to the engine while its `/` prefix refuses everything else. This is the
+// discriminating use of observed_exact: nginx ranks an exact match above any prefix, so /metrics is served even
+// though the catch-all prefix would refuse it -- the exact arm of the matching rule, otherwise unexercised.
+fn exact_metrics_over_rejecting_root() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_exact(path: "/metrics", action: Serves),
+    observed_prefix(path: "/", action: Rejects),
+  ])
+}
+
+// RED: reconciling srv4's OBSERVED location blocks against the roster, decided by nginx's longest-prefix rule,
+// (a) does NOT falsely block the routes its `/v1/` prefix carries -- /v1/models and /v1/chat/completions are SERVED
+// (absent from blocked_routes) -- and (b) blocks EXACTLY /metrics, the route the `location / { return 404; }`
+// swallows, naming both its readers and NOT the chat reader. An exact-string reconciliation would have wrongly
+// called /v1/models blocked (the host never writes that path; the /v1/ prefix carries it).
+test fn srv4_observed_front_blocks_exactly_the_metrics_readers() -> Bool {
+  match engine_front_unserved_consumers(observed: srv4_observed_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 1
+        && any(routes, p => (p as String) == "/metrics")
+        && !any(routes, p => (p as String) == "/v1/models")
+        && !any(routes, p => (p as String) == "/v1/chat/completions")
+        && length(readers) == 2
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 0
+    ObservedFrontUnreadable { location: _, reason: _ } => false
+  }
+}
+
+// Positive control on the reconciliation: a front whose single `/` prefix proxies serves every route, so nothing
+// is blocked (nginx's rule, not a special case for the correct host).
+test fn a_front_that_proxies_root_serves_everything() -> Bool {
+  match engine_front_unserved_consumers(observed: complete_observed_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 0 && length(readers) == 0
+    ObservedFrontUnreadable { location: _, reason: _ } => false
+  }
+}
+
+// DEDUPE (parent finding): when a front refuses EVERYTHING, both /v1/models and /metrics are blocked, and their
+// shared reader serving_availability_bracketing_read would be named twice by a naive flatten. The reconciliation
+// names each blocked reader once: three distinct readers, availability counted exactly once; three blocked routes.
+test fn a_reader_of_several_missing_routes_is_named_once() -> Bool {
+  match engine_front_unserved_consumers(observed: all_rejected_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 3
+        && length(readers) == 3
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+    ObservedFrontUnreadable { location: _, reason: _ } => false
+  }
+}
+
+// FAIL-CLOSED (review 98708): an observation whose path fails to tokenise is NOT silently dropped -- dropping it
+// would let the catch-all `/` proxy win and falsely report /metrics served, the exact misconfiguration this class
+// catches. The whole roster is REFUSED, located at that path with a typed reason, so no verdict is built on a partial read.
+test fn a_malformed_observation_refuses_the_verdict_and_names_the_path() -> Bool {
+  match engine_front_unserved_consumers(observed: malformed_metrics_location()) {
+    ObservedFrontUnreadable { location: l, reason: r } =>
+      (l as String) == "/metrics;bad" && match r { PathDidNotTokenise => true MatcherNotModelled => false }
+    UnservedFront { blocked_routes: _, blocked_readers: _ } => false
+  }
+}
+
+// FAIL-CLOSED (operator adversarial check 2026-11-25): nginx ranks regex (~ / ~*), `^~` and named @ locations
+// differently from prefix/exact. A host `location ~ ^/metrics { return 404; }` beside `location / { proxy_pass }`
+// cannot be transcribed as a prefix -- coercing it would read /metrics as served, the same silent widen as a dropped
+// 404 block. The model refuses instead: an unmodelled matcher makes the roster unreadable, located at that location,
+// so the catch-all proxy cannot be trusted to have served /metrics.
+test fn an_unmodelled_matcher_refuses_the_roster_and_is_located() -> Bool {
+  match engine_front_unserved_consumers(observed: regex_metrics_over_proxying_root()) {
+    ObservedFrontUnreadable { location: l, reason: r } =>
+      (l as String) == "/metrics" && match r { MatcherNotModelled => true PathDidNotTokenise => false }
+    UnservedFront { blocked_routes: _, blocked_readers: _ } => false
+  }
+}
+
+// EXACT MATCHING (review 98708: observed_exact needs a consumer; DESIGN Consumption). nginx ranks an exact location
+// above any prefix, so `location = /metrics { proxy_pass }` serves /metrics even though the `/` prefix refuses it.
+// Discriminating: /v1/models and /v1/chat/completions (no exact, only the refusing prefix) stay blocked, so this is
+// not the trivial "everything served" case -- it exercises the exact-beats-prefix arm of the matching rule.
+test fn an_exact_location_serves_its_route_over_a_refusing_prefix() -> Bool {
+  match engine_front_unserved_consumers(observed: exact_metrics_over_rejecting_root()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      !any(routes, p => (p as String) == "/metrics")
+        && any(routes, p => (p as String) == "/v1/models")
+        && any(routes, p => (p as String) == "/v1/chat/completions")
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 0
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 1
+    ObservedFrontUnreadable { location: _, reason: _ } => false
+  }
+}
+
+
+// The RENDER is derived from the roster with no forwarded input: it always proxies every consumed route,
+// so a front missing /metrics has no constructor (guarantee_ladder). This asserts the metrics and inference
+// routes really reach the engine as ProxyPassToHost directives. Discriminating: a route absent from the
+// roster (/debug) is NOT proxied, so this proves the check is not vacuously true (fail_closed).
+test fn the_rendered_front_always_proxies_the_consumed_routes() -> Bool {
+  match engine_front_server_directives(
+    bind_address: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8443,
+    tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
+    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+    engine_host: "127.0.0.1" as NonEmptyStr,
+    engine_port: 8080,
+  ) {
+    Built { directives: rows } =>
+      engine_front_proxies_route(ds: rows, route: "/metrics" as NonEmptyStr)
+        && engine_front_proxies_route(ds: rows, route: "/v1/chat/completions" as NonEmptyStr)
+        && engine_front_proxies_route(ds: rows, route: "/v1/models" as NonEmptyStr)
+        && !engine_front_proxies_route(ds: rows, route: "/debug" as NonEmptyStr)
+    RefusedToken { token: _ } => false
+  }
+}
+
+// REFUSAL IS LOCATED (fail_closed): passing a cert path nginx_token refuses must report THAT input, not a
+// placeholder. `bad;cert` contains ';' (outside the admitted char class), so the render is refused and the
+// InvalidToken carries "bad;cert" -- the argument that failed. Discriminating: an all-valid front renders
+// (no refusal), so this proves the refusal is caused by the bad input, not a constant.
+test fn a_refused_input_is_reported_as_that_input_not_a_placeholder() -> Bool {
+  match engine_front_proxy_config(
+    bind_address: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8443,
+    tls_cert: "bad;cert" as NonEmptyStr,
+    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+    engine_host: "127.0.0.1" as NonEmptyStr,
+    engine_port: 8080,
+  ) {
+    EngineFrontProxyRefused { refusal: InvalidToken { token: t } } => (t as String) == "bad;cert"
+    EngineFrontProxyRendered { text: _ } => false
+  }
+    // positive control: with every input admitted, the same front renders (the refusal above is the bad input)
+    && match engine_front_proxy_config(
+         bind_address: "0.0.0.0" as NonEmptyStr,
+         listen_port: 8443,
+         tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
+         tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+         engine_host: "127.0.0.1" as NonEmptyStr,
+         engine_port: 8080,
+       ) {
+         EngineFrontProxyRendered { text: _ } => true
+         EngineFrontProxyRefused { refusal: _ } => false
+       }
+}
+
+// CONSUMPTION (typed, not a grep): the roster's /metrics readers are BOTH the progress reader and the availability
+// reader, reached by executing engine_front_route_consumers -- the accessor that reads the roster's consumer list.
+// A single-reader roster fails this, which is the discriminating force of the operator's finding.
+test fn the_metrics_route_names_both_readers_by_reference() -> Bool {
+  let readers = engine_front_route_consumers(path: "/metrics" as NonEmptyStr)
+  any(readers, c => declaration_ref_eq(a: c, b: metrics_reader_ref()))
+    && any(readers, c => declaration_ref_eq(a: c, b: availability_reader_ref()))
+}

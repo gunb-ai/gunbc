@@ -512,7 +512,7 @@ fn identity_gaps(cell: ServingCellIdentity) -> List<ServingBenchmarkGap> {
     [GapTopologyDoesNotCoverGpus { engines: cell.topology.engines, gpus_per_engine: cell.topology.gpus_per_engine, gpus: gpus }]
   }
   let pool = match cell.engine {
-    StrataEngineCell { build: _, flags: f } => match f.pool_workers {
+    StrataEngineCell { build: _, flags: f } => match f.launch.pool_workers {
       Present { value: _ } => []
       Absent => [GapPoolWorkersUnpinned]
     }

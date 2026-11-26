@@ -17952,6 +17952,179 @@ fn bootstrap_invocation_receipt_path(receipt_root: &str) -> Result<std::path::Pa
         .join(format!("receipt-{}-{sequence}", std::process::id())))
 }
 
+/// THE SEED'S BUILD IDENTITY IS BOUND BY THE BINARY, NOT READ BY THIS LIBRARY. A compile-time read
+/// of `GUNBC_BUILD_IDENTITY` here made the library's compilation depend on the commit, so every
+/// commit recompiled it. The retained-host main binds the value once, before dispatch; a bootstrap
+/// operation reached with nothing bound refuses rather than writing a receipt that names no seed.
+/// It crosses here rather than as a dispatch argument because the generated dispatch's call
+/// signature is emitted surface: changing it beside this hand-written callee is a change heal's
+/// round 1 cannot build (#gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair::heal_round_one_bootstraps_from_the_mirror_the_change_must_repair).
+static SEED_BUILD_IDENTITY: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Bind the running binary's build identity. A second bind with a different value refuses: one
+/// process has one seed.
+pub fn bind_seed_build_identity(identity: &'static str) {
+    let bound = *SEED_BUILD_IDENTITY.get_or_init(|| identity);
+    if bound != identity {
+        eprintln!(
+            "REFUSED: seed build identity bound twice with different values ({bound} then {identity})"
+        );
+        std::process::exit(2);
+    }
+}
+
+/// THE ONE ROUTE BY WHICH THE CLI EXECUTES A NAMED `.dag` FUNCTION: resolve the entry's
+/// demand-acquired closure SCOPED to the requested functions, report where the pre-entry time
+/// went, and build the evaluation context. `gunbc run` (`main.rs` `run_verb`) and every
+/// bootstrap operation row (`run_bootstrap_dag_operation`) reach evaluation through here and
+/// nowhere else, so there is one resolve for executing a function, not one per verb.
+///
+/// `functions` are the designations the caller will execute, bare (`main`) or qualified
+/// (`a.b.entry`). The typecheck's `ReachableFrom` scope seeds on AUTHORED declaration names
+/// (`v1.compiler.infer` `realization_names`), so the scope is seeded with each designation's
+/// last segment -- the same reading `realization_includes` gives a qualified name. Seeding with
+/// the qualified spelling would match no declaration and realize nothing the function demands.
+///
+/// There is no fallback to the whole-tree `resolve_entry_graph`: a closure that does not settle
+/// refuses with the resolve's own located cause. The resolve already refuses every
+/// interpreter-blocking diagnostic in the settled graph, so no second gate follows it.
+#[allow(clippy::type_complexity)]
+pub fn load_entry_for_functions(
+    source_roots: &[String],
+    entry_file: &str,
+    functions: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        v1_interpreter::InterpContext,
+    ),
+    String,
+> {
+    let resolve_started = std::time::Instant::now();
+    let requested: Vec<String> = functions
+        .iter()
+        .map(|designation| {
+            designation
+                .rsplit('.')
+                .next()
+                .unwrap_or(designation)
+                .to_string()
+        })
+        .collect();
+    let resolved = resolve_entry_graph_demand_acquired_scoped(source_roots, entry_file, &requested);
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
+    let (graph, source_indices) = resolved?;
+    let ctx = make_eval_context(graph.as_ref(), source_indices, execution_mode);
+    Ok((graph, ctx))
+}
+
+/// Why a named function loaded by [`load_entry_for_functions`] produced no value. Three causes,
+/// kept apart because their callers map them to different statuses: an absent declaration and a
+/// failed evaluation are failed runs, a refused argument is no observation at all.
+pub enum NamedFunctionRefusal {
+    /// The loaded closure declares no function with this designation.
+    FunctionAbsent,
+    /// A named text argument the function's declared parameter types do not admit.
+    ArgumentRefused(String),
+    /// The interpreter refused the evaluation.
+    EvaluationFailed(v1_interpreter::InterpError),
+}
+
+/// Execute one named function over a loaded entry, binding named text arguments against the
+/// function's DECLARED parameter types (`bind_run_args_for_entry`, the one binder for argv text).
+pub fn run_named_function(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+    text_args: &[(String, String)],
+) -> Result<v1_interpreter::Value, NamedFunctionRefusal> {
+    if v1_interpreter::declared_parameter_names(ctx, function).is_none() {
+        return Err(NamedFunctionRefusal::FunctionAbsent);
+    }
+    let bound = bind_run_args_for_entry(ctx, function, text_args)
+        .map_err(NamedFunctionRefusal::ArgumentRefused)?;
+    v1_interpreter::run_in_context_with_args(ctx, function, &bound, true)
+        .map_err(NamedFunctionRefusal::EvaluationFailed)
+}
+
+/// Print the pre-entry phase receipt (`pre_entry_phase`): the tree-scaled phases recorded where
+/// they ran, then the closure-scaled resolve stages from `ResolveStageNanos`, then the inclusive
+/// resolve window they sit inside. Printed whether resolve succeeded or refused, because a
+/// refusal after minutes of preparation is exactly the run whose cost the operator most needs
+/// attributed.
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
+    use pre_entry_phase::{record, take_lines, PhaseScale};
+    let st = resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    // Reconcile sub-rows whose INPUT is the pool, not the closure: per source root
+    // the same-tree bare underlay and its variant base. They sit inside reconcile but
+    // outside every closure row above, so without these lines a small-closure run
+    // reported seconds of tree-scale work as an unexplained gap between the phase sum
+    // and `resolve_entry_graph_inclusive`.
+    for (name, nanos) in [
+        (
+            "reconcile_root_bare_underlay",
+            st.assembly_root_symbol_index,
+        ),
+        ("reconcile_root_variant_base", st.assembly_root_variant_base),
+    ] {
+        record(name, pre_entry_phase::index_scale(), ns(nanos));
+    }
+    record(
+        "resolve_entry_graph_inclusive",
+        PhaseScale::Closure,
+        resolve_inclusive,
+    );
+    for line in take_lines() {
+        eprintln!("{line}");
+    }
+    // POPULATIONS beside the times: `pool_modules` is the whole-tree indexed pool
+    // (or `refused` when that index was never built — demand-acquired `gunbc run`
+    // does not walk it). `demand_acquired_modules` is the layout-closure set.
+    // `closure_files` is the resolved graph's source-index size.
+    let pool_modules = pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
+    let demand =
+        pre_entry_phase::demand_acquired_modules().map_or("refused".to_string(), |n| n.to_string());
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!(
+        "[pre-entry] population pool_modules={pool_modules} closure_files={closure} demand_acquired_modules={demand}"
+    );
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec * 1000 + t.tv_usec / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            peak_rss_vhwm_bytes().map_or("refused".to_string(), |b| (b / 1024).to_string())
+        );
+    }
+}
+
 /// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
 /// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
 /// this declaration knows only source/declaration identity, named String bindings, an internal
@@ -17966,6 +18139,12 @@ pub fn run_bootstrap_dag_operation(
     receipt_parameter: &str,
     receipt_root: &str,
 ) -> ! {
+    let Some(seed_identity) = SEED_BUILD_IDENTITY.get().copied() else {
+        eprintln!(
+            "REFUSED: no seed build identity was bound before dispatch, so a bootstrap receipt could not name the seed that ran it"
+        );
+        std::process::exit(2);
+    };
     if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
         eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
         std::process::exit(2);
@@ -17978,55 +18157,46 @@ pub fn run_bootstrap_dag_operation(
         }
     };
     let receipt_path = receipt_path.to_string_lossy().into_owned();
-    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry_path) {
-        Ok(resolved) => resolved,
+    public_operands.push((receipt_parameter.to_string(), receipt_path.clone()));
+    // THE RUN ROUTE, NOT A SECOND DRIVER. This operation used to resolve the WHOLE TREE
+    // (`resolve_entry_graph`) and typecheck every declaration in it before evaluating one
+    // function; `gunbc run` resolves the entry's demand-acquired closure scoped to the requested
+    // function. Same entry, same function, same arguments, same binary (srv1, main a58ba3e3):
+    // `gunbc converge` had not finished planning after 45 min, `gunbc run --function
+    // fleet_converge_operator_cli_entry` finished in 13.2 min. A verb is a row bound to the one
+    // execution route; what is this operation's own is only the receipt channel below.
+    let qualified_declaration = format!("{declaration_module}.{declaration_name}");
+    let ctx = match load_entry_for_functions(
+        source_roots,
+        entry_path,
+        std::slice::from_ref(&qualified_declaration),
+        v1_interpreter::ExecutionMode::Wet,
+    ) {
+        Ok((_graph, ctx)) => ctx,
         Err(cause) => {
             eprintln!("REFUSED: bootstrap operation resolve failed at `{entry_path}`: {cause}");
             std::process::exit(1);
         }
     };
-    if graph
-        .diagnostics
-        .iter()
-        .any(|diagnostic| is_interpreter_blocking_diagnostic(diagnostic.diagnostic.clone()))
-    {
-        eprintln!("REFUSED: bootstrap operation `{entry_path}` has blocking diagnostics");
-        std::process::exit(1);
-    }
-    let declaration_present = graph.item_registry.values().any(|item| {
-        item.module_name == declaration_module
-            && item.name == declaration_name
-            && matches!(item.kind, ItemKind::FnItem)
-    });
-    if !declaration_present {
-        eprintln!(
-            "REFUSED: bound bootstrap declaration `{declaration_module}.{declaration_name}` \
-             is absent from `{entry_path}`"
-        );
-        std::process::exit(1);
-    }
-    public_operands.push((receipt_parameter.to_string(), receipt_path.clone()));
-    let arguments = public_operands
-        .into_iter()
-        .map(|(name, value)| (Some(name), str_value(value)))
-        .collect::<Vec<_>>();
-    let ctx = make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        v1_interpreter::ExecutionMode::Wet,
-    );
-    let qualified_declaration = format!("{declaration_module}.{declaration_name}");
-    let terminal = match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        &qualified_declaration,
-        &arguments,
-        true,
-    ) {
+    let terminal = match run_named_function(&ctx, &qualified_declaration, &public_operands) {
         Ok(value) => classify_exit(&value, &ctx),
-        Err(error) => {
+        Err(NamedFunctionRefusal::FunctionAbsent) => {
             eprintln!(
-                "REFUSED: bootstrap operation `{declaration_module}.{declaration_name}` \
-                 evaluation failed: {error:?}"
+                "REFUSED: bound bootstrap declaration `{qualified_declaration}` \
+                 is absent from `{entry_path}`"
+            );
+            std::process::exit(1);
+        }
+        Err(NamedFunctionRefusal::ArgumentRefused(cause)) => {
+            eprintln!(
+                "REFUSED: bootstrap operation `{qualified_declaration}` refused its modeled \
+                 bindings: {cause}"
+            );
+            std::process::exit(2);
+        }
+        Err(NamedFunctionRefusal::EvaluationFailed(error)) => {
+            eprintln!(
+                "REFUSED: bootstrap operation `{qualified_declaration}` evaluation failed: {error:?}"
             );
             std::process::exit(1);
         }
@@ -18042,7 +18212,6 @@ pub fn run_bootstrap_dag_operation(
     if !receipt.ends_with('\n') {
         println!();
     }
-    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
     match terminal {
         ExitClass::Success => {
             eprintln!(
@@ -20630,6 +20799,33 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
         ),
     };
     format!("claim source refused: {path}{tail}")
+}
+
+/// The module paths the claim route's corpus holds, read from the same process-shared index
+/// `run_claim_route` reads, so asking costs the walk the route would take anyway. It answers
+/// `gunbc.target_invocation` `admit_resolvable_exact_targets`'s `module_resolves`.
+pub fn claim_route_module_paths(
+    source_roots: &[String],
+) -> Result<std::collections::HashSet<String>, String> {
+    // The same fallible walk `run_claim_route` takes first, so an unreadable or unparseable source
+    // is refused here with the route's own located causes, not read as a corpus without that module.
+    if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
+        return Err(format!(
+            "{} unreadable claim source(s):\n  {}",
+            refusals.len(),
+            refusals
+                .iter()
+                .map(ModuleIndexRefusal::rendered)
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        ));
+    }
+    let index = entry_resolve::try_process_shared_index(source_roots)?;
+    Ok(index
+        .source_files
+        .iter()
+        .map(|(module_path, _)| module_path.clone())
+        .collect())
 }
 
 /// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
