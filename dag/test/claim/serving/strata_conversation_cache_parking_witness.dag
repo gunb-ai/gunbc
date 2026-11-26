@@ -26,12 +26,13 @@ import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import std.measure {
   byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
-  token_count, positive_slot_count, positive_measure_count,
+  token_count, positive_slot_count, positive_measure_count, positive_slot_count_value, PositiveSlotCount,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.strata.serve_flags {
-  StrataServeFlags, StrataKvQ4_0, StrataKvFullyResident, StrataSingleStage, StrataExpertsPrivate,
+  StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
+  StrataKvQ4_0, StrataKvFullyResident, StrataSingleStage, StrataExpertsPrivate,
   StrataConversationCache,
   StrataConversationCacheBudget, StrataConversationCacheOff, StrataConversationCacheUnset,
   StrataConversationCacheUnread,
@@ -39,11 +40,14 @@ import extdeps.strata.serve_flags {
 }
 import gunbc.serving.serving_replica_profile {
   ReplicaModel, StrataModel, StrataParkingAgreement,
+  ReplicaEngineLaunch, EngineLaunchDerived, EngineLaunchEstimated, EngineLaunchRefused,
+  LaunchParametersUnread, LaunchTurnsZero,
   ParkedConversationsAgreed, ParkedConversationsRefusedByTheLaunch,
   ParkedConversationsLeftToTheBuild, ParkedConversationsShortOfTheGrant, ParkingNeedsReading,
   strata_launch_parking_agreement, replica_parking_agreement, replica_parked_conversations,
-  parking_is_left_to_the_build, serving_replica_roster, srv1_vllm_replica_0_profile,
+  parking_is_left_to_the_build, srv1_vllm_replica_0_profile,
 }
+import gunbc.serving.router_dev_policy { router_dev_host_roster, AnchorStrataProfile }
 import gunbc.serving.serving_capacity_anchor {
   ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused,
 }
@@ -80,7 +84,7 @@ fn fx_strata_model(cache: StrataConversationCache, slots: Nat) -> ReplicaModel {
   StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: TranscribedUncited { read_obligation: "fixture: the artifact is srv3's real row and plays no part in this judgement" as NonEmptyStr },
-    flags: Present { value: fx_flags(cache: cache, slots: slots) },
+    flags: Present { value: fx_parameters(cache: cache) },
     flags_standing: Present {
       value: TranscribedUncited { read_obligation: "fixture argv: this launch has never run, so its standing is a read obligation and not a citation" as NonEmptyStr },
     },
@@ -163,18 +167,59 @@ test fn witness_silence_renders_nothing_and_names_nothing() -> Bool {
     && !strata_names_a_conversation_cache(flags: fx_flags(cache: fx_cache_unread("never read"), slots: 1))
 }
 
-fn fx_flags(cache: StrataConversationCache, slots: Nat) -> StrataServeFlags {
-  StrataServeFlags {
+fn fx_slots(n: Nat) -> PositiveSlotCount {
+  positive_slot_count(count: positive_measure_count(predecessor: n - 1))
+}
+
+// The parameters a PRODUCTION replica row carries -- everything the engine is launched with except the
+// admitted concurrency, which `StrataLaunchParameters` has no field for on purpose
+// (extdeps.strata.serve_flags::StrataServeFlags.parallel).
+fn fx_parameters(cache: StrataConversationCache) -> StrataLaunchParameters {
+  StrataLaunchParameters {
     kv_format: StrataKvQ4_0,
     kv_residency: StrataKvFullyResident,
     max_context: token_count(count: 229376),
-    parallel: positive_slot_count(count: positive_measure_count(predecessor: slots - 1)),
     batch_groups: Absent,
     pool_workers: Absent,
     stages: StrataSingleStage,
     experts: StrataExpertsPrivate,
     vram_reserve: Absent,
     conversation_cache: cache,
+  }
+}
+
+fn fx_flags(cache: StrataConversationCache, slots: Nat) -> StrataServeFlags {
+  strata_launch_with_parallel(parameters: fx_parameters(cache: cache), parallel: fx_slots(slots))
+}
+
+// THE LAUNCH RECORD, which is what the agreement judges: the parameters the row carries, and the live slot
+// count its capacity shape admitted -- through the one bridge (`strata_launch_with_parallel`) a launch record
+// is reached by, so a fixture cannot write a flags struct that the production route could not produce.
+fn fx_launch(cache: StrataConversationCache, slots: Nat) -> ReplicaEngineLaunch {
+  EngineLaunchDerived { flags: fx_flags(cache: cache, slots: slots), slots: fx_slots(slots) }
+}
+
+// A launch record that does not exist yet: the parameters have never been read, so neither the cache pair nor
+// the live slot count is known. `replica_engine_launch` answers this way today for every row whose flag field
+// is absent -- which is the state srv4's and h11's rows were in when the fleet found the misconfiguration.
+fn fx_unread_record() -> ReplicaEngineLaunch {
+  EngineLaunchRefused {
+    deployment: "witness-strata-replica" as NonEmptyStr,
+    reason: LaunchParametersUnread {
+      obligation: "read the unit's ExecStart for the argv of the engine that runs this replica" as NonEmptyStr,
+    },
+  }
+}
+
+// A launch record whose admitted concurrency is an ESTIMATE (its capacity shape extrapolated): the verdict has
+// to say so rather than quote the number as if it were derived.
+fn fx_estimated_launch(cache: StrataConversationCache, slots: Nat) -> ReplicaEngineLaunch {
+  EngineLaunchEstimated {
+    flags: fx_flags(cache: cache, slots: slots),
+    slots: fx_slots(slots),
+    standings: [TranscribedUncited {
+      read_obligation: "fixture: the turns this record's slot count extrapolates from were never measured" as NonEmptyStr,
+    }],
   }
 }
 
@@ -186,7 +231,7 @@ test fn witness_a_launch_that_names_nothing_is_refused() -> Bool {
   // second conversation is warm only if something parks it, and nothing in the model says anything may be.
   // The judgement must NOT answer "agreed, 0 parked" (which is what the fleet ran) and must not answer zero.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unset("neither flag was in cfg-83.json"), slots: 1),
+    model: fx_strata_model(cache: fx_cache_unset("neither flag was in cfg-83.json"), slots: 1), launch: fx_launch(cache: fx_cache_unset("neither flag was in cfg-83.json"), slots: 1),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -204,7 +249,7 @@ test fn witness_an_explicit_off_is_refused_and_says_who_chose_it() -> Bool {
   // the agreement names it a refusal by the launch rather than a state left to the build -- and it carries
   // the author's reason, which is the difference between a misconfiguration and a decision.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_off("the operator wanted one cold conversation per engine for the token-count read"), slots: 1),
+    model: fx_strata_model(cache: fx_cache_off("the operator wanted one cold conversation per engine for the token-count read"), slots: 1), launch: fx_launch(cache: fx_cache_off("the operator wanted one cold conversation per engine for the token-count read"), slots: 1),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -222,7 +267,7 @@ test fn witness_the_operator_named_budget_is_accepted() -> Bool {
   // an engine answering one conversation at once, holding two warm. Nothing is beyond what the launch names,
   // so the agreement accepts and reports the parked capacity the launch itself states (4).
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1),
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1), launch: fx_launch(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -233,7 +278,7 @@ test fn witness_a_launch_that_parks_enough_is_accepted_even_beyond_its_slots() -
   // The shape srv3 runs: 8 slots answered at once, the grant above them, the launch naming 24 parked slots.
   // Beyond the live slots is exactly what the parked cache is FOR; a launch that names it is accepted.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_budget(mib: 65536, slots: 24), slots: 8),
+    model: fx_strata_model(cache: fx_cache_budget(mib: 65536, slots: 24), slots: 8), launch: fx_launch(cache: fx_cache_budget(mib: 65536, slots: 24), slots: 8),
     grant: fx_grant(conversations: 12),
     engine_memory: Present { value: srv3_strata_engine_memory },
   )
@@ -247,12 +292,12 @@ test fn witness_read_silence_and_an_unread_argv_are_different_facts() -> Bool {
   // read for (gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked is the same confusion
   // from the reading side).
   let silent = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unset("read from the unit, neither word present"), slots: 1),
+    model: fx_strata_model(cache: fx_cache_unset("read from the unit, neither word present"), slots: 1), launch: fx_launch(cache: fx_cache_unset("read from the unit, neither word present"), slots: 1),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
   let unread = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unread("the cell's image is still pending"), slots: 1),
+    model: fx_strata_model(cache: fx_cache_unread("the cell's image is still pending"), slots: 1), launch: fx_launch(cache: fx_cache_unread("the cell's image is still pending"), slots: 1),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -265,7 +310,7 @@ test fn witness_an_unread_argv_with_known_slots_names_what_has_to_be_parked() ->
   // parked is then EXACT, so the reader is told 4 rather than left to bound it -- and the figure another row
   // states is still only evidence beside it.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unread("the cell's image is still pending"), slots: 8),
+    model: fx_strata_model(cache: fx_cache_unread("the cell's image is still pending"), slots: 8), launch: fx_launch(cache: fx_cache_unread("the cell's image is still pending"), slots: 8),
     grant: fx_grant(conversations: 12),
     engine_memory: Present { value: fx_memory(slots: 24) },
   )
@@ -285,7 +330,7 @@ test fn witness_a_read_row_does_not_answer_a_launch_that_names_nothing() -> Bool
   // that let the h11 misconfiguration read as fine. The figure travels with the refusal as evidence of what
   // to go and read; the verdict stays a refusal.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unset("the cell's in-image argv has never run"), slots: 8),
+    model: fx_strata_model(cache: fx_cache_unset("the cell's in-image argv has never run"), slots: 8), launch: fx_launch(cache: fx_cache_unset("the cell's in-image argv has never run"), slots: 8),
     grant: fx_grant(conversations: 12),
     engine_memory: Present { value: fx_memory(slots: 24) },
   )
@@ -302,7 +347,7 @@ test fn witness_a_budget_smaller_than_the_grant_needs_is_a_located_shortfall() -
   // cold, and the agreement says so with both numbers, rather than calling it an agreement because a budget
   // was present (gunbc.design_argument::fail_closed: the wrong answer is located, not softened).
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 2), slots: 1),
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 2), slots: 1), launch: fx_launch(cache: fx_cache_budget(mib: 8192, slots: 2), slots: 1),
     grant: fx_grant(conversations: 24),
     engine_memory: Absent,
   )
@@ -319,7 +364,7 @@ test fn witness_a_small_read_row_is_refused_too_rather_than_called_a_shortfall()
   // shortfall is a statement about what the launch may do. With the argv read and silent, the answer is the
   // same refusal whatever the other row says -- here 2 parked slots against 4 needed.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unset("the unit's argv was never read"), slots: 8),
+    model: fx_strata_model(cache: fx_cache_unset("the unit's argv was never read"), slots: 8), launch: fx_launch(cache: fx_cache_unset("the unit's argv was never read"), slots: 8),
     grant: fx_grant(conversations: 12),
     engine_memory: Present { value: fx_memory(slots: 2) },
   )
@@ -331,7 +376,7 @@ test fn witness_a_budget_exactly_covering_the_beyond_is_accepted() -> Bool {
   // The boundary of the shortfall, so the finding is not "small cache refuses": exactly enough is enough.
   // 12 warm on 8 live slots needs 4 parked, and a launch naming exactly 4 is agreed at 4.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 8),
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 8), launch: fx_launch(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 8),
     grant: fx_grant(conversations: 12),
     engine_memory: Absent,
   )
@@ -343,7 +388,7 @@ test fn witness_nothing_beyond_the_live_slots_needs_no_parking() -> Bool {
   // h11 shape one conversation down, and it is accepted with zero parked. This is what keeps the RED
   // discriminating on the GRANT and the ARGV, and not on the mere absence of the flags.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unset("never read"), slots: 1),
+    model: fx_strata_model(cache: fx_cache_unset("never read"), slots: 1), launch: fx_launch(cache: fx_cache_unset("never read"), slots: 1),
     grant: fx_grant(conversations: 1),
     engine_memory: Absent,
   )
@@ -355,7 +400,7 @@ test fn witness_an_unread_argv_asks_rather_than_answering_zero() -> Bool {
   // refusing (the launch might carry the pair) and instead of answering zero
   // (gunbc.design_argument::fail_closed: never a plausible number for a figure never read).
   let a = strata_launch_parking_agreement(
-    model: fx_unread_flags_model(slots: 1),
+    model: fx_unread_flags_model(slots: 1), launch: fx_unread_record(),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -367,7 +412,7 @@ test fn witness_an_unread_argv_with_a_read_memory_row_asks_and_names_the_figure(
   // is the substitution this class was filed for -- and not zero either: the ask carries the figure so the
   // reader knows what the model has, and says which read would settle it.
   let a = strata_launch_parking_agreement(
-    model: fx_unread_flags_model(slots: 1),
+    model: fx_unread_flags_model(slots: 1), launch: fx_unread_record(),
     grant: fx_grant(conversations: 2),
     engine_memory: Present { value: fx_memory(slots: 6) },
   )
@@ -386,7 +431,7 @@ test fn witness_an_unread_argv_on_a_grant_the_floor_covers_needs_no_reading() ->
   // half of the bound that survives the reviewer's finding -- the bound is used to conclude NOTHING is needed,
   // never to conclude a capacity is enough.
   let a = strata_launch_parking_agreement(
-    model: fx_unread_flags_model(slots: 1),
+    model: fx_unread_flags_model(slots: 1), launch: fx_unread_record(),
     grant: fx_grant(conversations: 1),
     engine_memory: Absent,
   )
@@ -398,7 +443,7 @@ test fn witness_the_ask_is_built_from_the_standings_the_model_carries() -> Bool 
   // decoration: the ask a consumer gets is composed from them, so the reader is told which release's answer is
   // cited and which build still has an open read -- never handed a number for the build's default.
   let a = strata_launch_parking_agreement(
-    model: fx_unread_flags_model(slots: 1),
+    model: fx_unread_flags_model(slots: 1), launch: fx_unread_record(),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -415,7 +460,7 @@ test fn witness_an_unread_argv_asks_rather_than_refusing_a_budget_it_never_named
   // it was never read for would be the invented-fact failure this class is about. The ask names what the model
   // has (the memory row's 6), what the grant holds (12) and the read that settles it.
   let a = strata_launch_parking_agreement(
-    model: fx_unread_flags_model(slots: 1),
+    model: fx_unread_flags_model(slots: 1), launch: fx_unread_record(),
     grant: fx_grant(conversations: 12),
     engine_memory: Present { value: fx_memory(slots: 6) },
   )
@@ -430,7 +475,7 @@ test fn witness_an_unmodeled_grant_asks_rather_than_judging_the_argv() -> Bool {
   // Grant first: with no layout there is no claim about what the replica holds warm, so there is nothing to
   // refuse the launch for. The obligation the layout row carries is handed back unchanged.
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_unset("never read"), slots: 1),
+    model: fx_strata_model(cache: fx_cache_unset("never read"), slots: 1), launch: fx_launch(cache: fx_cache_unset("never read"), slots: 1),
     grant: GrantUnmodeled { obligation: "srv1 keeps no serving layout: its host budget is gunbc.fleet.fleet_host_budget's" as NonEmptyStr },
     engine_memory: Absent,
   )
@@ -442,7 +487,7 @@ test fn witness_an_unmodeled_grant_asks_rather_than_judging_the_argv() -> Bool {
 
 test fn witness_a_refused_grant_asks_rather_than_judging_the_argv() -> Bool {
   let a = strata_launch_parking_agreement(
-    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1),
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1), launch: fx_launch(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1),
     grant: GrantRefused { reason: "the shape's rate is unread at the lower concurrency" as NonEmptyStr },
     engine_memory: Absent,
   )
@@ -456,6 +501,7 @@ test fn witness_a_lil_launch_is_out_of_this_agreement() -> Bool {
   // it as agreed (which is what the fleet would have read as "this engine parks its conversations fine").
   let a = strata_launch_parking_agreement(
     model: srv1_vllm_replica_0_profile.model,
+    launch: fx_unread_record(),
     grant: fx_grant(conversations: 2),
     engine_memory: Absent,
   )
@@ -467,15 +513,15 @@ test fn witness_the_engines_parked_capacity_is_read_from_the_row_that_owns_it() 
   // OVERRIDES a memory row that disagrees (an explicit argv is a chosen policy), and an `Unset` argv DEFERS
   // to the memory row. Both directions are pinned so a later edit cannot quietly invert the precedence.
   let budget_over_memory = replica_parked_conversations(
-    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1),
+    parameters: Present { value: fx_parameters(cache: fx_cache_budget(mib: 8192, slots: 4)) },
     engine_memory: Present { value: fx_memory(slots: 24) },
   )
   let memory_answers_when_argv_is_silent = replica_parked_conversations(
-    model: fx_strata_model(cache: fx_cache_unset("never read"), slots: 1),
+    parameters: Present { value: fx_parameters(cache: fx_cache_unset("never read")) },
     engine_memory: Present { value: fx_memory(slots: 24) },
   )
   let nothing_says = replica_parked_conversations(
-    model: fx_strata_model(cache: fx_cache_unset("never read"), slots: 1),
+    parameters: Present { value: fx_parameters(cache: fx_cache_unset("never read")) },
     engine_memory: Absent,
   )
   match budget_over_memory {
@@ -495,23 +541,125 @@ test fn witness_an_explicit_off_states_no_parked_capacity_beside_a_disagreeing_r
   // it is what runs -- and the agreement then refuses, so the disagreement surfaces as a finding instead of
   // being averaged. A stale read is the next rung's subject; this rung refuses to let it vouch for a launch.
   let parked = replica_parked_conversations(
-    model: fx_strata_model(cache: fx_cache_off("chosen off"), slots: 1),
+    parameters: Present { value: fx_parameters(cache: fx_cache_off("chosen off")) },
     engine_memory: Present { value: fx_memory(slots: 24) },
   )
   match parked { Absent => true, _ => false }
 }
 
+// ── THE LAUNCH RECORD IS THE ONLY AUTHORITY THE AGREEMENT READS ABOUT ITS LAUNCH ─────────────────────
+// A profile row carries `StrataLaunchParameters`, which holds NO slot count on purpose (the slot count is the
+// capacity shape's admission, not a launch parameter), and `replica_engine_launch` is the one route from those
+// parameters to a launch record. These claims pin that the agreement reads the RECORD, so a second flags struct
+// beside the row that runs cannot be what the verdict rests on
+// (gunbc.design_argument::single_authority, ::minimize_redundancy; the class is
+// gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them).
+
+test fn witness_a_launch_that_admits_no_turn_is_located_rather_than_agreed() -> Bool {
+  // A capacity shape that derives ZERO conversation turns admits no live slot, so nothing here could be
+  // agreed or refused -- but answering `Agreed {parked: 0}` would be the fabricated zero this class refuses:
+  // a launch that parks nothing and a launch with no subject are different facts. The located answer names
+  // what to resolve first.
+  let a = strata_launch_parking_agreement(
+    model: fx_strata_model(cache: fx_cache_unset("neither word in the argv"), slots: 1),
+    launch: EngineLaunchRefused {
+      deployment: "witness-strata-replica" as NonEmptyStr,
+      reason: LaunchTurnsZero,
+    },
+    grant: fx_grant(conversations: 4),
+    engine_memory: Absent,
+  )
+  match a {
+    ParkingNeedsReading { obligation: o } => string_contains(s: to_string(o), pattern: "zero conversation turns"),
+    _ => false,
+  }
+}
+
+test fn witness_the_live_slot_count_is_read_from_the_launch_record_and_not_from_a_second_flags_struct() -> Bool {
+  // The parameters inside the record say one thing about the cache and the RECORD says the engine runs eight
+  // slots at once while the flags wrapper says one. The verdict must follow the record: with a grant of twelve
+  // and eight live slots, four parked conversations cover the four that remain, so this is an agreement. Had
+  // the agreement read the wrapper's one slot instead, it would have called a shortfall -- which is exactly the
+  // two-numbers-for-one-launch failure the record exists to prevent.
+  let a = strata_launch_parking_agreement(
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 8),
+    launch: EngineLaunchDerived {
+      flags: fx_flags(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1),
+      slots: fx_slots(8),
+    },
+    grant: fx_grant(conversations: 12),
+    engine_memory: Absent,
+  )
+  is_agreed(a: a) && agreed_parked(a: a) == 4
+}
+
+test fn witness_an_estimated_launch_record_says_so_rather_than_quoting_a_derived_number() -> Bool {
+  // A record whose admitted concurrency EXTRAPOLATED (its capacity shape estimated) may still be judged, but
+  // the verdict carries that: quoting an estimated slot count as if it were derived is the same family of
+  // failure as quoting another row's parked capacity as the launch's policy.
+  let a = strata_launch_parking_agreement(
+    model: fx_strata_model(cache: fx_cache_unset("neither word in the argv"), slots: 1),
+    launch: fx_estimated_launch(cache: fx_cache_unset("neither word in the argv"), slots: 1),
+    grant: fx_grant(conversations: 2),
+    engine_memory: Absent,
+  )
+  parking_is_left_to_the_build(a: a)
+    && string_contains(s: left_to_build_detail(a: a), pattern: "ESTIMATED")
+}
+
+test fn witness_a_launch_record_that_does_not_exist_yet_is_asked_about_not_refused() -> Bool {
+  // No record yet -- the parameters have never been read -- is not a launch that parked nothing, and not a
+  // launch that chose silence: the answer is the ask, and a memory row's figure rides in it as evidence only.
+  let a = strata_launch_parking_agreement(
+    model: fx_unread_flags_model(slots: 1),
+    launch: fx_unread_record(),
+    grant: fx_grant(conversations: 12),
+    engine_memory: Present { value: fx_memory(slots: 6) },
+  )
+  match a {
+    ParkingNeedsReading { obligation: o } =>
+      string_contains(s: to_string(o), pattern: "6")
+        && string_contains(s: to_string(o), pattern: "evidence for the ask"),
+    _ => false,
+  }
+}
+
+// The verdicts no row of the live fleet may carry. Besides `left to the build`, the tell that a projection
+// here is not the projection the router prices: an obligation saying the layout grants no such replica group.
+// A row answered that way would be this file's own pairing rather than a shipped join, and counting it as a
+// pass would be reading the witness's wiring as evidence about the fleet.
+fn roster_verdict_is_standalone(a: StrataParkingAgreement) -> Bool {
+  !parking_is_left_to_the_build(a: a)
+    && match a {
+      ParkingNeedsReading { obligation: o } => !string_contains(s: to_string(o), pattern: "is granted by")
+      _ => true
+    }
+}
+
 test fn witness_no_live_strata_launch_leaves_the_policy_to_the_build() -> Bool {
-  // THE POSITIVE CONTROL OVER THE ROWS THAT EXIST. Every replica in the roster must answer the agreement
-  // with something the model can stand behind: an agreement from what its launch NAMED, or an obligation
-  // naming what has not been read. None may answer `left to the build`, which is the state the fleet found by
-  // walking onto a host. Rows whose argv has never been read answer with the ask, and that is the honest
-  // answer for them -- this claim pins the one verdict no row of the live roster is allowed to carry.
-  let all = serving_replica_roster()
-  all.length() > 0
-    && fold(all, init: true, f: (acc, p) => if !acc {
+  // THE POSITIVE CONTROL OVER THE ROWS THAT EXIST, taken AS THEY ARE PROJECTED. `router_dev_host_roster` is
+  // the authority for which layout grants which replica group and which profile row that group runs -- the
+  // same triple `router_dev_replica_shape` prices the router's cap from and `replica_engine_launch` derives
+  // the engine's slots from -- so this checks the live fleet at the join it actually ships on, rather than at
+  // a pairing this file invented. Every projected row must answer the agreement with something the model can
+  // stand behind: an agreement from what its launch NAMED, or an obligation naming what has not been read.
+  // None may answer `left to the build` -- the state the fleet found by walking onto a host. Rows whose
+  // parameters have never been read answer with the ask, and that is the honest answer for them; this claim
+  // pins the verdicts no live row is allowed to carry.
+  let hosts = router_dev_host_roster()
+  hosts.length() > 0
+    && fold(hosts, init: true, f: (acc, r) => if !acc {
       false
     } else {
-      !parking_is_left_to_the_build(a: replica_parking_agreement(p: p))
+      fold(r.namings, init: true, f: (inner, n) => if !inner {
+        false
+      } else {
+        match n.anchor {
+          AnchorStrataProfile { profile: p } =>
+            roster_verdict_is_standalone(a: replica_parking_agreement(
+              p: p, layout: r.layout, group: n.group as NonEmptyStr,
+            ))
+        }
+      })
     })
 }
