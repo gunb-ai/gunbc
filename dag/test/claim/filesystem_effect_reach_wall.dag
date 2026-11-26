@@ -12,6 +12,9 @@ import v2.compiler.effect_demand {
   filesystem_effect_emitted_closure_population,
   filesystem_effect_direct_reach_debt_contract,
   filesystem_effect_debt_join_holds,
+  filesystem_effect_debt_contract_identity_strings,
+  filesystem_effect_debt_site_identity,
+  filesystem_effect_reaches_from_phase1_rows,
   filesystem_effect_census_log,
   filesystem_effect_reach,
   filesystem_effect_emitted_closure_census,
@@ -42,7 +45,7 @@ import gunbc.demand_engine_restatement_follow_up {
 }
 // THE ARRIVING PRODUCER FOR WALL 1: the same ingest, tokenize and parse authorities the compiler
 // itself runs -- NOT a second parser, and no roster field re-spelled here.
-import v2.compiler.source_root_eval { native_lane_census_ingest }
+import v2.compiler.source_root_eval { native_lane_census_ingest, native_test_context_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize_prepared }
@@ -66,7 +69,7 @@ import v2.std.node {
   Conj,
   node_synthetic
 }
-import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved }
+import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved, closure_declarations_demand }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -662,6 +665,127 @@ test fn filesystem_derived_population_breaks_the_wall() -> Bool {
   ! filesystem_effect_direct_reach_wall_holds(report: filesystem_derived_census_report)
 }
 
+// =============================================================================================
+// THE REAL-PRODUCER LEG (review 98743 finding 1; gunbc.design_argument::witness_one_interface:
+// "SUPPLYING INPUTS MAY NEVER REMOVE THE LAST EXECUTION OF THE REAL PATH"). The rows this leg feeds
+// the census are NOT derived_row fixtures: they are the resolver's OWN phase-1 fold output --
+// ClosureDeclarations.rows, produced by closure_declarations_demand over the ResolutionContext that
+// native_test_context_from_ingest builds from native_lane_census_ingest (the same ingest the
+// compiler's census lane runs). filesystem_effect_reaches_from_phase1_rows consumes THAT list -- the
+// named consumer of the resolver's rows field -- and the debt join and the contract identity set run
+// over its output, so a corpus rename that moves a contracted declaration off the census fails HERE,
+// in a claim, not only on the scratch probe trees. Assertions are set identities against the TYPED
+// contract (no count copied from a tree) plus a void guard: an empty direct-reach population is a
+// refused leg, never a green (empty populations are void, not passing).
+// =============================================================================================
+
+fn real_direct_identity_strings(report: FilesystemEffectCensusReport) -> List<String> {
+  fold_list(
+    xs: report.offenders,
+    empty: [],
+    cons: fn(acc, o) {
+      Cons {
+        head: filesystem_effect_debt_site_identity(site: filesystem_effect_reach_site(reach: o)),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn real_identity_contains(xs: List<String>, needle: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) {
+      if acc {
+        true
+      } else if s == needle {
+        true
+      } else {
+        false
+      }
+    }
+  )
+}
+
+// BOTH-WAYS set equality over identity strings: every contract identity is a located direct reach and
+// every located direct reach is a contract member -- an identity join, not a count equality.
+fn real_direct_identities_equal_contract(report: FilesystemEffectCensusReport) -> Bool {
+  let direct = real_direct_identity_strings(report: report)
+  let contract = filesystem_effect_debt_contract_identity_strings()
+  (length(xs: direct) != 0)
+    && (length(xs: contract) != 0)
+    && fold_list(
+         xs: contract,
+         empty: true,
+         cons: fn(acc, s) {
+           if acc { real_identity_contains(xs: direct, needle: s) } else { false }
+         }
+       )
+    && fold_list(
+         xs: direct,
+         empty: true,
+         cons: fn(acc, s) {
+           if acc { real_identity_contains(xs: contract, needle: s) } else { false }
+         }
+       )
+}
+
+fn real_rows_leg(rows: List<DeclPhase1Row>) -> Bool {
+  let reaches = filesystem_effect_reaches_from_phase1_rows(
+    rows: rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity,
+    bound_handler_slug: filesystem_handler_slug
+  )
+  let report = filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    rows: rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity,
+    bound_handler_slug: filesystem_handler_slug
+  )
+  filesystem_effect_debt_join_holds(reaches: reaches)
+    && real_direct_identities_equal_contract(report: report)
+    && (any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        let site = filesystem_effect_reach_site(reach: o)
+        if site.module_path == "v2.test.fixture.wall_population" {
+          true
+        } else if site.module_path == "v2.test.fixture.filesystem_read_homonym" {
+          true
+        } else {
+          false
+        }
+      }
+    ) == false)
+}
+
+data real_resolver_verdict: Outcome<Bool> =
+  bind_outcome(
+    o: native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"]),
+    f: fn(ingest) {
+      bind_outcome(
+        o: native_test_context_from_ingest(ingest: ingest),
+        f: fn(c) {
+          match c.resolution {
+            Rejected { diagnostics: _ } => outcome_accepted(value: false)
+            Accepted { value: shared, diagnostics: _ } =>
+              outcome_accepted(value: real_rows_leg(rows: closure_declarations_demand(shared: shared).rows))
+          }
+        }
+      )
+    }
+  )
+
+test fn filesystem_effect_census_over_real_resolver_rows_matches_the_contract() -> Bool {
+  match real_resolver_verdict {
+    Accepted { value: verdict, diagnostics: _ } => verdict
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // THE CENSUS LOG PRINTS THE CONTRACT BESIDE THE REFUSED COUNT, PRINTS THE CONTRACT TRAVERSAL (the emission-lane
 // condition 1), AND NAMES EACH OFFENDER SITE. The asserted substrings cannot be echoed from an input: no
 // row input contains "offender ", "debt_site ", the "#" joiner, or "refused=" -- the log fn ASSEMBLES those
@@ -699,9 +823,12 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
 // from a tree; every count is derived by the run that claims it. TWO FACES (review 98720 finding 1),
 // stated separately: (a) the PREDICATE legs below run on derived_row fixtures -- they prove the join
 // refusals are reachable at all and cannot catch a corpus rename (contract and fixture drift together);
-// (b) the GREEN leg census_reaches_exactly_four_declared_sites feeds the join the REAL phase-1 rows
-// derived at run time through the resolver fold over the corpus (corpus_rows_for_witness), not fixture
-// rows -- a rename moving a contracted declaration off the census fails that leg. The real-reach
+// (b) the REAL-PRODUCER leg filesystem_effect_census_over_real_resolver_rows_matches_the_contract
+// feeds the join filesystem_effect_reaches_from_phase1_rows over the resolver's OWN phase-1 fold output
+// (ClosureDeclarations.rows from closure_declarations_demand over native_test_context_from_ingest fed
+// by native_lane_census_ingest), not fixture rows -- a rename moving a contracted declaration off the
+// census fails that leg in a claim, with a void guard so an empty population refuses rather than
+// passing. The real-reach
 // REFUSALS cannot be planted into the tree a claim runs on; they are owed by the two scratch probe
 // trees run outside this witness (planted extra reach / removed member, census refuses), same route
 // and same run as the green leg. The emit-side handler binding remains deferred to the establishing
