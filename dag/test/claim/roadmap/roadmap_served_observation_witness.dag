@@ -21,8 +21,13 @@ import gunbc.roadmap.roadmap_served_observation {
   ServedObservationBodyRead, ServedObservationBodyPresent, ServedObservationBodyMissing, ServedObservationBodyUnreadable, ServedObservationBodyMismatch,
   ServedObservationEntryLookup, ServedObservationEntryFound, ServedObservationEntryMissing,
   served_observation_schema,
-  served_observation_path_for_instance,
-  served_observation_body_path_for_instance,
+  ServedObservationStore,
+  ServedObservationStoreReading,
+  ServedObservationStoreReady,
+  ServedObservationStoreUnready,
+  served_observation_store,
+  served_observation_index_entry,
+  served_observation_body_entry,
   served_observation_index_of_snapshot,
   served_observation_index_wire,
   served_observation_decode,
@@ -336,14 +341,21 @@ test fn the_snapshot_files_are_homed_in_the_instance_receipts_dir_not_the_shared
   let instance = srv1_live_dashboard_instance()
   let shared = dashboard_instance_dispatch_attempt_state_root(instance: instance)
   let receipts = instance_receipts_dir(instance_root: instance.instance_root as String)
-  let index_path = served_observation_path_for_instance(instance: instance)
-  let daily = served_observation_body_path_for_instance(instance: instance, kind: DailyPage)
-  let sessions = served_observation_body_path_for_instance(instance: instance, kind: SessionsJson)
-  starts_with(s: index_path, prefix: receipts)
-    && starts_with(s: daily, prefix: receipts)
-    && !dashboard_path_is_under(path: index_path as FilePath, root: shared)
-    && !dashboard_path_is_under(path: daily as FilePath, root: shared)
-    && daily != sessions && daily != index_path
+  // The two per-instance path routes are deleted with the seal; the names exist only as derivations
+  // over the store this PR's mint returns, so the homing law is asserted over the sealed derivations.
+  match served_observation_store(instance: instance) {
+    ServedObservationStoreReady { store } =>
+      let index_path = served_observation_index_entry(store: store)
+      let daily = served_observation_body_entry(store: store, kind: DailyPage)
+      let sessions = served_observation_body_entry(store: store, kind: SessionsJson)
+      index_path == join([receipts, "/", "served-observation", ".json"], "")
+        && starts_with(s: index_path, prefix: receipts)
+        && starts_with(s: daily, prefix: receipts)
+        && !dashboard_path_is_under(path: index_path as FilePath, root: shared)
+        && !dashboard_path_is_under(path: daily as FilePath, root: shared)
+        && daily != sessions && daily != index_path
+    ServedObservationStoreUnready { detail: _ } => false
+  }
 }
 
 test fn the_standing_route_is_served() -> Bool {
