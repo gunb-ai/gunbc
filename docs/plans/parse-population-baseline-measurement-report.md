@@ -56,7 +56,7 @@ It is emitted, not an interpreted stand-in: `target/release/gunbc test //gunbc/i
 
 The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`); its rostered claim `test.claim.parse_population_baseline_roster_witness` exercises the rule's self-consistency (count, ordering, uniqueness, partition) and the comparison predicate's discriminating arms — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — and the **wall/RSS of every measured cell is timed by running the staged roots** (a row list cannot itself be timed). The tie between the declared rows and the tree is NOT established by a `.dag` claim (a `.dag` function cannot read the tree and CI runs no claims); it is established by an **executed shell runner** `test/parse_population_baseline_roster/run_evidence.sh` (§4a) that reads the pinned sha and the rows out of the carrier, compares them against `git ls-tree`, and refuses by name on any mismatch — this is the last execution of that path and its run link is recorded below. Per `gunbc.design_argument::consumption` the roster's executed consumer is that runner (and, in the measurement re-run, the staging step that builds the roots from `roster.path`); the `run_evidence.sh` header names the condition under which it dissolves. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
 
-The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so each population was staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. Each staged file is byte-identical to the same path at the pinned sha:
+The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so roots are staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. The fixed harness stages those roots **from the roster**, not by hand: the committed runner `test/parse_population_baseline_roster/stage_roster_roots.sh` (§4b) reads the pinned sha and the rows out of the carrier, verifies each declared path exists and its blob byte size matches at the pinned sha, and only then copies the blobs — so a mistyped path or byte size aborts the staging and the verb never runs over a roster that does not match the tree. The baseline cells in §5 were produced (before this wiring landed) by staging the same pinned-sha tree under those governed dirs; each staged file is byte-identical to the same path at the pinned sha:
 
 ```
 NAMED_POP=pop5    files=5   bytes=4575463   sha_mismatches=0
@@ -100,6 +100,30 @@ The rendered output above is an author-side verification run of the runner (it p
 and prints the pinned sha read from the carrier by name). The BOOT-bearing srv1 run-link execution of the
 RUNNER `test/parse_population_baseline_roster/run_evidence.sh` at the final head (post-cutover), and the
 re-execution of the rostered claim there, are pending the cutover announcement plus a lane-manager acquisition GO.
+
+### 4b. Roster-driven staging — the measurement-level consumer (route (a); review 98443-2 / 98730)
+
+Reconciling the roster to the tree (§4a) still leaves the population feeding nothing if the roots are staged
+by hand. So the harness now consumes the roster at the level the row's claims are made: the committed runner
+`test/parse_population_baseline_roster/stage_roster_roots.sh <five|tail165|all>` reads `parse_population_baseline_pinned_sha`,
+`parse_population_five_largest_count` and `parse_population_expected_total_count` BY NAME out of the carrier, selects each
+population by rank (first `five_largest_count` rows = FiveLargest; ranks 6..170 = the size-tail sample), and for
+every row verifies the path exists at the pinned sha AND its blob byte size equals the declared bytes before
+copying it into a governed `…/dag` or `…/src/v2` tree dir. Any mismatch aborts staging and names that path, so the
+verb never runs over a roster that does not match the tree — the wrong row turns the VERB INPUT red at the
+measurement level, not only at the reconcile level. It holds no second roster table (single authority, `fail_closed`).
+Its SCAFFOLD dissolve-on header names both retirement triggers, matching the accepted precedent.
+
+Author-side validation (host-independent, no slot):
+
+- `five` GREEN: staged 5 of 5, bytes **4575463** (equals the roster's five-population byte total exactly),
+  `sha_mismatches=0`, rc **0**; staged paths span `dag/` and `src/v2/` (four + one, as Population 1 spans both roots).
+- `five --selftest-mistype` RED: first row's declared byte size flipped to 0 → staged **4 of 5**, rc **1**, the
+  byte-mismatch line names that path. The guard refuses a real wrong row.
+
+The srv1 BOOT-bearing staging-plus-verb leg (populations staged through this script, then the parse-population verb
+run over the staged roots) is tranche-2 acquisition A, at the final head, post-cutover; its red control is the same
+`--selftest-mistype` refusal, run on srv1 with its own rc.
 
 ## 5. Cells — raw output, real rc, load alongside every cell
 
@@ -178,3 +202,28 @@ Additionally 4 heavy-slot touches refused instantly at argument validation (wall
   executed run link recorded earlier (`c426cbf322`, 8 names) is **superseded** by this change and must be
   re-executed at the new head. Both the BOOT-bearing srv1 run of the §4a reconciliation leg and the re-executed
   rostered claim at the new head are **pending a lane-manager acquisition GO** (tranche 2 re-offer).
+
+- **Review 98730 — route (i)/(a), used no heavy acquisition** (free `gunbc compile --target rust` gate + host-independent
+  runner validation only). The rung-inflation finding (the `.dag` "reconciles to tree" test compares two hand-built
+  slices, reads neither the tree nor the 170 rows; the only tree tie was awk/sed/diff committed inside this markdown)
+  was fixed by making the real checks executed named runners and renaming the `.dag` claim to what it runs:
+  - `test/parse_population_baseline_roster/run_evidence.sh` — the last execution of the roster↔tree path (§4a): reads
+    the pinned sha + rows out of the carrier, diffs against `git ls-tree`, drives its own red (mistyped row must fail
+    by name or exit 1). SCAFFOLD dissolve-on names both retirement triggers; the reason prose is about this case (a
+    `.dag` function cannot read the tree; CI executes no claims), mirroring the accepted precedent
+    `test/compiler_gate_contract_stamp/run_evidence.sh`.
+  - `test/parse_population_baseline_roster/stage_roster_roots.sh` — the measurement-level consumer (§4b, route (a)):
+    builds each population's verb roots FROM the roster, byte+path-checked at the pinned sha, refusing by name on a
+    mismatch so a wrong row turns the VERB INPUT red.
+  - `.dag` test renamed to `parse_population_reconcile_predicate_refuses_bad_row_holds`; carrier comments no longer
+    claim a tree read.
+  - Author-side validation: run_evidence.sh rc 0 (170 rows reconcile, injected mistype on `roadmap_authority.dag`
+    turns it red); stage_roster_roots.sh `five` rc 0 (staged 5, bytes 4575463), `--selftest-mistype` rc 1 (4 of 5);
+    carrier + witness compile `--target rust` rc 0, 0 blocking.
+  - Base updated by merging `origin/main a58ba3e3` (a merge commit, not a force push); my four/five files are
+    branch-only, so no content collision.
+  - Tranche 2 (three acquisitions declared to the lane-manager, executed on srv1 post-cutover at the final head):
+    A = staging-plus-verb (`stage_roster_roots.sh` then the parse-population verb over the roster-staged roots,
+    both populations); B = the reconcile pair run-link on srv1 (green rc 0 + count; mistype rc 1 naming the path);
+    C = the rostered claim re-exec by name (set now includes `parse_population_reconcile_predicate_refuses_bad_row_holds`,
+    no longer the planted name).
