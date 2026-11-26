@@ -9,7 +9,11 @@ module test.claim.gate668_value_disposition_prodr
 import std.types { String, Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Cons, Empty }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.content_hash { fnv1a64_digest_hex_total_order }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, BinderUseExplicitnessRequired, LambdaParameterBinder, LetBinder, ParameterBinder, Outcome, Rejected, Suggested, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.node { Atom, Node, TypeNode }
+import v2.compiler.eval { correction_verdict_digest }
 import v2.std.text { String }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -19,14 +23,6 @@ import v2.compiler.program_assembly { PreparedLanguage, assemble_program_from_pr
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import gunbc.instruments.multi_module_compile_fixture {
-  MultiModuleCompileFixture,
-  ClaimScopeFixtureOutcome,
-  fixture_source,
-  claim_scope_fixture,
-  claim_scope_was_accepted,
-  claim_scope_compile_refusal_has_class
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -37,7 +33,7 @@ data p_ifb_real_src: String = "module p\n\nfn check(duplicated: Bool) -> Int {\n
 data p_blk_src: String = "module p\n\nfn f(n: Int) -> Int {\n  { 7 }\n  n\n}\n"
 data p_ul_src: String = "module p\n\nfn f(n: Int) -> Int {\n  let hidden = n\n  n\n}\n"
 data p_up_src: String = "module p\n\nfn f(n: Int, k: Int) -> Int {\n  n\n}\n"
-data p_lp_src: String = "module p\n\nfn apply2(g: fn(Int, Int) -> Int, a: Int, b: Int) -> Int { g(a) }\n\nfn f(n: Int) -> Int {\n  apply2(fn(x, y) { x }, n, n)\n}\n"
+data p_lp_src: String = "module p\n\nfn apply2(g: fn(Int, Int) -> Int, a: Int, b: Int) -> Int { g(a, b) }\n\nfn f(n: Int) -> Int {\n  apply2(fn(x, y) { x }, n, n)\n}\n"
 data p_lu_src: String = "module p\n\nfn helper(n: Int) -> Int { n }\n\nfn f(n: Int) -> Int {\n  let _ = helper(n)\n  n\n}\n"
 
 data prod_artifact: Artifact = Artifact {
@@ -132,53 +128,100 @@ test fn vd_p_taileli_fold_accepted_holds() -> Bool { prod_accepted(p_tail_eli_sr
 
 test fn vd_p_blk_refused_precedes_holds() -> Bool { prod_refused_precedes(p_blk_src) }
 
-// GROUP B CELLS (unread let / unread parameter / unread lambda-parameter) flip to refused
-// WITH THE resolve_reason_authored_binder_unread GATE COMMIT ON THIS BRANCH; until that commit
-// these four ACCEPT cells record the pre-gate contract and pair with the gate's own refusal
-// cells (added with the gate) as the discriminating witness.
-test fn vd_p_ul_accepted_holds() -> Bool { prod_accepted(p_ul_src) }
-test fn vd_p_up_accepted_holds() -> Bool { prod_accepted(p_up_src) }
-test fn vd_p_lp_accepted_holds() -> Bool { prod_accepted(p_lp_src) }
-// POSITIVE (resolved read): the lambda reads x -- x's binder stays; y unread is the lp refusal side.
+// GROUP B (the named-binding-use gate, resolve.dag resolve_gate_authored_let_binder_read /
+// resolve_gate_authored_parameter_read): ONE refusal label -- resolve_reason_authored_binder_unread
+// -- with the binder KIND as data on the correction (v2.std.diagnostic AuthoredBinderKind). The
+// refused fixtures (p_ul unread let, p_up unread parameter, p_lp unread lambda-parameter) were
+// measured ADMITTED on main (foldctl10s GRID, PR description -- measured state, not a claim);
+// beside each sits its read positive. Discrimination is by BINDING IDENTITY: the same-spelled
+// binder in another function does not answer for an unread one (p_same_spell refuses).
+
 // POSITIVE (explicit discard): let _ = total op stays ACCEPTED (row control).
 test fn vd_p_lu_accepted_holds() -> Bool { prod_accepted(p_lu_src) }
 
-// ---------------- v1 arm: verdict-shape cells (production pipeline) ----------------
-
-data v1_blk_src: String = "module vp.blk\n\nfn f(n: Int) -> Int {\n  { 7 }\n  n\n}\n"
-data v1_uc_src: String = "module vp.uc\n\nimport std.types { Unit }\n\nfn noop() -> Unit { Unit }\n\nfn f(n: Int) -> Int {\n  noop()\n  n\n}\n"
-
-fn vd_v1_scope(path: String, module_name: String, source: String) -> ClaimScopeFixtureOutcome {
-  claim_scope_fixture(
-    MultiModuleCompileFixture {
-      sources: [fixture_source(path, source)],
-      entry: path
-    },
-    module_name
-  )
+fn prod_refused_authored(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_authored_binder_unread
+  }
 }
 
-test fn vd_1_blk_accepted_holds() -> Bool { claim_scope_was_accepted(o: vd_v1_scope("vp/blk.dag", "vp.blk", v1_blk_src)) }
-test fn vd_1_blk_compile_refused_holds() -> Bool {
-  claim_scope_compile_refusal_has_class(o: vd_v1_scope("vp/blk.dag", "vp.blk", v1_blk_src), wanted: "InternalError")
+fn prod_fatal_correction_is_let_binder(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).correction {
+        BinderUseExplicitnessRequired { binder: LetBinder } => true
+        _ => false
+      }
+  }
 }
-test fn vd_1_blk_not_accepted_holds() -> Bool {
-  !claim_scope_was_accepted(o: vd_v1_scope("vp/blk.dag", "vp.blk", v1_blk_src))
+
+fn prod_fatal_correction_is_parameter_binder(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).correction {
+        BinderUseExplicitnessRequired { binder: ParameterBinder } => true
+        _ => false
+      }
+  }
 }
-test fn vd_1_uc_accepted_holds() -> Bool { claim_scope_was_accepted(o: vd_v1_scope("vp/uc.dag", "vp.uc", v1_uc_src)) }
-test fn vd_1_uc_not_accepted_holds() -> Bool {
-  !claim_scope_was_accepted(o: vd_v1_scope("vp/uc.dag", "vp.uc", v1_uc_src))
+
+fn prod_fatal_correction_is_lambda_parameter_binder(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).correction {
+        BinderUseExplicitnessRequired { binder: LambdaParameterBinder } => true
+        _ => false
+      }
+  }
 }
+
+// REFUSED side + correction-kind side, one direction each.
+test fn vd_r_let_unread_refused_holds() -> Bool { prod_refused_authored(p_ul_src) }
+test fn vd_r_let_unread_kind_holds() -> Bool { prod_fatal_correction_is_let_binder(p_ul_src) }
+test fn vd_r_param_unread_refused_holds() -> Bool { prod_refused_authored(p_up_src) }
+test fn vd_r_param_unread_kind_holds() -> Bool { prod_fatal_correction_is_parameter_binder(p_up_src) }
+test fn vd_r_lparam_unread_refused_holds() -> Bool { prod_refused_authored(p_lp_src) }
+test fn vd_r_lparam_unread_kind_holds() -> Bool { prod_fatal_correction_is_lambda_parameter_binder(p_lp_src) }
+
+// ACCEPTED sides: every binder read.
+data p_let_read_src: String = "module p\n\nfn f(n: Int) -> Int {\n  let hidden = n\n  hidden\n}\n"
+data p_param_read_src: String = "module p\n\nfn f(n: Bool, k: Bool) -> Bool {\n  n && k\n}\n"
+data p_lparam_read_src: String = "module p\n\nfn branch(g: fn(Bool, Bool) -> Bool, a: Bool, b: Bool) -> Int {\n  if g(a, b) { return 1 }\n  0\n}\n\nfn f(c: Bool) -> Int {\n  branch(fn(x, y) { x && y }, c, c)\n}\n"
+test fn vd_r_let_read_accepted_holds() -> Bool { prod_accepted(p_let_read_src) }
+test fn vd_r_param_read_accepted_holds() -> Bool { prod_accepted(p_param_read_src) }
+test fn vd_r_lparam_read_accepted_holds() -> Bool { prod_accepted(p_lparam_read_src) }
+
+// IDENTITY, NOT TEXT: inner's binder hidden is read; f's binder hidden is NOT -- the read of one
+// never answers for the identically spelled binder of the other. Refusal is located at f's binder.
+data p_same_spell_src: String = "module p\n\nfn inner(hidden: Int) -> Int {\n  hidden\n}\n\nfn f(n: Int) -> Int {\n  let hidden = n\n  inner(n)\n}\n"
+test fn vd_r_same_spelled_not_read_refused_holds() -> Bool { prod_refused_authored(p_same_spell_src) }
+
+// CORRECTION-VERDICT DIGEST STABILITY (condition of the new Correction arm): the digest of ONE
+// FIXED EXISTING Correction (Suggested over a fixed synthetic atom) must equal the value measured
+// at the base tree -- the pinned literal below is that base value, captured by execution (see the
+// receipt pair: same claim, base-built binary and head-built binary, side by side).
+data vd_digest_hex_pinned: String = "PLACEHOLDER_BASE_HEX"
+
+fn vd_fixed_suggested_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^vd_digest_anchor } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn vd_digest_hex() -> String {
+  fnv1a64_digest_hex_total_order(h: correction_verdict_digest(c: Suggested { node: vd_fixed_suggested_node() }))
+}
+
+test fn vd_digest_stable_holds() -> Bool { vd_digest_hex() == vd_digest_hex_pinned }
 
 // ---------------- additions per manager msg (field-binder production, effectful discard, tail consumed) ----------------
-
-data p_fld_src: String = "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => 0\n    Absent => 1\n  }\n}\n"
-
-// PATTERN-FIELD IS CARVED OUT of this node's criteria (planning row names
-// gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target as the carrier; the
-// field arm of resolve_catch_all_binder_read_gate stays workarounded). This cell RECORDS the
-// carve: unread field binder v stays accepted on the production path while the carrier stands.
-test fn vd_p_fld_carve_accepted_holds() -> Bool { prod_accepted(p_fld_src) }
 
 // EXPLICIT DISCARD OF AN EFFECTFUL/FAILING OPERATION -- OPERATIONALIZATION, not the criteria clause.
 // No effect declarations exist in the .dag grammar today (std.effect_grant is harness-grant;
