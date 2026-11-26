@@ -39,6 +39,7 @@ import gunbc.codex_headless
 import gunbc.fleet.fleet_converge_plan_cli {
   BinaryPresence, BinaryPresenceKnown, BinaryPresenceUnreadable, binary_presence_of,
 }
+import gunbc.command_runner { run_shell_command_capture, process_capture_admitted, LocalExec }
 
 // AN INACCESSIBLE BINARY IS NEVER "NOT PRESENT" (the demonstrated fabrication): the binary
 // stands, its PARENT is mode-000, so `test -f` exits 1 with empty stderr exactly as a missing
@@ -53,7 +54,7 @@ test fn an_inaccessible_binary_reports_unreadable_never_not_present() -> Bool {
   let sudo_path = join([bin, "/sudo"], "")
   if !Filesystem.CreateDirectoryAll(path: bin).success { return false }
   if !Filesystem.WriteCreateNew(path: sudo_path, content: "#!/bin/sh\nexit 0\n").success { return false }
-  if !Filesystem.ChmodMode(path: bin, mode: 448).success { return false }
+  if !process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "000" as NonEmptyStr, path: bin), transport: LocalExec)) { return false }
   match binary_presence_of(program: sudo_path) {
     BinaryPresenceUnreadable { cause: c } =>
       // The cause names the failing lookup and the standing parent; it never says absent.
@@ -85,7 +86,7 @@ test fn a_standing_regular_file_answers_known_true() -> Bool {
   let sudo_path = join([bin, "/sudo"], "")
   if !Filesystem.CreateDirectoryAll(path: bin).success { return false }
   if !Filesystem.WriteCreateNew(path: sudo_path, content: "#!/bin/sh\nexit 0\n").success { return false }
-  if !Filesystem.ChmodMode(path: sudo_path, mode: 493).success { return false }
+  if !process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "755" as NonEmptyStr, path: sudo_path), transport: LocalExec)) { return false }
   match binary_presence_of(program: sudo_path) {
     BinaryPresenceKnown { present: p } => p == true
     BinaryPresenceUnreadable { cause: _ } => false

@@ -434,8 +434,8 @@ test fn a_confirmed_seed_with_unstarted_writers_goes_through_the_producer_fold()
   }
   match race_round_with(
     round: 3 as Nat, locator: locator, netrc: "/dev/null" as FilePath, dir: dir as FilePath,
-    seed: (l: R2ObjectLocator, n: FilePath, b: String) => Present { value: ObjectEntityTag { value: "seed-tag-9" as NonEmptyStr } },
-    writers: (command: ArgvCommand) => ProcessNotSpawned { program: "curl" as NonEmptyStr, cause: "transport refused to build the child" as NonEmptyStr },
+    seed: (l, n, b) => Present { value: ObjectEntityTag { value: "seed-tag-9" as NonEmptyStr } },
+    writers: command => ProcessNotSpawned { program: "curl" as NonEmptyStr, cause: "transport refused to build the child" as NonEmptyStr },
   ) {
     RaceRoundWritersUnstarted { seed_tag: t, cause: c } =>
       (t as String) == "seed-tag-9"

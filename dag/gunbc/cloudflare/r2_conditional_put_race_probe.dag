@@ -588,7 +588,7 @@ fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
   race_round_with(
     round: round, locator: locator, netrc: netrc, dir: dir,
     seed: race_seed,
-    writers: (command: ArgvCommand) => run_shell_command_observe_outcome(command: command, transport: LocalExec),
+    writers: command => run_shell_command_observe_outcome(command: command, transport: LocalExec),
   )
 }
 
