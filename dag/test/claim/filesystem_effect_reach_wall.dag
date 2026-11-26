@@ -1140,3 +1140,50 @@ test fn debt_contract_identity_strings_are_duplicate_free() -> Bool {
   (filesystem_effect_debt_contract_distinct_count() == length(xs: identities))
     && (length(xs: identities) == 4)
 }
+
+// =============================================================================================
+// THE CENSUS IS SEEN DISCHARGING (probe 1, lane-manager condition: the census must be observed
+// MOVING, not only declared). On a probe copy of this tree the srv1 stage deletes one contracted
+// use row; the stage re-runs THIS module there. These two arms are the machine-checked half of
+// that statement: the SAME produced producers -- filesystem_effect_reaches_from_phase1_rows and
+// filesystem_effect_emitted_closure_census -- run over rows that are the contract MINUS one
+// member, and the census is seen to drop exactly that member: the join breaks on the missing
+// side (the contract still demands it), while the produced reaches themselves no longer carry
+// it. The census classification, not a copied count, moves.
+// =============================================================================================
+
+fn census_discharge_verdict() -> Bool {
+  let minus_one = [
+    derived_row("v2.compiler.self_host", "read_roster_manifest", [read_seam_path()]),
+    derived_row("v2.compiler.self_host", "fold_side_bytes", [read_seam_path()]),
+    derived_row("v2.workflow.compile_door_ledger", "ledger_read_witness", [read_seam_path()])
+  ]
+  let reaches = filesystem_effect_reaches_from_phase1_rows(
+    rows: minus_one,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity,
+    bound_handler_slug: filesystem_handler_slug
+  )
+  let report = filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: minus_one,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity,
+    bound_handler_slug: filesystem_handler_slug
+  )
+  // The PRODUCER dropped exactly one reach (3 remain, none at the dropped site)...
+  (length(xs: reaches) == 3)
+    && (any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_reach_site(reach: o).enclosing_declaration == "door_ledger_row"
+      }
+    ) == false)
+    // ...and the CONTRACT still demands the dropped member, so the join refuses -- the census
+    // discharge is visible as a changed classification, never as a silently-shrunk bound.
+    && (!filesystem_effect_debt_join_holds(reaches: reaches))
+}
+
+test fn census_is_seen_discharging_when_a_contracted_row_is_removed() -> Bool {
+  census_discharge_verdict()
+}
