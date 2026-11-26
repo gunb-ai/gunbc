@@ -1,0 +1,17 @@
+module test.claim.grounded_shared_carrier_wrap
+
+// Replaces src/v1/tests/src/grounded_shared_carrier_wrap_test.rs. Observable: emitted Rust text of
+// a Cons whose tail is the grounded FreeMonoid empty, read through compile_dag_rust_emit_check
+// (the same probe as fixtures/grounded_shared_carrier/probe.dag, inlined).
+
+data grounded_carrier_probe_source: String = "module grounded_carrier_probe\n\nimport std.types \{ List \}\nimport std.algebra \{ Cons, Empty \}\n\nfn one_row() -> List<String> \{\n  Cons \{ head: \"a\", tail: Empty \{\} \}\n\}\n"
+
+// Cons derefs the carrier the grounded empty already shares.
+test fn w_grounded_empty_is_shared_once_test() -> Bool {
+  compile_dag_rust_emit_check(grounded_carrier_probe_source, "src/grounded_carrier_probe.rs", ["(*Rc::new(vec![])).clone()"], [])
+}
+
+// RED CONTROL: wrapping the already-shared empty a second time is the shape rustc refuses.
+test fn w_grounded_empty_is_never_shared_twice_test() -> Bool {
+  compile_dag_rust_emit_check(grounded_carrier_probe_source, "src/grounded_carrier_probe.rs", [], ["Rc::new(Rc::new(vec![]))"])
+}

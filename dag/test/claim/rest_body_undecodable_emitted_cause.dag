@@ -1,0 +1,33 @@
+module test.claim.rest_body_undecodable_emitted_cause
+
+// Replaces src/v1/tests/src/rest_body_undecodable_emitted_cause_test.rs. Observable: the emitted
+// Rust text of a REST operation's RestResult lowering, which heal-publish commits and publishes
+// into a PR comment. Both RestBodyUndecodable causes must be the declared-side constants, never a
+// splice of the runtime io/serde error.
+//
+// STRENGTH, STATED: the Rust test walked every RestBodyUndecodable construction line and allowed
+// only a single declared literal (an allow-list that fails unforeseen splice forms). This witness
+// pins the two declared-side literals as present and the two known leaking spellings as absent;
+// it does not enumerate unforeseen splice forms. That is a weaker rung than the retired test on
+// that one axis.
+
+data rest_leak_probe_source: String = "module rest_leak_probe\n\nimport std.types \{ Bool, String \}\nimport extdeps.transports.rest \{ RestAnswered, RestRefused \}\n\nservice test.RestEmittedLeak \{\n  config \{ endpoint: \"https://192.0.2.1\" \}\n\n  operation ReadKey \{\n    output \{\n      data: String from \"data\"\n    \}\n    readonly\n    transport rest \{ method: GET, path: \"/v1/key\" \}\n  \}\n\}\n\nfn probe() -> Bool \{\n  match test.RestEmittedLeak.ReadKey() \{\n    RestAnswered \{ answer: _ \} => true\n    RestRefused \{ refusal: _ \} => false\n  \}\n\}\n"
+
+test fn w_rest_body_undecodable_causes_are_declared_side_constants_test() -> Bool {
+  compile_dag_rust_emit_check(
+    rest_leak_probe_source,
+    "src/rest_leak_probe.rs",
+    ["RestBodyUndecodable", "the response body could not be read from the host", "body did not inhabit the declared output: the response body does not inhabit its declared output type at the failing field withheld on a credential path ("],
+    []
+  )
+}
+
+// RED CONTROL: the two body-derived spellings the emitted route used to splice into the cause.
+test fn w_rest_body_undecodable_cause_never_splices_the_runtime_error_test() -> Bool {
+  compile_dag_rust_emit_check(
+    rest_leak_probe_source,
+    "src/rest_leak_probe.rs",
+    [],
+    ["RestBodyUndecodable \{ status: status as i64, cause: error.to_string()", "RestBodyUndecodable \{ status: status as i64, cause: format!("]
+  )
+}

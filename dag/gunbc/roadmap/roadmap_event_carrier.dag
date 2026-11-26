@@ -1030,6 +1030,38 @@ fn roadmap_events_read_all_attached(layout: RoadmapEventCarrierLayout) -> Carrie
   }
 }
 
+// ONE admitted snapshot read for the PROJECTION: standings AND the full envelope set from the SAME private
+// snapshot. A projection row carries standing, events, acceptance evidence and the in-flight set together; if
+// they are read from two separate snapshots a release landing between the reads yields a row that shows a
+// claim, a release event AND no held leaf -- three facts about three different heads glued into one row. One
+// snapshot makes them all the one head. Both loads use the very same _private entry points the standalone
+// readers use (roadmap_standings_read_private, roadmap_events_read_all_private) -- no second fold, no second
+// authority (single_authority); only the snapshot OPENING is shared here. The caller releases the snapshot
+// through the returned thunk exactly once, exactly as the two standalone readers do.
+type CarrierProjectionRead {
+  standings: RoadmapStandings
+  events: RoadmapAllEventsRead
+}
+
+fn roadmap_projection_read_one_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierClosed<CarrierProjectionRead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed {
+      result: CarrierProjectionRead {
+        standings: StandingsUnobserved { reason: reason },
+        events: AllEventsReadRefused { step: "snapshot", reason: reason },
+      },
+      close: SnapshotNotOpened,
+    }
+    CarrierSnapshotReady { layout: private } => CarrierClosed {
+      result: CarrierProjectionRead {
+        standings: roadmap_standings_read_private(layout: private),
+        events: roadmap_events_read_all_private(layout: private),
+      },
+      close: roadmap_event_snapshot_close(layout: private),
+    }
+  }
+}
+
 // The ScopedDetached read (CI launcher only). It owns NOTHING that outlives the call and never attaches the named
 // branch, so it is repeatable against one checkout with origin unchanged — the property the SECOND launcher read
 // (the readiness gate, after the candidate in the same CI job) needs and a branch-attached anchor could not give.
