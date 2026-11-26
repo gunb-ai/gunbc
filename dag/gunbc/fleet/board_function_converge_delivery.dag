@@ -71,6 +71,7 @@ type MachineArch
 fn read_machine_arch(transport: HostEffectTransport) -> MachineArch {
   match run_argv_over_host_effect_transport(command: uname_machine_command(), transport: transport) {
     RunArgvTransportRefused { reason: r } => MachineArchUnread { cause: r }
+    RunArgvTransportUnanswered { cause: _, reason: r } => MachineArchUnread { cause: r }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code != 0 { MachineArchUnread { cause: join(["uname -m exited ", to_string(o.exit_code), ": ", o.stderr], "") } }
       else { MachineArchRead { spelling: trim(s: o.stdout) } }
@@ -130,6 +131,7 @@ fn admission_latch_standing(transport: HostEffectTransport) -> String? {
     transport: transport,
   ) {
     RunArgvTransportRefused { reason: r } => Present { value: join(["the admission latch read was refused: ", r], "") }
+    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: join(["the admission latch read was dispatched but its reply could not be read: ", r], "") }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code == 0 { none }
       else { Present { value: "the converge left no admission latch: the host's tree did not match the route, the unit refused, and the workloads stay ungated (read the unit's journal)" } }

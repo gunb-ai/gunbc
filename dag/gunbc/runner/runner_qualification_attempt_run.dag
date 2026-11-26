@@ -123,10 +123,15 @@ fn attempt_launch_over(transport: HostEffectTransport, user: NonEmptyStr, slot: 
           match run_argv_over_host_effect_transport(command: v, transport: transport) {
             RunArgvTransportObserved { observed: o } => o.stdout
             RunArgvTransportRefused { reason: _ } => ""
+            RunArgvTransportUnanswered { reason: _ } => ""
           }
       }
       match run_argv_stdin_over_host_effect_transport(command: w.command, stdin_payload: credential.encoded as String, transport: transport) {
         RunArgvTransportRefused { reason: r } => ListenerNotLaunched { cause: join(["the attempt unit's launch was refused before any leg ran: ", r], "") as NonEmptyStr }
+        // The launch was DISPATCHED and its reply came back unreadable: the unit may have launched and
+        // run, so this is not ListenerNotLaunched ("refused before any leg ran").  Its end is simply
+        // unobserved.
+        RunArgvTransportUnanswered { reason: r } => ListenerOutcomeUnobserved { cause: join(["the attempt unit's launch was dispatched but its reply could not be read, so its end was not observed: ", r], "") as NonEmptyStr }
         RunArgvTransportObserved { observed: o } => attempt_listener_run_of(launcher: w, version_line: version_line, stderr: o.stderr)
       }
     }

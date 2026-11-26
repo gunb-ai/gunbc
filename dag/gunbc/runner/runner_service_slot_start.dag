@@ -161,12 +161,23 @@ fn service_slot_start_unit(unit: NonEmptyStr, revision: CommitSha, transport: Ho
     SystemdRunCommandReady { command: command } =>
       match run_argv_posix_quoted_over_host_effect_transport(command: command, transport: transport) {
         RunArgvTransportRefused { reason: r } => ServiceSlotUnitNotStarted { unit: unit, cause: r }
+        // The start was DISPATCHED and its reply came back unreadable: the unit may have started, so
+        // this is not ServiceSlotUnitNotStarted.  Settle it the same way a successful start is settled --
+        // the manager's own ActiveState readback over the same transport.
+        RunArgvTransportUnanswered { reason: _ } =>
+          match run_argv_over_host_effect_transport(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]), transport: transport) {
+            RunArgvTransportRefused { reason: _ } => service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none)
+            RunArgvTransportUnanswered { reason: _ } => service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none)
+            RunArgvTransportObserved { observed: shown } =>
+              service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: if shown.success { Present { value: shown.stdout } } else { none })
+          }
         RunArgvTransportObserved { observed: o } =>
           if !o.success {
             service_slot_unit_start_of(unit: unit, started: false, start_detail: join(["systemd-run exited ", int_to_decimal_string(value: o.exit_code), ": ", o.stderr], ""), show_stdout: none)
           } else {
             match run_argv_over_host_effect_transport(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]), transport: transport) {
               RunArgvTransportRefused { reason: _ } => service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none)
+              RunArgvTransportUnanswered { reason: _ } => service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none)
               RunArgvTransportObserved { observed: shown } =>
                 service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: if shown.success { Present { value: shown.stdout } } else { none })
             }

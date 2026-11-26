@@ -3853,10 +3853,19 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
 // NO LEG RAN, so there is no exit code to report and any "exited N" line about this leg would be
 // fabricated. The first draft of this seam folded the refusal into ShellExecObserved{exit_code: 1},
 // which made the install fold report that an operation "exited 1" that never started. Callers match
-// the arms, so each says which of the two happened.
+// the arms, so each says which of the two happened. The third arm, RunArgvTransportUnanswered, is
+// NOT a "no leg ran" carrier: it means the leg WAS dispatched and its reply could not be read (it
+// overran its deadline, or came back in an inconsistent wire shape), so the effect on the host is
+// unknown. Effectful consumers must treat the effect as unknown (run the readback, keep the standing
+// uncertain), never as "not started"/"not run"; read-only consumers refuse or report not-observed with
+// the typed cause. The discriminator is the typed cause, never a string match on `reason`.
+type RunArgvTransportUnansweredCause
+  = TransportUnansweredOverran
+  | TransportUnansweredWireInconsistent
 type RunArgvTransportOutcome
   = RunArgvTransportObserved { observed: ShellExecObserved }
   | RunArgvTransportRefused { reason: String }
+  | RunArgvTransportUnanswered { cause: RunArgvTransportUnansweredCause, reason: String }
 
 // THE SAME RESULT, WITH THE OVERRUN KEPT (gunbc.design_argument::fail_closed, and review 96994's rule
 // that a killed leg is never reported as an answer or as a non-answer).  RunArgvTransportOutcome above
@@ -3912,53 +3921,44 @@ fn host_effect_argv_outcome_of(typed: TypedArgvExecOutcome) -> HostEffectArgvOut
   }
 }
 
-// THE LOSSY VIEW ONTO MAIN'S TWO-ARM CARRIER, ONE MAPPING SO THE TWO CANNOT DRIFT.  The overrun arm
-// keeps the very same reason text the fold used before this file grew a third carrier, so every caller
-// on RunArgvTransportOutcome reads exactly what it read before.  Callers that must distinguish a killed
-// leg from an unattempted one use run_argv_over_host_effect_transport_preserving_overrun instead.
-//
-// SHOULD BE GENERALIZED, NOT NOW.  RunArgvTransportOutcome has only the two arms its own comment (above
-// `type RunArgvTransportOutcome`) promises: RunArgvTransportRefused means "NO LEG RAN".  A leg that WAS
-// dispatched but whose reply came back unreadable/self-inconsistent (the wire-inconsistent arm below),
-// like the killed leg (the overrun arm), is NOT "no leg ran" -- its effect is unknown.  Both collapse
-// into RunArgvTransportRefused here, carrying a reason that names the real cause but NOT the uncertainty,
-// so an effectful consumer that switches on the arm (re-dispatch / report-not-attempted) reads a sent
-// leg as not-sent.  This is the same class of loss this family retires, on the transport-runner carrier.
-// It is left as-is for THIS PR (PR-1 of the staged 4th-arm family: arm + producer + HostLeg mapper +
-// converge reload consumer) because RunArgvTransportOutcome has ~24 effectful consumers, all of which
-// must decide the new arm explicitly.  NEXT-RUNG TRIGGER: the next PR in this family gives
-// RunArgvTransportOutcome a dispatched-unknown arm (or migrates the effectful callers to the four-arm
-// HostEffectArgvOutcome via run_argv_over_host_effect_transport_preserving_overrun) and updates every
-// exhaustive match; until then the read/observe adapters that already collapse an overrun the same way
-// (CodexRuntimeStep, BuildCacheRead -- "no usable observation", no effect to keep uncertain) are correct.
+// THE VIEW ONTO THE TRANSPORT RUNNER CARRIER, ONE MAPPING SO THE TWO CANNOT DRIFT.  A killed leg (the
+// overrun arm) and a dispatched leg whose reply came back unreadable/self-inconsistent (the wire-
+// inconsistent arm) are NOT "no leg ran" -- both were dispatched, so their effect is unknown.  They map
+// to RunArgvTransportUnanswered, carrying the typed cause (TransportUnansweredOverran /
+// TransportUnansweredWireInconsistent) and a reason naming the real fault, so an effectful consumer
+// that switches on the arm treats the effect as unknown (runs the readback, keeps the standing
+// uncertain) instead of reading a sent leg as not-sent.  Only a genuine pre-dispatch refusal (the
+// portable-word wall) reaches RunArgvTransportRefused, whose comment promises "NO LEG RAN".
 fn run_argv_transport_outcome_of(preserving: HostEffectArgvOutcome) -> RunArgvTransportOutcome {
   match preserving {
     HostEffectArgvObserved { observed: o } => RunArgvTransportObserved { observed: o }
     HostEffectArgvRefused { reason: why } => RunArgvTransportRefused { reason: why }
     HostEffectArgvOverran { deadline: d } =>
-      RunArgvTransportRefused {
+      RunArgvTransportUnanswered {
+        cause: TransportUnansweredOverran,
         reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
       }
     HostEffectArgvWireInconsistent { fault: f } =>
-      RunArgvTransportRefused {
+      RunArgvTransportUnanswered {
+        cause: TransportUnansweredWireInconsistent,
         reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "transport argv", fault: f),
       }
   }
 }
 
-// SHOULD BE GENERALIZED, NOT NOW: same loss as run_argv_transport_outcome_of above -- a dispatched
-// leg whose reply was unreadable (wire-inconsistent), like a killed leg (overrun), collapses into
-// RunArgvTransportRefused whose carrier comment promises "NO LEG RAN". See the NEXT-RUNG TRIGGER block
-// there for the follow-up (give RunArgvTransportOutcome a dispatched-unknown arm / migrate effectful
-// callers to the four-arm preserving carrier), tracked in the next PR of this staged 4th-arm family.
+// THE TYPED-ARGV VIEW ONTO THE TRANSPORT RUNNER CARRIER: a dispatched leg whose reply was unreadable
+// (wire-inconsistent) or killed (overrun) maps to RunArgvTransportUnanswered with the typed cause, so
+// the effect stays unknown; only a genuine pre-dispatch portable-word-wall refusal is RunArgvTransportRefused.
 fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
   match typed {
   TypedArgvExecOverran { deadline: d } =>
-    RunArgvTransportRefused {
+    RunArgvTransportUnanswered {
+      cause: TransportUnansweredOverran,
       reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
     }
     TypedArgvExecWireInconsistent { fault: f } =>
-    RunArgvTransportRefused {
+    RunArgvTransportUnanswered {
+      cause: TransportUnansweredWireInconsistent,
       reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "transport argv", fault: f),
     }
     TypedArgvExecRefused { reason: why } =>
@@ -4149,6 +4149,9 @@ fn run_argv_stdin_over_elevation_route(command: ArgvCommand, stdin_payload: Stri
 fn build_cache_argv_read_outcome(command: ArgvCommand, transport: HostEffectTransport) -> BuildCacheHostRunOutcome {
   match run_argv_over_host_effect_transport(command: command, transport: transport) {
     RunArgvTransportRefused { reason: r } => CouldNotRun { phase: "argv read", reason: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => CouldNotRun { phase: "argv read", reason: r }
     RunArgvTransportObserved { observed: o } =>
       Ran {
         observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
@@ -4420,6 +4423,18 @@ fn build_cache_fold_op_executed(
   // it is a rule about an ANSWER, not about a sequence.
   match ran {
     RunArgvTransportRefused { reason: r } =>
+      BuildCacheEnsureFold {
+        executed: EnsureTransportBlocked { op: op, reason: r },
+        digest_line: acc.digest_line,
+      }
+    // THE `set -e` DECISION IS NOT MADE HERE. It is the cited build_cache_ensure_leg_verdict, in the module
+    // that owns the effect: this site turns the transport's outcome into that fn's input and reports what it
+    // returned. An `if o.exit_code != 0` written here instead would put the same rule in two places, where
+    // the digest gate already sits in one — and the two would be free to disagree, silently, about whether a
+    // given leg stops the sequence.
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
       BuildCacheEnsureFold {
         executed: EnsureTransportBlocked { op: op, reason: r },
         digest_line: acc.digest_line,
@@ -5438,6 +5453,9 @@ fn live_deploy_preamble_next_state(
         LegObserved { outcome: out } =>
           match out {
             RunArgvTransportRefused { reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
+            // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+            // Same handling as the refused/killed leg here; the cause names the real fault.
+            RunArgvTransportUnanswered { cause: _, reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
             RunArgvTransportObserved { observed: o } =>
               if o.success {
                 PreambleLegOk { consumed: n + 1 }
@@ -5504,12 +5522,19 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
         // as a check" framing is applied, so the pure fold and this runner cannot drift on its wording.
         RunArgvTransportRefused { reason: why } =>
           LegRefusedAt { step: cs, reason: why, calls: 1 }
+        // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+        // Same handling as the refused/killed leg here; the cause names the real fault.
+        RunArgvTransportUnanswered { cause: _, reason: why } =>
+          LegRefusedAt { step: cs, reason: why, calls: 1 }
         RunArgvTransportObserved { observed: o } =>
           if o.success {
             LegActSkipped
           } else {
             match run_argv_over_host_effect_transport(command: a_, transport: access.transport) {
               RunArgvTransportRefused { reason: why } => LegRefusedAt { step: as_, reason: why, calls: 2 }
+              // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+              // Same handling as the refused/killed leg here; the cause names the real fault.
+              RunArgvTransportUnanswered { cause: _, reason: why } => LegRefusedAt { step: as_, reason: why, calls: 2 }
               RunArgvTransportObserved { observed: o2 } =>
                 if o2.success {
                   LegActRan
@@ -5697,6 +5722,9 @@ type LiveDeployPreambleScratch = PreambleScratchPresent { path: String } | Pream
 fn live_deploy_preamble_acquire_scratch(access: DeployAccess) -> LiveDeployPreambleScratch {
   match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: live_deploy_preamble_scratch_template), transport: access.transport) {
     RunArgvTransportRefused { reason: r } => PreambleScratchAbsent { reason: live_deploy_preamble_refusal_text(step: ScratchAcquire, detail: r) }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => PreambleScratchAbsent { reason: live_deploy_preamble_refusal_text(step: ScratchAcquire, detail: r) }
     RunArgvTransportObserved { observed: o } =>
       match (if o.success { admitted_scratch_path(prefix: live_deploy_preamble_scratch_prefix, stdout: o.stdout) } else { none }) {
         Absent =>
@@ -5716,6 +5744,9 @@ fn live_deploy_preamble_acquire_scratch(access: DeployAccess) -> LiveDeployPream
 fn live_deploy_preamble_cleanup_scratch(scratch: String, access: DeployAccess) -> Optional<String> {
   match run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: access.transport) {
     RunArgvTransportRefused { reason: r } => Present { value: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: r }
     RunArgvTransportObserved { observed: o } =>
       if o.success { Absent } else { Present { value: join(["exited ", to_string(o.exit_code), ": ", o.stderr], "") } }
   }
@@ -6057,6 +6088,9 @@ fn deploy_retract_load_state_of(capture: SystemdPropertyCapture) -> RetractLoadS
 fn deploy_retract_command_failure(outcome: RunArgvTransportOutcome) -> Optional<String> {
   match outcome {
     RunArgvTransportRefused { reason: r } => Present { value: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: r }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code == 0 {
         Absent
@@ -6240,6 +6274,9 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
 fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
   match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
     RunArgvTransportRefused { reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
     RunArgvTransportObserved { observed: o } =>
       if o.success {
         ObserverReadOut { stdout: o.stdout }
@@ -6269,6 +6306,9 @@ fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, tran
       transport: transport,
     ) {
       RunArgvTransportRefused { reason: _ } => false
+      // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+      // Same handling as the refused/killed leg here; the cause names the real fault.
+      RunArgvTransportUnanswered { cause: _, reason: _ } => false
       RunArgvTransportObserved { observed: o } => o.success
     },
   )
@@ -6324,6 +6364,9 @@ fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: Strin
   let command = ports.command
   match command(sha256sum_file_command(path: binary)) {
     RunArgvTransportRefused { reason: r } => Present { value: join(["sha256sum of ", binary, " was refused: ", r], "") }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: join(["sha256sum of ", binary, " was refused: ", r], "") }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code != 0 {
         Present { value: join(["sha256sum could not read ", binary, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
@@ -6349,6 +6392,9 @@ fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: Strin
 fn credstore_copy_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
   match outcome {
     RunArgvTransportRefused { reason: _ } => false
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => false
     RunArgvTransportObserved { observed: o } => o.exit_code == 0
   }
 }
@@ -6356,6 +6402,9 @@ fn credstore_copy_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
 fn credstore_copy_stage_path(outcome: RunArgvTransportOutcome) -> NonEmptyStr? {
   match outcome {
     RunArgvTransportRefused { reason: _ } => none
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => none
     RunArgvTransportObserved { observed: o } => {
       let path = trim(s: o.stdout)
       if o.exit_code == 0 && starts_with(s: path, prefix: "/") && !string_contains(s: path, pattern: "\n") { Present { value: path as NonEmptyStr } } else { none }
@@ -6439,6 +6488,9 @@ fn deploy_apply_status_tail(text: String) -> String {
 fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcome) -> String {
   match diagnosis {
     RunArgvTransportRefused { reason: r } => join([why, " | diagnosis could not run: ", r], "")
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => join([why, " | diagnosis could not run: ", r], "")
     RunArgvTransportObserved { observed: o } =>
       join([why, "\n--- control-process diagnosis ---\n", deploy_apply_status_tail(text: concat(o.stdout, o.stderr))], "")
   }
@@ -6449,6 +6501,9 @@ fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcom
 fn deploy_apply_digest_failure(path: String, digest: Digest, outcome: RunArgvTransportOutcome) -> Optional<String> {
   match outcome {
     RunArgvTransportRefused { reason: r } => Present { value: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => Present { value: r }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code != 0 {
         Present { value: join(["sha256sum could not read ", path, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
@@ -6739,6 +6794,9 @@ type TreePrefixWalk {
 fn tree_step_failure(step: TreeInstallStep, outcome: RunArgvTransportOutcome) -> TreeInstallStepState {
   match outcome {
     RunArgvTransportRefused { reason: r } => TreeStepFailed { step: step, reason: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => TreeStepFailed { step: step, reason: r }
     RunArgvTransportObserved { observed: o } =>
       if o.success { TreeStepsOk } else {
         TreeStepFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") }
@@ -6768,6 +6826,9 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectEl
           transport: transport,
         ) {
           RunArgvTransportRefused { reason: r } => TreeObservationFailed { reason: r }
+          // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+          // Same handling as the refused/killed leg here; the cause names the real fault.
+          RunArgvTransportUnanswered { cause: _, reason: r } => TreeObservationFailed { reason: r }
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeObservationFailed { reason: join(["find exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
@@ -7248,6 +7309,9 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
           transport: transport,
         ) {
           RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+          // Same handling as the refused/killed leg here; the cause names the real fault.
+          RunArgvTransportUnanswered { cause: _, reason: r } => TreeMetadataObservationFailed { reason: r }
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
@@ -7256,6 +7320,9 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
                 transport: transport,
               ) {
                 RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+                // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+                // Same handling as the refused/killed leg here; the cause names the real fault.
+                RunArgvTransportUnanswered { cause: _, reason: r } => TreeMetadataObservationFailed { reason: r }
                 RunArgvTransportObserved { observed: c } =>
                   if !c.success { TreeMetadataObservationFailed { reason: join(["find entry-count exit ", to_string(c.exit_code), ": ", c.stderr], "") } }
                   else {
@@ -7305,6 +7372,9 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
     transport: transport,
   ) {
     RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => TreeMetadataObservationFailed { reason: r }
     RunArgvTransportObserved { observed: o } =>
       if !o.success { TreeMetadataObservationFailed { reason: join(["find direct-children exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
       else {
@@ -7313,6 +7383,9 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
           transport: transport,
         ) {
           RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+          // Same handling as the refused/killed leg here; the cause names the real fault.
+          RunArgvTransportUnanswered { cause: _, reason: r } => TreeMetadataObservationFailed { reason: r }
           RunArgvTransportObserved { observed: c } =>
             if !c.success { TreeMetadataObservationFailed { reason: join(["find direct-children count exit ", to_string(c.exit_code), ": ", c.stderr], "") } }
             else { tree_metadata_entries_of_stdout_checked(root: root, stdout: o.stdout, dot_stdout: c.stdout, sub: sub, starting_point_expected: false) }
@@ -7421,6 +7494,9 @@ fn observe_directory_self_entries(paths: List<String>, transport: HostEffectElev
           transport: transport,
         ) {
           RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+          // Same handling as the refused/killed leg here; the cause names the real fault.
+          RunArgvTransportUnanswered { cause: _, reason: r } => TreeMetadataObservationFailed { reason: r }
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeMetadataObservationFailed { reason: join(["find self-metadata on ", p, " exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
@@ -7716,6 +7792,9 @@ type Sha256Agreement
 fn sha256_observation_of_outcome(outcome: RunArgvTransportOutcome) -> Sha256Observation {
   match outcome {
     RunArgvTransportRefused { reason: r } => Sha256Unobserved { cause: Sha256TransportRefused { reason: r } }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => Sha256Unobserved { cause: Sha256TransportRefused { reason: r } }
     RunArgvTransportObserved { observed: o } =>
       if o.success == false {
         Sha256Unobserved { cause: Sha256RunFailed { stderr: o.stderr } }
@@ -7942,6 +8021,9 @@ fn approval_broker_tree_receipt_write(
                 TreeInstallConverged { installed_digest: _d, files_installed: _f } =>
                   match run_argv_stdin_over_elevation_route(command: c, stdin_payload: body, transport: transport) {
                     RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepReceipt, reason: r }
+                    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+                    // Same handling as the refused/killed leg here; the cause names the real fault.
+                    RunArgvTransportUnanswered { cause: _, reason: r } => TreeInstallRefused { step: TreeStepReceipt, reason: r }
                     RunArgvTransportObserved { observed: w } =>
                       if w.success { v }
                       else { TreeInstallRefused { step: TreeStepReceipt, reason: join(["exit ", to_string(w.exit_code), ": ", w.stderr], "") } }
@@ -7967,6 +8049,9 @@ fn tree_digest_lines(lines: String, transport: HostEffectElevationRoute) -> Tree
     transport: transport,
   ) {
     RunArgvTransportRefused { reason: r } => TreeDigestRefused { reason: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => TreeDigestRefused { reason: r }
     RunArgvTransportObserved { observed: o } =>
       match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
         Absent => TreeDigestRefused { reason: join(["sha256sum of the tree lines failed: ", o.stderr], "") }
@@ -8041,6 +8126,9 @@ type DarkInstallInputs {
 fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
   match outcome {
     RunArgvTransportRefused { reason: r } => DarkFailed { step: step, reason: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => DarkFailed { step: step, reason: r }
     RunArgvTransportObserved { observed: o } =>
       if o.success { DarkOk } else { DarkFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
   }
@@ -8051,6 +8139,9 @@ fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcom
 fn dark_expect_empty_state(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
   match outcome {
     RunArgvTransportRefused { reason: r } => DarkFailed { step: step, reason: r }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } => DarkFailed { step: step, reason: r }
     RunArgvTransportObserved { observed: o } =>
       if !o.success { DarkFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
       else if string_length(s: trim(s: o.stdout)) > 0 { DarkFailed { step: step, reason: join(["expected no output, got: ", o.stdout], "") } }
@@ -8521,6 +8612,22 @@ fn live_deploy_ensure_package_fold(
         ),
         applied: intent,
       }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: live-deploy ensure-dependency refused before the install-state probe for package ",
+            package as String,
+            " ran -- ",
+            r,
+            "; the install was not attempted either, and neither leg is reported as having run.",
+          ],
+          "",
+        ),
+        applied: intent,
+      }
     RunArgvTransportObserved { observed: p } =>
       match dpkg_query_status_verdict_of(exit_code: p.exit_code, stdout: p.stdout, stderr: p.stderr) {
         DpkgPackageInstalled =>
@@ -8570,6 +8677,13 @@ fn live_deploy_ensure_install_fold(
         reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
         applied: intent,
       }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } =>
+      NotConverged {
+        reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
+        applied: intent,
+      }
   }
 }
 
@@ -8595,6 +8709,15 @@ fn live_deploy_ensure_package_leg(
     let probe_command = dpkg_query_status_command(package: package)
     match run_argv_over_host_effect_transport(command: probe_command, transport: transport) {
         RunArgvTransportRefused { reason: r } =>
+          live_deploy_ensure_package_fold(
+            package: package,
+            probe: RunArgvTransportRefused { reason: r },
+            install: live_deploy_leg_not_run_outcome(),
+            intent: intent,
+          )
+        // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+        // Same handling as the refused/killed leg here; the cause names the real fault.
+        RunArgvTransportUnanswered { cause: _, reason: r } =>
           live_deploy_ensure_package_fold(
             package: package,
             probe: RunArgvTransportRefused { reason: r },
@@ -8834,6 +8957,9 @@ data live_deploy_ensure_stage_template: NonEmptyStr = "/tmp/gunbc-live-deploy-en
 fn live_deploy_ensure_scratch_dir(outcome: RunArgvTransportOutcome) -> String? {
   match outcome {
     RunArgvTransportRefused { reason: _ } => none
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => none
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code == 0 {
         admitted_scratch_path(prefix: live_deploy_ensure_stage_prefix, stdout: o.stdout)
@@ -8849,6 +8975,17 @@ fn live_deploy_ensure_scratch_dir(outcome: RunArgvTransportOutcome) -> String? {
 fn live_deploy_ensure_scratch_refusal_line(outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportRefused { reason: r } =>
+      join(
+        [
+          "host_effect_apply: live-deploy ensure-dependency refused at scratch acquisition before any leg ran -- ",
+          r,
+          "; no marker was staged, installed, or discarded.",
+        ],
+        "",
+      )
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
       join(
         [
           "host_effect_apply: live-deploy ensure-dependency refused at scratch acquisition before any leg ran -- ",
@@ -8900,6 +9037,20 @@ fn live_deploy_ensure_step_failure_line(step: String, subject: String, outcome: 
         ],
         "",
       )
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
+      join(
+        [
+          "host_effect_apply: live-deploy ensure-dependency could not run its ",
+          step,
+          " for ",
+          subject,
+          " -- ",
+          r,
+        ],
+        "",
+      )
     RunArgvTransportObserved { observed: o } =>
       join(
         [
@@ -8923,6 +9074,17 @@ fn live_deploy_ensure_step_failure_line(step: String, subject: String, outcome: 
 fn live_deploy_ensure_discard_line(outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportRefused { reason: r } =>
+      join(
+        [
+          "the scratch discard did not run either -- ",
+          r,
+          "; the scratch directory may survive for later reclamation.",
+        ],
+        "",
+      )
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
       join(
         [
           "the scratch discard did not run either -- ",
@@ -8958,6 +9120,9 @@ fn installed_stderr(installed: RunArgvTransportOutcome) -> String {
   match installed {
     RunArgvTransportObserved { observed: o } => o.stderr
     RunArgvTransportRefused { reason: _ } => ""
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => ""
   }
 }
 
@@ -8986,6 +9151,10 @@ fn realize_live_deploy_serve_route_on_host(
     RunArgvTransportObserved { observed } =>
       reconcile_shell_exec_observed(observed: observed, intent: intent)
     RunArgvTransportRefused { reason } =>
+      NotConverged { reason: reason, applied: intent }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason } =>
       NotConverged { reason: reason, applied: intent }
   }
 }
@@ -9841,6 +10010,18 @@ fn host_remove_outcome_verdict(
             ),
             applied: target,
           }
+        // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+        // Same handling as the refused/killed leg here; the cause names the real fault.
+        RunArgvTransportUnanswered { cause: _, reason: why } =>
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "refused",
+              detail: join(["the typed transport refused the removal before any dispatch: ", why], ""),
+              pathfield: host_remove_path_field(target: target),
+            ),
+            applied: target,
+          }
         RunArgvTransportObserved { observed: o } =>
           if string_contains(s: o.stderr, pattern: "a password is required") {
             NotConverged {
@@ -9898,6 +10079,18 @@ fn host_remove_outcome_verdict(
           ),
           applied: target,
         }
+      // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+      // Same handling as the refused/killed leg here; the cause names the real fault.
+      RunArgvTransportUnanswered { cause: _, reason: why } =>
+        NotConverged {
+          reason: host_remove_reason(
+            target: target,
+            verb: "refused",
+            detail: join(["the typed transport refused the removal before any dispatch: ", why], ""),
+            pathfield: p_s,
+          ),
+          applied: target,
+        }
       RunArgvTransportObserved { observed: o } =>
         if string_contains(s: o.stderr, pattern: "a password is required") {
           NotConverged {
@@ -9944,6 +10137,18 @@ fn host_remove_outcome_verdict(
     let p_s = p as String
     match outcome {
       RunArgvTransportRefused { reason: why } =>
+        NotConverged {
+          reason: host_remove_reason(
+            target: target,
+            verb: "refused",
+            detail: join(["the typed transport refused the removal before any dispatch: ", why], ""),
+            pathfield: p_s,
+          ),
+          applied: target,
+        }
+      // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+      // Same handling as the refused/killed leg here; the cause names the real fault.
+      RunArgvTransportUnanswered { cause: _, reason: why } =>
         NotConverged {
           reason: host_remove_reason(
             target: target,
@@ -10053,6 +10258,10 @@ fn host_remove_unreadable_reason(states: List<HostRemovePathState>) -> Optional<
 fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathExistenceReading {
   match outcome {
     RunArgvTransportRefused { reason: why } =>
+      PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } =>
       PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
     RunArgvTransportObserved { observed: o } =>
       path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
@@ -10937,6 +11146,16 @@ fn compile_pool_slice_install_step(
                   discarded: discarded,
                   effect_intent: effect_intent,
                 )
+              // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+              // Same handling as the refused/killed leg here; the cause names the real fault.
+              RunArgvTransportUnanswered { cause: _, reason: _ } =>
+                compile_pool_install_failed_step_result(
+                  failed_step: "start",
+                  slice_unit: slice_unit,
+                  observed: started,
+                  discarded: discarded,
+                  effect_intent: effect_intent,
+                )
               RunArgvTransportObserved { observed: s } =>
                 if !s.success {
                   compile_pool_install_failed_step_result(
@@ -11028,6 +11247,20 @@ fn compile_pool_install_step_failure_line(step: String, slice_unit: NonEmptyStr,
         ],
         "",
       )
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } =>
+      join(
+        [
+          "host_effect_apply: EnsureCompilePoolSlice did not run its ",
+          step,
+          " over ",
+          slice_unit as String,
+          " -- ",
+          why,
+        ],
+        "",
+      )
     RunArgvTransportObserved { observed: o } =>
       compile_pool_install_stage_failure(step: step, slice_unit: slice_unit, observed: o)
   }
@@ -11042,6 +11275,10 @@ fn compile_pool_install_discard_line(outcome: RunArgvTransportOutcome) -> String
       join([" (staged bytes discarded, exit ", to_string(o.exit_code), ")"], "")
     RunArgvTransportRefused { reason: why } =>
       join([" (the staged-byte discard did not run either -- ", why, ")"], "")
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } =>
+      join([" (the staged-byte discard did not run either -- ", why, ")"], "")
   }
 }
 
@@ -11051,6 +11288,11 @@ fn compile_pool_install_discard_line(outcome: RunArgvTransportOutcome) -> String
 fn run_argv_transport_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
   match outcome {
     RunArgvTransportRefused { reason: _ } => false
+    // Unanswered means the leg was dispatched and its effect is unknown: it did NOT succeed, so this
+    // returns false to mean "do not proceed".  Every caller must treat false as "do not proceed", never
+    // as "the thing is absent / not installed / not running" -- a caller that acts on false as absence
+    // is reading a dispatched leg as not-happened (the lossy-Boolean pattern this family retires).
+    RunArgvTransportUnanswered { cause: _, reason: _ } => false
     RunArgvTransportObserved { observed: o } => o.success
   }
 }
@@ -11966,6 +12208,9 @@ fn microvm_controller_run_argv(name: String, command: ArgvCommand, stdin_payload
       stderr: observed.stderr,
     }
     RunArgvTransportRefused { reason: why } => StepRefused { reason: why }
+    // Dispatched, reply unreadable: the leg ran on the host and its effect is unknown.
+    // Same handling as the refused/killed leg here; the cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } => StepRefused { reason: why }
   }
 }
 

@@ -1449,6 +1449,8 @@ fn browser_ready_labels_step_failed(step: String, outcome: RunArgvTransportOutco
   match outcome {
     RunArgvTransportRefused { reason: why } =>
       BrowserReadyLabelsFailed { cause: join([step, ": the transport refused before the leg ran: ", why], "") }
+    RunArgvTransportUnanswered { reason: why } =>
+      BrowserReadyLabelsFailed { cause: join([step, ": the leg was dispatched but its reply could not be read: ", why], "") }
     RunArgvTransportObserved { observed: o } =>
       BrowserReadyLabelsFailed { cause: join([step, ": exit=", to_string(o.exit_code), " ", o.stderr], "") }
   }

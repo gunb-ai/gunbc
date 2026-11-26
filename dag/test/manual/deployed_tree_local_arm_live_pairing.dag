@@ -109,6 +109,8 @@ fn outcome_stdout(outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportObserved { observed: o } => o.stdout
     RunArgvTransportRefused { reason: _ } => ""
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => ""
   }
 }
 
@@ -116,6 +118,8 @@ fn outcome_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
   match outcome {
     RunArgvTransportObserved { observed: o } => o.exit_code == 0
     RunArgvTransportRefused { reason: _ } => false
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => false
   }
 }
 
@@ -123,6 +127,8 @@ fn outcome_refusal(outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportObserved { observed: _ } => ""
     RunArgvTransportRefused { reason: why } => why
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } => why
   }
 }
 

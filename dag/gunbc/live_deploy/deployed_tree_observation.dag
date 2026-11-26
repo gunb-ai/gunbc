@@ -332,6 +332,9 @@ fn deployed_tree_leg_outcome_of(observed: RunArgvTransportOutcome) -> DeployedTr
         result: SshSessionExecResult { exit_code: o.exit_code, success: o.success, stdout: o.stdout, stderr: o.stderr, wall_deadline_seconds: Absent },
       }
     RunArgvTransportRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+    // Dispatched, reply unreadable: the deploy-tree leg ran on the host but its result is unknown, so it
+    // is a wire-inconsistent leg, not "not attempted".
+    RunArgvTransportUnanswered { cause: _, reason: r } => DeployedTreeLegWireInconsistent { cause: r }
   }
 }
 

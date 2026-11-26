@@ -183,6 +183,10 @@ type ServiceSlotLocalRead
 fn service_slot_local_read(command: ArgvCommand) -> ServiceSlotLocalRead {
   match run_argv_over_host_effect_transport(command: command, transport: LocalShell) {
     RunArgvTransportRefused { reason: r } => ServiceSlotLocalRefused { reason: r }
+    // A LocalShell read has no host effect to keep uncertain: an unreadable reply is just unread, the
+    // same as a refusal, so it routes to the read's "could not observe" shape (every consumer below
+    // renders ServiceSlotLocalRefused as *Unobservable / *Unread, never as an effect that did not run).
+    RunArgvTransportUnanswered { reason: r } => ServiceSlotLocalRefused { reason: r }
     RunArgvTransportObserved { observed: o } => ServiceSlotLocalRan { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr }
   }
 }
@@ -485,6 +489,9 @@ fn run_listener_with(slot: HostUnitSlot, isolated: ServiceSlotListenerIsolated, 
     ServiceSlotListenerReady { command: c } =>
       match run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: credential.encoded as String, transport: LocalShell) {
         RunArgvTransportRefused { reason: r } => ListenerNotLaunched { cause: join(["listener launch refused: ", r], "") as NonEmptyStr }
+        // The listener was DISPATCHED and its reply came back unreadable: it may have launched, so this
+        // is not ListenerNotLaunched; its end is simply unobserved.
+        RunArgvTransportUnanswered { reason: r } => ListenerOutcomeUnobserved { cause: join(["listener launch dispatched but its reply could not be read: ", r], "") as NonEmptyStr }
         RunArgvTransportObserved { observed: o } => ListenerExited { exit_code: o.exit_code }
       }
   }

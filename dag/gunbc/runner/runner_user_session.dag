@@ -97,6 +97,7 @@ fn user_manager_unit(uid: Int) -> NonEmptyStr {
 fn observed_or_cause(step: String, outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportRefused { reason: why } => join([step, ": the transport refused before the leg ran: ", why], "")
+    RunArgvTransportUnanswered { reason: why } => join([step, ": the leg was dispatched but its reply could not be read: ", why], "")
     RunArgvTransportObserved { observed: o } => join([step, ": exit=", to_string(value: o.exit_code), " ", trim(s: o.stderr)], "")
   }
 }
@@ -104,6 +105,7 @@ fn observed_or_cause(step: String, outcome: RunArgvTransportOutcome) -> String {
 fn uid_of(outcome: RunArgvTransportOutcome) -> Int? {
   match outcome {
     RunArgvTransportRefused { reason: _ } => none
+    RunArgvTransportUnanswered { reason: _ } => none
     RunArgvTransportObserved { observed: o } => if o.exit_code == 0 { parse_int(s: trim(s: o.stdout)) } else { none }
   }
 }
@@ -117,6 +119,7 @@ fn user_session_admin_target(host: NonEmptyStr) -> SshTargetResolution {
 fn linger_reading_of(outcome: RunArgvTransportOutcome) -> LoginctlLingerReading {
   match outcome {
     RunArgvTransportRefused { reason: why } => LoginctlLingerUnread { cause: concat("the transport refused: ", why) }
+    RunArgvTransportUnanswered { reason: why } => LoginctlLingerUnread { cause: concat("the leg was dispatched but its reply could not be read: ", why) }
     RunArgvTransportObserved { observed: o } => loginctl_linger_reading(exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
   }
 }
@@ -166,7 +169,7 @@ fn runner_user_session_converge_ci_wet() -> ProcessExit {
                   let transport = FleetSsh {kind: ActuationLeg, target: admin, context: context }
                   let uid_read = run_argv_over_host_effect_transport(command: id_uid_of_command(user: job_user), transport: transport)
                   let linger = run_argv_over_host_effect_transport(command: user_session_enable_linger_command(job_user: job_user), transport: transport)
-                  let linger_ok = match linger { RunArgvTransportObserved { observed: o } => o.exit_code == 0  RunArgvTransportRefused { reason: _ } => false }
+                  let linger_ok = match linger { RunArgvTransportObserved { observed: o } => o.exit_code == 0  RunArgvTransportRefused { reason: _ } => false  RunArgvTransportUnanswered { reason: _ } => false }
                   let lingers = linger_reading_of(outcome: run_argv_over_host_effect_transport(command: loginctl_show_user_linger_command(subject: job_user), transport: transport))
                   let answer = match uid_of(outcome: uid_read) {
                     Absent => UserSessionNotAnswered { cause: observed_or_cause(step: "the job user's uid", outcome: uid_read) }
@@ -176,12 +179,14 @@ fn runner_user_session_converge_ci_wet() -> ProcessExit {
                       } else {
                         match run_argv_over_host_effect_transport(command: systemctl_start_command(unit: user_manager_unit(uid: uid)), transport: transport) {
                           RunArgvTransportRefused { reason: why } => UserSessionNotAnswered { cause: concat("the user manager start transport refused: ", why) }
+                          RunArgvTransportUnanswered { reason: why } => UserSessionNotAnswered { cause: concat("the user manager start was dispatched but its reply could not be read: ", why) }
                           RunArgvTransportObserved { observed: started } =>
                             if started.exit_code != 0 {
                               UserSessionNotAnswered { cause: join(["systemctl start ", user_manager_unit(uid: uid) as String, " exit ", to_string(value: started.exit_code), ": ", trim(s: started.stderr)], "") }
                             } else {
                               match run_argv_over_host_effect_transport(command: user_session_readback_command(job_user: job_user, uid: uid), transport: transport) {
                                 RunArgvTransportRefused { reason: why } => UserSessionNotAnswered { cause: concat("the readback transport refused: ", why) }
+                                RunArgvTransportUnanswered { reason: why } => UserSessionNotAnswered { cause: concat("the readback was dispatched but its reply could not be read: ", why) }
                                 RunArgvTransportObserved { observed: o } => user_session_answer_of(exit_code: o.exit_code, stderr: o.stderr)
                               }
                             }
