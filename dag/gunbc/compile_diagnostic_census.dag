@@ -149,7 +149,7 @@ fn compile_dag_diagnostic_census(source: String) -> CompileDiagnosticCensus {
 // census_total_count sums counts rather than rows so a class occurring twice is two occurrences.
 
 fn census_blocking_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
-  rows |> filter(r => r.blocking)
+  rows |> filter(r => !r.blocking)
 }
 
 fn census_advisory_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
