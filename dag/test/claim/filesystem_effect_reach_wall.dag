@@ -7,7 +7,6 @@ import v2.compiler.effect_demand {
   FilesystemEffectCensusReport,
   ReachedThroughHandler,
   ReachedFreePrimitiveDirectly,
-  ReachedOutsideBoundHandler,
   filesystem_free_primitive_slug,
   filesystem_effect_emitted_closure_population,
   filesystem_effect_direct_reach_debt_contract,
@@ -17,7 +16,6 @@ import v2.compiler.effect_demand {
   filesystem_effect_debt_site_identity,
   filesystem_effect_reaches_from_phase1_rows,
   filesystem_effect_census_log,
-  filesystem_effect_reach,
   filesystem_effect_emitted_closure_census,
   filesystem_effect_site_eq,
   filesystem_effect_reaches_are_located_distinct,
@@ -106,8 +104,6 @@ import v2.test.claim.compiler.operation_declaration_seam { read_seam_path }
 // native door binds, and the free legacy primitive `filesystem_read` is neither that handler nor its
 // interface. The handler slug a green control reaches through is a filesystem realization OTHER than the
 // free primitive's slug.
-data filesystem_handler_slug: String = "emit_file_call"
-
 // The two self_host.dag direct reaches, located by SITE (module + enclosing declaration + OCCURRENCE
 // INDEX within that declaration -- NOT a line number): read_roster_manifest occurrence 1 and
 // fold_side_bytes occurrence 1. They are distinct offenders -- keying on (module, operation) alone would
@@ -115,40 +111,40 @@ data filesystem_handler_slug: String = "emit_file_call"
 // typed population source (filesystem_effect_emitted_closure_population) passed BY NAME.
 
 data self_host_read_roster_manifest_site: FilesystemEffectSite = FilesystemEffectSite {
-  module_path: "v2.compiler.self_host",
-  enclosing_declaration: "read_roster_manifest",
+  module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+  enclosing_declaration: symbol_intern_lexeme(lexeme: "read_roster_manifest"),
   site_occurrence: 1
 }
 
 data self_host_fold_side_bytes_site: FilesystemEffectSite = FilesystemEffectSite {
-  module_path: "v2.compiler.self_host",
-  enclosing_declaration: "fold_side_bytes",
+  module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+  enclosing_declaration: symbol_intern_lexeme(lexeme: "fold_side_bytes"),
   site_occurrence: 1
 }
 
 data handler_site: FilesystemEffectSite = FilesystemEffectSite {
-  module_path: "v2.compiler.compile",
-  enclosing_declaration: "compiled_closure",
+  module: qualified_name_from_dotted_string(dotted: "v2.compiler.compile"),
+  enclosing_declaration: symbol_intern_lexeme(lexeme: "compiled_closure"),
   site_occurrence: 1
 }
 
-data filesystem_reach_through_handler: FilesystemEffectReach = filesystem_effect_reach(
-  site: handler_site,
-  operation: "emit_file_call",
-  handler_slug: filesystem_handler_slug
-)
+// THE FIXTURE REACHES CONSTRUCT THE ARMS DIRECTLY (review 98815 finding 1): the classifier that took an
+// operation string and re-decided the variant is deleted, so a fixture states its variant ONCE, at the
+// arm. The refused arm carries the same named cause the producer carries, so the witness exercises the
+// wall on the producer's own arm shape.
+data filesystem_reach_through_handler: FilesystemEffectReach = ReachedThroughHandler {
+  site: handler_site
+}
 
-data filesystem_reach_self_host_roster: FilesystemEffectReach = filesystem_effect_reach(
+data filesystem_reach_self_host_roster: FilesystemEffectReach = ReachedFreePrimitiveDirectly {
   site: self_host_read_roster_manifest_site,
-  operation: "filesystem_read",
-  handler_slug: filesystem_handler_slug
-)
+  cause: ^filesystem_read_reached_outside_filesystem_handler
+}
 
-data filesystem_reach_self_host_fold: FilesystemEffectReach = filesystem_effect_reach(
+data filesystem_reach_self_host_fold: FilesystemEffectReach = ReachedFreePrimitiveDirectly {
   site: self_host_fold_side_bytes_site,
-  operation: "filesystem_read",
-  handler_slug: filesystem_handler_slug
-)
+  cause: ^filesystem_read_reached_outside_filesystem_handler
+}
 
 // THE CENSUS OVER THE EMITTED-CLOSURE POPULATION, run with the NAMED typed population source. self_host
 // is the one in-population module (the module the native-emitted closure under the NativeCliDriver
@@ -245,7 +241,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
   (filesystem_wall_compile_gate_trigger.awaiting_migration_module
       == qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"))
     && (qualified_name_to_dotted_string(qn: filesystem_wall_compile_gate_trigger.awaiting_migration_module)
-      == self_host_read_roster_manifest_site.module_path)
+      == qualified_name_to_dotted_string(qn: self_host_read_roster_manifest_site.module))
     && (length(xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations) == 2)
     && (any(
       xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations,
@@ -253,8 +249,8 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
         d
           == qualified_name_from_dotted_string(
             dotted: concat(
-              self_host_read_roster_manifest_site.module_path,
-              concat(".", self_host_read_roster_manifest_site.enclosing_declaration)
+              qualified_name_to_dotted_string(qn: self_host_read_roster_manifest_site.module),
+              concat(".", symbol_lexeme(sym: self_host_read_roster_manifest_site.enclosing_declaration))
             )
           )
       }
@@ -265,8 +261,8 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
         d
           == qualified_name_from_dotted_string(
             dotted: concat(
-              self_host_fold_side_bytes_site.module_path,
-              concat(".", self_host_fold_side_bytes_site.enclosing_declaration)
+              qualified_name_to_dotted_string(qn: self_host_fold_side_bytes_site.module),
+              concat(".", symbol_lexeme(sym: self_host_fold_side_bytes_site.enclosing_declaration))
             )
           )
       }
@@ -318,15 +314,14 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
 // the new-site assertions could not both hold -- which is the failure B asked to be surfaced now.
 test fn filesystem_newly_added_site_surfaces_as_a_new_named_offender() -> Bool {
   let planted_site = FilesystemEffectSite {
-    module_path: "v2.compiler.native_census_witness_planted",
-    enclosing_declaration: "planted_direct_read",
+    module: qualified_name_from_dotted_string(dotted: "v2.compiler.native_census_witness_planted"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "planted_direct_read"),
     site_occurrence: 1
   }
-  let planted_reach = filesystem_effect_reach(
+  let planted_reach = ReachedFreePrimitiveDirectly {
     site: planted_site,
-    operation: "filesystem_read",
-    handler_slug: filesystem_handler_slug
-  )
+    cause: ^filesystem_read_reached_outside_filesystem_handler
+  }
   let extended = Cons {
     head: filesystem_reach_self_host_roster,
     tail: Cons { head: filesystem_reach_self_host_fold, tail: Cons { head: planted_reach, tail: Empty } }
@@ -446,22 +441,16 @@ test fn filesystem_read_direct_reach_refuses() -> Bool {
 
 // THE CAUSE IS NAMED and the reach is located at its enclosing declaration + occurrence index.
 test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
-  match filesystem_effect_reach(
-    site: self_host_read_roster_manifest_site,
-    operation: "filesystem_read",
-    handler_slug: filesystem_handler_slug
-  ) {
-    ReachedFreePrimitiveDirectly {
-      site: site,
-      operation: operation,
-      cause: _
-    } =>
-      (site.module_path == "v2.compiler.self_host")
-        && (operation == filesystem_free_primitive_slug)
-        && (site.enclosing_declaration == "read_roster_manifest")
+  // THE ARM IS THE MATCH: the fixture constructs the refused arm directly (no classifier to mis-key),
+  // and the site it carries is TYPED -- module compared as a QualifiedName's dotted identity, declaration
+  // as a Symbol's lexeme (review 98815 finding 2).
+  match filesystem_reach_self_host_roster {
+    ReachedFreePrimitiveDirectly { site: site, cause: cause } =>
+      (qualified_name_to_dotted_string(qn: site.module) == "v2.compiler.self_host")
+        && (symbol_lexeme(sym: site.enclosing_declaration) == "read_roster_manifest")
         && (site.site_occurrence == 1)
-    ReachedThroughHandler { site: _, operation: _ } => false
-    ReachedOutsideBoundHandler { site: _, operation: _, cause: _ } => false
+        && (symbol_lexeme(sym: cause) == "filesystem_read_reached_outside_filesystem_handler")
+    ReachedThroughHandler { site: _ } => false
   }
 }
 
@@ -470,8 +459,8 @@ test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
 // two sites into one or by growing quietly.
 test fn filesystem_a_third_occurrence_in_the_same_declaration_is_a_new_offender() -> Bool {
   let third_site = FilesystemEffectSite {
-    module_path: "v2.compiler.self_host",
-    enclosing_declaration: "read_roster_manifest",
+    module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "read_roster_manifest"),
     site_occurrence: 2
   }
   (filesystem_effect_site_eq(left: third_site, right: self_host_read_roster_manifest_site) == false)
@@ -479,28 +468,41 @@ test fn filesystem_a_third_occurrence_in_the_same_declaration_is_a_new_offender(
     && (filesystem_effect_site_eq(left: third_site, right: third_site) == true)
 }
 
-// A filesystem operation that is neither the free primitive nor the bound handler's own slug is refused
-// as ReachedOutsideBoundHandler with its own named cause -- NOT silently accepted. This is the fix for
-// the dead handler_slug: the handler's identity is read, and a reach matching neither the handler nor the
-// free primitive is a hole, not a pass-through.
-test fn filesystem_reach_neither_handler_nor_primitive_refuses() -> Bool {
-  match filesystem_effect_reach(
+// WHAT THE DELETED THIRD ARM GUARDED, GUARDED STRUCTURALLY (review 98815 finding 1). A filesystem effect
+// whose resolved identity is neither the free primitive nor the bound handler is now UNWRITABLE as a
+// reach -- the producer emits no arm for it -- and the census refuses every arm that is not the handler
+// arm BY NAME at its site. This leg is the discriminating control: an unrecognised identity (the homonym
+// spelling -- the primitive's own last segment at the wrong module) contributes NO reach to the derived
+// census, while the non-handler arm the wall owns is refused with its site and named cause.
+test fn filesystem_unrecognised_identity_emits_no_arm_and_the_non_handler_arm_refuses() -> Bool {
+  let homonym_rows = [
+    derived_row(
+      "v2.compiler.self_host",
+      "local_filesystem_read_holder",
+      [qualified_name_from_dotted_string(dotted: filesystem_homonym_fixture_spelling)]
+    )
+  ]
+  let homonym_report = filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: homonym_rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+  let unauthorised = ReachedFreePrimitiveDirectly {
     site: FilesystemEffectSite {
-      module_path: "v2.compiler.unrelated",
-      enclosing_declaration: "unrelated_call",
+      module: qualified_name_from_dotted_string(dotted: "v2.compiler.unrelated"),
+      enclosing_declaration: symbol_intern_lexeme(lexeme: "unrelated_call"),
       site_occurrence: 1
     },
-    operation: "some_other_free_primitive",
-    handler_slug: filesystem_handler_slug
-  ) {
-    ReachedOutsideBoundHandler {
-      site: site,
-      operation: operation,
-      cause: _
-    } => (site.module_path == "v2.compiler.unrelated") && (operation == "some_other_free_primitive")
-    ReachedFreePrimitiveDirectly { site: _, operation: _, cause: _ } => false
-    ReachedThroughHandler { site: _, operation: _ } => false
+    cause: ^filesystem_read_reached_outside_filesystem_handler
   }
+  let unauthorised_report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    reaches: Cons { head: unauthorised, tail: Empty }
+  )
+  (length(xs: homonym_report.reaches) == 0)
+    && (length(xs: homonym_report.offenders) == 0)
+    && (length(xs: unauthorised_report.offenders) == 1)
 }
 
 test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
@@ -590,8 +592,7 @@ data filesystem_derived_census_report: FilesystemEffectCensusReport =
     population_source: filesystem_effect_fixture_closure_population,
     rows: filesystem_derived_population_rows,
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
 
 // THE DERIVED CENSUS REFUSES EXACTLY THE THREE PRIMITIVE SITES, named. The derived producer -- not a
@@ -623,8 +624,8 @@ test fn filesystem_derived_census_refuses_the_three_primitive_sites_by_name() ->
         filesystem_effect_site_eq(
           left: filesystem_effect_reach_site(reach: o),
           right: FilesystemEffectSite {
-            module_path: "v2.compiler.native_census_witness_planted",
-            enclosing_declaration: "planted_direct_read",
+            module: qualified_name_from_dotted_string(dotted: "v2.compiler.native_census_witness_planted"),
+            enclosing_declaration: symbol_intern_lexeme(lexeme: "planted_direct_read"),
             site_occurrence: 1
           }
         )
@@ -640,7 +641,8 @@ test fn filesystem_derived_census_refuses_neither_the_homonym_nor_a_non_filesyst
   (any(
     xs: report.reaches,
     predicate: fn(r) {
-      filesystem_effect_reach_site(reach: r).enclosing_declaration == "local_filesystem_read_holder"
+      symbol_lexeme(sym: filesystem_effect_reach_site(reach: r).enclosing_declaration)
+        == "local_filesystem_read_holder"
     }
   ) == false)
     && (length(xs: report.reaches) == 4)
@@ -653,8 +655,7 @@ test fn filesystem_derived_handler_row_is_authorised_and_wall_holds() -> Bool {
     population_source: filesystem_effect_fixture_closure_population,
     rows: [derived_row("v2.cli.compile_cli", "compiled_closure", [filesystem_handler_identity])],
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
   (length(xs: handler_only.offenders) == 0)
     && (length(xs: handler_only.reaches) == 1)
@@ -736,15 +737,13 @@ fn real_rows_leg(rows: List<DeclPhase1Row>) -> Bool {
   let reaches = filesystem_effect_reaches_from_phase1_rows(
     rows: rows,
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
   let report = filesystem_effect_emitted_closure_census(
     population_source: filesystem_effect_emitted_closure_population,
     rows: rows,
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
   filesystem_effect_debt_join_holds(reaches: reaches)
     && real_direct_identities_equal_contract(report: report)
@@ -752,9 +751,9 @@ fn real_rows_leg(rows: List<DeclPhase1Row>) -> Bool {
       xs: report.offenders,
       predicate: fn(o) {
         let site = filesystem_effect_reach_site(reach: o)
-        if site.module_path == "v2.test.fixture.wall_population" {
+        if qualified_name_to_dotted_string(qn: site.module) == "v2.test.fixture.wall_population" {
           true
-        } else if site.module_path == "v2.test.fixture.filesystem_read_homonym" {
+        } else if qualified_name_to_dotted_string(qn: site.module) == "v2.test.fixture.filesystem_read_homonym" {
           true
         } else {
           false
@@ -810,9 +809,9 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
     )
     && string_contains(
       s: log,
-      pattern: "arms: derived=free_primitive_direct(refused) and through_handler(authorised)"
+      pattern: "arms: coproduct = ReachedFreePrimitiveDirectly(refused) | ReachedThroughHandler(authorised)"
     )
-    && string_contains(s: log, pattern: "ReachedOutsideBoundHandler is supplied-population-only")
+    && string_contains(s: log, pattern: "no classifier, no third arm")
     && string_contains(s: log, pattern: "ambient builtin-route calls are counted only where")
     && (string_contains(s: log, pattern: "offender v2.compiler.self_host#local_filesystem_read_holder")
       == false)
@@ -850,8 +849,7 @@ fn contract_census(rows: List<DeclPhase1Row>) -> FilesystemEffectCensusReport {
     population_source: filesystem_effect_fixture_closure_population,
     rows: rows,
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
 }
 
@@ -1161,22 +1159,21 @@ fn census_discharge_verdict() -> Bool {
   let reaches = filesystem_effect_reaches_from_phase1_rows(
     rows: minus_one,
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
   let report = filesystem_effect_emitted_closure_census(
     population_source: filesystem_effect_fixture_closure_population,
     rows: minus_one,
     free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity,
-    bound_handler_slug: filesystem_handler_slug
+    bound_handler_identity: filesystem_handler_identity
   )
   // The PRODUCER dropped exactly one reach (3 remain, none at the dropped site)...
   (length(xs: reaches) == 3)
     && (any(
       xs: report.offenders,
       predicate: fn(o) {
-        filesystem_effect_reach_site(reach: o).enclosing_declaration == "door_ledger_row"
+        symbol_lexeme(sym: filesystem_effect_reach_site(reach: o).enclosing_declaration)
+          == "door_ledger_row"
       }
     ) == false)
     // ...and the CONTRACT still demands the dropped member, so the join refuses -- the census

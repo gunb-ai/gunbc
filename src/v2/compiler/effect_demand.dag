@@ -14,9 +14,8 @@ import std.integer { int_to_decimal_string }
 import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String, string_join }
-import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name {
-  QualifiedName, qualified_name_from_dotted_string, qualified_name_last_segment, qualified_name_to_dotted_string
+  QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string
 }
 import v2.compiler.name_resolve { DeclPhase1Row }
 
@@ -1336,15 +1335,22 @@ data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = Fi
 // would collapse the two self_host sites into one and let a new site slip through -- the under-counting
 // defect the counter bold-ibex was just found to have. So the reach carries its site.
 type FilesystemEffectSite {
-  module_path: String
-  enclosing_declaration: String
+  module: QualifiedName
+  enclosing_declaration: Symbol
   site_occurrence: Int
 }
 
+// THE VARIANT IS THE IDENTITY MATCH, NOT A STRING IT RE-READS (review 98815 finding 1,
+// gunbc.design_argument::single_authority + fail_closed). The producer decides at the resolved-identity
+// match which arm a reach is -- there is no operation: String beside the coproduct for a classifier to
+// work the variant out of a second time, so the two decisions cannot disagree. The old third arm,
+// ReachedOutsideBoundHandler, existed ONLY because a string classifier could mis-key; with the variant
+// built at the match it is unwritable state -- deleted, not left unreachable (fail_closed: stronger than
+// catching a wrong state is making it unwritable). A filesystem effect at any other identity is not a
+// reach at all: the census's REFUSAL is the coproduct's non-handler arm, and nothing reaches it by slug.
 type FilesystemEffectReach
-  = ReachedThroughHandler { site: FilesystemEffectSite, operation: String }
-  | ReachedFreePrimitiveDirectly { site: FilesystemEffectSite, operation: String, cause: Symbol }
-  | ReachedOutsideBoundHandler { site: FilesystemEffectSite, operation: String, cause: Symbol }
+  = ReachedThroughHandler { site: FilesystemEffectSite }
+  | ReachedFreePrimitiveDirectly { site: FilesystemEffectSite, cause: Symbol }
 
 // The single slug naming the free filesystem_read primitive, taken at the same PrimitiveIdentity
 // grain the census takes every operation (std.primitive_projection). It is NOT a new name for the
@@ -1396,36 +1402,17 @@ data filesystem_effect_emitted_closure_population: FilesystemEffectCensusPopulat
     free_primitive_slug: filesystem_free_primitive_slug
   }
 
-// One observed filesystem reach, at SITE grain: the site that reached and the operation it reached. The
-// bound handler's slug is SUPPLIED, not inferred from the tree -- the caller states which slug the bound
-// handler names, so the refusal is executable over a synthetic world and is never an oracle copied from
-// the tree it audits (fail_closed's construction-over-validation rule). A reach is authorised ONLY when
-// the operation equals the handler's own slug; the free primitive and any other filesystem operation are
-// refused with their own named cause. An operation reaching the handler under a spelling that is not the
-// handler slug is refused as ReachedOutsideBoundHandler, NOT silently accepted -- the handler_slug is read
-// here, and a filesystem effect that matches neither the handler nor the free primitive is a hole, not a
-// pass-through.
-fn filesystem_effect_reach(
-  site: FilesystemEffectSite,
-  operation: String,
-  handler_slug: String
-) -> FilesystemEffectReach {
-  if operation == filesystem_free_primitive_slug {
-    ReachedFreePrimitiveDirectly {
-      site: site,
-      operation: operation,
-      cause: ^filesystem_read_reached_outside_filesystem_handler
-    }
-  } else if operation == handler_slug {
-    ReachedThroughHandler { site: site, operation: operation }
-  } else {
-    ReachedOutsideBoundHandler {
-      site: site,
-      operation: operation,
-      cause: ^filesystem_effect_reached_no_bound_handler
-    }
-  }
-}
+// THE VARIANTS ARE BUILT AT THE IDENTITY MATCH, in filesystem_effect_reaches_from_phase1_rows below --
+// there is deliberately NO classifier function here (review 98815 finding 1). The old filesystem_effect_reach
+// took an operation: String plus the handler slug and re-derived the arm that the producer had already
+// decided from the resolved QualifiedNames, i.e. it was a second, string-keyed authority over one fact: if
+// the two slugs ever coincided, every handler reach would have classified as a free-primitive reach (or
+// worse, the refused arm could not come from the real producer at all). Deleting the classifier removes
+// the second decision; witnesses construct the arms directly, and the producer constructs them at the
+// match. The old third arm's behaviour -- refuse an unrecognised filesystem spelling -- is now STRUCTURAL:
+// an unrecognised identity produces no reach and is not a pass-through, because reaching the handler is
+// the only authorised arm and anything that is not that arm is refused by filesystem_effect_direct_reach_
+// refusals BY NAME at its site.
 
 // THE REFUSAL, NAMING THE OFFENDERS BY SITE. Given the filesystem reaches of an emitted closure, return
 // exactly those NOT authorised through the bound handler -- each carrying its SITE (module, enclosing
@@ -1440,15 +1427,11 @@ fn filesystem_effect_direct_reach_refusals(
     empty: Empty,
     cons: fn(acc, reach) {
       match reach {
-        ReachedFreePrimitiveDirectly { site: site, operation: operation, cause: cause } => Cons {
-          head: ReachedFreePrimitiveDirectly { site: site, operation: operation, cause: cause },
+        ReachedFreePrimitiveDirectly { site: site, cause: cause } => Cons {
+          head: ReachedFreePrimitiveDirectly { site: site, cause: cause },
           tail: acc
         }
-        ReachedOutsideBoundHandler { site: site, operation: operation, cause: cause } => Cons {
-          head: ReachedOutsideBoundHandler { site: site, operation: operation, cause: cause },
-          tail: acc
-        }
-        ReachedThroughHandler { site: _, operation: _ } => acc
+        ReachedThroughHandler { site: _ } => acc
       }
     }
   ))
@@ -1459,9 +1442,8 @@ fn filesystem_effect_direct_reach_refusals(
 // named it, so this projection is the wall's own accessor, not a test helper.
 fn filesystem_effect_reach_site(reach: FilesystemEffectReach) -> FilesystemEffectSite {
   match reach {
-    ReachedFreePrimitiveDirectly { site: site, operation: _, cause: _ } => site
-    ReachedOutsideBoundHandler { site: site, operation: _, cause: _ } => site
-    ReachedThroughHandler { site: site, operation: _ } => site
+    ReachedFreePrimitiveDirectly { site: site, cause: _ } => site
+    ReachedThroughHandler { site: site } => site
   }
 }
 
@@ -1470,8 +1452,10 @@ fn filesystem_effect_reach_site(reach: FilesystemEffectReach) -> FilesystemEffec
 // folds over it), so the two self_host reaches in read_roster_manifest and fold_side_bytes are TWO distinct
 // offenders and any new occurrence index is a new offender rather than a silent match against a rostered one.
 fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffectSite) -> Bool {
-  (left.module_path == right.module_path)
-    && (left.enclosing_declaration == right.enclosing_declaration)
+  (qualified_name_to_dotted_string(qn: left.module)
+    == qualified_name_to_dotted_string(qn: right.module))
+    && (symbol_lexeme(sym: left.enclosing_declaration)
+      == symbol_lexeme(sym: right.enclosing_declaration))
     && (left.site_occurrence == right.site_occurrence)
 }
 
@@ -1580,82 +1564,74 @@ fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusRepor
 // path produces the TWO arms a real closure can actually carry:
 //   callee full QN == free_primitive_identity   -> ReachedFreePrimitiveDirectly (the refused arm)
 //   callee full QN == bound_handler_identity     -> ReachedThroughHandler        (the authorised arm)
-// A callee matching NEITHER is a non-filesystem reference and contributes no reach. The third classifier
-// arm, ReachedOutsideBoundHandler, is a SUPPLIED-POPULATION-ONLY arm: the derived path can never build it
-// (a derived reach's operation is one of the two identities above), so it is exercised SOLELY by the
-// synthetic leg, whose accepted-and-refused pair is the discriminating control for the classifier. It is
-// kept because the classifier must refuse an unrecognised filesystem spelling, but it is NOT claimed as
-// production coverage.
+// A callee matching NEITHER is a non-filesystem reference and contributes no reach -- and after review
+// 98815 finding 1 there is no third arm any more: the old ReachedOutsideBoundHandler existed only because
+// a string classifier could mis-key, and with the variant built at the match it is unwritable state. The
+// witness filesystem_unrecognised_identity_emits_no_arm_and_the_non_handler_arm_refuses carries the
+// discriminating control: the homonym identity emits NO arm, and the non-handler arm refuses by name.
 //
 // POPULATION GRAIN (the emission lane's note): callees are collected from every node carrying a declaration reference
 // path, so a reach is ANY reference to a declaration with that identity, which is BROADER than a call. That
 // is the fail-closed direction -- read this as a reference census, not a call graph.
 fn filesystem_effect_callee_matches_identity(callee: QualifiedName, identity: QualifiedName) -> Bool {
-  // The authoritative check is the WHOLE resolved dotted name (review 98447 blocking point c, the emission lane's
-  // hole); the final-segment test is a cheap prefilter the whole comparison already subsumes. A real
-  // declaration identity is module + name, so its last segment is never Empty; an Empty identity is a
-  // no-match (the wall never matches nothing to something), and a bare callee with no segment matches only
-  // an Empty identity, which is never a real declaration -- so never a reach.
-  match qualified_name_last_segment(qn: callee) {
-    Absent => length(xs: identity) == 0
-    Present { value: callee_last } =>
-      match qualified_name_last_segment(qn: identity) {
-        Absent => false
-        Present { value: identity_last } =>
-          symbol_lexeme(sym: callee_last) == symbol_lexeme(sym: identity_last)
-            && qualified_name_to_dotted_string(qn: callee) == qualified_name_to_dotted_string(qn: identity)
-      }
+  // ONE comparison: the whole resolved dotted name (review 98447 blocking point c). The old final-segment
+  // prefilter is DELETED -- the full comparison subsumes it, and keeping it beside the full comparison
+  // was a second, weaker spelling of the same test that a future edit could disagree with (review 98815
+  // finding 1, single_authority). THE EMPTY-CASE BUG THE PREFILTER SHIPPED (review 98815): its Absent arm
+  // read `length(xs: identity) == 0`, so a bare callee with no segment MATCHED an empty identity -- the
+  // wall matching nothing to something. Now an empty identity or an empty callee never matches: the wall
+  // never matches nothing to something, and a real declaration identity (module + name) is never empty.
+  if length(xs: callee) == 0 || length(xs: identity) == 0 {
+    false
+  } else {
+    qualified_name_to_dotted_string(qn: callee) == qualified_name_to_dotted_string(qn: identity)
   }
 }
 
-// THE FIFTH PARAMETER IS JUSTIFIED, not redundancy (the emission lane): bound_handler_slug is NOT derived from
-// bound_handler_identity's last segment because they name different things -- the identity is the handler's
-// DECLARATION path (v1.compiler.emit_rust.emit_file_call), the slug is the name the bound handler is
-// REACHABLE UNDER in the emitted closure's dispatch surface at the NativeCliDriver root, which the emitter's
-// dispatch table controls. Today they coincide; the day the dispatch surface renames the arm (or aliases it)
-// while the declaration keeps its name, deriving one from the other would silently mis-key the census. The
-// classifier is the consumer: operation == slug decides the arm, so the slug is dispatch-surface data and the
-// identity is declaration data -- two authorities, two parameters.
+// THE FIFTH PARAMETER (bound_handler_slug) IS DELETED, not kept in reserve (review 98815 finding 1). It
+// was once justified because the classifier consumed it -- operation == slug decided the arm, making the
+// slug dispatch-surface data beside the declaration-grain identity. With the variant built at the
+// identity match, NOTHING reads the slug; a parameter that claims a consumer it no longer has is a second
+// place that keeps a fact nobody consults (single_authority). If the dispatch surface ever renames the
+// handler arm, the census cannot mis-key, because the census no longer keys on dispatch spellings at all:
+// it keys on the handler's declared identity, the same grain every other comparison here uses.
 fn filesystem_effect_reaches_from_phase1_rows(
   rows: List<DeclPhase1Row>,
   free_primitive_identity: QualifiedName,
-  bound_handler_identity: QualifiedName,
-  bound_handler_slug: String
+  bound_handler_identity: QualifiedName
 ) -> List<FilesystemEffectReach> {
   fold_list(
     xs: rows,
     empty: Empty,
     cons: fn(row_acc, row) {
-      let module_path = qualified_name_to_dotted_string(qn: row.module)
-      let decl_name = symbol_lexeme(sym: row.name)
       let row_reaches = fold_list(
         xs: row.callees,
         empty: Empty,
         cons: fn(acc, callee) {
+          // THE VARIANT IS DECIDED HERE, ONCE, at the resolved-identity match (review 98815 finding 1).
+          // The arm and the site come from the SAME match; no slug is threaded onward for a second
+          // decision, because no second decision exists.
           if filesystem_effect_callee_matches_identity(callee: callee, identity: free_primitive_identity) {
             Cons {
-              head: filesystem_effect_reach(
+              head: ReachedFreePrimitiveDirectly {
                 site: FilesystemEffectSite {
-                  module_path: module_path,
-                  enclosing_declaration: decl_name,
+                  module: row.module,
+                  enclosing_declaration: row.name,
                   site_occurrence: length(xs: acc) + 1
                 },
-                operation: filesystem_free_primitive_slug,
-                handler_slug: bound_handler_slug
-              ),
+                cause: ^filesystem_read_reached_outside_filesystem_handler
+              },
               tail: acc
             }
           } else if filesystem_effect_callee_matches_identity(callee: callee, identity: bound_handler_identity) {
             Cons {
-              head: filesystem_effect_reach(
+              head: ReachedThroughHandler {
                 site: FilesystemEffectSite {
-                  module_path: module_path,
-                  enclosing_declaration: decl_name,
+                  module: row.module,
+                  enclosing_declaration: row.name,
                   site_occurrence: length(xs: acc) + 1
-                },
-                operation: bound_handler_slug,
-                handler_slug: bound_handler_slug
-              ),
+                }
+              },
               tail: acc
             }
           } else {
@@ -1681,16 +1657,14 @@ fn filesystem_effect_emitted_closure_census(
   population_source: FilesystemEffectCensusPopulation,
   rows: List<DeclPhase1Row>,
   free_primitive_identity: QualifiedName,
-  bound_handler_identity: QualifiedName,
-  bound_handler_slug: String
+  bound_handler_identity: QualifiedName
 ) -> FilesystemEffectCensusReport {
   filesystem_effect_reach_census(
     population_source: population_source,
     reaches: filesystem_effect_reaches_from_phase1_rows(
       rows: rows,
       free_primitive_identity: free_primitive_identity,
-      bound_handler_identity: bound_handler_identity,
-      bound_handler_slug: bound_handler_slug
+      bound_handler_identity: bound_handler_identity
     )
   )
 }
@@ -1733,23 +1707,23 @@ fn filesystem_effect_emitted_closure_census(
 // B is establishing; nobody may widen it without the row.
 data filesystem_effect_direct_reach_debt_contract: List<FilesystemEffectSite> = [
   FilesystemEffectSite {
-    module_path: "v2.compiler.self_host",
-    enclosing_declaration: "read_roster_manifest",
+    module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "read_roster_manifest"),
     site_occurrence: 1
   },
   FilesystemEffectSite {
-    module_path: "v2.compiler.self_host",
-    enclosing_declaration: "fold_side_bytes",
+    module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "fold_side_bytes"),
     site_occurrence: 1
   },
   FilesystemEffectSite {
-    module_path: "v2.workflow.compile_door_ledger",
-    enclosing_declaration: "ledger_read_witness",
+    module: qualified_name_from_dotted_string(dotted: "v2.workflow.compile_door_ledger"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "ledger_read_witness"),
     site_occurrence: 1
   },
   FilesystemEffectSite {
-    module_path: "v2.workflow.compile_door_ledger",
-    enclosing_declaration: "door_ledger_row",
+    module: qualified_name_from_dotted_string(dotted: "v2.workflow.compile_door_ledger"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "door_ledger_row"),
     site_occurrence: 1
   }
 ]
@@ -1784,13 +1758,12 @@ fn filesystem_effect_debt_contract_located(reaches: List<FilesystemEffectReach>)
           empty: false,
           cons: fn(any, reach) {
             match reach {
-              ReachedFreePrimitiveDirectly { site: site, operation: _, cause: _ } =>
+              ReachedFreePrimitiveDirectly { site: site, cause: _ } =>
                 match any {
                   true => true
                   false => filesystem_effect_site_eq(left: site, right: contracted)
                 }
-              ReachedThroughHandler { site: _, operation: _ } => any
-              ReachedOutsideBoundHandler { site: _, operation: _, cause: _ } => any
+              ReachedThroughHandler { site: _ } => any
             }
           }
         )
@@ -1811,10 +1784,9 @@ fn filesystem_effect_debt_join_holds(reaches: List<FilesystemEffectReach>) -> Bo
         false => false
         true =>
           match reach {
-            ReachedFreePrimitiveDirectly { site: site, operation: _, cause: _ } =>
+            ReachedFreePrimitiveDirectly { site: site, cause: _ } =>
               filesystem_effect_debt_membership(site: site)
-            ReachedThroughHandler { site: _, operation: _ } => true
-            ReachedOutsideBoundHandler { site: _, operation: _, cause: _ } => true
+            ReachedThroughHandler { site: _ } => true
           }
       }
     }
@@ -1827,9 +1799,9 @@ fn filesystem_effect_debt_join_holds(reaches: List<FilesystemEffectReach>) -> Bo
 // routes reaching the same declaration cannot produce two identities.
 fn filesystem_effect_debt_site_identity(site: FilesystemEffectSite) -> String {
   string_join(fields: [
-    site.module_path,
+    qualified_name_to_dotted_string(qn: site.module),
     "#",
-    site.enclosing_declaration,
+    symbol_lexeme(sym: site.enclosing_declaration),
     "#",
     int_to_decimal_string(value: site.site_occurrence)
   ], separator: "")
@@ -1882,8 +1854,7 @@ fn filesystem_effect_debt_contract_distinct_count() -> Int {
 // length of the typed debt contract, never copied from a tree (review 98447 / fail_closed). The witness
 // asserts the refused count, the contract size, and each planted offender's module#declaration#occurrence
 // appear in it, so the PASS line for that test IS the proof the log says what it must. The arms line
-// states the rung honestly: the derived producer can only build two arms; ReachedOutsideBoundHandler is
-// supplied-population-only.
+// states the rung honestly: the coproduct has exactly two arms, built at the identity match.
 fn filesystem_effect_census_log(report: FilesystemEffectCensusReport) -> String {
   let n = int_to_decimal_string(value: length(xs: report.offenders))
   let lines = list_append(
@@ -1900,7 +1871,7 @@ fn filesystem_effect_census_log(report: FilesystemEffectCensusReport) -> String 
         " free_primitive=",
         report.population_source.free_primitive_slug
       ], separator: ""),
-      "arms: derived=free_primitive_direct(refused) and through_handler(authorised); ReachedOutsideBoundHandler is supplied-population-only (synthetic leg)",
+      "arms: coproduct = ReachedFreePrimitiveDirectly(refused) | ReachedThroughHandler(authorised); built at the identity match, no classifier, no third arm (review 98815 finding 1)",
       "scope: declaration-resolved callees only -- any reference, broader than a call (fail-closed direction); ambient builtin-route calls are counted only where the resolve fold records a resolved callee path, which the executed ambient-callee leg must show before a clean census is read as builtin-route coverage",
       string_join(fields: [
         "refused=",
@@ -1945,9 +1916,9 @@ fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
         right: [
           string_join(fields: [
             "offender ",
-            site.module_path,
+            qualified_name_to_dotted_string(qn: site.module),
             "#",
-            site.enclosing_declaration,
+            symbol_lexeme(sym: site.enclosing_declaration),
             "#",
             int_to_decimal_string(value: site.site_occurrence)
           ], separator: "")
