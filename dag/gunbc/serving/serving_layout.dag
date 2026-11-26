@@ -14,7 +14,7 @@ import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, Ho
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread,
   ServingEngineMemory, ServingDedicatedHostMemory, ServingMemoryVerdict, ServingMemoryFits,
-  serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing,
+  serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing, serving_reading_known_bytes,
   ConversationSnapshotCost, conversation_snapshot_bytes, strata_iq3_s_snapshot_cost, serving_engine_swap_bound,
   host_6ce85c_serving_memory_observed, srv4_serving_engine_memory, srv4_strata_snapshot_cost,
   srv3_strata_engine_memory, srv3_strata_snapshot_cost,
@@ -71,23 +71,41 @@ type ServingArtifactMedium = ArtifactOnDevice | ArtifactInHostRam | ArtifactOnDi
 // HOW A RUNG HOLDS ITS BYTES, which decides whether the host may count on them being gone. A rung held PINNED —
 // mlocked by a unit, or privately allocated by the engine itself — is charged WHOLE and stays charged: nobody can
 // squeeze it, so the budget must reserve all of it. A rung held EVICTABLY, as a page cache or a cache under a
-// replacement policy, is BOUNDED: it grows into whatever its budget leaves free and is reclaimed first under
-// pressure, so the budget reserves its FLOOR only — the part that must stay or the rung is pointless. The same
-// file under --mlock and under --mmap-experts is the same bytes and a different charge. The FLOOR travels on the
-// evictable arm alone: a pinned rung has no re-acquire floor to state, and an evictable rung cannot be built
-// without one — so the shape the layout used to refuse at run time (an evictable rung with no floor) is unwritable,
-// and the check that caught it is gone because there is nothing left for it to catch.
+// replacement policy, is BOUNDED, and it states TWO figures of its own, because one figure cannot answer both
+// questions a bounded tier raises:
+//
+//   FLOOR  — the least it must keep hot or the rung is pointless. This is what the KERNEL can leave standing after
+//            it has reclaimed everything else in the cgroup.
+//   OCCUPIES — what it fills while the engine runs: what the cgroup pays for it. This is what the budget leaves
+//            for it, and it is the figure a SHARED CAP is sized against.
+//
+// THE REASON THERE ARE TWO, and the failure one figure caused (2026-11-24, srv4; class
+// gunbc.recurring_failure_mode::a_cap_set_here_surfaces_as_degradation_there): the floor is what survives reclaim,
+// NOT what the tier's neighbours in the SAME cgroup can use. The kernel takes evictable pages back only once the
+// cgroup has crossed its limit, and a neighbour that admits by MEASURING free RAM inside that cgroup never asks
+// for the reclaim — it refuses first. Strata's conversation cache is exactly such a neighbour: it logs
+// "skip parking (physical RAM admission; need N MiB plus F MiB floor, M MiB available, source cgroup)" and parks
+// nothing. srv4's mapped expert tier was charged at its 22 GiB floor while it occupied the whole 46.8 GiB it maps,
+// so the layout handed that same cap a retention budget of eight max-context conversations and the engine refused
+// every park: the cap was not too small for the expert tier it was written to bound, it was too small for the
+// terms that share it. Reserving the floor is therefore right only where nothing in the same cgroup admits on
+// measured free space, which is not decidable from the rung — so the composition always leaves the occupancy, and
+// the floor stays what the tier cannot give back. The same file under --mlock and under --mmap-experts is the same
+// bytes and a different charge. FLOOR and OCCUPIES travel on the evictable arm alone: a pinned rung has neither to
+// state, and an evictable rung cannot be built without both — so the shapes the layout used to refuse at run time
+// (an evictable rung with no floor; a bounded tier whose share of a shared cap was never stated) are unwritable,
+// and the checks that caught them are gone because there is nothing left for them to catch.
 //
 // Durability is NOT part of this pair: an expert tier's bytes are always re-readable from the model file, while a
 // parked conversation's KV is not (gunbc.serving.serving_host_memory records that Strata's slot save/restore is
 // unsupported under --layer-split --batch, so KV that is not persisted is LOST). Experts and conversation KV
 // share this placement vocabulary and never share its mechanics or its durability.
-type ServingArtifactHold = ArtifactHeldPinned { mechanism: NonEmptyStr } | ArtifactHeldEvictable { bound_by: NonEmptyStr, floor: ServingMemoryReading }
+type ServingArtifactHold = ArtifactHeldPinned { mechanism: NonEmptyStr } | ArtifactHeldEvictable { bound_by: NonEmptyStr, floor: ServingMemoryReading, occupies: ServingMemoryReading }
 
-// One rung: where on ONE medium the artifact's bytes sit. `bytes` is what the rung holds; the floor an evictable
-// rung must state lives on its hold. There is no `medium` field — an artifact's medium is WHICH FIELD holds the
-// rung (device, host RAM, or disk) — so a rung cannot claim two media, and there is no list of rungs for the
-// budget to have to pick one host-RAM rung out of.
+// One rung: where on ONE medium the artifact's bytes sit. `bytes` is what the rung holds; the floor and the
+// occupancy an evictable rung must state live on its hold. There is no `medium` field — an artifact's medium is
+// WHICH FIELD holds the rung (device, host RAM, or disk) — so a rung cannot claim two media, and there is no list
+// of rungs for the budget to have to pick one host-RAM rung out of.
 type ServingArtifactRung = {
   bytes: ServingMemoryReading,
   holds: ServingArtifactHold,
@@ -113,7 +131,7 @@ type ServingSharedArtifact = {
 // The rung's hold, as identity text. A pinned rung that becomes evictable is a different configuration and must
 // requalify; this name is how the identity sees it. The medium is the field name the caller already knows.
 fn serving_artifact_hold_text(h: ServingArtifactHold) -> String {
-  match h { ArtifactHeldPinned { mechanism: _ } => "pinned" , ArtifactHeldEvictable { bound_by: _, floor: _ } => "evictable"  }
+  match h { ArtifactHeldPinned { mechanism: _ } => "pinned" , ArtifactHeldEvictable { bound_by: _, floor: _, occupies: _ } => "evictable"  }
 }
 
 // How a rung's charged reading shows in the identity frame: a read or assumed figure shows its bytes; an UNREAD one
@@ -129,8 +147,9 @@ fn serving_rung_reading_frame_value(r: ServingMemoryReading) -> String {
 }
 
 // ONE RUNG AS IDENTITY FRAMES, or nothing when the artifact has no rung on that medium. A rung that moves bytes,
-// changes its hold, or states a different floor is a different configuration; the charged figures (bytes, and the
-// evictable floor the budget reserves) are all in here so a change to any of them requalifies the layout.
+// changes its hold, states a different floor or states a different occupancy is a different configuration; the
+// charged figures (bytes, and on the evictable arm the floor it cannot give back AND the occupancy the shared cap
+// must leave it) are all in here so a change to any of them requalifies the layout.
 fn serving_artifact_rung_frame(prefix: String, r: ServingArtifactRung?) -> String {
   match r {
     Absent => ""
@@ -138,28 +157,39 @@ fn serving_artifact_rung_frame(prefix: String, r: ServingArtifactRung?) -> Strin
       concat(identity_frame(label: concat(prefix, "-bytes"), value: serving_rung_reading_frame_value(r: rung.bytes)),
       concat(identity_frame(label: concat(prefix, "-floor"), value: match rung.holds {
         ArtifactHeldPinned { mechanism: _ } => "none"
-        ArtifactHeldEvictable { bound_by: _, floor: f } => serving_rung_reading_frame_value(r: f)
-      }), identity_frame(label: concat(prefix, "-realizes"), value: rung.realizes as String))))
+        ArtifactHeldEvictable { bound_by: _, floor: f, occupies: _ } => serving_rung_reading_frame_value(r: f)
+      }), concat(identity_frame(label: concat(prefix, "-occupies"), value: match rung.holds {
+        ArtifactHeldPinned { mechanism: _ } => "none"
+        ArtifactHeldEvictable { bound_by: _, floor: _, occupies: o } => serving_rung_reading_frame_value(r: o)
+      }), identity_frame(label: concat(prefix, "-realizes"), value: rung.realizes as String)))))
   }
 }
 
-// WHAT THE HOST MUST RESERVE FOR AN ARTIFACT: the whole of a pinned host-RAM rung, the floor of an evictable one.
-// Nothing else is charged against the host's memory — the device rung is VRAM, budgeted per card, and the disk
+// WHAT THE HOST MUST RESERVE FOR AN ARTIFACT: the whole of a pinned host-RAM rung, the OCCUPANCY of an evictable
+// one. Nothing else is charged against the host's memory — the device rung is VRAM, budgeted per card, and the disk
 // rung is disk. No host-RAM rung reserves nothing, which is right: a disk-only artifact is real. There is at most
 // one host-RAM rung, so this reads THAT rung's hold; there is no list to sum and no second rung to have to refuse.
+//
+// WHY AN EVICTABLE RUNG IS CHARGED ITS OCCUPANCY AND NOT ITS FLOOR: the floor is what the kernel may leave
+// standing after it reclaims; the occupancy is what the tier fills while the engine runs, and it is the bytes the
+// cgroup is paying for while every OTHER term in that same cgroup is measuring free space. A tier charged at its
+// floor asks the budget to hand the difference to its neighbours and then, when a neighbour tries to use it, keeps
+// it: srv4's mapped expert tier was charged 22 GiB while it occupied the 46.8 GiB it maps, and the conversation
+// cache the same cap was said to afford never held one conversation ("skip parking (physical RAM admission ...)").
+// Reclaim is not a loan a neighbour can spend. See the type comment on ServingArtifactHold.
 fn serving_artifact_host_ram_charge(a: ServingSharedArtifact) -> ByteSize {
   match a.host_ram {
     Absent => byte_size(count: 0)
     Present { value: r } => match r.holds {
       ArtifactHeldPinned { mechanism: _ } => serving_reading_bytes_or_zero(r: r.bytes)
-      ArtifactHeldEvictable { bound_by: _, floor: f } => serving_reading_bytes_or_zero(r: f)
+      ArtifactHeldEvictable { bound_by: _, floor: _, occupies: o } => serving_reading_bytes_or_zero(r: o)
     }
   }
 }
 
 // THE READING serving_artifact_host_ram_charge ACTUALLY BILLS (its exact mirror as a reading, not a ByteSize): the
-// whole figure of a pinned host-RAM rung, the floor of an evictable one, and NOTHING when there is no host-RAM rung.
-// Returned so the layout's missing list can guard it -- the same reading the budget folds with
+// whole figure of a pinned host-RAM rung, the occupancy of an evictable one, and NOTHING when there is no host-RAM
+// rung. Returned so the layout's missing list can guard it -- the same reading the budget folds with
 // serving_reading_bytes_or_zero, whose Unread arm contributes zero, must never be unread (review 92474; one source,
 // so the guard and the charge can never disagree).
 fn serving_artifact_charged_host_ram(a: ServingSharedArtifact) -> ServingMemoryReading? {
@@ -167,12 +197,12 @@ fn serving_artifact_charged_host_ram(a: ServingSharedArtifact) -> ServingMemoryR
     Absent => Absent
     Present { value: r } => match r.holds {
       ArtifactHeldPinned { mechanism: _ } => Present { value: r.bytes }
-      ArtifactHeldEvictable { bound_by: _, floor: f } => Present { value: f }
+      ArtifactHeldEvictable { bound_by: _, floor: _, occupies: o } => Present { value: o }
     }
   }
 }
 
-// Every SERVING_MEMORY_READING an artifact carries, across all its rungs and the floor an evictable host-RAM rung
+// Every SERVING_MEMORY_READING an artifact carries, across all its rungs and both figures an evictable host-RAM rung
 // states. A rung whose reading is Assumed is a bet on the configuration -- the device cache, the host-RAM rung and
 // the disk tier alike -- and must surface in the layout's assumptions, not just the rung the budget happens to bill.
 // (The assumptions list has never been only-what-is-billed: the device VRAM readings below are listed though they are
@@ -183,7 +213,9 @@ fn serving_artifact_rung_assumptions(rung: ServingArtifactRung?) -> List<NonEmpt
     Absent => [] as List<NonEmptyStr>
     Present { value: r } => match r.holds {
       ArtifactHeldPinned { mechanism: _ } => serving_reading_assumption(r: r.bytes)
-      ArtifactHeldEvictable { bound_by: _, floor: f } => concat(serving_reading_assumption(r: r.bytes), serving_reading_assumption(r: f))
+      ArtifactHeldEvictable { bound_by: _, floor: f, occupies: o } => concat(
+        serving_reading_assumption(r: r.bytes),
+        concat(serving_reading_assumption(r: f), serving_reading_assumption(r: o)))
     }
   }
 }
@@ -293,7 +325,27 @@ type ServingLayoutRefusal
   | ServingLayoutSnapshotCostNotPositive { context: TokenCount }
   | ServingLayoutBackendCannotRetain { group: NonEmptyStr, devices: Nat, most: Nat }
   | ServingLayoutDeviceTooSmall { device: NonEmptyStr, needed: ByteSize, has: ByteSize }
-  | ServingLayoutRamShort { needed: ByteSize, available: ByteSize }
+  | ServingLayoutRamShort { needed: ByteSize, available: ByteSize, terms: ServingCapTerms }
+  // AN EVICTABLE HOLD CANNOT OCCUPY LESS THAN WHAT IT CANNOT GIVE BACK. `floor` is what reclaim may leave
+  // standing -- the part of the tier resident by definition, whatever the kernel does -- and `occupies` is what
+  // the tier FILLS while the engine runs, which is what the shared cgroup pays (see ServingArtifactRung). So
+  // floor <= occupies is not a tuning preference but an arithmetical consequence of what the two figures MEAN: a
+  // rung stating an occupancy below its own floor describes a tier holding pages it simultaneously is not
+  // holding, and -- because this budget charges the OCCUPANCY (serving_artifact_host_ram_charge) -- such a row
+  // bills the cgroup less than the part of the tier no reclaim can return. That is the same under-billing class
+  // as billing the floor instead of the occupancy (the srv4 starvation,
+  // gunbc.recurring_failure_mode::a_cap_set_here_surfaces_as_degradation_there SPECIMEN THREE) arriving from the
+  // other side, so it is refused with the same authority: at the point the layout is judged, typed, with both
+  // figures and the row named (fail_closed: a loud, typed, located error). Re-billing such a row at
+  // max(floor, occupies) was considered and REJECTED: it would SILENCE the contradiction rather than refuse it,
+  // letting an incoherent tier stand in the record while its own two numbers disagree -- the figures are read or
+  // assumed, and an occupancy below the floor the same tier cannot go below is a bad reading or a bad floor, and
+  // the row must fix which, not have the model paper over it. An UNREAD figure is not a violation but an
+  // absence: the charged side (occupies) unread is already refused by serving_layout_inputs, and an unread floor
+  // leaves the relation undecidable, so nothing is claimed about it. Checked on the host-RAM medium, the one this
+  // budget charges -- the same pair on the device or disk medium bills nothing yet, and refusing it there would
+  // claim authority the model has not earned.
+  | ServingArtifactHoldBelowFloor { host: NonEmptyStr, artifact: NonEmptyStr, floor: ByteSize, occupies: ByteSize }
 
 type ServingLayoutResult
   = ServingLayoutConfigured { replicas: List<ServingReplicaConfig>, unallocated_ram: ByteSize, evidence: ServingLayoutEvidence }
@@ -452,6 +504,31 @@ fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendPr
   })
 }
 
+// NO EVICTABLE TIER MAY BE CHARGED BELOW WHAT IT CANNOT GIVE BACK: an evictable host-RAM hold whose occupancy is
+// below its own floor is a contradiction between the row's two figures, and the budget would bill the cgroup less
+// than the resident-by-definition part of the tier. The full WHY, and why max() re-billing was rejected, is on
+// ServingArtifactHoldBelowFloor. First offending row wins, in row order.
+fn serving_artifact_hold_fault(g: ServingResourceGrant) -> ServingLayoutRefusal? {
+  fold(g.shared, init: Absent, f: (acc, a) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match a.host_ram {
+      Present { value: r } => match r.holds {
+        ArtifactHeldEvictable { bound_by: _, floor: fl, occupies: oc } => match serving_reading_known_bytes(r: fl) {
+          Present { value: fb } => match serving_reading_known_bytes(r: oc) {
+            Present { value: ob } => if byte_size_count(b: ob) < byte_size_count(b: fb) {
+              Present { value: ServingArtifactHoldBelowFloor { host: g.host, artifact: a.name, floor: fb, occupies: ob } }
+            } else { Absent }
+            Absent => Absent
+          }
+          Absent => Absent
+        }
+        _ => Absent
+      }
+      Absent => Absent
+    }
+  })
+}
+
 // (There is NO run-time artifact budget check: the two shapes that used to be refused — two host-RAM rungs, and
 // an evictable rung with no floor — are now unwritable in the type itself, so construction stands where the check
 // used to stand. See ServingSharedArtifact / ServingArtifactHold.)
@@ -461,6 +538,48 @@ fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendPr
 fn serving_replica_fixed_ram(b: ServingBackendProfile) -> Nat {
   byte_size_count(b: serving_reading_bytes_or_zero(r: b.replica_base_ram)) + b.active_slots * byte_size_count(b: serving_reading_bytes_or_zero(r: b.active_slot_ram))
     + byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor))
+}
+
+// THE TERMS ONE ENGINE'S CGROUP LIMIT IS SHARED BY, stated as the sum they ask for. This is the answer to
+// "what must MemoryHigh/MemoryMax be?" — the composition the srv4 drop-in was written without, on the host and in
+// the model both: an operator sized it for the expert tier it was meant to bound and nothing added up the terms
+// that share it (gunbc.recurring_failure_mode::a_cap_set_here_surfaces_as_degradation_there, specimen three).
+// Every term is a figure the layout already charges; this type is not new arithmetic, it is the arithmetic NAMED,
+// so a cap can be derived from it, checked against it, or refused against it instead of being typed on a host by
+// hand and read back as a fact.
+//
+//   expert_host_ram     what the shared artifacts occupy inside this engine's own cgroup — their occupancy, not
+//                       their reclaimable floor (see serving_artifact_host_ram_charge);
+//   replica_fixed_ram   the engine's base, its active slots, and the free headroom its admission gate demands
+//                       before it will park one conversation (the 2560 MiB that, left out, reads as room);
+//   retention_floor     the retained conversations the requirement insists each replica keep, at the required
+//                       context — the term the starved cache was;
+//   rounding_headroom   the cap-granule roundings one replica's own figures cost.
+type ServingCapTerms {
+  expert_host_ram: ByteSize
+  replica_fixed_ram: ByteSize
+  retention_floor: ByteSize
+  rounding_headroom: ByteSize
+  replicas: Nat
+  minimum_cap: ByteSize
+}
+
+// THE LIMIT, DERIVED FROM ITS TERMS: what the smallest cgroup cap that holds this layout is. A host cap below it
+// is not "tight", it is a config whose terms do not fit, and serving_allocate refuses it by name.
+fn serving_cgroup_terms(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingCapTerms {
+  let expert = serving_bytes_sum(xs: map(g.shared, a => serving_artifact_host_ram_charge(a: a)))
+  let fixed = serving_replica_fixed_ram(b: b)
+  let retention = r.min_retained_per_replica * byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
+  let roundings = serving_roundings_per_replica() * byte_size_count(b: serving_cap_granule())
+  let n = groups.length()
+  ServingCapTerms {
+    expert_host_ram: byte_size(count: expert),
+    replica_fixed_ram: byte_size(count: fixed),
+    retention_floor: byte_size(count: retention),
+    rounding_headroom: byte_size(count: roundings),
+    replicas: n,
+    minimum_cap: byte_size(count: serving_grant_overhead(g: g) + expert + n * (fixed + retention + roundings)),
+  }
 }
 
 fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: ServingRequirement, swap: ServingMemoryReading, admitted: Nat) -> ServingReplicaConfig {
@@ -489,12 +608,18 @@ fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
 fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
   let n = groups.length()
   let pool_total = serving_grant_ram(g: g)
-  let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => serving_artifact_host_ram_charge(a: a)))
+  let terms = serving_cgroup_terms(g: g, groups: groups, b: b, r: r)
   let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
-  let per_replica_min = serving_replica_fixed_ram(b: b) + r.min_retained_per_replica * snapshot + serving_roundings_per_replica() * byte_size_count(b: serving_cap_granule())
-  let needed = reserved + n * per_replica_min
+  // THE EXPERT TIER IS FOLDED ONCE. `terms.expert_host_ram` already summed the shared artifacts' occupancy; the
+  // committed total reuses that fold rather than running its own, so the occupancy rule has exactly one site here
+  // (gunbc.design_argument::minimize_redundancy -- review 98565 on PR #17078 named the second fold).
+  let reserved = serving_grant_overhead(g: g) + byte_size_count(b: terms.expert_host_ram)
+  let needed = byte_size_count(b: terms.minimum_cap)
   if pool_total < needed {
-    ServingLayoutRefused { refusal: ServingLayoutRamShort { needed: byte_size(count: needed), available: byte_size(count: pool_total) } }
+    // REFUSED, WITH THE TERMS NAMED: the cap did not fail as a number, one of its terms failed it. A reader sees
+    // the expert tier's occupancy, the replica's fixed RAM including the park admission floor, and the retention
+    // the requirement asks for -- which is the sentence the srv4 drop-in never had to produce and did not.
+    ServingLayoutRefused { refusal: ServingLayoutRamShort { needed: byte_size(count: needed), available: byte_size(count: pool_total), terms: terms } }
   } else {
     let extra = (pool_total - needed) / snapshot
     let configs = fold(groups, init: [] as List<ServingReplicaConfig>, f: (acc, gr) =>
@@ -542,22 +667,28 @@ fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGrou
   if serving_layout_missing(g: g, b: b).length() > 0 {
     ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: serving_layout_missing(g: g, b: b) } }
   } else {
-    match serving_topology_fault(g: g, groups: groups) {
+    // The charged rows are judged CONTRADICTION-FIRST, before topology or fit: a grant whose own evictable hold
+    // states an occupancy below the floor that tier cannot give back is a broken row, and no arrangement of
+    // devices makes it billable (ServingArtifactHoldBelowFloor).
+    match serving_artifact_hold_fault(g: g) {
       Present { value: f } => ServingLayoutRefused { refusal: f }
-      Absent =>
-        if token_count_value(t: r.max_context) > token_count_value(t: b.max_context) {
-          ServingLayoutRefused { refusal: ServingLayoutContextAboveBackend { required: r.max_context, backend: b.max_context } }
-        } else if byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context)) == 0 {
-          ServingLayoutRefused { refusal: ServingLayoutSnapshotCostNotPositive { context: r.max_context } }
-        } else {
-          match serving_retention_fault(groups: groups, b: b) {
-            Present { value: f } => ServingLayoutRefused { refusal: f }
-            Absent => match serving_device_fault(g: g, b: b) {
+      Absent => match serving_topology_fault(g: g, groups: groups) {
+        Present { value: f } => ServingLayoutRefused { refusal: f }
+        Absent =>
+          if token_count_value(t: r.max_context) > token_count_value(t: b.max_context) {
+            ServingLayoutRefused { refusal: ServingLayoutContextAboveBackend { required: r.max_context, backend: b.max_context } }
+          } else if byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context)) == 0 {
+            ServingLayoutRefused { refusal: ServingLayoutSnapshotCostNotPositive { context: r.max_context } }
+          } else {
+            match serving_retention_fault(groups: groups, b: b) {
               Present { value: f } => ServingLayoutRefused { refusal: f }
-              Absent => serving_allocate(g: g, groups: groups, b: b, r: r)
+              Absent => match serving_device_fault(g: g, b: b) {
+                Present { value: f } => ServingLayoutRefused { refusal: f }
+                Absent => serving_allocate(g: g, groups: groups, b: b, r: r)
+              }
             }
           }
-        }
+      }
     }
   }
 }
@@ -815,7 +946,12 @@ data srv4_grant: ServingResourceGrant = ServingResourceGrant {
 // bold-wren set for it: reserving the top is the conservative direction, because a grant is a lower bound.
 data srv4_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact {
   name: "Qwen3.8-Flash-Next iq3_s routed-expert GGUF, mmap'd by the engine under its cgroup cap" as NonEmptyStr,
-  bytes: gibibyte_to_byte_size(g: gibibyte(count: 46)),
+  // The file's OWN size, read from the engine's prefill plan ("46.8 GiB experts, 22.9 GiB in the GPU caches, file
+  // tier 24.0 GiB", 2026-11-09) rather than rounded down to whole gibibytes: 47,964 MiB. It is the ceiling of every
+  // rung below it -- a page cache cannot exceed the file it caches -- and it is the figure the host-RAM rung's
+  // OCCUPANCY is bounded by, which is why the rounding matters: a rung at or over this number says the page cache
+  // holds more than exists. srv3's artifact row carries the same 47,964 MiB for the same model's shards.
+  bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)),
   owner: "the engine's own mmap (--mmap-experts; the GGUF shards in place, no experts.bin), held as the engine cgroup's page cache under the cap srv4_serving_engine_memory.memory_cap reads -- that row is the cap's only home (review 92380)" as NonEmptyStr,
   device: Present { value: ServingArtifactRung {
     holds: ArtifactHeldPinned { mechanism: "Strata's on-card expert cache holds its resident experts on the card for the life of the engine; the per-card elastic bound strata_srv4_layer_split_profile.device_min_elastic_vram is what caps how much of the card it may take -- a device rung reserves host RAM for nothing, so it carries no host-RAM floor (review 92466)" as NonEmptyStr },
@@ -823,13 +959,18 @@ data srv4_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
     realizes: "Strata's expert caches on both cards, filled by the routing-aware prefetcher ahead of the walk" as NonEmptyStr,
   } },
   host_ram: Present { value: ServingArtifactRung {
-    holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup cap that srv4_serving_engine_memory.memory_cap reads (its MemoryHigh, from the drop-in 60-expert-l1-cap.conf raised 2026-11-09); MemoryMax is the hard edge above it, unread by this model and held on the host's unit file" as NonEmptyStr, floor: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), provenance: "the per-request expert working set, ~22 GB, read from the engine's 'file tier I/O this request' lines at 500-token requests (2026-11-09 01:10Z): at a 40 GiB cap the cache held only ~19 GB and cold decode fell to 5.1 tok/s on 41.5 GB of drive reads, which is the failure this floor exists to prevent" as NonEmptyStr } },
-    // What this rung HOLDS is the file tier's 24.0 GiB — everything not already on the cards, which is what the
-    // page cache would keep if nothing bounded it (the plan read "35.2 GiB available for the page cache"). What it
-    // must KEEP is the per-request expert working set (the floor above), now READ rather than guessed: ~22 GB,
-    // from the engine's own "file tier I/O this request ... page cache held" lines at 500-token requests (2026-11-09
-    // 01:10Z). An earlier reading of this rung — 13.2 GiB of file-backed VmRSS at load, under the 40 GiB cap — is
-    // withdrawn along with that cap and named in srv4_grant, not deleted.
+    holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup cap that srv4_serving_engine_memory.memory_cap reads (its MemoryHigh, from the drop-in 60-expert-l1-cap.conf raised 56G/64G -> 96G/112G by the operator on 2026-11-24 ~21:33Z, host file sha256 eb2b16e57eea76f2dd534c0bbb7aa016024462ad580cfb3836a1e8fad8bf581b read 22:03-22:05Z); MemoryMax is the hard edge above it, held on the host's unit file" as NonEmptyStr, floor: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), provenance: "the per-request expert working set, ~22 GB, read from the engine's 'file tier I/O this request' lines at 500-token requests (2026-11-09 01:10Z): at a 40 GiB cap the cache held only ~19 GB and cold decode fell to 5.1 tok/s on 41.5 GB of drive reads, which is the failure this floor exists to prevent" as NonEmptyStr }, occupies: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), provenance: "the WHOLE mapped GGUF, 46.84 GiB (the same figure srv3's artifact row carries for this model's shards, from srv4's engine prefill plan '46.8 GiB experts'), is what this cgroup pays for while the engine runs: --mmap-experts maps every shard, and the 22.9 GiB the on-card caches hold is UPLOADED THROUGH these pages, so being on the card does not take a page out of the cgroup's file charge. Corroborated, never deduced from: the service's own MemoryCurrent read 46.5 GiB at the 56 GiB cap (bold-wren-111 2026-11-09 ~01:10Z, beside a base of 6451 MiB), and the operator's ad-hoc 2026-11-24 read that the mmap'd GGUF page cache (~55 GB) is charged to this cgroup -- the figure that starved the conversation cache at that cap. READ OBLIGATION: attribute this cgroup's memory.stat file counter to mapped expert-file pages (/proc/<engine>/smaps_rollup or a per-VMA breakdown) and replace this bound with the attributed occupancy -- which may land BELOW this figure but never above it, because a page cache cannot exceed the file it caches" as NonEmptyStr } },
+    // What this rung HOLDS is the file tier's 24.0 GiB — the slice of the shards the engine streams from the drive,
+    // which is the plan's OWN partition of the file between the cards and the file tier (the plan read "35.2 GiB
+    // available for the page cache"). Read it for what it is and nothing more: it is NOT what the cgroup pays for
+    // this tier while the engine runs. That is the hold's `occupies` figure below, and the two being one number is
+    // exactly the reading that starved srv4's conversation cache at the 56 GiB cap: the layout reserved the tier's
+    // floor, the tier occupied the whole mapped file, and the retention budget the cap was said to afford was never
+    // parkable ("skip parking (physical RAM admission ...)"). What the rung must KEEP is the per-request expert
+    // working set (the floor above), READ rather than guessed: ~22 GB, from the engine's own "file tier I/O this
+    // request ... page cache held" lines at 500-token requests (2026-11-09 01:10Z). An earlier reading of this rung
+    // — 13.2 GiB of file-backed VmRSS at load, under the 40 GiB cap — is withdrawn along with that cap and named in
+    // srv4_grant, not deleted.
     bytes: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 24576)), provenance: "the 24.0 GiB of shards not resident on the cards — the same figure as the disk rung, because this rung is the page cache OF that tier (engine prefill plan, 2026-11-09)" as NonEmptyStr },
     realizes: "the page cache under the engine's cgroup cap: it grows into what the cap leaves free, and cold experts are evicted and re-read from the disk rung — 1.26 / 0.81 / 1.35 GB read per warm request at the 56 GiB cap" as NonEmptyStr,
   } },
@@ -963,7 +1104,7 @@ data srv3_routed_expert_artifact: ServingSharedArtifact = ServingSharedArtifact 
     realizes: "Strata's expert caches on both cards, filled by the routing-aware prefetcher ahead of the walk; what they cannot hold is served from the page cache below" as NonEmptyStr,
   } },
   host_ram: Present { value: ServingArtifactRung {
-    holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup cap that srv3_strata_engine_memory.memory_cap reads (its MemoryHigh, from the drop-in 60-expert-l1-cap.conf installed 2026-11-09); MemoryMax is the hard edge above it, unread by this model and held on the host's unit file" as NonEmptyStr, floor: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), reason: "srv3's per-request expert working set has not been read; 22 GiB is srv4's READ working set on the same model and 24:24 split, taken as srv3's floor pending a read of strata-pool.service's 'file tier I/O this request' lines at 500-token requests under the cap. Corroborated: after the first cold request read ~58 GB, warm requests read only KBs to tens of MB of OS storage at the 96 GiB cap, so the working set is held" as NonEmptyStr } },
+    holds: ArtifactHeldEvictable { bound_by: "the engine service's cgroup cap that srv3_strata_engine_memory.memory_cap reads (its MemoryHigh, from the drop-in 60-expert-l1-cap.conf installed 2026-11-09); MemoryMax is the hard edge above it, unread by this model and held on the host's unit file" as NonEmptyStr, floor: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), reason: "srv3's per-request expert working set has not been read; 22 GiB is srv4's READ working set on the same model and 24:24 split, taken as srv3's floor pending a read of strata-pool.service's 'file tier I/O this request' lines at 500-token requests under the cap. Corroborated: after the first cold request read ~58 GB, warm requests read only KBs to tens of MB of OS storage at the 96 GiB cap, so the working set is held" as NonEmptyStr }, occupies: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 47964)), reason: "srv3 maps the same model's shards (--mmap-experts, no experts.bin) and the disk rung below states their size as an assumption of its own (47,964 MiB, srv4's read figure for the same model, pending srv3's own du); the mapped tier's occupancy is bounded by that file, so the budget leaves THAT much of the service cap for it. NOT srv3's cgroup memory.stat file counter (~72.5 decimal GB, bold-wren-111 2026-11-09 ~22:10Z): that counter is the cgroup's whole file-backed set -- shmem (the conversation cache), tmpfs and other file cache included -- and exceeds the shard, so it is historical evidence that the tier is large, never this figure. READ OBLIGATION: srv3's own du on the shards under /home/ubuntu/strata-test, and an attribution of that file counter to mapped expert pages (/proc/<engine>/smaps_rollup or a per-VMA breakdown)" as NonEmptyStr } },
     // This rung is the engine cgroup's PAGE CACHE of the expert shards -- what it would keep if nothing bounded it.
     // Its SIZE is Unread: srv3 has not attributed how many expert-file pages the page cache actually holds. A RAM rung
     // cannot be larger than the file it caches (the disk rung's 46.84 GiB, and srv4's own partition witness pins
