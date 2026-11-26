@@ -455,11 +455,34 @@ fn floor_preparation_spawn_slot_captured(label: String, bound: Second, binary: S
 fn floor_preparation_read_captured(label: String) -> String {
   let read = Filesystem.Read(path: floor_preparation_leg_log_path(label))
   let raw = if read.success { read.content } else { "" }
-  join(fold(floor_preparation_lines(text: raw), init: [], f: (acc, line) =>
+  // ELISION AND SILENCE REFUSE SEPARATELY (ruling, 2026-11-26). The host's bounded drain
+  // (src/v1/stage0/src/bounded_shell_host_drain.rs: DigestAndBoundedTail is the DEFAULT policy,
+  // DEFAULT_SHELL_STDERR_TAIL_BYTES = 16 KiB at :88, RingTail retains only the SUFFIX) makes a
+  // silently missing head the dangerous case: rows==0 could mean the carrier stopped printing
+  // OR that the reader dropped the head, and those must not share a refusal. The pinned driver
+  // keeps the host from ever owning the leg evidence; this check keeps the READ from owning it
+  // silently either: the file's byte count is observed separately (wc -c), and a transcript
+  // shorter than the file it came from is ELISION -- the run refuses -- while a zero-byte file
+  // is the carrier having stopped printing -- a different refusal text. Equal, nonzero lengths
+  // are the only state that reads as a transcript at all. (Leg lines are ASCII verdicts, banners
+  // and phase receipts; a multibyte byte/char mismatch refuses rather than trusting the shorter
+  // reading -- refusal is safe in both directions.)
+  let disk = floor_preparation_bytes_of(path: floor_preparation_leg_log_path(label))
+  let complete = match disk {
+    Present { value: b } => byte_size_count(b) > 0 && byte_size_count(b) == raw.length()
+    Absent {} => false
+  }
+  let marker = if complete {
+    ""
+  } else {
+    if raw.length() == 0 { "\nCAPTURE_SILENT_CARRIER_ZERO_BYTES" } else { "\nCAPTURE_ELIDED_READ_SHORTER_THAN_FILE" }
+  }
+  let normalized = join(fold(floor_preparation_lines(text: raw), init: [], f: (acc, line) =>
     list_push(xs: acc, item: match floor_preparation_strip_suffix(text: line, suffix: "\r") {
       Present { value: v } => v
       Absent {} => line
     })), "\n")
+  concat(normalized, marker)
 }
 
 fn floor_preparation_spawn_plain(binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
@@ -831,6 +854,8 @@ fn floor_preparation_leg_record(
     out_bytes: out_bytes_opt,
     clean: floor_preparation_spawn_completed(rc: outcome.rc)
       && floor_preparation_verdict_count(text: captured) > 0
+      && floor_preparation_contains(haystack: captured, needle: "CAPTURE_ELIDED") == false
+      && floor_preparation_contains(haystack: captured, needle: "CAPTURE_SILENT_CARRIER") == false
       && floor_preparation_resolved(outcome: floor_preparation_resolve_outcome(text: captured)),
   }
 }
@@ -928,9 +953,21 @@ fn floor_preparation_render_row(row: String) -> String {
 }
 
 fn floor_preparation_render_fn_block(name: String, rows: List<String>) -> List<String> {
-  let body = fold(rows, init: [concat(concat("fn ", name), "() -> List<String> {")],
+  // The bracket lines are load-bearing: the skeleton this replaces is
+  //   fn NAME() -> List<String> {
+  //     []
+  //   }
+  // and rendering rows without the opening "  [" and closing "  ]" leaves the first row parsed
+  // as the function body expression, so the comma after its closing quote fails with
+  // "expected expression, found Comma" at the row's last column (observed in capture-run9e: the
+  // spliced split.dag refused to parse at the first untrimmed row, line 1483 column 259 where the
+  // row ends at exactly 259 characters; every claim in floor_preparation_split_witness.dag then
+  // came back UNOBSERVED with cause=parse-failed). The brackets were the defect, not the escaping.
+  let header = [concat(concat("fn ", name), "() -> List<String> {"), "  ["]
+  let body = fold(rows, init: header,
     f: (acc, row) => list_push(xs: acc, item: floor_preparation_render_row(row: row)))
-  list_push(xs: body, item: "}")
+  let with_close = list_push(xs: body, item: "  ]")
+  list_push(xs: with_close, item: "}")
 }
 
 // The census rows the split's honesty witnesses parse: module|claim|disposition|cause, where a
