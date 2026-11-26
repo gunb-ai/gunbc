@@ -26,10 +26,15 @@ module gunbc.fleet.gpu_power_cap_boot_state
 //     converge could only ever have produced an answer the converge disagreed with.
 //
 // WHERE THE BOOT SIDE GATES, AND WHERE IT DOES NOT REACH. A cap carried by a declared boot unit -- the srv1 and
-// ken units -- is gated here: a unit whose cap line has no priced candidate fails to render its drop-in. The
-// surge-strip members declare no boot units at all, so their caps arrive only through the converge, which is
-// gated for every host. A unit that does not exist cannot be gated, and `PresenceUnread` is not "no unit": an
-// unmodeled boot channel is a modeling obligation on this home, not a covered path it can claim.
+// ken units -- is gated at the boot-unit census the converge runs (`gpu_cap_boot_unit_refusal`): a unit holding
+// a cap line with no priced candidate is REFUSED BY NAME, which fails the converge run, which keeps the units
+// that Require it -- the serving side -- from starting. What the model does NOT do is render unit files: it
+// mints none, so there is no render step to fail, and the installed unit's own `nvidia-smi -pl` line is host
+// state that Part A records. Deriving the unit file itself from the priced candidate is the failure-mode row's
+// next-rung trigger, not a guarantee this module may claim. The surge-strip members declare no boot units at
+// all, so their caps arrive only through the converge, which is gated for every host; a unit that does not
+// exist cannot be gated, and `PresenceUnread` is not "no unit" -- an unmodeled boot channel is a modeling
+// obligation on this home, not a covered path it can claim.
 //
 // DISPOSITION OF #16047 (landed 2026-11-08 as d79a9db7addb, after this PR was opened). This module consumes it
 // rather than duplicating it: the apply-and-read-back path and the generated `gunbc-srv1-gpu-power-cap.service`
