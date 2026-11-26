@@ -82,6 +82,21 @@ fn ch_homonym(body: String) -> Outcome<ResolvedTree> {
   ])
 }
 
+// A SECOND homonym specimen, deliberately SHAPED LIKE THE KERNEL OPTIONAL (Absent | Present { value: T }).
+// The specimen above can only be swallowed by a recogniser that ALSO trips the mint-shape refusals; this
+// one can be swallowed AND accepted, so it is the specimen that makes the homonym control LOAD-BEARING:
+// it is not the declaration on main, and it becomes the declaration the moment the recogniser stops
+// comparing the whole path. Its spelling is main's own conforming shape
+// (dag/test/claim/kernel_optional_mint_shape_witness.dag :: the_conforming_declaration_is_admitted),
+// copied so the probe is not a strawman.
+fn ch_conforming_homonym(body: String) -> Outcome<ResolvedTree> {
+  ch_assemble(sources: [
+    ch_witness(
+      src: concat("module p\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n\n", body),
+      artifact: ch_artifact)
+  ])
+}
+
 // THE PREDICATE GOES THROUGH THE ONE RECOGNIZER, not a hand-rolled identity compare.
 // src/v2/std/qualified_name.dag:629-632: "THE ONE RECOGNIZER of 'this denotation is the std.optional
 // declaration': optional_layers, inhabitance and resolve all ask here, so no consumer compares the
@@ -160,4 +175,24 @@ test fn ch_authored_application_keeps_its_authored_occurrence() -> Bool {
 // the explicitly authored application does. Pairs with (3): sugar and explicit spelling, one node.
 test fn ch_sugar_is_the_optional_instance() -> Bool {
   ch_holds(o: ch_with_std(body: "type U = Int?\n"), pred: ch_is_optional_instance)
+}
+
+// (6) THE LOAD-BEARING HOMONYM LEG. The same demand as (1), on the specimen a weakened recogniser can
+// swallow WITHOUT tripping a shape refusal: a locally authored `Optional` that even MATCHES the kernel
+// shape is still not the bound declaration. This is the leg that flips when the one recognizer stops
+// comparing the whole path (RedProbe arm
+// v2.std.qualified_name::declaration_denotation_is_optional); it is green at main and red only under that
+// break, which is what makes the pair in this file load-bearing rather than decorative.
+test fn ch_conforming_homonym_is_not_the_optional_instance() -> Bool {
+  !ch_holds(o: ch_conforming_homonym(body: "type U = Optional<Int>\n"), pred: ch_is_optional_instance)
+}
+
+// (6a) AND IT IS ACCEPTED. Without this, the flip in (6) could be bought by the specimen being refused.
+test fn ch_conforming_homonym_is_accepted() -> Bool {
+  ch_accepted(o: ch_conforming_homonym(body: "type U = Optional<Int>\n"))
+}
+
+// (6b) AND IT STAYS AN APPLICATION, so (6) cannot be flipped by a rewrite either.
+test fn ch_conforming_homonym_stays_an_application() -> Bool {
+  ch_holds(o: ch_conforming_homonym(body: "type U = Optional<Int>\n"), pred: ch_is_instantiation)
 }
