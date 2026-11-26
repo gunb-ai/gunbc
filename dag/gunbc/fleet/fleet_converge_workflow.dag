@@ -9493,6 +9493,11 @@ fn fleet_converge_hostname_converge_readopt_step() -> Step {
 
 // THE DISPATCH GATE RUNS IN THE BUILD JOB, BEFORE THIS JOB IS QUEUED: a peer that is also the target, or
 // a peer no runner carries, fails there rather than parking a rename in a queue nothing will drain.
+// It runs only on mode=hostname_converge, like its sibling hostname steps: on every other mode the entry
+// answers "not this mode; nothing to gate" after a ~5 minute demand-acquired resolve, under a 5 minute
+// deadline, so the build job of an unrelated mode passed or timed out on runner speed alone (measured
+// 2026-11-26: 4m55s srv3-04 pass; 5m03s-5m04s on srv1-07/08/09, four timeouts on apply and
+// desired_instance_deploy runs 45731925410 and 45736282462).
 fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
   RunStep {
     name: Present { value: "hostname converge dispatch admission (refuses a peer that is the target, or an unallocated peer)" },
@@ -9509,7 +9514,7 @@ fn fleet_converge_hostname_converge_dispatch_admission_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_hostname_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
   }
