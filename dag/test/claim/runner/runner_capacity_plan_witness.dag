@@ -29,6 +29,7 @@ import std.list { first_where }
 import gunbc.compute.host_capacity {
   ComputeBuildPool,
   host_capacity_build_seat,
+  ruled_pool_seat_of,
   build_pool_ruled_seat_count_for_host,
   host_capacity_pool_slots_for_home,
   user_work_slice_memory_max_for_host,
@@ -336,8 +337,11 @@ test fn ken_ruled_pool_is_one_ceiling_seat_and_the_carve_never_refuses_it() -> B
     Absent => false
   }
     && all(ruled_build_pool_reservations, r => r.seats > 0)
-    && byte_size_count(b: byte_size(byte_size_count(b: pool) / 1)) == byte_size_count(b: pool)
-    && byte_size_count(b: byte_size(byte_size_count(b: pool) / 2)) < byte_size_count(b: pool)
+    && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 1)) == byte_size_count(b: pool)
+    && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 2)) < byte_size_count(b: pool)
+    // A zero-seat row is a DEAD POOL, not an invented seat (review 98975 / fail_closed): the seat
+    // converts to 0 bytes and reserves nothing; it is never silently widened to one seat.
+    && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 0)) == 0
     && build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
     && byte_size_count(
       b: build_pool_reservation_of_ruling(

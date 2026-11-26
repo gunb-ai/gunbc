@@ -524,7 +524,7 @@ fn host_capacity_home_directories_admitted(host: HostIdentity) -> List<OwnedDire
 fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
   match build_pool_ruled_seat_count_for_host(host: host) {
     Present { value: ruled_seats } =>
-      byte_size(byte_size_count(b: host_build_pool_reservation(host: host)) / ruled_seats)
+      ruled_pool_seat_of(reservation: host_build_pool_reservation(host: host), seats: ruled_seats)
     Absent => capacity_seat_for_reservation(reservation: host_build_pool_reservation(host: host))
   }
 }
@@ -537,17 +537,32 @@ fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
 // at once. This is what keeps a ruling from re-pricing a machine that has not been enrolled.
 fn build_pool_ruled_seat_count_for_host(host: HostIdentity) -> Nat? {
   if host_build_pool_is_ruled(host: host) && remote_build_host_is_serving(host: host) {
-    match host_ruled_build_pool_seat_count(host: host) {
-      // A RULED POOL IS A POOL: it has at least one seat, and this is the single division site, so
-      // the zero divisor is clamped HERE -- a "0-seat" 22 GiB pool would otherwise divide by zero.
-      // The rows themselves are pinned positive by the witness (every seat count > 0); std.integer's
-      // PositiveInt is not usable in the table because its constructor returns an Outcome, which a
-      // data row cannot unwrap.
-      Present { value: n } => if n > 0 { Present { value: n } } else { Present { value: 1 } }
-      Absent => Absent
-    }
+    host_ruled_build_pool_seat_count(host: host)
   } else {
     Absent
+  }
+}
+
+// THE ONE CONVERSION FROM A RULED POOL TO A SEAT, pure over the two ruled facts. NO SEAT IS EVER
+// INVENTED (gunbc.design_argument::fail_closed: no fabricated default, no escape hatch): a row that
+// declares zero seats gets a ZERO seat -- the ruling's own number propagated, not a made-up one --
+// and a zero seat reserves nothing (host_capacity_pool_slots_for_home multiplies by the same declared
+// count, so the ledger appropriation collapses to zero) and fits no build request, which is the
+// machine's own refusal of the malformed ruling, not a widening into a plausible one.
+//
+// DECLARED FRONTIER (gunbc.design_argument::guarantee_ladder), STATED AS THE NEXT-RUNG TRIGGER
+// (review 98975): the writable-rung gap is that RuledBuildPoolReservation.seats is Nat, not a
+// positive count -- std.integer's PositiveInt is a runtime refinement whose constructor returns
+// Outcome<PositiveInt> (src/v2/std/refinement.dag), which a `data` row cannot unwrap, so a zero seat
+// is writable data defended by (a) this faithful-zero conversion and (b) the witness invariant that
+// every shipped row is positive. TRIGGER: when the language admits a data row constructing a
+// refined count (or a checked literal against one), seats becomes PositiveInt and this fn's zero
+// arm, with the witness clause that prices it, is deleted as unreachable decoration.
+fn ruled_pool_seat_of(reservation: ByteSize, seats: Nat) -> ByteSize {
+  if seats == 0 {
+    byte_size(0)
+  } else {
+    byte_size(byte_size_count(b: reservation) / seats)
   }
 }
 
@@ -760,6 +775,9 @@ fn host_capacity_pool_slots_for_home(home: HostCapacityHome, pool: HostCapacityP
   match pool {
     ComputeBuildPool =>
       match build_pool_ruled_seat_count_for_host(host: home.host_identity as HostIdentity) {
+        // The DECLARED count passes through unchanged -- zero included, so a malformed 0-seat row
+        // reserves nothing (ruled_pool_seat_of's zero seat x 0 seats), refusing the host's builds
+        // rather than inventing capacity (review 98975 / fail_closed).
         Present { value: ruled_seats } => ruled_seats
         Absent => host_capacity_pool_slots(pool: pool)
       }
