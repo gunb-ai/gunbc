@@ -13,7 +13,10 @@ import extdeps.http.server {
 }
 import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  materialize_live_roadmap_site_surface_bundle,
+  render_roadmap_site_surface_bundle_for_projection,
+}
 import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
   roadmap_site_dispatch_url_path,
@@ -174,8 +177,13 @@ fn roadmap_site_healthz_body() -> String {
   materialize_live_roadmap_site_surface_bundle().healthz_body
 }
 
-fn roadmap_site_healthz_body_for_release(release_revision: CommitSha) -> String {
-  let bundle = materialize_live_roadmap_site_surface_bundle()
+// THE PLAN IS THE SERVED INSTANCE'S, SUPPLIED BY THE SERVE SEAM. The /healthz handler receives the same
+// plan thunk every other roadmap handler of that entry reads (gunbc.roadmap.roadmap_serve
+// roadmap_serve_invoke_over), so the digests it publishes are of the surface THAT instance renders from
+// ITS carrier. It used to call materialize_live_roadmap_site_surface_bundle, which is pinned to
+// srv1_live_dashboard_instance: every srv1-lab probe then read production's carrier (incident 2026-11-26).
+fn roadmap_site_healthz_body_for_release_over(plan: RoadmapAuthorityProjection, release_revision: CommitSha) -> String {
+  let bundle = render_roadmap_site_surface_bundle_for_projection(proj: plan)
   healthz_body_with_release_identity(
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,

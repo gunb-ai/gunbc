@@ -77,7 +77,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
   WarmSwapRestores,
   engine_warm_swap, serving_capacity_shape, serving_conversation_policy, serving_replica_grant_for,
-  slot_file_warm_swap,
+  slot_file_warm_swap, ServingGpuKvPool, GpuKvPoolNotBinding, GpuKvPoolRead, srv1_gpu_kv_pool, within_gpu_kv_pool,
 }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings }
 import gunbc.serving.flash_next_topology { ServingTopology, topology_dp }
@@ -155,10 +155,10 @@ type ReplicaGpuCard {
   board: DeclarationRef
   // The card's memory AS READ on that host. Absent where unread -- an obligation, never a datasheet.
   vram: Optional<ServingMemoryReading>
-  // The card's power cap as it runs. srv1's comes from its run row (300 W each); srv3's and srv4's are read from
-  // the cap mechanism those hosts carry (30 W on every card, the operator's hand-applied 2026-11-24 change --
-  // gunbc.fleet.gpu_power_cap_boot_state hand_applied_cap_mechanisms). Absent means NO cap mechanism has been
-  // read on that host, which is not the same as the card running uncapped.
+  // The card's power cap as it runs. srv1's comes from its run row (300 W each); srv3's, srv4's and ken's are
+  // read from the cap mechanism those hosts carry (40 W, 30 W and 100 W at the operator's 2026-11-24 final
+  // pass -- gunbc.fleet.gpu_power_cap_boot_state hand_applied_cap_mechanisms). Absent means NO cap mechanism
+  // has been read on that host, which is not the same as the card running uncapped.
   power_cap: Optional<Watt>
   // The card's UUID as nvidia-smi prints it -- docker's --device word and the CDI selector are built from
   // it, so srv1_serving_replica_layout asks THIS row for it instead of keeping its own copy. Where a host's
@@ -172,8 +172,8 @@ type ReplicaGpuCard {
 // A card as its host's serving_layout grant already models it: the device row is the owner of name, board
 // and read vram, so a profile card for srv3/srv4/h11 DERIVES from it -- no figure is retyped. The cap is the
 // one field the device row does NOT carry and the host does: it comes from that host's cap mechanism roster
-// (gunbc.fleet.gpu_power_cap_boot_state host_wide_gpu_cap_watts), so srv3 and srv4 now report the 30 W the
-// operator's hand-applied mechanism puts on every card there, and a host with no mechanism read -- h11 --
+// (gunbc.fleet.gpu_power_cap_boot_state host_wide_gpu_cap_watts), so srv3, srv4 and ken report what the
+// operator's hand-applied mechanisms put on every card there, and a host with no mechanism read -- h11 --
 // still reports Absent, which means "no cap mechanism read on that host" and not "this card runs uncapped".
 fn card_of(d: ServingDevice, host: HostIdentity) -> ReplicaGpuCard {
   ReplicaGpuCard {
@@ -232,12 +232,29 @@ type ReplicaFigures
 
 // ── THE PROFILE ──────────────────────────────────────────────────────────────────────────────────────
 
+// THE GPU KV POOL BELONGS TO THE CARD, not to the engine label: it is carried on the replica profile as a
+// per-card reading, so a router never derives one card's cap from another's pool. srv1's vLLM profile reads
+// srv1's own topology pool (srv1_gpu_kv_pool); a Strata card parks its sessions in host RAM, so its cap is the
+// retain/RAM session figure and the pool is declared NotBinding with the trigger that would make it bind. A new
+// vLLM card must carry its OWN pool reading here (its topology row) or declare GpuKvPoolUnread -- there is no
+// path that hands it another card's pool (single_authority / fail_closed: no escape hatch, no fabricated default).
+fn strata_gpu_kv_pool() -> ServingGpuKvPool {
+  GpuKvPoolNotBinding {
+    reason: "Bet, not fact: this Strata card's cap is bounded by the retain/RAM session figure rather than the on-GPU KV pool, because Strata parks IDLE sessions in host RAM. Active turns still hold their KV on the GPU, so the bet is wrong -- the pool is the binding term -- if the active turns' on-GPU KV alone fills the pool at the policy context before the RAM session figure is reached; read that card's 'GPU KV cache size' log line and switch it to GpuKvPoolRead to check the bet." as NonEmptyStr,
+    trigger: "A Strata deployment's active-turn KV fills the GPU pool at the policy context, or parked sessions move onto a GPU KV pool -- either makes the pool the binding resource." as NonEmptyStr,
+  }
+}
+
 type ServingReplicaProfile {
   // The row's id: the deployment name its anchor carries and the router prints. Router, anchor and roster
   // agree on a deployment because they read the same row, not because a caller passed a matching string.
   id: NonEmptyStr
   host: HostIdentity
   engine_kind: ServingEngineKind
+  // THE CARD'S GPU KV POOL -- a per-card reading, not derived from the engine label. See strata_gpu_kv_pool /
+  // srv1_gpu_kv_pool. The router reads this field directly to bound a rendered cap; there is no engine-kind ->
+  // another card's pool fallback.
+  gpu_kv_pool: ServingGpuKvPool
   model: ReplicaModel
   gpu: List<ReplicaGpuCard>
   parallelism: ReplicaParallelism
@@ -520,8 +537,28 @@ fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> Serving
 // (replica_shape -- the bare "shape from the row" wrapper -- is GONE with the per-host shape leaves it fed; every
 // reader now names its own deployment via replica_shape_named, root_generalization ruling 2026-11-11.)
 
+// THE SHAPE OF A REPLICA, FLOORED BY ITS CARD'S GPU KV POOL -- APPLIED HERE AND NOWHERE ELSE.
+// The capacity shape's turns ARE the replica's admitted concurrency: the number the router row caps the
+// upstream at (router_dev_policy::router_dev_replica_shape) AND the number the Strata engine reserves
+// --parallel slots for (replica_engine_launch). Both consumers reach the shape through the two builders below,
+// so the GPU KV pool floor (pool tokens / policy anchor context) folds in at THIS one seam. It must live here
+// and not in a router-only renderer: the engine's --parallel reads the same shape's turns WITHOUT the router's
+// renderer, so a router-only floor would let the engine reserve slots the card's KV pool cannot hold -- the
+// one-number-two-ends split #17060 closed, recurring one boundary later (gunbc.design_argument::single_authority).
+// within_gpu_kv_pool is the identity when the card's pool is not binding or already holds the shape's turns;
+// it lowers the turns to the floor when the pool is tighter, and REFUSES (a typed ServingShapeRefused, never a
+// fall-back to a seat count) when the pool is unread or holds fewer than one conversation at the policy
+// context (gunbc.design_argument::fail_closed).
+fn replica_shaped(p: ServingReplicaProfile, a: ServingCapacityAnchor) -> ServingCapacityShape {
+  within_gpu_kv_pool(
+    shape: serving_capacity_shape(a: a, p: serving_conversation_policy),
+    pool: p.gpu_kv_pool,
+    context: serving_conversation_policy.anchor_context,
+  )
+}
+
 fn replica_shape_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityShape {
-  serving_capacity_shape(a: replica_anchor_named(p: p, deployment: deployment), p: serving_conversation_policy)
+  replica_shaped(p: p, a: replica_anchor_named(p: p, deployment: deployment))
 }
 
 // The shape a ROUTER ROW carries: the profile composed with a grant the JOIN supplied (serving_replica_grant_for
@@ -529,7 +566,7 @@ fn replica_shape_named(p: ServingReplicaProfile, deployment: String) -> ServingC
 // profile -- so one AnchorStrataProfile root serves every host and the row's capacity tracks the layout that
 // actually grants it.
 fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetentionGrant, deployment: String) -> ServingCapacityShape {
-  serving_capacity_shape(a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment), p: serving_conversation_policy)
+  replica_shaped(p: p, a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment))
 }
 
 // THE JOINED ADMISSION: the replica's shape at the grant the LAYOUT BEING PROJECTED carries for this
@@ -748,6 +785,7 @@ fn srv1_replica_profile_as(
     id: id as NonEmptyStr,
     host: operator_host_srv1,
     engine_kind: LilVllm,
+    gpu_kv_pool: srv1_gpu_kv_pool(),
     model: LilModel {
       served_model: srv1_serving_startup_reading.served_model_name,
       checkpoint: srv1_topology_run.checkpoint,
@@ -874,6 +912,7 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv3-strata",
   host: operator_host_srv3,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
@@ -900,6 +939,46 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   monthly_cost_standing: Absent,
 }
 
+// THE BINDING-POOL FIXTURE (test support, alongside srv_strata_profile_unread): srv3's profile with its GPU KV
+// pool READ and binding BELOW its 2-turn shape -- a HYPOTHETICAL, because a real srv3 is a Strata card whose pool
+// reports GpuKvPoolNotBinding (it parks idle sessions in host RAM; see strata_gpu_kv_pool). It exists only to prove
+// the pool floor reaches BOTH ends of the admission -- the router row's cap AND the engine's --parallel -- through
+// the ONE shape replica_shaped folds (replica_engine_admission_witness::a_binding_gpu_kv_pool_floors_both_ends_to_the_pool).
+// It is NOT in srv_replica_profiles and no host roster projects it, so nothing renders it; id stays "srv3-strata" so
+// it joins on srv3_layout's real grant exactly as srv3_strata_profile does. pool 150,000 at the 100k policy context
+// floors to 1 conversation, below srv3's throughput turns of 2 -- so without the fold the engine would reserve 2.
+data srv3_strata_profile_binding_kv_pool: ServingReplicaProfile = ServingReplicaProfile {
+  id: "srv3-strata",
+  host: operator_host_srv3,
+  engine_kind: StrataEngine,
+  gpu_kv_pool: GpuKvPoolRead {
+    tokens: token_count(count: 150000),
+    standing: borrowed(o: "fixture: a hypothetical binding GPU KV pool (150,000 tokens -> floor 1 at the 100k policy context); re-read the engine's GPU KV cache size before giving any real card a binding pool"),
+    provenance: "fixture only: a Strata card whose GPU KV pool was READ and binds below its 2-turn shape" as NonEmptyStr,
+  },
+  model: StrataModel {
+    artifact: srv3_iq3_s_artifact,
+    artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
+    flags: Present { value: srv3_strata_launch_parameters },
+    flags_standing: Present { value: borrowed(o: "srv3's launched parameters, as srv3_strata_profile; re-read the live unit before quoting the launch") },
+  },
+  gpu: map(srv3_grant.devices, d => card_of(d: d, host: operator_host_srv3)),
+  parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
+  context_window: serving_fleet_context_cap,
+  figures: FiguresOnRow {
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 26), at_concurrency: 2, standing: borrowed(o: "srv3 engine.log 'strata batch (pipelined, 2 groups)' 26 tok/s at 2-way, 2026-11-08; same reading as srv3_strata_profile") },
+    cold_prefill: Present { value: tokens_per_second(count: 838) },
+    cold_prefill_standing: borrowed(o: "srv3 engine.log cold turns (0 reused, >20k read) median 838 tok/s over 3,496, 2026-11-08"),
+  },
+  warm_ladder: [engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "srv3 engine.log slot restore times 148-296 ms, 2026-11-08"))],
+  grant: serving_replica_grant_for(layout: srv3_layout, deployment: "srv3-strata", group: "strata-pool" as NonEmptyStr),
+  engine_memory: Present { value: srv3_strata_engine_memory },
+  expert_artifact: Present { value: srv3_routed_expert_artifact },
+  monthly_cost: Absent,
+  monthly_cost_standing: Absent,
+}
+
 // srv4's Strata: the same card pair and model as srv3, launched for one turn at a time (its unit is "one
 // turn, checkpoint capable"). Its own engine log is root-only, so its rates are BORROWED from srv3 and say
 // so; its cache bytes and slots are its serving_host_memory row. THE LADDER, HOTTEST FIRST: the engine's own
@@ -913,6 +992,7 @@ data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv4-strata",
   host: operator_host_srv4,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "BORROWED: srv4 runs the same IQ3_S shards as srv3 and its digest was read THERE; read srv4's own artifact digests before quoting srv4's model as verified"),
@@ -952,6 +1032,7 @@ data srv_strata_profile_unread: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv-strata-unread",
   host: operator_host_srv4,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "same IQ3_S shards as srv3/srv4; the digest was read on srv3"),
@@ -998,6 +1079,7 @@ fn h11_strata_profile_with_grant(bus: String, launch_grant: ServingRetentionGran
     id: ("h11-strata-" + bus) as NonEmptyStr,
     host: operator_host_6ce85c,
     engine_kind: StrataEngine,
+    gpu_kv_pool: strata_gpu_kv_pool(),
     model: StrataModel {
       artifact: srv3_iq3_s_artifact,
       artifact_standing: borrowed(o: "BORROWED: h11 runs the same IQ3_S shards as srv3 and the digest was read THERE; read h11's own artifact digests before quoting its model as verified"),
@@ -1132,10 +1214,11 @@ fn agreed_match() -> ReplicaRunIdentityMatch {
 // of what it loaded (gunbc.host.srv1_serving_startup_receipt: the digest it resolves to, the revision and
 // quantization it reported LOADING, the KV dtype it printed) plus the launch contract's profile and hardware
 // names and the cards' cap. A Strata replica's is Absent, and for TWO different reasons that must not be
-// collapsed: srv3 and srv4 have had their cards' power caps read (30 W each, the operator's hand-applied
-// mechanism on 2026-11-24, now carried on each card row through card_of), but nothing else a run identity needs
-// has been read there -- not the artifact digest on that host, not the checkpoint revision, not the P2P wiring
-// -- while on h11 the caps have never been read either. Either way a coordinate-resolved reading for such a host
+// collapsed: srv3 and srv4 have had their cards' power caps read (the operator's hand-applied mechanisms of
+// 2026-11-24, now carried on each card row through card_of), but nothing else a run identity needs has been
+// read there -- not the artifact digest on that host, not the checkpoint revision, not the P2P wiring -- while
+// on h11 the R9700 carries no cap mechanism at all yet, its clock ceiling waiting on the amdgpu OverDrive bit
+// (gunbc.integration_concern::amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs). Either way a coordinate-resolved reading for such a host
 // refuses rather than go unchecked; the difference matters to whoever goes to read, because it says which fields
 // are still missing on which host.
 fn replica_run_identity(p: ServingReplicaProfile) -> Optional<ReplicaRunIdentity> {

@@ -71,6 +71,7 @@ import gunbc.compute.attempt_lifecycle {
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_write_authorization, RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled,
+  attempt_verdict_wire,
   RecoveryWriteDeclined, RecoveryWriteRefused,
   proven_ended_seat_releases,
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
@@ -80,6 +81,7 @@ import gunbc.compute.attempt_lifecycle {
   compute_pre_launch_ceiling_seconds,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.compute.seat_cgroup_absence { SeatCgroupEndProof, SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable, observe_seat_cgroup_end_proof }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -1555,6 +1557,24 @@ fn unit_lifecycle_by_wait(population: UnitPopulation, missing: String) -> UnitLi
   }
 }
 
+// THE THIRD ADMISSIBLE ACCOUNT FOR RECOVERY, consulted only beside the manager's not-found reading
+// and the hook's silence (gunbc.compute.seat_cgroup_absence states why ENOENT on the unit's own cgroup
+// is a kernel-level end proof, and the two guards that keep a wrong spelling from releasing a live
+// seat). Recovery holds no wait account, so today this arm can only answer Unknown and the seat stays
+// charged forever unless the operator rules seat by seat -- srv1's 011dfdd class and srv3's two seats
+// were all this shape. A PRESERVE or UNOBSERVABLE reading falls back to exactly the old answer, with
+// what the cgroup said added to the reason: fail_closed, a located diagnostic and never a release.
+fn seat_cgroup_or_wait(proof: SeatCgroupEndProof, population: UnitPopulation, missing: String) -> UnitLifecycle {
+  match proof {
+    SeatCgroupEnded { detail: d } =>
+      UnitTerminatedCauseUnknown { detail: join([missing, "; the end is nonetheless established by the kernel: ", d], "") }
+    SeatCgroupPreserve { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup still holds processes: ", d], ""))
+    SeatCgroupUnobservable { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup says nothing: ", d], ""))
+  }
+}
+
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
       // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
       // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
@@ -1608,6 +1628,13 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
 // unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
 type UnitLifecycleObservations {
   load_state: UnitPropertyReading
+  // THE SEAT'S OWN CGROUP, observed through gunbc.compute.seat_cgroup_absence: the kernel's answer to
+  // "can anything this unit launched still run". Consulted at exactly ONE arm below -- the manager's
+  // not-found reading beside the hook's silence -- where today the seat can only stay unknown; every
+  // other reading either outranks it (occupied processes) or outranks IT (the manager refusing the
+  // question, the hook's own record). Witness test.claim.compute.seat_cgroup_absence_witness claims
+  // each of those orderings with supplied values.
+  seat_cgroup: SeatCgroupEndProof
   // THE SEAT'S OWN RECORD, for the same reason the termination fold carries it: the two folds must agree
   // about what a manager's absence is worth, and they can only agree if they are deciding on the same
   // reading. test.claim.compute.manager_unaskable_wet_witness asserts that agreement as a relation.
@@ -1664,7 +1691,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
           SeatStopRecordFound { invocation_id, end } =>
             UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
           SeatStopRecordNone =>
-            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
+            // Without the record the manager itself ran, the manager can only say it does not LIST the
+            // unit -- and the seat's own wait, which used to be the only other admissible account here,
+            // is exactly what fails for a seat launched before the hook existed. The kernel's own account
+            // of the unit's cgroup is consulted third (seat_cgroup_or_wait); what it cannot say falls back
+            // to the old, refusing answer.
+            seat_cgroup_or_wait(proof: o.seat_cgroup, population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
           SeatStopRecordUnreadable { cause } =>
             unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and its exit spool could not be read, so the hook says nothing: ", cause], ""))
           SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
@@ -1701,11 +1733,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
 fn observe_unit_lifecycle(unit: NonEmptyStr, stop_record: SeatStopRecord) -> UnitLifecycle {
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_lifecycle_decide(o: UnitLifecycleObservations {
-    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
+    stop_record: stop_record,
     active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
     result: read_user_unit_property(unit: unit, property: unit_result_property),
     population: unit_population(control_group: cg, events: read_cgroup_events(control_group: cg)),
+    seat_cgroup: observe_seat_cgroup_end_proof(unit: unit),
   })
 }
 
@@ -4048,8 +4081,30 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
       match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
-          match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, releases: proven_ended_seat_releases) {
-            RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
+          // THE LEDGER FIRST, FOR A TERMINAL SLOT: a slot whose reservation was refused never became a
+          // charge and never ran a unit; this door answers it with the nothing-held arm rather than
+          // demanding a unit end that no hook could ever witness. The charge the ledger DOES account for
+          // classifies through the one write authorization, exactly as before.
+          match rec.state {
+            AttemptTerminal { verdict: v, detail: _ } =>
+              match terminal_charge_standing(subject: subject, reference: reference) {
+                LedgerNeverCharged =>
+                  RecoveryNothingHeld { reference: rec.reference, verdict: attempt_verdict_wire(v: v), detail: "the ledger holds no charge for this reference: the slot names an attempt whose reservation was refused, so there is no seat to return" }
+                LedgerUnconsultable { detail: d } =>
+                  RecoveryRefused { detail: join(["the capacity ledger could not say whether ", rec.reference, " was charged (", d, "); nothing is released against an unconsultable ledger"], "") }
+                LedgerChargeStanding { detail: _ } =>
+                  recover_attempt_by_authorization(seat: seat, subject: subject, reference: reference, rec: rec, g: g, lifecycle: lifecycle, now: now)
+              }
+            _ => recover_attempt_by_authorization(seat: seat, subject: subject, reference: reference, rec: rec, g: g, lifecycle: lifecycle, now: now)
+          }
+      }
+    }
+  }
+}
+
+fn recover_attempt_by_authorization(seat: ComputeSeatStore, subject: ComputeCapacitySubject, reference: NonEmptyStr, rec: AttemptRecord, g: CasGeneration, lifecycle: UnitLifecycle, now: EpochSecs) -> ComputeRecovery {
+  match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, releases: proven_ended_seat_releases) {
+    RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
             RecoveryWriteRefused { reason: r } => RecoveryRefused { detail: r }
             RecoveryWriteReleaseSettled { state: _, reason: why } => compute_recover_settled_seat(subject: subject, rec: rec, why: why, lifecycle: lifecycle)
             RecoveryWriteTerminateAndRelease { reason: why } =>
@@ -4063,9 +4118,6 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
                     verdict: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], ""),
                     returned: compute_recover_release(subject: subject, reference: reference, reason: why))
               }
-          }
-      }
-    }
   }
 }
 
@@ -4153,7 +4205,14 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // compute_recover_attempt_in refuses an unreadable slot). A seat whose slot directory does not exist at all
 // contributes no reference: that is the census of a store that was never created, and nothing here releases
 // on a census, which is attempt_slot_keys' own warning.
-type RecoverCatalogEntry { reference: NonEmptyStr, authorization: RecoveryWriteAuthorization }
+// A CENSUS ENTRY IS EITHER AN AUTHORIZED WRITE, A DECLINED HOLD, OR A SLOT THE LEDGER NEVER CHARGED.
+// The third arm is the refused-reservation shape (compute_refused_after_open settles a slot that never
+// reached the ledger): it names a real attempt but holds no seat, and demanding unit proof of a unit that
+// never existed would make it permanent census poison -- which is the srv1/srv3 stall of 2026-11-26.
+// Whether a reference was ever CHARGED is the ledger's fact, asked through terminal_charge_standing.
+type RecoverCatalogEntry
+  = CatalogAuthorized { reference: NonEmptyStr, authorization: RecoveryWriteAuthorization }
+  | CatalogNeverCharged { reference: NonEmptyStr }
 
 type RecoverCensusPairs
   = RecoverCensusPairsListed { pairs: List<RecoverSlotPair> }
@@ -4182,7 +4241,33 @@ type ComputeRecoverCatalog
   = RecoverCatalogEstablished { entries: List<RecoverCatalogEntry> }
   | RecoverCatalogUnknown { detail: String }
 
-fn compute_recover_catalog_for(instance: HostDashboardInstance, stores: List<ComputeSeatStore>) -> ComputeRecoverCatalog {
+// WHAT THE LEDGER SAYS ABOUT ONE REFERENCE'S CHARGE -- the ONE question census and door share, asked once.
+// The ledger is the authority on who holds a seat (host_capacity adjudicates every reservation into it);
+// the attempt slot names the attempt, it does not price the hold. A reference the ledger never acquired
+// never held a seat -- that is an established fact, not an unknown. An UNREADABLE ledger is never an
+// absent charge: the caller keeps the charge and says so (gunbc.design_argument::fail_closed).
+type NeverChargedReading
+  = LedgerNeverCharged
+  | LedgerChargeStanding { detail: String }
+  | LedgerUnconsultable { detail: String }
+
+fn terminal_charge_standing(subject: ComputeCapacitySubject, reference: NonEmptyStr) -> NeverChargedReading {
+  match compute_capacity_store(subject: subject) {
+    ComputeCapacityStoreUnready { area: a, detail: d } =>
+      LedgerUnconsultable { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+    ComputeCapacityStoreReady { store } =>
+      match compute_seat_charge_returned(store: store, partition: subject.partition, reference: reference) {
+        SeatChargeNeverAcquired { reference: _ } => LedgerNeverCharged
+        SeatChargeUnproven { detail: d } => LedgerUnconsultable { detail: d }
+        SeatChargeStillHeld { reference: _, acquired_at: _ } =>
+          LedgerChargeStanding { detail: "the ledger holds the charge" }
+        SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, by: _, generation: _ } =>
+          LedgerChargeStanding { detail: "the ledger shows the charge returned" }
+      }
+  }
+}
+
+fn compute_recover_catalog_for(instance: HostDashboardInstance, stores: List<ComputeSeatStore>, ledger: ComputeSubjectResolution) -> ComputeRecoverCatalog {
   match compute_recover_census_pairs(stores: stores) {
     RecoverCensusPairsUnknown { detail: d } => RecoverCatalogUnknown { detail: d }
     RecoverCensusPairsListed { pairs: ps } =>
@@ -4201,19 +4286,48 @@ fn compute_recover_catalog_for(instance: HostDashboardInstance, stores: List<Com
                 AttemptSlotHeld { record: rec, generation: _ } =>
                   match now_epoch_seconds() {
                     Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged; the record names unit ", rec.unit], "") }
-                    Present { value: now } => {
-                      let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycleWithSeatRecord { instance: instance }, unit: rec.unit as NonEmptyStr)
-                      match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, releases: proven_ended_seat_releases) {
-                        RecoveryWriteRefused { reason: r } =>
-                          RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
-                        auth =>
-                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, authorization: auth }) }
+                    Present { value: now } =>
+                      // A TERMINAL SLOT FIRST ASKS THE LEDGER, NOT THE MANAGER. A slot whose reservation was
+                      // refused (compute_refused_after_open) names an attempt that never held a seat: the
+                      // ledger never acquired it, no unit ever existed, and no stop hook could ever have
+                      // written for it -- demanding the unit's end from that slot is what held srv1 and srv3
+                      // in census deadlock on 2026-11-26. The ledger's never-acquired is an established
+                      // answer, so the entry says so and the fold moves on. A charge the ledger does know
+                      // about -- held or returned -- classifies exactly as before.
+                      match rec.state {
+                        AttemptTerminal { verdict: _, detail: _ } =>
+                          match ledger {
+                            ComputeSubjectHostUnresolved { host: h } =>
+                              RecoverCatalogUnknown { detail: join([pair.reference as String, ": no capacity subject resolves for host ", h as String, "; the census will not call a terminal slot held or skipped without the ledger that prices it; the record names unit ", rec.unit], "") }
+                            ComputeSubjectResolved { subject: subj, appropriation: _ } =>
+                              match terminal_charge_standing(subject: subj, reference: pair.reference) {
+                                LedgerNeverCharged =>
+                                  RecoverCatalogEstablished { entries: es |> list_push(CatalogNeverCharged { reference: pair.reference }) }
+                                LedgerUnconsultable { detail: d } =>
+                                  RecoverCatalogUnknown { detail: join([pair.reference as String, ": the capacity ledger could not say whether this slot was charged (", d, "), and an unconsultable ledger is not an absent charge"], "") }
+                                LedgerChargeStanding { detail: _ } =>
+                                  recover_census_classify(instance: instance, pair: pair, rec: rec, now: now, entries: es)
+                              }
+                          }
+                        _ => recover_census_classify(instance: instance, pair: pair, rec: rec, now: now, entries: es)
                       }
-                    }
                   }
               }
           })
       }
+  }
+}
+
+// THE UNIT-PROOF CLASSIFICATION, in its one copy: manager and spool readings in, an authorization or an
+// unknown out. The census calls it for every slot whose charge the ledger accounts for; the never-charged
+// arm above never reaches it, because a unit that never existed has no lifecycle to observe.
+fn recover_census_classify(instance: HostDashboardInstance, pair: RecoverSlotPair, rec: AttemptRecord, now: EpochSecs, entries: List<RecoverCatalogEntry>) -> ComputeRecoverCatalog {
+  let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycleWithSeatRecord { instance: instance }, unit: rec.unit as NonEmptyStr)
+  match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, releases: proven_ended_seat_releases) {
+    RecoveryWriteRefused { reason: r } =>
+      RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
+    auth =>
+      RecoverCatalogEstablished { entries: entries |> list_push(CatalogAuthorized { reference: pair.reference, authorization: auth }) }
   }
 }
 
@@ -4223,7 +4337,8 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
     ComputeSeatsListed { seats } =>
       match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
         ComputeSeatStoresUnready { detail: d } => RecoverCatalogUnknown { detail: join(["a seat's attempt store is not ready: ", d], "") }
-        ComputeSeatStoresReady { stores } => compute_recover_catalog_for(instance: instance, stores: stores)
+        ComputeSeatStoresReady { stores } =>
+          compute_recover_catalog_for(instance: instance, stores: stores, ledger: compute_capacity_subject(instance: instance))
       }
   }
 }
@@ -4235,7 +4350,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 // (gunbc.design_argument::single_authority; minimize_redundancy: "a concept is modeled once and every
 // use derived from it"). The pairing of an authorization arm to its word lives in the one match that
 // renders it; what the WORDS are lives only here.
-type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, established_header: String }
+type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String }
 
 fn recover_catalog_words() -> RecoverCatalogWords {
   let prefix = "recover-catalog"
@@ -4245,25 +4360,28 @@ fn recover_catalog_words() -> RecoverCatalogWords {
     settle: "settle",
     hold: "hold",
     refused: "refused",
+    never_charged: "never-charged",
     established_header: join([prefix, " established"], ""),
   }
 }
 
 fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
   let w = recover_catalog_words()
-  let verdict = match e.authorization {
-    RecoveryWriteTerminateAndRelease { reason: _ } => w.terminate
-    RecoveryWriteReleaseSettled { state: _, reason: _ } => w.settle
-    RecoveryWriteDeclined { reason: _ } => w.hold
-    RecoveryWriteRefused { reason: _ } => w.refused
+  match e {
+    CatalogNeverCharged { reference: r } =>
+      join([w.line_prefix, " ", w.never_charged, " ", r as String, " the ledger holds no charge for this reference: the slot names an attempt whose reservation was refused, so no seat was ever held and no unit ever ran", "\n"], "")
+    CatalogAuthorized { reference: r, authorization: auth } =>
+      match auth {
+        RecoveryWriteTerminateAndRelease { reason: why } =>
+          join([w.line_prefix, " ", w.terminate, " ", r as String, " ", why, "\n"], "")
+        RecoveryWriteReleaseSettled { state: _, reason: why } =>
+          join([w.line_prefix, " ", w.settle, " ", r as String, " ", why, "\n"], "")
+        RecoveryWriteDeclined { reason: why } =>
+          join([w.line_prefix, " ", w.hold, " ", r as String, " ", why, "\n"], "")
+        RecoveryWriteRefused { reason: why } =>
+          join([w.line_prefix, " ", w.refused, " ", r as String, " ", why, "\n"], "")
+      }
   }
-  let why = match e.authorization {
-    RecoveryWriteTerminateAndRelease { reason: r } => r
-    RecoveryWriteReleaseSettled { state: _, reason: r } => r
-    RecoveryWriteDeclined { reason: r } => r
-    RecoveryWriteRefused { reason: r } => r
-  }
-  join([w.line_prefix, " ", verdict, " ", e.reference as String, " ", why, "\n"], "")
 }
 
 // THE PARSE OF THE CENSUS RENDERING, beside the renderer so the grammar has one home. This is what a
@@ -4277,6 +4395,10 @@ fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
 type RecoverCatalogLegEntry
   = CatalogLegStale { reference: NonEmptyStr }
   | CatalogLegHeld { reference: NonEmptyStr }
+  // The ledger never charged this reference: nothing is held, nothing is stale, nothing is planned.
+  // Distinct from Held on purpose -- a held seat is legitimately occupied, a never-charged slot never
+  // held anything, and a leg that conflated the two would be reading the ledger's fact as the manager's.
+  | CatalogLegNeverCharged { reference: NonEmptyStr }
 
 type RecoverCatalogLegReading
   = RecoverCatalogLegEstablished { entries: List<RecoverCatalogLegEntry> }
@@ -4312,6 +4434,8 @@ fn recover_catalog_leg_line(words: List<String>) -> RecoverCatalogLegEntry? {
                   Present { value: CatalogLegStale { reference: trim(s: reference) as NonEmptyStr } }
                 } else if arm == recover_catalog_words().hold {
                   Present { value: CatalogLegHeld { reference: trim(s: reference) as NonEmptyStr } }
+                } else if arm == recover_catalog_words().never_charged {
+                  Present { value: CatalogLegNeverCharged { reference: trim(s: reference) as NonEmptyStr } }
                 } else {
                   none
                 }
@@ -4328,6 +4452,7 @@ fn recover_catalog_leg_reference(e: RecoverCatalogLegEntry) -> NonEmptyStr {
   match e {
     CatalogLegStale { reference: r } => r
     CatalogLegHeld { reference: r } => r
+    CatalogLegNeverCharged { reference: r } => r
   }
 }
 
