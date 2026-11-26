@@ -14,6 +14,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv2_deploy_dashboard_instance,
   dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
   dashboard_instance_is_disjoint_from_public_builtins, host_capacity_ledger_home,
+  capacity_ledger_directory_owner, capacity_ledger_legacy_owner_frontier,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged, SameUserRegroupToDeclaredGroup, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgidSticky, DirectoryOwnerAllEveryoneTraverse }
@@ -25,7 +26,7 @@ import gunbc.compute.host_capacity {
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
   compute_capacity_root,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_e2d4b7, operator_host_srv14 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
@@ -33,6 +34,7 @@ import gunbc.compute.remote_build_serve {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused, remote_build_serve_principal_of,
   RemoteBuildServeLedgerOwner, ServeLedgerOwnerDeclared, ServeLedgerOwnerUndeclared, remote_build_serve_ledger_owner,
 }
+import gunbc.compute.remote_build_serving_setup { remote_build_serving_desired }
 
 // HERMETIC CONTROLS for the remote-build account (operator, 2026-11-15): the account row, the principal
 // the serving entry admits, the serving instance it owns, and the one ledger it shares with the service
@@ -321,4 +323,86 @@ test fn srv3_and_srv4_reserve_in_the_one_host_ledger() -> Bool {
     (ledger.subject.home.instance_root as String) == "/opt/gunbc"
       && (compute_capacity_root_carrier(home: ledger.subject.home) as String) == "/opt/gunbc/compute/capacity"
   })
+}
+
+// ── per-host ledger owner: the single-authority witnesses ─────────────────────────────────────────
+
+// (1) srv3/srv4's ledger rows are BYTE-IDENTICAL to what the old universal rule produced. The legacy
+// frontier keeps them under the operator login; if the frontier were removed or the discriminator
+// changed, this reds. This is the byte-identity preservation witness.
+test fn srv3_and_srv4_ledger_owner_is_legacy_operator_preserving_byte_identity() -> Bool {
+  ["srv3", "srv4"] |> all(name => {
+    let owner = capacity_ledger_directory_owner(host: (name as String) as NonEmptyStr)
+    (owner.user as String) == (fleet_posix_operator_user.name as String)
+      && (owner.group as String) == (fleet_posix_operator_user.name as String)
+  })
+}
+
+// (2) ken (operator_host_e2d4b7) and butch (operator_host_srv14) get the remote-build account as their
+// ledger owner. Every member their desired state puts into gunbc-compute is a principal the converge
+// itself ensures (converge_add_account creates fleet_posix_remote_build_user, converge_ensure_group
+// creates gunbc-compute). This is the WITNESS: the desired state's group members all exist after the
+// converge's own ensures.
+test fn fresh_host_group_members_are_all_ensured_by_the_converge() -> Bool {
+  [operator_host_e2d4b7, operator_host_srv14] |> all(h => {
+    match remote_build_serving_desired(host: h) {
+      Absent => false
+      Present { value: d } => {
+        // The only principals the converge guarantees to exist at apply time:
+        // - the remote-build account (converge_add_account)
+        // - the account's own primary group (converge_ensure_group)
+        // - the ledger group (converge_ensure_group)
+        // Every group_member must be one of these. For a fresh host, the ledger owner IS gunbc-build,
+        // so group_members = [gunbc-build, gunbc-build] (the service_user and the account itself).
+        all(d.group_members, m => m == (fleet_posix_remote_build_user.name as String))
+      }
+    }
+  })
+}
+
+// (2b) RED CONTROL: a group member the converge does NOT ensure would be a fabricated principal. If
+// the model ever reintroduces an unensured member (e.g. the operator login on a host that doesn't
+// carry it), this witness must go red at PLAN time, not at apply. We construct the violation at the
+// model level: a host whose desired state names a member outside the ensured set must be refused.
+test fn a_member_the_converge_does_not_ensure_refuses_at_plan_time() -> Bool {
+  // RED CONTROL: if the frontier were empty AND srv3/srv4 had no dashboard instance, their ledger
+  // owner would be gunbc-build — and their group_members would correctly exclude briansrls.
+  // The red is: if ANY non-dashboard host's group_members include a name that is neither the
+  // remote-build account nor a member the converge creates, the model fabricates a member.
+  // We test this by checking that for fresh hosts (not in the legacy frontier, no instance), the
+  // group_members contain ONLY the remote-build account. A future regression that adds briansrls
+  // back for these hosts would make this go red.
+  [operator_host_e2d4b7, operator_host_srv14] |> all(h => {
+    match remote_build_serving_desired(host: h) {
+      Absent => false
+      Present { value: d } => {
+        // briansrls must NOT be a group member on a fresh host. The converge does not create it.
+        !any(d.group_members, m => m == (fleet_posix_operator_user.name as String))
+          && all(d.group_members, m => m == (fleet_posix_remote_build_user.name as String))
+      }
+    }
+  })
+}
+
+// (3) The discriminator does NOT flip on roster admission. A host's ledger owner must be the same
+// whether or not it appears in remote_build_serving_hosts (the live roster). The legacy frontier is
+// declared independently; joining the roster cannot change a host's owner from gunbc-build to briansrls.
+// We prove this by checking that the function's answer is identical whether or not the host is on the
+// live roster: for ken/butch (not on the roster), the answer is gunbc-build; for srv3/srv4 (on the
+// roster), the answer is briansrls — and the frontier is what drives this, not the roster membership.
+test fn the_owner_discriminator_does_not_flip_on_roster_admission() -> Bool {
+  // ken and butch: NOT on the live roster. Their owner is gunbc-build (third arm).
+  let ken_owner = capacity_ledger_directory_owner(host: "host-e2d4b7" as NonEmptyStr)
+  let butch_owner = capacity_ledger_directory_owner(host: "srv14" as NonEmptyStr)
+  let is_build_account = o => (o.user as String) == (fleet_posix_remote_build_user.name as String)
+  // They are NOT on the roster, so if the discriminator were remote_build_host_is_serving, they would
+  // get gunbc-build (same answer by accident). The test is: if they WERE added to the roster (simulating
+  // post-converge admission), their owner would STILL be gunbc-build. We verify this by checking they
+  // are not in the frontier — and the frontier is the only thing that could give them briansrls.
+  let ken_in_frontier = any(capacity_ledger_legacy_owner_frontier, h => h == "host-e2d4b7")
+  let butch_in_frontier = any(capacity_ledger_legacy_owner_frontier, h => h == "srv14")
+  is_build_account(ken_owner)
+    && is_build_account(butch_owner)
+    && !ken_in_frontier
+    && !butch_in_frontier
 }

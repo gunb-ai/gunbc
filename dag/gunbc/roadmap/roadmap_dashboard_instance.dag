@@ -44,7 +44,7 @@ import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverse, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerGroupWritableSetgidSticky, declared_directory_mode, srv1_dashboard_service_principal }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_remote_build_user }
 import gunbc.owned_directory {
   OwnedDirectoryTarget,
   OwnedDirectoryDeclared,
@@ -1404,13 +1404,60 @@ type HostCapacityHome sole_constructor {
   dispatch_worker_memory_max: ByteSize
 }
 
+// THE ONE DECISION: WHO OWNS THIS HOST'S CAPACITY LEDGER, per-host. This is the single authority
+// (gunbc.design_argument::single_authority) for the ledger's directory owner; both host_capacity and the
+// serving setup read it (through host_capacity_ledger_home). The three arms:
+//
+// 1. A host that carries a dashboard instance (srv1, srv2): the instance's service principal. The ledger
+//    is that instance's home, and its owner names the service user who reserves in it alongside the
+//    remote-build account.
+//
+// 2. A host in the legacy-owner frontier (srv3, srv4): the operator login. These hosts carry on-disk
+//    ledger directories already owned by the operator login, created by earlier converge runs under the
+//    old universal linux_service_directory_owner() rule. The model's "re-grouped, never re-owned" posture
+//    prevents the converge from re-owning them, so the declared owner MUST remain the operator to keep
+//    their ledger rows byte-identical to the live state.
+//
+// 3. A host with neither (ken, butch, fresh serving hosts): the remote-build account. This is the only
+//    principal that reserves in a host-home ledger on a host with no dashboard instance; its account is
+//    ensured by the converge itself (converge_add_account), so every group_member the converge emits
+//    names a principal the converge guarantees to exist at apply time.
+//
+// THE DISCRIMINATOR IS A DECLARED FRONTIER, NOT A LIVE-ROSTER PREDICATE: it does NOT use
+// remote_build_host_is_serving (the live roster) because a fresh host joins that roster after its
+// converge succeeds — if the discriminator flipped on admission, a freshly-converged host's ledger would
+// re-own (from gunbc-build back to briansrls) on the very next run. The frontier is a named set with a
+// DISCHARGE TRIGGER: a wet reading of srv3/srv4's live ledger entry owners (a read of
+// /opt/gunbc/compute/capacity/{objects,heads} proving no entry carries briansrls as its owner) followed
+// by a ruled re-own of the directories themselves. When that ruling lands, the host is removed from
+// this frontier and the function's third arm covers it.
+data capacity_ledger_legacy_owner_frontier: List<String> = [
+  "srv3",
+  "srv4",
+]
+
+fn capacity_ledger_directory_owner(host: NonEmptyStr) -> PosixOwnerNames {
+  match dashboard_instance_for_host(host: host as String) {
+    DashboardInstanceForHost { instance } => instance.directory_owner
+    DashboardInstanceHostUnknown { host: _ } =>
+      if any(capacity_ledger_legacy_owner_frontier, h => h == (host as String)) {
+        linux_service_directory_owner()
+      } else {
+        PosixOwnerNames {
+          user: fleet_posix_remote_build_user.name,
+          group: fleet_posix_remote_build_user.name,
+        }
+      }
+  }
+}
+
 // The host-scoped ledger home: the root and owner are the host's, the ceilings come from the carve. srv1
 // resolves to the same /opt/gunbc root and owner it resolved through its dashboard instance, so it is
 // byte-identical on every field the ledger reads -- the bar the ledger's compute-provider reader depends on.
 fn host_capacity_ledger_home(host: NonEmptyStr, build_seat: ByteSize) -> HostCapacityHome {
   HostCapacityHome {
     host_identity: host,
-    directory_owner: linux_service_directory_owner(),
+    directory_owner: capacity_ledger_directory_owner(host: host),
     instance_root: host_capacity_home_root,
     compute_build_memory_ceiling: build_seat,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
