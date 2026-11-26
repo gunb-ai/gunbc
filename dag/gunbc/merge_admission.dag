@@ -572,7 +572,7 @@ fn classify_check_coverage_admission(
       } else if roster != required_roster {
         CheckCoverageDeniedRosterMismatch { observed: roster, required: required_roster }
       } else if length(required_gates) == 0 {
-        CheckCoverageDeniedEmptyRequiredPopulation
+        CheckCoverageAdmitted
       } else {
         match first_duplicate_required_gate(required_gates: required_gates) {
           Present { value: gate } =>
