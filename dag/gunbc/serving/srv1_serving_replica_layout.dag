@@ -78,6 +78,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration }
 import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
+import gunbc.serving.srv1_serving_launch {
+  Srv1EmergencyEvictDecision, srv1_emergency_evict_decision_for,
+  srv1_emergency_evict_decision_is_stated, srv1_emergency_evict_decision_standing,
+  srv1_emergency_evict_launcher_tokens,
+}
 import gunbc.serving.serving_host_memory {
   ConversationSnapshotCost, conversation_snapshot_bytes, srv1_lmcache_l1_bytes,
   srv1_lmcache_l2_bytes, srv1_lmcache_l2_configured, srv1_replica_container_memory_cap, srv1_vllm_disk_snapshot_cost,
@@ -1000,8 +1005,20 @@ fn srv1_replica_engine_argv(config: Srv1LaunchConfig) -> List<NonEmptyStr> {
     Fp8E4m3 => []
   }
   let tp = if config.tensor_parallel_size > 1 { ["--tensor-parallel-size" as NonEmptyStr, to_string(config.tensor_parallel_size) as NonEmptyStr] } else { [] }
+  // THE LAUNCHER'S OWN FACE, between the identity pair and the environment. The tokens come from
+  // srv1_serving_launch's PER-PROFILE answer, keyed on this config's own profile: the boot render and the
+  // provisioned container's argv (extdeps.vllm.lil_serve lil_serve_launch_argv, which reads
+  // LilServeLaunch.launcher_flags) answer from the same row, so a valve passed on one surface cannot be
+  // missing from the other. For qwen38-flash-next the answer is a recorded DECLINE, which contributes no
+  // token — which is why the digests this render is pinned to did not move.
+  let launcher_face = srv1_emergency_evict_launcher_tokens(
+    d: srv1_emergency_evict_decision_for(profile: config.profile)
+  )
   let head = concat(
-    [config.engine_executable as NonEmptyStr, "--profile" as NonEmptyStr, config.profile, "--hardware" as NonEmptyStr, config.hardware],
+    concat(
+      [config.engine_executable as NonEmptyStr, "--profile" as NonEmptyStr, config.profile, "--hardware" as NonEmptyStr, config.hardware],
+      launcher_face
+    ),
     srv1_lmcache_engine_env(config: config)
   )
   let engine_args = concat(
@@ -1701,6 +1718,67 @@ fn srv1_kv_tier_refusal(term: NonEmptyStr, cause: NonEmptyStr) -> Diagnostic {
 // its numbers. BOTH producers of installed bytes bind this — the launcher and the engine args file — so a
 // config that breaks the ladder has no bytes to install and no digest to record, rather than bytes that
 // describe a replica which silently loses what it was serving.
+// ── THE EMERGENCY VALVE: the boot path renders bytes only for a profile that ANSWERED ──────────
+//
+// WHY THIS REFUSES, AND WHY NOTHING ELSE DOES. Under --l2-store-policy checkpoint_on_evict the RAM tier is
+// the only path to disk, and the emergency valve is the mechanism that would make room in it for a
+// checkpoint arriving FROM disk. The host passes it for GLM models and not for qwen38-flash-next
+// (operator's 2026-11-24 reading). srv1's profile therefore runs WITHOUT it — a finding this row records
+// rather than "fixes", because the host's bytes are the authority for what the host runs and a render that
+// invented the flag would manufacture an adoption gap on the boot path. What the model will not do is
+// render a launch for a profile nobody answered for: an unmodelled profile (a GLM one included) inherits
+// nothing, gets no bytes, and the refusal names the reading that would close it. That is the unrenderable
+// form of the omission; a warning would be the silent list this class is about (gunbc.design_argument::fail_closed).
+// The valve's MECHANISM is not claimed here: extdeps.vllm.lil_serve carries the spelling under
+// lil_serve_read_obligation, and the obligation stays open on every arm.
+data srv1_emergency_valve_contract_identity: NonEmptyStr = "srv1-emergency-evict-valve" as NonEmptyStr
+
+data srv1_emergency_valve_missing_decision_cause: NonEmptyStr = "the profile's emergency-valve decision is Unstated while the store policy reaches the disk tier only by eviction — the boot path will not spell a launcher-face flag decision for a profile it has never read; read the lab launcher (lil_serve_read_obligation) and state Passed or Declined in gunbc.serving.srv1_serving_launch srv1_emergency_evict_decision_for" as NonEmptyStr
+
+// Whether a stated answer is required at all: only under a policy that reaches disk by eviction (an
+// unread policy counts as one — the same fail-closed rule srv1_store_reaches_disk_only_by_eviction
+// applies to the staging floor, so the two gates cannot disagree about when the policy is dangerous).
+fn srv1_emergency_valve_must_be_stated() -> Bool {
+  srv1_store_reaches_disk_only_by_eviction(policy: srv1_l2_store_policy_reading.policy)
+}
+
+fn srv1_emergency_valve_refusal(cause: NonEmptyStr) -> Diagnostic {
+  Diagnostic {
+    reason: symbol_intern_lexeme(lexeme: concat("srv1_emergency_valve_unstated: ", cause)),
+    at: textual_whole_file_locus(file: ^srv1_serving_replica_layout),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn srv1_emergency_valve_check(config: Srv1LaunchConfig) -> Outcome<Bool> {
+  if !srv1_emergency_valve_must_be_stated() {
+    outcome_accepted(value: true)
+  } else if srv1_emergency_evict_decision_is_stated(d: srv1_emergency_evict_decision_for(profile: config.profile)) {
+    outcome_accepted(value: true)
+  } else {
+    outcome_rejected(d: srv1_emergency_valve_refusal(cause: srv1_emergency_valve_missing_decision_cause))
+  }
+}
+
+// THE ONE CHECK THE TWO BYTE PRODUCERS BIND: the tier contract and the valve, together, so neither can be
+// walked around by choosing the other producer (the launcher and the engine args file both bind THIS).
+fn srv1_boot_bytes_check(config: Srv1LaunchConfig) -> Outcome<Bool> {
+  bind_outcome(
+    o: srv1_kv_tier_contract_check(config: config),
+    f: _ => srv1_emergency_valve_check(config: config)
+  )
+}
+
+// The decline, made legible to a consumer that is not the render: which reading the recorded finding
+// rests on. Absent when the profile passed or was never answered for.
+fn srv1_emergency_valve_decision(config: Srv1LaunchConfig) -> Srv1EmergencyEvictDecision {
+  srv1_emergency_evict_decision_for(profile: config.profile)
+}
+
+fn srv1_emergency_valve_decline_standing(config: Srv1LaunchConfig) -> Optional<CitedFigureStanding> {
+  srv1_emergency_evict_decision_standing(d: srv1_emergency_valve_decision(config: config))
+}
+
 fn srv1_kv_tier_contract_check(config: Srv1LaunchConfig) -> Outcome<Bool> {
   match srv1_kv_tier_verdict(config: config, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
     KvTiersAdmitted => outcome_accepted(value: true)
@@ -1750,7 +1828,7 @@ fn srv1_replica_engine_args_host_path(replica: Srv1ServingReplicaSpec) -> NonEmp
 // walk around (gunbc.design_argument::fail_closed).
 fn srv1_replica_engine_args_body(config: Srv1LaunchConfig) -> Outcome<String> {
   bind_outcome(
-    o: srv1_kv_tier_contract_check(config: config),
+    o: srv1_boot_bytes_check(config: config),
     f: _ => outcome_accepted(value: string_concat_join(srv1_replica_engine_argv(config: config) as List<String>, "\n"))
   )
 }
@@ -2681,7 +2759,7 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
   // policy's checkpoints would be bytes somebody installs. Refusing here — at the producer of the lines rather
   // than at a wrapper over them — is what makes the refusal unavoidable rather than conventional.
   bind_outcome(
-    o: srv1_kv_tier_contract_check(config: config),
+    o: srv1_boot_bytes_check(config: config),
     f: _ => srv1_replica_launcher_lines_body(replicas: replicas, config: config)
   )
 }

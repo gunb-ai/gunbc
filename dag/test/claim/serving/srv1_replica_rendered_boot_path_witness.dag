@@ -74,6 +74,9 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_l1_missing_price_extrapolated,
   srv1_replica_host_budget, Srv1ReplicaHostBudget, srv1_replica_total_host_claim, srv1_l1_staging_contract_identity,
   srv1_launch_admission, Srv1LaunchAdmission, Srv1LaunchAdmitted, Srv1LaunchRefused,
+  // the emergency valve on the launcher's own face (follow-up to class B4)
+  srv1_boot_bytes_check, srv1_emergency_valve_check, srv1_emergency_valve_decision,
+  srv1_emergency_valve_decline_standing, srv1_emergency_valve_must_be_stated, srv1_replica_engine_argv,
 }
 import gunbc.serving.serving_host_memory {
   srv1_lmcache_l1_configured, srv1_lmcache_l1_bytes, srv1_lmcache_l2_configured, srv1_lmcache_l2_bytes,
@@ -82,7 +85,12 @@ import gunbc.serving.serving_host_memory {
 import gunbc.host.host_memory_observation { gunbc_ci_srv1_memtotal_measured }
 import gunbc.serving.serving_reservation { host_memory_reserved }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.serving.srv1_serving_launch { srv1_serving_launch }
+import gunbc.serving.srv1_serving_launch {
+  srv1_serving_launch, EmergencyEvictDeclined,
+  EmergencyEvictUnstated, srv1_emergency_evict_decision_for, srv1_emergency_evict_decision_is_stated,
+  srv1_emergency_evict_launcher_flags, srv1_emergency_evict_launcher_tokens, srv1_emergency_evict_read_obligation,
+}
+import extdeps.external_authority { TranscribedUncited, cited_figure_read_obligation }
 import std.list { first_where }
 import extdeps.units.iso8601_calendar {
   Iso8601UtcInstant,
@@ -1587,4 +1595,130 @@ test fn srv1_has_no_fleet_memory_reservation_row_yet() -> Bool {
     Absent => true
     Present { value: v } => byte_size_count(b: v) == 0
   }
+}
+
+
+// ── THE EMERGENCY VALVE ON THE LAUNCHER'S OWN FACE ────────────────────────────────────────────
+//
+// WHY THESE CONTROLS EXIST. Under --l2-store-policy checkpoint_on_evict the RAM tier is the only path to
+// disk, and --emergency-evict-for-prefetch is the flag that would make room in it for a checkpoint
+// arriving FROM disk. The host passes it for GLM models and not for qwen38-flash-next (operator's
+// 2026-11-24 reading), so srv1 runs without it. Two failures had to be made impossible, and each control
+// below kills one of them:
+//   (a) SILENCE. An empty launcher-face list says the same thing whether somebody declined or nobody ever
+//       asked. So the per-profile answer is a closed sum, and the boot path refuses bytes for a profile
+//       whose answer is Unstated — `an_unanswered_profile_gets_no_engine_bytes`.
+//   (b) A RENDER THAT INVENTS THE FLAG. The host's bytes are the authority for what the host runs, so the
+//       decline must contribute NO token: `the_declined_valve_adds_no_token_to_the_argv` is what keeps the
+//       digests pinned above from moving, and it is the reason the decline is an accepted state rather
+//       than a refusal.
+// The gate itself must not be walkable by choosing the other byte producer: `both_byte_producers_bind_the_
+// valve_gate` checks the one function the launcher and the args file both bind.
+
+// The admitted config with ONLY its profile changed, so a control over the per-profile answer can vary
+// exactly the field the answer is keyed on (the cfg_shape pattern above, for the same reason).
+fn cfg_profile(name: NonEmptyStr) -> Srv1LaunchConfig {
+  let a = srv1_admitted_launch_config
+  Srv1LaunchConfig {
+    tensor_parallel_size: a.tensor_parallel_size,
+    kv_cache_dtype: a.kv_cache_dtype,
+    profile: name,
+    hardware: a.hardware,
+    lmcache_l1: a.lmcache_l1,
+    max_model_len: a.max_model_len,
+    image_digest: a.image_digest,
+    lil_replicas: a.lil_replicas,
+    host_gpu_p2p: a.host_gpu_p2p,
+    engine_executable: a.engine_executable,
+    lmcache_l2_placement: a.lmcache_l2_placement,
+    checkpoint_retention: a.checkpoint_retention,
+    tls_material: a.tls_material,
+    api_key_reference: a.api_key_reference,
+    container_port: a.container_port,
+  }
+}
+
+fn valve_rejects(render: Outcome<String>) -> Bool {
+  match render {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => string_contains(
+      s: diagnostics_reason_lexemes(diagnostics: d),
+      pattern: "srv1_emergency_valve_unstated"
+    )
+  }
+}
+
+// THE RED. A profile nobody has answered for — a GLM one included, the family the operator DOES pass the
+// valve for — gets no engine bytes at all: no args file, so nothing to install and no digest to record.
+// The refusal is typed and names itself; and the discrimination is that the SAME config with srv1's own
+// profile still renders, so this control can only be failing on the profile's answer.
+test fn an_unanswered_profile_gets_no_engine_bytes() -> Bool {
+  let glm = cfg_profile(name: "glm-5.3-flash" as NonEmptyStr)
+  valve_rejects(render: srv1_replica_engine_args_body(config: glm))
+    && !srv1_emergency_evict_decision_is_stated(d: srv1_emergency_valve_decision(config: glm))
+    && match srv1_replica_engine_args_body(config: srv1_admitted_launch_config) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+    && srv1_emergency_evict_decision_is_stated(d: srv1_emergency_valve_decision(config: srv1_admitted_launch_config))
+    && srv1_emergency_evict_decision_is_stated(d: srv1_emergency_evict_decision_for(profile: srv1_admitted_launch_config.profile))
+    && !srv1_emergency_evict_decision_is_stated(d: srv1_emergency_evict_decision_for(profile: "glm-5.3-flash" as NonEmptyStr))
+    && srv1_emergency_valve_must_be_stated()
+}
+
+// THE GATE IS NOT WALKABLE. The launcher and the engine args file bind ONE check; an unanswered profile
+// fails it, srv1's admitted config passes it. A second producer with its own (weaker) check is exactly
+// how the tier contract was walked around before it moved inside the byte producers.
+test fn both_byte_producers_bind_the_valve_gate() -> Bool {
+  let glm = cfg_profile(name: "glm-5.3-flash" as NonEmptyStr)
+  match srv1_boot_bytes_check(config: glm) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => string_contains(
+      s: diagnostics_reason_lexemes(diagnostics: d),
+      pattern: "srv1_emergency_valve_unstated"
+    )
+  }
+    && match srv1_boot_bytes_check(config: srv1_admitted_launch_config) {
+      Accepted { value: v, diagnostics: _ } => v
+      Rejected { diagnostics: _ } => false
+    }
+    && match srv1_emergency_valve_check(config: glm) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+}
+
+// THE FINDING IS LEGIBLE, AND IT NAMES WHOSE READING IT RESTS ON. srv1's profile declines the valve; the
+// decline carries a standing whose read obligation points at the lab launcher's source, because nothing
+// here claims to know what the flag does. An obligation-free decline would be the flag name read off a
+// brief and dressed as a decision.
+test fn the_declined_valve_carries_the_reading_it_rests_on() -> Bool {
+  match srv1_emergency_valve_decline_standing(config: srv1_admitted_launch_config) {
+    Absent => false
+    Present { value: st } => match cited_figure_read_obligation(standing: st) {
+      Absent => false
+      Present { value: o } => string_contains(s: o as String, pattern: "launcher.py")
+        && string_contains(s: o as String, pattern: "--emergency-evict-for-prefetch")
+        && string_contains(s: o as String, pattern: "GLM")
+    }
+  }
+    && string_contains(s: srv1_emergency_evict_read_obligation as String, pattern: "admitted image")
+}
+
+// THE DECLINE ADDS NOTHING, WHICH IS WHY THE PINNED DIGESTS DID NOT MOVE. No token on any face, and the
+// flags the launch record carries are empty — but derived from the answer, never written as [] (which is
+// the silence this whole section exists to remove).
+test fn the_declined_valve_adds_no_token_to_the_argv() -> Bool {
+  let argv = srv1_replica_engine_argv(config: srv1_admitted_launch_config)
+  !any(argv, t => (t as String) == "--emergency-evict-for-prefetch")
+    && length(srv1_emergency_evict_launcher_tokens(d: srv1_emergency_evict_decision_for(profile: srv1_admitted_launch_config.profile))) == 0
+    && length(srv1_emergency_evict_launcher_flags(d: srv1_emergency_evict_decision_for(profile: srv1_admitted_launch_config.profile))) == 0
+    && length(srv1_serving_launch.launcher_flags) == 0
+    && length(srv1_emergency_evict_launcher_flags(d: EmergencyEvictDeclined {
+      why: "x" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: srv1_emergency_evict_read_obligation },
+    })) == 0
+    && length(srv1_emergency_evict_launcher_flags(d: EmergencyEvictUnstated {
+      obligation: srv1_emergency_evict_read_obligation,
+    })) == 0
 }

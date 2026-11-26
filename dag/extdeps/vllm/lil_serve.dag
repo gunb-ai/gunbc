@@ -92,6 +92,43 @@ fn lil_serve_environment_argv(e: LilServeEnvironmentEntry) -> List<String> {
   ["--env" as String, lil_serve_environment_wire(e: e)]
 }
 
+// A BOOLEAN FLAG THE LAUNCHER CONSUMES ITSELF — one token, on the launcher's OWN face, before the
+// `--` that hands the remainder to vLLM. `LilServeEngineFlags.unmodeled_tail` cannot host one of these:
+// that list is spelled AFTER the separator, so a pre-`--` flag parked there would render on the wrong
+// face of the command and still LOOK modeled — the failure this type exists to make unspellable.
+// This module owns the SHAPE and the standing only; which deployment passes which flag is a
+// first-party decision and lives there (gunbc.design_argument::single_authority: this module decides
+// the grammar, the launch row decides the invocation).
+type LilServeLauncherFlag = LilServeLauncherFlagName { name: NonEmptyStr }
+
+fn lil_serve_launcher_flag(name: NonEmptyStr) -> LilServeLauncherFlag {
+  LilServeLauncherFlagName { name: name }
+}
+
+fn lil_serve_launcher_flag_name(f: LilServeLauncherFlag) -> NonEmptyStr {
+  match f { LilServeLauncherFlagName { name: n } => n }
+}
+
+// The flag as the ONE argv token the launcher receives for it. A valueless flag is one token, not two;
+// spelling it ["--x", ""] would be inventing an argument the launcher does not take.
+fn lil_serve_launcher_flag_argv(f: LilServeLauncherFlag) -> List<String> {
+  [lil_serve_launcher_flag_name(f: f) as String]
+}
+
+// THE EMERGENCY VALVE. Spelled once, here, from the operator's 2026-11-24 fleet reading: the lab
+// launcher is passed `--emergency-evict-for-prefetch` for GLM models and not for qwen38-flash-next.
+// WHAT THE FLAG DOES IS NOT READ: this repository has read neither /opt/lil/runtime/launcher.py nor
+// `lil-serve --help`, so no row here may say what the valve frees, whom it evicts, or when it fires —
+// lil_serve_read_obligation is the obligation, and an image upgrade re-reads it. Its POSITION among the
+// other pre-`--` tokens is unread too, which is why the witness pins only that the token appears
+// before the `--` separator and never an index into that face.
+data lil_serve_launcher_flag_emergency_evict_for_prefetch: LilServeLauncherFlag =
+  lil_serve_launcher_flag(name: "--emergency-evict-for-prefetch" as NonEmptyStr)
+
+fn lil_serve_profile_name(p: LilServeProfile) -> NonEmptyStr {
+  match p { LilServeProfileName { name: n } => n }
+}
+
 // WHERE THE API KEY COMES FROM — an INTERFACE shape, deliberately carrying NO shell spelling. This
 // module owns the launcher's interface; the bash `-lc` substitution srv1's wrapper uses is one
 // REALIZATION of it, spelled where that medium is a fact of the deployment: inside the retained host
@@ -163,6 +200,13 @@ type LilServeLaunch {
   profile: LilServeProfile
   hardware: LilServeHardware
   environment: List<LilServeEnvironmentEntry>
+  // The flags this launch passes on the launcher's OWN face (before the `--`), in the order its row
+  // states them. Empty means the row passed nothing there — a decision, not an omission: which profile
+  // passes the valve is stated per profile where the deployment is modeled (see
+  // gunbc.serving.srv1_serving_launch srv1_emergency_evict_decision_for, whose Unstated arm is what the
+  // boot render refuses). The order is the ROW's, never this module's invention: the relative position
+  // of these tokens among `--profile` / `--hardware` / `--env` has not been read from the launcher.
+  launcher_flags: List<LilServeLauncherFlag>
   engine: LilServeEngineFlags
   // TLS: the wrapper mints a self-signed certificate under its state directory when absent and
   // passes --ssl-keyfile/--ssl-certfile; the paths are the contract, the certificate's identity is
@@ -191,6 +235,10 @@ fn lil_serve_launch_argv(launch: LilServeLaunch, api_key_wire: String) -> List<S
     "--hardware" as String,
     match launch.hardware { LilServeHardwareName { name: h } => h as String },
   ]
+  let launcher_flags = list_flat_map(
+    xs: launch.launcher_flags,
+    f: x => lil_serve_launcher_flag_argv(f: x),
+  )
   let env_spelled = list_flat_map(
     xs: launch.environment,
     f: e => lil_serve_environment_argv(e: e),
@@ -240,7 +288,10 @@ fn lil_serve_launch_argv(launch: LilServeLaunch, api_key_wire: String) -> List<S
     Present { value: p } => vllm_prefix_caching_argv(r: p)
   }
   list_append(
-    left: list_append(left: head, right: env_spelled),
+    left: list_append(
+      left: list_append(left: head, right: launcher_flags),
+      right: env_spelled
+    ),
     right: list_append(
       left: passthrough_head,
       right: list_append(

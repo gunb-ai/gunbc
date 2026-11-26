@@ -1,7 +1,7 @@
 module gunbc.serving.srv1_serving_launch
 
 import std.types { String, Bool, NonEmptyStr, Port, List }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import std.nat { Nat, Zero, Succ }
 import std.list { first_where }
 import std.measure { token_count_value }
@@ -15,7 +15,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
-import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeyFromFile, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry }
+import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeyFromFile, LilServeLauncherFlag, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_profile_name, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry, lil_serve_launcher_flag_name, lil_serve_launcher_flag_emergency_evict_for_prefetch }
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
@@ -114,6 +114,101 @@ fn srv1_serving_ground() -> CitedFigureStanding {
 // stay Absent and the profile's existence is the read obligation on extdeps.vllm.lil_serve; the
 // engine-reported values live in the startup receipt with their observed standing. The one other thing
 // the wrapper passes verbatim — the LMCache tier environment — is carried as environment rows.
+// ── THE LAUNCHER'S OWN FACE: does this profile pass the emergency valve? ──────────────────────
+//
+// WHY A DECISION AND NOT JUST A LIST. LilServeLaunch.launcher_flags is the argv fact; the question this
+// section answers is WHO DECIDES IT. The host passes --emergency-evict-for-prefetch for GLM models and
+// NOT for qwen38-flash-next (the operator's 2026-11-24 reading, relayed in the fleet brief). An empty
+// list cannot tell those two situations apart: "declined" and "nobody ever asked" render identically,
+// which is the same shape as every other omission in this class — an undecided value reaching the
+// artifact as if it had been decided (gunbc.recurring_failure_mode
+// a_serving_tier_sized_as_a_cache_while_the_store_policy_makes_it_the_only_path_to_disk). So the
+// per-profile answer is a closed sum with THREE arms, and the third arm is what the boot render refuses:
+// an unmodelled profile cannot silently inherit qwen38-flash-next's decline.
+//
+// WHAT THE FLAG DOES IS NOT CLAIMED HERE. extdeps.vllm.lil_serve carries the spelling with its standing
+// and the obligation on the lab launcher's source. The mechanism — the valve is the thing that would
+// make room in the staging tier for a checkpoint arriving FROM disk — is named below as the reason the
+// valve could matter, which is ours to say; it is not asserted as what the flag does, and the obligation
+// on the launcher's source stays open on every arm.
+type Srv1EmergencyEvictDecision
+  = EmergencyEvictPassed { why: NonEmptyStr }
+  | EmergencyEvictDeclined { why: NonEmptyStr, standing: CitedFigureStanding }
+  | EmergencyEvictUnstated { obligation: NonEmptyStr }
+
+// The profile this launch runs, read OUT of the extdeps profile row rather than re-spelled: a literal
+// here would be a second authority for the profile name, and the name is what the per-profile answer is
+// keyed on. Srv1LaunchConfig.profile carries the same name from the boot side; if the two ever drift,
+// the answer below falls to Unstated and the boot render refuses — which is the wanted outcome.
+data srv1_served_profile_name: NonEmptyStr =
+  lil_serve_profile_name(p: lil_serve_profile_qwen38_flash_next)
+
+data srv1_emergency_evict_read_obligation: NonEmptyStr =
+  "Read /opt/lil/runtime/launcher.py (the launcher behind /usr/local/bin/lil-serve), or `lil-serve --help`, in the admitted image digest this repository carries, for --emergency-evict-for-prefetch: what it makes room in, when it fires, and which profiles pass it by default — in particular whether the GLM-only asymmetry the operator observed is the launcher's own rule or a wrapper convention; then re-take srv1_emergency_evict_decision_for against that read. What the rows below hold is the operator's 2026-11-24 reading of the two running engines, relayed in the 2026-11-24 fleet brief — an observation with a standing, never a derivation from the launcher." as NonEmptyStr
+
+// THE PER-PROFILE ANSWER. qwen38-flash-next DECLINES, and the decline is legible rather than quiet: it
+// names what was observed and carries the FINDING. Under --l2-store-policy checkpoint_on_evict the RAM
+// tier is the only path to disk, and the valve is the mechanism that would make room in it for a
+// checkpoint arriving from disk, so a replica without it has no relief on exactly the half of that
+// contract the staging floor prices with its factor of two (see
+// gunbc.serving.srv1_serving_replica_layout::srv1_l1_staging_floor). The decline is deliberately NOT
+// "corrected" to Passed here: 48 GiB is what the host runs today, and a model that rendered a flag the
+// host does not pass would manufacture an adoption gap of its own — the finding, not a silent fix, is
+// what this class owes. Any other profile — INCLUDING the GLM models the operator does pass the valve
+// for — is Unstated, and the boot render refuses bytes for it until a decision is read.
+fn srv1_emergency_evict_decision_for(profile: NonEmptyStr) -> Srv1EmergencyEvictDecision {
+  // The key is compared on the profile NAME, which both sides carry as the same nominal type; nothing here
+  // re-spells qwen38-flash-next, so a rename in extdeps moves the answer rather than stranding it.
+  let is_served_profile = profile == srv1_served_profile_name
+  if is_served_profile {
+    EmergencyEvictDeclined {
+      why: "srv1's qwen38-flash-next replicas run WITHOUT the valve. Observed: the lab launcher is passed --emergency-evict-for-prefetch for GLM models only (operator's 2026-11-24 reading, relayed in the fleet brief). FINDING, recorded and not repaired: under checkpoint_on_evict the RAM tier is the only path to disk, so this replica has no emergency relief for a checkpoint arriving from disk, and the staging floor is the only mitigation it carries.",
+      standing: TranscribedUncited { read_obligation: srv1_emergency_evict_read_obligation },
+    }
+  } else {
+    EmergencyEvictUnstated { obligation: srv1_emergency_evict_read_obligation }
+  }
+}
+
+// The launcher-face flags for a stated answer. TOTAL on purpose: this is the argv surface, and a total
+// function on it means the refusal cannot be avoided by choosing a different caller — the refusal lives
+// once, in the boot render (srv1_emergency_valve_check in gunbc.serving.srv1_serving_replica_layout),
+// where the store policy is readable (gunbc.design_argument::fail_closed).
+fn srv1_emergency_evict_launcher_flags(d: Srv1EmergencyEvictDecision) -> List<LilServeLauncherFlag> {
+  match d {
+    EmergencyEvictPassed { why: _ } => [lil_serve_launcher_flag_emergency_evict_for_prefetch]
+    EmergencyEvictDeclined { why: _, standing: _ } => []
+    EmergencyEvictUnstated { obligation: _ } => []
+  }
+}
+
+// The same answer as the argv tokens the launcher's own face carries. The token IS the flag name (a
+// valueless flag is one token), and it comes from extdeps.vllm.lil_serve — the only authority for the
+// spelling — so nothing here re-strings the flag.
+fn srv1_emergency_evict_launcher_tokens(d: Srv1EmergencyEvictDecision) -> List<NonEmptyStr> {
+  map(xs: srv1_emergency_evict_launcher_flags(d: d), f: x => lil_serve_launcher_flag_name(f: x))
+}
+
+// Whether a profile's answer is one that was actually given. The boot render demands this before it
+// emits bytes under a store policy that reaches disk only by eviction.
+fn srv1_emergency_evict_decision_is_stated(d: Srv1EmergencyEvictDecision) -> Bool {
+  match d {
+    EmergencyEvictPassed { why: _ } => true
+    EmergencyEvictDeclined { why: _, standing: _ } => true
+    EmergencyEvictUnstated { obligation: _ } => false
+  }
+}
+
+// The standing carried by a profile's answer, for the rows that must quote it (the layout's missing-term
+// reason says WHOSE reading the decline rests on).
+fn srv1_emergency_evict_decision_standing(d: Srv1EmergencyEvictDecision) -> Optional<CitedFigureStanding> {
+  match d {
+    EmergencyEvictPassed { why: _ } => Absent
+    EmergencyEvictDeclined { why: _, standing: st } => Present { value: st }
+    EmergencyEvictUnstated { obligation: _ } => Absent
+  }
+}
+
 data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
   profile: lil_serve_profile_qwen38_flash_next,
   hardware: lil_serve_hardware_rtx_pro_6000_pcie,
@@ -134,6 +229,9 @@ data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
     lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTED_SHARE" as NonEmptyStr, value: "0.5" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS" as NonEmptyStr, value: "1800" as NonEmptyStr),
   ],
+  // The launcher's own face, from the per-profile answer above — NOT a literal list: writing [] here
+  // would be the silence this section exists to remove.
+  launcher_flags: srv1_emergency_evict_launcher_flags(d: srv1_emergency_evict_decision_for(profile: srv1_served_profile_name)),
   engine: LilServeEngineFlags {
     served_model_name: Absent,
     kv_cache_dtype: Absent,
@@ -160,6 +258,7 @@ fn srv1_serving_launch_for_port(port: Port) -> LilServeLaunch {
     profile: srv1_serving_launch.profile,
     hardware: srv1_serving_launch.hardware,
     environment: srv1_serving_launch.environment,
+    launcher_flags: srv1_serving_launch.launcher_flags,
     engine: srv1_serving_launch.engine,
     ssl_keyfile: srv1_serving_launch.ssl_keyfile,
     ssl_certfile: srv1_serving_launch.ssl_certfile,
