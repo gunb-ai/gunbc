@@ -35,7 +35,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.algebra { trim }
 import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.actions_run_binding { actions_step_summary_append }
+import gunbc.actions_run_binding { actions_step_summary_append, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
@@ -241,6 +241,43 @@ fn plan_serve_entry_compile_report(covered: PlanCoveredRosterRows, demands: List
     ),
     "\n",
   )
+}
+
+// THE PRINT, DERIVED FROM A REAL PLAN INPUT AND PAYING NOTHING. The plan step above prints through the
+// same pure function before its first compile; this entry exists so the cost of the row set is
+// auditable OFFLINE -- from the real roster, through the real selection and the real digest, with no
+// served-command witness run at all. It prints to the same surface the worker prints to
+// (actions_step_summary_append, i.e. GITHUB_STEP_SUMMARY), and refuses by name when that surface is
+// not there, because a print that silently went nowhere is a claim with no receipt.
+fn plan_serve_entry_compile_report_from_roster() -> String {
+  let covered = plan_covered_roster_rows(access: ci_deploy_srv1_access)
+  let root_path = git.Inspect.Toplevel().path as String
+  let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
+  let source_revision = observe_checkout_head_hex()
+  let bin_hex = match sha256sum_file_digest_via_shell(path: bin as NonEmptyStr) {
+    Sha256FileDigest { digest } => digest.hex as String
+    Sha256FileDigestUnavailable { path: wanted, reason } =>
+      join(["<undigestable ", wanted as String, ": ", reason, ">"], "")
+  }
+  plan_serve_entry_compile_report(
+    covered: covered,
+    demands: plan_serve_entry_compile_demands(rows: covered.rows, source_revision: source_revision, compiler_bin_sha256_hex: bin_hex),
+    source_revision: source_revision,
+    compiler_bin_sha256_hex: bin_hex,
+  )
+}
+
+// THE PLAN JOB'S PRINT ENTRY, for the offline/claim read of the block above. The fleet-converge plan
+// step prints through record_plan_serve_entry_compile_verdict (before its first compile); this entry
+// is the same text with no compile behind it, so the print a reviewer reads is the print the worker
+// produces -- one function, no second spelling to drift.
+fn plan_serve_entry_compile_report_step() -> ProcessExit {
+  let block = plan_serve_entry_compile_report_from_roster()
+  match actions_step_summary_append(block: block) {
+    ActionsStepSummaryAppended { path: _ } => ExitSuccess
+    ActionsStepSummaryNotWritten { reason } =>
+      exit_failure(reason: join(["live_deploy: plan serve-entry compile report — the step summary could not be written, so the print has no receipt: ", reason], ""))
+  }
 }
 
 // THE DOCUMENT ROWS: one per covered roster row, addressed by that row's own host and instance, and
