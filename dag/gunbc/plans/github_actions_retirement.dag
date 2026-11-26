@@ -24,7 +24,7 @@ fn github_actions_retirement_body() -> List<MarkdownBlock> {
 
     h2(text: "3. Done when"),
     ul(items: [
-      li(text: "The repository has no .github/workflows file, and nothing in gunbc emits one: the workflow emitters (the compiler gate, heal, heal publisher, drift watch, instrument dispatch, fleet converge and the rest) are deleted, or re-targeted at the fabric, never left emitting a file nothing runs."),
+      li(text: "The repository has no .github/workflows file, and nothing in gunbc emits one, except the gunb.ai Pages deploy (gunbc.site.gunb_ai_pages_workflow), which is exempt until gunb.ai needs more than a static site and then moves to a route that is not GitHub Pages (gunbc.design_ruling::gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26): the workflow emitters (the compiler gate, heal, heal publisher, drift watch, instrument dispatch, fleet converge and the rest) are deleted, or re-targeted at the fabric, never left emitting a file nothing runs."),
       li(text: "No fleet host carries a GitHub Actions runner registration, unit or slot."),
       li(text: "No workload-identity pool or provider in any project admits token.actions.githubusercontent.com, and no secret, environment or app permission exists only to serve an Actions run; each is deleted, not disabled. Checked by reading the live Google estate, not the repository's model of it."),
       li(text: "Every check a merge requires is published from a fabric receipt, and every operation a workflow performed has a named fabric route or was retired for want of a consumer."),

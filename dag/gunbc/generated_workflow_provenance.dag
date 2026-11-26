@@ -1,7 +1,7 @@
 module gunbc.generated_workflow_provenance
 
 import std.types { String, List }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, ReleaseBinsConsumerCheckScriptArtifact }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, ReleaseBinsConsumerCheckScriptArtifact }
 import std.optional { Present, Absent }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -56,6 +56,10 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     DriftWatchWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.drift_watch_workflow expected_drift_watch_workflow_yml",
       authority: "gunbc.drift_watch_workflow drift_watch_workflow_of",
+    } }
+    GunbAiPagesWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.site.gunb_ai_pages_workflow expected_gunb_ai_pages_workflow_yml",
+      authority: "gunbc.site.gunb_ai_pages_workflow gunb_ai_pages_workflow",
     } }
     ReleaseBinsConsumerCheckScriptArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet.fleet_release_bins_key release_bins_consumer_key_check_script",

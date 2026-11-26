@@ -20,6 +20,7 @@ type GeneratedArtifact
   | HealWorkflowYamlArtifact
   | HealPublisherWorkflowYamlArtifact
   | DriftWatchWorkflowYamlArtifact
+  | GunbAiPagesWorkflowYamlArtifact
   | BranchRunGrantBrokerWorkflowYamlArtifact
   | HostedRunnerShadowGateYamlArtifact
   | GitignoreArtifact
@@ -148,6 +149,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
     HealPublisherWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal-publish.yml" }
     DriftWatchWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "drift-watch.yml" }
+    GunbAiPagesWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "gunb-ai-pages.yml" }
     BranchRunGrantBrokerWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "branch-run-grant-broker.yml" }
     HostedRunnerShadowGateYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "hosted-runner-shadow-gate.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
@@ -255,6 +257,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DriftWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    GunbAiPagesWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HostedRunnerShadowGateYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -321,6 +324,7 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     HealWorkflowYamlArtifact => false
     HealPublisherWorkflowYamlArtifact => false
     DriftWatchWorkflowYamlArtifact => false
+    GunbAiPagesWorkflowYamlArtifact => false
     BranchRunGrantBrokerWorkflowYamlArtifact => false
     HostedRunnerShadowGateYamlArtifact => false
     GitignoreArtifact => false
@@ -397,6 +401,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
     HealPublisherWorkflowYamlArtifact => match b { HealPublisherWorkflowYamlArtifact => true  _ => false }
     DriftWatchWorkflowYamlArtifact => match b { DriftWatchWorkflowYamlArtifact => true  _ => false }
+    GunbAiPagesWorkflowYamlArtifact => match b { GunbAiPagesWorkflowYamlArtifact => true  _ => false }
     BranchRunGrantBrokerWorkflowYamlArtifact => match b { BranchRunGrantBrokerWorkflowYamlArtifact => true  _ => false }
     HostedRunnerShadowGateYamlArtifact => match b { HostedRunnerShadowGateYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
@@ -486,6 +491,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
     HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
     DriftWatchWorkflowYamlArtifact => decl_ref(module_path: "gunbc.drift_watch_workflow", decl_name: "expected_drift_watch_workflow_yml")
+    GunbAiPagesWorkflowYamlArtifact => decl_ref(module_path: "gunbc.site.gunb_ai_pages_workflow", decl_name: "expected_gunb_ai_pages_workflow_yml")
     BranchRunGrantBrokerWorkflowYamlArtifact => decl_ref(module_path: "gunbc.fleet.branch_run_grant_broker_workflow", decl_name: "expected_branch_run_grant_broker_workflow_yml")
     HostedRunnerShadowGateYamlArtifact => decl_ref(module_path: "gunbc.witness.hosted_runner_shadow_gate_workflow", decl_name: "expected_hosted_runner_shadow_gate_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
