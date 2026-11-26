@@ -45,6 +45,8 @@ import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverse, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerGroupWritableSetgidSticky, declared_directory_mode, srv1_dashboard_service_principal }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_remote_build_user }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import product.host_identity { HostIdentity }
 import gunbc.owned_directory {
   OwnedDirectoryTarget,
   OwnedDirectoryDeclared,
@@ -1431,16 +1433,16 @@ type HostCapacityHome sole_constructor {
 // /opt/gunbc/compute/capacity/{objects,heads} proving no entry carries briansrls as its owner) followed
 // by a ruled re-own of the directories themselves. When that ruling lands, the host is removed from
 // this frontier and the function's third arm covers it.
-data capacity_ledger_legacy_owner_frontier: List<String> = [
-  "srv3",
-  "srv4",
+data capacity_ledger_legacy_owner_frontier: List<HostIdentity> = [
+  operator_host_srv3,
+  operator_host_srv4,
 ]
 
 fn capacity_ledger_directory_owner(host: NonEmptyStr) -> PosixOwnerNames {
   match dashboard_instance_for_host(host: host as String) {
     DashboardInstanceForHost { instance } => instance.directory_owner
     DashboardInstanceHostUnknown { host: _ } =>
-      if any(capacity_ledger_legacy_owner_frontier, h => h == (host as String)) {
+      if any(capacity_ledger_legacy_owner_frontier, h => (h as String) == (host as String)) {
         linux_service_directory_owner()
       } else {
         PosixOwnerNames {
