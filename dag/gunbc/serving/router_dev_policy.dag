@@ -1512,7 +1512,7 @@ fn router_dev_srv1_write_candidate() -> ProcessExit {
 // hand-written Lua SHOULD say is not these rows' business: gunbc.serving.router_realization forbids making
 // those decisions in the proxy at all, gunbc.serving.router_dev_scaffold names that debt item by item, and
 // the operator's 2026-11-25 direction (a real fabric scheduler instead of hand rules, class B5 of this
-// pass) has no row yet.
+// pass) is recorded at gunbc.design_ruling::turn_admission_and_relocation_are_to_become_a_real_fabric_scheduler_2026_11_25.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 // HOW a host file stands against the bytes this module renders for it. Three cases, and the third is not a
@@ -1660,7 +1660,7 @@ data srv1_router_live_rows_2026_11_25: List<RouterLiveRow> = [
     live_retain: 28,
     standing: RowDivergesFromRender {
       diverging_fields: ["retain" as NonEmptyStr],
-      why: "The render derives retain from srv1_vllm_replica_shape (16 at this writing); the host holds 28, the card's measured cache capacity -- 97-98% warm at 27-28 live sessions and 70% at 42, from vLLM's /metrics counters vllm:prefix_cache_\{hits,queries}_total and vllm:external_prefix_cache_\{hits,queries}_total sampled twice and differenced under live traffic, and the LMCache log on srv1 (~/lil/serve/serve.log, ~/lil/serve-gpu1/serve.log). The anchor's own read obligations (its capacity_rests_on lines) are still open, so the operator set the number the warm-cache measurement supports. What should replace both figures -- admission by cache capacity, kept within it -- is the real fabric scheduler the operator asked for on 2026-11-25, which has no row yet." as NonEmptyStr,
+      why: "The render derives retain from srv1_vllm_replica_shape (16 at this writing); the host holds 28, the card's measured cache capacity -- 97-98% warm at 27-28 live sessions and 70% at 42, from vLLM's /metrics counters vllm:prefix_cache_\{hits,queries}_total and vllm:external_prefix_cache_\{hits,queries}_total sampled twice and differenced under live traffic, and the LMCache log on srv1 (~/lil/serve/serve.log, ~/lil/serve-gpu1/serve.log). The anchor's own read obligations (its capacity_rests_on lines) are still open, so the operator set the number the warm-cache measurement supports. What should replace both figures -- admission by cache capacity, kept within it -- is the real fabric scheduler the operator asked for on 2026-11-25 (gunbc.design_ruling::turn_admission_and_relocation_are_to_become_a_real_fabric_scheduler_2026_11_25; implementation is class B5)." as NonEmptyStr,
     },
   },
   RouterLiveRow {
