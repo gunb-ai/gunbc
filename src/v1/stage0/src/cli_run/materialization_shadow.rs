@@ -1,7 +1,7 @@
 //! Shadow one compiler question at the real provider-round boundary. Inspect the previous record
 //! before the ordinary compile; hash the actual NewlineIndex returned by that compile afterwards.
-//! Records contain only digests and cannot supply a compiler result. The producer and its result
-//! are untouched, including when the experiment is unreadable or observations disagree.
+//! The store contains only digests. An explicitly requested observation must complete and agree
+//! with the fresh result before the selected entry can run.
 
 use crate::v1_compiler_compile::SourceFile;
 use crate::v1_std_core::NewlineIndex;
@@ -35,11 +35,8 @@ pub(super) struct Round {
     probes: Vec<Probe>,
 }
 
-fn issue(reason: impl std::fmt::Display) {
-    let _ = writeln!(
-        io::stderr().lock(),
-        "[materialization-shadow-error] {reason}"
-    );
+fn refusal(reason: impl std::fmt::Display) -> String {
+    format!("[materialization-shadow-error] {QUESTION}: {reason}")
 }
 
 fn compiler_image() -> Result<&'static Fingerprint, &'static str> {
@@ -138,24 +135,23 @@ fn read_prior(path: &Path, key: &Fingerprint) -> Prior {
     }
 }
 
-pub(super) fn begin(sources: &[Rc<SourceFile>]) -> Option<Round> {
-    let root = PathBuf::from(std::env::var_os("GUNBC_MATERIALIZATION_SHADOW_DIR")?);
+pub(super) fn begin(sources: &[Rc<SourceFile>]) -> Result<Option<Round>, String> {
+    let Some(root) = std::env::var_os("GUNBC_MATERIALIZATION_SHADOW_DIR") else {
+        return Ok(None);
+    };
+    let root = PathBuf::from(root);
     if !root.is_absolute() {
-        issue("GUNBC_MATERIALIZATION_SHADOW_DIR must be absolute");
-        return None;
+        return Err(refusal("GUNBC_MATERIALIZATION_SHADOW_DIR must be absolute"));
     }
     let directory = root.join("newline-index-v1");
-    if let Err(error) = fs::create_dir_all(&directory) {
-        issue(error);
-        return None;
-    }
-    let image = match compiler_image() {
-        Ok(image) => image,
-        Err(error) => {
-            issue(error);
-            return None;
-        }
-    };
+    fs::create_dir_all(&directory).map_err(|error| {
+        refusal(format!(
+            "cannot initialize {}: {error}",
+            directory.display()
+        ))
+    })?;
+    let image = compiler_image()
+        .map_err(|error| refusal(format!("cannot identify the running compiler: {error}")))?;
     let probes = sources
         .iter()
         .map(|source| {
@@ -169,41 +165,79 @@ pub(super) fn begin(sources: &[Rc<SourceFile>]) -> Option<Round> {
             }
         })
         .collect();
-    Some(Round { directory, probes })
+    Ok(Some(Round { directory, probes }))
 }
 
 pub(super) fn observe(
     round: Round,
     sources: &[Rc<SourceFile>],
     indices: &im::Vector<Rc<NewlineIndex>>,
-) {
-    if sources.len() != indices.len() {
-        issue(format!(
-            "source/index count mismatch: {} / {}",
-            sources.len(),
-            indices.len()
-        ));
-        return;
+    mut events: impl Write,
+) -> Result<(), String> {
+    if sources.is_empty() {
+        return Err(refusal("empty observation: the round has no sources"));
     }
+    if sources.len() != indices.len() || sources.len() != round.probes.len() {
+        return Err(refusal(format!(
+            "incomplete observation: {} sources, {} indices, {} probes",
+            sources.len(),
+            indices.len(),
+            round.probes.len()
+        )));
+    }
+    let mut first_refusal = None;
     for ((source, index), probe) in sources.iter().zip(indices).zip(round.probes) {
         if source.path != index.file {
-            issue(format!(
+            return Err(refusal(format!(
                 "source/index path mismatch: {:?} / {:?}",
                 source.path, index.file
-            ));
-            continue;
+            )));
         }
         let (fresh, bytes) = answer(index);
         let path = round.directory.join(hex::encode(probe.key));
-        let (lookup, comparison) = compare_and_record(&path, &probe.key, probe.prior, &fresh);
+        let (lookup, comparison, reason) =
+            match compare_and_record(&path, &probe.key, probe.prior, &fresh) {
+                Observation::Published => ("miss", "absent", None),
+                Observation::Equal => ("hit", "equal", None),
+                Observation::Different(lookup) => (
+                    lookup,
+                    "different",
+                    Some("stored answer differs from fresh".to_owned()),
+                ),
+                Observation::Corrupt => (
+                    "corrupt",
+                    "unavailable",
+                    Some("invalid stored record".to_owned()),
+                ),
+                Observation::Io(lookup, error) => (lookup, "unavailable", Some(error.to_string())),
+            };
         let event = serde_json::json!({
             "question": QUESTION, "logical_source": source.path,
             "input_digest": hex::encode(probe.key), "output_digest": hex::encode(fresh),
             "lookup": lookup, "comparison": comparison, "bytes": bytes,
             "producer_ns": null, "lookup_ns": probe.lookup_ns,
         });
-        let _ = writeln!(io::stderr().lock(), "[materialization-shadow] {event}");
+        writeln!(events, "[materialization-shadow] {event}").map_err(|error| {
+            refusal(format!(
+                "cannot write observation for {}: {error}",
+                source.path
+            ))
+        })?;
+        if let Some(reason) = reason {
+            first_refusal.get_or_insert_with(|| {
+                refusal(format!("{}: {lookup}/{comparison}: {reason}", source.path))
+            });
+        }
     }
+    first_refusal.map_or(Ok(()), Err)
+}
+
+enum Observation {
+    Published,
+    Equal,
+    Different(&'static str),
+    Corrupt,
+    Io(&'static str, io::Error),
 }
 
 fn compare_and_record(
@@ -211,7 +245,7 @@ fn compare_and_record(
     key: &Fingerprint,
     prior: Prior,
     fresh: &Fingerprint,
-) -> (&'static str, &'static str) {
+) -> Observation {
     match prior {
         Prior::Absent => {
             // Atomic create-only. A concurrent winner is read and checked against the
@@ -223,30 +257,24 @@ fn compare_and_record(
                     crate::v1_rt::gunbc_file_write_create_new(p, &record(key, fresh), None)
                 });
             match publish {
-                Ok(()) => ("miss", "absent"),
+                Ok(()) => Observation::Published,
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => match read_prior(path, key) {
-                    Prior::Observed(value) if value == *fresh => ("miss", "absent"),
-                    Prior::Observed(_) => ("raced", "different"),
-                    Prior::Corrupt => ("corrupt", "unavailable"),
-                    Prior::Unreadable(e) => {
-                        issue(e);
-                        ("unreadable", "unavailable")
-                    }
-                    Prior::Absent => ("unreadable", "unavailable"),
+                    Prior::Observed(value) if value == *fresh => Observation::Published,
+                    Prior::Observed(_) => Observation::Different("raced"),
+                    Prior::Corrupt => Observation::Corrupt,
+                    Prior::Unreadable(e) => Observation::Io("unreadable", e),
+                    Prior::Absent => Observation::Io(
+                        "unreadable",
+                        io::Error::other("concurrent record disappeared"),
+                    ),
                 },
-                Err(error) => {
-                    issue(error);
-                    ("unwritable", "unavailable")
-                }
+                Err(error) => Observation::Io("unwritable", error),
             }
         }
-        Prior::Observed(value) if value == *fresh => ("hit", "equal"),
-        Prior::Observed(_) => ("hit", "different"),
-        Prior::Corrupt => ("corrupt", "unavailable"),
-        Prior::Unreadable(error) => {
-            issue(error);
-            ("unreadable", "unavailable")
-        }
+        Prior::Observed(value) if value == *fresh => Observation::Equal,
+        Prior::Observed(_) => Observation::Different("hit"),
+        Prior::Corrupt => Observation::Corrupt,
+        Prior::Unreadable(error) => Observation::Io("unreadable", error),
     }
 }
 
@@ -270,10 +298,14 @@ fn a_valid_prior_disagreement_and_an_integrity_failure_are_distinct() {
     assert_ne!(fresh, different);
     let before = record(&key, &different);
     fs::write(&path, before).unwrap();
-    assert_eq!(
+    assert!(matches!(
         compare_and_record(&path, &key, read_prior(&path, &key), &fresh),
-        ("hit", "different")
-    );
+        Observation::Different("hit")
+    ));
+    assert!(matches!(
+        compare_and_record(&path, &key, Prior::Absent, &fresh),
+        Observation::Different("raced")
+    ));
     assert_eq!(
         fs::read(&path).unwrap(),
         before,
@@ -282,10 +314,70 @@ fn a_valid_prior_disagreement_and_an_integrity_failure_are_distinct() {
     let mut damaged = before;
     damaged[32] ^= 1;
     fs::write(&path, damaged).unwrap();
-    assert_eq!(
+    assert!(matches!(
         compare_and_record(&path, &key, read_prior(&path, &key), &fresh),
-        ("corrupt", "unavailable")
-    );
+        Observation::Corrupt
+    ));
     assert_eq!(fs::read(&path).unwrap(), damaged);
     fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn missing_or_undeliverable_observations_refuse_the_round() {
+    let sources = [Rc::new(SourceFile {
+        path: "sample.dag".into(),
+        content: "a".into(),
+    })];
+    let index = crate::v1_std_core::build_newline_index("sample.dag".into(), "a".into());
+    let round = |probes| Round {
+        directory: PathBuf::new(),
+        probes,
+    };
+    let probe = || Probe {
+        key: [0; 32],
+        prior: Prior::Observed(answer(&index).0),
+        lookup_ns: 0,
+    };
+    let indices = im::vector![index.clone()];
+    let empty = observe(round(vec![]), &[], &im::Vector::new(), io::sink()).unwrap_err();
+    assert!(
+        empty.contains("empty observation: the round has no sources"),
+        "{empty}"
+    );
+    let missing_probe = observe(round(vec![]), &sources, &indices, io::sink()).unwrap_err();
+    assert!(
+        missing_probe.contains("1 sources, 1 indices, 0 probes"),
+        "{missing_probe}"
+    );
+    let missing_index = observe(
+        round(vec![probe()]),
+        &sources,
+        &im::Vector::new(),
+        io::sink(),
+    )
+    .unwrap_err();
+    assert!(
+        missing_index.contains("1 sources, 0 indices, 1 probes"),
+        "{missing_index}"
+    );
+
+    let wrong = crate::v1_std_core::build_newline_index("other.dag".into(), "a".into());
+    let wrong_source = observe(
+        round(vec![probe()]),
+        &sources,
+        &im::vector![wrong],
+        io::sink(),
+    )
+    .unwrap_err();
+    assert!(
+        wrong_source.contains("source/index path mismatch"),
+        "{wrong_source}"
+    );
+
+    let mut full = [];
+    let undelivered = observe(round(vec![probe()]), &sources, &indices, &mut full[..]).unwrap_err();
+    assert!(
+        undelivered.contains("cannot write observation for sample.dag"),
+        "{undelivered}"
+    );
 }

@@ -2,6 +2,12 @@
 
 The first observation is `v1.std.core::build_newline_index` as consumed on ordinary `gunbc run`. The result contains the logical file name, newline offsets (in Unicode scalar positions) **and all source character codes**. An ASCII edit `1` → `2` leaves every newline offset fixed and still changes this result. This is a discriminating test of the proposed result identity.
 
+## Current acceptance for explicitly requested observations
+
+When `GUNBC_MATERIALIZATION_SHADOW_DIR` is set, a cold miss records the fresh answer and an equal hit confirms it. Both permit entry evaluation. A valid prior that disagrees emits `hit/different`. Damaged bytes emit `corrupt/unavailable`. Either event refuses the invocation before entry evaluation and preserves the record for inspection. A directory or compiler-identity error, incomplete observation, or trace delivery failure also refuses the invocation. With the variable unset the entry runs normally.
+
+The predictions and captured results below describe the initial observation-only experiment. The integration test `fresh_process_predictions_match_observed_compiler_results` exercises the stricter acceptance above.
+
 ## Predictions, before observations
 
 Use one private workspace, the same compiler executable, two reached source files (entry and helper), and a fresh OS process for each invocation. Each edit starts from the named baseline. Compare the same logical file and compiler question across processes. Start with an empty private shadow directory. No production read of a saved result is permitted in this experiment.

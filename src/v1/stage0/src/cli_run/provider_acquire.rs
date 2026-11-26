@@ -181,13 +181,18 @@ pub(crate) fn compile_to_provider_fixed_point_with(
 > {
     let mut sources = sources;
     loop {
-        let shadow = super::materialization_shadow::begin(&sources);
+        let shadow = super::materialization_shadow::begin(&sources)?;
         let resolved = crate::v1_compiler_compile::compile_to_resolved_with_options(
             Rc::new(sources.clone().into()),
             options.clone(),
         );
         if let Some(shadow) = shadow {
-            super::materialization_shadow::observe(shadow, &sources, &resolved.newline_indices);
+            super::materialization_shadow::observe(
+                shadow,
+                &sources,
+                &resolved.newline_indices,
+                std::io::stderr().lock(),
+            )?;
         }
         let graph = match resolved.graph.clone() {
             Some(graph) => graph,

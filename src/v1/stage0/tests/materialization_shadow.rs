@@ -263,6 +263,13 @@ fn fresh_process_predictions_match_observed_compiler_results() {
             && edited.stderr.contains("observed changed helper")
     );
 
+    let invalid_config = run(&case, Some(Path::new("relative-shadow-store")), 1);
+    assert!(invalid_config.events.is_empty());
+    assert!(invalid_config.stderr.contains(&format!(
+        "[materialization-shadow-error] {QUESTION}: GUNBC_MATERIALIZATION_SHADOW_DIR must be absolute"
+    )), "{}", invalid_config.stderr);
+    assert!(!invalid_config.stderr.contains("observed changed helper"));
+
     write_helper(&case, 1);
     same(&run(&case, Some(&store), 0), "hit", "equal");
     same(
@@ -283,25 +290,34 @@ fn fresh_process_predictions_match_observed_compiler_results() {
     let mut planted = changed_answer;
     planted.extend_from_slice(&integrity.finalize());
     fs::write(&record, &planted).unwrap();
-    let disagreement = run(&case, Some(&store), 0);
+    let disagreement = run(&case, Some(&store), 1);
     sample(&case, &disagreement, "entry.dag", "hit", "equal");
     assert_eq!(
         sample(&case, &disagreement, "helper.dag", "hit", "different").output_digest,
         helper.output_digest
     );
-    assert_eq!(disagreement.stdout, baseline.stdout);
+    assert!(disagreement.stderr.contains(&format!(
+        "[materialization-shadow-error] {QUESTION}: {}: hit/different: stored answer differs from fresh", helper.logical_source
+    )), "{}", disagreement.stderr);
+    assert!(disagreement.stdout.is_empty());
     assert_eq!(fs::read(&record).unwrap(), planted);
 
     planted[32] ^= 1;
     fs::write(&record, &planted).unwrap();
-    let corrupt = run(&case, Some(&store), 0);
+    let corrupt = run(&case, Some(&store), 1);
     sample(&case, &corrupt, "entry.dag", "hit", "equal");
     assert_eq!(
         sample(&case, &corrupt, "helper.dag", "corrupt", "unavailable").output_digest,
         helper.output_digest
     );
-    assert_eq!(corrupt.stdout, baseline.stdout);
+    assert!(corrupt.stderr.contains(&format!(
+        "[materialization-shadow-error] {QUESTION}: {}: corrupt/unavailable: invalid stored record", helper.logical_source
+    )), "{}", corrupt.stderr);
+    assert!(corrupt.stdout.is_empty());
     assert_eq!(fs::read(&record).unwrap(), planted);
+    let disabled = run(&case, None, 0);
+    assert!(disabled.events.is_empty());
+    assert_eq!(disabled.stdout, baseline.stdout);
     fs::remove_dir_all(&case.dir).unwrap();
 }
 

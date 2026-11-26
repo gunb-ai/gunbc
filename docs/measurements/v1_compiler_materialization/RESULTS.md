@@ -1,6 +1,6 @@
 # What matched the predictions
 
-The observer compares the ordinary compiler's complete `NewlineIndex` with an independently stored answer digest. Every invocation still executes the producer and evaluates the entry function. The original predictions and the failed diagnostic assertion are preserved so that the result can be checked against the expectations in force at the time.
+In this initial capture, before explicitly requested observations were made mandatory, the observer compares the ordinary compiler's complete `NewlineIndex` with an independently stored answer digest. Every invocation that reached the observer executed the producer and evaluated the entry function. See the [current acceptance criteria](README.md#current-acceptance-for-explicitly-requested-observations) for the behavior now expected on bad evidence. The original predictions and the failed diagnostic assertion are preserved so that the result can be checked against the expectations in force at the time.
 
 ## Fresh processes
 
