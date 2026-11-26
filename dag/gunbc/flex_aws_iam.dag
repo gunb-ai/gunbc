@@ -162,8 +162,15 @@ data flex_aws_card_policy: PolicyDocument = PolicyDocument {
     // ITS OWN KEY ONLY (review of fb2594de: the role read every card's key): a pool key the loop created tagged
     // with this card's instance ARN, compared against the session's own ec2:SourceInstanceARN.
     flex_aws_allow(sid: "CardReadOwnKey", actions: ["ssm:GetParameter"], resources: [flex_aws_named_parameter_arn(name: "/pool-key/*")], conditions: [flex_aws_own_card(key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String))]),
-    // ITS OWN CERTIFICATE ONLY: created (never overwritten) carrying this card's instance ARN as its tag.
-    flex_aws_allow(sid: "CardPublishOwnCertificate", actions: ["ssm:PutParameter", "ssm:AddTagsToResource"], resources: [flex_aws_named_parameter_arn(name: "/card-cert/*")], conditions: [flex_aws_own_card(key: concat("aws:RequestTag/", flex_ec2_card_instance_tag_key as String))]),
+    // ITS OWN CERTIFICATE ONLY, OVER A PLACEHOLDER THE LOOP MADE. The loop creates /card-cert/<id> tagged with the
+    // card's instance ARN when it buys the card (gunbc.fleet.flex_aws_pass flex_aws_deliver_key), so the grant is on
+    // the EXISTING parameter's tag: a card can overwrite only the one parameter carrying its own ARN, and can create
+    // nothing -- a new name has no resource tag to match. (It once granted a create conditioned on the REQUEST's tag,
+    // which let a card claim a not-yet-published card's name tagged with its own ARN: a denial of service.) No tag
+    // write either, so it cannot retag another card's. Verified live 2026-11-26 on a scratch role with this
+    // statement: own placeholder overwrite (and again) allowed; another card's placeholder, a new name tagged,
+    // untagged or with --overwrite, and add-tags-to-resource on another card's, all AccessDenied.
+    flex_aws_allow(sid: "CardPublishOwnCertificate", actions: ["ssm:PutParameter"], resources: [flex_aws_named_parameter_arn(name: "/card-cert/*")], conditions: [flex_aws_own_card(key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String))]),
     // THE SYSTEMS MANAGER AGENT, so Session Manager and Run Command reach the card without SSH or an inbound port
     // (how a booting card is inspected, and how the role's grants were probed live). These are the actions of the
     // AWS-managed AmazonSSMManagedInstanceCore (default version v2, read 2026-11-26) EXCEPT ssm:GetParameter and

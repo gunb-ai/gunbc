@@ -129,12 +129,19 @@ test fn a_duplicated_condition_pair_is_detected_and_the_wire_carries_the_spot_co
 }
 
 // A CARD'S ROLE REACHES ONLY ITS OWN KEY AND CERTIFICATE (review of fb2594de): the key read and the certificate
-// write are conditioned on the card's own instance ARN; every other card's key is DENIED explicitly, so no policy
+// write are conditioned on the EXISTING parameter's tag being the card's own instance ARN -- never the request's, which
+// would let a card create a not-yet-published card's name -- and no statement lets a card write a tag; every other card's key is DENIED explicitly, so no policy
 // attached later can widen it; no statement allows a read of every flex parameter; and parameter walks are denied.
 test fn a_card_reaches_only_its_own_key_and_certificate() -> Bool {
   let own = "$\{ec2:SourceInstanceARN}"
   (match statement_with(d: flex_aws_card_policy, sid: "CardReadOwnKey") { Present { value: s } => has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)  Absent => false })
-    && (match statement_with(d: flex_aws_card_policy, sid: "CardPublishOwnCertificate") { Present { value: s } => has_condition(s: s, key: "aws:RequestTag/gunbc-flex-instance", value: own)  Absent => false })
+    && (match statement_with(d: flex_aws_card_policy, sid: "CardPublishOwnCertificate") {
+      Present { value: s } => has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)
+        && !has_condition(s: s, key: "aws:RequestTag/gunbc-flex-instance", value: own)
+        && all(s.actions, a => (a as String) == "ssm:PutParameter")
+      Absent => false
+    })
+    && !any(flex_aws_card_policy.statements, s => (match s.effect { Deny => false  _ => true }) && any(s.actions, a => ((a as String) == "ssm:AddTagsToResource") || ((a as String) == "ssm:*")))
     && (match statement_with(d: flex_aws_card_policy, sid: "CardDenyOtherCardsKeys") {
       Present { value: s } => (match s.effect { Deny => true  _ => false }) && has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)
         && any(s.actions, a => (a as String) == "ssm:GetParameters")

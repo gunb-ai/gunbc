@@ -27,7 +27,7 @@ import extdeps.cloud.aws_cli {
   aws_cli_terminate_instances, aws_cli_put_secure_parameter, aws_cli_delete_parameter,
   aws_cli_get_queue_url, aws_cli_read_queue_url, aws_cli_receive_messages, aws_cli_read_messages, aws_cli_delete_message,
   aws_cli_get_secure_parameter, aws_cli_create_tags, aws_cli_delete_tags, aws_cli_put_string_parameter,
-  aws_cli_create_secure_parameter, aws_cli_get_caller_identity, aws_cli_read_account, aws_cli_parameter_exists, aws_cli_parameter_absent, aws_cli_describe_owned_instances, aws_cli_read_instances,
+  aws_cli_create_secure_parameter, aws_cli_create_string_parameter, aws_cli_get_caller_identity, aws_cli_read_account, aws_cli_parameter_exists, aws_cli_parameter_absent, aws_cli_describe_owned_instances, aws_cli_read_instances,
   aws_cli_describe_parameters_under, aws_cli_read_parameter_listing, AwsSsmParameterListed, aws_cli_refusal_is_definite,
 }
 import extdeps.cloud.aws_service_quotas { aws_quota_code_g_vt_spot_vcpus }
@@ -338,7 +338,25 @@ fn flex_aws_security_group(region: NonEmptyStr) -> AwsCliRead<NonEmptyStr> {
 // the SAME instance: a second key would overwrite the one the card may already hold while the router reads
 // the new one (review of fb2594de). An existing key is kept. A failure after RunInstances leaves a card that
 // refuses at boot (no key after its bounded wait) and is terminated at its boot deadline.
+// WHAT A BOUGHT CARD IS GIVEN, under its instance ARN (read once): the placeholder of its certificate, then its pool
+// key, each created once and tagged with that ARN so only that card's role can reach it (gunbc.flex_aws_iam
+// CardReadOwnKey, CardPublishOwnCertificate). The placeholder exists before the card boots, so no other card can
+// claim its name; the card overwrites it with its certificate. A replayed launch finds both present and keeps them.
 fn flex_aws_deliver_key(region: NonEmptyStr, instance_id: NonEmptyStr) -> String {
+  match flex_aws_card_arn(region: region, instance_id: instance_id) {
+    AwsCliReadRefused { cause: c } => concat("cert=REFUSED key=REFUSED the card's ARN: ", c)
+    AwsCliReadOk { value: arn } => join([flex_aws_place_certificate(region: region, instance_id: instance_id, arn: arn), " ", flex_aws_deliver_pool_key(region: region, instance_id: instance_id, arn: arn)], "")
+  }
+}
+
+data flex_aws_certificate_placeholder: NonEmptyStr = "pending" as NonEmptyStr
+
+fn flex_aws_place_certificate(region: NonEmptyStr, instance_id: NonEmptyStr, arn: String) -> String {
+  let put = flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_create_string_parameter(credentials_file: flex_aws_credentials(), region: region, name: join([flex_aws_boot_policy().cert_prefix as String, "/", instance_id as String], "") as NonEmptyStr, value: flex_aws_certificate_placeholder, tags: [AwsEc2Tag { key: flex_ec2_card_instance_tag_key, value: arn }]), transport: LocalExec))
+  match put { AwsCliReadOk { value: _ } => "cert=placed"  AwsCliReadRefused { cause: c } => if c.contains(aws_cli_parameter_exists) { "cert=present (kept, a replayed launch)" } else { concat("cert=REFUSED put ", c) } }
+}
+
+fn flex_aws_deliver_pool_key(region: NonEmptyStr, instance_id: NonEmptyStr, arn: String) -> String {
   let key = trim(Urandom.ReadBytes(count: 32).octets_b64)
   if key == "" {
     "key=REFUSED no entropy"
@@ -348,10 +366,7 @@ fn flex_aws_deliver_key(region: NonEmptyStr, instance_id: NonEmptyStr) -> String
     if !written.success {
       concat("key=REFUSED write ", written.error)
     } else {
-      let put = match flex_aws_card_arn(region: region, instance_id: instance_id) {
-        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: concat("the card's ARN: ", c) }
-        AwsCliReadOk { value: arn } => flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_create_secure_parameter(credentials_file: flex_aws_credentials(), region: region, name: join([flex_aws_boot_policy().ssm_key_prefix as String, "/", instance_id as String], "") as NonEmptyStr, value_file: path as FilePath, tags: [AwsEc2Tag { key: flex_ec2_card_instance_tag_key, value: arn }]), transport: LocalExec))
-      }
+      let put = flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_create_secure_parameter(credentials_file: flex_aws_credentials(), region: region, name: join([flex_aws_boot_policy().ssm_key_prefix as String, "/", instance_id as String], "") as NonEmptyStr, value_file: path as FilePath, tags: [AwsEc2Tag { key: flex_ec2_card_instance_tag_key, value: arn }]), transport: LocalExec))
       let removed = Filesystem.Delete(path: path)
       join([
         match put { AwsCliReadOk { value: _ } => "key=delivered"  AwsCliReadRefused { cause: c } => if c.contains(aws_cli_parameter_exists) { "key=present (kept, a replayed launch)" } else { concat("key=REFUSED put ", c) } },
@@ -761,7 +776,7 @@ fn flex_aws_probe(region: NonEmptyStr, i: AwsEc2Instance) -> FlexAwsProbe {
     Absent => FlexAwsProbeNotReady { instance_id: i.instance_id, why: "no public address yet" }
     Present { value: ip } => match flex_aws_read_param(region: region, name: join([flex_aws_boot_policy().cert_prefix as String, "/", i.instance_id as String], "") as NonEmptyStr) {
       AwsCliReadRefused { cause: c } => FlexAwsProbeNotReady { instance_id: i.instance_id, why: concat("no certificate published: ", c) }
-      AwsCliReadOk { value: pem } => {
+      AwsCliReadOk { value: pem } => if pem == (flex_aws_certificate_placeholder as String) { FlexAwsProbeNotReady { instance_id: i.instance_id, why: "certificate not published yet (placeholder)" } } else {
         let pem_path = flex_aws_card_cert_path(instance_id: i.instance_id)
         let wrote = Filesystem.Write(path: pem_path, content: pem as String)
         if !wrote.success {

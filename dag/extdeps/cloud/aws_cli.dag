@@ -930,6 +930,14 @@ fn aws_cli_put_secure_parameter(credentials_file: FilePath, region: NonEmptyStr,
     arguments: ["--name", name as String, "--type", "SecureString", "--overwrite", "--value", join(["file://", value_file as String], "")])
 }
 
+// A plain String parameter whose value is not a secret (it rides argv), CREATED ONCE with its tags: put without
+// --overwrite, so a second put of the same name answers ParameterAlreadyExists and changes nothing.
+fn aws_cli_create_string_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value: NonEmptyStr, tags: List<AwsEc2Tag>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
+    arguments: concat(["--name", name as String, "--type", "String", "--value", value as String],
+      if count(tags) == 0 { [] } else { concat(["--tags"], map(tags, t => join(["Key=", t.key as String, ",Value=", t.value], ""))) }))
+}
+
 // A plain String parameter whose value is not a secret (it rides argv), overwritten in place.
 fn aws_cli_put_string_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value: NonEmptyStr) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,

@@ -11,7 +11,7 @@ import extdeps.cloud.aws_ec2 { AwsEc2OptInNotRequired, AwsEc2NotOptedIn, AwsEc2R
 import extdeps.cloud.aws_cli {
   AwsCliReadOk, AwsCliReadRefused, aws_cli_read_regions, aws_cli_read_offerings, aws_cli_read_instance_types,
   aws_cli_read_spot_prices, aws_cli_read_instances, aws_cli_read_service_quota, aws_cli_describe_spot_prices,
-  aws_cli_read_prefix_census, aws_cli_create_tags, aws_cli_delete_tags,
+  aws_cli_read_prefix_census, aws_cli_create_tags, aws_cli_delete_tags, aws_cli_create_string_parameter,
   aws_cli_read_parameter_listing, aws_cli_refusal_is_definite, aws_cli_describe_parameters_under,
 }
 import extdeps.cloud.aws_ec2 { AwsEc2Tag }
@@ -105,6 +105,14 @@ test fn the_mark_tag_writes_name_the_card_and_the_key() -> Bool {
   let clear = join(argv_words(command: aws_cli_delete_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], keys: ["gunbc-flex-idle-since" as NonEmptyStr])), " ")
   set.contains("ec2 create-tags --region us-west-2") && set.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since,Value=1795646284")
     && clear.contains("ec2 delete-tags --region us-west-2") && clear.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since")
+}
+
+// A PLACEHOLDER IS CREATED ONCE: a String put with its tags and WITHOUT --overwrite, so a second put of the name
+// answers ParameterAlreadyExists instead of replacing a card's published certificate.
+test fn a_string_parameter_is_created_once_with_its_tags() -> Bool {
+  let put = join(argv_words(command: aws_cli_create_string_parameter(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, name: "/gunbc-flex/card-cert/i-0abc" as NonEmptyStr, value: "pending" as NonEmptyStr, tags: [AwsEc2Tag { key: "gunbc-flex-instance" as NonEmptyStr, value: "arn:aws:ec2:us-west-2:*:instance/i-0abc" }])), " ")
+  put.contains("ssm put-parameter --region us-west-2") && put.contains("--name /gunbc-flex/card-cert/i-0abc --type String --value pending --tags Key=gunbc-flex-instance,Value=arn:aws:ec2:us-west-2:*:instance/i-0abc")
+    && !put.contains("--overwrite")
 }
 
 // THE PARAMETER LISTING (the orphan sweep's read; shape printed by CLI 2.42.3 for describe-parameters with

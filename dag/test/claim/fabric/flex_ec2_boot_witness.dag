@@ -73,17 +73,17 @@ test fn the_dead_man_starts_before_the_boot_can_hang() -> Bool {
     && t.contains("Restart=always")
 }
 
-// THE CARD PUBLISHES ONLY ITS OWN CERTIFICATE (review of fb2594de): created once, never overwritten, tagged
-// with its own instance ARN (built from the instance identity document), which is the only certificate its role
-// may write; an existing one (a reboot re-running boot) is kept.
-test fn the_certificate_is_published_once_and_tagged_with_the_card() -> Bool {
+// THE CARD PUBLISHES ONLY ITS OWN CERTIFICATE, OVER THE LOOP'S PLACEHOLDER: an overwrite of the one name the loop
+// created for it (tagged with its ARN), carrying no tag of its own -- so the boot needs neither the account nor its
+// ARN, and never creates a name (the squatting the 2026-11-26 policy closes). A refused publish stops the boot.
+test fn the_certificate_overwrites_only_the_placeholder_the_loop_made() -> Bool {
   let t = rendered()
-  t.contains("CARD_TAG_KEY=gunbc-flex-instance")
-    && t.contains("instance-identity/document")
-    && t.contains("CARD_ARN=\"arn:aws:ec2:$AWS_DEFAULT_REGION:$ACCT:instance/$IID\"")
-    && t.contains("--tags \"Key=$CARD_TAG_KEY,Value=$CARD_ARN\"")
-    && t.contains("grep -q ParameterAlreadyExists")
-    && !t.contains("put-parameter --name \"$CERT_PREFIX/$IID\" --type String --overwrite")
+  t.contains("put-parameter --name \"$CERT_PREFIX/$IID\" --type String --overwrite --value file:///opt/flex/serve/tls.crt")
+    && t.contains("refuse \"cannot publish the card certificate over its placeholder\"")
+    && !t.contains("--tags \"Key=$CARD_TAG_KEY")
+    && !t.contains("CARD_ARN")
+    && !t.contains("instance-identity/document")
+    && !t.contains("ParameterAlreadyExists")
 }
 
 // THE TUNING-CACHE KEY is what selects the kernels: the serving profile and hardware class ride in the
