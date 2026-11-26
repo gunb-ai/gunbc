@@ -11,7 +11,7 @@ module test.claim.attempt_metering_traversal_foreign_witness
 
 import std.types { String, Bool, NonEmptyStr, PathSegment, path_segment_is_safe }
 import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, census_rows_of_class, census_total_count, census_blocking_rows }
+import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, census_rows_of_class, census_total_count, census_blocking_rows, census_blocking_rows_of_class_at_subject }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringMemberName, attempt_metering_member_name, attempt_metering_declared_member_name,
   attempt_metering_member_name_segment,
@@ -98,12 +98,22 @@ test fn the_listing_route_takes_the_sealed_store_only() -> Bool {
 // type_mismatch_count answers -1 on a refused census, never a silent 0).
 test fn the_listing_route_refuses_the_deleted_root_call() -> Bool {
      match compile_dag_diagnostic_census(source: old_caller_listing_call_source) {
-       CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) >= 1
+       // THE ROUTE ITSELF BLOCKS: a row keyed (class=MissingExport,
+       // subject_name=attempt_metering_listing). A count over the unscoped
+       // row set cannot say WHICH name the compiler refused -- the row set is
+       // the whole compile's (dag/gunbc/compile_diagnostic_census.dag); this
+       // census is keyed by class AND subject_name
+       // (src/v1/stage0/src/cli_run/compile_clean.rs, MissingExport).
+       CensusObserved { rows: rows } =>
+         census_total_count(rows: census_blocking_rows_of_class_at_subject(
+           rows: rows, wanted_class: "MissingExport",
+           wanted_subject: "attempt_metering_listing")) >= 1
        CensusNotRunnable { cause: _ } => false
      }
   && match compile_dag_diagnostic_census(source: lawful_listing_call_source) {
        CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")) == 0
                                       && census_total_count(rows: census_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) >= 1
+                                      && census_total_count(rows: census_blocking_rows(rows: rows)) == 0
        CensusNotRunnable { cause: _ } => false
      }
 }
