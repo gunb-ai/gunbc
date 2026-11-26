@@ -143,6 +143,16 @@ fn converged_groups() -> String {
   "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
 }
 
+// THE CONVERGED gunbc-compute GROUP ON A HOST WITH NO DASHBOARD INSTANCE (ken, operator_host_e2d4b7). Its
+// capacity-ledger service user is the remote-build account (capacity_ledger_directory_owner), NOT the
+// operator login, so the compute group carries exactly one member — gunbc-build. The operator login
+// briansrls does not exist on a fresh host and the account model never creates it, so a converged ken
+// group has no briansrls. This is the post-fix converged state; the upload-host fixture above keeps
+// briansrls because srv1/srv2 carry the operator login as their instance service principal.
+fn native_converged_groups() -> String {
+  "gunbc-compute:x:1006:gunbc-build\ngunbc-build:x:1005:\n"
+}
+
 // The authorized_keys content AS THE DESIRED STATE DECLARES IT, so a fixture that breaks some other leg
 // keeps this leg matched and tests only the leg it means to break (the refused-elevation cell below is
 // about elevation, not about keys). An absent desired line renders as the empty string — never as a
@@ -2077,7 +2087,7 @@ fn fully_matched_native_identity(d: RemoteBuildServingDesired, line: String, sid
   serving_observed_from_reads(
     elevation: est_elevation(), account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
-    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    group: est_s(native_converged_groups()), authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
