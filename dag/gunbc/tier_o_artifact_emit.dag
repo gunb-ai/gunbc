@@ -131,7 +131,7 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
       DriftWatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     GunbAiPagesWorkflowYamlArtifact => match expected_gunb_ai_pages_workflow_yml() {
-      GunbAiPagesWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
+      GunbAiPagesWorkflowGenerated { content } => TierOArtifactProduced { content: content }
       GunbAiPagesWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     GitignoreArtifact => TierOArtifactProduced { content: expected_gitignore() }
