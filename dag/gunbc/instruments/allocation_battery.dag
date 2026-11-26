@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
 import std.compiler_entry { NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import gunbc.emit_copy_qualification { StructuralInapplicability, structural_inapplicability_slug }
-import gunbc.emit_building_block_contracts { BuildingBlockFamily, building_block_contracts, violation_axis_of_block, violation_form_slug_of_block, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines, applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, building_block_contracts, retaining_rows_on_block, violation_form_slug_of_block, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines, applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
 import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, span_text, count_text, spans_agree, bytes_above }
 
 // THE ONE HOME FOR THE BATTERY MACHINERY the four building-block families share: the metered window,
@@ -87,21 +87,24 @@ fn kept_above(a: BatteryWindow, b: BatteryWindow) -> Bool {
 
 // THE AXIS IS NOT CHOICE HERE. It is derived from the roster's typed violation_form by
 // violation_axis_of_block: a retain moves the retained-handle count, a copy moves the operations and
-// bytes. The axis and the form behind it are printed, so every line says which judgement it made.
-// The form names the axis the violation is PREDICTED to move -- that is the discriminator, printed so a
-// reader sees the claim that was made. Visibility is what the row asserts: an owning retain may show up
-// as an extra retained handle, or as operations and bytes if the emitted clone really allocates. So the
-// arm must move on the predicted axis OR be visible on operations or bytes, and the red row is its exact
-// negation: an arm indistinguishable from its contract arm on every axis. Requiring the predicted axis
-// alone would call a real, measured clone invisible (the control-flow match arms cost 72 operations
-// against 37 while holding one handle each); requiring any axis alone is what the executed measurement
-// at 1541d8af0437 showed to be wrong for a retain, whose ops and bytes were equal and whose only evidence
-// was violating_kept=2 against contract_arm_kept=1.
-fn violation_visible(viol: BatteryWindow, arm: BatteryWindow, axis: String) -> Bool {
-  if axis == "retained_handles" { kept_above(a: viol, b: arm) || operations_above(a: viol.observation, b: arm.observation) || bytes_above(a: viol.observation, b: arm.observation) } else { operations_above(a: viol.observation, b: arm.observation) || bytes_above(a: viol.observation, b: arm.observation) || kept_above(a: viol, b: arm) }
+// bytes, EXCLUSIVELY. The form names the axis the violation must move on, and the judgement is made on
+// that axis ALONE: a retaining block is held only by an extra retained handle, a copying or per-step
+// block only by operations or bytes it adds. THIS WAS NOT THE FIRST VERSION. The first version took the
+// predicted axis OR any other axis, and its two branches computed the same OR of the same three tests in
+// a different order, so the declared form changed nothing but the printed text -- a judgement that could
+// not fail is not a judgement (review 98944, on the guarantee_ladder rung "a type name, diagnostic
+// variant, inert lens or plan establishes nothing"). The exclusivity that review demanded is also my
+// manager's ruling: retained-handle count for an owning retain, operations and bytes for the copy forms.
+// What makes exclusivity honest is the roster, not the battery: a block whose declared form its arm
+// cannot move on that axis is a specimen defect, and the arms were aligned to their forms for exactly
+// that reason (see the header of each subject module).
+fn violation_visible(viol: BatteryWindow, arm: BatteryWindow, judged_on_retained_handles: Bool) -> Bool {
+  if judged_on_retained_handles { kept_above(a: viol, b: arm) } else { operations_above(a: viol.observation, b: arm.observation) || bytes_above(a: viol.observation, b: arm.observation) }
 }
 
-// Every axis that actually moved, printed. "none" is the case the red row exists to catch.
+// Every axis that actually moved, printed. "none" is the case the red row exists to catch, and it is the
+// reading a reader can check against the judgement: if detected_on= does not contain the discriminator,
+// the row is not held and the log says so on its own line.
 fn detected_on_text(viol: BatteryWindow, arm: BatteryWindow) -> String {
   let ops = if operations_above(a: viol.observation, b: arm.observation) { "operations," } else { "" }
   let byt = if bytes_above(a: viol.observation, b: arm.observation) { "bytes," } else { "" }
@@ -110,27 +113,32 @@ fn detected_on_text(viol: BatteryWindow, arm: BatteryWindow) -> String {
   if joined == "" { "detected_on=none" } else { concat("detected_on=", joined) }
 }
 
+// The discriminator label is PRINTED from the decision the contracts module made, never compared to
+// decide anything: the Bool from retaining_rows_on_block is the judgement and the strings here are its
+// rendering, so no string equality sits on the verdict path.
 fn axis_text(block_id: String, viol: BatteryWindow, arm: BatteryWindow) -> String {
-  concat(concat(concat("discriminator=", violation_axis_of_block(block_id: block_id)), concat(" form=", violation_form_slug_of_block(block_id: block_id))), concat(" ", detected_on_text(viol: viol, arm: arm)))
+  let retain_judged = retaining_rows_on_block(block_id: block_id) > 0
+  let axis_label = if retain_judged { "retained_handles" } else { "operations_and_bytes" }
+  concat(concat(concat("discriminator=", axis_label), concat(" form=", violation_form_slug_of_block(block_id: block_id))), concat(" ", detected_on_text(viol: viol, arm: arm)))
 }
 
 // THE DISCRIMINATING ROW: the violating arm must sit strictly above its contract arm on the axis the
-// form predicts, with both readings, both kept counts, the axis and the form on the same line.
+// declared form names, with both readings, both kept counts, the axis and the form on the same line.
 fn violation_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> BatteryRow {
   metered_row(windows: [viol, contract_arm], c: AllocationCase {
     identity: concat(prefix, "_", block_id, "_violating_variant_above_contract_arm"),
-    held: is_observed(o: viol.observation) && violation_visible(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
+    held: is_observed(o: viol.observation) && violation_visible(viol: viol, arm: contract_arm, judged_on_retained_handles: retaining_rows_on_block(block_id: block_id) > 0),
     observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id, viol: viol, arm: contract_arm))
   })
 }
 
 // THE RED ROW, and the only row whose falsity is the point: the same two windows, the same path, judged
-// the opposite way. It is false by construction, so the entry that carries it exits non-zero while
-// printing the identical observed= text the discriminating row prints.
+// the opposite way ON THE SAME EXCLUSIVE AXIS. It is false by construction, so the entry that carries it
+// exits non-zero while printing the identical observed= text the discriminating row prints.
 fn violation_contract_holds_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> BatteryRow {
   metered_row(windows: [viol, contract_arm], c: AllocationCase {
     identity: concat(prefix, "_", block_id, "_violating_variant_within_contract_arm"),
-    held: is_observed(o: viol.observation) && !violation_visible(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
+    held: is_observed(o: viol.observation) && !violation_visible(viol: viol, arm: contract_arm, judged_on_retained_handles: retaining_rows_on_block(block_id: block_id) > 0),
     observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id, viol: viol, arm: contract_arm))
   })
 }

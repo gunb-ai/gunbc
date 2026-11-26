@@ -109,13 +109,17 @@ fn car_sequence_snapshot(xs: List<Int>) -> Int {
 // Violating: the snapshot is read repeatedly AFTER the update, so the
 // observation keeps an owning retain on the pre-update sequence alive across the mutation, which is the
 // state where copy-on-write has to copy.
-fn car_sequence_snapshot_retained(xs: List<Int>) -> Int {
+// THE OBSERVATION RETURNS WHAT IT KEPT ALIVE, not a scalar folded out of them, because the block's typed
+// violating form is OwningRetainAddedToObservation and the battery judges a retain on the handles the
+// caller holds when the window closes (BatteryWindow.kept_len is count(kept)) — not on operations or bytes,
+// which is where an Rc-clone copy is invisible. THE PROXY IS STATED: the meter counts returned handles.
+// The contract arm leaves one handle; this arm leaves the pre-update snapshot, the post-update sequence and
+// the value read back out of the retained snapshot — the owning retain across the mutation, in hand.
+fn car_sequence_snapshot_retained(xs: List<Int>) -> List<Int> {
   let snapshot = xs
   let updated = list_push(xs, 97)
-  let first_read = count(snapshot) + count(updated)
   let second_read = fold(snapshot, init: 0, f: (acc, x) => acc + x)
-  let third_read = fold(updated, init: 0, f: (acc, x) => acc + x)
-  first_read + second_read + third_read
+  list_push(list_push(list_push([], count(snapshot)), count(updated)), second_read)
 }
 
 // ── INDEX BUILD ───────────────────────────────────────────────────────────────────────────────────
@@ -228,7 +232,7 @@ fn run_car_subject(subject: CarSubject, src: List<Int>) -> List<Int> {
     CarTraversal => list_push([], car_traversal(xs: src))
     CarTraversalRebuildsPerStep => list_push([], car_traversal_rebuilds_per_step(xs: src))
     CarSequenceSnapshot => list_push([], car_sequence_snapshot(xs: src))
-    CarSequenceSnapshotRetained => list_push([], car_sequence_snapshot_retained(xs: src))
+    CarSequenceSnapshotRetained => car_sequence_snapshot_retained(xs: src)
     CarIndexBuild => list_push([], car_index_build())
     CarIndexBuildRemakesPerKey => list_push([], car_index_build_remakes_per_key())
     CarIndexLookup => list_push([], car_index_lookup())

@@ -101,10 +101,13 @@ fn acc_local_closure(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + scale(x))
 }
 
-// THE LOCAL CLOSURE, violating arm: the same local computation, but the
-// observed value is materialized once per application instead of read once, so the observation retains a
-// payload it never needed.
-fn acc_local_closure_retains(xs: List<Int>) -> Int {
+// THE LOCAL CLOSURE, violating arm: the same local computation, but a payload is materialized on every
+// application of the closure instead of being read once, which is the block's typed violating form
+// (PerStepAllocation) and is judged on operations and bytes. THE FIRST EXECUTED RUN MEASURED WHY THIS
+// WORDING MOVED: the row's form used to say an owning retain while the arm allocated per step, and a
+// retain judged on allocations witnesses an axis the contract does not speak about — the arm and the
+// contract must agree by name, and the roster field is the single place the form is stated.
+fn acc_local_closure_materializes_per_step(xs: List<Int>) -> Int {
   let scale = x => x + acc_materialize(rows: xs)
   fold(xs, init: 0, f: (acc, x) => acc + scale(x))
 }
@@ -145,7 +148,7 @@ type AccSubject =
   | AccRebuildOneField
   | AccRebuildCopiesContext
   | AccLocalClosure
-  | AccLocalClosureRetains
+  | AccLocalClosureMaterializesPerStep
   | AccEscapingClosure
   | AccEscapingClosureCopiesContext
 
@@ -166,7 +169,7 @@ fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
     AccRebuildOneField => list_push([], acc_rebuild_one_field(row: row))
     AccRebuildCopiesContext => list_push([], acc_rebuild_copies_context(row: row))
     AccLocalClosure => list_push([], acc_local_closure(xs: rows))
-    AccLocalClosureRetains => list_push([], acc_local_closure_retains(xs: rows))
+    AccLocalClosureMaterializesPerStep => list_push([], acc_local_closure_materializes_per_step(xs: rows))
     AccEscapingClosure => list_push([], acc_escaping_closure(xs: rows))
     AccEscapingClosureCopiesContext => list_push([], acc_escaping_closure_copies_context(xs: rows))
   }
@@ -202,7 +205,7 @@ fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let rebuild = acc_window(subject: AccRebuildOneField, src: src)
   let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
   let closure = acc_window(subject: AccLocalClosure, src: src)
-  let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src)
+  let closure_per_step = acc_window(subject: AccLocalClosureMaterializesPerStep, src: src)
   let escaping = acc_window(subject: AccEscapingClosure, src: src)
   let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
   concat(concat(concat([plain_row(c: availability_case(prefix: "accumulator"))],
@@ -213,7 +216,7 @@ fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "accumulator", block_id: "field_read", own: field_read), violation_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read)]),
       concat(
       [subject_case(prefix: "accumulator", block_id: "record_rebuild_one_field", own: rebuild), violation_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)],
-      [subject_case(prefix: "accumulator", block_id: "local_closure", own: closure), violation_case(prefix: "accumulator", block_id: "local_closure", viol: closure_retained, contract_arm: closure)])),
+      [subject_case(prefix: "accumulator", block_id: "local_closure", own: closure), violation_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure)])),
       [subject_case(prefix: "accumulator", block_id: "escaping_closure", own: escaping), violation_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)]))
 }
 
@@ -227,14 +230,14 @@ fn acc_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let rebuild = acc_window(subject: AccRebuildOneField, src: src)
   let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
   let closure = acc_window(subject: AccLocalClosure, src: src)
-  let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src)
+  let closure_per_step = acc_window(subject: AccLocalClosureMaterializesPerStep, src: src)
   let escaping = acc_window(subject: AccEscapingClosure, src: src)
   let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
   [
     violation_contract_holds_case(prefix: "accumulator", block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step),
     violation_contract_holds_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read),
     violation_contract_holds_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild),
-    violation_contract_holds_case(prefix: "accumulator", block_id: "local_closure", viol: closure_retained, contract_arm: closure),
+    violation_contract_holds_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure),
     violation_contract_holds_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)
   ]
 }

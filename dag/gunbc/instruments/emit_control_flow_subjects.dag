@@ -84,9 +84,26 @@ type CfSubject =
   | CfBindOnce
   | CfBindRematerializedPerRead
   | CfMatchOwnedTemporary
-  | CfMatchOwnedCopiedBeforeMatch
+  | CfMatchOwnedRetainedAfterMatch
   | CfMatchBorrowedSharedSum
   | CfMatchBorrowedRetainedAfterMatch
+
+// RETAIN THE TEMPORARY AFTER THE MATCH, which is the typed violating form on this block's roster row.
+// THE FIRST EXECUTED RUN MEASURED WHY THE ARM MOVED: the arm that stood here materialized a fresh payload
+// before matching, which moves operations and bytes (72 against 37) and NOTHING ELSE — kept read 1 against
+// 1 — so a contract that speaks about a retain was being witnessed on an axis it cannot move. A retain is
+// what the caller still holds when the window closes, which is what the meter reads as a handle
+// (BatteryWindow.kept_len is count(kept), the output the observation returns). THE PROXY IS STATED RATHER
+// THAN HIDDEN: the counter sees handles the caller keeps, and a payload the emitter merely Rc-clones is
+// invisible to every axis it has (the value-shape module records that measurement). The contract arm
+// consumes the temporary in the arm and leaves one handle; this arm keeps it alive and leaves three.
+fn cf_match_owned_retained(temp: CfSum) -> List<Int> {
+  let matched = cf_match_total(s: temp)
+  match temp {
+    SumLeft { n: n } => list_push(list_push(list_push([], matched), n), 0)
+    SumRight { payload: p } => list_push(list_push(list_push([], matched), p.k), count(p.xs))
+  }
+}
 
 // ONE PATH FOR EVERY ARM: contract arm and violating arm differ only in the subject tag, so a red row
 // cannot be blamed on a different path. The form an arm exhibits is the typed `violation_form` on its
@@ -104,7 +121,7 @@ fn run_cf_subject(subject: CfSubject, src: List<Int>) -> List<Int> {
     CfBindOnce => list_push([], cf_bind_then_read_twice(v: payload))
     CfBindRematerializedPerRead => list_push([], cf_bind_then_read_twice(v: cf_payload_of(src: src)) + cf_bind_then_read_twice(v: cf_payload_of(src: src)))
     CfMatchOwnedTemporary => list_push([], cf_match_total(s: SumRight { payload: payload }))
-    CfMatchOwnedCopiedBeforeMatch => list_push([], cf_match_total(s: SumRight { payload: cf_payload_of(src: src) }))
+    CfMatchOwnedRetainedAfterMatch => cf_match_owned_retained(temp: SumRight { payload: payload })
     CfMatchBorrowedSharedSum => list_push([], cf_match_borrowed(s: SumRight { payload: payload }))
     CfMatchBorrowedRetainedAfterMatch => list_push(list_push([], cf_match_borrowed(s: SumRight { payload: payload })), cf_match_borrowed(s: SumRight { payload: cf_payload_of(src: src) }))
   }
@@ -140,7 +157,7 @@ fn cf_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let bind = cf_window(subject: CfBindOnce, src: src)
   let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
   let match_owned = cf_window(subject: CfMatchOwnedTemporary, src: src)
-  let match_copied = cf_window(subject: CfMatchOwnedCopiedBeforeMatch, src: src)
+  let match_copied = cf_window(subject: CfMatchOwnedRetainedAfterMatch, src: src)
   let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
   let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
   concat(concat([plain_row(c: availability_case(prefix: "control_flow"))], calibration_rows(prefix: "control_flow", empty: empty, empty_again: empty_again, known: known)), concat(concat(concat(

@@ -138,15 +138,26 @@ fn violating_form_exercised(slug: String) -> Int {
 // 1541d8af043722fc389f75cadc47f9a738e10a38 read violating_ops=38 equal to contract_arm_ops=38 and
 // violating_bytes=2648 equal to contract_arm_bytes=2648, while violating_kept=2 against contract_arm_kept=1.
 // The row's own boundary says owning retains, payload copies and collection copy-on-write are distinct
-// observations, so a retain judged on operations is measured on an axis it cannot move. The form -- a
-// typed field of the roster row, never restated by the battery -- decides the axis, and the battery
-// PRINTS the axis it judged on so a reader can see which judgement was made.
-fn retaining_rows_on_block(block_id: String) -> Int {
-  count(filter(building_block_contracts(), b => b.block == block_id && violating_form_slug(f: b.violation_form) == "owning_retain_added_to_observation"))
+// observations, so a retain judged on operations is measured on an axis it cannot move -- and judging it
+// on operations AND bytes AND handles, as this function's first version did, judges it on nothing: an OR
+// of all three answers the same whatever the declared form says. So the judgement is EXCLUSIVE: a
+// retaining block is held only by the handles it keeps, and a copying or per-step block only by the
+// operations and bytes it adds.
+//
+// The decision is made by MATCHING the typed field, never by comparing a printed rendering of it: the
+// slug is derived from the field for printing and counting (see the note above on sum-member equality),
+// and no string decides anything on this path. A battery asks this module which axis a block is judged
+// on and prints the answer it was given; it does not choose one.
+fn form_is_owning_retain(f: ViolatingForm) -> Bool {
+  match f {
+    OwningRetainAddedToObservation => true
+    PerStepAllocation => false
+    CopyOfUnchangedContext => false
+  }
 }
 
-fn violation_axis_of_block(block_id: String) -> String {
-  if retaining_rows_on_block(block_id: block_id) > 0 { "retained_handles" } else { "operations_and_bytes" }
+fn retaining_rows_on_block(block_id: String) -> Int {
+  count(filter(building_block_contracts(), b => b.block == block_id && form_is_owning_retain(f: b.violation_form)))
 }
 
 // Printed, never decided with: the form behind the axis, so a log line carries its own provenance. A
@@ -230,11 +241,9 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
     // violation: rebuild by copying every field
     block("record_rebuild_one_field", Accumulator, AliasThenMutate, NestedCheapDeepRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
         // observation: call a non-escaping closure over a scalar
-    // violation: capture by clone rather than by borrow
-    block("local_closure", Accumulator, BorrowIntoClosure, CopyScalarControl, StraightLine, BorrowsByRef, ScalarUnitBasis, OwningRetainAddedToObservation),
+    block("local_closure", Accumulator, BorrowIntoClosure, CopyScalarControl, StraightLine, BorrowsByRef, ScalarUnitBasis, PerStepAllocation),
         // observation: move a captured context out and call it later
-    // violation: clone the captured context per call
-    block("escaping_closure", Accumulator, MoveIntoClosure, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
+    block("escaping_closure", Accumulator, MoveIntoClosure, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
 
     // ── T4 carriers, run against the stand-ins that exist ───────────────────────────────────
     // The two persistent members are run as what the production emitter can actually build for them:
@@ -249,8 +258,7 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
     // violation: rebuild the sequence per element rather than once
     block("sequence_build", Carriers, ConsumedOnce, PersistentSequenceCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
         // observation: read one element by index
-    // violation: materialize the whole sequence to read one element
-    block("element_read", Carriers, BorrowedReadOnly, PersistentSequenceCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
+    block("element_read", Carriers, BorrowedReadOnly, PersistentSequenceCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
         // observation: traverse once, threading a counter accumulator
     // violation: allocate a new accumulator per step
     block("sequential_traversal", Carriers, LoopCarriedAccumulator, PersistentSequenceCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
@@ -261,8 +269,7 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
     // violation: rebuild the index per key rather than once
     block("index_build", Carriers, ConsumedOnce, PersistentMapCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
         // observation: look one key up
-    // violation: materialize the whole index to look one key up
-    block("index_lookup", Carriers, BorrowedReadOnly, PersistentMapCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
+    block("index_lookup", Carriers, BorrowedReadOnly, PersistentMapCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
         // observation: traverse the index once, threading a counter accumulator
     // violation: allocate a new accumulator per step
     block("index_traversal", Carriers, LoopCarriedAccumulator, PersistentMapCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
