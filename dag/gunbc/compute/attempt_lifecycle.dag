@@ -900,63 +900,42 @@ fn recovery_trigger_fires(t: RecoveryTrigger) -> Bool {
 // a seat nobody can free. The operator closed exactly that on 2026-11-26 for the two srv1 seats, with
 // the door's own rendering as the evidence: gunbc.design_ruling::srv1_stale_seats_released_proven_ended_2026_11_26.
 // This is the machine-carried form of that ruling. It is NOT a second release law: recovery_write_authorization
-// stays the one decider, and the attestation reaches it only as a SUPPLIED VALUE looked up by exact
-// attempt reference — it converts a broken observation (unreadable/absent unit end) into an authorized
-// release for the named references and nothing else. An observed live unit still declines (an attestation
-// does not contradict a reading), a too-early window still declines (the declared window belongs to the
-// producer), and a reference with no row keeps the refusal. The row carries no copy of the rule; it points
-// at the ruling by resolved DeclarationRef, so renaming the ruling fails to resolve rather than drift.
-type SeatEndAttestation
-  = AttestedProvenEnded { reference: NonEmptyStr, ruling: DeclarationRef, decided: String, evidence: String }
-  | NotAttested
-
+// stays the one decider, and it takes the ROSTER as a supplied value (production hands in
+// proven_ended_seat_releases; a witness hands in its own list) and performs the lookup ITSELF against
+// record.reference — a row for one reference cannot be handed to another record's decision, so the
+// mismatch is unwritable rather than caught. The row names the ruled reference and its ruling by resolved
+// DeclarationRef (renaming the ruling fails to resolve rather than drift) and nothing else: the date, the
+// quote and the evidence live in the ruling row, the row's one authority for them. An observed live unit
+// still declines (an attestation does not contradict a reading), a too-early window still declines (the
+// declared window belongs to the producer), and a reference with no row keeps the refusal. A release is
+// actuated by ADDING A ROW (a PR the operator signs off), never by a hand edit on the host.
 type ProvenEndedSeatRelease {
   reference: NonEmptyStr
   ruling: DeclarationRef
-  decided: String
-  evidence: String
 }
 
-// The attestation roster: one row per seat the operator has ruled proven-ended, each naming its ruling.
-// A release is actuated by ADDING A ROW HERE (a PR the operator signs off), never by a hand edit on the host.
+// The attestation roster production hands to the decider. One row per seat the operator has ruled
+// proven-ended; scope is exactly these references.
 data proven_ended_seat_releases: List<ProvenEndedSeatRelease> = [
   ProvenEndedSeatRelease {
     reference: "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1" as NonEmptyStr,
     ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_stale_seats_released_proven_ended_2026_11_26"),
-    decided: "2026-11-26",
-    evidence: "https://github.com/gunb-ai/gunbc/pull/17083#issuecomment-7181851358",
   },
   ProvenEndedSeatRelease {
     reference: "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1" as NonEmptyStr,
     ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_stale_seats_released_proven_ended_2026_11_26"),
-    decided: "2026-11-26",
-    evidence: "https://github.com/gunb-ai/gunbc/pull/17083#issuecomment-7181851358",
   },
 ]
 
-// The lookup the doors call: the attestation for this exact reference, or NotAttested. Keys are whole
-// references, so an attestation for one seat cannot name another.
-fn seat_end_attestation_for(reference: NonEmptyStr) -> SeatEndAttestation {
-  match first_where(xs: proven_ended_seat_releases, keep: row => row.reference == reference) {
-    Present { value: row } =>
-      AttestedProvenEnded { reference: row.reference, ruling: row.ruling, decided: row.decided, evidence: row.evidence }
-    Absent => NotAttested
-  }
+// The decider's own lookup: the ruled row for THIS record's reference, or absence. Keys are whole
+// references and the lookup lives on this side of the boundary, so callers cannot point an attestation
+// at a record it does not name.
+fn proven_ended_row_for(releases: List<ProvenEndedSeatRelease>, reference: String) -> ProvenEndedSeatRelease? {
+  first_where(xs: releases, keep: row => (row.reference as String) == reference)
 }
 
-fn seat_end_attestation_covers(a: SeatEndAttestation, reference: String) -> Bool {
-  match a {
-    AttestedProvenEnded { reference: r, ruling: _, decided: _, evidence: _ } => (r as String) == reference
-    NotAttested => false
-  }
-}
-
-fn seat_end_attestation_wire(a: SeatEndAttestation) -> String {
-  match a {
-    AttestedProvenEnded { reference: r, ruling: ru, decided: d, evidence: e } =>
-      join(["ATTESTED proven-ended by ruling ", declaration_ref_display_key(ref: ru), " (", d, "; ", e, ") for ", r as String], "")
-    NotAttested => "not attested"
-  }
+fn proven_ended_row_wire(row: ProvenEndedSeatRelease) -> String {
+  join(["ATTESTED proven-ended by ruling ", declaration_ref_display_key(ref: row.ruling), " for ", row.reference as String], "")
 }
 
 // WHETHER A RECOVERY WRITE IS AUTHORIZED, AND WHICH WRITE, decided ONCE.
@@ -979,7 +958,7 @@ type RecoveryWriteAuthorization
   | RecoveryWriteDeclined { reason: String }
   | RecoveryWriteRefused { reason: String }
 
-fn recovery_write_authorization(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs, attestation: SeatEndAttestation) -> RecoveryWriteAuthorization {
+fn recovery_write_authorization(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs, releases: List<ProvenEndedSeatRelease>) -> RecoveryWriteAuthorization {
   match recovery_trigger(record: record, lifecycle: lifecycle, now: now) {
     RecoveryTooEarly { deadline: d, now: n } =>
       RecoveryWriteDeclined { reason: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
@@ -989,21 +968,22 @@ fn recovery_write_authorization(record: AttemptRecord, lifecycle: UnitLifecycle,
         UnitStillRunning { detail: _ } =>
           RecoveryWriteDeclined { reason: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
         _ =>
-          if seat_end_attestation_covers(a: attestation, reference: record.reference) {
-            RecoveryWriteTerminateAndRelease {
-              reason: join([
-                recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }),
-                "; ", seat_end_attestation_wire(a: attestation),
-              ], ""),
-            }
-          } else {
-            RecoveryWriteRefused {
-              reason: join([
-                recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }),
-                "; the unit's lifecycle was not read (", unit_lifecycle_wire(u: u),
-                "), so whether the attempt still holds memory is not established",
-              ], ""),
-            }
+          match proven_ended_row_for(releases: releases, reference: record.reference) {
+            Present { value: row } =>
+              RecoveryWriteTerminateAndRelease {
+                reason: join([
+                  recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }),
+                  "; ", proven_ended_row_wire(row: row),
+                ], ""),
+              }
+            Absent =>
+              RecoveryWriteRefused {
+                reason: join([
+                  recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }),
+                  "; the unit's lifecycle was not read (", unit_lifecycle_wire(u: u),
+                  "), so whether the attempt still holds memory is not established",
+                ], ""),
+              }
           }
       }
     RecoveryTerminalRecordMayRelease { state: st } =>
@@ -1019,22 +999,23 @@ fn recovery_write_authorization(record: AttemptRecord, lifecycle: UnitLifecycle,
               ], ""),
             }
           _ =>
-            if seat_end_attestation_covers(a: attestation, reference: record.reference) {
-              RecoveryWriteReleaseSettled {
-                state: st,
-                reason: join([
-                  recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }),
-                  "; ", seat_end_attestation_wire(a: attestation),
-                ], ""),
-              }
-            } else {
-              RecoveryWriteRefused {
-                reason: join([
-                  recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }),
-                  "; the unit's lifecycle is not proven ended (", unit_lifecycle_wire(u: lifecycle),
-                  "), so the seat is kept: a terminal record alone does not prove the unit stopped using memory",
-                ], ""),
-              }
+            match proven_ended_row_for(releases: releases, reference: record.reference) {
+              Present { value: row } =>
+                RecoveryWriteReleaseSettled {
+                  state: st,
+                  reason: join([
+                    recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }),
+                    "; ", proven_ended_row_wire(row: row),
+                  ], ""),
+                }
+              Absent =>
+                RecoveryWriteRefused {
+                  reason: join([
+                    recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }),
+                    "; the unit's lifecycle is not proven ended (", unit_lifecycle_wire(u: lifecycle),
+                    "), so the seat is kept: a terminal record alone does not prove the unit stopped using memory",
+                  ], ""),
+                }
             }
         }
       }
