@@ -44,6 +44,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, ln_symbolic_force_command, realpath_canonical_command,
+  mkdir_create_only_with_mode_command,
 }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -875,38 +876,25 @@ test fn the_operator_local_leaf_is_claimed_exclusively_and_a_same_tick_collision
 // (vii-b) A leaf claim refused for a cause with NO leaf in the way -- permission denied, the
 // exact failure this row's red control measured on srv1 -- is the distinct RunDirCreateRefused,
 // never the collision arm: the leaf's own existence probe, not the mkdir rc alone, carries the
-// distinction, so the operator is never told about a collision that did not happen.
+// distinction, so the operator is never told about a collision that did not happen. The parents
+// are created 555 (mode at creation, never world-visible first), so the leaf mkdir hits EACCES
+// with no leaf present. The run principal is never root on the lanes this witness executes on.
 test fn a_leaf_claim_refused_without_a_leaf_reports_create_refusal_not_collision() -> Bool {
   if !wipe_anchor_witness_root_wet() {
     false
   } else {
     let parents = anchor_witness_parents(run_id: "perm")
     let leaf = join([anchor_witness_parents(run_id: "perm"), "/1"], "")
-    match mkdir_parents_command(path: parents) {
+    match run_shell_commands(commands: [mkdir_create_only_with_mode_command(path: parents, octal_mode: "555")], transport: LocalExec) {
       ExitFailure { code: _ } => false
       ExitSuccess =>
-        match chmod_command(target: parents, mode: "555") {
-          ExitFailure { code: _ } => false
-          ExitSuccess =>
-            match claim_fleet_plan_run_dir_exclusive_wet(parents: parents, run_artifact_dir: leaf) {
-              RunDirCreateRefused { exit_code: refused_code, detail: refused_detail } => {
-                let _ = chmod_command(target: parents, mode: "755")
-                string_contains(s: refused_detail, pattern: "no leaf")
-                  && string_contains(s: fleet_plan_run_dir_claim_text(c: RunDirCreateRefused { run_artifact_dir: leaf, exit_code: refused_code, detail: refused_detail }), pattern: "RunArtifactDirCreateRefused")
-              }
-              RunDirLeafExists { run_artifact_dir: _, detail: _ } => {
-                let _ = chmod_command(target: parents, mode: "755")
-                false
-              }
-              RunDirClaimed { run_artifact_dir: _ } => {
-                let _ = chmod_command(target: parents, mode: "755")
-                false
-              }
-              RunDirParentsRefused { parents: _, detail: _ } => {
-                let _ = chmod_command(target: parents, mode: "755")
-                false
-              }
-            }
+        match claim_fleet_plan_run_dir_exclusive_wet(parents: parents, run_artifact_dir: leaf) {
+          RunDirCreateRefused { exit_code: refused_code, detail: refused_detail } =>
+            string_contains(s: refused_detail, pattern: "no leaf")
+              && string_contains(s: fleet_plan_run_dir_claim_text(c: RunDirCreateRefused { run_artifact_dir: leaf, exit_code: refused_code, detail: refused_detail }), pattern: "RunArtifactDirCreateRefused")
+          RunDirLeafExists { run_artifact_dir: _, detail: _ } => false
+          RunDirClaimed { run_artifact_dir: _ } => false
+          RunDirParentsRefused { parents: _, detail: _ } => false
         }
     }
   }
