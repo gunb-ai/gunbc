@@ -836,7 +836,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: unparameterized_alias_at_target_formal_probe,
       class: applied_generic_alias_at_formal_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectZeroDiagnostics,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "DeclaredTypeInhabitanceUnmodeled" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: v2_frontier_green_probe,
