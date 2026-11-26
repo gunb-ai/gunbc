@@ -1,27 +1,29 @@
 module test.claim.cardinality_optional_homonym_witness
 
 // ROADMAP NODE cardinality-optional-declaration: THE EXECUTED HOMONYM CONTROL.
-// WHY THIS FILE EXISTS: main's landed homonym ruling
-// (#v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_is_not_the_optional_instance,
-// #v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_stays_an_application,
-// #v2.test.claim.optional_sugar_declaration_bound::osd_optional_application_keeps_its_authored_occurrence) lives under
-// src/v2/test/claim, which the claim route cannot execute (location note below) -- so the
-// ruling that a locally authored `Optional` is NOT adopted had no executed witness anywhere.
+// WHY THIS FILE EXISTS: main's landed homonym ruling --
+// #v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_is_not_the_optional_instance,
+// #v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_stays_an_application and
+// #v2.test.claim.optional_sugar_declaration_bound::osd_optional_application_keeps_its_authored_occurrence
+// -- lives under src/v2/test/claim, which the claim route cannot execute (location note below). So
+// the ruling that a locally authored `Optional` is NOT adopted had no executed witness anywhere.
 // These legs are that witness.
 //
-// NON-ADOPTION, NOT REFUSAL: the landed ruling (#gunbc.design_ruling::optional_sugar_is_declaration_bound) is that a homonym is ACCEPTED and stays an application.
-// Nothing here demands a refusal; what it refuses to allow is adoption coming back.
+// NON-ADOPTION, NOT REFUSAL: the landed ruling
+// #gunbc.design_ruling::optional_sugar_is_declaration_bound is that a homonym is ACCEPTED and stays
+// an application. Nothing here demands a refusal; what it refuses to allow is adoption coming back.
 
 // LOCATION IS A FINDING, NOT A PREFERENCE: this witness lives under dag/test/claim/, never
-// src/v2/test/claim/. claim_route_universe() is TargetPattern::SubtreeTargets(["test","claim"])
+// src/v2/test/claim/. `claim_route_universe()` is TargetPattern::SubtreeTargets(["test","claim"])
 // (src/v1/stage0/src/target_invocation_host.rs, fn claim_route_universe -- a Rust host routine, not a
-// declaration, so it is named as prose and is not a marked reference) and the native universe is
-// asked FIRST,
-// so a `module v2.test.claim.*` target is answered by native, which refuses --source-root: rc 2,
-// no reading, ever. Main's landed homonym ruling (#v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_is_not_the_optional_instance,
-// #v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_stays_an_application,
-// #v2.test.claim.optional_sugar_declaration_bound::osd_optional_application_keeps_its_authored_occurrence) therefore has NO executed witness anywhere. These legs fix that; they are written to
-// be executable, and the three v2-prefixed legs stay PARSED TIER and are not upgraded.
+// declaration, so it is named as prose and is not a marked reference), and the native universe is
+// asked FIRST. So a `module v2.test.claim.*` target is answered by native, which refuses
+// --source-root: rc 2, no reading, ever. That is why main's landed homonym ruling --
+// #v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_is_not_the_optional_instance,
+// #v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_stays_an_application and
+// #v2.test.claim.optional_sugar_declaration_bound::osd_optional_application_keeps_its_authored_occurrence
+// -- has NO executed witness anywhere. These legs fix that; they are written to be executable, and
+// the three v2-prefixed legs stay PARSED TIER and are not upgraded.
 //
 // THE PAIR, per the lane manager: a leg that goes red the day adoption returns, and the named
 // negative that stops it being satisfied vacuously by a reading in which nothing is ever the
@@ -102,7 +104,7 @@ fn ch_conforming_homonym(body: String) -> Outcome<ResolvedTree> {
 }
 
 // THE PREDICATE GOES THROUGH THE ONE RECOGNIZER, not a hand-rolled identity compare.
-// #v2.std.qualified_name::declaration_denotation_is_optional (and its comment): // "THE ONE RECOGNIZER of 'this denotation is the std.optional
+// #v2.std.qualified_name::declaration_denotation_is_optional (and its comment): "THE ONE RECOGNIZER of 'this denotation is the std.optional
 // declaration': optional_layers, inhabitance and resolve all ask here, so no consumer compares the
 // identity itself." Comparing the identity here instead would put this control outside the route
 // production asks, and a break inside the recognizer would not reach it.
