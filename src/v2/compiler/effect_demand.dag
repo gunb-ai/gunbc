@@ -1700,20 +1700,20 @@ fn filesystem_effect_emitted_closure_census(
 // wall's own refusal stands for it regardless of the join. The join goes BOTH ways: a contract site the
 // census did not locate means the census is incomplete over its named population, and that refuses too.
 // This is a typed carrier, not a comment (source_annotations: "a fact that must survive belongs in a
-// typed carrier"). SCOPE OF THE EXERCISE (review 98447 re-ask): the join PREDICATES refuse
-// in production wherever the census reaches are fed to them -- that real-reach observation is the two
-// scratch probe trees (the census run itself refuses on a planted extra reach and on a removed member).
-// The WITNESS carries TWO faces, stated separately because they prove different things (review 98720
+// typed carrier"). SCOPE OF THE EXERCISE (review 98447 re-ask, review 98720 finding 1, review 98743
 // finding 1): (a) the join PREDICATE legs run on derived_row fixtures, so a corpus rename of a
 // contracted declaration drifts contract and fixture together and those legs cannot fire -- they exist
-// to prove the refusals are reachable at all; (b) the GREEN leg census_reaches_exactly_four_declared_sites
-// feeds filesystem_effect_reaches_from_phase1_rows the REAL phase-1 rows of the real closure, derived at
-// run time through the resolver fold over the corpus (corpus_rows_for_witness: tokenize_prepared ->
-// parse_module -> resolve_module_phase1), not fixture rows -- so a rename that moves a contracted
-// declaration off the census fails that leg. The real-reach REFUSAL observation cannot be planted into
-// the tree a claim runs on and is owed by the two scratch probe trees run outside this witness (the
-// census run itself refuses on a planted extra reach and on a removed member). What remains deferred to
-// the handler-binding row below: the emit-side binding itself, alongside the trigger's resolve leg.
+// to prove the refusals are reachable at all; (b) the REAL-PRODUCER leg
+// filesystem_effect_census_over_real_resolver_rows_matches_the_contract (test.claim.filesystem_effect_reach_wall)
+// feeds filesystem_effect_reaches_from_phase1_rows the REAL phase-1 rows -- ClosureDeclarations.rows,
+// the resolver's own fold output from closure_declarations_demand over native_test_context_from_ingest
+// fed by native_lane_census_ingest, the same ingest the compiler's census lane runs -- so a rename that
+// moves a contracted declaration off the census fails that leg IN A CLAIM. It asserts both ways against
+// the typed contract by identity, with a void guard (an empty direct-reach population refuses). The
+// real-reach PLANT refusals (extra reach, removed member) cannot be planted into the tree a claim runs
+// on and are owed by the two scratch probe trees run outside this witness on the same route. What
+// remains deferred to the handler-binding row below: the emit-side binding itself, alongside the
+// trigger's resolve leg.
 //
 // INSTRUMENT FACE (roster discipline, same fence as the parse-population and emission
 // rosters): GRAIN -- module_path # enclosing_declaration # site_occurrence, one entry per contracted
