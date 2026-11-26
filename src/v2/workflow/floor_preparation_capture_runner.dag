@@ -361,6 +361,15 @@ fn floor_preparation_lines(text: String) -> List<String> {
     if line == "" { acc } else { list_push(xs: acc, item: line) })
 }
 
+// THE SPLICE PRESERVES BLANK LINES. lines() above drops them, which is right for verdict rows
+// and wrong for rewriting a source file: an earlier splice routed the whole file through
+// lines() and deleted every blank line from the committed artifact -- it still parsed, but a
+// splice that rewrites the untouched 90% of a module is not a splice, it is a reformat wearing
+// a splice's clothes.
+fn floor_preparation_lines_preserving(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
 fn floor_preparation_first_token(line: String) -> String {
   match split(s: line, delimiter: " ").first() {
     Present { value: v } => v
@@ -1032,19 +1041,29 @@ type FloorPreparationSpliceState {
 }
 
 fn floor_preparation_spliced(original: String, block: List<String>) -> String? {
-  let folded = fold(floor_preparation_lines(text: original),
+  // THREE regions, and the middle one is DISCARDED, not preserved. An earlier version pushed
+  // the inside lines into `after`, which re-emitted the old generated text after the END marker:
+  // capture-run9g's spliced split.dag carried the new block AND the skeleton fns, and every
+  // witness in the claims leg came back FAIL with "duplicate declaration 'floor_preparation_capture'"
+  // at the first duplicate. A splice REPLACES: before = everything up to BEGIN, the generated
+  // region is dropped on the floor, after = everything following END.
+  let folded = fold(floor_preparation_lines_preserving(text: original),
     init: FloorPreparationSpliceState { inside: false, closed: false, before: [], after: [] },
     f: (acc, line) =>
-      if !acc.inside && floor_preparation_contains(haystack: line, needle: floor_preparation_block_begin) {
+      if !acc.inside && !acc.closed && floor_preparation_contains(haystack: line, needle: floor_preparation_block_begin) {
         FloorPreparationSpliceState { inside: true, closed: false, before: acc.before, after: acc.after }
       } else {
         if acc.inside && !acc.closed && floor_preparation_contains(haystack: line, needle: floor_preparation_block_end) {
           FloorPreparationSpliceState { inside: false, closed: true, before: acc.before, after: acc.after }
         } else {
-          if !acc.inside {
-            FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: list_push(xs: acc.before, item: line), after: acc.after }
-          } else {
+          if acc.closed {
             FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: acc.before, after: list_push(xs: acc.after, item: line) }
+          } else {
+            if !acc.inside {
+              FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: list_push(xs: acc.before, item: line), after: acc.after }
+            } else {
+              acc
+            }
           }
         }
       })
