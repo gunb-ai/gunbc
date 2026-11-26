@@ -326,11 +326,14 @@ type RuledBuildPoolReservation {
   host: HostIdentity
   ruling: DeclarationRef
   reservation: ByteSize
-  // The seat count this ruling declares for its pool. RULLED, never derived: the
-  // fleet default (compute_pool_slots = 2) would split a ruling's pool by a number
-  // the ruling never chose -- ken's 22 GiB pool in two is 11 GiB seats, under its
-  // own measured 18.2 GiB build peak, so every build would OOM or be refused.
-  seats: Nat
+  // The seat count THE RULING ITSELF declared for its pool -- Present only when the
+  // cited ruling chose one. Absent means the ruling sized the POOL and said nothing
+  // about seats: the fleet divisor (gunbc.compute.host_capacity::compute_pool_slots,
+  // applied by capacity_seat_for_reservation) divides it, exactly as before this table
+  // existed. A fleet number filed under a ruling that never chose it is a second
+  // authority (gunbc.design_argument::single_authority) and an unattributed default
+  // (gunbc.design_argument::declared_intent); review 98983.
+  seats: Nat?
 }
 
 data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
@@ -342,9 +345,13 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // ServingHostReservation. The quiescent read behind the release is
     // gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read (fleet-converge run 45321352046).
     reservation: byte_size(206158430208),
-    // Fleet-standard two-seat width; the seats-butch-fits question (8 seats of the
-    // per-build ceiling) is its own plan item, not settled here.
-    seats: 2,
+    // The operator's ruling released the 192 GiB into the pool and said NOTHING about
+    // seat count, so none is attributed to it: Absent keeps butch on the fleet divisor
+    // (compute_pool_slots), byte-identical to the seat butch had before this table. The
+    // seats-butch-fits question (192 GiB as seats of the per-build ceiling admits ~8
+    // builds where two 96 GiB seats admit 2) is its own plan item; when that ruling
+    // lands, it declares the count and this field carries it.
+    seats: Absent,
   },
   RuledBuildPoolReservation {
     host: operator_host_e2d4b7,
@@ -360,7 +367,7 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // gunbc.compute.roadmap_dashboard_instance::compute_build_memory_ceiling_default. If the fleet
     // ceiling moves, ken's ruled pool moves with it; a literal here would be a second source.
     reservation: compute_build_memory_ceiling_default,
-    seats: 1,
+    seats: Present { value: 1 },
   },
 ]
 

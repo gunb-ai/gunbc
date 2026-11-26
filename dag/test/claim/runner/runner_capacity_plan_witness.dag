@@ -333,10 +333,11 @@ test fn ken_ruled_pool_is_one_ceiling_seat_and_the_carve_never_refuses_it() -> B
         && (r.ruling.decl_name as String) == "ken_build_pool_one_seat_default_approved_2026_11_26"
         && byte_size_count(b: r.reservation) == byte_size_count(b: pool)
         && byte_size_count(b: r.reservation) != byte_size_count(b: pool) * 2
-        && r.seats == 1
+        && match r.seats { Present { value: n } => n == 1 Absent => false }
     Absent => false
   }
-    && all(ruled_build_pool_reservations, r => r.seats > 0)
+    && all(ruled_build_pool_reservations, r =>
+      match r.seats { Present { value: n } => n > 0 Absent => true })
     && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 1)) == byte_size_count(b: pool)
     && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 2)) < byte_size_count(b: pool)
     // A zero-seat row is a DEAD POOL, not an invented seat (review 98975 / fail_closed): the seat
@@ -375,9 +376,14 @@ test fn the_ruled_rostered_seat_divides_by_the_ruling_and_the_slice_is_the_pool(
   host_ci_width_is_ruled_zero(host: operator_host_srv14)
     && byte_size_count(b: host_capacity_build_seat(host: operator_host_srv14)) == 103079215104
     && byte_size_count(b: user_work_slice_memory_max_for_host(host: operator_host_srv14)) == 206158430208
+    // Butch's seat count is the FLEET's, not the ruling's: the retirement ruling freed the
+    // 192 GiB and never chose a seat count, so the row carries Absent and butch divides by
+    // compute_pool_slots exactly as before this table (the 103079215104 seat above IS that
+    // path). Attributing the fleet's 2 to the operator's ruling would be a second authority
+    // (review 98983); the seats-butch-fits ruling, when it lands, will carry a Present count.
     && match build_pool_ruled_seat_count_for_host(host: operator_host_srv14) {
-        Present { value: n } => n == 2
-        Absent => false
+        Present { value: _ } => false
+        Absent => true
       }
     && host_capacity_pool_slots_for_home(
          home: host_capacity_ledger_home(
