@@ -1250,15 +1250,15 @@ fn floor_preparation_capture_run() -> String {
       if starts_with(s: line, prefix: "FAIL ") { acc + 1 } else { acc })
     let external_unobserved = fold(kept_graded, init: 0, f: (acc, line) =>
       if starts_with(s: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
-    let retained_header = concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
-      "# gunbc-floor-retained tree_sha=", tree_sha),
-      " claims_own_roster_clean="), if own_roster_clean { "true" } else { "false" }),
-      " survivors="), to_string(length(xs: survivors))),
-      " own_pass="), to_string(own_pass_a)),
-      " own_fail="), to_string(own_fail_a)),
-      " external_pass="), to_string(external_pass)),
-      concat(concat(" external_fail=", to_string(external_fail)),
-        concat(" external_unobserved=", to_string(external_unobserved))))
+    let clean_word = if own_roster_clean { "true" } else { "false" }
+    let hdr1 = concat("# gunbc-floor-retained tree_sha=", tree_sha)
+    let hdr2 = concat(hdr1, concat(" claims_own_roster_clean=", clean_word))
+    let hdr3 = concat(hdr2, concat(" survivors=", to_string(length(xs: survivors))))
+    let hdr4 = concat(hdr3, concat(" own_pass=", to_string(own_pass_a)))
+    let hdr5 = concat(hdr4, concat(" own_fail=", to_string(own_fail_a)))
+    let hdr6 = concat(hdr5, concat(" external_pass=", to_string(external_pass)))
+    let hdr7 = concat(hdr6, concat(" external_fail=", to_string(external_fail)))
+    let retained_header = concat(hdr7, concat(" external_unobserved=", to_string(external_unobserved)))
     // UNCONDITIONAL write (no clean-bit), stamped, BEFORE the consumer leg reads the file.
     let retained_write = (Filesystem.Write(
       path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
