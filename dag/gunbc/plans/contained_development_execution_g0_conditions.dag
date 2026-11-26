@@ -15,9 +15,12 @@ import std.types { NonEmptyStr }
 // match over G0ConditionKey (fn g0_condition) and the state group is DERIVED from the
 // key by a second exhaustive match (fn g0_group_of). The compiler rules out a missing,
 // duplicated or wrongly-grouped condition row; completeness is the enum itself. The
-// count is the enum size, read off data g0_all_condition_keys (a List<G0ConditionKey>:
-// membership type-checked, so a fabricated key does not parse; a dropped key turns the
-// lifting join and the witness red, never silently green).
+// count is read off data g0_all_condition_keys (a List<G0ConditionKey>: membership is
+// type-checked, so a fabricated key does not parse). List-vs-enum drift (a dropped key)
+// is caught RED by the executed witness test
+// gunbc.test.claim.roadmap.g0_criteria_witness::g0_every_condition_key_listed_once --
+// its per-variant checks are exhaustive match arms, so ANY dropped key goes red
+// (review 98951; gunbc.design_argument::guarantee_ladder: state the rung truthfully).
 
 // The five states G0 headline names (roadmap_dispatch_actuator::g0_contained_development_execution).
 type G0StateGroup = OperatorHome | Credentials | PrivilegeGroups | ControlPlaneStores | SharedState
@@ -49,10 +52,14 @@ data g0_state_groups: List<G0StateGroup> = [
   SharedState,
 ]
 
-// Every condition key, exactly once. A duplicate makes the lifting join red (one proof
-// cannot appear exactly once twice); a dropped key leaves a row the conjunction and the
-// witness selection guard go red over; the enum itself is the authority - the exhaustive
-// matches below refuse to typecheck if it changes (review 98833 F1).
+// Every condition key, exactly once. The TRUE ladder (review 98951):
+//   - ROWS: fn g0_condition / fn g0_group_of are exhaustive matches -- a missing,
+//     duplicated or wrongly-grouped row does not typecheck (compiler-forced).
+//   - LIST MEMBERSHIP: a dropped key is caught RED for ANY key by the executed witness
+//     test g0_every_condition_key_listed_once (per-variant exhaustive-match membership,
+//     review 98951), demonstrated by the executed drop-key discriminant in the PR
+//     evidence logs; a duplicate makes the lifting join red (one proof cannot appear
+//     exactly once twice).
 data g0_all_condition_keys: List<G0ConditionKey> = [
   ProtectHomeReadonlyRendered,
   OperatorHomeNotInHandedReadWritePaths,
