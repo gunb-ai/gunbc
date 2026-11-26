@@ -60,10 +60,26 @@ fn g0_condition_count() -> Int {
   count(g0_done_when_conditions)
 }
 
-// The lifting rule as a conjunction: it holds exactly when one proof is supplied per
-// condition AND every proof is true. The arity is the computed count, never a literal.
-fn g0_lift_conjunction_holds(proofs: List<Bool>) -> Bool {
-  count(proofs) == g0_condition_count() && all(proofs, p => p)
+// One proof bound to the condition row it proves, joined on the typed key
+// (review 98801 FINDING 2). A bare Bool cannot say WHICH condition it proves.
+type G0ConditionProof = G0ConditionProof { key: G0ConditionKey, proof: Bool }
+
+// The lifting rule as a conjunction — an IDENTITY JOIN, not a count equality
+// (review 98801 FINDING 2, gunbc.design_argument::fail_closed: "Completeness is an
+// identity join, not a count equality"). A proof carries the G0ConditionKey of the row
+// it proves; the conjunction holds exactly when EVERY condition row is proved EXACTLY
+// ONCE (its key appears exactly once among the supplied proofs) and every supplied
+// proof is true. Fifteen copies of one proof, a mislabelled or duplicated key, a
+// dropped row, or an empty list all fail; the required count is COMPUTED via fn
+// g0_condition_count, never written down.
+fn g0_lift_conjunction_holds(proofs: List<G0ConditionProof>) -> Bool {
+  count(proofs) == g0_condition_count()
+    && all(g0_done_when_conditions, c => g0_condition_proved_once(proofs, c.key))
+    && all(proofs, pf => pf.proof)
+}
+
+fn g0_condition_proved_once(proofs: List<G0ConditionProof>, k: G0ConditionKey) -> Bool {
+  count(filter(proofs, pf => pf.key == k)) == 1
 }
 
 // The rows carrying one typed key (selection by VARIANT, review 98735 F-KEY).
