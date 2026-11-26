@@ -3,7 +3,7 @@ module gunbc.instruments.emit_accumulator_subjects
 import std.types { Bool, Int, List }
 import std.realization_measurement { AllocationCounter }
 import gunbc.allocation_observation_render { AllocationCase }
-import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE ACCUMULATOR SUBJECTS of the building-block battery (roadmap row
@@ -190,7 +190,7 @@ fn acc_window(subject: AccSubject, src: List<Int>) -> BatteryWindow uses counter
 // reading plus one discriminating pair per block. No red-control row appears here. The known arm of the
 // calibration pair builds from the specimen input, never a closed term: a literal with no input to
 // allocate from measures nothing, which is the specimen being free rather than the meter being blind.
-fn acc_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: acc_cardinality)
   let empty = acc_window(subject: AccMeterEmpty, src: src)
   let empty_again = acc_window(subject: AccMeterEmpty, src: src)
@@ -205,7 +205,7 @@ fn acc_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounte
   let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src)
   let escaping = acc_window(subject: AccEscapingClosure, src: src)
   let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
-  concat(concat(concat([availability_case(prefix: "accumulator")],
+  concat(concat(concat([plain_row(c: availability_case(prefix: "accumulator"))],
       [subject_case(prefix: "accumulator", block_id: "meter_empty", own: empty), subject_case(prefix: "accumulator", block_id: "meter_known_allocation", own: known)]),
       calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known)),
     concat(concat(concat(
@@ -218,7 +218,7 @@ fn acc_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounte
 }
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way.
-fn acc_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn acc_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: acc_cardinality)
   let fold_step = acc_window(subject: AccFoldStep, src: src)
   let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src)
@@ -237,4 +237,17 @@ fn acc_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
     violation_contract_holds_case(prefix: "accumulator", block_id: "local_closure", viol: closure_retained, contract_arm: closure),
     violation_contract_holds_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)
   ]
+}
+
+// THE ACCEPTED POSITIVES THE RED ENTRY CARRIES. `gunbc.design_argument::guarantee_ladder` asks a reported
+// rung to rest on a red refused on the real acceptance path PLUS an accepted positive control, and the red
+// entry had only the red rows: an exit 1 there could have meant a caught violation or a sampler that stopped
+// reading. So the red entry meters its own empty floor and its own known copying arm, on windows of its own
+// (a shared window would make the two entries one measurement, and neither could then contradict the other).
+fn acc_control_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let empty = acc_window(subject: AccMeterEmpty, src: src)
+  let empty_again = acc_window(subject: AccMeterEmpty, src: src)
+  let known = acc_window(subject: AccMeterKnownAllocation, src: src)
+  concat([plain_row(c: availability_case(prefix: "accumulator"))], calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known))
 }

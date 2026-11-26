@@ -3,7 +3,7 @@ module gunbc.instruments.emit_control_flow_subjects
 import std.types { Bool, Int, List }
 import std.realization_measurement { AllocationCounter }
 import gunbc.allocation_observation_render { AllocationCase }
-import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CONTROL-FLOW SUBJECTS of the building-block battery (roadmap row
@@ -127,7 +127,7 @@ fn cf_window(subject: CfSubject, src: List<Int>) -> BatteryWindow uses counter: 
 // THE GREEN MEASUREMENTS: availability, the calibration pair, and one reading plus one discriminating
 // pair per block. No red-control row appears here -- that is what makes the exit code of the green entry
 // informative, and it is the reason the red entry exists as its own target.
-fn cf_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn cf_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: cf_cardinality)
   let empty = cf_window(subject: CfMeterEmpty, src: src)
   let empty_again = cf_window(subject: CfMeterEmpty, src: src)
@@ -142,7 +142,7 @@ fn cf_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter
   let match_copied = cf_window(subject: CfMatchOwnedCopiedBeforeMatch, src: src)
   let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
   let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
-  concat(concat([availability_case(prefix: "control_flow")], calibration_rows(prefix: "control_flow", empty: empty, empty_again: empty_again, known: known)), concat(concat(concat(
+  concat(concat([plain_row(c: availability_case(prefix: "control_flow"))], calibration_rows(prefix: "control_flow", empty: empty, empty_again: empty_again, known: known)), concat(concat(concat(
       [subject_case(prefix: "control_flow", block_id: "transform", own: transform), violation_case(prefix: "control_flow", block_id: "transform", viol: transform_rebuilt, contract_arm: transform)],
       [subject_case(prefix: "control_flow", block_id: "branch", own: branch), violation_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch)]),
       concat(
@@ -153,7 +153,7 @@ fn cf_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Only these rows appear
 // in the red entry, so its non-zero exit names the violating forms and nothing else.
-fn cf_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn cf_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: cf_cardinality)
   let transform = cf_window(subject: CfTransformApplied, src: src)
   let transform_rebuilt = cf_window(subject: CfTransformRebuiltPerStep, src: src)
@@ -169,4 +169,17 @@ fn cf_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
     violation_contract_holds_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind),
     violation_contract_holds_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)
   ]
+}
+
+// THE ACCEPTED POSITIVES THE RED ENTRY CARRIES. `gunbc.design_argument::guarantee_ladder` asks a reported
+// rung to rest on a red refused on the real acceptance path PLUS an accepted positive control, and the red
+// entry had only the red rows: an exit 1 there could have meant a caught violation or a sampler that stopped
+// reading. So the red entry meters its own empty floor and its own known copying arm, on windows of its own
+// (a shared window would make the two entries one measurement, and neither could then contradict the other).
+fn cf_control_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: cf_cardinality)
+  let empty = cf_window(subject: CfMeterEmpty, src: src)
+  let empty_again = cf_window(subject: CfMeterEmpty, src: src)
+  let known = cf_window(subject: CfMeterKnownAllocation, src: src)
+  concat([plain_row(c: availability_case(prefix: "control_flow"))], calibration_rows(prefix: "control_flow", empty: empty, empty_again: empty_again, known: known))
 }

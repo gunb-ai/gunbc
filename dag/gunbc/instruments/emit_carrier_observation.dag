@@ -5,7 +5,7 @@ import std.types { NonEmptyStr }
 import std.realization_measurement { AllocationCounter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
 import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers }
-import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject, plain_row, dead_meter_classification_row }
 import gunbc.instruments.emit_carrier_subjects { car_measurement_rows }
 
 // THE GREEN ENTRY of the carrier family: sequence build, element read and sequential traversal under
@@ -49,5 +49,5 @@ fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
     execution_row(prefix: "carrier", axis: "v2", block_id: "family", e: v2_evidence()),
     execution_mechanism_refuses_unproven_claims(prefix: "carrier")
   ]
-  battery_report(concat(measured, concat(audit, qualified)))
+  battery_report(concat(measured, concat(map(audit, c => plain_row(c: c)), concat(map(qualified, c => plain_row(c: c)), [plain_row(c: dead_meter_classification_row(prefix: "carrier"))]))))
 }

@@ -2,26 +2,31 @@ module gunbc.instruments.emit_control_flow_violation
 
 import std.realization_measurement { AllocationCounter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
-import gunbc.instruments.allocation_battery { battery_report }
-import gunbc.instruments.emit_control_flow_subjects { cf_red_rows }
+import gunbc.instruments.allocation_battery { battery_report, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_control_flow_subjects { cf_red_rows, cf_control_rows }
 
 // THE RED ENTRY of the control-flow family. It runs the SAME subject bodies, through the SAME meter,
 // judged the opposite way: the violating arm asked whether it sits WITHIN its contract arm, which is
-// false by construction. Four rows, named, and nothing else -- so this entry's non-zero exit is the
-// instrument's own red control rather than a side effect of carrying a row that was designed to fail.
+// false by construction. Four rows, named, and they are not alone: the family's accepted positives ride
+// beside them (availability, the empty floor read twice, a known copying arm above it) together with the
+// planted dead-meter row, so an exit 1 is the instrument's own red control -- not a side effect of a row
+// designed to fail, and not a sampler that stopped reading, which is what the answer 2 is for.
 //
 // It is a target of its own, not a flag on the green entry, because the two entries must be able to exit
 // differently: `emit_control_flow_violation_label` in gunbc.instrument_targets with
 // `emit_control_flow_violation_binding` in gunbc.instrument_targets. A single entry holding both would exit
 // non-zero whatever the meter did, and an exit code that cannot vary measures nothing.
 //
-// The rows come from `cf_red_rows` in gunbc.instruments.emit_control_flow_subjects, the same windows the
-// green entry discriminates on -- same path, opposite judgement, which is what the row's red_control
-// asks for. If this entry ever exits 0, the meter has stopped discriminating and the family's green
-// rows are readings of a broken instrument.
+// The red rows come from `cf_red_rows` in gunbc.instruments.emit_control_flow_subjects and run the same
+// subject bodies the green entry discriminates on -- same path, opposite judgement, which is what the row's
+// red_control asks for; `cf_control_rows` meters the positives on windows of its own, so neither entry can
+// make the other's floor look alive. If this entry ever exits 0, the meter has stopped discriminating and
+// the family's green rows are readings of a broken instrument; if it exits 2, the meter read nothing at all,
+// which is not a judgement and is the answer
+// `gunbc.design_ruling::instrument_is_a_row_not_a_flag` requires for a dead observation.
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
-  battery_report(cf_red_rows())
+  battery_report(concat(cf_red_rows(), concat(cf_control_rows(), [plain_row(c: dead_meter_classification_row(prefix: "control_flow"))])))
 }

@@ -5,7 +5,7 @@ import std.realization_measurement { AllocationCounter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
 import gunbc.emit_copy_qualification { StructuralInapplicability, PatternRequiresBranchShape, PatternRequiresLoopShape }
 import gunbc.emit_building_block_contracts { BuildingBlockFamily, ControlFlow }
-import gunbc.instruments.allocation_battery { AllocationCase, BatteryWindow, battery_report, audit_rows, refusal_not_hit_row, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryWindow, battery_report, audit_rows, refusal_not_hit_row, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject, plain_row, dead_meter_classification_row }
 import gunbc.instruments.emit_control_flow_subjects { cf_measurement_rows }
 
 // THE GREEN ENTRY of the control-flow family: every row here is expected to hold, so its exit code means
@@ -58,5 +58,5 @@ fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
     execution_row(prefix: "control_flow", axis: "v2", block_id: "family", e: v2_evidence()),
     execution_mechanism_refuses_unproven_claims(prefix: "control_flow")
   ]
-  battery_report(concat(concat(measured, audit), concat(refusals, qualified)))
+  battery_report(concat(measured, concat(map(audit, c => plain_row(c: c)), concat(map(qualified, c => plain_row(c: c)), concat(map(refusals, c => plain_row(c: c)), [plain_row(c: dead_meter_classification_row(prefix: "control_flow"))])))))
 }

@@ -3,7 +3,7 @@ module gunbc.instruments.emit_value_shape_subjects
 import std.types { Bool, Int, List }
 import std.realization_measurement { AllocationCounter }
 import gunbc.allocation_observation_render { AllocationCase }
-import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE VALUE-SHAPE SUBJECTS of the building-block battery (roadmap row
@@ -115,7 +115,7 @@ fn bb_window(subject: BbSubject, src: List<Int>) -> BatteryWindow uses counter: 
 
 // THE GREEN MEASUREMENTS: availability, the calibration pair, and one reading plus one discriminating
 // pair per block. No red-control row appears here.
-fn bb_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn bb_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: specimen_cardinality)
   let empty = bb_window(subject: MeterEmpty, src: src)
   let empty_again = bb_window(subject: MeterEmpty, src: src)
@@ -130,7 +130,7 @@ fn bb_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter
   let generic_materialized = bb_window(subject: GenericPayloadMaterializedPerInstantiation, src: src)
   let generic_selected = bb_window(subject: GenericPayloadSelected, src: src)
   let generic_copied = bb_window(subject: GenericPayloadCopiedAtBoundary, src: src)
-  concat(concat([availability_case(prefix: "value_shape")], calibration_rows(prefix: "value_shape", empty: empty, empty_again: empty_again, known: known)),
+  concat(concat([plain_row(c: availability_case(prefix: "value_shape"))], calibration_rows(prefix: "value_shape", empty: empty, empty_again: empty_again, known: known)),
     concat(concat(concat(
       [subject_case(prefix: "value_shape", block_id: "value_scalar", own: scalar_read), violation_case(prefix: "value_shape", block_id: "value_scalar", viol: scalar_retain, contract_arm: scalar_read)],
       [subject_case(prefix: "value_shape", block_id: "value_record", own: field_read), violation_case(prefix: "value_shape", block_id: "value_record", viol: rebuilt, contract_arm: field_read)]),
@@ -144,7 +144,7 @@ fn bb_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter
 // violating variant appears, including the generic instance over a scalar, which the earlier single-entry
 // battery left out -- one specimen whose violation was never shown red is one specimen whose contract has
 // not been tested.
-fn bb_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn bb_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: specimen_cardinality)
   let scalar_read = bb_window(subject: ScalarRead, src: src)
   let scalar_retain = bb_window(subject: ScalarRetainAddedToObservation, src: src)
@@ -163,4 +163,17 @@ fn bb_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
     violation_contract_holds_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", viol: generic_materialized, contract_arm: generic_scalar),
     violation_contract_holds_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", viol: generic_copied, contract_arm: generic_selected)
   ]
+}
+
+// THE ACCEPTED POSITIVES THE RED ENTRY CARRIES. `gunbc.design_argument::guarantee_ladder` asks a reported
+// rung to rest on a red refused on the real acceptance path PLUS an accepted positive control, and the red
+// entry had only the red rows: an exit 1 there could have meant a caught violation or a sampler that stopped
+// reading. So the red entry meters its own empty floor and its own known copying arm, on windows of its own
+// (a shared window would make the two entries one measurement, and neither could then contradict the other).
+fn bb_control_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: specimen_cardinality)
+  let empty = bb_window(subject: MeterEmpty, src: src)
+  let empty_again = bb_window(subject: MeterEmpty, src: src)
+  let known = bb_window(subject: MeterKnownAllocation, src: src)
+  concat([plain_row(c: availability_case(prefix: "value_shape"))], calibration_rows(prefix: "value_shape", empty: empty, empty_again: empty_again, known: known))
 }

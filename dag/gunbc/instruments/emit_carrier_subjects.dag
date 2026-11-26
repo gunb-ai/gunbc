@@ -5,7 +5,7 @@ import std.optional { Optional, Present, Absent }
 import std.realization_measurement { AllocationCounter }
 import gunbc.allocation_observation_render { AllocationCase, operations_above }
 import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_is_applicable }
-import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CARRIER SUBJECTS of the building-block battery (roadmap row
@@ -279,7 +279,7 @@ fn block_is_applicable(block_id: String) -> Bool {
 
 // THE GREEN MEASUREMENTS: availability, the meter's own readings, the calibration pair, one reading and
 // one discriminating pair per block, and the finding row. No red-control row appears here.
-fn car_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn car_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: car_cardinality)
   let empty = car_window(subject: CarMeterEmpty, src: src)
   let empty_again = car_window(subject: CarMeterEmpty, src: src)
@@ -301,7 +301,7 @@ fn car_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounte
   let index_snapshot = car_window(subject: CarIndexSnapshot, src: src)
   let index_snapshot_copied = car_window(subject: CarIndexSnapshotCopiesWholeIndex, src: src)
   concat(
-      [availability_case(prefix: "carrier")],
+      [plain_row(c: availability_case(prefix: "carrier"))],
       concat(
       [subject_case(prefix: "carrier", block_id: "meter_empty", own: empty), subject_case(prefix: "carrier", block_id: "meter_known_allocation", own: known)],
       concat(
@@ -327,7 +327,7 @@ fn car_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounte
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Every block's violating
 // variant appears, so every contract in the family has been shown red.
-fn car_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+fn car_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let src = spec_build(n: car_cardinality)
   let seq_build = car_window(subject: CarSequenceBuild, src: src)
   let seq_build_prefixes = car_window(subject: CarSequenceBuildRetainsPrefixes, src: src)
@@ -355,4 +355,17 @@ fn car_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
     violation_contract_holds_case(prefix: "carrier", block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal),
     violation_contract_holds_case(prefix: "carrier", block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)
   ]
+}
+
+// THE ACCEPTED POSITIVES THE RED ENTRY CARRIES. `gunbc.design_argument::guarantee_ladder` asks a reported
+// rung to rest on a red refused on the real acceptance path PLUS an accepted positive control, and the red
+// entry had only the red rows: an exit 1 there could have meant a caught violation or a sampler that stopped
+// reading. So the red entry meters its own empty floor and its own known copying arm, on windows of its own
+// (a shared window would make the two entries one measurement, and neither could then contradict the other).
+fn car_control_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: car_cardinality)
+  let empty = car_window(subject: CarMeterEmpty, src: src)
+  let empty_again = car_window(subject: CarMeterEmpty, src: src)
+  let known = car_window(subject: CarMeterKnownAllocation, src: src)
+  concat([plain_row(c: availability_case(prefix: "carrier"))], calibration_rows(prefix: "carrier", empty: empty, empty_again: empty_again, known: known))
 }
