@@ -188,7 +188,7 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // of the two -- pinning the faster host would have loosened every derived ceiling by a third.
 data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: "test.claim.floor_eval_step_calibration_specimen.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
-  instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
+  instrument: "gunbc test //test/claim/floor_eval_step_calibration_specimen:calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
   host: "RATE SAMPLE, taken at specimen depth 10000 (110,011 eval_steps): authoring container, linux aarch64, three executions at cpu=97ms, 110ms, 110ms; self-hosted CI runner, linux amd64, under the required floor's own fold, cpu=138ms then 152ms. All five returned an IDENTICAL eval_steps of 110011. The pinned rate is 110011/152 floored, the slowest reading from the machine that runs the floor. CURRENT SPECIMEN is depth 5000 (55,011 eval_steps, authoring host 56ms/57ms), reduced so it sits under the new-witness ceiling it helps derive" as NonEmptyStr,
   readings: 5,
   specimen_eval_steps: eval_step_count(count: 55011),

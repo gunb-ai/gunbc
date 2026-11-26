@@ -501,6 +501,12 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
+    // The `gunbc test` BATCH: several operands, one mode, one corpus, one invocation. Admitted beside the
+    // other three because it is the same tool and one operation of it -- the claim route's own verb -- and
+    // the caller is the module that owns that verb's argv shape, not a hub. It exists so the two legacy
+    // claim entrypoints (`claim_batch`, `gunbc run --claim-run`) can be deleted without each of their
+    // call sites taking back its own argv spelling (gunbc.plans.claim_execution_consolidation).
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_batch_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),

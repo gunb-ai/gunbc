@@ -20,6 +20,8 @@ on:
         description: Judge gunb-ai/gunbc's default branch with the calling repository's dag/ copied into it
         required: false
         type: boolean
+  schedule:
+    - cron: 37 3 * * *
 permissions:
   contents: read
 concurrency:
@@ -32,8 +34,8 @@ env:
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 60
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 90
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     permissions:
       contents: read
     steps:
@@ -1033,12 +1035,263 @@ jobs:
         env:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
         if: github.event_name == 'pull_request'
+      - name: Why this lane is red, and what would be a real finding
+        run: |-
+          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `v2-bootstrap`.'
+          printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
+          printf '%s\n' 'This step ran inside the fleet slot'\''s memory envelope (gunbc.runner.runner_slot_desired: MemoryMax 26843545600 bytes, no swap once converged), which gunbc test required (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot) and receipted at exit.'
+          printf '%s\n' 'The per-step trip at 25769803776 bytes is not asked for: a fleet job runs as the setpriv'\''d job user under a root unit (gunbc.runner.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused) (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).'
+          printf '%s\n' 'An exit of 137 here is the kernel tripping the envelope'\''s memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (gunbc.design_argument::earliest_unjustified_boundary).'
+          printf '%s\n' 'A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.'
+        if: failure()
+    env:
+      MALLOC_ARENA_MAX: "2"
+  parse-verdict-audit:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 90
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the commit this lane judges
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+        if: "!inputs.compose_caller_dag"
+      - name: Checkout gunbc's default branch for a calling repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: gunb-ai/gunbc
+          fetch-depth: 0
+          persist-credentials: false
+        if: inputs.compose_caller_dag
+      - name: Checkout the calling repository's commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          path: .gunbc-caller
+          persist-credentials: false
+        if: inputs.compose_caller_dag
+      - name: Compose the calling repository's dag/ into gunbc's
+        run: |
+          # dissolve-on: compiler_gate_compose_caller_statements -- bash-node carrier of CallerTreeComposition, copying a calling repository's dag/ into gunbc's and refusing a caller file that replaces one of gunbc's. Dissolves when the compiler admits a second checkout as a source root whose modules the source layout (gunbc.source_layout) admits or refuses by namespace, so the copy is deleted and a clash is that layout's located refusal.
+          set -e
+          if ! '[' '-d' '.gunbc-caller/dag' ']'; then 'echo' '::error::the calling repository has no dag/ directory, so there is nothing to compose'; exit 1; fi
+          'cp' '-a' '.gunbc-caller/dag/.' 'dag/'
+          if ! 'git' 'diff' '--quiet' '--' 'dag'; then 'echo' '::error::the calling repository replaces these files of gunbc'\''s tree, so two modules claim one storage path:'; 'git' 'diff' '--name-only' '--' 'dag'; exit 1; fi
+          'rm' '-rf' '--' '.gunbc-caller'
+          'echo' 'judging '"$GITHUB_REPOSITORY"'@'"$GITHUB_SHA"' composed onto gunb-ai/gunbc@'$('git' 'rev-parse' 'HEAD')
+        if: inputs.compose_caller_dag
+      - name: Refuse a subject older than the instruction running it
+        run: |
+          # dissolve-on: compiler_gate_contract_stamp_guard_statements -- bash-node carrier that reads the tree's own committed workflow stamp BEFORE any binary is built and refuses a subject older than the instruction running it; dissolves when a pre-build reader of a committed workflow member exists that does not run tree code (GitHub's own workflow_sha on the check run, or a runner-side typed reader). The awk program remains a single typed string argument until an awk-rule node grammar lands.
+          STAMP_RUNNING='${{ env.GUNBC_COMPILER_GATE_CONTRACT_STAMP }}'
+          if '[' '-z' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the executing workflow carries no ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' in its environment, so it was not generated with an invocation contract. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi
+          AWK_PROG='
+          BEGIN { in_env = 0; seen = 0; bad = ""; dq = sprintf("%c", 34); sq = sprintf("%c", 39) }
+          function lstrip(s) { gsub(/^[ \t]+/, "", s); return s }
+          function is_member(l,  t) {
+            t = lstrip(l)
+            if (index(t, key ":") == 1) { return 1 }
+            if (index(t, dq key dq ":") == 1) { return 1 }
+            if (index(t, sq key sq ":") == 1) { return 1 }
+            return 0
+          }
+          $0 ~ /^env:[[:space:]]*$/ { if (in_env && bad == "") { bad = "duplicate" }; in_env = 1; next }
+          in_env && $0 ~ /^[^[:space:]]/ { in_env = 0 }
+          in_env && is_member($0) {
+            if (seen && bad == "") { bad = "duplicate" }
+            v = substr($0, index($0, ":") + 1)
+            gsub(/^[ \t]+/, "", v)
+            gsub(/[ \t]+$/, "", v)
+            if (length(v) >= 2 && ((substr(v, 1, 1) == dq && substr(v, length(v), 1) == dq) || (substr(v, 1, 1) == sq && substr(v, length(v), 1) == sq))) { v = substr(v, 2, length(v) - 2) }
+            if ((v !~ /^[0-9a-f]+$/ || length(v) != 16) && bad == "") { bad = "form" }
+            seen = 1
+          }
+          END {
+            if (bad == "duplicate") { print "DUPLICATE"; exit 4 }
+            if (bad != "") { print "UNREADABLE"; exit 4 }
+            if (!seen) { exit 3 }
+            print v
+          }
+          '
+          STAMP_TREE=$('awk' '-v' 'key=GUNBC_COMPILER_GATE_CONTRACT_STAMP' "$AWK_PROG" '.github/workflows/witnesses.yml' || 'true')
+          if '[' '-z' "$STAMP_TREE" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampAbsent. The checked-out subject declares no readable ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'', so its workflow predates the instruction this job is executing. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: merge origin/main into this branch.'; exit 1; fi
+          if '[' "$STAMP_TREE" '==' 'UNREADABLE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {tree member is malformed}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' but its value is not the one supported scalar form -- ''16'' lowercase hex digits, nothing added around it. A workflow text is not an instruction you can edit into agreement. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: regenerate it through gunbc.witness.compiler_gate_workflow.'; exit 1; fi
+          if '[' "$STAMP_TREE" '==' 'DUPLICATE' ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampUnreadable {the subject declares the member more than once}. The checked-out subject declares ''GUNBC_COMPILER_GATE_CONTRACT_STAMP'' at ''.github/workflows/witnesses.yml'' more than once, in any spelling: a second member with an empty value or a quoted key counts, because a competing member is a competing member whether or not it is well spelled. One workflow cannot make two claims about the contract it was generated under. ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''. Remedy: leave exactly one, and regenerate through gunbc.witness.compiler_gate_workflow.'; exit 1; fi
+          if '[' "$STAMP_TREE" '!=' "$STAMP_RUNNING" ']'; then 'printf' '%s\n' 'REFUSED gunbc contract stamp: StampMismatch {running='"$STAMP_RUNNING"', tree='"$STAMP_TREE"'}. The workflow executing was generated from a DIFFERENT revision than the tree it is judging: the instruction came from the merge ref, and the ''gunbc.witness.compiler_gate_workflow compiler_gate_contract_stamp''-stamped workflow committed in the checked-out tree says otherwise. Remedy: merge origin/main into this branch so the tree carries the instruction being run.'; exit 1; fi
+          'printf' 'gunbc contract stamp: paired running=%s tree=%s\n' "$STAMP_RUNNING" "$STAMP_TREE"
+      - name: Execute the contract-stamp guard against the recorded silent-green subject
+        run: |
+          # dissolve-on: compiler_gate_contract_stamp_evidence_statements -- bash-node carrier that invokes the contract-stamp evidence harness, one command node per modelled case row; dissolves on either of two capabilities, naming different halves: orch-emitted node kinds in v2.extdeps.languages.bash_build for extraction, structural scanning and argv driving (which retire the residual SHELL), or gunbc.rung_drop v1_required_lanes_withdrawn's restoration_trigger, which retires the residual TEST PROCESS by making these rows a `gunbc test` row evaluated on the required path.
+          GUNBC_CONTRACT_STAMP_RUN_TOKEN="$GITHUB_RUN_ID"'-'"$GITHUB_RUN_ATTEMPT"
+          if '[' '-z' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" ']'; then 'printf' '%s
+          ' 'REFUSED gunbc contract stamp evidence: no run token (GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT unset), so neither the transcript count nor the fail marker could tell this run from a stale one.'; exit 1; fi
+          GUNBC_CONTRACT_STAMP_EVIDENCE_DIR="$RUNNER_TEMP"'/gunbc-contract-stamp-'"$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          if '[' '-z' "$RUNNER_TEMP" ']'; then 'printf' '%s
+          ' 'REFUSED gunbc contract stamp evidence: RUNNER_TEMP is unset, so the per-run transcript and fail marker would have no home.'; exit 1; fi
+          'mkdir' '-p' "$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"
+          GUNBC_CONTRACT_STAMP_EVIDENCE_LOG="$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"'/''gunbc-contract-stamp-evidence.log'
+          GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL="$GUNBC_CONTRACT_STAMP_EVIDENCE_DIR"'/''gunbc-contract-stamp-evidence.fail'
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--prepare' '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED silent-green head 5003782716' 'fixture' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL paired (head carries the stamp)' 'committed' '__FROM_WORKFLOW__' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL mismatch (running != tree)' 'committed' 'deadbeefcafe0123' '1' 'StampMismatch' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL unreadable (no running stamp)' 'committed' '' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL contract-changing PR (both new)' 'rewritten' '0123456789abcdef' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL step-level env is not the read' 'demoted' '__FROM_WORKFLOW__' '1' 'StampAbsent' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged wrapped (chars around the stamp)' 'forged:wrapped' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged expression (a GitHub expression member)' 'forged:expression' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'CONTROL quoted scalar is the same stamp (no false refusal)' 'quoted-scalar' '__FROM_WORKFLOW__' '0' 'paired' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged truncated (15 digits)' 'forged:truncated' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged extended (17 digits)' 'forged:extended' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged uppercased (hex, wrong case)' 'forged:uppercased' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged duplicate member (declared twice)' 'forged:duplicate' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged second member, empty value' 'forged:second-empty' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          'bash' 'test/compiler_gate_contract_stamp/run_evidence.sh' '--case' 'RED forged second member, quoted key' 'forged:second-quoted-key' '__FROM_WORKFLOW__' '1' 'StampUnreadable' '--transcript' "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" '--fail-marker' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" '--marker' 'gunbc-contract-stamp-evidence-case' '--run-token' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN"
+          GUNBC_CONTRACT_STAMP_CASES_RAN=$('grep' '-c' "$GUNBC_CONTRACT_STAMP_RUN_TOKEN" "$GUNBC_CONTRACT_STAMP_EVIDENCE_LOG" || 'true')
+          if '[' "$GUNBC_CONTRACT_STAMP_CASES_RAN" '!=' '15' ']'; then 'printf' '%s
+          ' 'REFUSED gunbc contract stamp evidence: the harness reported gunbc-contract-stamp-evidence-case case lines, expected 15 modelled cases FOR THIS RUN -- the harness is missing, crashed, or ran a table that is not the model'\''s. See $GUNBC_CONTRACT_STAMP_EVIDENCE_LOG'; exit 1; fi
+          if '[' '-e' "$GUNBC_CONTRACT_STAMP_EVIDENCE_FAIL" ']'; then 'printf' '%s
+          ' 'REFUSED gunbc contract stamp evidence: the harness did not report ALL ASSERTIONS HELD. See its output above.'; exit 1; fi
+      - name: Isolate toolchain homes
+        run: |-
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: -D warnings
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |-
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Cache Cargo
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            ${{ runner.temp }}/cargo/registry/index/
+            ${{ runner.temp }}/cargo/registry/cache/
+            ${{ runner.temp }}/cargo/git/db/
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build the compiler
+        id: build_witness_fold
+        run: |+
+          GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)
+          if '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi
+          if '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi
+          GUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')
+          '[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)
+          RUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'
+          'export' 'RUSTFLAGS'
+          'export' 'GUNBC_SEED_CHECKOUT'
+          'export' 'GUNBC_SEED_TARGET'
+          'export' 'GUNBC_SEED_CARGO_HOME'
+          'export' 'GUNBC_SEED_SYSROOT'
+          GUNBC_SEED_WORKTREE_DIRTY=$('git' 'status' '--porcelain=1' '--untracked-files=no')
+          if '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' "$GUNBC_SEED_WORKTREE_DIRTY" ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi
+
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
+
+      - name: Require isolated toolchain homes
+        run: |
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+        if: "!cancelled()"
+      - name: emit and build //gunbc/instruments:self-host
+        id: emit_build_self_host
+        run: |+
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' ''\''target/release/gunbc'\'' '\''test'\'' '\''//gunbc/instruments:self-host'\''') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
+
+        env:
+          GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
+          GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_READ_SET_OUT: gunbc-read-set.txt
+          GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+      - name: emit and build //gunbc/instruments:v2-native-cli
+        id: emit_build_v2_native_cli
+        run: |+
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' ''\''target/release/gunbc'\'' '\''test'\'' '\''//gunbc/instruments:v2-native-cli'\''') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
+
+        env:
+          GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
+          GUNBC_NATIVE_PRODUCT_REUSE: fresh
+          GUNBC_READ_SET_OUT: gunbc-read-set.txt
+          GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
       - name: Walk parse-population on default-branch push
         run: |
           ${{ steps.fast_lane.outputs.skip == 'true' && './gunbc-fast-lane-native-cli' || format('{0}/v2-native-cli-gen-one', runner.temp) }} parse-population --compiler ${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }} --write-identity gunbc-parse-compiler-identity --receipts gunbc-parse-verdict-receipts.tsv --source-root dag --source-root src/v2
         env:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
       - name: Save parse-verdict receipts to Actions cache
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
         with:
@@ -1046,11 +1299,13 @@ jobs:
             gunbc-parse-compiler-identity
             gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Why this lane is red, and what would be a real finding
+        if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
+      - name: Why this scheduled audit is red, and what a red here means
         run: |-
-          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `v2-bootstrap`.'
-          printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
+          printf '%s\n' 'parse-verdict-audit is the DAILY SCHEDULED MAIN AUDIT of the fresh parse-population walk and its receipt save (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24).'
+          printf '%s\n' 'It is NOT a required check: a red here blocks no merge, and no pull-request author owns this run -- a scheduled audit has no author.'
+          printf '%s\n' 'What a red means: this run'\''s judged head of main failed the walk, the receipt save, or a subject arm before them. The required lane `v2-bootstrap` is a separate job and is unaffected by this one.'
+          printf '%s\n' 'Consequence of leaving it red: the published parse-verdict receipts age past this lane'\''s cadence (once daily is the freshness bound), and pull-request fast-lane reuse falls back to walking the nearest published ancestor. No gate degrades silently: the required lane still walks every module those receipts do not cover.'
           printf '%s\n' 'This step ran inside the fleet slot'\''s memory envelope (gunbc.runner.runner_slot_desired: MemoryMax 26843545600 bytes, no swap once converged), which gunbc test required (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot) and receipted at exit.'
           printf '%s\n' 'The per-step trip at 25769803776 bytes is not asked for: a fleet job runs as the setpriv'\''d job user under a root unit (gunbc.runner.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused) (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).'
           printf '%s\n' 'An exit of 137 here is the kernel tripping the envelope'\''s memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (gunbc.design_argument::earliest_unjustified_boundary).'

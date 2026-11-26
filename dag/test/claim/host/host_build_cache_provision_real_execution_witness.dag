@@ -3,7 +3,7 @@ module test.claim.host.host_build_cache_provision_real_execution_witness
 import std.logic { Bool }
 import extdeps.shell
 import gunbc.retained_shell_script { retained_runtime }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host.host_effect_realize {
   RunArgvTransportObserved,
   RunArgvTransportRefused,
