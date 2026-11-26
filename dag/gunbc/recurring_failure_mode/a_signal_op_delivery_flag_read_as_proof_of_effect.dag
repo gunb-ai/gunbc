@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.a_signal_op_delivery_flag_read_as_proof_of_effect
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_signal_op_delivery_flag_read_as_proof_of_effect: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_signal_op_delivery_flag_read_as_proof_of_effect" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**A signal operation's delivery answer, forwarded and consumed as proof the signal had an effect, asserts an observation the caller does not hold** (INVALID STATE: kill(2) reports whether a signal was delivered to a live target; what happened after -- death, recovery, a handler that swallowed it -- is not in its answer. When the only witness of the effect is an independent reap or a read of the target's recorded signal, forwarding the boolean as the effect claim replaces a witness with a receipt from the wrong layer, the same shape as gunbc.recurring_failure_mode::control_plane_acknowledgement_minted_as_effect one layer up: there an acknowledgement of the request stood in for the effect; here the delivery answer of the signal itself does (gunbc.design_argument::external_upstreams -- observation is a receipt in the observing layer).)",
+    "MEASURED SITE, CONTAINED-ON-MERGE: on srv1 (BOOT c095c0cd) the micro-VM boot-probe escalation path consumed the forwarded boolean as death evidence while the kernel's own ledger said the opposite -- the signalled pgid equals the spawned pid plus pgrp; SIGTERM lands (target reaped as Z, last_sig 15); SIGKILL lands (last_sig 9); yet the boolean read false on a run whose death was caused by exactly that signal and true on a run where the target was already gone, both with empty stderr. The independent /bin/kill ledger is the witness of the effect; the flag is a receipt about delivery only. The repair is gunbc#17013 (head d11e936aef21): the probe that cannot read the effect refuses rather than forwarding the flag as proof (gunbc.design_argument::fail_closed).",
+    "KNOWN SIBLING, NOT-NOW: dag/gunbc/harness/harness_shell_job.dag gunbc.harness.harness_shell_job::harness_kill_process_group builds its HarnessTerminateProcessGroup by forwarding the tool's raw success boolean plus stderr -- a consumer one step from reading the flag as proof of death. The class is recorded at RungUnread so this sibling can be named without anyone staffing it out of scope; Manager B routed that consumer to the harness lane and instructed the fleet lane not to staff it (gunbc.design_argument::root_generalization: the class is named where it is seen, the repair is staffed where ownership sits).",
+    "POPULATION, INSPECTED-AND-BOUNDED (not semantic absence): at the recorded base revision, 6 files under dag mention TerminateProcessGroup or KillProcessGroup -- dag/extdeps/posix/process.dag, dag/extdeps/posix/signal.dag, dag/gunbc/ci/ci_layer_roots.dag, dag/gunbc/harness/harness_shell_job.dag, dag/test/claim/harness_shell_job.dag, dag/test/claim/harness_shell_job_tool_route.dag -- and of the production consumers exactly one forwards the boolean onward (the known sibling above). The next-rung trigger: the next consumer that treats the forwarded boolean as proof of effect rather than the tool's own words about delivery.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_kill_process_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.harness.harness_shell_job", decl_name: "HarnessTerminateProcessGroup", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_microvm_boot_probe", decl_name: "boot_probe_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "RungUnread", field: WholeDeclaration },
+  ],
+}
