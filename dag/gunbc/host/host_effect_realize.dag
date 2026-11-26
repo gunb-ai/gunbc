@@ -5548,7 +5548,7 @@ fn live_deploy_preamble_unanswered_text(
   leg: LiveDeployPreambleLeg,
   detail: String,
 ) -> String {
-  let name = live_deploy_preamble_step_name(step: step);
+  let name = live_deploy_preamble_step_name(step: step)
   let head = match leg {
     PreambleEither { check_step: cs, check: _, act_step: _, act: _ } =>
       if live_deploy_preamble_step_name(step: cs) == name {
@@ -5576,7 +5576,7 @@ fn live_deploy_preamble_unanswered_text(
       join(["leg ", name, " was dispatched but its reply could not be read; its effect on the host is unknown"], "")
     PreambleEffect { step: _, effect: _ } =>
       join(["effect ", name, " was dispatched but its reply could not be read; its effect on the host is unknown"], "")
-  };
+  }
   join(
     [
       "live_deploy_preamble: ",

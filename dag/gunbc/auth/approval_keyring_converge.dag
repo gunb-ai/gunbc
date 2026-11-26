@@ -190,7 +190,7 @@ fn keyring_elevated_exec(
   TypedArgvExecOverran { deadline: d } =>
     exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", typed_argv_exec_overran_reason(leg_hint: "approval keyring", deadline: d)))))
     TypedArgvExecWireInconsistent { fault: f } =>
-    exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "approval keyring", fault: f)))))
+    exit_failure(reason: concat("approval keyring: ", concat(step, concat(": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "approval keyring", fault: f)))))
     TypedArgvExecRefused { reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" refused: ", why))))
     TypedArgvExecConverged { result: r } =>
