@@ -1,0 +1,43 @@
+module gunbc.rung_drop.parse_population_carrier_reader_beside_grammar
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// DECLARED 2026-11-26 (PR #17037, review 98901 F2). The parse-population baseline carrier
+// (gunbc.parse_population_baseline_roster) declares 170 benchmark rows as a typed data binding and the
+// load-bearing check on that binding is that each declared (path, byte size) equals the tree at the
+// pinned sha -- a comparison against `git ls-tree`. A `.dag` function cannot read the tree (no
+// filesystem) and CI executes no claims, so the first consumer was a shell reader beside the grammar
+// (awk/grep/sed over the `.dag` SOURCE). That second parser is this row's subject: it can re-parse a
+// field wrong without changing its line count, so the count guard catches a dropped row but not a
+// misparsed field. The shell reader was WITHDRAWN from the merge (lane-manager split ruling, review
+// 98836), so today no executable route reads the 170 rows at all: the typed predicates model and
+// discriminate the selection order over hand-built slices only, and the 170-to-tree reconciliation is
+// unexecuted. PREVIOUS RUNG (the rung the contract wants): 4 (structurally guaranteed) -- the one
+// total decision procedure, the compiler/grammar, is what reads a data binding. TEMPORARY RUNG: 1
+// (mitigatable) -- typed comparison predicates with a discriminating pair exist and are witnessed,
+// over hand-built slices; no executable reader of the real 170 rows exists in the merge.
+
+data parse_population_carrier_reader_beside_grammar_population: FreeSemigroup<String> = FreeSemigroup {
+  head: "the 170 rows of gunbc.parse_population_baseline_roster::parse_population_baseline_rows reconciled to `git ls-tree -r -l <pinned sha> -- dag src/v2` (path AND blob byte size per row), the single population this carrier's benchmark is made of",
+  tail: []
+}
+
+data parse_population_carrier_reader_beside_grammar: RungDrop = RungDrop {
+  identity: "parse_population_carrier_reader_beside_grammar" as NonEmptyStr,
+  subject: "the 170-row parse_population_baseline_rows binding is read for its tree reconciliation through the one grammar route, not re-parsed beside it",
+  declared: "2026-11-26",
+  standing: Standing {
+    declaration: TypedDeclaration {
+      previous: StructurallyGuaranteed,
+      temporary: Mitigatable,
+      reason: ReplacementStaged {
+        replacement: "route A, the measurement-first planning row named-data-binding-reads-go-through-a-declared-route-not-a-shell-reader (identity rn_VDAPYQNAW2T3U26OZ5JUHRBVC6, owner compiler-self-host / bold-cat-668, carried in plan PR #17116): measure first whether an existing route already evaluates a named data binding and prints it; only if none exists does it become a new emitted verb, and anything reaching the seed goes to the operator first"
+      },
+      population: Enumerated { members: parse_population_carrier_reader_beside_grammar_population },
+      restoration_trigger: "THE CAPABILITY: an emitted, declared route evaluates a named `.dag` data binding and returns its rows typed (a call, not a text parse), such that the 170-to-tree reconciliation of this carrier consumes that route's output and a misparsed field becomes unrepresentable. WHAT THAT MUST BE SUFFICIENT FOR: the reconciliation refuses a mistyped row BY NAME on the real 170 rows, and the reader carries the discriminating pair in one run -- the correct path accepted, the decoy `dag/test/claim/roadmap/roadmap_authority.dag` refused (a substring reader conflates it with `dag/gunbc/roadmap/roadmap_authority.dag`). WHAT DOES NOT RETIRE THIS ROW: the withdrawn shell reader's prior author-side output, the typed predicates over hand-built slices, or citing this row without staffing it -- the staffed route, not the plan, fires the trigger."
+    }
+  }
+}

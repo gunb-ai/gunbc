@@ -1,6 +1,11 @@
 module test.claim.parse_population_baseline_roster_witness
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, string_contains }
+import gunbc.rung_drop {
+  RungDrop, Standing, TypedDeclaration, Retired, RetiredTypedDeclaration, Enumerated, DeletedWithoutReplacement,
+}
+import gunbc.guarantee_rung { Mitigatable }
 import gunbc.parse_population_baseline_roster {
   parse_population_cardinality_accepts_real,
   parse_population_cardinality_refuses_planted_extra_row,
@@ -22,6 +27,7 @@ import gunbc.parse_population_baseline_roster {
   parse_population_top_n_breaks_tie_by_path,
   parse_population_selection_refuses_misordered_tie,
   parse_population_carrier_reader_rung_drop_ledger_line,
+  parse_population_carrier_reader_beside_grammar_restoration_trigger,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -143,10 +149,50 @@ fn parse_population_roster_red_control_mistyped_row_fails() -> Bool {
 }
 
 
-// THE RUNG DROP IS DECLARED AND READ: the carrier's withdrawal-of-the-executed-reader gap
-// (parse_population_carrier_reader_rung_drop) is rendered by its consumer into a ledger line; this guard
-// fails if that gap text is ever deleted while the 170-to-tree reconciliation is still unwired
-// (source_annotations; review 98809 F2). Presence is the guard; the substance is the bounded-trigger text.
+// THE RUNG DROP GUARD IS DISCRIMINATING, NOT A DECORATION (review 98901 F1; design_argument::fail_closed:
+// "a discriminating input that goes red when the behavior is wrong"). GREEN: the ledger line renders the
+// ROSTERED row (gunbc.rung_drop.parse_population_carrier_reader_beside_grammar) -- identity plus the typed
+// restoration trigger, which must name THE CAPABILITY (the word "CAPABILITY" is what the guarantee_ladder
+// meta-obligation 3 requires the trigger to state). RED CASE in the sibling fn: a row demoted to authored
+// prose -- the forbidden state the drop must not be able to enter silently -- extracts to "", so the same
+// extraction that passes on the real row fails on the planted row. A check that cannot fail was deleted.
 test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
-  parse_population_carrier_reader_rung_drop_ledger_line() != ""
+  string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "parse_population_carrier_reader_beside_grammar") && string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "CAPABILITY")
+}
+
+// RED CONTROL: the shared extraction applied to a planted row whose declaration is authored prose must
+// yield "" (the ledger line would lose the capability text) -- proving the green guard above responds to
+// the row's declaration SHAPE, not to a prefix that is always present. Paired by name with the green test
+// above, in the same claim_batch.
+test fn parse_population_rung_drop_trigger_extraction_refuses_prose_row_fails() -> Bool {
+  parse_population_carrier_reader_beside_grammar_restoration_trigger()
+    == parse_population_prose_demoted_trigger_probe()
+}
+
+// THE PLANTED FORBIDDEN STATE: the drop RETIRED while the 170-to-tree reconciliation is still unexecuted.
+// It carries a non-empty trigger text, so an extraction that matched the trigger field without checking
+// the standing arm would return that text here and the paired green test would go red -- the match must
+// discriminate Standing+Typed from every other standing, which is what makes the guard able to fail
+// (design_argument::guarantee_ladder "green by construction" is exactly what this pair refuses).
+data parse_population_planted_retired_row: RungDrop = RungDrop {
+  identity: "parse_population_carrier_reader_beside_grammar" as NonEmptyStr,
+  subject: "planted: retired while unexecuted",
+  declared: "2026-11-26",
+  standing: Retired {
+    trigger_fired: "PLANTED -- must never stand while the reconciliation is unexecuted" as NonEmptyStr,
+    declaration: RetiredTypedDeclaration {
+      previous: Mitigatable,
+      temporary: Mitigatable,
+      reason: DeletedWithoutReplacement,
+      population_at_retirement: Enumerated { members: FreeSemigroup { head: "planted member", tail: [] } },
+      restoration_trigger: "CAPABILITY: planted text that a shape-blind extraction would wrongly accept"
+    }
+  }
+}
+
+fn parse_population_prose_demoted_trigger_probe() -> String {
+  match parse_population_planted_retired_row.standing {
+    Standing { declaration: TypedDeclaration { previous: _, temporary: _, reason: _, population: _, restoration_trigger: t } } => t
+    _ => ""
+  }
 }

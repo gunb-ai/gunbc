@@ -94,6 +94,21 @@ the question bold-cat-668's measurement-first planning row (owner compiler-self-
 becomes a new emitted verb; anything reaching the seed goes to the operator first. **Route B (operator scaffold
 approval outside the diff) is DECLINED** (neat-badger-614, 2026-11-26) and is not a path forward.
 
+**The drop is rostered, and its guard can fail (review 98901 F1/F2).** Per `gunbc.design_argument::guarantee_ladder`
+("Declared drops are rostered in `gunbc.rung_drop`") the gap is a row of the drop roster —
+`gunbc.rung_drop.parse_population_carrier_reader_beside_grammar`
+(`dag/gunbc/rung_drop/parse_population_carrier_reader_beside_grammar.dag`): previous rung 4 (structurally
+guaranteed — the one grammar route reads a data binding), temporary rung 1 (mitigatable — typed predicates with
+a discriminating pair over hand-built slices, no executable reader of the real 170 rows), reason
+`ReplacementStaged` naming route A (`rn_VDAPYNAW2T3U26OZ5JUHRBVC6`, plan PR #17116), and a restoration trigger
+that names **THE CAPABILITY restored** (an emitted declared route that evaluates a named data binding and
+returns its rows typed — meta-obligation 3), not the planning row itself; the carrier holds no copy of the text
+(`single_authority`). Its consumer renders the row into a ledger line, and the witness guard is a discriminating
+pair, not a presence check (the earlier `!= ""` guard was green by construction and was deleted): GREEN — the
+rendered line contains the row identity and the capability text; RED — the shared extraction applied to a
+planted `Retired` row (a representable forbidden state: retired while the reconciliation is unexecuted, with a
+non-empty trigger text) yields `""`, so an extraction that ignored the standing arm would be caught.
+
 ### 4b. Emitted-roster reproduction — how the compiler already evaluates the named binding
 
 This is the measurement input route A needs, run read-only by the worker, not an implementation decision.
@@ -212,7 +227,10 @@ Additionally 4 heavy-slot touches refused instantly at argument validation (wall
   carrier↔tree reconciliation and the roster-driven staging are **gaps pending route A**, not executed checks —
   every "executed runner / committed runner / green-by-execution run link" claim in the review-98443 and
   review-98730 bullets below is historical (those runners are no longer in the diff). The rung drop
-  `parse_population_carrier_reader_rung_drop` now states plainly that no executed reader of the rows ships here;
+  The drop is ROSTERED per `gunbc.design_argument::guarantee_ladder` at
+  `gunbc.rung_drop.parse_population_carrier_reader_beside_grammar`
+  (`dag/gunbc/rung_drop/parse_population_carrier_reader_beside_grammar.dag`, review 98901 F2 — the carrier
+  holds no copy of its text), stating plainly that no executed reader of the rows ships here;
   its claimed rung is that the typed `.dag` predicates model and discriminate the selection order over hand-built
   slices. **Route B (operator scaffold sanction) is declined** (neat-badger-614); route A (bold-cat-668's
   measurement-first planning row) is the only path, and §4b shows `gunbc compile` already emits the 170 rows as
