@@ -3,6 +3,10 @@ module gunbc.serving.serving_observability
 import std.types { String, NonEmptyStr, List, Bool, Port }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.external_authority { CitedFigureStanding }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
@@ -58,11 +62,12 @@ import extdeps.vllm.server { vllm_route_models, vllm_route_metrics, vllm_route_c
 // gunbc.serving.serving_front_door::front_door_admit.
 //
 // CONSUMER (declared frontier, gunbc.design_argument::consumption). engine_front_unserved_consumers is read today by
-// this module's claim witness; engine_front_proxy_config is consumed by the engine-front emitter that renders the
-// front from it -- gunbc.serving.srv4_daily_engine_front::srv4_engine_front_render (stacked PR #17103), which produces
-// srv4's front bytes through this function so /metrics cannot be dropped, and whose divergence reconciliation reads
-// the roster's readers. That emitter is a RENDERER, not yet a deploy: it refuses while srv4's front parameters are
-// Unread. The frontier dissolves when the live-deploy leg deploys those rendered bytes and retires the hand-managed
+// this module's claim witness. engine_front_proxy_config is consumed by this module's engine_front_render (the general
+// front render added on stacked PR #17103), which is in turn instantiated as data by
+// gunbc.serving.srv4_daily_engine_front::srv4_daily_engine_front_inputs -- so the proxy builder's only non-witness
+// consumer is the roster-driven render that produces srv4's front bytes through it, which is what makes /metrics
+// undroppable, and whose divergence reconciliation reads the roster's readers. That render is a RENDERER, not yet a
+// deploy: it refuses while srv4's front parameters are Unread. The frontier dissolves when the live-deploy leg deploys those rendered bytes and retires the hand-managed
 // /opt/gunbc-serving/*/nginx.conf -- the next-rung trigger on the ledger row. Until then the module is a frontier,
 // exactly as gunbc.serving.router_proxy_config is a declared frontier to gunbc.live_deploy.apply_legs.
 
@@ -338,3 +343,109 @@ fn engine_front_route_consumers(path: NonEmptyStr) -> List<DeclarationRef> {
 // no standing type for it: the only consumer would be a fold in the B5 router realization (a fork B5 owns, not
 // this PR), and a typed record here that no fold reads is a row no fold reads -- dangling
 // (gunbc.design_argument::consumption). So item (3) is a recorded receipt in the ledger, not a carrier here.
+
+// ---------------------------------------------------------------------------------------------
+// FRONT REALIZATION: the engine front's OWN parameters, and the render that turns them into bytes.
+//
+// These types are general, not srv4's: srv4 is ONE instance supplied as data
+// (gunbc.serving.srv4_daily_engine_front). A second engine front adds a data row, it does not copy these
+// types or the render (gunbc.design_argument::root_generalization: "a new ordinary case is data rather than
+// control flow"; ::minimize_redundancy: "a concept is modeled once and every use derived from it"). The render
+// sits here beside engine_front_proxy_config because it is that builder's only guard layer -- it supplies the
+// parameter standing and nothing else; the bytes still come from the one render vocabulary
+// (extdeps.proxy.openresty, reached through engine_front_proxy_config), so no second nginx emitter appears.
+//
+// A parameter is Read only when its value AND the read that established it are both carried; Unread carries
+// the obligation naming the host read that would settle it. Refusing on Unread rather than defaulting is the
+// fail_closed floor: an unread parameter cannot silently become a rendered line, and a placeholder is never
+// rendered or sha'd.
+
+type FrontParam<T> =
+  | Read { value: T, provenance: NonEmptyStr }
+  | Unread { obligation: NonEmptyStr }
+
+// The front's parameters beyond the route roster (which engine_front_proxy_config supplies itself): its TLS
+// bind/listen/cert/key and the loopback engine upstream it proxies to. One FrontParam over each payload type --
+// a single carrier reused for every field, not a sum per type (the pattern gunbc.extdeps.docker.container_inspect::
+// NestedObjectRead exists to avoid).
+type EngineFrontInputs = EngineFrontInputs {
+  bind_address: FrontParam<NonEmptyStr>,
+  listen_port: FrontParam<Port>,
+  tls_cert: FrontParam<NonEmptyStr>,
+  tls_key: FrontParam<NonEmptyStr>,
+  engine_host: FrontParam<NonEmptyStr>,
+  engine_port: FrontParam<Port>,
+}
+
+// A render attempt: bytes, or a located refusal. Unread names the FIRST parameter not yet read and its
+// obligation; InvalidToken carries the token nginx refused. There is no arm that renders from missing inputs.
+type EngineFrontVerdict
+  = EngineFrontRendered { text: String }
+  | EngineFrontUnread { parameter: NonEmptyStr, obligation: NonEmptyStr }
+  | EngineFrontInvalidToken { token: NonEmptyStr }
+
+// The general render: the first Unread parameter is reported (typed, located), and only when every parameter is
+// Read are the bytes produced -- by engine_front_proxy_config, which derives the forwarded routes from the
+// roster, so the bytes always forward /metrics. A token nginx refuses is reported as that token, never a placeholder.
+fn engine_front_render(inputs: EngineFrontInputs) -> EngineFrontVerdict {
+  match inputs.bind_address {
+    Unread { obligation: o1 } => EngineFrontUnread { parameter: "bind_address", obligation: o1 }
+    Read { value: bind, provenance: _ } => match inputs.listen_port {
+      Unread { obligation: o2 } => EngineFrontUnread { parameter: "listen_port", obligation: o2 }
+      Read { value: lport, provenance: _ } => match inputs.tls_cert {
+        Unread { obligation: o3 } => EngineFrontUnread { parameter: "tls_cert", obligation: o3 }
+        Read { value: cert, provenance: _ } => match inputs.tls_key {
+          Unread { obligation: o4 } => EngineFrontUnread { parameter: "tls_key", obligation: o4 }
+          Read { value: key, provenance: _ } => match inputs.engine_host {
+            Unread { obligation: o5 } => EngineFrontUnread { parameter: "engine_host", obligation: o5 }
+            Read { value: ehost, provenance: _ } => match inputs.engine_port {
+              Unread { obligation: o6 } => EngineFrontUnread { parameter: "engine_port", obligation: o6 }
+              Read { value: eport, provenance: _ } => match engine_front_proxy_config(
+                bind_address: bind,
+                listen_port: lport,
+                tls_cert: cert,
+                tls_key: key,
+                engine_host: ehost,
+                engine_port: eport,
+              ) {
+                EngineFrontProxyRendered { text: t } => EngineFrontRendered { text: t }
+                EngineFrontProxyRefused { refusal: InvalidToken { token: tok } } => EngineFrontInvalidToken { token: tok }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The digest of the rendered bytes -- computed ONLY from a render that actually happened. While the render is
+// refused (an Unread parameter, or a refused token) there is no text to digest and this is Absent -- the canonical
+// absence carrier (gunbc.design_argument::single_authority); a sha of a placeholder render is never recorded, and
+// why it is absent is located on engine_front_render (the parameter that refused), so it is not restated here.
+fn engine_front_rendered_sha(inputs: EngineFrontInputs) -> Optional<Sha256Digest> {
+  match engine_front_render(inputs: inputs) {
+    EngineFrontRendered { text: t } => sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: t))))
+    EngineFrontUnread { parameter: _, obligation: _ } => Absent
+    EngineFrontInvalidToken { token: _ } => Absent
+  }
+}
+
+// A front's declared divergence from its own rendered bytes -- the disagreement between the roster-derived render
+// and a hand-managed host file. GENERAL like EngineFrontInputs: the next front with a hand-managed nginx.conf adds
+// a data row, it does not copy this type (gunbc.design_argument::root_generalization, ::minimize_redundancy). There
+// is deliberately NO model_forwards_metrics field: the roster-derived render forwards /metrics BY CONSTRUCTION
+// (engine_front_proxy_config builds one location per engine_front_required_routes row), so a stored Bool would be a
+// second representation of a constraint the model already carries (gunbc.design_argument::fail_closed: "A check
+// restating a constraint the model already carries is a second representation of it"). That the render forwards
+// /metrics is asserted on the RENDERED BYTES (the control witness reads engine_front_server_directives), not on a
+// restated flag. host_file_sha reuses FrontParam<Sha256Digest>: Read carries the digest AND the provenance of the
+// read that produced it; Unread carries the host-fact sha256sum read still owed. rendered_sha is the canonical
+// Optional carrier -- Absent until a render actually happens, its located reason being engine_front_render.
+type EngineFrontDivergence = EngineFrontDivergence {
+  host_file_path: NonEmptyStr,
+  host_forwarded: CitedFigureStanding, // the observed content fact / the instrument: what the host really forwards
+  host_file_sha: FrontParam<Sha256Digest>, // Read{digest,provenance} once the host-fact sha256sum read lands; Unread until then
+  rendered_sha: Optional<Sha256Digest>, // Absent until the render actually happens; the located reason is engine_front_render
+  reason: NonEmptyStr,
+}
