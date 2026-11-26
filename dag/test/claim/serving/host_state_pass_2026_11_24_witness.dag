@@ -63,6 +63,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_disk_cleanups_of_2026_11_25,
   every_srv1_boot_path_divergence_names_its_closure,
   srv1_installed_boot_path_artifacts_2026_11_09,
+  srv1_installed_boot_path_artifacts_2026_11_24,
 }
 
 fn live_row_is(name: NonEmptyStr) -> Bool {
@@ -158,30 +159,33 @@ test fn the_router_boot_unit_is_recorded_by_digest_with_the_gap_named() -> Bool 
 // srv1_render_replica_engine_args emit -- and this checks they really do, against those renderers' own digests.
 // When warm-badger-640's re-render lands these inequalities flip and the rows must be converted to receipts or
 // deleted; they cannot quietly survive a render that now matches.
-// The two files the replicas start from were installed against a render, and the 2026-11-09 receipt records the
-// digest BOTH sides carried then. The pass read a different digest off each file. So the host has moved since the
-// install was receipted, and the row that says "installed" no longer describes the host: which is exactly the
-// condition the divergence rows exist to record, checked here against the receipt rather than against a re-render
-// (re-rendering the launcher inside this claim exhausts the evaluator's call depth, and the render's own digest is
-// already compared against the receipt in srv1_replica_rendered_boot_path_witness -- a second copy of that check
-// here would be a second authority over the same equality).
-test fn the_srv1_boot_path_files_moved_after_the_install_was_receipted() -> Bool {
-  every_srv1_boot_path_divergence_names_its_closure()
-    && length(srv1_boot_path_divergences_of_the_2026_11_24_pass) == 2
-    && all(srv1_boot_path_divergences_of_the_2026_11_24_pass, d =>
-      string_contains(s: d.host_path as String, pattern: "lil-replica")
-        && string_contains(s: d.rendered_by as String, pattern: "srv1_")
-        && string_contains(s: d.closed_by as String, pattern: "warm-badger-640"))
-    && any(srv1_boot_path_divergences_of_the_2026_11_24_pass, d =>
-      string_contains(s: d.host_path as String, pattern: "sbin")
-        && any(srv1_installed_boot_path_artifacts_2026_11_09, a =>
-          a.host_path as String == "/usr/local/sbin/lil-replica-launch"
-            && a.installed_sha256_computed_on_host as String != d.sha256_computed_on_host as String))
-    && any(srv1_boot_path_divergences_of_the_2026_11_24_pass, d =>
-      string_contains(s: d.host_path as String, pattern: ".args")
-        && any(srv1_installed_boot_path_artifacts_2026_11_09, a =>
-          a.host_path as String == "/usr/local/etc/lil-replica/replica-0.args"
-            && a.installed_sha256_computed_on_host as String != d.sha256_computed_on_host as String))
+// The two files the replicas start from were installed against a render, and the 2026-11-09 receipt records
+// the digest BOTH sides carried then; the pass read a different digest off each file and filed divergence
+// rows naming the re-render that would close them (#17089, warm-badger-640). That PR merged: the 2026-11-24
+// receipt list now carries these files with render_sha256 equal to installed_sha256_computed_on_host, and
+// gunbc.serving.srv1_replica_rendered_boot_path_witness::install_row_digest_matches EXECUTES the renderers
+// and compares -- that is the authority over render==host, and this claim does not copy it (re-rendering
+// here exhausts the evaluator's call depth, and a second copy would be a second authority over one
+// equality). What this claim still holds, after the closure: the divergence list is EMPTY -- the rows were
+// converted, not left to rot beside a render that now matches; the fold still demands an owner and an
+// instrument of every divergence row to come; each file's 2026-11-24 digest is the exact figure the host
+// pass read (sha256sum over ssh, 2026-11-24T22:03-22:05Z); and each moved away from its own 2026-11-09
+// digest -- the movement happened and is dated, not silently re-based.
+test fn the_srv1_boot_path_moves_are_closed_by_the_render_receipts() -> Bool {
+  length(srv1_boot_path_divergences_of_the_2026_11_24_pass) == 0
+    && every_srv1_boot_path_divergence_names_its_closure()
+    && any(srv1_installed_boot_path_artifacts_2026_11_24, a =>
+      a.host_path as String == "/usr/local/sbin/lil-replica-launch"
+        && (a.render_sha256 as String) == "1ad7de0857a4e06168aa603fd5b8d92f1a2ebc6395c84aa64900d5b968dc12ea"
+        && any(srv1_installed_boot_path_artifacts_2026_11_09, b =>
+          b.host_path as String == a.host_path as String
+            && (b.installed_sha256_computed_on_host as String) != (a.installed_sha256_computed_on_host as String)))
+    && any(srv1_installed_boot_path_artifacts_2026_11_24, a =>
+      a.host_path as String == "/usr/local/etc/lil-replica/replica-0.args"
+        && (a.render_sha256 as String) == "76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca"
+        && any(srv1_installed_boot_path_artifacts_2026_11_09, b =>
+          b.host_path as String == a.host_path as String
+            && (b.installed_sha256_computed_on_host as String) != (a.installed_sha256_computed_on_host as String)))
 }
 
 // The GPU1 replica's LMCache disk tier was deleted on the operator's decision, and the disk cleanups of
