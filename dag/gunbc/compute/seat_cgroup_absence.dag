@@ -1,31 +1,56 @@
 module gunbc.compute.seat_cgroup_absence
 
-// THE ABSENT UNIT CGROUP IS A GENERIC END PROOF. A unit's own cgroup directory under the capped work
-// slice is created by the kernel when the unit's first process forks into it and removed only when
-// EVERY process that was ever in it has ended; while any survives, the directory and its cgroup.events
-// stand. So ENOENT on the seat's own cgroup directory proves nothing the unit launched can still run
-// -- the same fact the stop-hook record carries when the hook got to write it, obtainable here even
-// for seats launched before the hook existed, with no per-seat operator ruling. This mirrors
-// gunbc.compute.recorded_cgroup_drain, which seals on exactly this evidence for the belt cgroup; the
-// difference is only WHERE the path comes from: the belt path was recorded at acquisition, the seat
-// path is DERIVED through the one placement authority -- user services launched with
-// Slice=gunbc-user-work.slice (gunbc.compute.unit_bounds user_work_binding_settings) land under
-// /user.slice/user-<uid>.slice/user@<uid>.service/<slice>/<unit>.service -- from the unit name the
-// attempt record already carries and the launching uid this process shares with the seat's manager.
-// TWO GUARDS keep a wrong spelling from ever releasing a live seat. First, the slice PREFIX must be
-// listed successfully before the unit's absence inside it is read as a fact: a read of cgroup.events
-// fails NotFound for missing ANCESTORS too (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent),
-// and a prefix that cannot be listed is unobservable, never absent. Second, the caller must have
-// reached this through the manager's authoritative not-found reading (LoadState=not-found, guarded in
-// gunbc.compute.work_provider_local unit_lifecycle_unpopulated): an unread manager is not a dead unit.
-// populated 1 PRESERVES: a manager that forgot a unit while its processes run keeps its charge. An
-// unreadable file or prefix preserves too -- gunbc.design_argument::fail_closed: a located diagnostic,
-// never a release.
+// THE ABSENT UNIT CGROUP IS A GENERIC END PROOF. A unit's own cgroup directory is created by the
+// kernel when the unit's first process forks into it and removed only when EVERY process that was
+// ever in it has ended; while any survives, the directory and its cgroup.events stand. So an
+// ESTABLISHED ABSENCE of the seat unit's cgroup directory under the seat's own user manager proves
+// nothing the unit launched can still run -- the same fact the stop-hook record carries when the
+// hook got to write it, obtainable here even for seats launched before the hook existed, with no
+// per-seat operator ruling. This mirrors gunbc.compute.recorded_cgroup_drain, which seals on exactly
+// this evidence for the belt cgroup; the difference is only WHERE the path comes from: the belt path
+// was recorded at acquisition, the seat path is derived through placement authorities below.
+//
+// WHAT THE OBSERVER MAY CONCLUDE ABSENCE FROM (review 99011 on #17154, gunbc.design_argument::
+// fail_closed "no plausible output is fabricated" and gunbc.design_argument::epistemic_humility
+// "do not assert as deduced what is only inferred"). A read of cgroup.events answers NotFound for a
+// missing ANCESTOR too, so a single ENOENT at one DERIVED path is inference, not observation: a seat
+// launched before a binding existed, or wrapped by a different route, would live elsewhere and a
+// release would free a seat whose processes still run. Absence is therefore established only by
+// SUCCESSFUL ENUMERATION -- Filesystem.List succeeding and the unit name not being one of its lines
+// (extdeps.filesystem.filesystem_io filesystem_listing_names_entry, the membership authority beside
+// the listing's own encoding) -- over EVERY parent a gunbc seat unit's cgroup can stand under, and
+// every listed parent that DOES name the unit must answer its events read. Any listing that fails,
+// any events read that is neither decoded nor a typed NotFound, and any candidate beyond the
+// documented set makes the whole reading UNOBSERVABLE, which releases nothing.
+//
+// THE DOCUMENTED PLACEMENT SET (one authority: gunbc.compute.unit_bounds).
+//   1. Every current launch injects Slice=gunbc-user-work.slice (user_work_binding_settings,
+//      user_work_run_properties -- "a scope without them is not this function"), so the unit's
+//      cgroup stands at user@<uid>.service/gunbc-user-work.slice/<unit>.service.
+//   2. The historical floor-demand recipe wrapped with NO Slice= ("systemd-run --user --scope -p
+//      MemoryMax=64G with no Slice=", unit_bounds above :131); a transient unit with no Slice= lands
+//      under the manager's default placement, user@<uid>.service/app.slice/<unit>.service (the
+//      spelling the fleet already observes: test.claim.live_deploy.user_work_slice_witness).
+// ROW: seat_user_service_cgroup_placement_standing -- SUBJECT: a seat unit whose cgroup stands under
+// user@<uid>.service at a path OUTSIDE the two parents above. ENUMERATED SITES: none; every route
+// that launches a compute seat composes its unit settings through gunbc.compute.unit_bounds (the
+// Slice-injecting authority), and a seat launched outside it is the defect this row guards rather
+// than a third placement. MONOTONE DIRECTION: this row's parent set may only grow when the placement
+// authority grows one, with a joined witness naming both (the pattern of
+// test.claim.live_deploy.user_work_slice_witness the_seed_trampoline_mirrors_the_declared_wrap_prefix).
+// NEXT-RUNG TRIGGER: a mint that launches seat units without composing unit_bounds' settings exists
+// -- at which point "absence" must be established by tree enumeration, not by this closed set, and
+// this module's observer is the site that changes.
+//
+// THE CALLER'S GUARD, kept: the fold (gunbc.compute.work_provider_local unit_lifecycle_unpopulated)
+// consults this only beside the manager's authoritative LoadState=not-found and the hook's silence.
+// An unread manager is not a dead unit; populated 1 preserves; a manager whose tree cannot be listed
+// preserves -- a located diagnostic, never a release.
 
-import std.types { String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.optional { Present, Absent }
+import std.list { first_where }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
   CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
@@ -35,38 +60,66 @@ import gunbc.compute.host_capacity { compute_launching_uid }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
-  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read, filesystem_listing_names_entry,
 }
 
-data seat_user_slice_prefix_head: String = "user-"
-data seat_user_slice_suffix: String = ".slice"
+// ── THE DERIVATION ────────────────────────────────────────────────────────────────────────────
+
+data seat_user_slice_head: String = "user-"
+data seat_slice_tail: String = ".slice"
 data seat_user_service_head: String = "user@"
 data seat_user_service_tail: String = ".service"
+data seat_slice_directory: String = "user.slice"
+// The manager's default placement for transient units that carry no Slice=, and the declared-slice
+// parent's grandparent. Both are children of the user manager's own directory, which is the ROOT of
+// every enumeration below: if it cannot be listed, no absence anywhere under it is established.
+data seat_default_app_slice: String = "app.slice"
+data seat_unit_suffix: String = ".service"
+// Which parents a seat unit's cgroup can stand under, RELATIVE to user@<uid>.service, as one
+// authority. The observer enumerates exactly this list; the witness claims it against the placement
+// authority's words.
+fn seat_cgroup_candidate_parents() -> List<String> {
+  [user_work_slice_unit_name as String, seat_default_app_slice]
+}
 
-// THE DERIVATION. Two facts fix the path: the placement rule above and the uid the seat's user manager
-// runs as. Nothing here takes a caller's path string.
-fn seat_unit_cgroup_prefix(mount: NonEmptyStr, uid: Nat) -> NonEmptyStr {
+// THE ROOT OF EVERY ENUMERATION: the seat's user manager's own directory.
+fn seat_user_service_dir(mount: NonEmptyStr, uid: Nat) -> NonEmptyStr {
   cgroup_v2_child_path(
     parent: cgroup_v2_child_path(
-      parent: cgroup_v2_child_path(
-        parent: cgroup_v2_child_path(parent: mount, child: "user.slice" as NonEmptyStr),
-        child: join([seat_user_slice_prefix_head, to_string(value: uid), seat_user_slice_suffix], "") as NonEmptyStr),
-      child: join([seat_user_service_head, to_string(value: uid), seat_user_service_tail], "") as NonEmptyStr),
-    child: user_work_slice_unit_name)
+      parent: cgroup_v2_child_path(parent: mount, child: seat_slice_directory as NonEmptyStr),
+      child: join([seat_user_slice_head, to_string(value: uid), seat_slice_tail], "") as NonEmptyStr),
+    child: join([seat_user_service_head, to_string(value: uid), seat_user_service_tail], "") as NonEmptyStr)
+}
+
+fn seat_cgroup_candidate_dir(mount: NonEmptyStr, uid: Nat, parent_relative: String) -> NonEmptyStr {
+  let base = seat_user_service_dir(mount: mount, uid: uid)
+  if parent_relative == "." {
+    base
+  } else {
+    cgroup_v2_child_path(parent: base, child: parent_relative as NonEmptyStr)
+  }
+}
+
+// The declared-slice placement, kept as the named derivation the placement authority licenses; the
+// observer no longer privileges it -- it is one entry of the candidate list -- but the fold's detail
+// and the witness's pin both speak through it.
+fn seat_unit_cgroup_prefix(mount: NonEmptyStr, uid: Nat) -> NonEmptyStr {
+  seat_cgroup_candidate_dir(mount: mount, uid: uid, parent_relative: user_work_slice_unit_name as String)
 }
 
 fn seat_unit_cgroup_dir(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: seat_unit_cgroup_prefix(mount: mount, uid: uid), child: unit)
 }
 
-// WHAT THE OBSERVER CAN COME BACK WITH. The prefix arms and the file arms are kept apart because they
-// license different conclusions only through the decider below, never here.
-type SeatCgroupStanding
-  = SeatCgroupPrefixUnobservable { detail: String }
-  | SeatCgroupAbsent { detail: String }
-  | SeatCgroupPopulated { detail: String }
-  | SeatCgroupEmpty { detail: String }
-  | SeatCgroupUnreadable { detail: String }
+// ── THE STANDING, PER CANDIDATE PARENT ────────────────────────────────────────────────────────
+
+type SeatCgroupParentStanding
+  = ParentUnobservable { parent: String, detail: String }
+  | ParentNotContainingUnit { parent: String }
+  | ParentHasUnitEventsUnreadable { parent: String, detail: String }
+  | ParentHasUnitPopulated { parent: String, detail: String }
+  | ParentHasUnitEmpty { parent: String, detail: String }
 
 // WHAT THE FOLD MAY ACT ON: ended, preserve, or say nothing. No caller composes these by hand.
 type SeatCgroupEndProof
@@ -74,81 +127,134 @@ type SeatCgroupEndProof
   | SeatCgroupPreserve { detail: String }
   | SeatCgroupUnobservable { detail: String }
 
-fn seat_cgroup_end_proof(standing: SeatCgroupStanding) -> SeatCgroupEndProof {
-  match standing {
-    SeatCgroupAbsent { detail: d } => SeatCgroupEnded { detail: d }
-    SeatCgroupEmpty { detail: d } => SeatCgroupEnded { detail: d }
-    SeatCgroupPopulated { detail: d } => SeatCgroupPreserve { detail: d }
-    SeatCgroupPrefixUnobservable { detail: d } => SeatCgroupUnobservable { detail: d }
-    SeatCgroupUnreadable { detail: d } => SeatCgroupUnobservable { detail: d }
+fn seat_cgroup_end_proof_from_parents(root: String, standings: List<SeatCgroupParentStanding>) -> SeatCgroupEndProof {
+  // ANY parent that could not be read makes the whole reading unobservable: absence is established
+  // by enumeration over the FULL documented set, so one unreadable member voids the census, it does
+  // not shrink it. A parent that NAMES the unit answers through its events file: populated preserves,
+  // empty (drained, not yet reaped) ends. Only when every documented parent listed successfully and
+  // none of them contains the unit is the absence established.
+  let unreadable = first_where(standings, keep: s => match s {
+    ParentUnobservable { parent: _, detail: _ } => true
+    ParentHasUnitEventsUnreadable { parent: _, detail: _ } => true
+    _ => false
+  })
+  let populated = first_where(standings, keep: s => match s {
+    ParentHasUnitPopulated { parent: _, detail: _ } => true
+    _ => false
+  })
+  let drained = first_where(standings, keep: s => match s {
+    ParentHasUnitEmpty { parent: _, detail: _ } => true
+    _ => false
+  })
+  match unreadable {
+    Present { value: ParentUnobservable { parent: p, detail: d } } =>
+      SeatCgroupUnobservable { detail: join(["parent ", p, " could not be enumerated: ", d], "") }
+    Present { value: ParentHasUnitEventsUnreadable { parent: p, detail: d } } =>
+      SeatCgroupUnobservable { detail: join(["the unit stands at ", p, " but its cgroup.events could not be read: ", d], "") }
+    // The filter can only name the two arms above; a third would mean the filter and this match
+    // disagree about the sum, and an unhandled shape answers unobservable, never ended.
+    Present { value: _ } =>
+      SeatCgroupUnobservable { detail: join(["a candidate parent under ", root, " arrived in the filter's seat in a shape the fold does not read", ""], "") }
+    Absent => match populated {
+      Present { value: ParentHasUnitPopulated { parent: p, detail: d } } =>
+        SeatCgroupPreserve { detail: join([d, " in ", p, "; processes the seat launched are still running", ""], "") }
+      Present { value: _ } =>
+        SeatCgroupUnobservable { detail: join(["a populated-shape parent under ", root, " arrived unreadably shaped", ""], "") }
+      Absent => match drained {
+        Present { value: ParentHasUnitEmpty { parent: p, detail: d } } =>
+          SeatCgroupEnded { detail: join([d, " (at ", p, "); no documented placement holds a live cgroup for the unit", ""], "") }
+        Present { value: _ } =>
+          SeatCgroupUnobservable { detail: join(["an empty-shape parent under ", root, " arrived unreadably shaped", ""], "") }
+        Absent =>
+          SeatCgroupEnded { detail: join(["the seat unit's cgroup directory was enumerated away: every documented placement parent under ", root, " listed successfully and none names it; nothing the unit launched can still run", ""], "") }
+      }
+    }
   }
 }
 
-fn seat_cgroup_standing_from_events_body(body: String, at: NonEmptyStr) -> SeatCgroupStanding {
-  match decode_cgroup_events_populated(body: body) {
-    CgroupEventsDecoded { populated: true } =>
-      SeatCgroupPopulated { detail: join(["processes remain in ", at as String], "") }
-    CgroupEventsDecoded { populated: false } =>
-      SeatCgroupEmpty { detail: join([at as String, " reports populated 0: drained, not yet reaped", ""] , "") }
-    CgroupEventsUnparseable { cause: c } =>
-      SeatCgroupUnreadable { detail: join([at as String, ": cgroup.events could not be decoded: ", c], "") }
-  }
-}
+// ── THE OBSERVER ───────────────────────────────────────────────────────────────────────────────
 
-fn seat_cgroup_standing_from_exact_read(read: FilesystemExactRead, at: NonEmptyStr) -> SeatCgroupStanding {
-  match read {
-    FilesystemExactPathRead { path: _, content: body } => seat_cgroup_standing_from_events_body(body: body, at: at)
-    FilesystemExactPathAbsent { path: _ } =>
-      // Safe ONLY because the prefix listing below succeeded first: with the slice directory proven to
-      // stand, NotFound on the unit directory inside it is about the unit, not about the spelling.
-      SeatCgroupAbsent { detail: join(["no cgroup directory stands at ", at as String, "; nothing the unit launched can still run", ""], "") }
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } =>
-      SeatCgroupUnreadable { detail: join([at as String, " could not be read: ", e], "") }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
-      SeatCgroupUnreadable { detail: join([at as String, ": ", o, ": ", e], "") }
-  }
-}
-
-// THE OBSERVATION, at a mount the witness can fake. Production passes the kernel's own row through
-// observe_seat_cgroup_end_proof below; a witness plants a whole tree under its own directory.
-fn observe_seat_cgroup(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr) -> SeatCgroupStanding {
-  let prefix = seat_unit_cgroup_prefix(mount: mount, uid: uid)
-  let listing = Filesystem.List(path: prefix as String)
+fn parent_standing_for(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr, root_entries: String, parent_relative: String) -> SeatCgroupParentStanding {
+  let parent_dir = seat_cgroup_candidate_dir(mount: mount, uid: uid, parent_relative: parent_relative)
+  // WHETHER THE PARENT DIRECTORY STANDS AT ALL is read from the SUCCESSFUL root listing: a documented
+  // parent that the manager's own directory does not name has been enumerated away too -- its absence
+  // is established, and the unit cannot stand inside a directory that does not exist. Only a parent
+  // the root listing DOES name, but which then fails to list, is a truly unreadable census member.
+  let parent_stands = parent_relative == "." || filesystem_listing_names_entry(listing: root_entries, name: parent_relative)
+  let listing = Filesystem.List(path: parent_dir as String)
   if !listing.success {
-    // Absent prefix and unreadable prefix are ONE arm, and it licenses nothing: both say the
-    // derivation's root could not be established, which is a fact about this read, not about the seat.
-    SeatCgroupPrefixUnobservable { detail: join(["the work slice at ", prefix as String, " could not be listed: ", listing.error], "") }
+    if parent_stands {
+      // A failed listing of a directory the root just named is NOT an absence (the
+      // filesystem_absence_establishment row's class): the parent may hold the unit's live cgroup
+      // behind an EACCES.
+      ParentUnobservable { parent: parent_dir as String, detail: listing.error }
+    } else {
+      ParentNotContainingUnit { parent: parent_dir as String }
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: concat(unit as String, seat_unit_suffix, "")) {
+    ParentNotContainingUnit { parent: parent_dir as String }
   } else {
-    let dir = seat_unit_cgroup_dir(mount: mount, uid: uid, unit: unit)
-    let events_path = cgroup_v2_events_path(cgroup_path: dir)
+    let unit_dir = cgroup_v2_child_path(parent: parent_dir, child: join([unit as String, seat_unit_suffix, ""], "") as NonEmptyStr)
+    let events_path = cgroup_v2_events_path(cgroup_path: unit_dir)
     let raw = Filesystem.Read(path: events_path as String)
-    seat_cgroup_standing_from_exact_read(
+    parent_standing_from_exact_read(
+      parent: parent_dir as String,
       read: filesystem_exact_read(
         path: events_path as String,
         content: raw.content,
         success: raw.success,
         error: raw.error,
-        error_kind: raw.error_kind),
-      at: dir)
+        error_kind: raw.error_kind))
+  }
+}
+
+fn parent_standing_from_exact_read(parent: String, read: FilesystemExactRead) -> SeatCgroupParentStanding {
+  match read {
+    FilesystemExactPathRead { path: _, content: body } =>
+      match decode_cgroup_events_populated(body: body) {
+        CgroupEventsDecoded { populated: true } => ParentHasUnitPopulated { parent: parent, detail: "processes remain" }
+        CgroupEventsDecoded { populated: false } => ParentHasUnitEmpty { parent: parent, detail: "the unit's cgroup reports populated 0: drained, not yet reaped" }
+        CgroupEventsUnparseable { cause: c } => ParentHasUnitEventsUnreadable { parent: parent, detail: c }
+      }
+    // The listing named the directory a moment ago, so NotFound here is a race with the kernel's
+    // reap -- which is itself the ended verdict arriving through the second door; a decoded empty is
+    // not required to agree with it, so this arm ends the seat through the listing-plus-absence path.
+    FilesystemExactPathAbsent { path: _ } => ParentHasUnitEmpty { parent: parent, detail: "the directory the listing named was already reaped by the kernel" }
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ParentHasUnitEventsUnreadable { parent: parent, detail: e }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ParentHasUnitEventsUnreadable { parent: parent, detail: join([o, ": ", e], "") }
+  }
+}
+
+// THE OBSERVATION, at a mount the witness can fake. Production passes the kernel's own row through
+// observe_seat_cgroup_end_proof below; a witness plants a whole fake tree under its own directory.
+fn observe_seat_cgroup(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr) -> SeatCgroupEndProof {
+  let root = seat_user_service_dir(mount: mount, uid: uid)
+  // The manager's own directory gates everything: if it cannot be listed, nothing under it is
+  // enumerated, and a listing that succeeds without naming a documented parent's directory is still
+  // a successful listing of that parent (empty), so only per-parent listing failures and the root
+  // failure can make the reading unobservable.
+  let root_listing = Filesystem.List(path: root as String)
+  if !root_listing.success {
+    SeatCgroupUnobservable { detail: join(["the seat's user manager directory ", root as String, " could not be listed: ", root_listing.error], "") }
+  } else {
+    seat_cgroup_end_proof_from_parents(
+      root: root as String,
+      standings: map(seat_cgroup_candidate_parents(), p => parent_standing_for(mount: mount, uid: uid, unit: unit, root_entries: root_listing.entries, parent_relative: p)))
   }
 }
 
 // THE PRODUCTION ENTRY: the seat's uid is THIS process's own effective uid -- the seat's unit and this
 // recovery route were launched by the same service principal, so /proc/self/status is the authority
 // (gunbc.compute.host_capacity compute_launching_uid, the one spelling); a route that cannot name it
-// says so, it does not guess. The mount is the kernel's unified row.
+// says so, it does not guess. The Int crosses back through the one checked route, and a failed
+// crossing is unobservable -- never an absence (std.checked_arithmetic::checked_int_to_nat, as
+// gunbc.compute.host_capacity::compute_attempt_exit_spool_open already does for this very uid).
 fn observe_seat_cgroup_end_proof(unit: NonEmptyStr) -> SeatCgroupEndProof {
   match compute_launching_uid() {
     Absent => SeatCgroupUnobservable { detail: "this route cannot name the uid whose user manager ran the seat, so its cgroup path cannot be derived" }
     Present { value: uid } => match checked_int_to_nat(n: uid) {
-      // THE REVERSE CROSSING IS CHECKED, and a failed crossing is unobservable -- never an absence.
-      // This path decides whether a seat is released; an unchecked or negative uid would derive a
-      // cgroup path that belongs to no user, which is the wrong-spelling class the prefix guard
-      // exists for (std.checked_arithmetic::checked_int_to_nat, the one legal route Int back to Nat,
-      // as gunbc.compute.host_capacity compute_attempt_exit_spool_open already does for the same uid).
       Absent => SeatCgroupUnobservable { detail: "the launching uid did not cross to a natural number, so no user manager's cgroup path is derivable from it" }
-      Present { value: uid_nat } => seat_cgroup_end_proof(
-        standing: observe_seat_cgroup(mount: cgroup_v2_mount_point, uid: uid_nat, unit: unit))
+      Present { value: uid_nat } => observe_seat_cgroup(mount: cgroup_v2_mount_point, uid: uid_nat, unit: unit)
     }
   }
 }

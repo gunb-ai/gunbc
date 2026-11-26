@@ -861,15 +861,27 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_missing_slice_prefix_is_unobservable_not_absent" },
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_missing_manager_directory_is_unobservable_not_absent" },
       entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
-      function: "a_missing_slice_prefix_is_unobservable_not_absent",
+      function: "a_missing_manager_directory_is_unobservable_not_absent",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "garbage_events_are_unreadable_not_ended" },
       entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
       function: "garbage_events_are_unreadable_not_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_seat_in_the_historical_app_slice_is_still_seen" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_seat_in_the_historical_app_slice_is_still_seen",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_placement_set_names_the_documented_parents" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_placement_set_names_the_documented_parents",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
