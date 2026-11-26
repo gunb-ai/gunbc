@@ -80,7 +80,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "remote-build-served-attempt-host-log-read", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   serves(node: "remote-build-executes-the-bound-source", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   serves(node: "serving-observe-reads-absent-toolchain-as-drift", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
-  serves(node: "remote-build-census-observed-bound-admits-recorded-scope", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-census-unknown-reason-names-the-census-not-the-transport", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "serving-pool-seat-count-follows-the-build-ceiling", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "remote-build-serve-binary-validated-at-request-time", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   serves(node: "remote-build-serve-protocol-version-client-checkable", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
