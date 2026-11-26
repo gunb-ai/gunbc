@@ -570,19 +570,95 @@ type Stage0SourceModuleDag
   = Stage0SourceModuleDagDerived { module_dag: ModuleDag }
   | Stage0SourceModuleDagRefused { cause: Stage0SourceEdgeRefusal }
 
-type Stage0SourceEdgeFold {
+// THE ONE RULE FOR PROJECTING DEPENDENCY FACTS ONTO A MODULE DAG. Both partitions that read
+// v2.lens.module_graph facts -- this stage0 one and v2.workflow.emitted_closure_crate_partition's
+// emitted closure -- call it, and differ only in which declared modules are nodes and what each
+// node is called, which they pass as data. A fact whose importer is not a node is not inspected.
+// For one whose importer is a node: an undeclared target refuses; a declared target that is not a
+// node refuses (a node depending on a module outside the graph is an edge the graph cannot
+// carry); a self dependency is no edge; several facts joining one pair (an import and a reference
+// to the same module) are ONE edge, keyed rather than searched; and a rejected map read refuses,
+// because reading it as absent would skip an importer or drop an edge and hand the verdict a
+// smaller graph -- the absorbing fallback gunbc.design_argument::fail_closed forbids.
+type DependencyEdgeProjectionRefusal
+  = ProjectedDependencyUnresolved { importer_path: String, target_module: String }
+  | ProjectedDependencyOutsideNodes { importer_path: String, importer: String, target_module: String }
+  | ProjectedFactLookupRejected { key: String }
+
+type DependencyEdgeProjection
+  = DependencyEdgesProjected { edges: List<ModuleDagEdge> }
+  | DependencyEdgesRefused { cause: DependencyEdgeProjectionRefusal }
+
+type DependencyEdgeProjectionFold {
   edges: List<ModuleDagEdge>
   seen: Map<String, Bool>
-  refusal: Optional<Stage0SourceEdgeRefusal>
+  refusal: Optional<DependencyEdgeProjectionRefusal>
+}
+
+fn projection_refused(acc: DependencyEdgeProjectionFold, cause: DependencyEdgeProjectionRefusal) -> DependencyEdgeProjectionFold {
+  DependencyEdgeProjectionFold { edges: acc.edges, seen: acc.seen, refusal: Present { value: cause } }
+}
+
+fn project_dependency_edge_step(
+  acc: DependencyEdgeProjectionFold,
+  edge: ModuleDependencyEdge,
+  importer_node_by_path: Map<String, String>,
+  node_by_module: Map<String, String>
+) -> DependencyEdgeProjectionFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match map_get_checked(importer_node_by_path, edge.path) {
+        Rejected { diagnostics: _ } => projection_refused(acc: acc, cause: ProjectedFactLookupRejected { key: edge.path })
+        Accepted { value: Absent, diagnostics: _ } => acc
+        Accepted { value: Present { value: importer }, diagnostics: _ } =>
+          if !edge.target_declared {
+            projection_refused(acc: acc, cause: ProjectedDependencyUnresolved { importer_path: edge.path, target_module: edge.target_module })
+          } else {
+            match map_get_checked(node_by_module, edge.target_module) {
+              Rejected { diagnostics: _ } => projection_refused(acc: acc, cause: ProjectedFactLookupRejected { key: edge.target_module })
+              Accepted { value: Absent, diagnostics: _ } =>
+                projection_refused(acc: acc, cause: ProjectedDependencyOutsideNodes { importer_path: edge.path, importer: importer, target_module: edge.target_module })
+              Accepted { value: Present { value: target }, diagnostics: _ } =>
+                if target == importer {
+                  acc
+                } else {
+                  let key = concat(importer, " -> ", target)
+                  match map_get_checked(acc.seen, key) {
+                    Rejected { diagnostics: _ } => projection_refused(acc: acc, cause: ProjectedFactLookupRejected { key: key })
+                    Accepted { value: Present { value: _ }, diagnostics: _ } => acc
+                    Accepted { value: Absent, diagnostics: _ } =>
+                      DependencyEdgeProjectionFold {
+                        edges: acc.edges |> list_push(ModuleDagEdge { from: importer as ModuleId, to: target as ModuleId }),
+                        seen: map_insert(acc.seen, key, true),
+                        refusal: Absent
+                      }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn project_dependency_edges(
+  importer_node_by_path: Map<String, String>,
+  node_by_module: Map<String, String>,
+  dependencies: List<ModuleDependencyEdge>
+) -> DependencyEdgeProjection {
+  let folded = dependencies |> fold(init: DependencyEdgeProjectionFold { edges: [], seen: empty_map(), refusal: Absent }, f: fn(acc, edge) {
+    project_dependency_edge_step(acc: acc, edge: edge, importer_node_by_path: importer_node_by_path, node_by_module: node_by_module)
+  })
+  match folded.refusal {
+    Present { value: cause } => DependencyEdgesRefused { cause: cause }
+    Absent => DependencyEdgesProjected { edges: folded.edges }
+  }
 }
 
 fn stage0_basename_set(basenames: List<String>) -> Map<String, Bool> {
   basenames |> fold(init: empty_map(), f: fn(acc, basename) { map_insert(acc, basename, true) })
 }
 
-// A MAP READ HAS THREE ANSWERS, AND A REJECTED READ IS NOT "ABSENT". Reading it as absent would
-// skip an importer or drop an edge and hand the verdict a smaller graph -- the absorbing fallback
-// this derivation exists to refuse -- so every rejected read below refuses, naming its key.
 type Stage0KeyRead
   = Stage0KeyPresent
   | Stage0KeyAbsent
@@ -594,10 +670,6 @@ fn stage0_key_read(set: Map<String, Bool>, key: String) -> Stage0KeyRead {
     Accepted { value: Absent, diagnostics: _ } => Stage0KeyAbsent
     Rejected { diagnostics: _ } => Stage0KeyReadRejected
   }
-}
-
-fn stage0_source_refused(acc: Stage0SourceEdgeFold, cause: Stage0SourceEdgeRefusal) -> Stage0SourceEdgeFold {
-  Stage0SourceEdgeFold { edges: acc.edges, seen: acc.seen, refusal: Present { value: cause } }
 }
 
 // The declared module each partitioned basename projects from. The runtime is not a .dag module:
@@ -630,79 +702,47 @@ fn stage0_partitioned_declaration_refusal(
   })
 }
 
-// Importer path -> importer basename, for the declarations that project onto a partitioned basename.
-type Stage0ImporterIndex {
+// The stage0 nodes, as the shared projection takes them: each partitioned declaration's path and
+// module name, both mapped to its mirror basename.
+type Stage0NodeIndex {
   by_path: Map<String, String>
+  by_module: Map<String, String>
   refusal: Optional<Stage0SourceEdgeRefusal>
 }
 
-fn stage0_partitioned_importers_by_path(
+fn stage0_partitioned_node_index(
   partitioned: Map<String, Bool>,
   declarations: List<ModuleDeclarationFact>
-) -> Stage0ImporterIndex {
-  declarations |> fold(init: Stage0ImporterIndex { by_path: empty_map(), refusal: Absent }, f: fn(acc, decl) {
+) -> Stage0NodeIndex {
+  declarations |> fold(init: Stage0NodeIndex { by_path: empty_map(), by_module: empty_map(), refusal: Absent }, f: fn(acc, decl) {
     match acc.refusal {
       Present { value: _ } => acc
       Absent => {
         let basename = rust_module_emit_filename(module_name: decl.module)
         match stage0_key_read(set: partitioned, key: basename) {
-          Stage0KeyPresent => Stage0ImporterIndex { by_path: map_insert(acc.by_path, decl.path, basename), refusal: Absent }
+          Stage0KeyPresent =>
+            Stage0NodeIndex {
+              by_path: map_insert(acc.by_path, decl.path, basename),
+              by_module: map_insert(acc.by_module, decl.module, basename),
+              refusal: Absent
+            }
           Stage0KeyAbsent => acc
-          Stage0KeyReadRejected => Stage0ImporterIndex { by_path: acc.by_path, refusal: Present { value: Stage0SourceLookupRejected { key: basename } } }
+          Stage0KeyReadRejected =>
+            Stage0NodeIndex { by_path: acc.by_path, by_module: acc.by_module, refusal: Present { value: Stage0SourceLookupRejected { key: basename } } }
         }
       }
     }
   })
 }
 
-fn stage0_source_edge_step(
-  acc: Stage0SourceEdgeFold,
-  edge: ModuleDependencyEdge,
-  importers: Map<String, String>,
-  partitioned: Map<String, Bool>
-) -> Stage0SourceEdgeFold {
-  match acc.refusal {
-    Present { value: _ } => acc
-    Absent =>
-      match map_get_checked(importers, edge.path) {
-        Rejected { diagnostics: _ } => stage0_source_refused(acc: acc, cause: Stage0SourceLookupRejected { key: edge.path })
-        Accepted { value: Absent, diagnostics: _ } => acc
-        Accepted { value: Present { value: importer }, diagnostics: _ } =>
-          if !edge.target_declared {
-            Stage0SourceEdgeFold {
-              edges: acc.edges,
-              seen: acc.seen,
-              refusal: Present { value: Stage0PartitionedDependencyUnresolved { importer_path: edge.path, target_module: edge.target_module } }
-            }
-          } else {
-            let target = rust_module_emit_filename(module_name: edge.target_module)
-            if target == importer {
-              acc
-            } else {
-              match stage0_key_read(set: partitioned, key: target) {
-                Stage0KeyReadRejected => stage0_source_refused(acc: acc, cause: Stage0SourceLookupRejected { key: target })
-                Stage0KeyAbsent =>
-                  stage0_source_refused(acc: acc, cause: Stage0PartitionedDependencyOutsidePartition { importer: importer, target: target })
-                Stage0KeyPresent => {
-                  // Several facts can join one basename pair (an import and a reference to the
-                  // same module); the edge is one fact, so it is recorded once, keyed rather than
-                  // searched.
-                  let key = concat(importer, " -> ", target)
-                  match stage0_key_read(set: acc.seen, key: key) {
-                    Stage0KeyReadRejected => stage0_source_refused(acc: acc, cause: Stage0SourceLookupRejected { key: key })
-                    Stage0KeyPresent => acc
-                    Stage0KeyAbsent =>
-                      Stage0SourceEdgeFold {
-                        edges: acc.edges |> list_push(ModuleDagEdge { from: stage0_module_id(basename: importer), to: stage0_module_id(basename: target) }),
-                        seen: map_insert(acc.seen, key, true),
-                        refusal: Absent
-                      }
-                  }
-                }
-              }
-            }
-          }
-      }
+fn stage0_source_refusal_of(cause: DependencyEdgeProjectionRefusal) -> Stage0SourceEdgeRefusal {
+  match cause {
+    ProjectedDependencyUnresolved { importer_path: path, target_module: target } =>
+      Stage0PartitionedDependencyUnresolved { importer_path: path, target_module: target }
+    ProjectedDependencyOutsideNodes { importer_path: _, importer: importer, target_module: target } =>
+      Stage0PartitionedDependencyOutsidePartition { importer: importer, target: rust_module_emit_filename(module_name: target) }
+    ProjectedFactLookupRejected { key: key } =>
+      Stage0SourceLookupRejected { key: key }
   }
 }
 
@@ -716,21 +756,21 @@ fn stage0_source_module_dag_over(
   match stage0_partitioned_declaration_refusal(basenames: basenames, declarations: declarations) {
     Present { value: cause } => Stage0SourceModuleDagRefused { cause: cause }
     Absent => {
-      let partitioned = stage0_basename_set(basenames: basenames)
-      let index = stage0_partitioned_importers_by_path(partitioned: partitioned, declarations: declarations)
-      let folded = dependencies |> fold(init: Stage0SourceEdgeFold { edges: [], seen: empty_map(), refusal: index.refusal }, f: fn(acc, edge) {
-        stage0_source_edge_step(acc: acc, edge: edge, importers: index.by_path, partitioned: partitioned)
-      })
-      match folded.refusal {
+      let index = stage0_partitioned_node_index(partitioned: stage0_basename_set(basenames: basenames), declarations: declarations)
+      match index.refusal {
         Present { value: cause } => Stage0SourceModuleDagRefused { cause: cause }
         Absent =>
-          Stage0SourceModuleDagDerived {
-            module_dag: ModuleDag {
-              modules: basenames |> map(basename => stage0_module_id(basename: basename)),
-              edges: folded.edges,
-              exports: stage0_module_dag_exports_map(),
-              type_definitions: stage0_module_dag_type_definitions_map(),
-            }
+          match project_dependency_edges(importer_node_by_path: index.by_path, node_by_module: index.by_module, dependencies: dependencies) {
+            DependencyEdgesRefused { cause: cause } => Stage0SourceModuleDagRefused { cause: stage0_source_refusal_of(cause: cause) }
+            DependencyEdgesProjected { edges: edges } =>
+              Stage0SourceModuleDagDerived {
+                module_dag: ModuleDag {
+                  modules: basenames |> map(basename => stage0_module_id(basename: basename)),
+                  edges: edges,
+                  exports: stage0_module_dag_exports_map(),
+                  type_definitions: stage0_module_dag_type_definitions_map(),
+                }
+              }
           }
       }
     }

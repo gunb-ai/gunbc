@@ -17,6 +17,7 @@ import gunbc.crate_partition {
 import v2.workflow.emitted_closure_crate_partition {
   ClosureDependencyUnresolved,
   ClosureEntryUndeclared,
+  ClosureFactLookupRejected,
   EmittedClosureDagRefused,
   EmittedClosurePartitionOutcome,
   EmittedClosureResolved,
@@ -110,6 +111,7 @@ test fn an_unresolved_required_dependency_refuses_rather_than_shrinking_the_clos
       importer == missing_root + "/left.dag"
         && target == "test.fixture.emitted_closure_partition.missing.sink"
     EmittedClosureDagRefused { cause: ClosureEntryUndeclared { entry_path: _ } } => false
+    EmittedClosureDagRefused { cause: ClosureFactLookupRejected { key: _ } } => false
     EmittedClosureResolved { outcome: _ } => false
   }
 }
@@ -119,6 +121,7 @@ test fn an_undeclared_entry_refuses_rather_than_resolving_an_empty_closure() -> 
   match fixture_partition_at(root: base_root, entry: "absent.dag") {
     EmittedClosureDagRefused { cause: ClosureEntryUndeclared { entry_path: path } } => path == base_root + "/absent.dag"
     EmittedClosureDagRefused { cause: ClosureDependencyUnresolved { importer_path: _, target_module: _ } } => false
+    EmittedClosureDagRefused { cause: ClosureFactLookupRejected { key: _ } } => false
     EmittedClosureResolved { outcome: _ } => false
   }
 }
