@@ -4,7 +4,8 @@ import std.types { String, Bool, NonEmptyStr, Port, List }
 import std.optional { Absent, Optional, Present }
 import std.nat { Nat, Zero, Succ }
 import std.list { first_where }
-import std.measure { token_count_value }
+import std.measure { token_count_value, basis_point_count, second_count }
+import std.decimal { fixed_point_trimmed_wire }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { FreeSemigroup }
 import std.content_hash { sha256_hex_of_text }
@@ -15,11 +16,11 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
-import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeyFromFile, LilServeLauncherFlag, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_profile_name, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry, lil_serve_launcher_flag_name, lil_serve_launcher_flag_emergency_evict_for_prefetch }
+import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeyFromFile, LilServeLauncherFlag, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_profile_name, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry, lil_serve_launcher_flag_name, lil_serve_launcher_flag_emergency_evict_for_prefetch, lil_serve_environment_key_checkpoint_protected_share }
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
-import gunbc.serving.serving_host_memory { srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value, srv1_checkpoint_protected_share, srv1_checkpoint_protection_window }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, srv1_serving_startup_ground }
 import gunbc.serving.serving_enrollment { ServingRouteUnresolved }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
@@ -226,8 +227,19 @@ data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
     lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTED_SHARE" as NonEmptyStr, value: "0.5" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS" as NonEmptyStr, value: "1800" as NonEmptyStr),
+    // DERIVED from the same two authorities the boot path renders, through the same boundary encodings the
+    // boot path uses (a basis point as the shortest decimal that names it, a Second as whole seconds). Until
+    // this head these were the literals "0.5" and "1800": a second copy of a knob whose other copy the boot
+    // path rendered, which is the shape class B4 removed for the L1 operand. The boot-path witness now
+    // compares the operands across the two paths by name.
+    lil_serve_environment_entry(
+      key: lil_serve_environment_key_checkpoint_protected_share,
+      value: fixed_point_trimmed_wire(value: basis_point_count(bp: srv1_checkpoint_protected_share) as Int, decimals: 4) as NonEmptyStr
+    ),
+    lil_serve_environment_entry(
+      key: "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS" as NonEmptyStr,
+      value: to_string(second_count(s: srv1_checkpoint_protection_window)) as NonEmptyStr
+    ),
   ],
   // The launcher's own face, from the per-profile answer above — NOT a literal list: writing [] here
   // would be the silence this section exists to remove.

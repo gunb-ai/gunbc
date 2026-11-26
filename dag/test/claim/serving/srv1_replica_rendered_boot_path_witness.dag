@@ -29,7 +29,7 @@ import v2.std.diagnostic {
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.algebra { length, string_contains, string_concat_join }
-import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size, seconds_per_day, byte_size, byte_size_count, token_count }
+import std.measure { ByteSize, basis_point, basis_point_count, permille_count, second, second_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size, seconds_per_day, byte_size, byte_size_count, token_count }
 import gunbc.serving.serving_replica_profile { concurrent_turns_shared }
 import std.decimal { fixed_point_trimmed_wire }
 import std.content_hash { lower_hex_64, sha256_hex_of_text }
@@ -69,9 +69,23 @@ import gunbc.serving.srv1_serving_replica_layout {
   StoreAtCreation, StorePolicyUnread, srv1_l2_store_policy_reading,
   Srv1KvTierDischarge, ContractDischarged, ContractUndischarged, srv1_l1_staging_discharge,
   Srv1L1MissingTerm, Srv1L1MissingGap, AdmittedPopulationUnbounded, StoreWindowHeadroomUnpriced,
-  PriceExtrapolatedPastItsRead, HoldsShortOfPricedRequirement, srv1_l1_missing_term_name,
+  PriceExtrapolatedPastItsRead, CheckpointProtectionUnbacked, HoldsShortOfPricedRequirement,
+  srv1_l1_missing_term_name,
   // the prose each variant carries, asserted on where the prose has to say something specific
-  srv1_l1_missing_price_extrapolated,
+  srv1_l1_missing_price_extrapolated, srv1_l1_missing_checkpoint_protection,
+  // the checkpoint-protection knob: the measured reading, the verdict the two numbers produce, and the
+  // parameterised discharge that makes the ladder authorable (class B4 follow-up)
+  Srv1CheckpointProtectionReading, ProtectionConfirmedByUpstreamRead, ProtectionRefutedByRun, ProtectionUnread,
+  srv1_checkpoint_protection_reading, srv1_checkpoint_protection_is_backed, srv1_checkpoint_protection_standing,
+  Srv1CheckpointProtectionVerdict, KnobsConsistentUnderTheirPlainReading, EvictionAndProtectionContradict,
+  srv1_checkpoint_protection_verdict, srv1_checkpoint_protection_verdict_for_srv1,
+  srv1_l1_staging_discharge_with_reading,
+  // the disk end of the same contract: the anchor, the sum over the roster, the store-sharing permission
+  Srv1L2CapacityVerdict, AnchorAdmitted, AnchorUnread, AnchorExceeded, StoreLayoutUnread,
+  srv1_l2_capacity_verdict, srv1_l2_capacity_check, srv1_l2_capacity_requirement, srv1_l2_free_space,
+  srv1_disk_guard_contract, Srv1L2StoreSharing, SharingUnread, MayShareOneStore,
+  srv1_l2_store_sharing, srv1_l2_store_sharing_is_read, srv1_l2_roster_shares_one_store,
+  MayNotShareOneStore,
   srv1_replica_host_budget, Srv1ReplicaHostBudget, srv1_replica_total_host_claim, srv1_l1_staging_contract_identity,
   srv1_launch_admission, Srv1LaunchAdmission, Srv1LaunchAdmitted, Srv1LaunchRefused,
   // the emergency valve on the launcher's own face (follow-up to class B4)
@@ -81,7 +95,10 @@ import gunbc.serving.srv1_serving_replica_layout {
 import gunbc.serving.serving_host_memory {
   srv1_lmcache_l1_configured, srv1_lmcache_l1_bytes, srv1_lmcache_l2_configured, srv1_lmcache_l2_bytes,
   srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value, serving_usable_ram_bytes_or_zero,
+  srv1_lmcache_l2_eviction_watermark,
+  srv1_checkpoint_protected_share, srv1_checkpoint_protection_window,
 }
+import extdeps.vllm.lil_serve { lil_serve_environment_key_checkpoint_protected_share }
 import gunbc.host.host_memory_observation { gunbc_ci_srv1_memtotal_measured }
 import gunbc.serving.serving_reservation { host_memory_reserved }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -487,7 +504,7 @@ test fn the_retention_policy_reaches_the_engine_as_a_typed_boundary_encoding() -
   let half_share = fixed_point_trimmed_wire(value: 2500 as Int, decimals: 4)
   let window = to_string(second_count(s: a.checkpoint_retention.protection_window))
   admitted_share == "0.5" && half_share == "0.25" && window == "1800"
-    && string_contains(s: render_text(srv1_render_replica_engine_args()), pattern: concat("LMCACHE_CHECKPOINT_PROTECTED_SHARE=", admitted_share))
+    && string_contains(s: render_text(srv1_render_replica_engine_args()), pattern: concat(lil_serve_environment_key_checkpoint_protected_share as String, concat("=", admitted_share)))
     && string_contains(s: render_text(srv1_render_replica_engine_args()), pattern: concat("LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=", window))
 }
 
@@ -1100,8 +1117,8 @@ test fn the_admitted_tier_is_admitted_and_still_reports_the_contract_undischarge
           // makes the burst sensitivity above the thing to watch, not a rounding error.
           && byte_size_count(b: r) < byte_size_count(b: h)
           && byte_size_count(b: r) > byte_size_count(b: srv1_lmcache_l1_bytes) / 2
-          && length(m) == 3
-          // Three distinct named terms, and all three of them: an indexed read would be optional (List indexing
+          && length(m) == 4
+          // Four distinct named terms, and all four of them: an indexed read would be optional (List indexing
           // returns T?), so the list is pinned by cardinality plus presence of each name — with length 3 and
           // three distinct names present, there is no fourth state. Dropping any term from the model's list
           // takes this red, which is the point: the 2026-11-25 host read says the contract is not discharged,
@@ -1116,6 +1133,14 @@ test fn the_admitted_tier_is_admitted_and_still_reports_the_contract_undischarge
           && any(m, g => g.term == AdmittedPopulationUnbounded)
           && any(m, g => g.term == StoreWindowHeadroomUnpriced)
           && any(m, g => g.term == PriceExtrapolatedPastItsRead)
+          // THE FOURTH, and the one class B4's follow-up files: the promise's TAIL — that a checkpoint which
+          // reached the disk tier is still there when its conversation returns — is held by a knob nobody has
+          // read and one run found inert. Dropping it from the model's list takes this control red, which is
+          // the point: the model may not answer "the fleet lost fresh checkpoints" with a gap list that omits
+          // the only mechanism standing between a checkpoint and the eviction path.
+          && any(m, g => g.term == CheckpointProtectionUnbacked)
+          && any(m, g => g.term == CheckpointProtectionUnbacked
+            && string_contains(s: g.reason as String, pattern: "2172 of 2173"))
           // and the reasons still travel with them, non-empty and specific where specificity is the claim
           && any(m, g => g.term == PriceExtrapolatedPastItsRead
             && string_contains(s: g.reason as String, pattern: "150,000"))
@@ -1721,4 +1746,287 @@ test fn the_declined_valve_adds_no_token_to_the_argv() -> Bool {
     && length(srv1_emergency_evict_launcher_flags(d: EmergencyEvictUnstated {
       obligation: srv1_emergency_evict_read_obligation,
     })) == 0
+}
+
+
+// ── class B4 follow-up: the checkpoint-protection knob, and the disk end of the same contract ───────
+//
+// THE UNDISCHARGED PART OF CLASS B4. The staging contract prices getting a checkpoint OUT of L1; nothing
+// priced its being there when the conversation came back. The only thing between a fresh L2 checkpoint and
+// the eviction path is LMCACHE_CHECKPOINT_PROTECTED_SHARE, whose mechanism no row had read and whose one
+// measured run (2026-11-24, ad hoc on srv1's LMCache log) reported outcome=none for 2172 of 2173 requests.
+// These controls hold the three things that repair has to keep true: the observation stays an observation
+// with its instrument and obligation; the contract cannot be reported kept while the mechanism is unread,
+// however large the tier; and the contradiction between our two declared numbers is priced rather than
+// noted. The disk-end controls beside them hold the anchor: the guard's floor is the tier authority, the
+// requirement is a SUM over the roster, and an unread filesystem is not an admissible one.
+
+// The reading is carried with the standing and the instrument that make it checkable at all: the outcome
+// string, both counts, the log it came from, and an obligation naming the file to read and the field whose
+// meaning the counts depend on. A figure without its instrument is how this class survives review.
+test fn the_protection_knob_carries_the_run_that_refuted_it() -> Bool {
+  match srv1_checkpoint_protection_reading {
+    ProtectionRefutedByRun {
+      outcome: o, outcome_count: n, observed_total: t, instrument: i, standing: _
+    } =>
+      (o as String) == "none"
+        && n == 2172
+        && t == 2173
+        && string_contains(s: i as String, pattern: "serve.log")
+        && string_contains(s: i as String, pattern: "2026-11-24")
+        && match srv1_checkpoint_protection_standing(r: srv1_checkpoint_protection_reading) {
+          Present { value: st } => match cited_figure_read_obligation(standing: st) {
+            Present { value: ob } =>
+              string_contains(s: ob as String, pattern: "/opt/lil/runtime/cache.py")
+                && string_contains(s: ob as String, pattern: "outcome=none")
+                && string_contains(s: ob as String, pattern: "admitted image digest")
+            Absent => false
+          }
+          Absent => false
+        }
+    ProtectionConfirmedByUpstreamRead { instrument: _, standing: _ } => false
+    ProtectionUnread { obligation: _ } => false
+  }
+}
+
+// The gap list the discharge reports for a given protection reading, at a fixed config and a priced
+// headroom. A plain fn, because the only difference between the three arms a control can name is which
+// reading it hands the discharge — production is not among them, it can only pass the row.
+fn gaps_with_protection(reading: Srv1CheckpointProtectionReading) -> List<Srv1L1MissingGap> {
+  match srv1_l1_staging_discharge_with_reading(
+    config: srv1_admitted_launch_config,
+    headroom: Present { value: gibibyte_to_byte_size(g: gibibyte(count: 8)) },
+    protection: reading
+  ) {
+    Accepted { value: d, diagnostics: _ } => match d {
+      ContractDischarged { holds: _, requires: _ } => [] as List<Srv1L1MissingGap>
+      ContractUndischarged { holds: _, requires_at_least: _, missing: m } => m
+    }
+    Rejected { diagnostics: _ } => [] as List<Srv1L1MissingGap>
+  }
+}
+
+// THE LADDER, authorable: only a read of the mechanism retires the term. Production can pass nothing but
+// the row; these controls pass the arms a reading would land in, which is what makes the honest arm provable
+// and the dishonest one unavailable.
+test fn only_a_read_of_the_mechanism_retires_the_protection_term() -> Bool {
+  let obligation = "read the eviction controller in the admitted image digest" as NonEmptyStr
+  let confirmed = ProtectionConfirmedByUpstreamRead {
+    instrument: "the eviction controller's source, read in the admitted image digest" as NonEmptyStr,
+    standing: TranscribedUncited { read_obligation: obligation },
+  }
+  let refuted = ProtectionRefutedByRun {
+    outcome: "none" as NonEmptyStr,
+    outcome_count: 2172,
+    observed_total: 2173,
+    instrument: "srv1 serve.log, ad hoc" as NonEmptyStr,
+    standing: TranscribedUncited { read_obligation: obligation },
+  }
+  let unread = ProtectionUnread { obligation: obligation }
+  let with_confirmed = gaps_with_protection(reading: confirmed)
+  let with_refuted = gaps_with_protection(reading: refuted)
+  let with_unread = gaps_with_protection(reading: unread)
+  // the term retires ONLY under the read arm, and the other three terms are unaffected by it
+  !any(with_confirmed, g => g.term == CheckpointProtectionUnbacked)
+    && any(with_refuted, g => g.term == CheckpointProtectionUnbacked)
+    && any(with_unread, g => g.term == CheckpointProtectionUnbacked)
+    && length(with_refuted) == length(with_confirmed) + 1
+    && length(with_unread) == length(with_confirmed) + 1
+    && srv1_checkpoint_protection_is_backed(r: confirmed)
+    && !srv1_checkpoint_protection_is_backed(r: refuted)
+    && !srv1_checkpoint_protection_is_backed(r: unread)
+}
+
+// THE DISCRIMINATING RED: a tier large enough for every priced term, and a priced store window, still do not
+// buy "the contract is kept" while the protection link is unread. This is the half the 2026-11-25 host read
+// demanded — 48 GiB moved the problem without discharging the contract, and the model must not be able to
+// say otherwise at any size.
+test fn no_tier_size_buys_the_contract_while_the_knob_is_unread() -> Bool {
+  let huge = cfg_tier(bytes: gibibyte_to_byte_size(g: gibibyte(count: 200)))
+  let priced = Present { value: gibibyte_to_byte_size(g: gibibyte(count: 8)) }
+  match srv1_l1_staging_discharge_with(config: huge, headroom: priced) {
+    Accepted { value: d, diagnostics: _ } => match d {
+      // 200 GiB clears every priced term, so the ONLY thing keeping this from ContractDischarged is the
+      // unread knob — and the arm that reports it names the term rather than shrugging
+      ContractDischarged { holds: _, requires: _ } => false
+      ContractUndischarged { holds: _, requires_at_least: _, missing: m } =>
+        any(m, g => g.term == CheckpointProtectionUnbacked)
+          && !any(m, g => g.term == HoldsShortOfPricedRequirement)
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The two numbers WE declared, priced against each other: 5000 bp protected leaves 5000 bp evictable, under
+// the 8000 bp the 0.80 watermark tells the controller to hold. And the two arms beside it prove the verdict
+// is arithmetic and not a verdict about the setting's name: a share small enough to leave the watermark
+// reachable is consistent, and a profile that declares no protection at all is not called contradictory.
+test fn the_two_declared_numbers_are_priced_against_each_other() -> Bool {
+  let srv1_verdict_ok = match srv1_checkpoint_protection_verdict_for_srv1 {
+    EvictionAndProtectionContradict { evictable_share: e, watermark_target: w, why: reason } =>
+      basis_point_count(bp: e) == 5000
+        && basis_point_count(bp: w) == 8000
+        && string_contains(s: reason as String, pattern: "outcome=none")
+    KnobsConsistentUnderTheirPlainReading => false
+  }
+  let reachable = match srv1_checkpoint_protection_verdict(
+    retention: Srv1CheckpointRetentionPolicy {
+      protected_share: basis_point(count: 1500),
+      protection_window: second(count: 1800),
+    },
+    watermark: srv1_lmcache_l2_eviction_watermark
+  ) {
+    KnobsConsistentUnderTheirPlainReading => true
+    EvictionAndProtectionContradict { evictable_share: _, watermark_target: _, why: _ } => false
+  }
+  let unprotected = match srv1_checkpoint_protection_verdict(
+    retention: Srv1CheckpointRetentionPolicy {
+      protected_share: basis_point(count: 0),
+      protection_window: second(count: 1800),
+    },
+    watermark: srv1_lmcache_l2_eviction_watermark
+  ) {
+    KnobsConsistentUnderTheirPlainReading => true
+    EvictionAndProtectionContradict { evictable_share: _, watermark_target: _, why: _ } => false
+  }
+  srv1_verdict_ok
+    && reachable
+    && unprotected
+    && basis_point_count(bp: srv1_checkpoint_protected_share) == 5000
+    && permille_count(p: srv1_lmcache_l2_eviction_watermark) == 800
+    && second_count(s: srv1_checkpoint_protection_window) == 1800
+}
+
+// ONE AUTHORITY FOR THE KNOB, both paths to the same container. The boot args and the provisioned launch
+// used to hold it twice — typed 5000 bp on one path, the literal "0.5" on the other — so a change on either
+// side would have produced two different retention policies from one model. The key is now the upstream's
+// single spelling too, which is the same defect one level down (a name written twice drifts silently).
+test fn the_retention_knob_renders_from_one_authority_on_both_paths() -> Bool {
+  let operand = fixed_point_trimmed_wire(
+    value: basis_point_count(bp: srv1_checkpoint_protected_share) as Int,
+    decimals: 4
+  )
+  let boot = match srv1_render_replica_engine_args() {
+    Accepted { value: body, diagnostics: _ } =>
+      string_contains(s: body, pattern: concat(lil_serve_environment_key_checkpoint_protected_share as String, concat("=", operand)))
+    Rejected { diagnostics: _ } => false
+  }
+  let provisioned = first_where(
+    xs: srv1_serving_launch.environment,
+    keep: e => (e.key as String) == (lil_serve_environment_key_checkpoint_protected_share as String)
+  )
+  let provisioned_ok = match provisioned {
+    Absent => false
+    Present { value: e } => (e.value as String) == operand
+  }
+  boot && provisioned_ok && operand == "0.5"
+}
+
+// The guard's floor IS the tier authority, not a literal that can be moved without moving what it guards;
+// and what the anchor prices is the SUM over the roster, which is the quantity a per-card reading can never
+// discharge. Both are equality on derived values, so the day someone re-introduces a copy this goes red.
+test fn the_disk_floor_is_the_tier_authority_and_the_requirement_is_a_sum() -> Bool {
+  byte_size_count(b: srv1_disk_guard_contract.required_free_per_replica)
+    == byte_size_count(b: srv1_lmcache_l2_bytes)
+    && byte_size_count(b: srv1_l2_capacity_requirement())
+      == byte_size_count(b: srv1_lmcache_l2_bytes) * length(srv1_serving_replica_roster)
+    && byte_size_count(b: srv1_disk_guard_contract.required_free_per_replica) == 125 * 1073741824
+}
+
+// THE ANCHOR, arm by arm. srv1 today is admitted on the row it actually has; a tier the filesystem cannot
+// hold is refused; an UNREAD filesystem is refused rather than treated as roomy; and two replicas on one KV
+// directory are refused until somebody reads what that does to LMCache's store — which lifts the moment the
+// permission is stated, so the refusal is a reading obligation and not a prohibition.
+test fn the_l2_anchor_refuses_a_sum_the_disk_cannot_hold() -> Bool {
+  let tier = srv1_lmcache_l2_bytes
+  let replicas = length(srv1_serving_replica_roster)
+  let free = srv1_l2_free_space()
+  // The anchor must be an ACTUAL reading today, or the whole gate below is vacuous: an unread filesystem would
+  // make every arm here refuse, including the one that is supposed to admit srv1 as it stands.
+  let anchor_is_a_reading = match free {
+    Present { value: f } => byte_size_count(b: f) > 0
+    Absent => false
+  }
+  let srv1_admitted = match srv1_l2_capacity_verdict(
+    tier: tier,
+    replicas: replicas,
+    free: free,
+    sharing_permission_read: false,
+    roster_shares_one_store: false
+  ) {
+    AnchorAdmitted { requires: requires, free: f } =>
+      byte_size_count(b: requires) == byte_size_count(b: tier) * replicas
+        // The margin is real and THIN: it holds the two tiers and less than one more. That is what says the
+        // anchor is the ONE FILESYSTEM's reading and not a card's — price the same requirement against a
+        // card's own free space (125 GiB, the other figure in circulation) and this arm comes back
+        // AnchorExceeded, not admitted. Written without a subtraction so no negative count can be formed.
+        && byte_size_count(b: f) >= byte_size_count(b: requires)
+        && byte_size_count(b: f) < byte_size_count(b: requires) + byte_size_count(b: tier)
+    AnchorUnread { why: _ } => false
+    AnchorExceeded { requires: _, free: _ } => false
+    StoreLayoutUnread { replicas: _ } => false
+  }
+  let too_big = match srv1_l2_capacity_verdict(
+    tier: gibibyte_to_byte_size(g: gibibyte(count: 200)),
+    replicas: replicas,
+    free: free,
+    sharing_permission_read: false,
+    roster_shares_one_store: false
+  ) {
+    AnchorExceeded { requires: _, free: _ } => true
+    _ => false
+  }
+  let unread_is_not_admissible = match srv1_l2_capacity_verdict(
+    tier: tier,
+    replicas: replicas,
+    free: Absent,
+    sharing_permission_read: false,
+    roster_shares_one_store: false
+  ) {
+    AnchorUnread { why: _ } => true
+    _ => false
+  }
+  let shared_store_unread_refuses = match srv1_l2_capacity_verdict(
+    tier: tier,
+    replicas: replicas,
+    free: free,
+    sharing_permission_read: false,
+    roster_shares_one_store: true
+  ) {
+    StoreLayoutUnread { replicas: _ } => true
+    _ => false
+  }
+  let shared_store_read_is_admitted = match srv1_l2_capacity_verdict(
+    tier: tier,
+    replicas: replicas,
+    free: free,
+    sharing_permission_read: true,
+    roster_shares_one_store: true
+  ) {
+    AnchorAdmitted { requires: _, free: _ } => true
+    _ => false
+  }
+  // the production gate reads the rows, and srv1 passes it today (so the host's pinned bytes still render)
+  let production_admits = match srv1_l2_capacity_check() {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => false
+  }
+  // ...and the permission really is unread: the refusal above is a reading obligation, not a policy ban
+  let permission_unread = !srv1_l2_store_sharing_is_read(s: srv1_l2_store_sharing)
+    && match srv1_l2_store_sharing {
+      SharingUnread { obligation: o } =>
+        string_contains(s: o as String, pattern: "namespace")
+          && string_contains(s: o as String, pattern: "ADMITTED IMAGE DIGEST")
+      MayShareOneStore { evidence: _, standing: _ } => false
+      MayNotShareOneStore { evidence: _, standing: _ } => false
+    }
+  anchor_is_a_reading
+    && srv1_admitted
+    && too_big
+    && unread_is_not_admissible
+    && shared_store_unread_refuses
+    && shared_store_read_is_admitted
+    && production_admits
+    && permission_unread
+    && !srv1_l2_roster_shares_one_store()
 }

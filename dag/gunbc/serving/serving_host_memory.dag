@@ -9,6 +9,7 @@ import std.measure {
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   Gibibyte, gibibyte_count,
   Permille, permille, permille_count,
+  BasisPoint, basis_point, Second, second, second_count,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.accounting.budget { Appropriation, LineItem }
@@ -391,6 +392,25 @@ data srv1_lmcache_l2_bytes: ByteSize = gibibyte_to_byte_size(g: srv1_lmcache_l2_
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
+// THE CHECKPOINT RETENTION KNOBS, one authority each, beside the watermark they have to live with.
+//
+// WHY HERE: the two numbers of the contradiction srv1_checkpoint_protection_verdict prices are the protected
+// share and THIS watermark, and a contradiction cannot be priced from rows living in two modules that cannot
+// see each other. They also stop being written twice: the boot path rendered them from
+// gunbc.serving.srv1_serving_replica_layout's typed config while the provisioned launch wrote the same knob
+// as the literals "0.5" and "1800" in gunbc.serving.srv1_serving_launch — the same second-copy shape class
+// B4 removed for L1, on the other path to the same container. Both paths now read THESE rows, and the
+// boot-path witness compares the operands across the two paths (the control
+// the_tier_operand_is_the_same_number_in_the_provisioning_launch_and_the_boot_render is the precedent).
+//
+// THESE ARE SETTINGS, NOT CLAIMS OF EFFECT. What the share protects, on which tier, and against which
+// eviction path is unread and measured inert:
+// gunbc.serving.srv1_serving_replica_layout srv1_checkpoint_protection_reading, and the open
+// extdeps.vllm.lil_serve lil_serve_checkpoint_protection_read_obligation.
+data srv1_checkpoint_protected_share: BasisPoint = basis_point(count: 5000)
+
+data srv1_checkpoint_protection_window: Second = second(count: 1800)
+
 // srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=48 on each container. THE single authority for the
 // L1 tier size — the launcher's `--env LMCACHE_L1_GB=` token, the START line's "L1 <n>G", and the host budget's
 // `l1_shm` all cite THIS row, so the number that serves and the number that is priced cannot disagree (they
@@ -464,6 +484,36 @@ data srv1_lmcache_l1_tier: ServingMemoryReading = ServingMemoryRead {
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
   bytes: byte_size(count: byte_size_count(b: srv1_lmcache_l2_bytes) * permille_count(p: srv1_lmcache_l2_eviction_watermark) / 1000),
   provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L2_GB=125 each (docker inspect, 2026-11-08) at the L2 eviction watermark 0.80 (serve.log eviction_controller)" as NonEmptyStr,
+}
+
+// SRV1's KV FILESYSTEM FREE SPACE: the quantity that must ADMIT the disk end of the KV tier, and the only
+// such reading this repository has for srv1.
+//
+// WHY IT IS A ROW NOW. Until this head the number existed only in a COMMENT beside
+// gunbc.serving.srv1_serving_replica_layout srv1_disk_guard_contract — so the guard that exists to stop an
+// L2 tier filling the disk had no owned quantity to price itself against, and the first person who needed
+// a free-space figure could have written in whatever one card's `df` happened to show. A quantity that
+// lives in prose is a quantity nobody validates (gunbc.design_argument::fail_closed).
+//
+// IT IS NOT A PER-CARD FIGURE, AND THAT IS THE CLAIM. Both replicas' KV directories — ~/lil/kv on GPU0 and
+// ~/lil/kv-gpu1 on GPU1 — are recorded as sitting on the SAME root filesystem
+// (srv1_disk_guard_contract.filesystem_path = "/", ext4, 1.8 TB). What bounds the fleet's L2 is therefore
+// that filesystem's free space against the SUM over the roster (srv1_l2_capacity_anchor), not either card's
+// own reading. Two readings of one quantity two different ways is how a 60 GiB difference comes to rest on
+// a hand-pick; while the mount each KV directory resolves to is unowned, a per-card number is simply the
+// wrong quantity and no row may be satisfied by one. READ OBLIGATION, in order: `df --output=avail` on each
+// KV directory's mount point, dated; and `findmnt` for what each of the two resolves to — if they resolve
+// APART, this row becomes two and the sum splits per mount, which is the day a per-card anchor becomes
+// legitimate and this comment is replaced rather than annotated.
+//
+// STANDING: a 2026-11-08 launch-time reading, no committed artifact behind it — a reading, not a receipt.
+// Recorded as the round GiB figure AT OR UNDER the observed ~398 GB (398 GB = 370.7 GiB), the rule the
+// srv3/srv4 free-disk rows follow: rounding UP would widen the very wall that admits the disk budget. It is
+// also the LAST reading, not a current one — 2026-11-25 records GPU1's tier deleted and refilling (~80 GB
+// more expected) and 227 GB of session-tmp held by two live sessions.
+data srv1_kv_filesystem_free: ServingMemoryReading = ServingMemoryRead {
+  bytes: gibibyte_to_byte_size(g: gibibyte(count: 370)),
+  provenance: "srv1 root NVMe (ext4, 1.8 TB) ~398 GB free at the two-replica launch, 2026-11-08 20:24 UTC — the reading the disk-budget section of gunbc.serving.srv1_serving_replica_layout carried in prose (with CI artifacts as co-writers on the same filesystem); instrument: df on the host, ad hoc, by the session that launched the two-replica layout. Recorded as 370 GiB, the round figure at or under it. NOT re-read since: the read obligation is a dated df --output=avail on each KV directory's mount point plus findmnt for the mount each resolves to." as NonEmptyStr,
 }
 
 // THE SWAP BOUND, the operator's (2026-10-30): a little swap per engine so an overrun slows instead of being

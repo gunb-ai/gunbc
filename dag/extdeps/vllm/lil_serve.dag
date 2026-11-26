@@ -125,6 +125,35 @@ fn lil_serve_launcher_flag_argv(f: LilServeLauncherFlag) -> List<String> {
 data lil_serve_launcher_flag_emergency_evict_for_prefetch: LilServeLauncherFlag =
   lil_serve_launcher_flag(name: "--emergency-evict-for-prefetch" as NonEmptyStr)
 
+// THE CHECKPOINT PROTECTION KNOB, spelled ONCE. One knob, TWO FACES: the lab launcher takes it as the
+// pre-`--` flag `--checkpoint-protected-share` (the form the GLM launches are reported to pass), while
+// srv1's replicas are configured through the environment variable the engine reads, which is what the
+// rendered args files carry. BOTH spellings live here because both are the upstream's names, and neither
+// may be re-spelled by a consumer: until this head the environment name was written out separately in
+// gunbc.serving.srv1_serving_launch and in gunbc.serving.srv1_serving_replica_layout, so a rename by one
+// producer would have silently un-set the knob on one of the two paths while both rendered green.
+//
+// WHAT THE KNOB DOES IS NOT READ, and one measured run refutes the plain reading of its name: the
+// operator's 2026-11-24 read of the srv1 eviction log found the eviction controller reporting
+// outcome=none for 2172 of 2173 requests. The reading, its instrument and its standing are carried by the
+// CONSUMER — gunbc.serving.srv1_serving_replica_layout::srv1_checkpoint_protection_reading — because an
+// observation this repository makes is a receipt in the observing layer and never a fact of the upstream
+// (gunbc.design_argument::external_upstreams). No row in THIS module says what the knob protects, on which
+// tier, or for how long.
+data lil_serve_launcher_flag_checkpoint_protected_share: LilServeLauncherFlag =
+  lil_serve_launcher_flag(name: "--checkpoint-protected-share" as NonEmptyStr)
+
+// The engine-facing name of the same knob. No argv function is minted for the FLAG face, because no profile
+// in this repository passes it today: an unused argv builder would be shape-first drift, and the day a
+// profile carries the flag its decision row supplies the value token.
+data lil_serve_environment_key_checkpoint_protected_share: NonEmptyStr =
+  "LMCACHE_CHECKPOINT_PROTECTED_SHARE" as NonEmptyStr
+
+// What must be read before any row may claim the knob protects anything. It names the two things the
+// measured refutation turns on, so the reading is falsifiable rather than "go read the code".
+data lil_serve_checkpoint_protection_read_obligation: NonEmptyStr =
+  "read /opt/lil/runtime/cache.py (the module the operator's brief already names as the one that CHOOSES the L2 store policy) and LMCache's eviction controller, in the admitted image digest, and state: (1) which tier LMCACHE_CHECKPOINT_PROTECTED_SHARE / --checkpoint-protected-share bounds — the RAM tier or the disk tier; (2) what a protected checkpoint is protected FROM — eviction by the L2 watermark, the evict-immediately path, or neither; (3) what the eviction controller's `outcome` field reports and what outcome=none means, so the 2172-of-2173 reading has a referent; and (4) how the share and the eviction watermark compose — whether a declared share of 0.5 and a watermark of 0.80 can both hold, which is the tension gunbc.serving.srv1_serving_replica_layout::srv1_checkpoint_protection_verdict prices from our two rows and cannot resolve from them. Re-read on an image upgrade: the digest, not the date, is what makes the reading the same one."
+
 fn lil_serve_profile_name(p: LilServeProfile) -> NonEmptyStr {
   match p { LilServeProfileName { name: n } => n }
 }
