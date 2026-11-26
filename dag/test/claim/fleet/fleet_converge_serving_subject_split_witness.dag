@@ -175,12 +175,14 @@ test fn the_serving_pair_is_grouped_on_the_machine_it_mutates() -> Bool {
       _ => false
     }
     // The non-empty control is a mode the model ALREADY groups on its subject: hostname_converge's facts
-    // row names subject_host, and its emitted clause carries that field. runner_host_file_converge does not:
-    // its facts row is still ExecutorDomain, so its fold clause is empty by design and it lands in the
-    // executor's group even though its act is aimed at a subject_host. That is a cross-family hole, not a
-    // fact this witness should bless: an act ON butch by the runner-file modes queues in srv1's group while
-    // my serving act on butch queues in srv14's, so those two do not serialize with each other. Named to
-    // sleek-koi-601 (owner of those modes) and to the manager; pinned here only as the contrast arm.
+    // row names subject_host, and its emitted clause carries that field. The runner-file trio
+    // (runner_host_file_converge / withdraw / restore) now carries the same arm: its facts row names
+    // subject_host, so an act ON butch by those modes queues in gunbc-host-mutation-srv14 beside my serving
+    // act on butch, and the two serialize. The cross-family hole this witness used to leave as a contrast
+    // arm -- the trio on ExecutorDomain, an act on butch landing in srv1's group while the serving act landed
+    // in srv14's -- is closed by this change; the trio's own witnesses in
+    // fleet_converge_hostname_converge_emitter_witness pin it, and the observe mode (no subject to name)
+    // stays on its executor above.
     && fleet_converge_arm_domain_clause(mode: mode_named(name: "hostname_converge")) != ""
 }
 

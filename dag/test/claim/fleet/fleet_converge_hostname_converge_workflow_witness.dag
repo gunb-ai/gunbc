@@ -18,6 +18,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_hostname_converge_job,
   fleet_converge_jobs,
   fleet_converge_workflow_of,
+  fleet_converge_subject_host_input_name,
   fleet_converge_yml_after_dispatch_input_capacity,
 }
 import gunbc.host.host_hostname_converge {
@@ -141,4 +142,12 @@ test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
           string_contains(s: c, pattern: "hostname-converge")
       }
   }
+}
+
+// THE FIELD THE GROUP NAMES IS A ROW THE WORKFLOW DECLARES. The group string is built from this module's
+// NonEmptyStr because the dispatch row's name is a plain String; the row is the authority for what a
+// dispatch can carry, so a rename of the row must redden here rather than quietly fall the three modes
+// back to the executor-keyed default.
+test fn the_subject_group_field_is_a_row_the_workflow_declares() -> Bool {
+  any(fleet_converge_dispatch_inputs, r => r.name == (fleet_converge_subject_host_input_name as String))
 }
