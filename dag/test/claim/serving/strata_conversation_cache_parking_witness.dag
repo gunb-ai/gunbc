@@ -29,7 +29,7 @@ import std.measure {
   token_count, positive_slot_count, positive_measure_count, positive_slot_count_value, PositiveSlotCount,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.external_authority { TranscribedUncited }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
   StrataKvQ4_0, StrataKvFullyResident, StrataSingleStage, StrataExpertsPrivate,
@@ -39,7 +39,9 @@ import extdeps.strata.serve_flags {
   StrataConversationCacheMebibytesBuilt,
   StrataConversationCacheMebibytesNonPositive, strata_conversation_cache_mebibytes,
   strata_conversation_cache_mebibytes_from_int, strata_conversation_cache_mebibytes_value,
-  strata_conversation_cache_words, strata_names_a_conversation_cache,
+  strata_conversation_cache_words, strata_conversation_cache_standing_sentence,
+  strata_conversation_cache_unset_ask, strata_conversation_cache_unset_standing,
+  strata_conversation_cache_unset_standing_pre_0_2_3, extdeps_external_authority_anchor,
 }
 import gunbc.serving.serving_replica_profile {
   ReplicaModel, StrataModel, StrataParkingAgreement,
@@ -151,7 +153,6 @@ fn left_to_build_detail(a: StrataParkingAgreement) -> String {
 test fn witness_a_budget_renders_the_pair_the_docs_spell() -> Bool {
   let w = strata_conversation_cache_words(cache: fx_cache_budget(mib: 8192, slots: 4))
   join(w, " ") == "--conversation-cache-mib 8192 --conversation-cache-slots 4"
-    && strata_names_a_conversation_cache(flags: fx_flags(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 1))
 }
 
 test fn witness_an_explicit_off_renders_the_docs_off_word() -> Bool {
@@ -159,7 +160,6 @@ test fn witness_an_explicit_off_renders_the_docs_off_word() -> Bool {
   // can tell a chosen off from a forgotten cache (gunbc.design_argument::declared_intent).
   let w = strata_conversation_cache_words(cache: fx_cache_off("the operator's no-park launch for the cold-read measurement"))
   join(w, " ") == "--conversation-cache-mib 0"
-    && strata_names_a_conversation_cache(flags: fx_flags(cache: fx_cache_off("chosen"), slots: 1))
 }
 
 test fn witness_a_zero_mebibyte_budget_has_no_constructor() -> Bool {
@@ -195,6 +195,44 @@ test fn witness_a_zero_mebibyte_budget_has_no_constructor() -> Bool {
   zero_refused && below_refused && smallest_renders_one
 }
 
+test fn witness_the_ask_wording_follows_the_standing_it_is_given() -> Bool {
+  // WHAT THE ASK SAYS DEPENDS ON THE STANDING IT IS GIVEN -- it is not one fixed sentence dressed as a
+  // decision on a value. `marker` is a read obligation NO production row holds, so its appearing in the
+  // output can only be the standing's own content arriving; a cited standing must say the opposite and must
+  // not carry it. This is the discriminating pair for the two branches of
+  // extdeps.strata.serve_flags::strata_conversation_cache_standing_sentence
+  // (gunbc.design_argument::fail_closed: a branch no input can reach cannot be made to go red, so it is not
+  // written -- these two are reachable, and these are the inputs that tell them apart).
+  let marker = "read-strata-0-1-38-at-its-own-tag"
+  let open_read = strata_conversation_cache_standing_sentence(
+    question: "for the release in question," as NonEmptyStr,
+    standing: TranscribedUncited { read_obligation: marker as NonEmptyStr },
+  )
+  let cited = strata_conversation_cache_standing_sentence(
+    question: "for the release in question," as NonEmptyStr,
+    standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+  )
+  let from_cited_row = strata_conversation_cache_standing_sentence(
+    question: "for the release in question," as NonEmptyStr,
+    standing: strata_conversation_cache_unset_standing,
+  )
+  let from_transcribed_row = strata_conversation_cache_standing_sentence(
+    question: "for the release in question," as NonEmptyStr,
+    standing: strata_conversation_cache_unset_standing_pre_0_2_3,
+  )
+  string_contains(s: open_read, pattern: marker)
+    && string_contains(s: cited, pattern: "cited to this module's own upstream citation")
+    && !string_contains(s: cited, pattern: marker)
+    // The two rows the module actually holds land on those two branches: the cited row carries no open read,
+    // and the pre-0.2.3 transcription carries ITS read, not a invented one.
+    && string_contains(s: from_cited_row, pattern: "cited to this module's own upstream citation")
+    && string_contains(s: from_transcribed_row, pattern: "Strata 0.1.38")
+    && !string_contains(s: from_cited_row, pattern: "Strata 0.1.38")
+    // And the ask the serving agreement composes carries BOTH: the cited-scope clause and the open read.
+    && string_contains(s: strata_conversation_cache_unset_ask(), pattern: "cited to this module's own upstream citation")
+    && string_contains(s: strata_conversation_cache_unset_ask(), pattern: "open read that would settle it")
+}
+
 test fn witness_silence_renders_nothing_and_names_nothing() -> Bool {
   // The discriminating half of the realization rung: BOTH silent arms -- the argv read and carrying neither
   // word, and the argv never read -- render no word. Emitting one would be writing an argv nobody launched;
@@ -202,8 +240,6 @@ test fn witness_silence_renders_nothing_and_names_nothing() -> Bool {
   let w = strata_conversation_cache_words(cache: fx_cache_unset("the argv was read and carries neither word"))
   let u = strata_conversation_cache_words(cache: fx_cache_unread("the cell has never run"))
   w.length() == 0 && u.length() == 0
-    && !strata_names_a_conversation_cache(flags: fx_flags(cache: fx_cache_unset("read, silent"), slots: 1))
-    && !strata_names_a_conversation_cache(flags: fx_flags(cache: fx_cache_unread("never read"), slots: 1))
 }
 
 fn fx_slots(n: Nat) -> PositiveSlotCount {

@@ -11,7 +11,7 @@ import std.measure {
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, cited_figure_read_obligation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 
 // THE STRATA ENGINE'S SERVING FLAGS, as the upstream documents them at commit
 // 8183c6b67162340c09b67360860177c577a65f2e of https://github.com/Niko1221/Strata (README.md "Good to
@@ -128,6 +128,30 @@ type StrataExpertResidency
 // What a MiB figure READ from somewhere (an argv, a doc, an operator note) is until it is checked: zero and
 // anything below it come back as the non-positive arm naming what was observed, because a read that saw a
 // zero has read the OFF word and must route to `StrataConversationCacheOff`, not to a budget.
+//
+// WHO WILL CALL IT, NAMED (gunbc.design_argument::consumption: a declaration is consumed by a named consumer
+// over an executing route, or it is a declared frontier with its trigger). No production row writes a budget
+// yet -- no engine in the fleet has had this pair in a modeled launch -- so today the route's caller is the
+// claim route (`test.claim.serving.strata_conversation_cache_parking_witness`). The change that consumes it in
+// production is the row that records an engine's LAUNCHED argv: the strata-pool engine-cfg / unit render that
+// is the FIRST RUNG UP on
+// gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them
+// (its own follow-up: "a production route consumes ... the strata-pool launch cfg / unit render", byte source
+// /home/ubuntu/strata-pool/cfg.json), together with the h11 launch row Part A records from the unit's
+// `ExecStart`. Whose `--conversation-cache-mib 8192 --conversation-cache-slots 4` can enter the model as
+// `StrataConversationCacheBudget` only through THIS checked route, because a read of `0` must land on the Off
+// arm naming what it observed rather than on a budget of nothing.
+//
+// WHY THE ROWS THAT ALREADY CARRY THE NUMBER ARE NOT THE CONSUMER. `gunbc.serving.serving_host_memory`'s
+// engine-as-launched rows state MiB figures for a parked cache today (8192 for h11's buses, 65536/24 for srv3,
+// 16384/8 for srv4, 12288/6 for ken). They are EVIDENCE about what the host holds, not the launch's policy:
+// this PR's own claims refuse an agreement that lets such a row answer a launch that named nothing
+// (`witness_a_read_row_does_not_answer_a_launch_that_names_nothing`), because that substitution is how h11 came
+// to be believed warm while it parked no one. So when the renderer above writes a budget it writes it from the
+// launch's own bytes, through this route -- and the memory row keeps its place as the figure an ask may carry
+// and no verdict may stand on. This route's next rung is also named on
+// gunbc.recurring_failure_mode::a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build,
+// whose `declaration_refs` carry it so the frontier is checked rather than asserted.
 type StrataConversationCacheMebibytesBuild
   = StrataConversationCacheMebibytesBuilt { budget: Measure<Memory, Mebi, PositiveMeasureCount> }
   | StrataConversationCacheMebibytesNonPositive { observed: Int }
@@ -250,26 +274,38 @@ data strata_conversation_cache_unset_standing_pre_0_2_3: CitedFigureStanding = T
 // cover and the open read for a build this repository has not read. The standings are the policy the build
 // chose, carried as standings and never as a figure a verdict could compute from
 // (gunbc.design_argument::epistemic_humility: what is only transcribed never enters as a number).
-fn strata_conversation_cache_unset_ask() -> NonEmptyStr {
-  match strata_conversation_cache_unset_standing {
-    CitedToAuthority { authority: _ } =>
-      match cited_figure_read_obligation(standing: strata_conversation_cache_unset_standing_pre_0_2_3) {
-        Present { value: o } =>
-          (("what a build whose argv names neither cache flag parks is that build's own policy, not a fact of" +
-          " this repository: for the release the citation above documents the answer is cited, and for a build" +
-          " this repository has not read the release notes of -- which is every build whose launched argv it" +
-          " has not read either -- the open read is: " + o) as NonEmptyStr)
-        Absent =>
-          "what a build whose argv names neither cache flag parks is that build's own policy, not a fact of this repository; the answer above is cited only for the release its citation covers, and nothing may be assumed for any other release" as NonEmptyStr
-      }
-    TranscribedUncited { read_obligation: o } =>
-      (("what a build whose argv names neither cache flag parks is that build's own policy, not a fact of this" +
-      " repository, and this repository has not read even the release it points at: " + o) as NonEmptyStr)
-    ObservedByReceipt { observed: _ } =>
-      "what a build whose argv names neither cache flag parks is that build's own policy; what this repository holds about it is a receipt of its own observation, not the engine's documentation" as NonEmptyStr
+//
+// THE STANDING IS AN ARGUMENT, NOT A CONSTANT MATCHED. Until 2026-11-26 this function matched the two
+// module-level standing rows themselves -- fixed data -- so the `TranscribedUncited` and `ObservedByReceipt`
+// arms and one `Absent` arm could never run: one fixed sentence dressed as a decision on a value, and a branch
+// no input can reach cannot be given the discriminating input gunbc.design_argument::fail_closed asks for.
+// Both branches that remain DO run at the two calls below -- the cited row answers `Absent` (nothing open: it
+// is cited), the transcription answers `Present` (it carries the read that would settle it) -- so the wording
+// really does follow the standing. The pair of inputs that goes red when that stops being true is
+// test.claim.serving.strata_conversation_cache_parking_witness::witness_the_ask_wording_follows_the_standing_it_is_given.
+fn strata_conversation_cache_standing_sentence(question: String, standing: CitedFigureStanding) -> String {
+  match cited_figure_read_obligation(standing: standing) {
+    Present { value: o } =>
+      question + " this repository has not read it; the open read that would settle it is: " + o
+    Absent =>
+      question + " it is cited to this module's own upstream citation, and nothing may be assumed beyond the" +
+        " release that citation covers"
   }
 }
 
+fn strata_conversation_cache_unset_ask() -> String {
+  let cited = strata_conversation_cache_standing_sentence(
+    question: "For the release this module's citation covers the answer is stated there, and",
+    standing: strata_conversation_cache_unset_standing,
+  )
+  let not_read = strata_conversation_cache_standing_sentence(
+    question: "For a build this repository has not read the release notes of -- which is every build whose" +
+      " launched argv it has not read either --",
+    standing: strata_conversation_cache_unset_standing_pre_0_2_3,
+  )
+  "what a build whose argv names neither cache flag parks is that build's own policy, not a fact of this" +
+    " repository. " + cited + ". " + not_read
+}
 // THE ONE BRIDGE FROM PARAMETERS TO A FULL FLAG RECORD. It receives the slot count as an argument, so
 // no construction puts a `parallel` into a record from anywhere but the caller's authority: a
 // benchmark cell passes the concurrency it means to measure; a production replica's slots come from
@@ -321,13 +357,6 @@ fn strata_conversation_cache_words(cache: StrataConversationCache) -> List<Strin
     StrataConversationCacheUnset { detail: _ } => [] as List<String>
     StrataConversationCacheUnread { detail: _ } => [] as List<String>
   }
-}
-
-// Does this flag row give the engine any word about parked conversations at all? A serving consumer asks
-// this before it launches, because a launch whose argv carries no cache word leaves the policy to the
-// build -- the state the fleet found on h11 on 2026-11-24.
-fn strata_names_a_conversation_cache(flags: StrataServeFlags) -> Bool {
-  strata_conversation_cache_words(cache: flags.launch.conversation_cache).length() > 0
 }
 
 fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {

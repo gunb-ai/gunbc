@@ -1270,13 +1270,13 @@ fn parking_judgement_for_launch(
               ("; the model's memory row for this engine states " + to_string(n) +
                 " parked slots, which is evidence for what to read, not a policy this launch chose -- a row read" +
                 " on another bus is the weakest authority in the model (see the recurring-failure row it is named" +
-                " in). " + to_string(strata_conversation_cache_unset_ask()) + estimate_note)) as NonEmptyStr),
+                " in). " + strata_conversation_cache_unset_ask() + estimate_note)) as NonEmptyStr),
           }
           Absent => ParkedConversationsLeftToTheBuild {
             detail: ((parking_beyond_live_slots_sentence(
               held: held, live: live, beyond: beyond,
               policy: ("neither --conversation-cache-mib nor --conversation-cache-slots is in its argv: " + d) as String,
-            ) + to_string(strata_conversation_cache_unset_ask()) + estimate_note) as NonEmptyStr),
+            ) + strata_conversation_cache_unset_ask() + estimate_note) as NonEmptyStr),
           }
         }
       } else {
