@@ -1,0 +1,101 @@
+module gunbc.site.gunb_ai_site
+
+import std.types { String, List, FilePath }
+import std.filesystem { path_parent_directory }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.site.markup { page_render_refusal_prefix }
+import gunbc.site.gunb_ai_page {
+  PageRendered, PageRefused, render_page, output_name, stylesheet_href, cards_script_src, icon_href,
+}
+import gunbc.site.gunb_ai_css { render_sheet }
+import gunbc.site.gunb_ai_deck { render_deck }
+import gunbc.site.gunb_ai_mark { MarkRendered, MarkRefused, render_mark }
+
+// gunb.ai AS ONE SERVED SET: the files the deploy publishes, rendered together and written together.
+//
+// THE PATH LIST IS THE PAGE'S OWN LINKS. A file is served because index.html links it, so each path below
+// is read from the page module's own href rows (stylesheet_href, cards_script_src, icon_href) rather than
+// restated here; a link renamed on the page moves its served path with it. Nothing the page does not link
+// is published (gunbc.design_argument::consumption; the five unlinked PNG icons were dropped by
+// gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24).
+//
+// ALL OR NOTHING (gunbc.design_argument::fail_closed). Every file is rendered before the first directory
+// is made or byte written, so a guard refusal in any one of them leaves the stage directory untouched and
+// the deploy that reads it has nothing to upload. A write that fails part-way exits non-zero, and the
+// workflow uploads nothing after a failed step.
+//
+// Consumers: site_write_main is the deploy's render step (gunbc.site.gunb_ai_pages_workflow), which then
+// uploads gunb_ai_site_stage_dir; site_write_arg renders the same set into any directory by hand:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/site/gunb_ai_site.dag \
+//     --function site_write_arg --arg dir=/tmp/gunbai
+
+type SiteFile { path: String, bytes: String }
+
+type SiteRender
+  = SiteRendered { files: List<SiteFile> }
+  | SiteRenderRefused { path: String, reason: String }
+
+fn site_render() -> SiteRender {
+  match render_page() {
+    PageRefused { reason: r } => SiteRenderRefused { path: output_name, reason: r }
+    PageRendered { bytes: page } => match render_mark() {
+      MarkRefused { reason: r } => SiteRenderRefused { path: icon_href, reason: r }
+      MarkRendered { bytes: mark } => SiteRendered { files: [
+        SiteFile { path: output_name, bytes: page },
+        SiteFile { path: stylesheet_href, bytes: render_sheet() },
+        SiteFile { path: cards_script_src, bytes: render_deck() },
+        SiteFile { path: icon_href, bytes: mark },
+      ] }
+    }
+  }
+}
+
+type SiteWrite
+  = SiteWritten { paths: List<String> }
+  | SiteWriteRefused { reason: String }
+
+fn site_write_file(dir: String, file: SiteFile) -> SiteWrite {
+  let target = join([dir, "/", file.path], "")
+  if !shell.Mkdir.Parents(path: path_parent_directory(path: target) as FilePath).success {
+    SiteWriteRefused { reason: join(["could not make the directory for ", target], "") }
+  } else {
+    let wrote = Filesystem.Write(path: target, content: file.bytes)
+    if wrote.success { SiteWritten { paths: [target] } } else { SiteWriteRefused { reason: join(["write failed: ", target, ": ", wrote.error], "") } }
+  }
+}
+
+fn site_write(dir: String) -> SiteWrite {
+  match site_render() {
+    SiteRenderRefused { path, reason } => SiteWriteRefused { reason: join([path, ": ", reason], "") }
+    SiteRendered { files } => fold(files, init: SiteWritten { paths: [] }, f: fn(acc, file) {
+      match acc {
+        SiteWriteRefused { reason: _ } => acc
+        SiteWritten { paths } => match site_write_file(dir: dir, file: file) {
+          SiteWriteRefused { reason: r } => SiteWriteRefused { reason: r }
+          SiteWritten { paths: more } => SiteWritten { paths: concat(paths, more) }
+        }
+      }
+    })
+  }
+}
+
+fn site_exit(run: SiteWrite) -> ProcessExit {
+  match run {
+    SiteWritten { paths: _ } => ExitSuccess
+    SiteWriteRefused { reason: r } => exit_failure(reason: join([page_render_refusal_prefix, r], ""))
+  }
+}
+
+// Where the deploy stages the site before uploading it, relative to the checkout root the workflow's
+// steps run in. One fact read by both sides: this module writes here and the workflow uploads it.
+data gunb_ai_site_stage_dir: String = "_site"
+
+fn site_write_main() -> ProcessExit {
+  site_exit(run: site_write(dir: gunb_ai_site_stage_dir))
+}
+
+fn site_write_arg(dir: String) -> ProcessExit {
+  site_exit(run: site_write(dir: dir))
+}

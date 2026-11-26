@@ -30,12 +30,11 @@ import gunbc.design.brand_mark {
 // extdeps.w3c.svg's medium; path joins its void tags here because SVG's <path> has no content), the
 // geometry (gunbc.design.brand_mark), the two paints (gunbc.design.gunb_ai_hues).
 //
-// SELF-CLOSE SPELLING. std.markup writes a void element as ' />'; the served file writes '/>'.
-// XML 1.0 [44] EmptyElemTag is '<' Name (S Attribute)* S? '/>', so the space is optional and the two
-// spellings are one element. mark_parity_nullities carries that one difference and the witness
-// requires the render, with it applied, to EQUAL the committed copy of the served file.
+// SELF-CLOSE SPELLING. std.markup writes a void element as ' />'. XML 1.0 [44] EmptyElemTag is
+// '<' Name (S Attribute)* S? '/>', so the space is optional and ' />' and '/>' are one element.
 //
-// Consumers (gunbc.design_argument::consumption): mark_write_arg / v2_cli_main are the build route;
+// Consumers (gunbc.design_argument::consumption): gunbc.site.gunb_ai_site serves render_mark at the page's icon path;
+// mark_write_arg / v2_cli_main write it alone;
 // test.claim.site_gunb_ai_mark_witness executes render_mark. Run outside the claim runner:
 //   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_mark.dag \
 //     --function mark_write_arg --arg dir=/tmp/gunbai/assets
@@ -51,14 +50,6 @@ data file_frame: Int = 120
 
 data mark_comment_body: String = "Stoic Giant seal \u{2014} white (warm-white) squircle body, black face\n       features. Solid fills, no evenodd cutouts, so the mark reads at\n       16px on any tab background. Outside the squircle is transparent."
 
-data mark_parity_nullities: List<MarkParityDifference> = [
-  MarkParityDifference { served: "/>", generated: " />" },
-]
-
-type MarkParityDifference {
-  served: String
-  generated: String
-}
 
 fn exact(v: Int) -> Bool {
   v % file_scale_tenths == 0
