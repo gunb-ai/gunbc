@@ -175,7 +175,13 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
 test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> Bool {
   let budget = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
   let step_minutes = fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)])
-  let job_minutes = fleet_converge_job_timeout_minutes()
+  // The fleet-converge job timeout is now carried as an Outcome (PR #16721), because it folds the two
+  // retyped run-step emissions; Fail-closed: a refused emission makes this budget fold go RED, so the
+  // fold unwraps with outcome_accepted_value and a refusal yields -1, which the >= 0 guard below rejects.
+  let job_minutes = match outcome_accepted_value(fleet_converge_job_timeout_minutes()) {
+    Present { value: m } => m
+    Absent => -1
+  }
   // The release step is emitted through the retyped run-step invoke family (PR #16721), so its Step value is an
   // Outcome; Fail-closed: a refused emission makes this budget fold go RED. The receipt-upload step is NOT retyped
   // (plain Step), so it is read directly.
