@@ -1194,43 +1194,92 @@ fn floor_preparation_capture_run() -> String {
       Absent {} => false
     }
     let splice_ok = phase_rows_present && splice_written
-    // THE RETAINED LOG IS WRITTEN BEFORE THE CLAIMS LEG, NOT AFTER IT. The witness
-    // floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log reads this file from
-    // inside the claims leg; while the write sat in the terminal block, the witness could only
-    // ever see a PREVIOUS run's bytes or none -- a permanent structural FAIL no capture could
-    // clear. Both legs are complete at this point, so the raw evidence exists; writing it before
-    // the gates decide anything is what the "LEG OUTPUT, not verdict output" comment has always
-    // claimed. Writing it is still not a pass: the terminal gate refuses without clean legs.
-    let legs_clean = untrimmed_record.clean
-      && (length(xs: survivors) == 0 || graded_record.clean)
-    let retained_write = if legs_clean {
-      (Filesystem.Write(
-        path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
-        content: retained)).success
-    } else {
-      false
-    }
-    let claims_args = concat(
+    // THE RETAINED LOG IS RAW LEG OUTPUT, WRITTEN UNCONDITIONALLY (royal-newt-240 ruling,
+    // 2026-11-26, after run9i proved the clean-bit suppression unsatisfiable on main: the ten
+    // externally-owned FAILs -- pre-existing at 03cf3587 by the pristine leg's identical-text
+    // observation -- made 'clean legs' unreachable, so the gate discriminated nothing). The file
+    // carries a HEADER the runner stamps from its own data: the run's tree sha, the claims-roster
+    // record's OWN-ROSTER verdict, the survivor count, and the external (Candidate/Extra) counts
+    // printed SEPARATELY from own-population counts. Gating moved from the write to CONSUMPTION,
+    // over the MODULE'S OWN ROSTER: the claims leg is split in two -- leg a runs every claim that
+    // PRODUCES or ANALYSES (own roster, excluding the three committed-capture consumers), its
+    // transcript stamps claims_own_roster_clean; the retained log is then written UNCONDITIONALLY
+    // with that stamp; leg b runs the three committed-capture CONSUMER witnesses, which read the
+    // stamped file and REFUSE when the stamp says not-clean. Red control preserved and testable:
+    // break one of this module's own floor claims -> leg a prints the FAIL -> the stamp says
+    // not-clean -> the cache witness refuses -> and the terminal gate refuses the run. Main's ten
+    // no longer decide this module's verdict: they are printed, labelled, and not gating.
+    let leg_a_roster = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
+      if name == "floor_preparation_the_committed_census_is_honest"
+        || name == "floor_preparation_the_committed_capture_is_measured_not_authored"
+        || name == "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log" {
+        acc
+      } else {
+        list_push(xs: acc, item: name)
+      })
+    let claims_a_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
       ["--entry", floor_preparation_witness_module,
-       "--functions", join(floor_preparation_claim_roster, ",")])
-    let claims = floor_preparation_spawn_slot_captured(
-      label: "leg-claims", bound: floor_preparation_claims_bound(),
+       "--functions", join(leg_a_roster, ",")])
+    let claims_a = floor_preparation_spawn_slot_captured(
+      label: "leg-claims-a", bound: floor_preparation_claims_bound(),
       binary: floor_preparation_pinned_claim_batch(),
-      args: claims_args)
+      args: claims_a_args)
     // A gate that discards the only stream telling it WHAT IT EXECUTED is not a gate. The claim
     // leg's FULL transcript -- PASS/FAIL/UNOBSERVED verdicts (claim_batch.rs prints them with
     // println!, i.e. STDOUT; run8's gate read stderr and could never see a verdict) plus every
     // resolve banner and phase line -- is read back from the script log and its size reported,
     // so a missing-roster verdict can be read, not guessed.
-    let claims_transcript = floor_preparation_read_captured(label: "leg-claims")
+    let claims_transcript = floor_preparation_read_captured(label: "leg-claims-a")
     let claims_stderr_text = match checked_int_to_nat(n: claims_transcript.length()) {
       Present { value: k } => to_string(byte_size_count(byte_size(count: k)))
       Absent {} => "BYTES_UNREADABLE"
     }
-    let passed = floor_preparation_pass_names(stdout_text: claims_transcript)
-    let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
-      if floor_preparation_has_exact_row(rows: passed, wanted: name) { acc } else { list_push(xs: acc, item: name) })
+    let passed_a = floor_preparation_pass_names(stdout_text: claims_transcript)
+    let missing_a = fold(leg_a_roster, init: [], f: (acc, name) =>
+      if floor_preparation_has_exact_row(rows: passed_a, wanted: name) { acc } else { list_push(xs: acc, item: name) })
+    let own_fail_a = fold(floor_preparation_lines(text: claims_transcript), init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "FAIL ") { acc + 1 } else { acc })
+    let own_pass_a = fold(floor_preparation_lines(text: claims_transcript), init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "PASS ") { acc + 1 } else { acc })
+    // OWN-ROSTER verdict: every leg-a claim printed its own PASS line and no FAIL row appeared.
+    let own_roster_clean = length(xs: missing_a) == 0 && own_fail_a == 0
+    let external_pass = fold(kept_graded, init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "PASS ") { acc + 1 } else { acc })
+    let external_fail = fold(kept_graded, init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "FAIL ") { acc + 1 } else { acc })
+    let external_unobserved = fold(kept_graded, init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
+    let retained_header = concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+      "# gunbc-floor-retained tree_sha=", tree_sha),
+      " claims_own_roster_clean="), if own_roster_clean { "true" } else { "false" }),
+      " survivors="), to_string(length(xs: survivors))),
+      " own_pass="), to_string(own_pass_a)),
+      " own_fail="), to_string(own_fail_a)),
+      " external_pass="), to_string(external_pass)),
+      concat(concat(" external_fail=", to_string(external_fail)),
+        concat(" external_unobserved=", to_string(external_unobserved))))
+    // UNCONDITIONAL write (no clean-bit), stamped, BEFORE the consumer leg reads the file.
+    let retained_write = (Filesystem.Write(
+      path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
+      content: concat(concat(retained_header, "\n"), retained))).success
+    let claims_b_args = concat(
+      fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
+      ["--entry", floor_preparation_witness_module,
+       "--functions", "floor_preparation_the_committed_census_is_honest,floor_preparation_the_committed_capture_is_measured_not_authored,floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log"])
+    let claims_b = floor_preparation_spawn_slot_captured(
+      label: "leg-claims-b", bound: floor_preparation_claims_bound(),
+      binary: floor_preparation_pinned_claim_batch(),
+      args: claims_b_args)
+    let claims_b_transcript = floor_preparation_read_captured(label: "leg-claims-b")
+    let passed_b = floor_preparation_pass_names(stdout_text: claims_b_transcript)
+    let missing_b = fold([
+      "floor_preparation_the_committed_census_is_honest",
+      "floor_preparation_the_committed_capture_is_measured_not_authored",
+      "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log"],
+      init: [], f: (acc, name) =>
+      if floor_preparation_has_exact_row(rows: passed_b, wanted: name) { acc } else { list_push(xs: acc, item: name) })
+    let missing = concat(missing_a, missing_b)
     let report = floor_preparation_spawn_slot(
       bound: floor_preparation_report_bound(),
       binary: floor_preparation_pinned_gunbc(),
@@ -1274,7 +1323,6 @@ fn floor_preparation_capture_run() -> String {
     // The gate reads RECORD FIELDS (review 97909): graded_record.clean is exactly "graded.rc == 0
     // and its kept set is non-empty"; report_record.rc is the command's own exit status.
     let report_ok = report_read && report_record.rc == 2
-      && (length(xs: survivors) == 0 || graded_record.clean)
     let receipts = concat(concat(concat(supplies, [verify_receipt, plan_receipt]),
         [build_argv_receipt,
          untrimmed_receipt,
@@ -1299,22 +1347,33 @@ fn floor_preparation_capture_run() -> String {
          rc: graded_record.rc, kept_count: graded_record.kept_count),
        floor_preparation_receipt("claim-gate",
          concat(concat("missing=", join(missing, ",")),
-           concat(" claims_transcript_bytes=", claims_stderr_text))),
+           concat(concat(" claims_transcript_bytes=", claims_stderr_text),
+             concat(" claims_b_missing=", join(missing_b, ","))))),
+       floor_preparation_receipt("retained-header",
+         concat(concat("claims_own_roster_clean=", if own_roster_clean { "true" } else { "false" }),
+           concat(concat(" survivors=", to_string(length(xs: survivors))),
+             concat(concat(" own_pass=", to_string(own_pass_a)),
+               concat(concat(" own_fail=", to_string(own_fail_a)),
+                 concat(concat(" external_pass=", to_string(external_pass)),
+                   concat(concat(" external_fail=", to_string(external_fail)),
+                     concat(" external_unobserved=", to_string(external_unobserved))))))))),
        report_rc_receipt])
-    // The retained log and the population projection are LEG OUTPUT, not verdict output: they
-    // are written as soon as both legs completed clean (rc==0 with kept rows), BEFORE the claim
-    // and report gates decide the terminal verdict. Refusing a red gate must not also destroy the
-    // raw evidence of the run -- but writing them is not a pass, and the terminal gate below
-    // still refuses without them reading green.
+    // The retained log is LEG OUTPUT, not verdict output: royal-newt-240's ruling (after run9i)
+    // made the write UNCONDITIONAL -- a gate no run of main can satisfy is a broken gate, not a
+    // strict one -- and moved the clean check to CONSUMPTION over this module's own roster via
+    // the stamped header. Refusing a red gate must never destroy the raw evidence of the run;
+    // writing the file is still not a pass: the consumer witnesses read the stamp, the claim
+    // gates below still refuse without every roster PASS row, and the terminal gate refuses.
     // A skipped graded leg (nothing survived the untrimmed pass) is CLEAN BY CONSTRUCTION: there
     // was nothing to re-run. Stated, not assumed -- the receipts print 'skipped entries=0'.
-    // The write itself already happened BEFORE the claims leg (see RETAINED WRITE ABOVE); this
-    // receipt only reports what that write reported to itself (review 97945).
-    let write_receipt = if legs_clean {
-      if retained_write { "retained=written" } else { "retained=WRITE_FAILED" }
-    } else { "retained=skipped legs not clean" }
+    // The retained log is LEG OUTPUT: it is written UNCONDITIONALLY before the consumer leg
+    // (see RETAINED WRITE ABOVE); this receipt only reports what that write reported to itself
+    // (review 97945) and stamps the header verdict the consumers gated on.
+    let write_receipt = if retained_write {
+      if own_roster_clean { "retained=written own_roster_clean=true" } else { "retained=written own_roster_clean=false" }
+    } else { "retained=WRITE_FAILED" }
     let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
-    if !report_ok || length(xs: missing) > 0 || !splice_ok {
+    if !report_ok || length(xs: missing) > 0 || !splice_ok || !retained_write || !own_roster_clean {
       concat(join(all_receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
       concat(join(all_receipts, "\n"),

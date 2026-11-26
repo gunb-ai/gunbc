@@ -893,11 +893,19 @@ fn retained_fold() -> FloorPreparationRetainedCount {
   fold(retained_lines(), init: retained_empty("none"), f: (acc, line) => retained_step(acc, line))
 }
 
+fn retained_header_clean(lines: List<String>) -> Bool {
+  fold(lines, init: false, f: (acc, line) =>
+    if starts_with(s: line, prefix: "# gunbc-floor-retained ") {
+      if text_contains(haystack: line, needle: "claims_own_roster_clean=true") { true } else { false }
+    } else { acc })
+}
+
 fn retained_cache_agrees() -> Bool {
   let graded = floor_preparation_capture()
   let untrimmed = floor_preparation_untrimmed_capture()
   let state = retained_fold()
-  state.section == "untrimmed"
+  retained_header_clean(retained_lines())
+    && state.section == "untrimmed"
     && state.graded_rows == length(xs: graded)
     && state.untrimmed_rows == length(xs: untrimmed)
     && state.graded_phase == count_starting(graded, "[floor-phase]")
