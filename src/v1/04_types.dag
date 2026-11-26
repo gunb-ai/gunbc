@@ -617,7 +617,9 @@ fn nominal_type_ref(name: String) -> Node {
 // (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container). The
 // repair is upstream at the dropping link; this seam stays advisory.
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
-  let evidence_diags = if base.connective != NoConnective {
+  // RED PROBE v3: silence the algebra application evidence keying (single named edit,
+  // both layers). RedProbe per roadmap_status.dag:78, never merged.
+  let evidence_diags = if false {
     [make_error_node(
       diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: base.name, argument_index: child_index, span: base.span },
       module_name: "v1.compiler.infer_types"

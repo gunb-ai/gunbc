@@ -1240,7 +1240,8 @@ pub fn algebra_child_or_placeholder(
     placeholder: String,
 ) -> Rc<KernelTypeBuild> {
     {
-        let evidence_diags = if (base.connective.clone() != Connective::NoConnective) {
+        // RED PROBE v3: silence the algebra application evidence keying (mirror half).
+        let evidence_diags = if false {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
                     receiver_type: base.name.clone(),
