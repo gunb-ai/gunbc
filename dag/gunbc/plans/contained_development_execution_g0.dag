@@ -2,9 +2,16 @@ module gunbc.plans.contained_development_execution_g0
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock }
+import std.markdown { MarkdownBlock, MarkdownListItem }
 import gunbc.markdown_helpers { h2, h3, p, li, ul, quote }
 import gunbc.plans.contained_development_execution_g0_conditions { g0_state_groups, g0_condition_count, g0_lift_conjunction_holds, g0_groups_covered, g0_group_label, g0_conditions_for_group, G0StateGroup }
+
+// The done-when lists under section 2 are RENDERED FROM the typed condition rows — the plan
+// holds no second copy, so prose cannot drift from the carrier (review 98676 FINDING 2;
+// gunbc.design_argument::single_authority). Group membership is decided on the variant.
+fn g0_plan_done_when_items(group: G0StateGroup) -> List<MarkdownListItem> {
+  map(g0_conditions_for_group(group), c => li(text: c.requires))
+}
 
 fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
   [
@@ -27,11 +34,8 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
       li(text: "The path convention is gunbc.fleet.fleet_posix_accounts::fleet_posix_home_directory — the join /home/<login>."),
       li(text: "Under it: the custody secret files of gunbc.fleet.host_credential_custody_roster::HostCredentialCustodyRow (each row's path field), the operator's authorized_keys via gunbc.fleet.fleet_ssh_access (the join at the authorized_keys function), and the srv2 instance tree under gunbc.roadmap.roadmap_dashboard_instance::srv2_dashboard_preview_root."),
     ]),
-    p(text: "**Done when (both must hold):**"),
-    ul(items: [
-      li(text: "The worker unit property list rendered by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_worker_unit_properties on the UnitRunOnSystemManager route contains ProtectHome=read-only (emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_stream_properties), rendered to text by gunbc.extdeps.systemd.systemd_run::systemd_run_property_assignment, and the non-hardened route arm does NOT contain it. The negative case: if the check passes on the stripped render, it does not measure the property."),
-      li(text: "No rendered ReadWritePaths= entry from the handed set (gunbc.roadmap.dispatch_worker_handed_set) begins with the operator home prefix (/home/<login>) UNLESS the entry lies under the instance's own root (the prefix from gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_child applied to the instance root). The srv2 preview root is under operator home by design (the operator should confirm that scoping-to-instance-root is the correct resolution; see the [srv2-root-inside-operator-home] finding). The negative case: a hand-constructed handed set containing /home/briansrls/some-path-outside-the-instance-root makes the check fail."),
-    ]),
+    p(text: "**Done when — every condition row of gunbc.plans.contained_development_execution_g0_conditions in this state group must hold; this list is RENDERED from those rows (fn g0_plan_done_when_items), and their count is computed by fn g0_condition_count — never written here):**"),
+    ul(items: g0_plan_done_when_items(OperatorHome)),
 
     h3(text: "2.2 Credentials"),
     p(text: "The secret material a worker could use to authenticate as a privileged principal or reach a protected service."),
@@ -40,12 +44,8 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
       li(text: "Per-attempt credential snapshots: gunbc.roadmap.roadmap_dispatch_actuator::dispatch_credential_snapshot_path_for_attempt derives a scoped per-attempt path under the attempt state root; the seal is gunbc.dispatch_credential_snapshot::TakenCredentialSnapshot."),
       li(text: "SSH private key material: gunbc.fleet.fleet_ssh_access uses GKE-pinned Secret Manager references (the SecretRef type); never a file on the host under a worker-readable path."),
     ]),
-    p(text: "**Done when (all three must hold):**"),
-    ul(items: [
-      li(text: "The worker unit property list rendered by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_worker_unit_properties contains ProtectSystem=strict (emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_stream_properties) and the non-hardened route arm does not. The negative case: if the check passes on the stripped render, it does not measure the property."),
-      li(text: "No ReadWritePaths= entry from the handed set equals any HostCredentialCustodyRow's path field. The negative case: a hand-crafted handed set containing the fabric HMAC key path (/etc/gunbc-fabric-storage/state-writer-mac-key) makes the check fail."),
-      li(text: "The rendered unit contains no EnvironmentFile= pointing at a custody path, and no custody path appears in any ExecStart= argument. The negative case: a hand-crafted unit with EnvironmentFile= naming the fabric HMAC key path makes the check fail."),
-    ]),
+    p(text: "**Done when — every condition row of gunbc.plans.contained_development_execution_g0_conditions in this state group must hold; this list is RENDERED from those rows (fn g0_plan_done_when_items), and their count is computed by fn g0_condition_count — never written here):**"),
+    ul(items: g0_plan_done_when_items(Credentials)),
 
     h3(text: "2.3 Privilege groups"),
     p(text: "The POSIX supplementary-group and capability set that a worker unit's process runs with — the mechanism by which it could reach a root-equivalent daemon socket, a setuid binary, or a privileged operation."),
@@ -54,12 +54,8 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
       li(text: "Root-equivalent groups: gunbc.fleet.fleet_root_equivalent_groups::fleet_root_equivalent_group_names (docker, lxd, sudo, adm)."),
       li(text: "Capability bounding set, NoNewPrivileges and RestrictSUIDSGID: all emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_model_driven_privilege_confinement_properties (the EmptyCapabilityBoundingSet arm under UnitRunOnSystemManager, NoNewPrivilegesProperty, RestrictSUIDSGIDProperty)."),
     ]),
-    p(text: "**Done when (all three must hold):**"),
-    ul(items: [
-      li(text: "The intersection of the worker's declared supplementary group list and the declared root-equivalent group list is empty. The negative case: a hand-modified supplementary group list containing \"docker\" makes the check fail."),
-      li(text: "The rendered hardened unit contains NoNewPrivileges=yes, RestrictSUIDSGID=yes, and (in SystemManager mode) the empty-valued bounding-set assignment CapabilityBoundingSet= (the token gunbc.extdeps.systemd.systemd_run::systemd_run_empty_capability_bounding_set_assignment emits for the EmptyCapabilityBoundingSet arm; there is no systemd directive named EmptyCapabilityBoundingSet assigned to yes); the stripped render does not contain them. The negative case: if the check passes on the stripped render, it does not measure the properties. The rendered key is compared to the plan's expectation by a real consumer executed on the OUTPUT of the renderer (dispatch_worker_unit_properties folded through extdeps.systemd.systemd_run::systemd_run_property_assignment), in gunbc.test.claim.roadmap.g0_criteria_witness::g0_renderer_emits_the_expected_capability_key_and_plan_matches, which asserts on the rendered word list and rejects its named negative [plan_expected_buggy_capability_key]."),
-      li(text: "The rendered unit contains no PAM substring in any property assignment (no PAMName=, no PAMTasksMax=). The negative case: a hand-crafted unit with PAMName=su makes the check fail."),
-    ]),
+    p(text: "**Done when — every condition row of gunbc.plans.contained_development_execution_g0_conditions in this state group must hold; this list is RENDERED from those rows (fn g0_plan_done_when_items), and their count is computed by fn g0_condition_count — never written here):**"),
+    ul(items: g0_plan_done_when_items(PrivilegeGroups)),
 
     h3(text: "2.4 Control-plane stores"),
     p(text: "The durable records that the belt, dispatch system, and dashboard read to make decisions — if a worker can write them directly (bypassing the capability gate), it can forge dispatch facts, mint receipts, or rewrite the roadmap."),
@@ -70,12 +66,8 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
       li(text: "Dashboard instance stores: gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_dispatch_attempt_state_root resolves the per-instance attempt-state root."),
       li(text: "Capacity: gunbc.compute.host_capacity and gunbc.durable_cas_file_store (the CAS slot infrastructure). NOTE: gunbc.compute.compute_capacity_ledger does not exist as a module at the read head; see the finding named compute-capacity-ledger-absence in the findings section below."),
     ]),
-    p(text: "**Done when (all three must hold):**"),
-    ul(items: [
-      li(text: "The rendered unit text does not contain the fabric HMAC key path (gunbc.fabric.fabric_storage_state_location::fabric_state_key_host_path), does not contain EnvironmentFile= pointing at it, and no Environment= line names the fabric storage URL from gunbc.fabric.fabric_storage_client::fabric_storage_binding. The negative case: a hand-crafted unit with Environment=FABRIC_URL=... or EnvironmentFile= naming the HMAC key path makes the check fail."),
-      li(text: "Every ReadWritePaths= entry is under the instance's own root (derived from gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_child applied to the instance's root). No entry names another instance's attempts member. The negative case: a hand-crafted handed set with a path under another instance's root makes the check fail."),
-      li(text: "The provider-events ledger absolute path (from gunbc.roadmap.roadmap_attempt_state_store::attempt_state_directory_segment for AttemptDirectoryWorker, joined with the file name for AttemptWorkerEvents) contains the instance's attempt-state root prefix and the attempt-key infix pattern from the directory naming. The negative case: a path that omits the attempt-key infix or instance-root prefix makes the check fail."),
-    ]),
+    p(text: "**Done when — every condition row of gunbc.plans.contained_development_execution_g0_conditions in this state group must hold; this list is RENDERED from those rows (fn g0_plan_done_when_items), and their count is computed by fn g0_condition_count — never written here):**"),
+    ul(items: g0_plan_done_when_items(ControlPlaneStores)),
 
     h3(text: "2.5 Shared state"),
     p(text: "Filesystem state that multiple attempts or instances share, where one worker's write could corrupt another's progress or forge a result the belt reads."),
@@ -85,16 +77,12 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
       li(text: "The event-carrier directory: gunbc.roadmap.roadmap_event_carrier_directory."),
       li(text: "The spool queues: gunbc.host.host_layout::attempt_exit_spool_root, gunbc.host.host_layout::attempt_unit_spool_root, and gunbc.host.host_layout::publication_spool_root. The spool protocol is modeled by gunbc.spool_queue (the in_flight and stalled directories)."),
     ]),
-    p(text: "**Done when (all three must hold):**"),
-    ul(items: [
-      li(text: "The rendered hardened unit contains UMask=0002 (from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_dedicated_worker_umask, emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_umask_properties); the stripped render does not. The negative case: if the check passes on the stripped render, it does not measure the property."),
-      li(text: "No ReadWritePaths= entry contains the event-carrier worktree path from gunbc.roadmap.roadmap_event_carrier_directory for the instance. The negative case: a hand-crafted unit with the carrier directory in ReadWritePaths= makes the check fail."),
-      li(text: "No ReadWritePaths= entry contains the spool in_flight segment under the instance root. The negative case: a path containing in_flight under the instance root makes the check fail."),
-    ]),
+    p(text: "**Done when — every condition row of gunbc.plans.contained_development_execution_g0_conditions in this state group must hold; this list is RENDERED from those rows (fn g0_plan_done_when_items), and their count is computed by fn g0_condition_count — never written here):**"),
+    ul(items: g0_plan_done_when_items(SharedState)),
 
     h2(text: "3. Lifting rule"),
-    p(text: "G0 is a conjunction gate over TYPED condition rows, not over prose. The five state groups and every done-when condition are declared once, as data, in gunbc.plans.contained_development_execution_g0_conditions (data g0_state_groups, data g0_done_when_conditions — one G0DoneWhenCondition row per condition, each naming the state group, what unreachability requires, and the symbol that models the state). That carrier is the SINGLE AUTHORITY for the condition set and its count (gunbc.design_argument::single_authority): the count is read off it by fn gunbc.plans.contained_development_execution_g0_conditions::g0_condition_count and is written nowhere. The per-group prose under section 2 elaborates each row in human terms and states its named negative case; no consumer counts the prose."),
-    p(text: "The lifting rule is the conjunction fn gunbc.plans.contained_development_execution_g0_conditions::g0_lift_conjunction_holds over one proof per condition. The required proof-count is COMPUTED by fn gunbc.plans.contained_development_execution_g0_conditions::g0_condition_count (it reads the list; no number is written down here or in the witness). The operator may lift G0 only when that conjunction holds over one proof per condition AND every declared state group is covered (fn gunbc.plans.contained_development_execution_g0_conditions::g0_groups_covered). The lifting rule, the count, and the group coverage are a real consumer green by execution in gunbc.test.claim.roadmap.g0_criteria_witness::g0_condition_count_is_nonzero_and_groups_covered, ::g0_lift_conjunction_accepts_all_proven_and_rejects_a_hole, and ::g0_lift_conjunction_rejects_wrong_arity (named negative [lift_wrong_arity]) — run via gunbc run --claim-run."),
+    p(text: "G0 is a conjunction gate over TYPED condition rows, not over prose. The five state groups and every done-when condition are declared once, as data, in gunbc.plans.contained_development_execution_g0_conditions (data g0_state_groups, data g0_done_when_conditions — one G0DoneWhenCondition row per condition, each naming the state group, what unreachability requires, and the symbol that models the state). That carrier is the SINGLE AUTHORITY for the condition set and its count (gunbc.design_argument::single_authority): the count is read off it by fn gunbc.plans.contained_development_execution_g0_conditions::g0_condition_count and is written nowhere. The per-group done-when lists under section 2 are RENDERED FROM these rows by fn gunbc.plans.contained_development_execution_g0_conditions::g0_conditions_for_group through g0_plan_done_when_items — the plan holds no second copy of any condition, so prose cannot drift from the carrier; the descriptive lists under each state describe the named states, not the conditions."),
+    p(text: "The lifting rule is the conjunction fn gunbc.plans.contained_development_execution_g0_conditions::g0_lift_conjunction_holds over one proof per condition. The required proof-count is COMPUTED by fn gunbc.plans.contained_development_execution_g0_conditions::g0_condition_count (it reads the list; no number is written down here or in the witness). The operator may lift G0 only when that conjunction holds over one proof per condition AND every declared state group is covered (fn gunbc.plans.contained_development_execution_g0_conditions::g0_groups_covered). This \"real consumer green by execution\" claim covers ONLY the in-repo lifting conjunction over the typed rows (fn g0_condition_count, fn g0_lift_conjunction_holds, fn g0_groups_covered, fn g0_conditions_with_key — the rows are selected by their G0ConditionKey variant, never by free-text match), which is green by execution in gunbc.test.claim.roadmap.g0_criteria_witness::g0_condition_count_is_nonzero_and_groups_covered, ::g0_lift_conjunction_accepts_all_proven_and_rejects_a_hole, ::g0_lift_conjunction_rejects_wrong_arity (named negative [lift_wrong_arity]), and ::g0_condition_key_selection_is_exact_and_keys_unique — run via gunbc run --claim-run. The two-sided isolation unreachability pair (the srv1 bwrap mount-namespace masking probe) is EVIDENCE-TRANSCRIBED, NOT green by execution in-repo: its standing is TranscribedUncited (gunbc.roadmap.g0_contained_dev_execution_proof::g0_isolation_witness_observations; gunbc.design_argument::epistemic_humility), it is UNPROVEN-IN-REPO, and it is NEVER by itself a basis for a G0 lift — no G0 lift may silently rest on an out-of-repo hash. The operator alone rules on G0."),
     p(text: "ANY single condition fails -> G0 stays closed. No partial lift is authorized."),
     p(text: "A condition whose named negative case does not fail is VOID, not a pass (this plan's own stricter proposal atop gunbc.design_argument::fail_closed, which requires a discriminating input that goes red)."),
     p(text: "G0's carrier, boundary, approach, displaced_cost, and handback fields remain DRAFT in gunbc.roadmap.roadmap_authority until the operator accepts this document (or a revision of it) as the reviewed contracts document."),

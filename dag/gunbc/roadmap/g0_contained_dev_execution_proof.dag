@@ -11,9 +11,9 @@ module gunbc.roadmap.g0_contained_dev_execution_proof
 //   - LANE EVIDENCE ONLY: the REAL-observation pair (enforced deny + unmasked reach) was produced by
 //     the bwrap probe recorded in the PR #16989 evidence comment by sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca
 //     (external; NOT a file in this repository; its run logs are pasted in that comment). There is NO
-//     in-repo runner: no committed script invokes the probe or joins its results — a committed
-//     hand-shell scaffold would need operator approval OUTSIDE the diff per
-//     gunbc.design_argument::fail_closed, which was not given.
+//     in-repo runner and NONE IS AUTHORIZED: a committed hand-shell scaffold is not authorized and
+//     no operator approval is recorded (gunbc.design_argument::fail_closed); the out-of-repo probe
+//     as realization home is a DEFERRED question, see lane manager.
 // Producing the real tokens requires executing a real kernel mount-namespace primitive (bwrap --tmpfs
 // masking) that neither a .dag typecheck nor a source grep can perform. See gunbc.design_argument::
 // fail_closed (a typecheck and a .contains() grep are not consumers). SINGLE VERDICT AUTHORITY
@@ -23,10 +23,11 @@ module gunbc.roadmap.g0_contained_dev_execution_proof
 // is gated on g0_two_sided_isolation_holds applied to those derived Bools; the located diagnostics only
 // NAME the clause that fired.
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 // THE DECISION RULE (the .dag consumer). Given the observations a probe records about a worker placed
 // behind a hermetic boundary -- its own operation is permitted (own_op_permitted), the representative
@@ -199,25 +200,22 @@ fn g0_two_sided_isolation_verdict(
   }
 }
 
-// THE BASH-EMIT CAPABILITY THE LANE-EVIDENCE PROBE EXERCISES. The enforcement is mount-namespace
-// masking: bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees, run inside the
-// heavy-slot scope on srv1. It is named so the scaffold is honest about exactly what the external probe
-// does that .dag cannot. EXECUTING this capability is NOT claimed in-repo: the in-repo claim witness
-// consumes CONSTRUCTED tokens only; real-observation execution lives in the PR #16989 evidence comment
-// (probe recorded by sha256, run logs pasted there), never as a repo path or in-repo runner.
-data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), exercised ONLY by the external bwrap evidence probe recorded in the PR #16989 evidence comment (NOT a file in this repository; sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca), run inside the heavy-slot scope on srv1; the in-repo consumer g0_criteria_witness consumes constructed tokens, never real probe output"
-
-// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule + verdict above are the modeled consumer.
-// IN REPO the tokens it consumes are CONSTRUCTED by the claim witness (a G0-compliant constructed-record
-// exercise); the REAL per-probe return codes are produced only by the external lane-evidence bwrap probe
-// recorded in the PR #16989 evidence comment by sha256 — no hand-shell probe is committed here, and none
-// may be without operator approval outside the diff. The scaffold dissolves when that probe is realized
-// through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of the mount
-// namespace) rather than a hand-authored sh -c string. THE BASH-EMIT CAPABILITY named here is
-// g0_bwrap_isolation_bash_emit_capability (v2.workflow.bash_emit); its tracked bash-emit capability issue
-// is #5828. DISSOLVES WHEN the bwrap mount-namespace probe is a modeled realization dispatch bound to
-// this declaration (tracked under bash-emit capability #5828). Bound to the decision rule so the marker
-// names the carrier it scaffolds.
+// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER for the one realization that stays hand-shell. The
+// decision rule + verdict above are the modeled consumer; IN REPO the tokens it consumes are
+// CONSTRUCTED by the claim witness (a G0-compliant constructed-record exercise, review 98584 FINDING 3).
+// THE BASH-EMIT CAPABILITY this scaffold exercises is named here, on the carrier it scaffolds
+// (gunbc.design_argument::source_annotations — the capability belongs beside its disposition, not in a
+// String data row): bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected
+// and sibling subtrees), the v2.workflow.bash_emit capability, tracked under bash-emit capability issue
+// #5828. It is exercised ONLY by the external lane-evidence probe recorded in the PR #16989 evidence
+// comment (NOT a file in this repository; sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca,
+// run inside the heavy-slot scope on srv1); the real-observation pair lives in that comment's pasted
+// run logs, never as a repo path or in-repo runner — a committed hand-shell scaffold is NOT authorized and
+// no operator approval is recorded (gunbc.design_argument::fail_closed); the out-of-repo probe as
+// realization home is a DEFERRED question, see lane manager. DISSOLVES WHEN
+// the bwrap mount-namespace probe is realized as a modeled v2.workflow.bash_emit dispatch bound to this
+// declaration (tracked under bash-emit capability #5828). Bound to the decision rule so the marker names
+// the carrier it scaffolds.
 data g0_bwrap_isolation_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -243,6 +241,10 @@ type G0IsolationWitnessObservations = G0IsolationWitnessObservations {
   enforcement_primitive: String,
   unproven: List<G0UnprovenBarrier>,
   unproven_reason: String,
+  // The standing of this record: it TRANSCRIBES what an external run observed; no in-repo route
+  // produces it and it is NOT presented as an in-repo execution (gunbc.design_argument::
+  // witness_one_interface, ::epistemic_humility; extdeps.external_authority CitedFigureStanding).
+  standing: CitedFigureStanding,
 }
 
 data g0_isolation_witness_observations: G0IsolationWitnessObservations = G0IsolationWitnessObservations {
@@ -251,4 +253,5 @@ data g0_isolation_witness_observations: G0IsolationWitnessObservations = G0Isola
   enforcement_primitive: "mount-namespace tmpfs masking (bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees); same mechanism family as ProtectHome=tmpfs / ProtectSystem / the ReadWritePaths carve-out",
   unproven: [ DacUidCapabilityEnforcement, LiveSystemdUnitEnforcement ],
   unproven_reason: "unprivileged user namespaces are blocked on the witness host (kernel.apparmor_restrict_unprivileged_userns=1; unshare -U fails EPERM writing /proc/self/uid_map), so a uid/capability (DAC) boundary and the live systemd unit's own enforcement cannot be exercised there without root",
+  standing: TranscribedUncited { read_obligation: "read the probe run logs pasted in the gunb-ai/gunbc PR #16989 evidence comment (lane evidence, executed on srv1 boot c095c0cd inside the heavy-slot scope); no in-repo route produces or consumes this record. WHAT WOULD GROUND IT: the same probe executed by a real in-tree consumer once the bash-emit capability (#5828) lands, or operator authorization recording the out-of-repo probe as its realization home (not authorized; deferred question, see lane manager). Until grounded it is UNPROVEN-IN-REPO and is never by itself a basis for a G0 lift." as NonEmptyStr },
 }
