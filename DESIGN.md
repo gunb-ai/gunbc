@@ -809,14 +809,13 @@ The roster *Conformance* reviews against, from `gunbc.design_argument` `conforma
 - Faithful execution and receipt readback once a request is admitted belong to materialization / realization.
 - A producer whose contract is evidence from a built process (native serve, native claim) is not a binding of this pattern; interpreted reads inside it are.
 - Entry-path derivation applies to repository-owned bindings; direct run under caller-supplied roots may name an entry the repository layout gives no path.
+- No command-binding carrier is a home yet: gunbc.cli_dispatch_surface CliBootstrapDagOperationBinding and gunbc.target_binding CliWireProgramProducer author an entry path beside the declaration they name, which is the shape this domain refuses, so a new binding does not copy them; a binding carrier becomes a home once it derives its path from declaration identity (gunbc.plans.dag_invocation_is_one_pattern).
 
 **Existing authorities**
 
 - **Callable identity and arguments** — the declaration a request names, its derived entry path, and the CLI argument boundary
   - `gunbc.ci.ci_run_step_target::GunbcRunStepTarget`
   - `gunbc.cli_invoke::NamedArgument`
-- **Command bindings** — an existing command binding of a .dag operation
-  - `gunbc.cli_dispatch_surface::CliBootstrapDagOperationBinding`
 
 ## Reference: product names
 
