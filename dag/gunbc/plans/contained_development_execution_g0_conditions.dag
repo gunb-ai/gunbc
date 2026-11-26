@@ -125,6 +125,12 @@ fn g0_condition_count() -> Int {
 
 // One proof bound to the condition row it proves, joined on the typed key
 // (review 98801 FINDING 2). A bare Bool cannot say WHICH condition it proves.
+// PRODUCER FRONTIER: each G0ConditionProof is produced by the G0 lifting-record route - an
+// operator-issued condition record (per-key proof plus evidence citation) recorded via the
+// roadmap event CLI extension proposed as the follow-up planning change (node to be minted
+// via planning PR; not present in gunbc.roadmap.roadmap_authority yet). Trigger: operator
+// approval of this plan. The proof lists in the witness are TEST FIXTURES, not lifting
+// records (review 98911 FINDING 2, gunbc.design_argument::consumption).
 type G0ConditionProof = G0ConditionProof { key: G0ConditionKey, proof: Bool }
 
 // The lifting rule as a conjunction - an IDENTITY JOIN, not a count equality

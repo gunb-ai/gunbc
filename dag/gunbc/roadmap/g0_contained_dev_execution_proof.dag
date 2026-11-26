@@ -12,9 +12,12 @@ module gunbc.roadmap.g0_contained_dev_execution_proof
 //     d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca, srv1 boot c095c0cd,
 //     heavy-slot run logs pasted there). It is UNPROVEN-IN-REPO
 //     (gunbc.design_argument::epistemic_humility) and never by itself a basis for a G0 lift.
-//     No in-repo runner is authorized or recorded; the out-of-repo probe as realization home is
-//     a DEFERRED question, see lane manager. The bash-emit capability (#5828) belongs to the
-//     bash-emit work when it lands, not to this PR.
+//     No in-repo runner is authorized or recorded. THE NAMED FRONTIER CONSUMER is the in-repo
+//     systemd capability from roadmap node #5828 (the bash-emit capability, v2.workflow.bash_emit
+//     / bash_emit_stmts): when it lands, its consumer runs the two-sided probe in-repo via the
+//     emitted command and feeds g0_probe_observed -> g0_two_sided_isolation_holds. Until then the
+//     token witness (dag/test/claim/roadmap/g0_criteria_witness.dag) is the only in-repo executor
+//     and the bwrap probe record is TranscribedUncited evidence - never a lift basis.
 // SINGLE ISOLATION AUTHORITY (gunbc.design_argument::single_authority; reviews 98327, 98584,
 // 98783): each raw return code becomes an isolation fact exactly ONCE through the single
 // derivation helpers below, and the model rule g0_two_sided_isolation_holds applied to those
