@@ -248,7 +248,17 @@ test fn each_unobservable_arm_names_what_was_actually_observed() -> Bool {
         deadline: second(count: 3),
         confirmation_bound: second(count: 10),
       },
-      discriminating: "was never observed gone",
+      // THE RENDERING'S OWN WORDS, NOT AN ASPIRATIONAL PARAPHRASE. srv1 execution at head 1d512d4a11e2
+      // reddened this arm (the only did-not-hold of 18: "18 claim(s): 17 held, 1 did not hold, 0
+      // unobserved") because the phrase planted here, "was never observed gone", appears nowhere in
+      // boot_probe_verdict_text: the ConfirmationUnobserved arm states the observation in the positive
+      // -- the signal was delivered, escalated, and the confirming reap ANSWERED, saying no death
+      // inside the caller-set bound. "Never observed gone" reads like silence; the arm's claim is an
+      // answer that reports absence, which is the stronger and truer fact (epistemic_humility). The
+      // phrase below is the rendering's (dag/gunbc/runner/runner_microvm_boot_probe.dag, the
+      // ConfirmationUnobserved arm), and it is unique to that arm -- no other unobservable rendering
+      // contains it.
+      discriminating: "confirming reap answered no death",
     )
     && refusal_refuses_by_name(
       receipt: BoundKillUnconfirmed { deadline: second(count: 3), exit_code: 0 },
