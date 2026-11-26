@@ -444,18 +444,6 @@ fn exec_as_fleet_principal_on_fresh_connection(
     FleetSshKeySession => {
       // THE SUM ONLY -- see the with-stdin leg above.
       fleet_principal_leg_of_exec(session: session, exec: fleet_ssh_exec_key_leg_on_fresh_connection(context: context, leg: FleetBareWordLeg { target: target, words: words, kind: kind }))
-      ) {
-        SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
-        SessionWireInconsistent { fault: f } =>
-          FleetPrincipalLegWireInconsistent { session: session, fault: f }
-        SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
-          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
-          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
-          FleetPrincipalLegRan {
-            session: session,
-            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
-          }
-      }
     }
     FleetSshPasswordSession =>
       FleetPrincipalLegRefused { cause: "a fresh-connection leg is a key-session readback; this target resolves to a password session" as NonEmptyStr }
@@ -495,20 +483,7 @@ fn exec_as_fleet_principal_trusting_with_stdin(
         PasswordLegPrerequisiteRefused { cause: c } => FleetPrincipalLegRefused { cause: c }
         PasswordLegPrerequisiteReady { password_file: p } => {
           // THE SUM ONLY -- see the with-stdin leg above.
-          fleet_principal_leg_of_exec(session: session, exec: fleet_ssh_exec_password_leg_with_stdin(trust: trust, password_file: p, leg: FleetBareWordLeg { target: target, words: words, kind: kind }))
-            stdin_payload: stdin_payload,
-          ) {
-            SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
-            SessionWireInconsistent { fault: f } =>
-              FleetPrincipalLegWireInconsistent { session: session, fault: f }
-            SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
-          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
-          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
-          FleetPrincipalLegRan {
-            session: session,
-            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
-          }
-          }
+          fleet_principal_leg_of_exec(session: session, exec: fleet_ssh_exec_password_leg_with_stdin(trust: trust, password_file: p, leg: FleetBareWordLeg { target: target, words: words, kind: kind }, stdin_payload: stdin_payload))
         }
       }
   }
