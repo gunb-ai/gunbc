@@ -21,7 +21,7 @@ import extdeps.cloud.aws_cli {
   aws_cli_create_queue, aws_cli_get_queue_url, aws_cli_read_queue_url, aws_cli_get_queue_arn, aws_cli_read_queue_arn, aws_cli_set_queue_attributes,
   aws_cli_put_rule, aws_cli_read_rule_arn, aws_cli_put_target, aws_cli_read_put_targets,
   aws_cli_head_bucket, aws_cli_bucket_absent, aws_cli_create_bucket, aws_cli_block_public_access, aws_cli_put_bucket_tagging,
-  aws_cli_get_parameter, aws_cli_read_parameter_value, aws_cli_put_string_parameter,
+  aws_cli_get_parameter, aws_cli_read_parameter_value, aws_cli_put_string_parameter, aws_cli_delete_parameter, aws_cli_parameter_absent,
   aws_cli_s3_sync_prefix, aws_cli_prefix_census, aws_cli_read_prefix_census,
 }
 import extdeps.access.aws_iam { aws_iam_policy_document_json }
@@ -32,7 +32,7 @@ import gunbc.flex_aws_iam {
   flex_aws_weights_bucket_prefix, flex_aws_notice_queue_policy,
 }
 import gunbc.flex_aws_credential { flex_aws_provisioner_credentials_host_path, flex_aws_custody_path }
-import gunbc.fleet.flex_aws_pass { flex_aws_boot_policy, flex_aws_row_facts, flex_aws_scan_regions }
+import gunbc.fleet.flex_aws_pass { flex_aws_boot_policy, flex_aws_row_facts, flex_aws_scan_regions, flex_aws_region_ready_parameter, flex_aws_weights_revision }
 
 // A REGION MADE LAUNCHABLE (gunbc.design_ruling aws_spot_any_region_quota_requested_2026_11_25: each region is
 // set up once AWS grants its quota). The pass launches in a region only when that region carries the card's
@@ -287,6 +287,38 @@ fn flex_aws_converge_copy(apply: Bool, region: NonEmptyStr, account: NonEmptyStr
   })
 }
 
+fn flex_aws_step_failed(lines: List<String>) -> Bool {
+  any(lines, l => l.contains("REFUSED") || l.contains("MISSING") || l.contains("INCOMPLETE") || l.contains("stale"))
+}
+
+// THE READY MARKER: written (Apply) once every other step held, valued with the weights revision; removed (Apply)
+// when one did not, so a region that stops being ready stops offering candidates. Plan reports what it would do.
+fn flex_aws_converge_marker(apply: Bool, region: NonEmptyStr, ready: Bool) -> String {
+  let name = flex_aws_region_ready_parameter()
+  let want = flex_aws_weights_revision()
+  let current = match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_get_parameter(credentials_file: flex_aws_provisioner(), region: region, name: name), transport: LocalExec)) {
+    AwsCliReadOk { value: t } => match aws_cli_read_parameter_value(stdout: t) { AwsCliReadOk { value: v } => v as String  AwsCliReadRefused { cause: _ } => "" }
+    AwsCliReadRefused { cause: _ } => ""
+  }
+  if ready {
+    if current == (want as String) { join(["marker ", name as String, " present"], "") }
+    else if !apply { join(["marker ", name as String, " MISSING or stale (", current, ")"], "") }
+    else {
+      match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_put_string_parameter(credentials_file: flex_aws_provisioner(), region: region, name: name, value: want), transport: LocalExec)) {
+        AwsCliReadOk { value: _ } => join(["marker ", name as String, " written ", want as String], "")
+        AwsCliReadRefused { cause: c } => join(["marker ", name as String, " REFUSED ", c], "")
+      }
+    }
+  } else if current == "" { join(["marker ", name as String, " absent (region not ready)"], "") }
+  else if !apply { join(["marker ", name as String, " would be removed (region not ready)"], "") }
+  else {
+    match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_delete_parameter(credentials_file: flex_aws_provisioner(), region: region, name: name), transport: LocalExec)) {
+      AwsCliReadOk { value: _ } => join(["marker ", name as String, " removed (region not ready)"], "")
+      AwsCliReadRefused { cause: c } => if c.contains(aws_cli_parameter_absent) { join(["marker ", name as String, " absent (region not ready)"], "") } else { join(["marker ", name as String, " remove REFUSED ", c], "") }
+    }
+  }
+}
+
 type FlexAwsCensusOf {
   prefix: NonEmptyStr
   read: AwsCliRead<AwsS3PrefixCensus>
@@ -308,9 +340,12 @@ fn flex_aws_converge_region(apply: Bool, region: NonEmptyStr, facts: FlexAwsProv
         flex_aws_converge_bucket(apply: apply, region: region, bucket: bucket),
         flex_aws_converge_parameter(apply: apply, region: region, bucket: bucket),
       ], flex_aws_converge_copy(apply: apply, region: region, account: account, source: source))
-      // A region is launchable when no step refused, none is missing, and every copy is complete.
-      let ready = !any(lines, l => l.contains("REFUSED") || l.contains("MISSING") || l.contains("INCOMPLETE") || l.contains("stale"))
-      concat([join(["region ", region as String, if ready { " READY" } else { " NOT-READY" }], "")], map(lines, l => concat("  ", l)))
+      // A region is launchable when no step refused, none is missing, and every copy is complete -- and then its
+      // ready marker names the weights revision, which is what the pass admits candidates on (review of e50999ce).
+      let steps_held = !flex_aws_step_failed(lines: lines)
+      let marker = flex_aws_converge_marker(apply: apply, region: region, ready: steps_held)
+      let ready = steps_held && !flex_aws_step_failed(lines: [marker])
+      concat([join(["region ", region as String, if ready { " READY" } else { " NOT-READY" }], "")], map(concat(lines, [marker]), l => concat("  ", l)))
     }
   }
 }
@@ -350,8 +385,8 @@ fn converge(mode: String, regions: String) -> ProcessExit {
           match facts {
             FlexAwsProvisionFactsRefused { cause: c } => exit_failure(reason: c)
             // A region left NOT-READY fails the run: the receipt says which step, and nothing reads a
-            // half-set-up region as converged (review of fb2594de). The pass never launches there anyway: a
-            // region without its readable notice queue offers no candidates.
+            // half-set-up region as converged (review of fb2594de). The pass never launches there: a region
+            // offers candidates only while its ready marker names the weights revision.
             FlexAwsProvisionFactsRead { account: _, cidr: _, source: _ } => if count(not_ready) == 0 { ExitSuccess } else { exit_failure(reason: concat("not ready: ", join(not_ready, "; "))) }
           }
         }

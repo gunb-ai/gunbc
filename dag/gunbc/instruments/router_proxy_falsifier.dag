@@ -22,6 +22,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
 import gunbc.serving.flex_aws_router_rows { flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused }
+import product.fabric.flex_aws_apply { flex_aws_asks, FlexAwsDemandRouter }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -375,6 +376,17 @@ fn dev_upstreams_json_h1_renamed_predecessor_drained() -> String {
   dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4326"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":1") + dev_h1_row(name: "h1b", extra: ",\"in_service\":false"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "true"))
 }
 
+// RENTED ADMISSION AND A WITHDRAWN RENTED ROW (review of e50999ce). aq rows are rented m-q rows on the echo fixture,
+// told apart by their keys. Mark 4327: aq1 alone, four active slots and retain 1. Mark 4328: aq1 out of service (the
+// AWS loop's retired row) beside a surviving aq2. The other rows are the 4325 file's, so the trim after them holds.
+fn dev_aq_row(name: String, extra: String) -> String {
+  "\{\"name\":\"" + name + "\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"k" + name + "\",\"model\":\"m-q\",\"overflow\":true,\"cap\":4" + extra + "},"
+}
+
+fn dev_upstreams_json_rented_admission(mark: String, aq: String) -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":" + mark), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":0"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "false") + aq)
+}
+
 fn dev_r1_row(retain: String) -> String {
   "\{\"name\":\"r1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kr\",\"model\":\"m-r\",\"cap\":4,\"retain\":" + retain + "},"
 }
@@ -693,10 +705,18 @@ fn stats_line(text: String) -> String {
   fold(filter(text_lines(text: text), l => contains(s: l, p: "\"usage_all\"")), init: "", f: (acc, l) => l)
 }
 
-fn rented_waiting_for(text: String, model: String) -> Int {
+fn rented_unplaceable_for(text: String, model: String) -> Int {
   match flex_aws_read_router_stats(body: stats_line(text: text), instance_ids: [], model: model as NonEmptyStr) {
-    FlexAwsStatsReadOk { reading: r } => r.waiting
+    FlexAwsStatsReadOk { reading: r } => r.unplaceable
     FlexAwsStatsRefused { cause: _ } => -1
+  }
+}
+
+// The allocator's own purchase predicate over the router's real stats, for a card of `model`.
+fn rented_asks(text: String, model: String) -> Bool {
+  match flex_aws_read_router_stats(body: stats_line(text: text), instance_ids: [], model: model as NonEmptyStr) {
+    FlexAwsStatsReadOk { reading: r } => flex_aws_asks(demand: FlexAwsDemandRouter { router: r, max_cards: 3 })
+    FlexAwsStatsRefused { cause: _ } => false
   }
 }
 
@@ -1142,6 +1162,22 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let reloaded_zero = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
   let reloaded_zero_models = await_models(mark: "4325", n: 20)
   let zero_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 10. RENTED ADMISSION (mark 4327): warm-1 takes aq1's one retained conversation; warm-2, new, is refused although
+  // aq1 has three free active slots, and the router must call it demand no rented row can place.
+  let w14 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-admission.json", content: dev_upstreams_json_rented_admission(mark: "4327", aq: dev_aq_row(name: "aq1", extra: ",\"retain\":1")))
+  let admission_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-rented-admission.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let admission_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let admission_models = await_models(mark: "4327", n: 20)
+  let warm_1 = dev_request(key: "ck-falsifier", session: "warm-1", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let warm_2 = dev_request(key: "ck-falsifier", session: "warm-2", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let warm_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 10b. THE CARD WITHDRAWN (mark 4328): aq1 stays in the file out of service, as the AWS loop leaves a withdrawn
+  // card's row; warm-1 comes back with its explicit model and must be re-placed on aq2, not refused 409.
+  let w15 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-rented-withdrawn.json", content: dev_upstreams_json_rented_admission(mark: "4328", aq: dev_aq_row(name: "aq1", extra: ",\"retain\":1,\"in_service\":false") + dev_aq_row(name: "aq2", extra: "")))
+  let withdrawn_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-rented-withdrawn.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let withdrawn_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let withdrawn_models = await_models(mark: "4328", n: 20)
+  let resumed = dev_request(key: "ck-falsifier", session: "warm-1", body: model_body(model: "m-q"), path: "/v1/chat/completions")
   // The pricing turns run AFTER every stats read: a quoted-model turn and an m-a turn would otherwise add to the
   // owned tallies those cases pin.
   let priced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-1", "-d", model_body(model: "Qwen3.8-Flash-Next"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
@@ -1246,7 +1282,16 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // dev router, holding a waiter bound to its own full engine (own-1 on s1, model m-s) and an unbound one
     // refused by retention (ret-2, model m-r), is read by the AWS allocator's own reader: the router counts the
     // unbound waiter as demand a rented m-r card could serve, and the waiter held for its own engine as none.
-    case_of(identity: "dev_rented_demand_reads_into_the_allocator", held: (rented_waiting_for(text: pending_stats, model: "m-r") >= 1) && (rented_waiting_for(text: pending_stats, model: "m-s") == 0) && contains(s: pending_stats, p: "\"m-s\":\{"), observed: one_line(s: pending_stats)),
+    // ...and through to the allocator's purchase predicate (product.fabric.flex_aws_apply flex_aws_asks): a card of
+    // m-r is asked for, a card of m-s is not.
+    case_of(identity: "dev_rented_demand_reads_into_the_allocator", held: (rented_unplaceable_for(text: pending_stats, model: "m-r") >= 1) && (rented_unplaceable_for(text: pending_stats, model: "m-s") == 0) && contains(s: pending_stats, p: "\"m-s\":\{") && rented_asks(text: pending_stats, model: "m-r") && !rented_asks(text: pending_stats, model: "m-s"), observed: one_line(s: pending_stats)),
+    // RETENTION IS ADMISSION (review of e50999ce): aq1 has free active slots and its one retained conversation; the
+    // new warm-2 is refused, the router reports the pool not full by active turns, and still counts warm-2 as demand
+    // no rented row can place -- which the allocator reads as an ask for a second m-q card.
+    case_of(identity: "dev_a_retention_full_rented_row_is_demand_the_allocator_buys_for", held: w14.success && admission_copy.exit_code == 0 && admission_reloaded.exit_code == 0 && contains(s: admission_models, p: "4327") && contains(s: warm_1, p: "auth=Bearer kaq1") && contains(s: warm_1, p: "\n200 exit=0") && contains(s: warm_2, p: "\n429 exit=0") && contains(s: warm_stats, p: "\"full\":false") && (rented_unplaceable_for(text: warm_stats, model: "m-q") == 1) && rented_asks(text: warm_stats, model: "m-q"), observed: concat(one_line(s: warm_2), one_line(s: warm_stats))),
+    // A WITHDRAWN RENTED ROW IS KNOWN, NOT A CONFLICT (review of e50999ce): warm-1's binding names aq1, now out of
+    // service; it resumes with its explicit model and is re-placed on aq2, where the unknown-row rule answered 409.
+    case_of(identity: "dev_a_binding_to_an_out_of_service_rented_row_is_re_placed", held: w15.success && withdrawn_copy.exit_code == 0 && withdrawn_reloaded.exit_code == 0 && contains(s: withdrawn_models, p: "4328") && contains(s: resumed, p: "auth=Bearer kaq2") && contains(s: resumed, p: "\n200 exit=0"), observed: one_line(s: resumed)),
     case_of(identity: "dev_refused_turns_are_stranded_demand_cleared_on_success", held: contains(s: pending_stats, p: "\"m-r\":\{") && contains(s: pending_stats, p: "\"m-s\":\{") && contains(s: pending_stats, p: "\"oldest_s\"") && contains(s: own_after, p: "\n200 exit=0") && !contains(s: cleared_stats, p: "\"m-s\":\{") && contains(s: cleared_stats, p: "\"m-r\":\{"), observed: one_line(s: pending_stats)),
     case_of(identity: "dev_rented_turns_are_metered_and_the_rented_pool_reported", held: contains(s: rented_stats, p: "\"usage_all\"") && contains(s: rented_stats, p: "\"billing\":\"rented\"") && contains(s: rented_stats, p: "\"unmeasured_requests\":11") && contains(s: rented_stats, p: "\"rented\":\{") && contains(s: rented_stats, p: "\"full\":"), observed: one_line(s: rented_stats)),
     case_of(identity: "dev_capped_overflow_row_refuses_at_its_cap", held: contains(s: overflow_contended, p: "HTTP/1.1 429") && contains(s: overflow_contended, p: "Retry-After") && occurrences(s: overflow_contended, needle: "auth=Bearer ko") == 1, observed: one_line(s: overflow_contended)),
@@ -1346,6 +1391,9 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted",
     "dev_bound_session_on_any_owned_row_at_cap_answers_429_and_never_moves",
     "dev_retention_refuses_a_new_session_and_a_bound_session_returns",
+    "dev_rented_demand_reads_into_the_allocator",
+    "dev_a_retention_full_rented_row_is_demand_the_allocator_buys_for",
+    "dev_a_binding_to_an_out_of_service_rented_row_is_re_placed",
     "dev_refused_turns_are_stranded_demand_cleared_on_success",
     "dev_rented_turns_are_metered_and_the_rented_pool_reported",
     "dev_capped_overflow_row_refuses_at_its_cap",

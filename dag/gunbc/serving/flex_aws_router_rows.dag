@@ -79,40 +79,108 @@ fn flex_aws_row_name_of(row: JsonValue) -> String {
 
 fn flex_aws_is_ours(row: JsonValue) -> Bool { flex_aws_row_name_of(row: row).starts_with(flex_aws_row_prefix) }
 
+// WHETHER A ROW IS IN SERVICE: the router's own reading (gunbc.serving.router_dev_policy RouterDevUpstream
+// in_service): an absent field is a live row, only an explicit false takes one out.
+fn flex_aws_row_in_service(row: JsonValue) -> Bool {
+  match json_field(obj: row, key: "in_service") {
+    FieldRead { value: JsonBool { value: b } } => b
+    _ => true
+  }
+}
+
+fn flex_aws_row_instance_id(row: JsonValue) -> String {
+  substring(s: flex_aws_row_name_of(row: row), start: length(flex_aws_row_prefix), end: length(flex_aws_row_name_of(row: row)))
+}
+
 // The instance ids of our rows in an upstreams file (none when it does not read as an array).
 fn flex_aws_row_instance_ids(current: String) -> List<String> {
   match parse_json_document(s: current) {
-    JsonDocumentParsed { value: JsonArray { elements: rows } } => map(rows |> filter(r => flex_aws_is_ours(row: r)), r => substring(s: flex_aws_row_name_of(row: r), start: length(flex_aws_row_prefix), end: length(flex_aws_row_name_of(row: r))))
+    JsonDocumentParsed { value: JsonArray { elements: rows } } => map(rows |> filter(r => flex_aws_is_ours(row: r)), r => flex_aws_row_instance_id(row: r))
     _ => []
   }
 }
 
+// A WITHDRAWN CARD'S ROW STAYS, OUT OF SERVICE, FOR AS LONG AS A BINDING TO IT CAN LIVE (review of e50999ce: a
+// conversation the router had placed on a card that AWS then reclaimed came back with its explicit model, found
+// its binding naming a row no longer in the file, and was refused 409 -- the router refuses a binding to a name it
+// does not know, because unknown does not establish that no cache survives -- until the binding expired, up to six
+// hours). So a row we stop routing is not deleted: it is rewritten `in_service: false`, which the router reads as a
+// known engine out of service whose bindings are re-placed (gunbc.serving.router_dev_policy, the conflict rule), with
+// its pool key emptied and the time it left service. It is dropped once the binding lifetime has passed since then:
+// a binding is refreshed only by a turn the row serves, so none can outlive that.
+data flex_aws_row_retired_key: String = "retired_unix"
+
+fn flex_aws_row_retired_at(row: JsonValue) -> Int? {
+  match json_field(obj: row, key: flex_aws_row_retired_key) {
+    FieldRead { value: v } => flex_aws_json_number(v: v)
+    _ => none
+  }
+}
+
+fn flex_aws_row_retired(row: JsonValue, now_unix: Int) -> JsonValue {
+  match row {
+    JsonObject { members: ms } => json_object(members: concat(ms |> filter(m => (m.key != "key") && (m.key != "in_service") && (m.key != flex_aws_row_retired_key)), [
+      json_kv(key: "key", value: json_string(s: "")),
+      json_kv(key: "in_service", value: json_bool(b: false)),
+      json_kv(key: flex_aws_row_retired_key, value: json_int(n: now_unix)),
+    ]))
+    _ => row
+  }
+}
+
+// A row of ours whose card this pass could not see: some region's ownership was unreadable and the card is not
+// among those read.
+fn flex_aws_row_unseen(row: JsonValue, seen: List<String>, blind: Bool) -> Bool {
+  blind && !any(seen, i => i == flex_aws_row_instance_id(row: row))
+}
+
+fn flex_aws_row_wanted(row: JsonValue, desired: List<FlexAwsEnrollable>) -> Bool {
+  any(desired, c => flex_aws_row_name(instance_id: c.instance_id) == flex_aws_row_name_of(row: row))
+}
+
+// A retired row still inside the binding lifetime; one with no readable time is kept and stamped now.
+fn flex_aws_row_resting(row: JsonValue, now_unix: Int, ttl: Int) -> Bool {
+  match flex_aws_row_retired_at(row: row) { Present { value: t } => (now_unix - t) < ttl  Absent => true }
+}
+
 type FlexAwsRowsConverge
-  = FlexAwsRowsConverged { text: String, added: List<String>, removed: List<String>, changed: Bool }
+  = FlexAwsRowsConverged { text: String, added: List<String>, retired: List<String>, expired: List<String>, changed: Bool, routed: List<String> }
   | FlexAwsRowsRefused { cause: String }
 
-// The upstreams file is a JSON array of row objects. Anything else refuses: rewriting a file this module
-// cannot read would drop the rows it does not own. Our rows are replaced by the desired set (one per card,
-// distinct by instance), after every row we do not own -- EXCEPT the rows named in `keep`, which pass through
-// as they are: the pass keeps a row whose card it could not see this tick (its region's ownership was
-// unreadable), because an unreadable region is not evidence that the card is gone (review of fb2594de).
-fn flex_aws_rows_converge(current: String, cards: List<FlexAwsEnrollable>, facts: FlexAwsRowFacts, keep: List<String>) -> FlexAwsRowsConverge {
+// The upstreams file is a JSON array of row objects. Anything else refuses: rewriting a file this module cannot
+// read would drop the rows it does not own. Every row we do not own passes through as parsed, and so does every row
+// of ours whose card this pass could not see -- an unreadable region is not evidence that a card is gone (review of
+// fb2594de) -- which is decided HERE, from this snapshot, by `seen` (the instance ids whose ownership was read) and
+// `blind` (some region's ownership was not), never from a second read of the file (review of e50999ce: two reads
+// let a failed first one empty the keep set). Our other rows become: the desired cards' rows in service; a row
+// leaving service retired; a retired row kept until the binding lifetime since it left; nothing else.
+fn flex_aws_rows_converge(current: String, cards: List<FlexAwsEnrollable>, facts: FlexAwsRowFacts, seen: List<String>, blind: Bool, now_unix: Int, binding_ttl_seconds: Int) -> FlexAwsRowsConverge {
   match parse_json_document(s: current) {
     JsonDocumentUnreadable { gap: _ } => FlexAwsRowsRefused { cause: "upstreams.json is not one JSON document" }
     JsonDocumentParsed { value: JsonArray { elements: rows } } => {
-      let theirs = rows |> filter(r => !flex_aws_is_ours(row: r) || any(keep, k => k == flex_aws_row_name_of(row: r)))
-      let ours_before = map(rows |> filter(r => flex_aws_is_ours(row: r) && !any(keep, k => k == flex_aws_row_name_of(row: r))), r => flex_aws_row_name_of(row: r))
+      let theirs = rows |> filter(r => !flex_aws_is_ours(row: r) || flex_aws_row_unseen(row: r, seen: seen, blind: blind))
+      let ours = rows |> filter(r => flex_aws_is_ours(row: r) && !flex_aws_row_unseen(row: r, seen: seen, blind: blind))
       let desired = distinct_by_key(xs: cards, key: c => c.instance_id as String)
-      let ours_after = map(desired, c => flex_aws_row_name(instance_id: c.instance_id))
-      let next = concat(theirs, map(desired, c => flex_aws_row_json(card: c, facts: facts)))
-      let text = serialize_json(v: json_array(elements: next))
+      let leaving = ours |> filter(r => !flex_aws_row_wanted(row: r, desired: desired) && flex_aws_row_in_service(row: r))
+      let resting = ours |> filter(r => !flex_aws_row_wanted(row: r, desired: desired) && !flex_aws_row_in_service(row: r))
+      let retired_rows = concat(
+        map(resting |> filter(r => flex_aws_row_resting(row: r, now_unix: now_unix, ttl: binding_ttl_seconds)), r => match flex_aws_row_retired_at(row: r) { Present { value: _ } => r  Absent => flex_aws_row_retired(row: r, now_unix: now_unix) }),
+        map(leaving, r => flex_aws_row_retired(row: r, now_unix: now_unix)))
+      let desired_rows = map(desired, c => flex_aws_row_json(card: c, facts: facts))
+      let next = concat(theirs, concat(retired_rows, desired_rows))
+      let names_before = map(ours |> filter(r => flex_aws_row_in_service(row: r)), r => flex_aws_row_name_of(row: r))
+      let names_after = map(desired, c => flex_aws_row_name(instance_id: c.instance_id))
       FlexAwsRowsConverged {
-        text: text,
-        added: ours_after |> filter(n => !any(ours_before, b => b == n)),
-        removed: ours_before |> filter(b => !any(ours_after, n => n == b)),
-        // Changed only when OUR rows changed: the rows we do not own are passed through as parsed, so a
-        // difference there would be the serializer's spelling, never a fact.
-        changed: (ours_before != ours_after) || (serialize_json(v: json_array(elements: rows |> filter(r => flex_aws_is_ours(row: r) && !any(keep, k => k == flex_aws_row_name_of(row: r))))) != serialize_json(v: json_array(elements: map(desired, c => flex_aws_row_json(card: c, facts: facts))))),
+        text: serialize_json(v: json_array(elements: next)),
+        added: names_after |> filter(n => !any(names_before, b => b == n)),
+        retired: map(leaving, r => flex_aws_row_name_of(row: r)),
+        expired: map(resting |> filter(r => !flex_aws_row_resting(row: r, now_unix: now_unix, ttl: binding_ttl_seconds)), r => flex_aws_row_name_of(row: r)),
+        // Changed only when OUR rows changed: the rows we do not own pass through as parsed, so a difference there
+        // would be the serializer's spelling, never a fact.
+        changed: serialize_json(v: json_array(elements: ours)) != serialize_json(v: json_array(elements: concat(retired_rows, desired_rows))),
+        // What the router should route of ours once these files are loaded: the desired rows and the kept ones in
+        // service. The pass compares the running router against exactly this.
+        routed: concat(map(theirs |> filter(r => flex_aws_is_ours(row: r) && flex_aws_row_in_service(row: r)), r => flex_aws_row_name_of(row: r)), names_after),
       }
     }
     JsonDocumentParsed { value: _ } => FlexAwsRowsRefused { cause: "upstreams.json is not a JSON array" }
@@ -200,14 +268,13 @@ type FlexAwsCardUse {
 }
 
 // WHAT THE ROUTER SAYS ABOUT RENTED CAPACITY, as it decides it (gunbc.serving.router_dev_policy, `rented` in
-// /router/stats): how many waiting conversations a rented card's free slot would serve (its routing rule's
-// waiter_keeps_its_engine, never restated here) -- counted for the model the card serves and the router's alias,
-// the two a rented row of that model is a candidate for (the router's candidate rule) -- whether its rented pool
-// is full, how many rented rows it routes, and how each of our cards is used.
+// /router/stats): how many waiting conversations ANOTHER rented card would serve -- not held for their own engine,
+// and admitted by no rented row in service now, by the router's own admission rule (retention included), never
+// restated here -- counted for the model the card serves and the router's alias, the two a rented row of that
+// model is a candidate for; the rented rows the running router routes, by name; and how each of our cards is used.
 type FlexAwsRouterReading {
-  waiting: Int
-  full: Bool
-  rented_rows: Int
+  unplaceable: Int
+  rows: List<String>
   cards: List<FlexAwsCardUse>
 }
 
@@ -270,11 +337,11 @@ fn flex_aws_card_use(stats: JsonValue, rows: List<FlexAwsRentedRow>, instance_id
   }
 }
 
-fn flex_aws_rented_waiting(rented: JsonValue, model: NonEmptyStr) -> Int? {
+fn flex_aws_rented_unplaceable(rented: JsonValue, model: NonEmptyStr) -> Int? {
   match flex_aws_field(v: rented, key: "alias") {
-    Present { value: JsonString { value: alias } } => match flex_aws_field(v: rented, key: "waiting_by_model") {
+    Present { value: JsonString { value: alias } } => match flex_aws_field(v: rented, key: "unplaceable_by_model") {
       Present { value: v } => match flex_aws_json_object_members(v: v) {
-        Present { value: ms } => flex_aws_waiting_for(by_model: ms, alias: alias, model: model)
+        Present { value: ms } => flex_aws_unplaceable_for(by_model: ms, alias: alias, model: model)
         Absent => none
       }
       Absent => none
@@ -294,7 +361,7 @@ fn flex_aws_json_object_members(v: JsonValue) -> List<JsonKeyValue>? {
 
 // THE ROUTER'S READING, for the cards we own. Every field is required: a stats answer missing one is refused,
 // never read as no demand or as an unused card.
-fn flex_aws_waiting_for(by_model: List<JsonKeyValue>, alias: String, model: NonEmptyStr) -> Int? {
+fn flex_aws_unplaceable_for(by_model: List<JsonKeyValue>, alias: String, model: NonEmptyStr) -> Int? {
   fold(by_model |> filter(m => (m.key == alias) || (m.key == (model as String))), init: Present { value: 0 }, f: (acc, m) => match acc {
     Absent => acc
     Present { value: n } => match flex_aws_json_number(v: m.value) { Present { value: k } => Present { value: n + k }  Absent => none }
@@ -306,21 +373,18 @@ fn flex_aws_read_router_stats(body: String, instance_ids: List<NonEmptyStr>, mod
     JsonDocumentUnreadable { gap: _ } => FlexAwsStatsRefused { cause: "router stats are not one JSON document" }
     JsonDocumentParsed { value: d } => match flex_aws_field(v: d, key: "rented") {
       Absent => FlexAwsStatsRefused { cause: "router stats carry no rented object" }
-      Present { value: rented } => match flex_aws_rented_waiting(rented: rented, model: model) {
-        Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.waiting_by_model and rented.alias (the router predates rented demand)" }
-        Present { value: waiting } => match flex_aws_field(v: rented, key: "full") {
-          Present { value: JsonBool { value: full } } => match flex_aws_field(v: rented, key: "rows") {
-            Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.rows" }
-            Present { value: rv } => match flex_aws_rented_rows(v: rv) {
-              Absent => FlexAwsStatsRefused { cause: "router stats rented.rows is not a list of rows with active and seen_recent" }
-              Present { value: rows } => {
-                let uses = flat_map(instance_ids, i => match flex_aws_card_use(stats: d, rows: rows, instance_id: i) { Present { value: u } => [u]  Absent => [] })
-                if count(uses) != count(instance_ids) { FlexAwsStatsRefused { cause: "a withdrawn card's active counter is not a number" } }
-                else { FlexAwsStatsReadOk { reading: FlexAwsRouterReading { waiting: waiting, full: full, rented_rows: count(rows), cards: uses } } }
-              }
+      Present { value: rented } => match flex_aws_rented_unplaceable(rented: rented, model: model) {
+        Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.unplaceable_by_model and rented.alias (the router predates rented admission demand)" }
+        Present { value: unplaceable } => match flex_aws_field(v: rented, key: "rows") {
+          Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.rows" }
+          Present { value: rv } => match flex_aws_rented_rows(v: rv) {
+            Absent => FlexAwsStatsRefused { cause: "router stats rented.rows is not a list of rows with active and seen_recent" }
+            Present { value: rows } => {
+              let uses = flat_map(instance_ids, i => match flex_aws_card_use(stats: d, rows: rows, instance_id: i) { Present { value: u } => [u]  Absent => [] })
+              if count(uses) != count(instance_ids) { FlexAwsStatsRefused { cause: "a withdrawn card's active counter is not a number" } }
+              else { FlexAwsStatsReadOk { reading: FlexAwsRouterReading { unplaceable: unplaceable, rows: map(rows, r => r.name), cards: uses } } }
             }
           }
-          _ => FlexAwsStatsRefused { cause: "router stats carry no rented.full" }
         }
       }
     }

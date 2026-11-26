@@ -23,6 +23,7 @@ import product.fabric.flex_aws_apply {
   FlexAwsTerminateDrainMarkUnreadable, FlexAwsTerminateNeverReady, FlexAwsMarkWrite, FlexAwsMarkSet, FlexAwsMarkClear,
   flex_aws_mark_unready, flex_aws_mark_idle, flex_aws_mark_drain, flex_aws_mark_noticed,
   flex_aws_read_notice, flex_aws_decide, flex_aws_run_request, flex_aws_marks, flex_aws_notice_marks, flex_aws_with_marks, flex_aws_steady,
+  FlexAwsOutstanding, flex_aws_notices_held, flex_aws_notice_settled,
 }
 import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse }
 
@@ -74,10 +75,11 @@ fn tag_at(key: NonEmptyStr, unix: Int) -> AwsEc2Tag { AwsEc2Tag { key: key, valu
 
 fn card_use(id: String, enrolled: Bool, in_flight: Int, seen: Int) -> FlexAwsCardUse { FlexAwsCardUse { instance_id: id as NonEmptyStr, enrolled: enrolled, in_flight: in_flight, seen_recent: seen } }
 
-// The router's reading in the shape the decision cares about: whether any waiter a rented card could serve
-// exists, the rented pool's turns against its cap (cap 0: no rented row is routed), and our cards' use.
+// The router's reading in the shape the decision cares about: a waiter another rented card would serve, which the
+// router counts as unplaceable when no rented row admits it -- here, when the rented pool's turns meet its cap (cap
+// 0: no rented row is routed) -- the rows it routes, and our cards' use.
 fn router(waiting: Bool, active: Int, cap: Int, uses: List<FlexAwsCardUse>) -> FlexAwsDemand {
-  FlexAwsDemandRouter { router: FlexAwsRouterReading { waiting: if waiting { 1 } else { 0 }, full: (cap > 0) && (active >= cap), rented_rows: if cap == 0 { 0 } else { 1 }, cards: uses }, max_cards: 3 }
+  FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: if waiting && ((cap == 0) || (active >= cap)) { 1 } else { 0 }, rows: if cap == 0 { [] } else { ["aws-i-0row"] }, cards: uses }, max_cards: 3 }
 }
 
 fn idle_for(seconds: Int) -> AwsEc2Instance { tagged(id: "i-0idle", tags: [tag_at(key: flex_aws_mark_idle, unix: now_unix - seconds)]) }
@@ -106,7 +108,7 @@ test fn the_two_events_parse_and_anything_else_does_not() -> Bool {
 
 // With no card and room for one, the cheapest admissible candidate launches at its own rate as MaxPrice.
 test fn an_empty_pool_launches_the_cheapest_admissible_card() -> Bool {
-  match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: m, fallbacks: f } => ((c.zone as String) == "us-east-1b") && (money_per_hour_micros(q: m) == 2350500) && (map(f, x => x.zone as String) == ["us-east-1c"])
     _ => false
   }
@@ -119,11 +121,11 @@ test fn walled_on_demand_wrong_size_and_unpriced_candidates_hold() -> Bool {
   let on_demand = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsOnDemand, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
   let other_size = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.12xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 2, vcpus: 48, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
   let unpriced = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1d" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: none, per_gpu_hour_micros: none, walls: [] }
-  match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [walled, on_demand, other_size, unpriced], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [walled, on_demand, other_size, unpriced], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("no admissible candidate")
     _ => false
   }
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1d", micros: 12500000)], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1d", micros: 12500000)], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
@@ -144,7 +146,7 @@ fn warned_and_marked() -> AwsEc2Instance {
 test fn an_interruption_warning_asks_for_a_replacement_elsewhere() -> Bool {
   // The warned card's turns are still finishing (2 in flight, its row withdrawn), and a waiter is stranded.
   let finishing = router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0abc", enrolled: false, in_flight: 2, seen: 2)])
-  match flex_aws_decide(policy: policy, demand: finishing, candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: [warned_and_marked()], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  match flex_aws_decide(policy: policy, demand: finishing, candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: [warned_and_marked()], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => ((c.zone as String) == "us-east-1c") && (map(f, x => x.zone as String) == ["us-east-1b"])
     _ => false
   }
@@ -165,23 +167,23 @@ test fn a_warning_followed_by_an_empty_receive_keeps_the_card_withdrawn() -> Boo
 // holds; waiters bound to their own engines ask for nothing; no card is asked for past the ceiling.
 test fn rentable_waiters_rent_only_when_the_rented_pool_is_full_or_gone() -> Bool {
   let cs = [cand(zone: "us-east-1b", micros: 2350500)]
-  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: []), candidates: cs, owned: [], quotas: quota24, now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: []), candidates: cs, owned: [], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 4, cap: 4, uses: [card_use(id: "i-0abc", enrolled: true, in_flight: 4, seen: 6)]), candidates: cs, owned: [tagged(id: "i-0abc", tags: [])], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 4, cap: 4, uses: [card_use(id: "i-0abc", enrolled: true, in_flight: 4, seen: 6)]), candidates: cs, owned: [tagged(id: "i-0abc", tags: [])], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 2, cap: 4, uses: [card_use(id: "i-0abc", enrolled: true, in_flight: 2, seen: 3)]), candidates: cs, owned: [tagged(id: "i-0abc", tags: [])], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 2, cap: 4, uses: [card_use(id: "i-0abc", enrolled: true, in_flight: 2, seen: 3)]), candidates: cs, owned: [tagged(id: "i-0abc", tags: [])], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("wanted=1")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: false, active: 0, cap: 0, uses: []), candidates: cs, owned: [], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: false, active: 0, cap: 0, uses: []), candidates: cs, owned: [], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("wanted=0")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { router: FlexAwsRouterReading { waiting: 1, full: false, rented_rows: 0, cards: [] }, max_cards: 0 }, candidates: cs, owned: [], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 1, rows: [], cards: [] }, max_cards: 0 }, candidates: cs, owned: [], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
     _ => false
   })
@@ -192,11 +194,11 @@ test fn rentable_waiters_rent_only_when_the_rented_pool_is_full_or_gone() -> Boo
 // pass holds instead of launching a second; once the card is enrolled and its pool fills, a second is asked.
 test fn a_booting_card_answers_the_ask_it_was_launched_for() -> Bool {
   let cs = [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)]
-  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0boot", enrolled: false, in_flight: 0, seen: 0)]), candidates: cs, owned: [tagged(id: "i-0boot", tags: [tag_at(key: flex_aws_mark_unready, unix: now_unix - 300)])], quotas: quota24, now_unix: now_unix) {
-    FlexAwsHold { why: w } => w.contains("steady=1 wanted=1")
+  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0boot", enrolled: false, in_flight: 0, seen: 0)]), candidates: cs, owned: [tagged(id: "i-0boot", tags: [tag_at(key: flex_aws_mark_unready, unix: now_unix - 300)])], outstanding: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("steady=1 outstanding=0 wanted=1")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 4, cap: 4, uses: [card_use(id: "i-0boot", enrolled: true, in_flight: 4, seen: 5)]), candidates: cs, owned: [tagged(id: "i-0boot", tags: [])], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 4, cap: 4, uses: [card_use(id: "i-0boot", enrolled: true, in_flight: 4, seen: 5)]), candidates: cs, owned: [tagged(id: "i-0boot", tags: [])], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
@@ -208,11 +210,11 @@ test fn a_rebalance_recommendation_drains_the_card_and_asks_for_a_replacement() 
   let owned = [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")]
   let marked = flex_aws_with_marks(owned: owned, written: flex_aws_notice_marks(owned: owned, notices: [FlexAwsRebalanceRecommendation { instance_id: "i-0abc" as NonEmptyStr }], now_unix: now_unix))
   let finishing = router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0abc", enrolled: false, in_flight: 1, seen: 1)])
-  (match flex_aws_decide(policy: policy, demand: finishing, candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: marked, quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: finishing, candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: marked, outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: _ } => (c.zone as String) == "us-east-1c"
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: owned, quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: owned, outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
     _ => false
   })
@@ -224,11 +226,11 @@ test fn a_rebalance_recommendation_drains_the_card_and_asks_for_a_replacement() 
 test fn a_withdrawn_card_still_running_counts_against_the_ceiling() -> Bool {
   let full = router(waiting: true, active: 8, cap: 8, uses: [card_use(id: "i-0a", enrolled: true, in_flight: 4, seen: 4), card_use(id: "i-0b", enrolled: true, in_flight: 4, seen: 4), card_use(id: "i-0w", enrolled: false, in_flight: 1, seen: 1)])
   let three = [tagged(id: "i-0a", tags: []), tagged(id: "i-0b", tags: []), tagged(id: "i-0w", tags: [tag_at(key: flex_aws_mark_drain, unix: now_unix - 20), tag_at(key: flex_aws_mark_noticed, unix: now_unix - 20)])]
-  (match flex_aws_decide(policy: policy, demand: full, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: three, quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 48 }], now_unix: now_unix) {
-    FlexAwsHold { why: w } => w.contains("at the card ceiling: live=3 of 3")
+  (match flex_aws_decide(policy: policy, demand: full, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: three, outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 48 }], now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("at the card ceiling: live=3 outstanding=0 of 3")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: full, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [tagged(id: "i-0a", tags: []), tagged(id: "i-0b", tags: [])], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 48 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: full, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [tagged(id: "i-0a", tags: []), tagged(id: "i-0b", tags: [])], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 48 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
@@ -241,8 +243,8 @@ test fn a_card_used_this_tick_is_not_drained_however_old_its_idle_clock() -> Boo
   let used = router(waiting: false, active: 1, cap: 4, uses: [card_use(id: "i-0idle", enrolled: true, in_flight: 1, seen: 1)])
   let owned = [idle_for(seconds: 3600)]
   let cleared = flex_aws_with_marks(owned: owned, written: flex_aws_marks(demand: used, owned: owned, now_unix: now_unix))
-  (match flex_aws_decide(policy: policy, demand: used, candidates: [], owned: owned, quotas: quota24, now_unix: now_unix) { FlexAwsDrain { instance_id: _, why: _ } => false  _ => true })
-    && (match flex_aws_decide(policy: policy, demand: used, candidates: [], owned: cleared, quotas: quota24, now_unix: now_unix) { FlexAwsDrain { instance_id: _, why: _ } => false  _ => true })
+  (match flex_aws_decide(policy: policy, demand: used, candidates: [], owned: owned, outstanding: [], quotas: quota24, now_unix: now_unix) { FlexAwsDrain { instance_id: _, why: _ } => false  _ => true })
+    && (match flex_aws_decide(policy: policy, demand: used, candidates: [], owned: cleared, outstanding: [], quotas: quota24, now_unix: now_unix) { FlexAwsDrain { instance_id: _, why: _ } => false  _ => true })
     && !any(cleared, i => any(i.tags, t => (t.key as String) == (flex_aws_mark_idle as String)))
 }
 
@@ -250,15 +252,15 @@ test fn a_card_used_this_tick_is_not_drained_however_old_its_idle_clock() -> Boo
 // while demand is asking; a terminated card neither counts nor is let go.
 test fn an_idle_card_is_drained_after_the_window_and_a_dead_card_is_ignored() -> Bool {
   let quiet = router(waiting: false, active: 0, cap: 4, uses: [card_use(id: "i-0idle", enrolled: true, in_flight: 0, seen: 0)])
-  (match flex_aws_decide(policy: policy, demand: quiet, candidates: [], owned: [idle_for(1800)], quotas: quota24, now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: quiet, candidates: [], owned: [idle_for(1800)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsDrain { instance_id: i, why: FlexAwsDrainIdle { idle_seconds: a } } => ((i as String) == "i-0idle") && (a == 1800)
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: quiet, candidates: [], owned: [idle_for(1799)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: quiet, candidates: [], owned: [idle_for(1799)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0idle", enrolled: true, in_flight: 0, seen: 0)]), candidates: [], owned: [idle_for(3600)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0idle", enrolled: true, in_flight: 0, seen: 0)]), candidates: [], owned: [idle_for(3600)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsDrain { instance_id: _, why: _ } => false
     _ => true
   })
@@ -268,7 +270,7 @@ test fn an_idle_card_is_drained_after_the_window_and_a_dead_card_is_ignored() ->
       state: AwsEc2InstanceState { code: 48, name: AwsEc2Terminated },
       state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
       launch_time: "2026-11-25T00:00:00+00:00", public_ip_address: none, tags: [tag_at(key: flex_aws_mark_idle, unix: 0)],
-    }], quotas: quota24, now_unix: now_unix) {
+    }], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
@@ -280,23 +282,23 @@ test fn an_idle_card_is_drained_after_the_window_and_a_dead_card_is_ignored() ->
 test fn a_drained_card_terminates_only_when_its_turns_finish_or_time_runs_out() -> Bool {
   let gone = router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 0, seen: 2)])
   let busy = router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 2, seen: 2)])
-  (match flex_aws_decide(policy: policy, demand: gone, candidates: [], owned: [draining(40)], quotas: quota24, now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: gone, candidates: [], owned: [draining(40)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsTerminate { instance_id: i, why: FlexAwsTerminateDrained { drain_seconds: d } } => ((i as String) == "i-0dr") && (d == 40)
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [draining(40)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [draining(40)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("steady=0")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [draining(600)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [draining(600)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsTerminate { instance_id: _, why: FlexAwsTerminateDrainTimedOut { drain_seconds: d } } => d == 600
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [tagged(id: "i-0dr", tags: [AwsEc2Tag { key: flex_aws_mark_drain, value: "soon" }])], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [tagged(id: "i-0dr", tags: [AwsEc2Tag { key: flex_aws_mark_drain, value: "soon" }])], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsTerminate { instance_id: _, why: FlexAwsTerminateDrainMarkUnreadable { value: v } } => v == "soon"
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 2, seen: 2)]), candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: [draining(40)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 2, seen: 2)]), candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: [draining(40)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
@@ -307,15 +309,15 @@ test fn a_drained_card_terminates_only_when_its_turns_finish_or_time_runs_out() 
 // never judged by that clock.
 test fn a_card_never_ready_by_its_deadline_is_terminated() -> Bool {
   let out = router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0slow", enrolled: false, in_flight: 0, seen: 0)])
-  (match flex_aws_decide(policy: policy, demand: out, candidates: [], owned: [unready_for(2700)], quotas: quota24, now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: out, candidates: [], owned: [unready_for(2700)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsTerminate { instance_id: i, why: FlexAwsTerminateNeverReady { unready_seconds: u } } => ((i as String) == "i-0slow") && (u == 2700)
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: out, candidates: [], owned: [unready_for(2699)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: out, candidates: [], owned: [unready_for(2699)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: router(waiting: false, active: 1, cap: 4, uses: [card_use(id: "i-0slow", enrolled: true, in_flight: 1, seen: 1)]), candidates: [], owned: [unready_for(9000)], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: false, active: 1, cap: 4, uses: [card_use(id: "i-0slow", enrolled: true, in_flight: 1, seen: 1)]), candidates: [], owned: [unready_for(9000)], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsTerminate { instance_id: _, why: _ } => false
     _ => true
   })
@@ -358,7 +360,7 @@ test fn the_launch_argv_is_tagged_spot_at_the_admitted_rate() -> Bool {
     heartbeat_parameter: "/gunbc-flex/heartbeat" as NonEmptyStr, heartbeat_stale: second(count: 1800), root_volume_gib: 150,
     instance_profile: AwsEc2IamInstanceProfileByName { name: "gunbc-flex-card" as NonEmptyStr },
   }
-  let request = flex_aws_run_request(candidate: cand(zone: "us-east-1b", micros: 2350500), max_price: rate(micros: 2350500), ami: "ami-0ba1ac2e319bff082" as NonEmptyStr, user_data: "#!/bin/bash\ntrue\n", boot: boot, subnet_id: "subnet-0c20b51dafdea4021" as NonEmptyStr, security_group_id: "sg-0c7d008b7591fca04" as NonEmptyStr, client_token: "gunbc-flex-us-east-1b-29926260" as NonEmptyStr)
+  let request = flex_aws_run_request(instance_type: "g7e.2xlarge" as NonEmptyStr, max_price: rate(micros: 2350500), ami: "ami-0ba1ac2e319bff082" as NonEmptyStr, user_data: "#!/bin/bash\ntrue\n", boot: boot, subnet_id: "subnet-0c20b51dafdea4021" as NonEmptyStr, security_group_id: "sg-0c7d008b7591fca04" as NonEmptyStr, client_token: "gunbc-flex-us-east-1b-29926260" as NonEmptyStr)
   let argv = join(argv_words(command: aws_cli_run_instances(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-east-1" as NonEmptyStr, request: request)), " ")
   (aws_cli_money_wire(m: rate(micros: 2350500)) == "2.350500")
     && (aws_cli_money_wire(m: rate(micros: 7)) == "0.000007")
@@ -382,11 +384,11 @@ test fn a_card_still_shutting_down_holds_the_quota() -> Bool {
     state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
     launch_time: "2026-11-25T02:50:32+00:00", public_ip_address: none, tags: [],
   }
-  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [dying], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [dying], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("inside its region's free spot vCPUs")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
@@ -396,11 +398,11 @@ test fn a_card_still_shutting_down_holds_the_quota() -> Bool {
 // 16 vCPUs counted against the quota; with 8 vCPUs free only the 2xlarge fits.
 test fn the_cheapest_single_gpu_size_wins_within_the_free_quota() -> Bool {
   let big = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1c" as NonEmptyStr, instance_type: "g7e.4xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 16, rate: Present { value: rate(micros: 1353200) }, per_gpu_hour_micros: Present { value: 1353200 }, walls: [] }
-  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2365300), big], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2365300), big], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: _ } => (c.instance_type as String) == "g7e.4xlarge"
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2365300), big], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2365300), big], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => ((c.instance_type as String) == "g7e.2xlarge") && (count(f) == 0)
     _ => false
   })
@@ -413,15 +415,15 @@ test fn the_cheapest_card_anywhere_wins_where_its_region_has_quota() -> Bool {
   let oregon = FlexAwsCandidate { region: "us-west-2" as NonEmptyStr, zone: "us-west-2a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 475000) }, per_gpu_hour_micros: Present { value: 475000 }, walls: [] }
   let virginia = cand(zone: "us-east-1c", micros: 1353200)
   let both = [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }, FlexAwsRegionQuota { region: "us-west-2" as NonEmptyStr, spot_vcpus: 24 }]
-  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [virginia, oregon], owned: [], quotas: both, now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [virginia, oregon], owned: [], outstanding: [], quotas: both, now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: _ } => (c.zone as String) == "us-west-2a"
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [virginia, oregon], owned: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [virginia, oregon], owned: [], outstanding: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 8 }], now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => ((c.zone as String) == "us-east-1c") && (count(f) == 0)
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 2 }, candidates: [cand(zone: "us-east-1b", micros: 2350500), virginia, oregon], owned: [card(id: "i-0east", launched: "2026-11-25T02:30:00+00:00")], quotas: both, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 2 }, candidates: [cand(zone: "us-east-1b", micros: 2350500), virginia, oregon], owned: [card(id: "i-0east", launched: "2026-11-25T02:30:00+00:00")], outstanding: [], quotas: both, now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => ((c.zone as String) == "us-west-2a") && (count(f) == 0)
     _ => false
   })
@@ -436,16 +438,103 @@ test fn the_burn_ceiling_bounds_the_summed_hourly_price() -> Bool {
   let b = AwsEc2Instance { instance_id: "i-0b" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, placement: AwsEc2Placement { availability_zone: "us-east-1d" as NonEmptyStr }, state: AwsEc2InstanceState { code: 16, name: AwsEc2Running }, state_reason: none, instance_lifecycle: none, spot_instance_request_id: none, launch_time: "2026-11-25T02:30:00+00:00", public_ip_address: none, tags: [] }
   let priced = [cand(zone: "us-east-1b", micros: 2365300), cand(zone: "us-east-1d", micros: 2481800)]
   let roomy = [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 48 }]
-  (match flex_aws_decide(policy: five, demand: FlexAwsDemandFixed { cards: 3 }, candidates: concat(priced, [cand(zone: "us-east-1c", micros: 1353200)]), owned: [a, b], quotas: roomy, now_unix: now_unix) {
+  (match flex_aws_decide(policy: five, demand: FlexAwsDemandFixed { cards: 3 }, candidates: concat(priced, [cand(zone: "us-east-1c", micros: 1353200)]), owned: [a, b], outstanding: [], quotas: roomy, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("burn ceiling")
     _ => false
   })
-  && (match flex_aws_decide(policy: five, demand: FlexAwsDemandFixed { cards: 3 }, candidates: concat(priced, [cand(zone: "us-east-1c", micros: 150000)]), owned: [a, b], quotas: roomy, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: five, demand: FlexAwsDemandFixed { cards: 3 }, candidates: concat(priced, [cand(zone: "us-east-1c", micros: 150000)]), owned: [a, b], outstanding: [], quotas: roomy, now_unix: now_unix) {
     FlexAwsLaunch { candidate: c, max_price: _, fallbacks: _ } => (c.zone as String) == "us-east-1c"
     _ => false
   })
-  && (match flex_aws_decide(policy: five, demand: FlexAwsDemandFixed { cards: 3 }, candidates: [cand(zone: "us-east-1c", micros: 150000)], owned: [a], quotas: roomy, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: five, demand: FlexAwsDemandFixed { cards: 3 }, candidates: [cand(zone: "us-east-1c", micros: 150000)], owned: [a], outstanding: [], quotas: roomy, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("cannot count the burn rate")
     _ => false
   })
+}
+
+// RETENTION IS ADMISSION (review of e50999ce): one rented card with all eight retained conversations warm between
+// tool calls and no turn in flight refuses a ninth; the router counts that waiter as unplaceable, and the decision
+// asks for a second card even though the card's active slots are free (a reading of active turns alone held).
+test fn a_card_whose_retention_is_full_asks_for_a_second() -> Bool {
+  let warm = FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 1, rows: ["aws-i-0warm"], cards: [card_use(id: "i-0warm", enrolled: true, in_flight: 0, seen: 8)] }, max_cards: 3 }
+  let room = FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 0, rows: ["aws-i-0warm"], cards: [card_use(id: "i-0warm", enrolled: true, in_flight: 0, seen: 7)] }, max_cards: 3 }
+  (match flex_aws_decide(policy: policy, demand: warm, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [tagged(id: "i-0warm", tags: [])], outstanding: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: room, candidates: [cand(zone: "us-east-1c", micros: 2719400)], owned: [tagged(id: "i-0warm", tags: [])], outstanding: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("wanted=1")
+    _ => false
+  })
+}
+
+// UNOBSERVED USE IS NOT PROOF (review of e50999ce): with router=off a fixed count reads no router, so a draining
+// card -- here one a rebalance recommendation marks on this very tick, with turns that may be running -- is NOT
+// terminated as drained; only the drain timeout lets it go.
+test fn a_card_whose_use_is_unobserved_is_terminated_only_by_the_timeout() -> Bool {
+  let owned = [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")]
+  let marked = flex_aws_with_marks(owned: owned, written: flex_aws_notice_marks(owned: owned, notices: [FlexAwsRebalanceRecommendation { instance_id: "i-0abc" as NonEmptyStr }], now_unix: now_unix))
+  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [], owned: marked, outstanding: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: _, why: _ } => false
+    _ => true
+  })
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [], owned: [draining(599)], outstanding: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: _, why: _ } => false
+    _ => true
+  })
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [], owned: [draining(600)], outstanding: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: _, why: FlexAwsTerminateDrainTimedOut { drain_seconds: d } } => d == 600
+    _ => false
+  })
+}
+
+// A PURCHASE IN FLIGHT IS A CARD (review of e50999ce): EC2 answered a third launch but does not list it yet. It
+// answers the ask it was bought for; beside two enrolled, full cards it is the third the ceiling allows; and while it
+// is outstanding no second purchase is made even below the ceiling. Without it, the same pass would buy.
+test fn a_purchase_not_yet_listed_counts_and_blocks_a_second() -> Bool {
+  let bought = [FlexAwsOutstanding { token: "gunbc-flex-us-east-1c-1795575540" as NonEmptyStr, region: "us-east-1" as NonEmptyStr, zone: "us-east-1c" as NonEmptyStr }]
+  let full_two = router(waiting: true, active: 8, cap: 8, uses: [card_use(id: "i-0a", enrolled: true, in_flight: 4, seen: 4), card_use(id: "i-0b", enrolled: true, in_flight: 4, seen: 4)])
+  let two = [tagged(id: "i-0a", tags: []), tagged(id: "i-0b", tags: [])]
+  let cs = [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)]
+  let q = [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 48 }]
+  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: []), candidates: cs, owned: [], outstanding: bought, quotas: q, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("outstanding=1 wanted=1")
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: full_two, candidates: cs, owned: two, outstanding: bought, quotas: q, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("steady=2 outstanding=1 wanted=3")
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 3 }, candidates: cs, owned: [], outstanding: bought, quotas: q, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("a purchase is outstanding")
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: full_two, candidates: cs, owned: two, outstanding: [], quotas: q, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
+    _ => false
+  })
+}
+
+// A NOTICE IS HELD UNTIL ITS MARKS READ BACK (review of e50999ce). Pass one sees the warning; its tag write FAILS,
+// so the card as read back carries no mark: the notice is held, not settled. Pass two RECEIVES NOTHING; the held
+// notice still withdraws the card and still owes both marks. A partial write (drain only) leaves the zone mark
+// owed and the notice held. Read back with both marks, it is settled; a card that is gone settles it, unless some
+// region could not be read.
+test fn a_failed_mark_write_and_an_empty_receive_keep_the_card_withdrawn() -> Bool {
+  let warned = FlexAwsInterruptionWarning { instance_id: "i-0abc" as NonEmptyStr, action: AwsEc2ActionTerminate }
+  let unmarked = [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")]
+  let held = flex_aws_notices_held(notices: [warned], owned: unmarked, blind: false)
+  let pass_two = flex_aws_with_marks(owned: unmarked, written: flex_aws_notice_marks(owned: unmarked, notices: concat([], held), now_unix: now_unix + 30))
+  let drain_only = [tagged(id: "i-0abc", tags: [tag_at(key: flex_aws_mark_drain, unix: now_unix)])]
+  let partial = flex_aws_notice_marks(owned: drain_only, notices: [warned], now_unix: now_unix + 30)
+  (count(held) == 1)
+    && (count(flex_aws_steady(owned: pass_two)) == 0)
+    && (count(flex_aws_notice_marks(owned: unmarked, notices: held, now_unix: now_unix + 30)) == 2)
+    && (count(flex_aws_notices_held(notices: [warned], owned: drain_only, blind: false)) == 1)
+    && (count(partial) == 1)
+    && (match partial.first() { Present { value: FlexAwsMarkSet { instance_id: _, key: k, unix: _ } } => (k as String) == (flex_aws_mark_noticed as String)  _ => false })
+    && flex_aws_notice_settled(owned: [warned_and_marked()], instance_id: "i-0abc" as NonEmptyStr, blind: false)
+    && (count(flex_aws_notices_held(notices: [warned], owned: [warned_and_marked()], blind: false)) == 0)
+    && flex_aws_notice_settled(owned: [], instance_id: "i-0abc" as NonEmptyStr, blind: false)
+    && !flex_aws_notice_settled(owned: [], instance_id: "i-0abc" as NonEmptyStr, blind: true)
 }

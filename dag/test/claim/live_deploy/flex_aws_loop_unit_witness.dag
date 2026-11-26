@@ -32,6 +32,7 @@ test fn the_loop_unit_runs_the_released_pass_as_the_operator_with_a_memory_bound
     && u.contains("MemoryMax=")
     && u.contains("MemorySwapMax=0")
     && u.contains("WantedBy=multi-user.target")
+    && u.contains("Environment=PATH=/home/briansrls/.local/bin:/usr/local/bin:/usr/bin:/bin")
     && !u.contains("gunbc-flex-run")
 }
 

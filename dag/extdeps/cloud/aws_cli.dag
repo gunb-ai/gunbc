@@ -34,6 +34,7 @@ import extdeps.cloud.aws_ec2 {
   AwsEc2LaunchSource, AwsEc2LaunchFromTemplate, AwsEc2LaunchInline, AwsEc2LaunchTemplateById, AwsEc2LaunchTemplateByName,
   AwsEc2RunInstancesRequest,
 }
+import extdeps.time.rfc3339 { rfc3339_parse_instant, rfc3339_instant_unix_seconds, Rfc3339InstantParsed, Rfc3339InstantRefused }
 import extdeps.cloud.aws_service_quotas { AwsServiceQuota, AwsQuotaMetricInfo, AwsQuotaMetricDimension }
 
 // THE AWS COMMAND LINE INTERFACE, VERSION 2, AS ONE TRANSPORT HANDLER FOR THE AWS SHAPES. Its own
@@ -933,6 +934,58 @@ fn aws_cli_put_secure_parameter(credentials_file: FilePath, region: NonEmptyStr,
 fn aws_cli_put_string_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value: NonEmptyStr) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
     arguments: ["--name", name as String, "--type", "String", "--overwrite", "--value", value as String])
+}
+
+// SSM DescribeParameters, filtered to the names beginning with one prefix: each name and when it was last
+// written, as the CLI prints them under --query (an ISO 8601 instant with its offset; verified 2026-11-26 with CLI
+// 2.42.3). Metadata only -- DescribeParameters returns no value -- and the CLI follows NextToken itself.
+fn aws_cli_describe_parameters_under(credentials_file: FilePath, region: NonEmptyStr, prefix: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "describe-parameters" as NonEmptyStr,
+    arguments: ["--parameter-filters", join(["Key=Name,Option=BeginsWith,Values=", prefix as String], ""), "--query", "Parameters[].[Name,LastModifiedDate]"])
+}
+
+type AwsSsmParameterListed {
+  name: NonEmptyStr
+  last_modified_unix: Int
+}
+
+fn aws_cli_read_parameter_listing(stdout: String) -> AwsCliRead<List<AwsSsmParameterListed>> {
+  match parse_json_document(s: stdout) {
+    JsonDocumentUnreadable { gap: g } => AwsCliReadRefused { cause: concat("the parameter listing is not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: JsonArray { elements: es } } => {
+      let read = flat_map(es, e => match e {
+        JsonArray { elements: pair } => if count(pair) != 2 { [] } else { aws_cli_parameter_listed(name: pair.first(), at: pair.last()) }
+        _ => []
+      })
+      if count(read) == count(es) { AwsCliReadOk { value: read } } else { AwsCliReadRefused { cause: "a parameter listing entry is not [name, RFC 3339 instant]" } }
+    }
+    JsonDocumentParsed { value: _ } => AwsCliReadRefused { cause: "the parameter listing is not an array" }
+  }
+}
+
+fn aws_cli_parameter_listed(name: JsonValue?, at: JsonValue?) -> List<AwsSsmParameterListed> {
+  match name {
+    Present { value: JsonString { value: n } } => match at {
+      Present { value: JsonString { value: t } } => match rfc3339_parse_instant(text: t) {
+        Rfc3339InstantParsed { instant: i, spelling: _ } => if n == "" { [] } else { [AwsSsmParameterListed { name: n as NonEmptyStr, last_modified_unix: rfc3339_instant_unix_seconds(i: i) }] }
+        Rfc3339InstantRefused { cause: _ } => []
+      }
+      _ => []
+    }
+    _ => []
+  }
+}
+
+// WHETHER A REFUSED CALL CERTAINLY CHANGED NOTHING. The CLI spells a service's error answer "An error occurred
+// (<Code>) when calling ..."; an answer means the service decided the request, and a client-side error code is a
+// refusal of it. A server-side code (InternalError, InternalFailure, ServiceUnavailable, Unavailable) or no
+// answer at all -- a connection or read timeout -- leaves the outcome unknown: the call may have been carried
+// out. A caller that must not repeat a purchase treats only a definite refusal as "nothing was bought".
+data aws_cli_service_error_marker: String = "An error occurred ("
+data aws_cli_outcome_unknown_codes: List<String> = ["(InternalError)", "(InternalFailure)", "(ServiceUnavailable)", "(Unavailable)"]
+
+fn aws_cli_refusal_is_definite(cause: String) -> Bool {
+  cause.contains(aws_cli_service_error_marker) && !any(aws_cli_outcome_unknown_codes, c => cause.contains(c))
 }
 
 fn aws_cli_delete_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr) -> ArgvCommand {

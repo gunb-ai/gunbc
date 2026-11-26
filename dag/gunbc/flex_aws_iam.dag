@@ -23,8 +23,10 @@ import product.fabric.flex_ec2_boot { flex_ec2_card_instance_tag_key }
 // only the flex parameter prefix, and read only the flex interruption queues. No IAM write, no S3, no
 // on-demand launch: an on-demand card is a separately priced product (DESIGN 4b) and needs its own grant.
 //
-// THE CARD (an instance role through its profile): it reads the pinned weights and the flex parameters,
-// and writes only the tuning-cache prefix of the weights bucket.
+// THE CARD (an instance role through its profile): it reads the pinned weights, the two shared flex parameters
+// and its own key, publishes only its own certificate, and writes only the tuning-cache prefix of the weights
+// bucket. It reads no other parameter at all (review of e50999ce): the Systems Manager agent's grant is carried
+// here without its parameter reads, instead of attaching AmazonSSMManagedInstanceCore.
 //
 // No account id appears: every ARN uses `*` in the account field, which the grammar admits and which the
 // account boundary of the principal itself already scopes (gunbc-private discipline: no account ids in
@@ -89,6 +91,9 @@ data flex_aws_loop_policy: PolicyDocument = PolicyDocument {
       "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs",
       "servicequotas:GetServiceQuota", "servicequotas:ListServiceQuotas",
       "cloudwatch:GetMetricData", "pricing:GetProducts",
+      // The orphan sweep's listing of card parameter NAMES (gunbc.fleet.flex_aws_pass flex_aws_sweep_orphans):
+      // DescribeParameters returns metadata only and supports no resource-level scoping (SSM authorization reference).
+      "ssm:DescribeParameters",
     ], resources: ["*"], conditions: []),
     // THE LAUNCH, instance resource: spot only, the flex type pattern only, the owner tag at creation.
     flex_aws_allow(sid: "FlexLaunchSpotCard", actions: ["ec2:RunInstances"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [
@@ -159,8 +164,21 @@ data flex_aws_card_policy: PolicyDocument = PolicyDocument {
     flex_aws_allow(sid: "CardReadOwnKey", actions: ["ssm:GetParameter"], resources: [flex_aws_named_parameter_arn(name: "/pool-key/*")], conditions: [flex_aws_own_card(key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String))]),
     // ITS OWN CERTIFICATE ONLY: created (never overwritten) carrying this card's instance ARN as its tag.
     flex_aws_allow(sid: "CardPublishOwnCertificate", actions: ["ssm:PutParameter", "ssm:AddTagsToResource"], resources: [flex_aws_named_parameter_arn(name: "/card-cert/*")], conditions: [flex_aws_own_card(key: concat("aws:RequestTag/", flex_ec2_card_instance_tag_key as String))]),
-    // AND NOTHING ELSE OF ANOTHER CARD'S, whatever another attached policy grants: AmazonSSMManagedInstanceCore
-    // (flex_aws_card_managed_policy_arns) allows ssm:GetParameter(s) on every parameter, so the denial is explicit.
+    // THE SYSTEMS MANAGER AGENT, so Session Manager and Run Command reach the card without SSH or an inbound port
+    // (how a booting card is inspected, and how the role's grants were probed live). These are the actions of the
+    // AWS-managed AmazonSSMManagedInstanceCore (default version v2, read 2026-11-26) EXCEPT ssm:GetParameter and
+    // ssm:GetParameters, which it grants on every parameter in the account: with the managed policy attached, a
+    // card could read any parameter by name (review of e50999ce). None of these reads a parameter value.
+    flex_aws_allow(sid: "CardSystemsManagerAgent", actions: [
+      "ssm:DescribeAssociation", "ssm:GetDeployablePatchSnapshotForInstance", "ssm:GetDocument", "ssm:DescribeDocument",
+      "ssm:GetManifest", "ssm:ListAssociations", "ssm:ListInstanceAssociations", "ssm:PutInventory", "ssm:PutComplianceItems",
+      "ssm:PutConfigurePackageResult", "ssm:UpdateAssociationStatus", "ssm:UpdateInstanceAssociationStatus", "ssm:UpdateInstanceInformation",
+      "ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel", "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel",
+      "ec2messages:AcknowledgeMessage", "ec2messages:DeleteMessage", "ec2messages:FailMessage", "ec2messages:GetEndpoint",
+      "ec2messages:GetMessages", "ec2messages:SendReply",
+    ], resources: ["*"], conditions: []),
+    // AND NOTHING ELSE OF ANOTHER CARD'S, whatever another policy might grant: kept explicit as a deny, so a
+    // managed policy attached later cannot widen a card into its peers' keys or a walk of the prefix.
     Statement {
       sid: Present { value: flex_aws_ne(s: "CardDenyOtherCardsKeys") },
       effect: Deny,
@@ -259,6 +277,9 @@ data flex_aws_provisioner_policy: PolicyDocument = PolicyDocument {
     ], resources: [join(["arn:aws:s3:::", flex_aws_weights_bucket_prefix as String, "*"], "")], conditions: []),
     flex_aws_allow(sid: "ProvisionWeightsCopy", actions: ["s3:GetObject", "s3:PutObject"], resources: [join(["arn:aws:s3:::", flex_aws_weights_bucket_prefix as String, "*/*"], "")], conditions: []),
     flex_aws_allow(sid: "ProvisionWeightsParameter", actions: ["ssm:GetParameter", "ssm:PutParameter"], resources: [join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/weights-bucket"], "")], conditions: []),
+    // The region's ready marker (gunbc.fleet.flex_aws_regions flex_aws_converge_marker): written once the region
+    // held, removed when it does not.
+    flex_aws_allow(sid: "ProvisionReadyMarker", actions: ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"], resources: [join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/region-ready"], "")], conditions: []),
   ],
 }
 
@@ -280,9 +301,6 @@ fn flex_aws_notice_queue_policy(queue_arn: NonEmptyStr, rule_arns: List<NonEmpty
   }
 }
 
-// AWS-managed policies the card role also carries. AmazonSSMManagedInstanceCore lets Session Manager and
-// Run Command reach the card without SSH or an inbound port, which is how a booting card is inspected.
-data flex_aws_card_managed_policy_arns: List<NonEmptyStr> = ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" as NonEmptyStr]
 
 // The JSON each document is created with; the operator's provisioning call reads these and nothing else.
 fn flex_aws_loop_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_loop_policy) }

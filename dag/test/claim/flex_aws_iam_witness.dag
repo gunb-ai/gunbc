@@ -129,9 +129,8 @@ test fn a_duplicated_condition_pair_is_detected_and_the_wire_carries_the_spot_co
 }
 
 // A CARD'S ROLE REACHES ONLY ITS OWN KEY AND CERTIFICATE (review of fb2594de): the key read and the certificate
-// write are conditioned on the card's own instance ARN; every other card's key is DENIED explicitly, because the
-// attached AmazonSSMManagedInstanceCore grants GetParameter on every parameter; no statement allows a read of
-// every flex parameter; and parameter walks are denied.
+// write are conditioned on the card's own instance ARN; every other card's key is DENIED explicitly, so no policy
+// attached later can widen it; no statement allows a read of every flex parameter; and parameter walks are denied.
 test fn a_card_reaches_only_its_own_key_and_certificate() -> Bool {
   let own = "$\{ec2:SourceInstanceARN}"
   (match statement_with(d: flex_aws_card_policy, sid: "CardReadOwnKey") { Present { value: s } => has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)  Absent => false })
@@ -143,4 +142,18 @@ test fn a_card_reaches_only_its_own_key_and_certificate() -> Bool {
     })
     && (match statement_with(d: flex_aws_card_policy, sid: "CardDenyParameterWalks") { Present { value: s } => match s.effect { Deny => true  _ => false }  Absent => false })
     && !any(flex_aws_card_policy.statements, s => (match s.effect { Deny => false  _ => true }) && any(s.resources, r => (r as String) == "arn:aws:ssm:*:*:parameter/gunbc-flex/*"))
+}
+
+// A CARD READS NO PARAMETER BY NAME BEYOND ITS GRANTS (review of e50999ce: the attached AmazonSSMManagedInstanceCore
+// allowed ssm:GetParameter and GetParameters on every parameter in the account). Exactly two statements allow a
+// parameter read -- the two shared parameters and the card's own key -- each scoped under the fleet prefix; the
+// Systems Manager agent's grant carries none, and still carries what the agent needs to register.
+test fn a_card_reads_no_parameter_by_name_beyond_its_grants() -> Bool {
+  let reads = flex_aws_card_policy.statements |> filter(s => (match s.effect { Allow => true  _ => false }) && any(s.actions, a => ((a as String) == "ssm:GetParameter") || ((a as String) == "ssm:GetParameters") || ((a as String) == "ssm:*") || ((a as String) == "*")))
+  (count(reads) == 2)
+    && all(reads, s => all(s.resources, r => (r as String).starts_with("arn:aws:ssm:*:*:parameter/gunbc-flex/")))
+    && (match statement_with(d: flex_aws_card_policy, sid: "CardSystemsManagerAgent") {
+      Present { value: s } => !any(s.actions, a => (a as String).starts_with("ssm:GetParameter")) && any(s.actions, a => (a as String) == "ssm:UpdateInstanceInformation") && any(s.actions, a => (a as String) == "ssmmessages:OpenDataChannel")
+      Absent => false
+    })
 }

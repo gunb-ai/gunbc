@@ -12,6 +12,7 @@ import extdeps.cloud.aws_cli {
   AwsCliReadOk, AwsCliReadRefused, aws_cli_read_regions, aws_cli_read_offerings, aws_cli_read_instance_types,
   aws_cli_read_spot_prices, aws_cli_read_instances, aws_cli_read_service_quota, aws_cli_describe_spot_prices,
   aws_cli_read_prefix_census, aws_cli_create_tags, aws_cli_delete_tags,
+  aws_cli_read_parameter_listing, aws_cli_refusal_is_definite, aws_cli_describe_parameters_under,
 }
 import extdeps.cloud.aws_ec2 { AwsEc2Tag }
 import extdeps.exec.command { argv_words }
@@ -104,4 +105,29 @@ test fn the_mark_tag_writes_name_the_card_and_the_key() -> Bool {
   let clear = join(argv_words(command: aws_cli_delete_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], keys: ["gunbc-flex-idle-since" as NonEmptyStr])), " ")
   set.contains("ec2 create-tags --region us-west-2") && set.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since,Value=1795646284")
     && clear.contains("ec2 delete-tags --region us-west-2") && clear.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since")
+}
+
+// THE PARAMETER LISTING (the orphan sweep's read; shape printed by CLI 2.42.3 for describe-parameters with
+// --query Parameters[].[Name,LastModifiedDate], 2026-11-26): each entry's name and its instant as unix seconds, an
+// empty listing as none; an entry that is not [name, instant] refuses, and so does the unqueried document.
+test fn the_parameter_listing_reads_names_and_instants() -> Bool {
+  (match aws_cli_read_parameter_listing(stdout: "[\n    [\n        \"/gunbc-flex/heartbeat\",\n        \"2026-11-25T23:27:39.183000+00:00\"\n    ]\n]\n") {
+    AwsCliReadOk { value: ps } => (count(ps) == 1) && match ps.first() { Present { value: p } => ((p.name as String) == "/gunbc-flex/heartbeat") && (p.last_modified_unix == 1795649259)  Absent => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_parameter_listing(stdout: "[]") { AwsCliReadOk { value: ps } => count(ps) == 0  AwsCliReadRefused { cause: _ } => false })
+  && (match aws_cli_read_parameter_listing(stdout: "[[\"/gunbc-flex/heartbeat\"]]") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_parameter_listing(stdout: "[[\"/gunbc-flex/heartbeat\", \"yesterday\"]]") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_parameter_listing(stdout: "\{\"Parameters\": []}") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && argv_words(command: aws_cli_describe_parameters_under(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-east-1", prefix: "/gunbc-flex/pool-key/")).contains("Key=Name,Option=BeginsWith,Values=/gunbc-flex/pool-key/")
+}
+
+// A REFUSAL BOUGHT NOTHING ONLY WHEN THE SERVICE ANSWERED IT (review of e50999ce): a client-side error code is
+// definite; a server-side code, a timeout or a lost connection leave the purchase's outcome unknown.
+test fn only_an_answered_client_error_is_a_definite_refusal() -> Bool {
+  aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (InsufficientInstanceCapacity) when calling the RunInstances operation (reached max retries: 2): ...")
+    && aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (MaxSpotInstanceCountExceeded) when calling the RunInstances operation: ...")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (InternalError) when calling the RunInstances operation: ...")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 255: Read timeout on endpoint URL: \"https://ec2.us-east-1.amazonaws.com/\"")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 255: Could not connect to the endpoint URL")
 }

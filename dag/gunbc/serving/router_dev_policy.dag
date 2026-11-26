@@ -255,6 +255,27 @@ fn router_dev_row_lines() -> List<String> {
     "  end",
     "  return false",
     "end",
+    // WHETHER A ROW ADMITS A TURN NOW -- the one statement of it, read by the pick (a session is placed only on a
+    // row that admits it) and by the stats (a waiting conversation is rented demand only when no rented row in
+    // service admits it). A row admits while it is not ejected, has a free active slot (an uncapped rented row
+    // always does), and either retains no limit, is the session's own row, or holds fewer bound sessions than it
+    // retains. Bound sessions are counted by the row that owns the binding, the asking session excluded.
+    "local function uncapped(u) return u.overflow and u.cap == nil end",
+    "local function free_slots(u) return uncapped(u) and 1 or ((u.cap or 0) - active(u)) end",
+    "local function bound_counts(except)",
+    "  local st, counts = ngx.shared.router_state, \{}",
+    "  for _, k in ipairs(st:get_keys(0)) do",
+    "    if k:sub(1, 8) == 'session:' and k:sub(9) ~= except then",
+    "      local row = st:get(k)",
+    "      row = row and (owner_of[row] or row)",
+    "      if row then counts[row] = (counts[row] or 0) + 1 end",
+    "    end",
+    "  end",
+    "  return counts",
+    "end",
+    "local function admits(u, bound_on, holder)",
+    "  return not ngx.shared.router_state:get('unavailable:' .. u.name) and free_slots(u) > 0 and (u.retain == nil or u.name == holder or bound_on(u.name) < u.retain)",
+    "end",
   ]
 }
 
@@ -396,7 +417,6 @@ fn router_dev_access_lines() -> List<String> {
     // moves come only through the relocation operation). A bound session returns to its engine or is refused; it
     // moves only when that engine is unavailable. An uncapped rented row never refuses, so it never reaches the
     // refusal either.
-    "local function uncapped(u) return u.overflow and u.cap == nil end",
     // begin_turn is the ONE place a turn is reserved, and the only place ngx.ctx.counted is set: the log
     // phase releases exactly what was reserved here. A cap is the active-turn ceiling of a row, 0 included (no
     // turns). An uncapped rented row is admitted without a ceiling and still counted, so its active figure
@@ -419,21 +439,11 @@ fn router_dev_access_lines() -> List<String> {
     // 'session:<id>' because a graceful reload keeps a same-named lua_shared_dict, so every live binding
     // survives the cutover. A dedicated bindings dict needs a copy-then-switch migration leg, which belongs
     // to the cutover (owner calm-moth-166), not to this parity change.
-    "local bound_counts = nil",
+    "local bound_table = nil",
     "local function bound_count(name)",
-    "  if not bound_counts then",
-    "    bound_counts = {}",
-    "    for _, k in ipairs(state:get_keys(0)) do",
-    "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
-    "        local row = state:get(k)",
-    "        row = row and (owner_of[row] or row)",
-    "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
-    "      end",
-    "    end",
-    "  end",
-    "  return bound_counts[name] or 0",
+    "  if not bound_table then bound_table = bound_counts(session) end",
+    "  return bound_table[name] or 0",
     "end",
-    "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and waiter_keeps_its_engine(body.model, stuck) then",
     // A bound session is served by ITS engine or refused, on every owned row and every capped rented row: no
@@ -453,10 +463,10 @@ fn router_dev_access_lines() -> List<String> {
     "local pick, priority, spare = nil, nil, -1",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  local c = candidates[u.name]",
-    "  if c and not state:get('unavailable:' .. c.name) and retains(c) then",
+    "  if c and admits(c, bound_count, stuck) then",
     "    local p = c.overflow and 1 or 0",
-    "    local free = uncapped(c) and 1 or ((c.cap or 0) - active(c))",
-    "    if free > 0 and (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
+    "    local free = free_slots(c)",
+    "    if (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
     "  end",
     "end",
     "if not pick then strand() ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
@@ -752,19 +762,28 @@ fn router_dev_stats_lines() -> List<String> {
     "  end",
     "end",
     "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
-    // RENTED DEMAND, decided by this router's own routing rule (operator 2026-11-25: rent a card on surplus
-    // demand the router could place on it). `waiting` counts the waiting conversations NOT held for their own
-    // engine (waiter_keeps_its_engine), i.e. the ones a rented card's free slot would serve; `rows` is each
-    // rented row in service with its turns in flight and the conversations bound to it seen within the recent
-    // window. The AWS loop rents on these and nothing else, so the eligibility rule is never restated outside it.
-    // Counted per REQUESTED MODEL, with the alias beside it: a rented card serves its own model and the alias, so
-    // a reader adds the two entries for the card it would rent and nothing else (a waiter for another model is
-    // demand no such card could meet).
-    "rented.waiting_by_model = \{}",
+    // RENTED DEMAND, decided by this router's own routing rules (operator 2026-11-25: rent a card on surplus
+    // demand the router could place on it). `unplaceable_by_model` counts the waiting conversations that ANOTHER
+    // rented card would serve and no rented row in service can take now: not held for their own engine
+    // (waiter_keeps_its_engine), and admitted by no rented row of their model (admits, the pick's own rule: a row
+    // with free active slots and its retention full cannot take a new conversation; review of e50999ce). `rows` is
+    // each rented row in service with its turns in flight and the conversations bound to it seen within the
+    // recent window. The AWS loop rents on these and nothing else, so neither rule is restated outside the router.
+    // Counted per REQUESTED MODEL, with the alias beside it: a rented card serves its own model and the alias, so a
+    // reader adds the two entries for the card it would rent and nothing else.
+    "rented.unplaceable_by_model = \{}",
     "rented.alias = ROUTER_ALIAS",
+    "local held = bound_counts(nil)",
+    "local function held_on(name) return held[name] or 0 end",
+    "local function a_rented_row_admits(m)",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    if u.overflow and u.in_service ~= false and (m == ROUTER_ALIAS or m == u.model) and admits(u, held_on, nil) then return true end",
+    "  end",
+    "  return false",
+    "end",
     "for _, k in ipairs(state:get_keys(0)) do",
     "  local m, s = k:match('^pending:(.-)|(.+)$')",
-    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) then rented.waiting_by_model[m] = (rented.waiting_by_model[m] or 0) + 1 end",
+    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) and not a_rented_row_admits(m) then rented.unplaceable_by_model[m] = (rented.unplaceable_by_model[m] or 0) + 1 end",
     "end",
     "rented.rows = \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",

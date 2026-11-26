@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, After, Wants,
-  ServiceType, SimpleMode, ServiceUser, ServiceGroup, WorkingDirectory, ExecStart, Restart, RestartSec,
+  ServiceType, SimpleMode, ServiceUser, ServiceGroup, WorkingDirectory, ExecStart, Restart, RestartSec, Environment,
   ServiceResourceControl, service_memory_max, service_memory_swap_max,
   Installable, WantedBy,
 }
@@ -52,6 +52,18 @@ data flex_aws_loop_arguments: List<String> = ["mode=apply", "cards=3", "router=o
 data flex_aws_loop_memory_max: ByteSize = byte_size(16 * 1073741824)
 data flex_aws_loop_memory_swap_max: ByteSize = byte_size(0)
 
+// WHERE THE PASS FINDS THE AWS CLI (review of e50999ce follow-up, found deploying it: a transient unit on srv1
+// started without the user's PATH answered `env: aws: No such file or directory` for every call). The pass invokes
+// the CLI by name (extdeps.cloud.aws_cli aws_cli_program), and srv1's CLI (aws_cli_pinned_version) is installed by
+// AWS's installer into the service user's ~/.local/bin (read 2026-11-26: /home/<user>/.local/bin/aws), which a
+// system unit's default PATH does not carry. The unit names that directory first, then the system directories.
+// /home/<user> is the service user's home by the account's own entry on srv1 (getent passwd, 2026-11-26).
+data flex_aws_cli_bin_subdir: String = ".local/bin"
+
+fn flex_aws_loop_path(spec: DeploymentSpec) -> NonEmptyStr {
+  join(["PATH=/home/", spec.approval_broker.service_user as String, "/", flex_aws_cli_bin_subdir, ":/usr/local/bin:/usr/bin:/bin"], "") as NonEmptyStr
+}
+
 fn flex_aws_loop_argv(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<String> {
   let svc = spec.approval_broker
   let dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
@@ -82,6 +94,7 @@ fn flex_aws_loop_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBindin
       ServiceGroup { name: svc.service_user },
       WorkingDirectory { path: dir as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: dir),
+      Environment { assignment: flex_aws_loop_path(spec: spec) },
       ServiceResourceControl { directive: service_memory_max(bytes: flex_aws_loop_memory_max) },
       ServiceResourceControl { directive: service_memory_swap_max(bytes: flex_aws_loop_memory_swap_max) },
       ExecStart { command: join(flex_aws_loop_argv(spec: spec, revision: revision), " ") as NonEmptyStr },
