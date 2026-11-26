@@ -29,7 +29,7 @@ import gunbc.host.boot_medium_reader_key {
 }
 import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
 import gunbc.host.boot_medium_served_readback { sha256sum_digest, boot_medium_served_argv }
-import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, host_leg_of_typed_argv }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered, host_leg_of_typed_argv }
 
 // ── THE LIVE READER PROBE (B2c of the approval-free branch boot plan) ─────────────────────────────
 //
@@ -167,10 +167,16 @@ type ReaderProbeRefusal
   | ProbeAuthenticationRefused
   | ProbeTransportRefused
   | ProbeNotDispatched { reason: String }
+  // DISPATCHED BUT NO ANSWER: the command reached the host and its reply was lost. It is NOT the same as
+  // ProbeNotDispatched (nothing was sent): a lost reply may already have taken effect on the daemon, so it
+  // must never be read as "nothing happened". Distinct arm per gunbc.design_argument::fail_closed and the
+  // three-state HostLeg contract (host_command_binding).
+  | ProbeUnanswered { cause: String }
 
 fn reader_probe_refusal_class(a: HostLeg) -> ReaderProbeRefusal {
   match a {
     LegNotDispatched { reason: r } => ProbeNotDispatched { reason: r }
+    LegUnanswered { cause: c } => ProbeUnanswered { cause: c }
     LegAnswered { exit_code: c, stdout: _, stderr: e0 } =>
       if c == 0 {
         ProbeNotRefused
@@ -190,6 +196,7 @@ fn reader_probe_refusal_class(a: HostLeg) -> ReaderProbeRefusal {
 fn reader_probe_answer_text(a: HostLeg) -> String {
   match a {
     LegNotDispatched { reason: r } => join(["never dispatched: ", r], "")
+    LegUnanswered { cause: c } => join(["dispatched, no answer: ", c], "")
     LegAnswered { exit_code: c, stdout: o, stderr: e } =>
       join(["exit=", to_string(c), " stdout=[", trim(s: o), "] stderr=[", trim(s: e), "]"], "")
   }
@@ -207,6 +214,9 @@ type ReaderProbeForcedAnswer
   | ForcedAnswerLoginRefused { evidence: NonEmptyStr }
   | ForcedAnswerTransportBlocked { evidence: NonEmptyStr }
   | ForcedAnswerNotDispatched { evidence: NonEmptyStr }
+  // The forced reader leg was dispatched but its reply was lost (overran/deadline): NOT "nothing was sent".
+  // The effect on the daemon is unknown, so it gets its own named answer, never the not-dispatched one.
+  | ForcedAnswerUnanswered { evidence: NonEmptyStr }
   | ForcedAnswerUnexplained { evidence: NonEmptyStr }
 
 // CLASSIFY THE FORCED LEG; the order IS the meaning, and the LAST arm is the one that makes this honest.
@@ -225,11 +235,13 @@ type ReaderProbeForcedAnswer
 fn reader_probe_forced_answer(a: HostLeg, link: NonEmptyStr) -> ReaderProbeForcedAnswer {
   match a {
     LegNotDispatched { reason: _ } => ForcedAnswerNotDispatched { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+    LegUnanswered { cause: _ } => ForcedAnswerUnanswered { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
     LegAnswered { exit_code: c, stdout: o, stderr: e } =>
       match reader_probe_refusal_class(a: a) {
         ProbeTransportRefused => ForcedAnswerTransportBlocked { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
         ProbeAuthenticationRefused => ForcedAnswerLoginRefused { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
         ProbeNotDispatched { reason: _ } => ForcedAnswerNotDispatched { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+        ProbeUnanswered { cause: _ } => ForcedAnswerUnanswered { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
         ProbeNotRefused => {
           let line = trim(s: o)
           if c != 0 && trim(s: e) != "" {
@@ -264,9 +276,12 @@ fn reader_probe_forced_command_masks(forced: HostLeg, other: HostLeg) -> Bool {
       // NOT compared here: two commands that both failed to dispatch for the SAME reason must still not be
       // read as the second masking the first.
       false
+    // A DISPATCHED leg that got no answer likewise has no answer for anything to mask.
+    LegUnanswered { cause: _ } => false
     LegAnswered { exit_code: fc, stdout: fo, stderr: fe } =>
       match other {
         LegNotDispatched { reason: _ } => false
+        LegUnanswered { cause: _ } => false
         LegAnswered { exit_code: oc, stdout: oo, stderr: oe } => oc == fc && oo == fo && oe == fe
       }
   }
@@ -292,12 +307,14 @@ type ReaderProbeLockedAccountFact
 fn reader_probe_locked_account_fact(shadow: HostLeg, use_pam: HostLeg, login_admitted: Bool, login: NonEmptyStr) -> ReaderProbeLockedAccountFact {
   match shadow {
     LegNotDispatched { reason: rs } => LockedAccountUnreadable { cause: join(["the shadow entry was never dispatched: ", rs], "") as NonEmptyStr }
+    LegUnanswered { cause: cu } => LockedAccountUnreadable { cause: join(["the shadow entry was dispatched but got no answer: ", cu], "") as NonEmptyStr }
     LegAnswered { exit_code: sc, stdout: sh_out, stderr: _ } =>
       if sc != 0 {
         LockedAccountUnreadable { cause: join(["the shadow entry could not be read: ", reader_probe_answer_text(a: shadow)], "") as NonEmptyStr }
       } else {
         match use_pam {
           LegNotDispatched { reason: ru } => LockedAccountUnreadable { cause: join(["sshd -T was never dispatched: ", ru], "") as NonEmptyStr }
+          LegUnanswered { cause: cu } => LockedAccountUnreadable { cause: join(["sshd -T was dispatched but got no answer: ", cu], "") as NonEmptyStr }
           LegAnswered { exit_code: uc, stdout: u_out, stderr: _ } =>
             if uc != 0 {
               LockedAccountUnreadable { cause: join(["sshd -T refused: ", reader_probe_answer_text(a: use_pam)], "") as NonEmptyStr }
@@ -337,6 +354,10 @@ type ReaderProbeAdminReading =
     AdminReadable
   | AdminNotReadable
   | AdminNotDispatched { reason: NonEmptyStr }
+  // The admin witness leg was dispatched but its reply was lost: NOT "never dispatched". The daemon may have
+  // answered on its side; we simply have no reading. Distinct so no consumer reads "not-readable" (a claim
+  // about the account) or "never dispatched" (a claim we did not send) from a leg that ran but was unheard.
+  | AdminUnanswered { cause: NonEmptyStr }
 
 type ReaderProbeExportReading = ReaderProbeExportReading {
   admin: ReaderProbeAdminReading,
@@ -354,6 +375,7 @@ fn reader_probe_export_reading(admin: HostLeg, forced: ReaderProbeForcedAnswer) 
     ForcedAnswerLoginRefused { evidence: e } => join(["the reader never authenticated, so nothing was read: ", e as String], "")
     ForcedAnswerTransportBlocked { evidence: e } => join(["the reader never reached the daemon, so nothing was read: ", e as String], "")
     ForcedAnswerNotDispatched { evidence: e } => join(["the reader leg was never dispatched, so nothing was read: ", e as String], "")
+    ForcedAnswerUnanswered { evidence: e } => join(["the reader leg was dispatched but got no answer, so the reading is unknown: ", e as String], "")
     ForcedAnswerUnexplained { evidence: e } => join(["the forced command failed without explaining itself: ", e as String], "")
   }
   ReaderProbeExportReading {
@@ -361,6 +383,7 @@ fn reader_probe_export_reading(admin: HostLeg, forced: ReaderProbeForcedAnswer) 
     // absence. exit/stdout/stderr are consulted only inside LegAnswered.
     admin: match admin {
       LegNotDispatched { reason: r } => AdminNotDispatched { reason: r as NonEmptyStr }
+      LegUnanswered { cause: c } => AdminUnanswered { cause: join(["dispatched, no answer: ", c], "") as NonEmptyStr }
       LegAnswered { exit_code: ac, stdout: _, stderr: _ } => if ac == 0 { AdminReadable } else { AdminNotReadable }
     },
     admin_evidence: join(["admin leg asked as the reader account: ", reader_probe_answer_text(a: admin)], "") as NonEmptyStr,
@@ -409,6 +432,9 @@ type ReaderProbeStage
   | StageRed
   | StageUnexplained
   | StageNotDispatched
+  // A leg that WAS dispatched but whose reply was lost: distinct from StageNotDispatched (nothing sent). The
+  // effect on the daemon is unknown, and the run must not report either open fact as answered.
+  | StageUnanswered
   | StageFacts
 
 // The forced command's own reading, kept as a record so "the image is not readable" is a REPORTED state
@@ -439,6 +465,7 @@ fn reader_probe_stage_text(stage: ReaderProbeStage) -> String {
     StageRed => "red"
     StageUnexplained => "unexplained"
     StageNotDispatched => "not-dispatched"
+    StageUnanswered => "dispatched-no-answer"
     StageFacts => "facts"
   }
 }
@@ -506,6 +533,12 @@ fn boot_medium_reader_probe_fold(
         // is the absence of the leg itself, so it refuses by name with the carried cause -- not folded into
         // StageTransport (which would invent an observed transport failure the probe never saw).
         ReaderProbeRefused { stage: StageNotDispatched, cause: join(["the reader leg was never dispatched: ", e as String, ". Nothing was sent to the daemon, so neither open fact was answered and UsePAM is not implicated -- this is the absence of the leg itself, not a transport or authentication finding. The carried cause names the stage that refused to dispatch it."], "") as NonEmptyStr }
+      ForcedAnswerUnanswered { evidence: e } =>
+        // The leg WAS dispatched but its reply was lost (deadline/overrun). Unlike not-dispatched, the command
+        // may already have run on the daemon, so its effect is UNKNOWN: this is not "nothing was sent". It
+        // refuses by name at StageUnanswered with the carried cause -- never folded into StageNotDispatched,
+        // which would assert a send that we cannot establish did not happen.
+        ReaderProbeRefused { stage: StageUnanswered, cause: join(["the reader leg was dispatched but got no answer: ", e as String, ". The command may already have reached the daemon, so its effect is unknown and neither open fact was answered; this is NOT \"nothing was sent\" and UsePAM is not implicated. The carried cause names why the reply was lost."], "") as NonEmptyStr }
       ForcedAnswerUnexplained { evidence: e } =>
         // A non-zero exit with nothing on stderr is not a command reporting a read failure; it is an absence
         // of information, and inventing "the image is unreadable" from silence would put a manufactured fact
@@ -546,6 +579,12 @@ fn reader_probe_after_masking(
       stage: StageNotDispatched,
       cause: join(["the second command was never dispatched, so the two-command masking test cannot compare it against the forced answer: ", rs], "") as NonEmptyStr,
     }
+    // A second command that was dispatched but never answered likewise cannot be compared against the
+    // forced answer; the masking test stays silent rather than reading an absence as a mismatch.
+    LegUnanswered { cause: rs } => ReaderProbeRefused {
+      stage: StageUnanswered,
+      cause: join(["the second command was dispatched but got no answer, so the two-command masking test cannot compare it against the forced answer: ", rs], "") as NonEmptyStr,
+    }
     LegAnswered { exit_code: _, stdout: _, stderr: _ } =>
       if reader_probe_forced_command_masks(forced: forced, other: second) == false {
         ReaderProbeRefused { stage: StageRed, cause: reader_probe_red_cause(forced: forced, other: second) as NonEmptyStr }
@@ -560,6 +599,10 @@ fn reader_probe_after_masking(
           LegNotDispatched { reason: ra } => ReaderProbeRefused {
             stage: StageNotDispatched,
             cause: join(["the administrator-readability command was never dispatched, so the reader's view of the served image was never observed: ", ra], "") as NonEmptyStr,
+          }
+          LegUnanswered { cause: ra } => ReaderProbeRefused {
+            stage: StageUnanswered,
+            cause: join(["the administrator-readability command was dispatched but got no answer, so the reader's view of the served image was never observed: ", ra], "") as NonEmptyStr,
           }
           LegAnswered { exit_code: _, stdout: _, stderr: _ } => {
             // The login is admitted on the evidence that a command RAN under this key: an authentication refusal was
@@ -600,6 +643,9 @@ fn render_reader_probe_receipt(r: ReaderProbeReceipt) -> String {
           AdminReadable => "true"
           AdminNotReadable => "false"
           AdminNotDispatched { reason: rr } => join(["not-dispatched: ", rr as String], "")
+          // Neither true nor false: the reading was never heard. "false" would be a claim about the account;
+          // the leg ran but its reply was lost, so the readability is simply not observed.
+          AdminUnanswered { cause: rc } => join(["unanswered: ", rc as String], "")
         },
         "\n",
         "image_read_admin_evidence=", ex.admin_evidence as String, "\n",

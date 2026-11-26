@@ -9,6 +9,9 @@ import v2.lens.module_graph {
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
+import gunbc.instruments.claim_operand {
+  claim_identity_operand, ClaimOperandAdmission, ClaimOperand, ClaimOperandUnnameable
+}
 import extdeps.shell
 import std.decl_ref { decl_ref }
 import gunbc.frontend_eval.task {
@@ -113,12 +116,26 @@ type FrontendRun {
 }
 
 fn run_entry(gunbc_program: String, workspace: String, entry: String, function: String) -> FrontendRun {
-  let r = gunbc.WitnessBin.Run(
-    workdir: "." as FilePath,
-    bin_path: gunbc_program as FilePath,
-    args: ["run", "--source-root", workspace, "--entry", join([workspace, "/", entry], ""), "--claim-run", "--function", function],
-  )
-  FrontendRun { accepted: r.exit_code == 0, text: join([r.stdout, r.stderr], "") }
+  // THE ROUTE, NOT THE DELETED ENTRYPOINTS. The specimen is named as a claim identity
+  // (`claim_identity_operand` is the one spelling the route admits), and the mutated workspace
+  // travels as a corpus root ALONGSIDE the default pair: the route's own floor-discovery
+  // authority resolves through `import_closure_live`, so a lone scratch root is a refusal, not a
+  // corpus. An identity the admission cannot name is a refusal with its reason, not a spawn.
+  match claim_identity_operand(entry: entry, function: function) {
+    ClaimOperandUnnameable { entry: e, function: f, reason } =>
+      FrontendRun {
+        accepted: false,
+        text: join(["claim operand unnameable: ", e, " ", f, ": ", reason], ""),
+      }
+    ClaimOperand { label } => {
+      let r = gunbc.WitnessBin.Run(
+        workdir: "." as FilePath,
+        bin_path: gunbc_program as FilePath,
+        args: ["test", "--source-root", workspace, "--source-root", "dag", "--source-root", "src/v2", label],
+      )
+      FrontendRun { accepted: r.exit_code == 0, text: join([r.stdout, r.stderr], "") }
+    }
+  }
 }
 
 // THE STAGE IS READ FROM THE REFUSAL'S OWN VOCABULARY, AND A TEXT THAT CARRIES NEITHER STAGE'S
@@ -140,7 +157,7 @@ fn refusal_stage(text: String) -> RefusalStageRead {
   if contains(text, ", found ") || contains(text, "heads-only parse") || contains(text, "expected item declaration") {
     StageRead { stage: RefusedAtParse }
   } else {
-    if contains(text, "resolve failed for") {
+    if contains(text, "resolve failed for") || contains(text, "outcome=ResolveInfrastructure") || contains(text, "outcome=EntryMissing") || contains(text, "outcome=ClosureDiagnostics") {
       StageRead { stage: RefusedAtResolve }
     } else {
       StageUnclassified
@@ -153,12 +170,32 @@ fn refusal_stage(text: String) -> RefusalStageRead {
 // something. Matching the concatenated stdout/stderr instead would let an echoed source excerpt
 // that happens to contain the lexeme satisfy the control (side-chat review, 2026-09-14).
 fn diagnostic_messages(text: String) -> List<String> {
+  // THE RENDERERS ARE TWO NOW, AND EACH NAMES THE FRONTEND'S OWN WORD. A compile diagnostic line
+  // is `<path>:<line>:<col>: error: <message>`; the claim route renders a parse refusal as
+  // `claim source refused: <path>: the file does not parse: <path>:<line>:<col>: <message>` and an
+  // unresolved subject as a located line whose `detail=` carries the diagnostic. Only the text
+  // AFTER the renderer's own word is the frontend naming something — matching the whole transcript
+  // would let an echoed source excerpt satisfy the control (side-chat review, 2026-09-14).
   split(s: text, delimiter: "\n")
-    |> filter(line => contains(line, " error: "))
-    |> map(line => match split(s: line, delimiter: " error: ") |> last {
-      Present { value: m } => m
-      Absent => ""
-    })
+    |> filter(line => contains(line, " error: ") || contains(line, "does not parse: ") || contains(line, "detail="))
+    |> map(line =>
+      if contains(line, " error: ") {
+        match split(s: line, delimiter: " error: ") |> last {
+          Present { value: m } => m
+          Absent => ""
+        }
+      } else if contains(line, "does not parse: ") {
+        match split(s: line, delimiter: "does not parse: ") |> last {
+          Present { value: m } => m
+          Absent => ""
+        }
+      } else {
+        match split(s: line, delimiter: "detail=") |> last {
+          Present { value: m } => m
+          Absent => ""
+        }
+      })
+    |> filter(m => m != "")
 }
 
 fn refusal_names(text: String, lexeme: String) -> Bool {

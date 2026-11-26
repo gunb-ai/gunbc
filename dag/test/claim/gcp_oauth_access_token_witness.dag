@@ -175,7 +175,7 @@ fn witness_swapped_adc_hits_gcloud_leaf() -> Bool {
   )
 }
 
-fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
+test fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
   witness_gcloud_cli_routes_to_gcloud_leaf()
     && witness_adc_refresh_absent_routes_to_adc_leaf()
     && witness_adc_refresh_present_routes_to_adc_leaf()
@@ -183,7 +183,7 @@ fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
     && witness_leaves_are_distinguishable()
 }
 
-fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
+test fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
   witness_swapped_gcloud_hits_adc_leaf()
     && witness_swapped_adc_hits_gcloud_leaf()
 }

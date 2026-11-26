@@ -6,7 +6,7 @@ module test.claim.site_gunb_ai_deck_witness
 // SegmentGenerated segments (the rows and the emitter). The RetainedJs blocks were copied from that same
 // file, so for them equality is a transcription check, not independent evidence.
 //
-// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_deck_witness.dag --claim-run
+// RUN: gunbc test //test/claim/site_gunb_ai_deck_witness:<test fn>   (one operand per test fn)
 
 import std.types { Bool, String }
 import std.algebra { string_contains }

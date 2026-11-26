@@ -214,13 +214,20 @@ test fn srv1_ladder_is_l1_then_l2_with_l2_inclusive() -> Bool {
     }
 }
 
-// The L1 tier's bytes are the 12 GiB the container boots with, from the row that read it -- not the stale
-// 2026-10-30 engine-memory figure of 100 GB that the profile used to call srv1's warm tier.
-test fn srv1_l1_tier_is_the_12_gib_it_boots_with() -> Bool {
+// The hot rung of the replica's warm ladder is the CONFIGURED tier the container boots with -- 48 GiB, which is
+// what the host has run since 2026-11-24 -- and not the stale 2026-10-30 engine-memory figure of 100 GB that this
+// profile used to call srv1's warm tier. THE PIN IS A NUMBER AND A PROVENANCE, NOT A ROW READ-BACK: comparing the
+// rung against srv1_lmcache_l1_configured would be checking a value against itself, since the rung cites that row
+// (gunbc.recurring_failure_mode::a_control_that_shares_its_derivation_with_its_subject). The 100 GB term is what
+// makes it discriminating: that is the other answer this repository carried for the same tier, and the rung that
+// cited it is the reason there were two.
+test fn srv1_l1_tier_is_the_configured_tier_and_not_the_stale_engine_figure() -> Bool {
   match srv1_vllm_replica_0_profile.warm_ladder.first() {
     Present { value: r } => match r {
-      WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: _ } } =>
-        byte_size_count(b: bytes) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 12)))
+      WarmSwapRestores { cache: ServingMemoryRead { bytes: bytes, provenance: p } } =>
+        byte_size_count(b: bytes) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 48)))
+          && byte_size_count(b: bytes) != 100000000000
+          && string_contains(s: p as String, pattern: "2026-11-24")
       _ => false
     }
     Absent => false
@@ -268,7 +275,7 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
   // The ladder --mmap-experts actually runs: a card tier, a capped host-RAM tier, a disk tier.
   rungs.length() == 3
     && rungs.any(r => match r {
-        ExpertInHostRam { bytes: _, holds: ArtifactHeldEvictable { bound_by: bound_by, floor: floor }, mechanism: _ } =>
+        ExpertInHostRam { bytes: _, holds: ArtifactHeldEvictable { bound_by: bound_by, floor: _, occupies: _ }, mechanism: _ } =>
           string_contains(s: bound_by as String, pattern: "cgroup" as String)
         _ => false
       })
@@ -283,11 +290,20 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
 test fn srv3_has_a_host_ram_expert_rung() -> Bool {
   match srv3_routed_expert_artifact.host_ram {
     Present { value: r } => match r.holds {
-      ArtifactHeldEvictable { bound_by: _, floor: f } =>
+      ArtifactHeldEvictable { bound_by: _, floor: f, occupies: o } =>
         match f {
           ServingMemoryAssumed { bytes: fb, reason: _ } =>
-            match r.bytes {
-              ServingMemoryUnread { reason: _ } => byte_size_count(b: fb) > 0
+            match o {
+              // The rung states BOTH figures: a floor a turn must keep, and the occupancy the shared cgroup pays
+              // (the whole mapped shard set, borrowed from srv4's read with its attribution obligation). The
+              // resident BYTES stay Unread -- the cgroup file counter is not attributable to experts -- so the rung
+              // may not state a resident figure it has not attributed, and the budget must not borrow the floor.
+              ServingMemoryAssumed { bytes: ob, reason: _ } =>
+                match r.bytes {
+                  ServingMemoryUnread { reason: _ } => byte_size_count(b: fb) > 0 && byte_size_count(b: ob) >= byte_size_count(b: fb)
+                    && byte_size_count(b: ob) <= byte_size_count(b: srv3_routed_expert_artifact.bytes)
+                  _ => false
+                }
               _ => false
             }
           _ => false
