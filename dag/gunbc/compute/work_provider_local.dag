@@ -72,6 +72,7 @@ import gunbc.compute.attempt_lifecycle {
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_write_authorization, RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled,
   RecoveryWriteDeclined, RecoveryWriteRefused,
+  SeatEndAttestation, seat_end_attestation_for,
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
@@ -4047,7 +4048,7 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
       match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
-          match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
+          match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, attestation: seat_end_attestation_for(reference: rec.reference as NonEmptyStr)) {
             RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
             RecoveryWriteRefused { reason: r } => RecoveryRefused { detail: r }
             RecoveryWriteReleaseSettled { state: _, reason: why } => compute_recover_settled_seat(subject: subject, rec: rec, why: why, lifecycle: lifecycle)
@@ -4202,7 +4203,7 @@ fn compute_recover_catalog_for(instance: HostDashboardInstance, stores: List<Com
                     Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged; the record names unit ", rec.unit], "") }
                     Present { value: now } => {
                       let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycleWithSeatRecord { instance: instance }, unit: rec.unit as NonEmptyStr)
-                      match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
+                      match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now, attestation: seat_end_attestation_for(reference: rec.reference as NonEmptyStr)) {
                         RecoveryWriteRefused { reason: r } =>
                           RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
                         auth =>

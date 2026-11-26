@@ -93,6 +93,13 @@ data srv14_serving_memory_charge_retirement_operator_approved_2026_11_24: Design
   provenance: "Operator, 2026-11-24, relayed by session clever-raven-401 after this session escalated the sign-off the frontier gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier requires before srv14_strata_reservation may be deleted. The operator said, verbatim: \"yes you can retire the 192gib serving reservation\". That answers the frontier's demand for the operator's explicit sign-off WITH THE MEASURED NUMBER ATTACHED: the number is the post-hand-retirement quiescent read of butch (srv14) in gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read, from fleet-converge host_memory_observe run 45321352046 (artifact host-memory-quiescent-observe-receipt 14888746623): host_total 269248028672 B, MemAvailable high-water 265779920896 B (~247.5 GiB free), which is the base residency (~3.23 GiB) with the two Strata engines gone. INTERPRETATION (mine, not the operator's words): the freed 2 x 96 GiB serving charge goes to butch's remote-build pool, not to CI -- srv14's CI width stays zero in gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths, so this retirement raises no CI memory budget; the operator's approval therefore covers releasing srv14_strata_reservation, the butch_a/b_strata_engine_memory rows and the srv14_strata_engine_residency_at_read subtraction together, which is what discharges the frontier's trigger (2) and lets butch be enrolled as a remote-build serving host.",
 }
 
+data srv1_stale_seats_released_proven_ended_2026_11_26: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_stale_seats_released_proven_ended_2026_11_26"),
+  decided: "2026-11-26",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, 2026-11-26, EXPLICITLY decided (not a default approval) at escalation msg_4a9f7902, relayed by session clever-raven-401. Verbatim: \"A: release both srv1 seats as proven-ended (your ruling; crisp-pike actuates)\". DECIDED: the two charged srv1 compute seats whose unit ends the recovery doors could not observe — reference 011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1 and reference 09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1 — are released as PROVEN-ENDED by operator attestation. ACTUATION: through the model only. The operator's attestation is carried as rows in gunbc.compute.attempt_lifecycle::proven_ended_seat_releases, consumed as a supplied SeatEndAttestation by gunbc.compute.attempt_lifecycle::recovery_write_authorization, which the recovery census and the recovery write door both call — an attested reference whose unit end is unobservable authorizes the release; nothing is hand-edited on srv1. EVIDENCE the ruling stands on: the widened recovery door's own rendering at https://github.com/gunb-ai/gunbc/pull/17083#issuecomment-7181851358 — for 09bcdd84…#1 the attempt record is stamped terminal:recovered while the user manager holds no unit by that name, the exit spool holds no stop-hook record ('no record for this seat') and no wait was ever recorded; the same shape for 011dfdd…#1 (charged, held since before the 2026-11-22 repurposing, no observable end). WHAT IT DOES NOT DO: it attests nothing about any other seat — a reference absent from the attestation roster keeps the fail-closed refusal, and an attestation never overrides an observed live unit (UnitStillRunning still declines) nor opens a too-early window; it releases seats, it does not delete attempt records.",
+}
+
 data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
   decided: "2026-11-08",
@@ -1563,6 +1570,7 @@ fn design_rulings() -> List<DesignRuling> {
     butch_serving_retirement_is_operator_handled_2026_11_21,
     butch_tailnet_join_is_operator_handled_2026_11_21,
     srv14_serving_memory_charge_retirement_operator_approved_2026_11_24,
+    srv1_stale_seats_released_proven_ended_2026_11_26,
     srv15_arrival_reviewer_selected_by_operator,
     // The srv15 versions-read backstop row (#16640) was missing from the roster, so
     // documentary_refs never checked its citation or what it governs (manager ruling

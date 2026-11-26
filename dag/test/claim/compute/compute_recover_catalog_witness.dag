@@ -62,6 +62,9 @@ import gunbc.compute.attempt_lifecycle {
   AttemptWorkEnded,
   AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled, RecoveryWriteDeclined, RecoveryWriteRefused,
+  recovery_write_authorization, AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  UnitLifecycleUnknown, UnitStillRunning,
+  AttestedProvenEnded, NotAttested, seat_end_attestation_for,
 }
 import gunbc.compute.compute_attempt_slots_root {
   ComputeFlatSeat, ComputeDispatchSeat, ComputeSeat, ComputeSeatStore, ComputeSeatStoreReady, ComputeSeatStoreUnready,
@@ -482,6 +485,14 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "the_census_names_what_the_seat_exit_spool_said", held: census_reports_the_seat_spool_reading_when_it_holds_no_record()),
     check_or_name(name: "the_census_carries_a_planted_stop_hook_record", held: census_carries_the_planted_stop_hook_record()),
     check_or_name(name: "the_door_refusal_carries_the_planted_stop_hook_record", held: door_carries_the_same_spool_reading_and_still_keeps_the_seat()),
+    check_or_name(name: "the_attestation_roster_names_only_the_ruled_seats", held: the_attestation_roster_names_only_the_ruled_seats()),
+    check_or_name(name: "an_unruled_reference_is_never_attested", held: an_unruled_reference_is_never_attested()),
+    check_or_name(name: "an_attested_terminal_seat_without_unit_proof_authorizes_the_release", held: an_attested_terminal_seat_without_unit_proof_authorizes_the_release()),
+    check_or_name(name: "an_unattested_terminal_seat_without_unit_proof_still_refuses", held: an_unattested_terminal_seat_without_unit_proof_still_refuses()),
+    check_or_name(name: "an_attestation_never_reaches_past_its_own_reference", held: an_attestation_never_reaches_past_its_own_reference()),
+    check_or_name(name: "attestation_never_overrides_an_observed_live_unit", held: attestation_never_overrides_an_observed_live_unit()),
+    check_or_name(name: "attestation_never_opens_a_too_early_window", held: attestation_never_opens_a_too_early_window()),
+    check_or_name(name: "an_attested_launching_seat_without_unit_proof_terminates_and_releases", held: an_attested_launching_seat_without_unit_proof_terminates_and_releases()),
   ], "")
   if red == "" {
     ExitSuccess
@@ -625,4 +636,111 @@ fn door_carries_the_same_spool_reading_and_still_keeps_the_seat() -> Bool {
 
 test fn the_door_refusal_carries_the_planted_stop_hook_record() -> Bool {
   door_carries_the_same_spool_reading_and_still_keeps_the_seat()
+}
+
+// ── THE OPERATOR ATTESTATION: A SUPPLIED EVIDENCE CLASS, NOT A SECOND RELEASE LAW ──
+// gunbc.design_ruling::srv1_stale_seats_released_proven_ended_2026_11_26 — the operator, explicitly, on
+// 2026-11-26 (escalation msg_4a9f7902): "A: release both srv1 seats as proven-ended (your ruling;
+// crisp-pike actuates)". The machine form is a row in gunbc.compute.attempt_lifecycle
+// proven_ended_seat_releases, looked up by EXACT attempt reference and handed to recovery_write_authorization
+// as a supplied SeatEndAttestation (witness inputs are supplied values at their boundary). These claims are
+// pure model -- they mint their own records and hand in their own attestations -- and they hold the ruling's
+// whole scope: attestation converts an UNOBSERVABLE unit end into an authorized release for the named
+// references, and nothing else. A live unit, a too-early window, and an unruled reference each keep the
+// answer they had before the ruling existed; the last one is the manager's red control -- a seat with no
+// ruling row still refuses.
+
+fn attestation_record(reference: String, unit: String, state: AttemptState) -> AttemptRecord {
+  AttemptRecord {
+    identity: "attestation-witness", reference: reference, unit: unit,
+    granted: kibibyte(count: 1024), opened_at: 1000, launch_deadline: 2000,
+    state: state, owner: DirectInvocation { why: "attestation witness" },
+  }
+}
+
+test fn the_attestation_roster_names_only_the_ruled_seats() -> Bool {
+  match seat_end_attestation_for(reference: "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1" as NonEmptyStr) {
+    AttestedProvenEnded { reference: r, ruling: _, decided: d, evidence: _ } =>
+      (r as String) == "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1"
+        && d == "2026-11-26"
+    NotAttested => false
+  }
+    && match seat_end_attestation_for(reference: "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1" as NonEmptyStr) {
+      AttestedProvenEnded { reference: r, ruling: _, decided: _, evidence: e } =>
+        (r as String) == "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1"
+          && string_contains(s: e, pattern: "issuecomment-7181851358")
+      NotAttested => false
+    }
+}
+
+test fn an_unruled_reference_is_never_attested() -> Bool {
+  seat_end_attestation_for(reference: "deadbeef00000000000000000000000000000000000000000000000000000000dead#1" as NonEmptyStr)
+    == NotAttested
+}
+
+test fn an_attested_terminal_seat_without_unit_proof_authorizes_the_release() -> Bool {
+  let reference = "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, attestation: seat_end_attestation_for(reference: reference as NonEmptyStr)) {
+    RecoveryWriteReleaseSettled { state: _, reason: why } => string_contains(s: why, pattern: "ATTESTED proven-ended")
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
+}
+
+test fn an_unattested_terminal_seat_without_unit_proof_still_refuses() -> Bool {
+  let reference = "cafe00000000000000000000000000000000000000000000000000000000cafe#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, attestation: NotAttested) {
+    RecoveryWriteRefused { reason: r } => string_contains(s: r, pattern: "not proven ended")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+  }
+}
+
+test fn an_attestation_never_reaches_past_its_own_reference() -> Bool {
+  let attested = "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1"
+  let other = "cafe00000000000000000000000000000000000000000000000000000000cafe#1"
+  let rec = attestation_record(reference: other, unit: join(["gunbc-compute-", other], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, attestation: seat_end_attestation_for(reference: attested as NonEmptyStr)) {
+    RecoveryWriteRefused { reason: _ } => true
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+  }
+}
+
+test fn attestation_never_overrides_an_observed_live_unit() -> Bool {
+  let reference = "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptTerminal { verdict: AttemptRecovered, detail: "stamped recovered by an earlier door" })
+  match recovery_write_authorization(record: rec, lifecycle: UnitStillRunning { detail: "witness: the manager says active" }, now: 3000, attestation: seat_end_attestation_for(reference: reference as NonEmptyStr)) {
+    RecoveryWriteDeclined { reason: r } => string_contains(s: r, pattern: "the unit is still running")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
+}
+
+test fn attestation_never_opens_a_too_early_window() -> Bool {
+  let reference = "011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptReserved)
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 1500, attestation: seat_end_attestation_for(reference: reference as NonEmptyStr)) {
+    RecoveryWriteDeclined { reason: r } => string_contains(s: r, pattern: "TOO EARLY")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteTerminateAndRelease { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
+}
+
+test fn an_attested_launching_seat_without_unit_proof_terminates_and_releases() -> Bool {
+  let reference = "09bcdd84d537898bd6bb50be80b5b4ea1c1488324f37648cd2ed1640bb53ceee#1"
+  let rec = attestation_record(reference: reference, unit: join(["gunbc-compute-", reference], ""), state: AttemptLaunching)
+  match recovery_write_authorization(record: rec, lifecycle: UnitLifecycleUnknown { detail: "witness: the manager answers nothing" }, now: 3000, attestation: seat_end_attestation_for(reference: reference as NonEmptyStr)) {
+    RecoveryWriteTerminateAndRelease { reason: why } => string_contains(s: why, pattern: "ATTESTED proven-ended")
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => false
+    RecoveryWriteDeclined { reason: _ } => false
+    RecoveryWriteRefused { reason: _ } => false
+  }
 }
