@@ -27,7 +27,14 @@ import gunbc.runner.runner_microvm_boot_probe {
   BoundReapRefusedAfterOurSignal, BoundKillRefused, BoundDeathUnconfirmedWithinBound,
   BoundKillUnconfirmed, BoundKillUnnameable,
   BoundSpawnRefused, NoExecutionBound,
+  ConfirmedDead, ConfirmedExited, ConfirmationRefused, SignalRefusedByTool,
+  DeathUnobservedWithinBound, boot_probe_judge_confirmation,
 }
+// THE KERNEL'S OWN WITNESS, so this claim can hand the judgement a reap answer of each kind. Bare import,
+// exactly as gunbc.process_lifecycle and the probe module take it: ProcessReapOutcome and its four
+// constructors arrive whole, and no mock_response is involved -- these are plain values handed to a pure
+// function, not a replayed actuation.
+import extdeps.posix.process
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -532,6 +539,63 @@ test fn the_receipt_types_the_observation_and_carries_no_diagnostic_text() -> Bo
   let fired = BoundFired { deadline: second(count: 180), reaped_signal: 15 }
   match fired {
     BoundFired { deadline: d, reaped_signal: s } => s == 15 && second_count(s: d) == 180
+    _ => false
+  }
+}
+
+// THE JUDGEMENT THAT DECIDES THE ESCALATION PATH, WITNESSED WITHOUT A KILL.
+// boot_probe_judge_confirmation is where the two witnesses are weighed: the kernel's reap, and the signal
+// tool's own words. Its arms include two a wet lane must never be made to manufacture -- a tool that
+// PRINTS an errno while the reap sees no death (only a host policy boundary can refuse a group signal to
+// a process group this very invocation started), and a tool that stays SILENT while the reap sees no
+// death, which is the same bare fact with the opposite remedy. Why the status is not among the keys is
+// measured, not argued: on srv1 against procps-ng 4.0.4, on the same subjects the wet lane drives, the
+// group-signal tool's exit status for the negative-pid form is INVERTED against the kernel's witness --
+// it exited 1 while the group died of that very signal (waitpid answered Signalled{9}) and exited 0
+// against an already-absent group. So a key on the status could mint a fired deadline and its refusal
+// from the same liar (gunbc.design_argument::external_upstreams,
+// gunbc.design_argument::selection_precedes_convergence). A revision that quietly re-admits that status
+// as a key reds here first.
+test fn the_reap_decides_and_only_the_tools_words_can_refuse_a_delivery() -> Bool {
+  // The kernel reported a death by signal 9 WHILE the tool printed a refusal: the death decides, and no
+  // word from the tool may convert a confirmed death into a refused delivery.
+  let dead_with_words = boot_probe_judge_confirmation(
+    reaped: Signaled { signal: 9 },
+    tool_message: "kill: (4321): Operation not permitted",
+  )
+  // A child that ends on its own terms inside the confirmation window is never credited to the bound.
+  let self_ended = boot_probe_judge_confirmation(reaped: Exited { code: 124 }, tool_message: "")
+  // The kernel refusing to account for the child is the lifecycle's to report, not the verb's.
+  let reap_refused = boot_probe_judge_confirmation(
+    reaped: ReapRefused { cause: "pid was not started by this process (waitpid ECHILD)" },
+    tool_message: "",
+  )
+  // No death and no words: this layer's own confirmation came up empty, which escalates or refuses under
+  // the bound -- never as a deadline, and never as the tool's refusal.
+  let silent_survivor = boot_probe_judge_confirmation(reaped: StillRunning, tool_message: "")
+  // No death BUT words: the one arm the tool decides, and what it decides is a refusal that names where
+  // to look.
+  let refusal_with_words = boot_probe_judge_confirmation(
+    reaped: StillRunning,
+    tool_message: "kill: (4321): Operation not permitted",
+  )
+  match dead_with_words {
+    ConfirmedDead { signal: s } =>
+      s == 9
+        && (match self_ended { ConfirmedExited { code: c } => c == 124      _ => false })
+        && (
+          match reap_refused {
+            ConfirmationRefused { cause: c } => string_contains(s: c, pattern: "ECHILD")
+            _ => false
+          }
+        )
+        && (match silent_survivor { DeathUnobservedWithinBound => true      _ => false })
+        && (
+          match refusal_with_words {
+            SignalRefusedByTool { message: m } => string_contains(s: m, pattern: "Operation not permitted")
+            _ => false
+          }
+        )
     _ => false
   }
 }

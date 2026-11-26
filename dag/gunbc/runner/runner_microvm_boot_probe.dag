@@ -237,6 +237,14 @@ type ExecutionBoundReceipt
   // to the wrong machine (gunbc.design_argument::fail_closed: "a wrong answer is a loud, typed, located
   // error, never a warning or a plausible fabrication").
   | BoundReapRefusedAfterOurSignal { deadline: Second, cause: String }
+  // THE SIGNAL TOOL NAMED A REFUSAL AND THE KERNEL SAW NO DEATH. Minted where the group-signal tool
+  // printed a reason in its own words (an errno line from kill(1)) while the confirming reap answered no
+  // death -- the one arm where anything from the tool decides, and it decides only a REFUSAL, routing the
+  // operator to the host's signal path (LSM, seccomp, a permission boundary) rather than to this
+  // repository's lifecycle. The tool's exit STATUS is never consulted for this arm or against it: for the
+  // negative-pid group form it is measured inverted against the kernel's witness on procps-ng 4.0.4
+  // (boot_probe_judge_confirmation carries the measurement), so a key on it would mint both this refusal
+  // and its opposite from a liar (gunbc.design_argument::external_upstreams).
   | BoundKillRefused { deadline: Second, detail: String }
   // THE CONFIRMATION NEVER CAME. This layer delivered its signals to the group it started and the
   // confirming reap did not answer a death inside the confirmation bound this layer itself imposed
@@ -389,6 +397,44 @@ fn boot_probe_enforce_deadline(
   }
 }
 
+// WHAT THE TWO WITNESSES ANSWERED, BEFORE THIS LAYER DECIDES WHAT ANY OF IT MEANS. The judgement is its
+// own total function so every arm can be witnessed hermetically: the wet lane must not have to fabricate
+// a kill to reach a refusal arm, and posix.Signal.KillProcessGroup declares no mock_response on purpose
+// (a replayed pid is a fabricated kill). The wet producer feeds this the two answers it actually obtained.
+type ConfirmationAnswer
+  = ConfirmedDead { signal: Int }
+  | ConfirmedExited { code: Int }
+  | ConfirmationRefused { cause: String }
+  | SignalRefusedByTool { message: String }
+  | DeathUnobservedWithinBound
+
+// THE DEATH IS THE REAP'S TO REPORT, AND THE REAP'S ALONE. posix.Process.Reap is waitpid(2) about the
+// very pid this layer started, so its four answers decide every arm here. The signal tool's answer is a
+// different kind of fact, and a weaker one: both group signals ride procps kill(1) (`kill -TERM -<pgid>`,
+// `kill -KILL -<pgid>`) -- an independently versioned upstream whose exit status for the NEGATIVE-PID
+// form is measured INVERTED against what the kernel did. On srv1 against procps-ng 4.0.4, on the same
+// subjects the wet lane drives: it exits 1 while the group dies of that very signal (an escalated group
+// reached SIGKILL death, reported by the reap as Signalled{9}, with the tool's status saying failure),
+// and it exits 0 against an already-absent group. So the status gates NOTHING here -- neither a fired
+// bound nor a refused one, because a key on it could mint either from a liar
+// (gunbc.design_argument::external_upstreams,
+// gunbc.design_argument::selection_precedes_convergence -- an actuation return cannot mint convergence).
+// What the tool says in WORDS still carries weight, because kill(1) prints an errno line only when
+// kill(2) refused a target it could name: a printed errno together with no death observed is the
+// operator's pointer to the host's signal path -- LSM, seccomp, a permission boundary outside this
+// repository -- refusing the delivery. An empty message together with no death says only that this
+// layer's confirmation bound ran out, which is this layer's own unfinished business: escalated once,
+// then refused under the bound it was refused under, and never charged to the tool.
+fn boot_probe_judge_confirmation(reaped: ProcessReapOutcome, tool_message: String) -> ConfirmationAnswer {
+  match reaped {
+    Signaled { signal: s } => ConfirmedDead { signal: s }
+    Exited { code: c } => ConfirmedExited { code: c }
+    ReapRefused { cause: c } => ConfirmationRefused { cause: c }
+    StillRunning =>
+      if tool_message == "" { DeathUnobservedWithinBound } else { SignalRefusedByTool { message: tool_message } }
+  }
+}
+
 fn boot_probe_after_group_signal(
   pid: Int,
   deadline: Second,
@@ -397,28 +443,23 @@ fn boot_probe_after_group_signal(
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
-  // kill(2) answers when the signal is QUEUED for the group, so this answer is DELIVERY only. Nothing
-  // below reads it as termination: the death is established solely by the confirming reap in
-  // boot_probe_confirm_signal, and a refused delivery is a different event from an unconfirmed one.
-  let killed = posix.Signal.TerminateProcessGroup(group: group)
-  if !killed.success {
-    boot_probe_bounded_read(
-      receipt: BoundKillRefused { deadline: deadline, detail: killed.stderr },
-      stdout_file: stdout_file,
-      stderr_file: stderr_file,
-    )
-  } else {
-    boot_probe_confirm_signal(
-      pid: pid,
-      deadline: deadline,
-      remaining: kill_grace,
-      kill_grace: kill_grace,
-      group: group,
-      escalated: false,
-      stdout_file: stdout_file,
-      stderr_file: stderr_file,
-    )
-  }
+  // THE POLITE SIGNAL, QUEUED. kill(2) answers when a signal is queued for the group, never when the
+  // group died, and for this tool form even that answer is unreliable -- see
+  // boot_probe_judge_confirmation. So the op's status is not read here at all: only its message travels,
+  // and the death is established solely by the confirming reap in boot_probe_confirm_signal.
+  let sent = posix.Signal.TerminateProcessGroup(group: group)
+  boot_probe_confirm_signal(
+    pid: pid,
+    deadline: deadline,
+    remaining: kill_grace,
+    kill_grace: kill_grace,
+    group: group,
+    escalated: false,
+    tool_word: "the polite group term",
+    tool_message: sent.stderr,
+    stdout_file: stdout_file,
+    stderr_file: stderr_file,
+  )
 }
 
 // THE CONFIRMATION, RUN TWICE: once after this layer's SIGTERM, and once after its escalated SIGKILL.
@@ -435,38 +476,56 @@ fn boot_probe_confirm_signal(
   kill_grace: Second,
   group: ProcessGroupLeader,
   escalated: Bool,
+  tool_word: String,
+  tool_message: String,
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
   // THE POLL IS NOT THIS MODULE'S TO WRITE. gunbc.process_lifecycle::process_await_reap holds the one
   // implementation of "poll Reap once a second until the bound the caller holds runs out"; this function
-  // decides only what each of its four answers MEANS for a bound this layer imposed. That split is what
-  // review 98515 asked for, and it is why a StillRunning here can lead to an escalation or a refusal
-  // without either one being a second copy of the wait.
-  match process_await_reap(pid: pid, remaining: remaining) {
-    Signaled { signal: signal } =>
+  // decides only what the answers MEAN for a bound this layer imposed, and it decides through
+  // boot_probe_judge_confirmation so the deciding itself is witnessed without a live kill. A non-positive
+  // bound asks the reap NOTHING and answers StillRunning on the spot -- the zero-window discriminator the
+  // wet pair turns on, and the reason a signal this layer sent can never mint a deadline by itself.
+  match boot_probe_judge_confirmation(
+    reaped: process_await_reap(pid: pid, remaining: remaining),
+    tool_message: tool_message,
+  ) {
+    ConfirmedDead { signal: signal } =>
       boot_probe_bounded_read(
         receipt: BoundFired { deadline: deadline, reaped_signal: signal },
         stdout_file: stdout_file,
         stderr_file: stderr_file,
       )
-    Exited { code: code } =>
+    ConfirmedExited { code: code } =>
       boot_probe_bounded_read(
         receipt: BoundKillUnconfirmed { deadline: deadline, exit_code: code },
         stdout_file: stdout_file,
         stderr_file: stderr_file,
       )
-    ReapRefused { cause: cause } =>
+    ConfirmationRefused { cause: cause } =>
       boot_probe_bounded_read(
         receipt: BoundReapRefusedAfterOurSignal { deadline: deadline, cause: cause },
         stdout_file: stdout_file,
         stderr_file: stderr_file,
       )
-    StillRunning =>
-      // The confirmation bound ran out without the kernel having answered a death. That is this layer's
-      // own unfinished business, never a fact about the subject, and it is decided here -- escalate once,
-      // and if this pass IS the escalation, refuse under the bound it was refused under rather than call
-      // an unobserved death a fired deadline.
+    SignalRefusedByTool { message: message } =>
+      // The tool named a refusal in its own words AND the kernel's witness saw no death: the only arm
+      // where anything the signal tool said decides, and it decides a REFUSAL -- pointing the operator
+      // at the host's signal path instead of letting a queueing status speak for a death.
+      boot_probe_bounded_read(
+        receipt: BoundKillRefused {
+          deadline: deadline,
+          detail: join([tool_word, " was refused by the host's signal path: ", message], ""),
+        },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    DeathUnobservedWithinBound =>
+      // The confirmation bound ran out without the kernel having answered a death, and the tool printed
+      // no reason. That is this layer's own unfinished business, never a fact about the subject, and it
+      // is decided here -- escalate once, and if this pass IS the escalation, refuse under the bound it
+      // was refused under rather than call an unobserved death a fired deadline.
       if escalated {
         boot_probe_bounded_read(
           receipt: BoundDeathUnconfirmedWithinBound {
@@ -503,32 +562,25 @@ fn boot_probe_escalate_kill(
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
-  // posix.Signal.KillProcessGroup answers DELIVERY (`delivered`, kill(2) 0 = queued), never
-  // termination, so this arm can only say the kernel refused to take the signal. Whether the group is
-  // GONE is asked of the confirming reap below -- an exit status from the kill would have minted a
-  // convergence the kernel never reported (gunbc.design_argument::selection_precedes_convergence).
-  let killed = posix.Signal.KillProcessGroup(group: group)
-  if !killed.delivered {
-    boot_probe_bounded_read(
-      receipt: BoundKillRefused {
-        deadline: deadline,
-        detail: join(["the escalated group kill was refused: ", killed.stderr], ""),
-      },
-      stdout_file: stdout_file,
-      stderr_file: stderr_file,
-    )
-  } else {
-    boot_probe_confirm_signal(
-      pid: pid,
-      deadline: deadline,
-      remaining: kill_grace,
-      kill_grace: kill_grace,
-      group: group,
-      escalated: true,
-      stdout_file: stdout_file,
-      stderr_file: stderr_file,
-    )
-  }
+  // THE ESCALATION'S ANSWER IS NOT ITS OWN PROOF. posix.Signal.KillProcessGroup carries `delivered`,
+  // which is kill(1)'s claim about queueing -- and for this negative-pid form that claim is measured
+  // inverted against the kernel's own report (boot_probe_judge_confirmation). Nothing gates on it: the
+  // SIGKILL goes to the SAME sealed ProcessGroupLeader the SIGTERM went to, and the confirming reap
+  // alone decides, because a status from the kill would have minted a convergence the kernel never
+  // reported (gunbc.design_argument::selection_precedes_convergence).
+  let sent = posix.Signal.KillProcessGroup(group: group)
+  boot_probe_confirm_signal(
+    pid: pid,
+    deadline: deadline,
+    remaining: kill_grace,
+    kill_grace: kill_grace,
+    group: group,
+    escalated: true,
+    tool_word: "the escalated group kill",
+    tool_message: sent.stderr,
+    stdout_file: stdout_file,
+    stderr_file: stderr_file,
+  )
 }
 
 fn boot_probe_bounded_read(
