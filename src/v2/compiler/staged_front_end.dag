@@ -18,7 +18,6 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
-  DeclarerRefused,
   ExternalContractUnknown,
   Unavailable,
   diagnostics_singleton,

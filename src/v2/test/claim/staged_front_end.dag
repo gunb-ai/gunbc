@@ -26,7 +26,6 @@ import v2.compiler.staged_front_end {
   FrontEndStage,
   FrontEndStagePassed,
   FrontEndStageRejected,
-  FrontEndStageReceipt,
   ParsedModule,
   front_end_placement_control_next_rung,
   front_end_stage_index,
