@@ -18948,15 +18948,14 @@ pub fn parse_expr_list_until_acc(
                         __tco_loop_acc = __tco_3;
                         continue;
                     }
-                    EatResult::EatUnchanged { tokens: _, .. } => {
-                        let next = skip_newlines(r.tokens.clone());
-                        let at_end_after = match token_stream_first(next.clone()) {
-                            Some(t) => token_matches_expected(t.clone(), end_expected.clone()),
-                            std::option::Option::None => true,
-                        };
-                        if (at_end_after.clone() || tok_is_eof(token_stream_first(next.clone()))) {
+                    EatResult::EatUnchanged {
+                        tokens: after_element,
+                        ..
+                    } => {
+                        let first_after = token_stream_first(after_element.clone());
+                        if tok_is_newline(first_after) {
                             {
-                                let __tco_0 = next.clone();
+                                let __tco_0 = after_element.clone();
                                 let __tco_1 =
                                     parse_context_after_node(r.ctx.clone(), r.expr.clone());
                                 let __tco_2 = end_expected;
@@ -18968,23 +18967,45 @@ pub fn parse_expr_list_until_acc(
                                 continue;
                             }
                         } else {
-                            let found = match token_stream_first(next.clone()) {
-                                Some(t) => token_display_name(t.clone()),
-                                std::option::Option::None => "EOF".to_string(),
+                            let next = skip_newlines(after_element.clone());
+                            let at_end_after = match token_stream_first(next.clone()) {
+                                Some(t) => token_matches_expected(t.clone(), end_expected.clone()),
+                                std::option::Option::None => true,
                             };
-                            break Rc::new(ExprsResult {
-                                exprs: Rc::new(vec![]),
-                                tokens: next.clone(),
-                                ctx: r.ctx.clone(),
-                                err: Some(parse_error(
-                                    v1_rt::concat(
-                                        "expected separator ',' between list elements, found "
-                                            .to_string(),
-                                        found.clone(),
-                                    ),
-                                    token_span(token_stream_first(next.clone())),
-                                )),
-                            });
+                            if (at_end_after.clone()
+                                || tok_is_eof(token_stream_first(next.clone())))
+                            {
+                                {
+                                    let __tco_0 = next.clone();
+                                    let __tco_1 =
+                                        parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                                    let __tco_2 = end_expected;
+                                    let __tco_3 = v1_rt::rc_list_push(acc, r.expr.clone());
+                                    __tco_loop_tokens = __tco_0;
+                                    __tco_loop_ctx = __tco_1;
+                                    __tco_loop_end_expected = __tco_2;
+                                    __tco_loop_acc = __tco_3;
+                                    continue;
+                                }
+                            } else {
+                                let found = match token_stream_first(next.clone()) {
+                                    Some(t) => token_display_name(t.clone()),
+                                    std::option::Option::None => "EOF".to_string(),
+                                };
+                                break Rc::new(ExprsResult {
+                                    exprs: Rc::new(vec![]),
+                                    tokens: next.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: Some(parse_error(
+                                        v1_rt::concat(
+                                            "expected separator ',' between list elements, found "
+                                                .to_string(),
+                                            found.clone(),
+                                        ),
+                                        token_span(token_stream_first(next.clone())),
+                                    )),
+                                });
+                            }
                         }
                     }
                 }
