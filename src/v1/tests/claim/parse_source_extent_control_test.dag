@@ -34,9 +34,8 @@ import v1.std.core {
 // They import v1.compiler.parse, so no witness under dag/test/claim can call them, and they run on no
 // required path. Direct execution is evidence they HOLD; it is not evidence CI runs them.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
-//     --entry src/v1/tests/claim/parse_source_extent_control_test.dag \
-//     --function <test fn>
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 \
+//     //v1/tests/claim/parse_source_extent_control_test:<test fn>
 
 data extent_fixture_file: String = "zqxext_fixture.dag"
 

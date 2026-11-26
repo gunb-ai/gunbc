@@ -28,7 +28,7 @@ data role_singleton_assessor_claims_stand_red_and_one_eval_hangs: IntegrationCon
       decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_over_roster"),
     ],
   },
-  question: "Should the assessor's no-op / in-place / refused verdicts be re-derived from the current roster and spec model so the five fixture claims pass, and should claim_batch evaluation of no_caller_supplied_spec_reaches_the_role_singleton_assessment terminate - so the witness reports a full 24-claim ledger?",
+  question: "Should the assessor's no-op / in-place / refused verdicts be re-derived from the current roster and spec model so the five fixture claims pass, and should the claim route's evaluation (gunbc test; claim_batch when this was raised) of no_caller_supplied_spec_reaches_the_role_singleton_assessment terminate - so the witness reports a full 24-claim ledger?",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "3b589d2336d8e50b29d91275609262648802e150",
