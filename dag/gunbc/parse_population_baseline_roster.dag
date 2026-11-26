@@ -1,10 +1,10 @@
 module gunbc.parse_population_baseline_roster
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr, CommitSha }
 import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
-import std.algebra { count_where, fold_list, list_push }
+import std.algebra { count_where, fold_list, list_push, string_contains }
 import gunbc.guarantee_stall { NextRungTrigger }
 import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall {
   parse_population_carrier_reader_beside_grammar_stall,
@@ -238,6 +238,79 @@ data parse_population_baseline_rows: List<ParsePopulationRow> = [
   ParsePopulationRow { path: "dag/gunbc/site/gunb_ai_css.dag", bytes: byte_size(count: 92614) },
   ParsePopulationRow { path: "src/v2/extdeps/languages/swift.dag", bytes: byte_size(count: 92576) },
 ]
+
+// ---- measurement receipts (typed home; review 98937 F4) ----
+
+// One srv1 cell of the fixed-workload baseline sweep: the raw printed counters, the real rc taken
+// from the command itself (RC=$? immediately after the run, never a pipe), and the provenance the
+// evidence rule demands (binary sha read from disk, tree sha built, host and boot id). The markdown
+// report renders these rows for humans; THIS binding is their one typed home
+// (gunbc.design_argument::source_annotations — a receipt belongs in a typed carrier). Consumer:
+// test.claim.parse_population_baseline_roster_witness::
+// parse_population_measurement_receipts_record_the_sweep_holds, green by execution pending (A/B/C).
+type ParsePopulationMeasurementReceipt {
+  cell: NonEmptyStr
+  population: NonEmptyStr
+  runs: Int
+  wall_seconds: NonEmptyStr
+  peak_rss_kb: Int
+  modules: Int
+  declared_refusals: Int
+  rc: Int
+  binary_sha256: CommitSha
+  tree_sha: CommitSha
+  host: NonEmptyStr
+  boot_id: NonEmptyStr
+}
+
+// cells A/B/C/E share one run environment; recorded per cell rather than once, so each receipt is
+// self-describing and no reader has to join across homes to know which binary produced a number.
+data parse_population_measurement_receipts: List<ParsePopulationMeasurementReceipt> = [
+  ParsePopulationMeasurementReceipt { cell: "REF", population: "full dag+src/v2 roots", runs: 1,
+    wall_seconds: "563.94", peak_rss_kb: 657660, modules: 10567, declared_refusals: 0, rc: 0,
+    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { cell: "A", population: "Five Largest (5)", runs: 3,
+    wall_seconds: "20.16 / 22.79 / 23.30 (min/median/max)", peak_rss_kb: 653412, modules: 5,
+    declared_refusals: 0, rc: 0,
+    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { cell: "B", population: "165-Sample (size tail)", runs: 3,
+    wall_seconds: "132.19 / 132.51 / 143.84 (min/median/max)", peak_rss_kb: 491264, modules: 166,
+    declared_refusals: 0, rc: 0,
+    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { cell: "C", population: "165-Sample verdict-only (--reuse-from)", runs: 1,
+    wall_seconds: "136.66", peak_rss_kb: 488408, modules: 166, declared_refusals: 0, rc: 0,
+    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { cell: "E", population: "instrument-check, roots_pop5 (getrusage, not perf)", runs: 1,
+    wall_seconds: "utime 28.92 / stime 0.61 (maxrss 653284 KB, minflt 160128, majflt 0, nvcsw 2, nivcsw 212)",
+    peak_rss_kb: 653284, modules: 5, declared_refusals: 0, rc: 0,
+    binary_sha256: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" as CommitSha,
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+]
+
+// Validates a receipt LIST the way the sweep's publishability rule states it: every cell real rc 0
+// (taken from the command, not a pipe), zero declared refusals (comparability with the reference
+// run), positive runs / modules / peak RSS, and an srv1 host tag. Built for the list parameter, not
+// the binding, so the witness can plant a bad receipt and watch this refuse (fail_closed).
+fn parse_population_receipts_are_publishable(receipts: List<ParsePopulationMeasurementReceipt>) -> Bool {
+  fold_list(xs: receipts, empty: true, cons: fn(acc, r) {
+    acc && r.rc == 0 && r.declared_refusals == 0 && r.runs > 0 && r.modules > 0
+      && r.peak_rss_kb > 0 && string_contains(s: r.host, pattern: "srv1")
+  })
+}
 
 // ---- derived queries (rank from position, membership from rank) ----
 

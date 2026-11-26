@@ -182,6 +182,16 @@ bound contract of this PR.
 
 ## 5. Cells — raw output, real rc, load alongside every cell
 
+**Typed home (review 98937 F4).** These cells are projections; their one typed home is
+`parse_population_measurement_receipts` in `dag/gunbc/parse_population_baseline_roster.dag` (one
+`ParsePopulationMeasurementReceipt` per cell: printed counters, real rc, binary sha256, tree sha, host,
+boot id), consumed by the witness legs `parse_population_measurement_receipts_record_the_sweep_holds`
+and `parse_population_receipt_publishability_refuses_planted_failed_cell_holds` (parses + required lane;
+execution pending A/B/C). `planning_has_one_home` bars this file from being a **plan** home — the plan
+(roadmap row, stall, route-A referent) lives in `.dag` carriers; what sits here is a measurement
+**transcript** — raw runner output no `.dag` route can produce — and per `source_annotations` the receipt
+FACTS now live typed, with this section rendering them.
+
 `rc` is taken from the command directly (`RC=$?` immediately after `/usr/bin/time … "$BIN" "$@"`), never through a pipe. The verb counts one extra module per population (166 for the staged 165, 10567 for 10562) — a stable +~5 offset from the enumeration, reported as the verb prints it.
 
 Machine: srv1, 48–50 concurrent sessions, load average 15–21 during the sweep (other lanes running `claim_batch` over the floor and a `--regen-round-cost` converge; slots 2,3,6,7,11 held by four other owners).

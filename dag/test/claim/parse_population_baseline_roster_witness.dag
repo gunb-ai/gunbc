@@ -1,7 +1,7 @@
 module test.claim.parse_population_baseline_roster_witness
 
-import std.types { Bool, String }
-import std.algebra { string_contains }
+import std.types { Bool, Int, String, List, CommitSha }
+import std.algebra { string_contains, fold_list }
 import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -27,6 +27,9 @@ import gunbc.parse_population_baseline_roster {
   parse_population_selection_refuses_misordered_tie,
   parse_population_carrier_reader_rung_drop_ledger_line,
   parse_population_carrier_reader_beside_grammar_stall_capability,
+  ParsePopulationMeasurementReceipt,
+  parse_population_measurement_receipts,
+  parse_population_receipts_are_publishable,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -186,4 +189,34 @@ fn parse_population_planted_trigger_probe() -> String {
   match parse_population_planted_stall_row.next_rung_trigger {
     NextRungTrigger { capability: c, awaiting: _ } => c
   }
+}
+
+// ---- measurement receipts (review 98937 F4: receipts get a typed home, this witness is its
+// consumer; green by execution pending A/B/C, parses + required lane until then) ----
+
+// GREEN half of the discriminating pair: the recorded sweep — REF + A + B + C + the instrument-check
+// leg — is publishable by the sweep's own rule (real rc 0, zero declared refusals, positive counts,
+// srv1 host) and is exactly five cells.
+test fn parse_population_measurement_receipts_record_the_sweep_holds() -> Bool {
+  parse_population_receipts_are_publishable(receipts: parse_population_measurement_receipts)
+    && parse_population_receipt_count(receipts: parse_population_measurement_receipts) == 5
+}
+
+// RED half (fail_closed): a planted receipt with a nonzero rc — the representable forbidden state of
+// a cell whose command failed but whose number was recorded anyway — must be REFUSED by the same
+// predicate. If publishability ever degrades to a constant readback, this leg goes red by name.
+data parse_population_planted_failed_receipt: ParsePopulationMeasurementReceipt =
+  ParsePopulationMeasurementReceipt { cell: "PLANTED", population: "planted: rc nonzero recorded anyway", runs: 1,
+    wall_seconds: "1.0", peak_rss_kb: 1000, modules: 1, declared_refusals: 0, rc: 1,
+    binary_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as CommitSha,
+    tree_sha: "0000000000000000000000000000000000000000" as CommitSha,
+    host: "srv1.tailecbe08.ts.net",
+    boot_id: "00000000-0000-0000-0000-000000000000" }
+
+test fn parse_population_receipt_publishability_refuses_planted_failed_cell_holds() -> Bool {
+  !parse_population_receipts_are_publishable(receipts: [parse_population_planted_failed_receipt])
+}
+
+fn parse_population_receipt_count(receipts: List<ParsePopulationMeasurementReceipt>) -> Int {
+  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
 }
