@@ -772,7 +772,11 @@ fn router_dev_stats_lines() -> List<String> {
     // (or now, while the file still carries it), rounded to the nearest micro: zero for an owned row, null for a
     // rented row that declared no rate or no start -- never a zero standing for an unread fact. Counters with no
     // remembered facts (written before the facts were) are listed apart under unattributed, never given a guessed
-    // billing. A row with no priced turn has no comparison value, as in usage above: absent, not zero.
+    // billing. A route row's comparison_value_usd is the sum over its PRICED turns, so a row with none renders the
+    // empty sum, 0 -- its unpriced turns are counted in unpriced_requests. This is the dashboard's contract: ctrl
+    // scripts/session-dashboard/lib/owned_pool_cost.mjs parseRouteUsage requires a finite non-negative value for every
+    // counter it names (comparison_value_usd among them) on every row, and refuses the whole per-card table otherwise.
+    // (usage/usage_all above keep their own contract: absent where the model has no quote.)
     "local route_root = '" + router_route_key_root() + "'",
     "local now_unix = math.floor(ngx.now())",
     "local function route_row(name, u, listed)",
@@ -795,7 +799,7 @@ fn router_dev_stats_lines() -> List<String> {
     "    completion_tokens = state:get(k .. 'generated') or 0,",
     "    cached_prompt_tokens = state:get(k .. 'cached') or 0,",
     "    cache_unreported_requests = state:get(k .. 'cache_unreported') or 0,",
-    "    comparison_value_usd = value_micro and value_micro / 1000000 or nil,",
+    "    comparison_value_usd = (value_micro or 0) / 1000000,",
     "    first_turn_unix = state:get(k .. 'first_turn') or cjson.null, last_turn_unix = last or cjson.null,",
     "    idle_s = last and math.max(0, now_unix - last) or cjson.null,",
     "    hourly_usd = rate and rate / 1000000 or cjson.null, billed_since_unix = since or cjson.null,",

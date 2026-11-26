@@ -13,6 +13,7 @@ import gunbc.serving.flex_aws_router_rows {
 import std.measure { MoneyPerHour, money_amount_micro }
 import extdeps.currency.currency { Usd }
 import extdeps.languages.json.emit { json_object, serialize_json }
+import gunbc.serving.router_dev_policy { router_dev_stats_lines }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -294,4 +295,16 @@ test fn tallies_the_router_did_not_give_are_unread_with_their_cause() -> Bool {
     && unread(b: route_stats(version: "1", rows: join(["[", busy_row, "]"], "")), id: "i-0z", needle: "lists no row aws-i-0z")
     && unread(b: route_stats(version: "1", rows: "[\{\"name\": \"aws-i-0a\", \"requests\": \"seven\", \"failed_requests\": 0, \"prompt_tokens\": 0, \"completion_tokens\": 0, \"cached_prompt_tokens\": 0}]"), id: "i-0a", needle: "requests")
     && unread(b: "not json", id: "i-0a", needle: "not one JSON document")
+}
+
+// A ROUTE ROW'S COMPARISON VALUE IS ALWAYS A NUMBER: the sum over its priced turns, 0 when it has none (its unpriced
+// turns are counted in unpriced_requests). The reader that consumes usage_by_route, ctrl's session dashboard
+// (scripts/session-dashboard/lib/owned_pool_cost.mjs parseRouteUsage), requires a finite non-negative value for every
+// counter in its COUNTERS list -- comparison_value_usd included -- on every row, and refuses the WHOLE per-card table
+// when one row lacks it, so an absent value on one idle card blanks every card. This reads the rendered stats Lua; its
+// executing route is the router proxy falsifier's dev_usage_by_route_carries_each_rows_card_facts (aq2, rented, with no
+// priced turn, must read 0), which does not yet build on the arm64 fleet.
+// RED: rendering the route row's value as `value_micro and value_micro / 1000000 or nil` (absent when unpriced).
+test fn a_route_rows_comparison_value_is_the_priced_sum_and_never_absent() -> Bool {
+  any(router_dev_stats_lines(), l => l.contains("comparison_value_usd = (value_micro or 0) / 1000000,"))
 }

@@ -1350,7 +1350,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // facts its row declared. aq1 (3.6 USD/h since 1700000000) while routed: in service, its rate and start as
     // declared, its spend the rate times the hours to the document's own now, its one turn timed. Withdrawn: resting,
     // cap 0, still priced. Removed from the file: gone, its turn and its rate kept, its spend stopped at gone_unix. The
-    // owned row a spends 0; aq2, rented with no declared rate, spends null -- never 0. The AWS loop's reader takes the
+    // owned row a spends 0; aq2, rented with no declared rate, spends null -- never 0 -- and, with no priced turn, has a
+    // comparison value of 0, the empty sum ctrl's parseRouteUsage requires on every row. The AWS loop's reader takes the
     // gone row's tallies from this real document.
     case_of(identity: "dev_usage_by_route_carries_each_rows_card_facts", held: w16.success && gone_copy.exit_code == 0 && gone_reloaded.exit_code == 0 && contains(s: gone_models, p: "4329")
       && route_is(text: warm_stats, name: "aq1", state: "in_service") && route_member_is(text: warm_stats, name: "aq1", key: "billing", literal: "\"rented\"")
@@ -1361,6 +1362,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
       && route_member_is(text: warm_stats, name: "a", key: "spend_usd", literal: "0") && route_member_is(text: warm_stats, name: "a", key: "hourly_usd", literal: "null")
       && route_is(text: withdrawn_stats, name: "aq1", state: "resting") && route_member_is(text: withdrawn_stats, name: "aq1", key: "cap", literal: "0") && route_spend_holds(text: withdrawn_stats, name: "aq1", stop_key: "now_unix")
       && route_is(text: withdrawn_stats, name: "aq2", state: "in_service") && route_member_is(text: withdrawn_stats, name: "aq2", key: "spend_usd", literal: "null") && route_member_is(text: withdrawn_stats, name: "aq2", key: "hourly_usd", literal: "null")
+      && route_member_is(text: withdrawn_stats, name: "aq2", key: "comparison_value_usd", literal: "0")
       && route_is(text: gone_stats, name: "aq1", state: "gone") && route_int(text: gone_stats, name: "aq1", key: "gone_unix") > 1700000000 && route_member_is(text: gone_stats, name: "aq1", key: "requests", literal: "1")
       && route_member_is(text: gone_stats, name: "aq1", key: "hourly_usd", literal: "3.6") && route_spend_holds(text: gone_stats, name: "aq1", stop_key: "gone_unix")
       && (match flex_aws_route_tallies(body: stats_line(text: gone_stats), name: "aq1") { FlexAwsTalliesRead { members: ms } => serialize_json(v: json_object(members: ms)).contains("\"requests\": 1,")  FlexAwsTalliesUnread { cause: _ } => false }),
