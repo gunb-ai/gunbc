@@ -1378,7 +1378,7 @@ fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<St
 // six; the floor-prepared-subject route is deleted code (0 definitions of `run_required_floor`).** Hermetic is
 // what an unflagged `claim_batch` silently does: `src/v1/stage0/src/bin/claim_batch.rs` leaves `explicit_mode`
 // at None and resolves it through `v1_compiler::cli_run::execution_mode_for`
-// (`src/v1/stage0/src/cli_run/claim_execution.rs:37`) with `is_claim: true`, which yields Hermetic for any
+// (`src/v1/stage0/src/cli_run/claim_execution.rs`) with `is_claim: true`, which yields Hermetic for any
 // claim context. That is the route of every leg before ACQ10 -- calm-boar-153's two plus ACQ5, ACQ6, ACQ7,
 // ACQ9. The wet route (the v1-interpreter route) was run exactly once, ACQ10, as a bounded one-off
 // diagnostic: tree d861bea8e193 with porcelain 0, the same binary, the entry module byte-unchanged at sha256
@@ -1394,8 +1394,8 @@ fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<St
 // over the same 272 modules and the same 13341 items under wet (ACQ10), a noise-level difference.
 
 // WHAT IS UNREAD, AND STAYS UNREAD. The cause at the conserved door is UNREAD. Every probe that reached that
-// door read `v2.compiler.reference_conservation::OccurrenceRoleTableUnadmitted` (its arm is declared at
-// `v2.compiler.reference_conservation:142` over `unlisted`, `unknown`, `unkeyed`) with `authored` 0 and
+// door read `v2.compiler.reference_conservation::OccurrenceRoleTableUnadmitted` (its arms are `unlisted`,
+// `unknown`, `unkeyed`) with `authored` 0 and
 // `conserved` 0 on all three sources, under THREE subject-building routes (`v2.test.claim.namespace_xl0.reference_conservation::conservation_subject`,
 // `::conservation_fixture_read`, and local builders over byte-identical source) and BOTH artifact identities
 // tried -- a never-minted `id_tail` and the witness's own `clean` -- over the SAME source bytes (sha256
