@@ -1,0 +1,163 @@
+module test.claim.cardinality_optional_homonym_witness
+
+// ROADMAP NODE cardinality-optional-declaration: THE EXECUTED HOMONYM CONTROL.
+// WHY THIS FILE EXISTS: main's landed homonym ruling
+// (src/v2/test/claim/optional_sugar_declaration_bound.dag:101, :105, :124) lives under
+// src/v2/test/claim, which the claim route cannot execute (location note below) -- so the
+// ruling that a locally authored `Optional` is NOT adopted had no executed witness anywhere.
+// These legs are that witness.
+//
+// NON-ADOPTION, NOT REFUSAL: the landed ruling (gunbc.design_ruling
+// optional_sugar_is_declaration_bound) is that a homonym is ACCEPTED and stays an application.
+// Nothing here demands a refusal; what it refuses to allow is adoption coming back.
+
+// LOCATION IS A FINDING, NOT A PREFERENCE: this witness lives under dag/test/claim/, never
+// src/v2/test/claim/. claim_route_universe() is TargetPattern::SubtreeTargets(["test","claim"])
+// (src/v1/stage0/src/target_invocation_host.rs:2245-2247) and the native universe is asked FIRST,
+// so a `module v2.test.claim.*` target is answered by native, which refuses --source-root: rc 2,
+// no reading, ever. Main's landed homonym ruling (src/v2/test/claim/optional_sugar_declaration_bound.dag:101,
+// :105, :124) therefore has NO executed witness anywhere. These legs fix that; they are written to
+// be executable, and the three v2-prefixed legs stay PARSED TIER and are not upgraded.
+//
+// THE PAIR, per the lane manager: a leg that goes red the day adoption returns, and the named
+// negative that stops it being satisfied vacuously by a reading in which nothing is ever the
+// optional instance. Every helper body is copied from main's osd_* witness (same assembly route,
+// same predicates) so the syntax and the imports are the ones that already compile there.
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Instantiation, Node, TypeNode, node_subtree_nodes }
+import v2.std.qualified_name { declaration_denotation_is_optional, declaration_denotation_of_type }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Present }
+import std.types { Bool, List, String }
+
+data ch_artifact: Artifact = Artifact { kind: SourceFile, id: ^cardinality_optional_homonym_artifact, file_path: "src/v2/pilot/ch_homonym_pilot.dag" }
+data ch_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^cardinality_optional_homonym_std_artifact, file_path: "src/v2/pilot/ch_std_pilot.dag" }
+
+fn ch_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^cardinality_optional_homonym_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ch_std_optional() -> String {
+  "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n"
+}
+
+fn ch_assemble(sources: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: sources,
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// A specimen that DOES have std.optional in scope and imports the name.
+fn ch_with_std(body: String) -> Outcome<ResolvedTree> {
+  ch_assemble(sources: [
+    ch_witness(src: ch_std_optional(), artifact: ch_std_artifact),
+    ch_witness(src: concat("module p\n\nimport std.optional { Optional }\n\n", body), artifact: ch_artifact)
+  ])
+}
+
+// A specimen whose OWN module declares `Optional` — the homonym. No std.optional source is
+// assembled at all, so nothing here can reach the bound declaration by accident.
+fn ch_homonym(body: String) -> Outcome<ResolvedTree> {
+  ch_assemble(sources: [
+    ch_witness(
+      src: concat("module p\n\ntype Optional<T>\n  = Nothing\n  | Something { value: T }\n\n", body),
+      artifact: ch_artifact)
+  ])
+}
+
+// THE PREDICATE GOES THROUGH THE ONE RECOGNIZER, not a hand-rolled identity compare.
+// src/v2/std/qualified_name.dag:629-632: "THE ONE RECOGNIZER of 'this denotation is the std.optional
+// declaration': optional_layers, inhabitance and resolve all ask here, so no consumer compares the
+// identity itself." Comparing the identity here instead would put this control outside the route
+// production asks, and a break inside the recognizer would not reach it.
+fn ch_is_optional_instance(n: Node) -> Bool {
+  match declaration_denotation_of_type(t: n) {
+    Present { value: denotation } => declaration_denotation_is_optional(denotation: denotation)
+    Absent => false
+  }
+}
+
+fn ch_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    _ => false
+  }
+}
+
+fn ch_holds(o: Outcome<ResolvedTree>, pred: fn(Node) -> Bool) -> Bool {
+  match o {
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, m) { acc || pred(m) })
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ch_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (1) THE LEG THAT GOES RED THE DAY ADOPTION RETURNS. A locally authored `Optional` that shadows
+// std.optional.Optional is NOT the optional instance: the sugar and the explicitly authored
+// declaration are bound to the bound declaration by IDENTITY, never by the leaf name.
+test fn ch_homonym_specimen_is_not_the_optional_instance() -> Bool {
+  !ch_holds(o: ch_homonym(body: "type U = Optional<Int>\n"), pred: ch_is_optional_instance)
+}
+
+// (2) AND IT STAYS AN APPLICATION. Without this, (1) could be satisfied by the homonym being
+// rewritten into something that is merely not an instance — adoption would not be the only way to
+// pass it. Non-adoption and acceptance are the landed ruling; this leg pins both halves together.
+test fn ch_homonym_specimen_stays_an_application() -> Bool {
+  ch_holds(o: ch_homonym(body: "type U = Optional<Int>\n"), pred: ch_is_instantiation)
+}
+
+// (3) THE NAMED NEGATIVE, in the same run: a genuine std.optional application IS the optional
+// instance. This is what stops (1) from being vacuously true in a reading where nothing is ever
+// the instance (a broken predicate, a refused assembly, a renamed identity).
+test fn ch_std_optional_application_is_the_optional_instance() -> Bool {
+  ch_holds(o: ch_with_std(body: "type U = Optional<Int>\n"), pred: ch_is_optional_instance)
+}
+
+// (4) THE VACUITY GUARD ON THE REFUSAL SIDE: both specimens must be ACCEPTED, so (1) and (2) are
+// not "held" because the assembler said no to everything.
+test fn ch_both_specimens_are_accepted() -> Bool {
+  ch_accepted(o: ch_homonym(body: "type U = Optional<Int>\n"))
+    && ch_accepted(o: ch_with_std(body: "type U = Optional<Int>\n"))
+}
+
+// (5b) THE AUTHORED SPELLING KEEPS ITS AUTHORED OCCURRENCE. The sugar reaches the bound
+// declaration through a MARKED GENERATED reference, so identity is not carried by the occurrence;
+// this leg pins that an explicitly authored `Optional<Int>` is the instance AND is not the
+// synthetic occurrence — otherwise "one declaration" could be bought by minting the application.
+fn ch_is_authored_optional_instance(n: Node) -> Bool {
+  ch_is_optional_instance(n: n) && !(n.occurrence_id == OccurrenceSynthetic)
+}
+
+test fn ch_authored_application_keeps_its_authored_occurrence() -> Bool {
+  ch_holds(o: ch_with_std(body: "type U = Optional<Int>\n"), pred: ch_is_authored_optional_instance)
+}
+
+// (5) THE SUGAR, as the accepted side inside this witness: `T?` reaches the same bound declaration
+// the explicitly authored application does. Pairs with (3): sugar and explicit spelling, one node.
+test fn ch_sugar_is_the_optional_instance() -> Bool {
+  ch_holds(o: ch_with_std(body: "type U = Int?\n"), pred: ch_is_optional_instance)
+}
