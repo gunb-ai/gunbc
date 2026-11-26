@@ -76,8 +76,8 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
   match execution {
     RemoteArgvExecution { outcome: o } =>
       match o {
-      TypedArgvExecOverran { deadline: d } => false
-      TypedArgvExecWireInconsistent { fault: f } => false
+      TypedArgvExecOverran { deadline: _ } => false
+      TypedArgvExecWireInconsistent { fault: _ } => false
         TypedArgvExecRefused { reason: _ } => false
         TypedArgvExecConverged { result: r } => r.success
       }
