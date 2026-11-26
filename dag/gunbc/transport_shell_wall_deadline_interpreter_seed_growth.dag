@@ -55,6 +55,7 @@ data transport_shell_wall_deadline_interpreter_seed_growth_justification: SeedGr
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "declared_shell_leg_ceiling", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "wait_child_honoring_wall_deadline", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "kill_shell_process_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_group_kill_refused", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_result_from_capture", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_evidence_value", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "ShellLegExec", field: WholeDeclaration },

@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_served_observation
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_read_at }
-import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection_for_instance }
 import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
@@ -719,7 +719,7 @@ fn served_observation_observe_and_write_over(instance: HostDashboardInstance, pl
 fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String, identity: ServedReleaseIdentity) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
-    plan: roadmap_plan_projection(),
+    plan: roadmap_plan_projection_for_instance(instance: instance),
     observed_at: observed_at,
     identity: identity,
   )

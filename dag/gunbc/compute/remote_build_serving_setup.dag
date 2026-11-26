@@ -375,6 +375,18 @@ fn serving_account_presence_gate(account_name: String, passwd: ObservationAttemp
   }
 }
 
+// Is rustup PROVEN ABSENT -- the account's cargo-bin rustup read as not executable by a COMPLETED
+// test (Established false), the signature of a fresh serving account that has never had rustup? On
+// such an account `rustup toolchain list` cannot run and exits 127, so the toolchain leg reads
+// Refused. That 127 is the EXPECTED consequence of a proven-absent rustup, and bootstrapping rustup
+// then the pinned channel is the converge's work (EnsureRustup -> EnsureToolchain) -- so the toolchain
+// leg reports DRIFT there, never an unreadable fact. When rustup is merely unreadable (elevation
+// refused) or present but the listing errored, the toolchain stays unknown: a read nobody completed
+// never becomes a planned install (fail_closed). (remote_build_serving_fresh_account_has_no_toolchain_bootstrap)
+fn serving_rustup_proven_absent(rustup: ObservationAttempt<Bool, ServingLegFailure>) -> Bool {
+  match rustup { ObservationEstablished { observed: false } => true  _ => false }
+}
+
 // The authorized_keys-presence gate off the content leg: the reader mints the established empty
 // string exactly when the file was CONFIRMED absent, so established-empty is 'no subject' — and the
 // content deviation (the forced line is missing) fires the write that installs the file AT the declared
@@ -1379,7 +1391,7 @@ fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: S
           match o.serve_binary { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "seed.serve_binary", cause: c.cause }] },
           match o.checkout { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "checkout", cause: c.cause }] },
         ),
-        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "toolchain", cause: c.cause }] },
+        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => if serving_rustup_proven_absent(o.rustup) { [] } else { [ServingUnknown { item: "toolchain", cause: c.cause }] } },
       )
       let deviations = concat(
         concat(
@@ -1404,7 +1416,7 @@ fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: S
               serving_present_deviations(item: "seed.serve_binary", present: o.serve_binary),
               concat(
                 serving_present_deviations(item: "checkout", present: o.checkout),
-                serving_present_deviations(item: "toolchain", present: o.toolchain),
+                if serving_rustup_proven_absent(o.rustup) { match o.toolchain { ObservationEstablished { observed: true } => [] _ => [PresentAbsent { item: "toolchain" }] } } else { serving_present_deviations(item: "toolchain", present: o.toolchain) },
               ),
             ),
           ),
