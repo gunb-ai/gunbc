@@ -854,8 +854,10 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     // On a host whose ledger owner IS the remote-build account (no dashboard instance, off the legacy
     // frontier), the service user and the account are the same name — dedupe so the observed group
     // (which lists each member once) matches the desired count; an undeduped [gunbc-build, gunbc-build]
-    // would never settle (serving_group_deviations compares counts). See the account witness's
-    // fresh_host_group_members_are_all_ensured_by_the_converge and its red control.
+    // would never settle (serving_group_deviations compares counts). See the serving setup witness's
+    // fresh_host_group_members_are_a_single_converge_ensured_principal, its settle control
+    // fresh_host_deduped_settles_against_the_single_observed_member, and red control
+    // a_undeduped_second_member_diverges_at_plan_time.
     group_members: distinct_by_key([service_user, fleet_posix_remote_build_user.name as String], m => m),
     supplementary_groups: fleet_posix_remote_build_supplementary_groups,
     ledger_dirs: ledger,
