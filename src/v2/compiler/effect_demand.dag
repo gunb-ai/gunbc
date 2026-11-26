@@ -1212,8 +1212,10 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // =============================================================================================
 // EFFECTS-1 (egress-effects-1-filesystem-provider) -- TWO LOCATED REFUSAL PREDICATES.
 // RUNG, STATED PLAINLY: the two walls below are LOCATED REFUSAL PREDICATES -- typed census functions
-// that name each offender by identity -- EXECUTED by src/v2/test/claim/
-// filesystem_effect_reach_wall.dag. As authored in this cut they are NOT wired as
+// that name each offender by identity -- exercised by dag/test/claim/
+// filesystem_effect_reach_wall.dag (test.claim.filesystem_effect_reach_wall); rung: DECLARED, the
+// executed red/green pair is recorded on the pull request when the srv1 gunbc test run link lands.
+// As authored in this cut they are NOT wired as
 // a compile-phase gate that stops the compiler: a direct filesystem_read reach still reaches the runtime
 // unrealized_host_seam panic, and a new restatement row still lands unchecked by any compiler phase. The
 // gate that turns a red census into a compile-time stop is wired at the trigger carried by
@@ -1273,9 +1275,12 @@ type FilesystemWallCompileGateTrigger {
   // and is the one realization handler -- but its BINDING, on the emit side, to an ordinary-function entry
   // under the NativeCliDriver root (dag/gunbc/plans/demand_engine_program.dag D10: "what is missing is not a
   // handler but its binding to an ordinary-function entry under D11"). The two-site migration is the
-  // visible consequence; this symbol is the capability, and that binding is its OWN cut in the compiler-lane stage
-  // stage (a separate row citing D10/D11, owner A, NotDispatchable until
-  // the emission-lane staffs it) -- this carrier names it, it does not implement it.
+  // visible consequence; this symbol is the capability, it does not implement it. THE BINDING IS
+  // DEFERRED AND CURRENTLY UNOWNED: no roadmap row carries it yet (review 98763 finding 1), so per
+  // gunbc.design_argument::guarantee_ladder meta-obligation 2 -- "No untracked stall. A class below
+  // ceiling names its next-rung trigger" -- THIS carrier is its tracker, and a dispatchable
+  // compiler-lane row citing D10/D11 must be authored by planning before the binding can be staffed.
+  // This comment deliberately names no row id: naming a row that does not exist is how a stall hides.
   missing_capability: Symbol
   // THE CAPABILITY TEXT, RULED ON THIS ROW, VERBATIM: "emit_rust binds a native handler at an
   // ordinary-function entry". B's rule: the capability is the sentence, NOT a row id -- "Not a row id, so it
