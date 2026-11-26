@@ -369,6 +369,11 @@ type PrivilegedStepOutcome
   | CredentialRejected { lease: AuthorizationRequest<SparkBootstrapSubject> }
   | PrivilegedCommandFailed { command: AdmittedRootArgv, exit_code: Int, stderr: String }
   | PrivilegedCommandSucceeded { command: AdmittedRootArgv }
+  // The privileged step was DISPATCHED and its reply came back unreadable (overran, or an inconsistent
+  // wire shape): the command may have run on the host, so its effect is unknown.  The bootstrap
+  // credential WAS read and is kept -- this is NOT "never received" / "never attempted".  A later
+  // independent readback decides the standing; nothing here claims the sudoers did or did not install.
+  | PrivilegedCommandUnanswered { command: AdmittedRootArgv, cause: String }
 
 fn privileged_step_succeeded(outcome: PrivilegedStepOutcome) -> Bool {
   match outcome {
@@ -377,6 +382,19 @@ fn privileged_step_succeeded(outcome: PrivilegedStepOutcome) -> Bool {
     CredentialRejected { lease: _ } => false
     CredentialNotEnrolled { lease: _ } => false
     CredentialNotMaterialized { lease: _, cause: _ } => false
+    // dispatched, effect unknown: it did not SUCCEED, so do not proceed -- but this is not a refusal
+    // and not an "did not happen"; the readback below decides the real standing.
+    PrivilegedCommandUnanswered { command: _, cause: _ } => false
+  }
+}
+
+// Whether the privileged step was dispatched but its reply came back unreadable, so its effect is
+// unknown.  A destructive step in this state must STILL run its independent readback (the effect may
+// have happened), unlike a genuine pre-dispatch refusal, which has nothing to read back.
+fn privileged_step_unanswered(outcome: PrivilegedStepOutcome) -> Bool {
+  match outcome {
+    PrivilegedCommandUnanswered { command: _, cause: _ } => true
+    _ => false
   }
 }
 
@@ -432,6 +450,8 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
       ], "")
     PrivilegedCommandSucceeded { command: cmd } =>
       join(["    privileged-step ok ", admitted_root_argv_label(command: cmd), "\n"], "")
+    PrivilegedCommandUnanswered { command: cmd, cause: c } =>
+      join(["    privileged-step DISPATCHED, reply unreadable ", admitted_root_argv_label(command: cmd), " effect unknown: ", c, "\n"], "")
   }
 }
 
@@ -635,13 +655,13 @@ fn run_privileged_step(
                 FleetPrincipalLegRefused { cause: why } =>
                   CredentialNotMaterialized { lease: effective_lease, cause: why as String }
                   FleetPrincipalLegOverran { session: _, deadline: d } =>
-                    CredentialNotMaterialized {
-                      lease: effective_lease,
+                    PrivilegedCommandUnanswered {
+                      command: command,
                       cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
                     }
                   FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
-                    CredentialNotMaterialized {
-                      lease: effective_lease,
+                    PrivilegedCommandUnanswered {
+                      command: command,
                       cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark grant privileged materialize", fault: f),
                     }
                 FleetPrincipalLegRan { session: _, result: result } =>
@@ -1110,6 +1130,8 @@ fn spark_grant_install_from_privileged(
     CredentialRejected { lease: _ } => false
     PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
     PrivilegedCommandSucceeded { command: _ } => false
+    // dispatched, credential ready, effect unknown: not an awaiting-credential condition.
+    PrivilegedCommandUnanswered { command: _, cause: _ } => false
   }) {
     SparkGrantInstallAwaitingOperatorCredential { host: host, grant: grant, principal: principal }
   } else {

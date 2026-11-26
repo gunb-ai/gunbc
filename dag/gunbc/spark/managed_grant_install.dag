@@ -51,6 +51,7 @@ import gunbc.spark.grant_privileged_operation {
 
   run_privileged_step,
   privileged_step_succeeded,
+  privileged_step_unanswered,
   privileged_step_outcome_wire,
   PrivilegedStepOutcome,
   CredentialNotEnrolled,
@@ -180,7 +181,7 @@ fn spark_retired_dropin_converge(
             context: context, admission: admission, administrator: administrator,
             attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
           )
-          if !privileged_step_succeeded(outcome: removed) {
+          if !privileged_step_succeeded(outcome: removed) && !privileged_step_unanswered(outcome: removed) {
             RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
           } else if spark_retired_dropin_removal_confirmed(
             outcome: spark_grant_probe_outcome(context: context, host: host),

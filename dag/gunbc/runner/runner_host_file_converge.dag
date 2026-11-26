@@ -2379,6 +2379,10 @@ type RunnerSpecAccountStanding
   = RunnerSpecAccountPresent { login: NonEmptyStr, uid: Int }
   | RunnerSpecAccountCreated { login: NonEmptyStr, uid: Int }
   | RunnerSpecAccountMissing { login: NonEmptyStr, cause: NonEmptyStr }
+  // useradd was DISPATCHED and its reply came back unreadable, and the independent post-write getent
+  // readback could NOT settle it: the account may or may not exist.  Not "Missing" (not created) --
+  // the effect is unknown until a later read settles it.
+  | RunnerSpecAccountUnanswered { login: NonEmptyStr, cause: NonEmptyStr }
 
 type RunnerSpecAccountRead
   = RunnerSpecAccountReadPresent { uid: Int }
@@ -2449,8 +2453,18 @@ fn converge_runner_spec_account(
             AdministratorPrivilegeRefused { reason: r } => RunnerSpecAccountMissing { login: role.login, cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr }
             AdministratorPrivilegeAvailable =>
               match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
-              TypedArgvExecOverran { deadline: d } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
-              TypedArgvExecWireInconsistent { fault: f } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
+              TypedArgvExecOverran { deadline: d } =>
+                match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
+                  RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
+                  RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd leg overran (", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d), "); the independent getent readback shows the account still absent"], "") as NonEmptyStr }
+                  RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: role.login, cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
+                }
+              TypedArgvExecWireInconsistent { fault: f } =>
+                match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
+                  RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
+                  RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), "); the independent getent readback shows the account still absent"], "") as NonEmptyStr }
+                  RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: role.login, cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
+                }
                 TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", why) as NonEmptyStr }
                 TypedArgvExecConverged { result: r } =>
                   match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
@@ -5442,6 +5456,9 @@ fn runner_spec_account_settled(a: RunnerSpecAccountStanding) -> Bool {
     RunnerSpecAccountPresent { login: _, uid: _ } => true
     RunnerSpecAccountCreated { login: _, uid: _ } => true
     RunnerSpecAccountMissing { login: _, cause: _ } => false
+    // dispatched, effect unknown: the account creation was sent but its effect could not be settled by
+    // the readback -- not settled (the run must not report success on an effect it cannot confirm).
+    RunnerSpecAccountUnanswered { login: _, cause: _ } => false
   }
 }
 
