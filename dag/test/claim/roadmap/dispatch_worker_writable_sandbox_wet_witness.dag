@@ -128,7 +128,9 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_locus_install_spine, witness_fold_spine_dir_is_admissible,
   witness_tree_destination_subtree_outcome, witness_tree_destination_subtree_outcome_label,
   witness_tree_destination_subtree_is_link_free, witness_tree_install_destinations_are_admitted,
-  witness_directory_listing_is_provably_empty,
+  witness_directory_listing_is_provably_empty, witness_canonical_absolute_path,
+  witness_doubled_slash_spelling, witness_path_components,
+  WitnessPathShape, WitnessPathRoot, WitnessPathAbsolute, WitnessPathRefused,
 }
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
@@ -3088,6 +3090,63 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
   let boundary_sealed = witness_tree_install_destinations_are_admitted(
     source: source, destination: sealed_target, root: sealed_target,
   )
+  // (h) THE SPELLING OF A PATH IS NOT ITS IDENTITY. A base kept verbatim from a fixture and then joined
+  // with another "/" arrives as "/a/b/" -- and std.filesystem's two helpers disagree exactly there:
+  // path_parent_directory drops one slash-segment INCLUDING the empty one, while path_basename skips empty
+  // segments, so chained over a trailing slash a walk lists the directory /a/b and asks it for a child named
+  // "b", answering Missing for a destination that stands there. The walk therefore parses a supplied path
+  // ONCE into nonempty components (repeated separators collapse; empty input, "." and ".." are refused) and
+  // every step and join works on that list. "/a/b", "/a/b/" and "/a//b" are one shape with ONE verdict --
+  // asserted here through the same interface, the scan outcome -- and the navigating or empty shapes answer
+  // Unobservable WITHOUT a command ever running under them.
+  let present_names = match witness_path_components(path: present) {
+    WitnessPathAbsolute { components: n } => n
+    WitnessPathRoot { } => []
+    WitnessPathRefused { cause: _ } => []
+  }
+  let spell_canonical = witness_canonical_absolute_path(names: present_names)
+  let spell_slashed = join([spell_canonical, "/"], "")
+  let spell_doubled = witness_doubled_slash_spelling(names: present_names)
+  let spell_trailing_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: spell_slashed),
+  )
+  let spell_doubled_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: spell_doubled),
+  )
+  let spell_trailing_admitted = witness_tree_destination_subtree_is_link_free(root: spell_slashed)
+  let spell_doubled_admitted = witness_tree_destination_subtree_is_link_free(root: spell_doubled)
+  let refused_relative_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: "a/b"),
+  )
+  let refused_empty_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: ""),
+  )
+  let refused_dot_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: "/a/./b"),
+  )
+  let refused_dotdot_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: "/a/../b"),
+  )
+  // (i) AN ENTRY NAME IS BYTE CONTENT, NOT A LINE. Listing membership and emptiness used to trim stdout and
+  // split on newline, so a directory whose only entry is named " " read as EMPTY, and an entry whose name
+  // holds a newline was no longer one name. Both properties are pinned through the interface: the
+  // whitespace-named destination is PRESENT (LinkFree -- a trimmed membership would lose it to Missing and
+  // admit it as Absent), the newline-named destination is PRESENT, and NEITHER directory is provably empty
+  // (a trimmed, newline-split listing would call the space-only directory empty).
+  let ws_dir = join([root, "/loci/ws"], "")
+  let ws_child = join([ws_dir, "/ "], "")
+  let ws_staged = wet_ok(command: mkdir_parents_command(path: ws_child))
+  let ws_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: ws_child),
+  )
+  let ws_dir_not_empty = !witness_directory_listing_is_provably_empty(path: ws_dir)
+  let nl_dir = join([root, "/loci/nl"], "")
+  let nl_child = join([nl_dir, "/nl", "\n", "inside"], "")
+  let nl_staged = wet_ok(command: mkdir_parents_command(path: nl_child))
+  let nl_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: nl_child),
+  )
+  let nl_dir_not_empty = !witness_directory_listing_is_provably_empty(path: nl_dir)
   wet_claim_verdicts_with_root_readbacks(
     verdict: root != ""
       && present_staged && linked_staged && linked_planted
@@ -3103,7 +3162,15 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
       && missing_admitted && present_admitted && !linked_admitted && !sealed_admitted
       && !gp_admitted && !ro_admitted
       && empty_staged && sealed_not_provably_empty && empty_provably_empty
-      && boundary_missing && !boundary_sealed,
+      && boundary_missing && !boundary_sealed
+      && present_names != []
+      && spell_trailing_answer == "LinkFree" && spell_doubled_answer == "LinkFree"
+      && spell_trailing_admitted && spell_doubled_admitted
+      && refused_relative_answer == "Unobservable" && refused_empty_answer == "Unobservable"
+      && refused_dot_answer == "Unobservable" && refused_dotdot_answer == "Unobservable"
+      && ws_staged && nl_staged
+      && ws_answer == "LinkFree" && nl_answer == "LinkFree"
+      && ws_dir_not_empty && nl_dir_not_empty,
     roots: [root as NonEmptyStr],
   )
 }
@@ -3265,7 +3332,7 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
     && !witness_locus_destinations_are_admitted(instance: inst, locus_key: planted_key)
   // THE ROUTE REFUSES, AND THE EFFECT DOES NOT HAPPEN ANYWHERE ELSE.
   let route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: planted_key, image: named)
-  let escape_stayed_empty = away != "" && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  let escape_stayed_empty = away != "" && witness_directory_listing_is_provably_empty(path: away)
   // THE STAGING NAME ITSELF, PLANTED. The receipt writer stages under the admitted instance root at a name
   // built from the stage key, and "that is under the root, so it is safe" is exactly the reasoning the base
   // guard could never carry: a link standing at that name takes the receipt's bytes out of the supplied tree
@@ -3284,7 +3351,7 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
     && !witness_locus_destination_is_admitted(candidate: stage_name)
   let stage_route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: staged_key, image: named)
   let stage_escape_stayed_empty = stage_away != ""
-    && wet_out(command: ls_almost_all_one_per_line_command(path: stage_away)) == ""
+    && witness_directory_listing_is_provably_empty(path: stage_away)
   let recorded = wet_stage_trail_contains(
       needle: join([witness_locus_destination_refused_stage as String, planted_key], ""),
     )
@@ -3346,7 +3413,7 @@ test fn a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse() -
   let locus_refusal_recorded = wet_stage_trail_contains(
     needle: join(["claim-locus-refused:", unit_key], ""),
   )
-  let escape_stayed_empty = away != "" && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  let escape_stayed_empty = away != "" && witness_directory_listing_is_provably_empty(path: away)
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
       && root != "" && away != "" && linked && named_the_locus && no_launcher_excuse

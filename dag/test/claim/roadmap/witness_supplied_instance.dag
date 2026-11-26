@@ -1,12 +1,11 @@
 module test.claim.roadmap.witness_supplied_instance
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, CommitSha }
-import std.algebra { trim }
+import std.algebra { trim, list_head, list_tail, list_init, list_push }
 import std.optional { Optional, Present, Absent }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
 import gunbc.harness.harness_operator_credential { OperatorCredentialFile }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
-import std.filesystem { path_parent_directory, path_basename }
 import std.materialization_ladder { string_list_contains }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
@@ -50,6 +49,7 @@ import extdeps.tools.stat {
 }
 import extdeps.tools.findutils {
   find_untrusted_entries_command, find_tree_entry_metadata_command, find_symlink_targets_command,
+  find_child_names_command,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -773,20 +773,37 @@ type WitnessTreeSubtreeScanOutcome =
 // used to trust both answer "no" for reasons that are not absence. `test -e` needs SEARCH (x) permission on
 // every ancestor, so a sealed grandparent answers it exactly as a missing name does; `realpath -m` does not
 // fail on unreadable components at all (realpath(1): -m resolves what exists and appends the rest), so it
-// cannot separate them either. A directory LISTING answers: `ls -1 -A` needs only READ on the parent, and a
-// name that a successful listing does not report is not in that directory -- while a name it DOES report
-// stands there even when a mode without x hides it from `test -e`. path_resolution(7) is the upstream that
-// splits read (enumerate) from search (resolve a name) permission; this walk is that split made operational.
+// cannot separate them either. A directory LISTING answers: `find DIR -mindepth 1 -maxdepth 1 -printf
+// \'%f\0\'` needs only READ (readdir) on the parent, and a name that a successful listing does not report is
+// not in that directory -- while a name it DOES report stands there even when a mode without x hides it from
+// `test -e`. path_resolution(7) is the upstream that splits read (enumerate) from search (resolve a name)
+// permission; this walk is that split made operational.
 type WitnessTreeComponentState =
   | WitnessTreeComponentPresent {}
   | WitnessTreeComponentMissing {}
   | WitnessTreeComponentUnobservable { cause: String }
 
+// THE ENTRIES OF A NUL-TERMINATED `%f` LISTING, as words. find terminates every entry INCLUDING the last,
+// so splitting on NUL leaves exactly one trailing empty word to drop -- and only that trailing one. No real
+// entry name is empty (a zero-character name cannot exist in a directory) and no name contains NUL (the
+// kernel admits every byte but `/` and NUL in a name, path_resolution(7)), so the words between terminators
+// ARE the entry names, spaces, tabs, and newlines kept AS CONTENT. Nothing here trims: a whitespace-only
+// name is an entry, not an absence of one, and a name containing a newline is one entry, not two.
+fn witness_listed_child_names(stdout: String) -> List<String> {
+  let words = split(s: stdout, delimiter: "\u{0}")
+  if words == [] {
+    []
+  } else {
+    list_init(xs: words)
+  }
+}
+
 // DOES A SUCCESSFUL LISTING OF `parent` NAME `wanted`? A listing that could not start, or that the host
-// refused (exit non-zero), is UNOBSERVABLE -- never "the name is not there". The words of `ls -1 -A` are one
-// entry per line, so membership is exact-line, not substring: `v2` must not be satisfied by `av2x`.
+// refused (exit non-zero), is UNOBSERVABLE -- never "the name is not there". Membership is EXACT EQUALITY
+// against the NUL-terminated entries: `v2` is not satisfied by `av2x`, a name of one space is satisfied
+// only by a name of one space, and a name holding a newline is one whole name.
 fn witness_tree_parent_listing_state(parent: String, wanted: String) -> WitnessTreeComponentState {
-  let probe = ls_almost_all_one_per_line_command(path: parent)
+  let probe = find_child_names_command(dir: parent)
   let read = shell.Exec.RunArgvOutcome(
     program: probe.program.invocation as String,
     arguments: probe.arguments,
@@ -798,7 +815,7 @@ fn witness_tree_parent_listing_state(parent: String, wanted: String) -> WitnessT
       if read.exit_code != 0 {
         WitnessTreeComponentUnobservable { cause: join(["parent-listing-failed:", parent]) }
       } else if string_list_contains(
-        xs: split(s: trim(s: read.stdout), delimiter: "\n"),
+        xs: witness_listed_child_names(stdout: read.stdout),
         wanted: wanted,
       ) {
         WitnessTreeComponentPresent {}
@@ -808,45 +825,116 @@ fn witness_tree_parent_listing_state(parent: String, wanted: String) -> WitnessT
   }
 }
 
-// THE WALK FROM THE DEEPEST COMPONENT THAT CAN BE POSITIVELY OBSERVED, spelled as a recursion to the
-// filesystem root. A component is PRESENT only when its parent's listing ran clean and named it; MISSING
-// only when its parent's listing ran clean and omitted it; and UNOBSERVABLE whenever any ancestor's listing
-// could not be taken -- because the answer for every component below that one is then unknown, and a walk
-// that stopped at the first component it could not even try is the conflation this whole pass exists to
-// kill. The floor is "/": path_parent_directory("/") is "/", so the recursion ends there.
-fn witness_tree_component_state(path: String) -> WitnessTreeComponentState {
-  let parent = path_parent_directory(path: path)
-  if parent == path {
-    WitnessTreeComponentPresent {}
+// THE SHAPE A SUPPLIED PATH HAS AT THE BOUNDARY: parsed ONCE into its name segments, and nothing else.
+// WHY THE WALK CANNOT DO STRING ARITHMETIC AT ALL. std.filesystem.path_parent_directory drops one
+// slash-segment -- including an EMPTY one -- while std.filesystem.path_basename skips empty segments: for
+// the input "/a/b/" the parent comes back as "/a/b" (the path itself, minus a slash) and the basename as
+// "b", so a walk that chained them would list the directory "/a/b" and ask it for a child named "b" while
+// asked about "/a/b" itself -- and a directory that does not contain its own name answers "no such child",
+// propagating Missing for a path that is there. A supplied base ending in "/" joined with another "/" is
+// exactly this input. The helpers\' disagreement is real and is filed as a standing defect; they are not
+// edited here (many consumers, gunbc.design_argument::single_authority). So the walk parses the path once
+// and every step and join works on the component LIST. Repeated separators collapse -- "/a/b", "/a/b/" and
+// "/a//b" are ONE shape with ONE verdict. ".", ".." and empty input are refused rather than folded: a
+// navigating segment cannot be canonicalized without resolving links (which is the very question the walk
+// answers), and the supplied roots are absolute, so a relative destination under a scan is an ambiguity
+// this witness refuses to guess about (gunbc.design_argument::fail_closed).
+type WitnessPathShape =
+  | WitnessPathRoot { }
+  | WitnessPathAbsolute { components: List<String> }
+  | WitnessPathRefused { cause: String }
+
+fn witness_path_components(path: String) -> WitnessPathShape {
+  if path == "" {
+    WitnessPathRefused { cause: "empty-path" }
   } else {
-    witness_tree_component_state_below(path: path, parent: parent)
+    let segments = split(s: path, delimiter: "/")
+    match list_head(xs: segments) {
+      Absent => WitnessPathRefused { cause: "empty-path" }
+      Present { value: head } =>
+        if head != "" {
+          WitnessPathRefused { cause: "relative-path" }
+        } else if string_list_contains(xs: segments, wanted: ".")
+          || string_list_contains(xs: segments, wanted: "..") {
+          WitnessPathRefused { cause: "navigating-segment" }
+        } else {
+          let names = segments |> fold(init: [], f: (acc, seg) =>
+            if seg == "" { acc } else { list_push(xs: acc, item: seg) })
+          if names == [] {
+            WitnessPathRoot {}
+          } else {
+            WitnessPathAbsolute { components: names }
+          }
+        }
+    }
   }
 }
 
-// ONE STEP OF THE WALK: the component may only be judged from its parent's listing once the PARENT itself
-// has been positively observed; a missing or unobservable parent passes its answer down, because below a
-// component that is not there, nothing is there either, and below one that cannot be seen, nothing can be.
-fn witness_tree_component_state_below(path: String, parent: String) -> WitnessTreeComponentState {
-  let above = witness_tree_component_state(path: parent)
-  match above {
-    WitnessTreeComponentPresent {} =>
-      witness_tree_parent_listing_state(parent: parent, wanted: path_basename(path: path))
-    WitnessTreeComponentMissing {} => WitnessTreeComponentMissing {}
-    WitnessTreeComponentUnobservable { cause: c } => WitnessTreeComponentUnobservable { cause: c }
+// THE ONE SPELLING every command and cause string is handed: rebuilt from the parsed components, so every
+// consumer sees the same canonical path for every spelling of the same location.
+fn witness_canonical_absolute_path(names: List<String>) -> String {
+  join(["/", join(names, "/")], "")
+}
+
+// A SECOND LEGITIMATE SPELLING of the same location with doubled separators between every pair of
+// components -- "/a//b" beside "/a/b" and "/a/b/". It parses to the SAME component list, so the walk must
+// hand it the SAME verdict; an admission that reads one spelling differently admits a location by its
+// spelling, which is the failure mode a path cannot be trusted with.
+fn witness_doubled_slash_spelling(names: List<String>) -> String {
+  join(["/", join(names, "//")], "")
+}
+
+// THE CHILD OF AN ALREADY-CANONICAL prefix by one parsed name. "/" + name for the root; prefix + "/" +
+// name otherwise -- built from pieces, never by cutting a string back.
+fn witness_child_path(prefix: String, name: String) -> String {
+  if prefix == "/" {
+    join(["/", name], "")
+  } else {
+    join([prefix, "/", name], "")
   }
 }
 
-// THE POSITIVE SIDE OF ABSENCE, now read off the walk. The destination's own component state answers the
-// three questions the old pair of probes conflated: MISSING (the first component the walk could not find was
-// omitted by a SUCCESSFUL listing of its parent -- the positive evidence that nothing stands at the
-// destination) admits; PRESENT (a clean listing named the destination even though the scan failed over it --
-// the listable-but-not-searchable parent, which `test -e` could not see) refuses; UNOBSERVABLE (any listing
-// the walk could not take, at any depth) refuses.
-fn witness_tree_destination_absence_is_positive(root: String) -> WitnessTreeSubtreeScanOutcome {
-  match witness_tree_component_state(path: root) {
+// THE WALK FROM THE DEEPEST COMPONENT THAT CAN BE POSITIVELY OBSERVED, over the PARSED component list.
+// A component is PRESENT only when its parent\'s listing ran clean and named it; MISSING only when its
+// parent\'s listing ran clean and omitted it; and UNOBSERVABLE whenever any ancestor\'s listing could not be
+// taken -- because the answer for every component below that one is then unknown, and a walk that stopped
+// at the first component it could not even try is the conflation this whole pass exists to kill. The walk
+// descends: each step judges one parsed name against the listing of the prefix above it, and only a Present
+// answer lets the descent continue -- below a component that is not there, nothing is there either, and
+// below one that cannot be seen, nothing can be. The convention at the top is that "/" itself is the
+// substrate (an environment without it runs nothing); the listing interface cannot ask it, and no
+// destination\'s verdict rests on asking it.
+fn witness_tree_names_state(names: List<String>, prefix: String) -> WitnessTreeComponentState {
+  match list_head(xs: names) {
+    Absent => WitnessTreeComponentPresent {}
+    Present { value: first } =>
+      match witness_tree_parent_listing_state(parent: prefix, wanted: first) {
+        WitnessTreeComponentPresent {} =>
+          match list_tail(xs: names) {
+            Absent => WitnessTreeComponentPresent {}
+            Present { value: rest } =>
+              witness_tree_names_state(names: rest, prefix: witness_child_path(prefix: prefix, name: first))
+          }
+        WitnessTreeComponentMissing {} => WitnessTreeComponentMissing {}
+        WitnessTreeComponentUnobservable { cause: c } => WitnessTreeComponentUnobservable { cause: c }
+      }
+  }
+}
+
+// THE POSITIVE SIDE OF ABSENCE, read off the walk over the PARSED path. The destination's own component
+// state answers the three questions the old pair of probes conflated: MISSING (the first component the walk
+// could not find was omitted by a SUCCESSFUL listing of its parent -- the positive evidence that nothing
+// stands at the destination) admits; PRESENT (a clean listing named the destination even though the scan
+// failed over it -- the listable-but-not-searchable parent, which `test -e` could not see) refuses;
+// UNOBSERVABLE (any listing the walk could not take, at any depth) refuses. A path whose SHAPE was refused
+// is unobservable too: a destination this witness cannot even name unambiguously is never admitted.
+fn witness_tree_destination_absence_is_positive(canonical: String, names: List<String>) -> WitnessTreeSubtreeScanOutcome {
+  match witness_tree_names_state(names: names, prefix: "/") {
     WitnessTreeComponentMissing {} => WitnessTreeSubtreeAbsent {}
     WitnessTreeComponentPresent {} =>
-      WitnessTreeSubtreeUnobservable { cause: join(["listing-named-destination-despite-scan-failure:", root]) }
+      WitnessTreeSubtreeUnobservable {
+        cause: join(["listing-named-destination-despite-scan-failure:", canonical])
+      }
     WitnessTreeComponentUnobservable { cause: c } =>
       WitnessTreeSubtreeUnobservable { cause: join(["component-walk:", c]) }
   }
@@ -854,17 +942,18 @@ fn witness_tree_destination_absence_is_positive(root: String) -> WitnessTreeSubt
 
 // AN ESCAPE TARGET IS EMPTY ONLY WHEN THE LISTING ITSELF SUCCEEDS. `wet_out` maps a refused process to "",
 // so `exists && ls == ""` passes BLIND when the host refuses to list the directory -- the exact blindness
-// the readbacks of the fold control must not have. This asks the listing for its exit code: zero entries,
-// from a listing that RAN.
+// the readbacks of the fold control must not have. This asks the listing for its exit code AND counts its
+// ENTRIES: zero entries, from a NUL-terminated listing that RAN (exit 0). A whitespace-only name is an
+// entry, so a directory holding one entry named " " is NOT provably empty; nothing here trims.
 fn witness_directory_listing_is_provably_empty(path: String) -> Bool {
-  let probe = ls_almost_all_one_per_line_command(path: path)
+  let probe = find_child_names_command(dir: path)
   let read = shell.Exec.RunArgvOutcome(
     program: probe.program.invocation as String,
     arguments: probe.arguments,
   )
   match read.outcome {
     ShellSpawnRefused { program: _, cause: _ } => false
-    ShellExited => read.exit_code == 0 && trim(s: read.stdout) == ""
+    ShellExited => read.exit_code == 0 && witness_listed_child_names(stdout: read.stdout) == []
   }
 }
 
@@ -876,26 +965,35 @@ fn witness_directory_listing_is_provably_empty(path: String) -> Bool {
 // so exit 1 goes to the component walk, which admits only what a successful parent listing omitted. exit 2
 // (find's own serious error) is unobservable.
 fn witness_tree_destination_subtree_outcome(root: String) -> WitnessTreeSubtreeScanOutcome {
-  let probe = find_symlink_targets_command(root: root)
-  let read = shell.Exec.RunArgvOutcome(
-    program: probe.program.invocation as String,
-    arguments: probe.arguments,
-  )
-  match read.outcome {
-    ShellSpawnRefused { program: _, cause: _ } =>
-      WitnessTreeSubtreeUnobservable { cause: join(["scan-spawn-refused:", root]) }
-    ShellExited =>
-      if read.exit_code == 0 {
-        if trim(s: read.stdout) == "" {
-          WitnessTreeSubtreeLinkFree {}
-        } else {
-          WitnessTreeSubtreeLinkFound { links: trim(s: read.stdout) }
-        }
-      } else if read.exit_code == 1 {
-        witness_tree_destination_absence_is_positive(root: root)
-      } else {
-        WitnessTreeSubtreeUnobservable { cause: join(["listing-refused:", root]) }
+  match witness_path_components(path: root) {
+    WitnessPathRefused { cause: c } =>
+      WitnessTreeSubtreeUnobservable { cause: join(["path-shape:", c]) }
+    WitnessPathRoot {} =>
+      WitnessTreeSubtreeUnobservable { cause: join(["destination-is-filesystem-root:", root]) }
+    WitnessPathAbsolute { components: names } => {
+      let canonical = witness_canonical_absolute_path(names: names)
+      let probe = find_symlink_targets_command(root: canonical)
+      let read = shell.Exec.RunArgvOutcome(
+        program: probe.program.invocation as String,
+        arguments: probe.arguments,
+      )
+      match read.outcome {
+        ShellSpawnRefused { program: _, cause: _ } =>
+          WitnessTreeSubtreeUnobservable { cause: join(["scan-spawn-refused:", canonical]) }
+        ShellExited =>
+          if read.exit_code == 0 {
+            if trim(s: read.stdout) == "" {
+              WitnessTreeSubtreeLinkFree {}
+            } else {
+              WitnessTreeSubtreeLinkFound { links: trim(s: read.stdout) }
+            }
+          } else if read.exit_code == 1 {
+            witness_tree_destination_absence_is_positive(canonical: canonical, names: names)
+          } else {
+            WitnessTreeSubtreeUnobservable { cause: join(["listing-refused:", canonical]) }
+          }
       }
+    }
   }
 }
 
