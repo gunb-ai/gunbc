@@ -10,6 +10,6 @@ fn witness_get_post_title_nonempty() -> Bool {
   }
 }
 
-fn http_pilot_rest_keystone_holds() -> Bool {
+test fn http_pilot_rest_keystone_holds() -> Bool {
   witness_get_post_title_nonempty()
 }

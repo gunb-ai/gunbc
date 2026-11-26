@@ -45,6 +45,14 @@ import gunbc.roadmap.roadmap_validation_oracle {
   validation_oracle_first_incomplete,
 }
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
+import extdeps.process.posix_exit { exit_code_general_error }
+import gunbc.instruments.claim_operand {
+  ClaimOperand,
+  ClaimOperandUnnameable,
+  claim_identity_operand,
+}
 
 // THE COMPLETION PREDICATE FOR EVERY CLOSING-CONTRACT TASK, PARAMETERIZED BY ITS TARGET.
 // gunbc.roadmap.roadmap_authority closing_contract_task_naming_correction_note named this construction as
@@ -98,9 +106,12 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 // toplevel of the checkout this predicate itself runs in (belt verify's detached attempt worktree,
 // or the operator's own checkout by hand), with the contract's own claim_source_root_args, so the
 // executed witness is the same tree the pin observed. WET STANDING: the execution arm spawns a
-// subprocess, so closing_contract_authored is claim-runnable only where the interpreter admits real
-// host effects -- belt verify and `gunbc run --claim-run` by hand, never the hermetic discovery
-// batch; the behavioral discrimination witnesses for this arm are enrolled as a wet row in
+// subprocess, so the driver runs only where the interpreter admits real host effects. An ordinary
+// `gunbc run` is Wet (gunbc.std.execution_mode execution_mode_for(None, false, dry_run)), which is what a
+// driver needs; the legacy `--claim-run` spelling this validation carried selected HERMETIC instead, so the
+// child this driver spawns was refused by its own envelope -- the move to the process entry (closing_contract_authoring_exit)
+// is also the move from a mode that could not run to the mode that can. Never the hermetic discovery batch;
+// the behavioral discrimination witnesses for this arm are enrolled as a wet row in
 // gunbc.ci.ci_layer_roots beside the other exit-status witnesses.
 
 type ClosingContractAuthoringVerdict
@@ -327,18 +338,61 @@ fn closing_contract_runner(runner: String, root: String) -> ClosingContractRunne
 // everything else travels as opaque detail rather than being re-read.
 data closing_contract_resolve_refusal_stderr_prefix: String = "error: resolve failed for"
 
+// THE CLOSING CONTRACT'S ORACLE RUNS AS A CLAIM, NAMED AS ONE. This used to be the legacy form --
+// `run --entry <path>.dag --function <fn> --claim-run` -- which asked the interpreter to evaluate whatever
+// it found at that path under that name. The route names claims by label, so the oracle's subject is
+// admitted by `claim_identity_operand`, the same rule every other caller's rows go through, and an oracle
+// whose entry is not a module of the claim universe is REFUSED HERE rather than producing an argv that runs
+// something the contract never named. A closing contract is exactly the wrong place for that: the contract
+// is the evidence a node is done.
+//
+// NO MODE WORD IS SPELLED, AND THAT IS THE REQUEST: an unspelled `gunbc test` is admitted Hermetic by
+// `gunbc.gunbc.target_invocation`'s mode admission -- the same grant the legacy form's silence meant -- so
+// adding `--hermetic` here would be a word for something the request already says. The roots still travel
+// as given: `--source-root` replaces the default pair, so a contract that names its own corpus keeps it.
+type ClosingContractWitnessArgv
+  = ClosingContractWitnessArgvBuilt { argv: List<String> }
+  | ClosingContractWitnessArgvRefused { entry: String, function: String, reason: String }
+
 fn closing_contract_witness_argv(
   oracle: ValidationOracleRef,
   source_root_args: List<String>,
-) -> List<String> {
-  concat(
-    concat(["run"], source_root_args),
-    [
-      "--entry", oracle.entry as String,
-      "--function", oracle.function as String,
-      "--claim-run",
-    ],
-  )
+) -> ClosingContractWitnessArgv {
+  match claim_identity_operand(entry: oracle.entry as String, function: oracle.function as String) {
+    ClaimOperand { label: label } => ClosingContractWitnessArgvBuilt {
+      argv: concat(concat(["test"], source_root_args), [label]),
+    }
+    ClaimOperandUnnameable { entry: entry, function: function, reason: reason } => ClosingContractWitnessArgvRefused {
+      entry: entry as String,
+      function: function as String,
+      reason: reason,
+    }
+  }
+}
+
+
+fn is_closing_contract_witness_argv_refused(argv: ClosingContractWitnessArgv) -> Bool {
+  match argv {
+    ClosingContractWitnessArgvRefused { entry: _, function: _, reason: _ } => true
+    ClosingContractWitnessArgvBuilt { argv: _ } => false
+  }
+}
+
+fn closing_contract_witness_argv_words(argv: ClosingContractWitnessArgv) -> List<String> {
+  match argv {
+    ClosingContractWitnessArgvBuilt { argv: words } => words
+    ClosingContractWitnessArgvRefused { entry: _, function: _, reason: _ } => []
+  }
+}
+
+fn closing_contract_witness_argv_refusal_detail(argv: ClosingContractWitnessArgv) -> String {
+  match argv {
+    ClosingContractWitnessArgvRefused { entry: entry, function: function, reason: reason } => join(
+      ["the closing contract names no claim: entry ", entry, ", function ", function, ": ", reason],
+      ""
+    )
+    ClosingContractWitnessArgvBuilt { argv: _ } => ""
+  }
 }
 
 fn closing_contract_execute_oracle(
@@ -347,10 +401,23 @@ fn closing_contract_execute_oracle(
   source_root_args: List<String>,
   workdir: String,
 ) -> ClosingContractWitnessRun {
+  // THE REFUSAL NEEDS NO CHILD, AND IT IS NOT REPORTED AS ONE. A subject the route cannot name never
+  // reaches the spawn: the run comes back Refused with the row and the reason, and the exit code is the one
+  // the route itself returns for an operand it cannot admit (2), so anything downstream reading the record
+  // sees an unobserved refusal rather than a child that supposedly ran and agreed.
+  let argv = closing_contract_witness_argv(oracle: oracle, source_root_args: source_root_args)
+  if is_closing_contract_witness_argv_refused(argv: argv) {
+    ClosingContractWitnessRefused {
+      entry: oracle.entry,
+      function: oracle.function,
+      exit_code: 2,
+      detail: closing_contract_witness_argv_refusal_detail(argv: argv),
+    }
+  } else {
   let result = gunbc.WitnessBin.Run(
     workdir: workdir as FilePath,
     bin_path: runner_binary,
-    args: closing_contract_witness_argv(oracle: oracle, source_root_args: source_root_args),
+    args: closing_contract_witness_argv_words(argv: argv),
     expect: OutcomeIsData,
   )
   if result.success {
@@ -369,7 +436,8 @@ fn closing_contract_execute_oracle(
       exit_code: result.exit_code,
       detail: result.stderr,
     }
-  }
+  }  }
+
 }
 
 fn closing_contract_source_root_args(contract: WorkItemExecutionContract) -> List<String> {
@@ -532,6 +600,35 @@ fn closing_contract_execution_detail_for(target: String, runner: String = "") ->
   closing_contract_execution_verdict_detail(
     verdict: closing_contract_execution_verdict(target: target, runner: runner),
   )
+}
+
+// THE DRIVER ANSWERS THE WAY A PROGRAM ANSWERS. `closing_contract_execution_verdict` executes the
+// contract's bound witnesses as children (`closing_contract_execute_oracle`): that makes it a driver, and a
+// caller that spawns a driver consumes an EXIT CODE, not a rendered Bool. The codes are the ones the surviving
+// claim route already uses for the same three situations -- `0` for the outcome, `1` for a definite refusal
+// (did-not-hold), and `gunbc.extdeps.process.gnu_bash_exit` `exit_code_misuse` (2) for not-observed, the value
+// the route itself terminates with when a known claim could not be reached. A caller that reads the result of
+// this driver and of the route is therefore reading ONE vocabulary, and a runner that cannot be resolved is
+// reported as "nothing was observed" rather than as a failure of the contract.
+//
+// ONE VERDICT, NOT TWO CLASSIFIERS: the Bool predicate `closing_contract_authored` below stays the witness's
+// spelling and is defined over the same verdict; this entry adds a projection of that verdict, never a second
+// decision about what authoring means.
+fn closing_contract_authoring_exit(
+  target: String,
+  runner: String = "",
+) -> ProcessExit {
+  let verdict = closing_contract_execution_verdict(target: target, runner: runner)
+  let detail = closing_contract_execution_verdict_detail(verdict: verdict)
+  match verdict {
+    ClosingContractExecutionAuthored { target: _ } => ExitSuccess
+    ClosingContractExecutionTextuallyRefused { verdict: _ } =>
+      ExitFailure { code: exit_code_general_error, reason: detail }
+    ClosingContractExecutionWitnessRefused { target: _, blocking: _ } =>
+      ExitFailure { code: exit_code_general_error, reason: detail }
+    ClosingContractExecutionRunnerUnavailable { target: _, detail: _ } =>
+      ExitFailure { code: exit_code_misuse, reason: detail }
+  }
 }
 
 fn closing_contract_authored(target: String, runner: String = "") -> Bool {

@@ -99,7 +99,6 @@ fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_guest_image_observe_target,
-    claim_run: false,
     receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
@@ -107,7 +106,6 @@ fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_guest_image_converge_target,
-    claim_run: false,
     receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
@@ -115,7 +113,6 @@ fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_microvm_host_converge_target,
-    claim_run: false,
     receipt_rel: "target/runner-microvm-host-standing.txt"
   )
 }
@@ -123,7 +120,6 @@ fn gunbc_ci_runner_microvm_network_observe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_microvm_network_observe_target,
-    claim_run: false,
     receipt_rel: "target/microvm-network-observe.txt"
   )
 }
@@ -131,7 +127,6 @@ fn gunbc_ci_runner_microvm_network_apply_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_microvm_network_apply_target,
-    claim_run: false,
     receipt_rel: "target/microvm-network-apply-receipt.txt"
   )
 }
@@ -139,7 +134,6 @@ fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_microvm_boot_probe_target,
-    claim_run: false,
     receipt_rel: "target/runner-microvm-boot-probe.txt"
   )
 }
@@ -147,7 +141,6 @@ fn gunbc_ci_microvm_slot_reserve_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_slot_reserve_target,
-    claim_run: false,
     receipt_rel: microvm_slot_reserve_receipt_path
   )
 }
@@ -155,7 +148,6 @@ fn gunbc_ci_microvm_slot_start_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_slot_start_target,
-    claim_run: false,
     receipt_rel: microvm_slot_start_receipt_path
   )
 }
@@ -196,7 +188,6 @@ fn gunbc_ci_microvm_runner_group_ensure_invoke() -> String {
       prelude: gunbc_ci_microvm_runner_group_ensure_prelude(),
       source_roots: witness_layer_roots,
       target: gunbc_ci_microvm_runner_group_ensure_target,
-      claim_run: false,
       receipt_rel: none
     )
   )

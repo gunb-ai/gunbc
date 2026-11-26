@@ -1,4 +1,4 @@
-module v2.test.claim.long.direct_rust_door_production_group
+module test.claim.long.direct_rust_door_production_group
 
 import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   direct_rust_door_production_group,
@@ -34,7 +34,7 @@ import v2.std.text { String }
 // resolve figure above is harness acquisition and is NOT part of the witness eval figure; the
 // partition figure is a third universe again and the two are never summed. Local recipe:
 // claim_batch --source-root dag --source-root src/v2 --entry
-// src/v2/test/claim/long/direct_rust_door_production_group.dag --functions
+// src/test.claim.long.direct_rust_door_production_group.dag --functions
 // direct_rust_door_production_group_closing_expectation_holds
 
 test fn direct_rust_door_production_group_closing_expectation_holds() -> Bool {
