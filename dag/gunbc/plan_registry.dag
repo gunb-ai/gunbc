@@ -18,6 +18,7 @@ import gunbc.plans.closure_consolidation { closure_consolidation_plan }
 import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
 import gunbc.plans.new_server_bringup { new_server_bringup_plan }
+import gunbc.plans.remote_build_bandwidth { remote_build_bandwidth_plan }
 import gunbc.plans.v2_self_host { v2_self_host_plan }
 import gunbc.plans.factory_dogfood { factory_dogfood_plan }
 import gunbc.plans.debt_payoff { debt_payoff_plan }
@@ -50,6 +51,9 @@ import gunbc.plans.dag_invocation_is_one_pattern { dag_invocation_is_one_pattern
 // new_server_bringup is the site's boot and management edge program: it holds the intention and cites its design
 // evidence, and its realization is carried as work items under site-boot-and-management-edge on the roadmap at
 // dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention.
+// remote_build_bandwidth is the remote-build lane's intention (operator, 2026-11-21; regrouped 2026-11-26): its work
+// items are roadmap nodes bound to it in gunbc.roadmap.roadmap_intention_binding, and it retires into the
+// work-execution-redesign program once every candidate serving host serves and the deferred items have landed there.
 // desired_state_follows_the_machine is the fleet-truth program the operator's tiered breakage report of
 // 2026-11-21 produced: it holds the intention that a per-host read of hardware, enabled units, key identity,
 // binding caps and backing is what admits a host to the build and serving rosters. It is bound by structured
@@ -85,4 +89,5 @@ data all_plans: List<Plan> = [
   required_lane_claim_clause_grain_plan,
   gunb_ai_served_from_gunbc_plan,
   dag_invocation_is_one_pattern_plan,
+  remote_build_bandwidth_plan,
 ]
