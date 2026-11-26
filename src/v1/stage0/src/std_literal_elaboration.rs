@@ -873,7 +873,7 @@ pub fn kernel_mint_ownership(
             declaration: bound, ..
         } => {
             if crate::std_decl_ref::declaration_ref_eq(bound.clone(), declaration) {
-                Rc::new(KernelMintOwnership::DeclarationOwnsTheMint)
+                Rc::new(KernelMintOwnership::DeclarationDoesNotOwnTheMint)
             } else {
                 Rc::new(KernelMintOwnership::DeclarationDoesNotOwnTheMint)
             }
