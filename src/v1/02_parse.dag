@@ -6872,20 +6872,33 @@ fn parse_expr_list_until_acc(tokens: TokenStream, ctx: ParseContext, end_expecte
     match eat(tokens: r.tokens, expected: ExpectComma) {
     EatConsumed { token: _, tokens: __ec } =>
       parse_expr_list_until_acc(tokens: skip_newlines(tokens: __ec), ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
-    EatUnchanged { tokens: _ } =>
-      let next = skip_newlines(tokens: r.tokens)
-      let at_end_after = match token_stream_first(stream: next) {
-        Present { value: t } => token_matches_expected(token: t, expected: end_expected)
-        Absent => true
-      }
-      if at_end_after || tok_is_eof(tok: token_stream_first(stream: next)) {
-        parse_expr_list_until_acc(tokens: next, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
+    EatUnchanged { tokens: after_element } =>
+      // A NEWLINE between elements is a separator role the grammar already sanctions -- the corpus
+      // house style is one element per line with no commas (measured: instrument_source_roots_rows
+      // in dag/gunbc/instrument_targets.dag is exactly such a list, and every multi-line record
+      // list in the corpus relies on it). The measured hole is SAME-LINE juxtaposition: with the
+      // comma dropped and no line break between them, two elements silently merge into one reading
+      // and the list arity changes without a word (the below-floor census row). So refuse only when
+      // the token right after the element is neither the end tag nor a newline: juxtaposition on
+      // one line cannot be a separator, and refusing it cannot break a legitimate list.
+      let first_after = token_stream_first(stream: after_element)
+      if tok_is_newline(tok: first_after) {
+        parse_expr_list_until_acc(tokens: after_element, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
       } else {
-        let found = match token_stream_first(stream: next) {
-          Present { value: t } => token_display_name(token: t)
-          Absent => "EOF"
+        let next = skip_newlines(tokens: after_element)
+        let at_end_after = match token_stream_first(stream: next) {
+          Present { value: t } => token_matches_expected(token: t, expected: end_expected)
+          Absent => true
         }
-        ExprsResult { exprs: [], tokens: next, ctx: r.ctx, err: Present { value: parse_error(msg: concat("expected separator ',' between list elements, found ", found), span: token_span(tok: token_stream_first(stream: next))) } }
+        if at_end_after || tok_is_eof(tok: token_stream_first(stream: next)) {
+          parse_expr_list_until_acc(tokens: next, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
+        } else {
+          let found = match token_stream_first(stream: next) {
+            Present { value: t } => token_display_name(token: t)
+            Absent => "EOF"
+          }
+          ExprsResult { exprs: [], tokens: next, ctx: r.ctx, err: Present { value: parse_error(msg: concat("expected separator ',' between list elements, found ", found), span: token_span(tok: token_stream_first(stream: next))) } }
+        }
       }
     }
   }
