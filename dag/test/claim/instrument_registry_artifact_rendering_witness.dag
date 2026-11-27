@@ -39,7 +39,14 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.generated_artifact { InstrumentRegistryGeneratedRsArtifact, artifact_location }
-import gunbc.instruments.instrument_registry_emit { instrument_registry_generated_text }
+import gunbc.instruments.instrument_registry_emit {
+  InstrumentRegistryGenerated, InstrumentRegistryGenerationRefused,
+  instrument_registry_generated_text, instrument_registry_generation,
+}
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.instrument_targets { compute_wrong_capture_label }
+import gunbc.target_binding { TargetBinding, CliWireProgramProducer }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 
 // THE DISPOSITION IS ReadsLiveTree, and it is not a style choice. `std.live_tree` asks whether the
 // entry's evaluation reads the live host tree outside its resolved substrate closure. This row does:
@@ -70,4 +77,26 @@ test fn the_committed_instrument_registry_artifact_equals_the_rendered_bytes() -
     return false
   }
   read.content == rendered
+}
+
+
+// Supply malformed declarations directly so the gate exercises the emission refusal. Production
+// rows construct targets through the checked gunbc_run_step_target constructor.
+fn cli_wire_registry_refuses(declaration: DeclarationRef) -> Bool {
+  let row = TargetBinding {
+    target: compute_wrong_capture_label()
+    producer: CliWireProgramProducer { target: GunbcRunStepTarget { declaration: declaration } }
+  }
+  match instrument_registry_generation(bindings: [row], rows: []) {
+    InstrumentRegistryGenerationRefused { reason } => contains(reason, "whole declaration with a repository source path")
+    InstrumentRegistryGenerated { content: _ } => false
+  }
+}
+
+test fn cli_wire_registry_refuses_a_namespace_without_a_source_file() -> Bool {
+  cli_wire_registry_refuses(declaration: decl_ref(module_path: "v2", decl_name: "main"))
+}
+
+test fn cli_wire_registry_refuses_a_field_of_a_declaration() -> Bool {
+  cli_wire_registry_refuses(declaration: decl_field_ref(module_path: "gunbc.source_layout", decl_name: "LayoutNamespaceRoot", field_name: "namespace"))
 }
