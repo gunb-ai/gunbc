@@ -280,10 +280,14 @@ test fn a_ruled_zero_host_pool_comes_from_the_ruling_not_a_carved_slot() -> Bool
   // THE TABLE NOW CARRIES FOUR RULED HOSTS, each row naming ITS OWN ruling and sizing itself in
   // ONE of the two ruling voices (RuledBuildPoolSize): srv14's ruling named the pool -- 192 GiB,
   // retired from serving (2026-11-24); the capacity ruling (2026-11-27, default-approved on
-  // operator escalation msg_0e98e799-02d9-4c24-91f1-88db8921f577) named seat COUNTS for ken (1),
-  // srv3 (4) and srv4 (4) -- their pools resolve from the footprint authority, so their rows
-  // carry no bytes to drift. A row citing the wrong ruling, naming a size in the wrong voice, or
-  // restating a pool the authority no longer composes fails here, host by host.
+  // operator escalation msg_0e98e799-02d9-4c24-91f1-88db8921f577) named ken's count (1); and the
+  // CI-cost correction card (same day, default-approved on escalation msg_3789e805) cut srv3 and
+  // srv4 to TWO seats each, keeping its first card's -2 CI-cost bound (gunbc.design_ruling::
+  // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27 -- the 4-seat reading
+  // of the first card was internally inconsistent with that bound and is superseded; the row says
+  // so). All seat-driven pools resolve from the footprint authority, so those rows carry no bytes
+  // to drift. A row citing the wrong ruling, naming a size in the wrong voice, or restating a pool
+  // the authority no longer composes fails here, host by host.
   all(ruled_build_pool_reservations, r =>
     ((r.host as String) == "srv14"
       && (r.ruling.module_path as String) == "gunbc.design_ruling"
@@ -301,17 +305,17 @@ test fn a_ruled_zero_host_pool_comes_from_the_ruling_not_a_carved_slot() -> Bool
         })
     || ((r.host as String) == "srv3"
       && (r.ruling.module_path as String) == "gunbc.design_ruling"
-      && (r.ruling.decl_name as String) == "remote_build_capacity_ruling_default_approved_2026_11_27"
+      && (r.ruling.decl_name as String) == "remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27"
       && match r.size {
           RuledPoolNamed { bytes: _ } => false
-          RuledSeatsNamed { seats } => seats == 4
+          RuledSeatsNamed { seats } => seats == 2
         })
     || ((r.host as String) == "srv4"
       && (r.ruling.module_path as String) == "gunbc.design_ruling"
-      && (r.ruling.decl_name as String) == "remote_build_capacity_ruling_default_approved_2026_11_27"
+      && (r.ruling.decl_name as String) == "remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27"
       && match r.size {
           RuledPoolNamed { bytes: _ } => false
-          RuledSeatsNamed { seats } => seats == 4
+          RuledSeatsNamed { seats } => seats == 2
         }))
     && ruled_build_pool_reservations.length() == 4
     && filter(ruled_build_pool_reservations, r => (r.host as String) == "srv14").length() == 1
@@ -515,7 +519,7 @@ test fn the_ruled_rows_are_staged_until_the_roster_admits_them() -> Bool {
 // PER-REQUEST IN-SLICE FOOTPRINT (floor((pool - census headroom) / footprint), min one) -- the
 // standing rule the capacity ruling itself declares, cited from
 // gunbc.design_ruling::remote_build_capacity_ruling_default_approved_2026_11_27 -- while a ruling
-// that names counts (ken 1, srv3 4, srv4 4) keeps its own word untouched, and the pools behind
+// that names counts (ken 1, srv3 2, srv4 2 -- the CI-cost card's counts) keeps its own word untouched, and the pools behind
 // those counts are composed from the same authority, never written. Asserted purely: the rostered
 // conversions flip live only when an admission enrolls a host, through code witnessed here.
 test fn a_ruled_pool_of_many_footprint_sizes_admits_many_builds_not_two() -> Bool {
@@ -541,33 +545,34 @@ test fn a_ruled_pool_of_many_footprint_sizes_admits_many_builds_not_two() -> Boo
     // (crisp-pike-295's serving_footprint_witness is the same detector at the leaf).
     && user_work_slice_fits(slots: 6, footprint: fp_butch, slice_max: pool_192)
     && !user_work_slice_fits(slots: 7, footprint: fp_butch, slice_max: pool_192)
-    // THE SEAT-DRIVEN POOLS ARE COMPOSED, NOT WRITTEN: 4 x footprint + census, recomposed here
-    // from the same authority rows and demanded equal -- a literal that ever creeps into
-    // ruled_seats_driven_pool fails this claim. And the pools admit exactly their seats: srv3
-    // holds four requests and REFUSES A FIFTH; ken's one-seat pool refuses a second.
-    && byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv3, seats: 4))
-      == 4 * byte_size_count(b: user_work_request_footprint_of(
+    // THE SEAT-DRIVEN POOLS ARE COMPOSED, NOT WRITTEN: seats x footprint + census, recomposed
+    // here from the same authority rows and demanded equal -- a literal that ever creeps into
+    // ruled_seats_driven_pool fails this claim. And the pools admit exactly their seats: srv3's
+    // TWO-seat pool holds two requests and REFUSES A THIRD (the CI-cost card's count); ken's
+    // one-seat pool refuses a second.
+    && byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv3, seats: 2))
+      == 2 * byte_size_count(b: user_work_request_footprint_of(
            unit_memory_max: compute_build_memory_ceiling_default,
            child_residency: serving_child_residency(host: operator_host_srv3),
          )) + byte_size_count(b: user_work_serving_census_headroom)
     && user_work_slice_fits(
-        slots: 4,
+        slots: 2,
         footprint: user_work_request_footprint_of(
           unit_memory_max: compute_build_memory_ceiling_default,
           child_residency: serving_child_residency(host: operator_host_srv3),
         ),
-        slice_max: ruled_seats_driven_pool(host: operator_host_srv3, seats: 4),
+        slice_max: ruled_seats_driven_pool(host: operator_host_srv3, seats: 2),
       )
     && !user_work_slice_fits(
-        slots: 5,
+        slots: 3,
         footprint: user_work_request_footprint_of(
           unit_memory_max: compute_build_memory_ceiling_default,
           child_residency: serving_child_residency(host: operator_host_srv3),
         ),
-        slice_max: ruled_seats_driven_pool(host: operator_host_srv3, seats: 4),
+        slice_max: ruled_seats_driven_pool(host: operator_host_srv3, seats: 2),
       )
-    && byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv4, seats: 4))
-      == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv3, seats: 4))
+    && byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv4, seats: 2))
+      == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv3, seats: 2))
     // A sub-footprint pool and a zero pool take ONE seat, never zero (the one seat of a
     // sub-footprint pool IS the pool; the zero seat of a zero pool reserves nothing -- the
     // machine's own refusal, no fabricated capacity).
@@ -580,7 +585,7 @@ test fn a_ruled_pool_of_many_footprint_sizes_admits_many_builds_not_two() -> Boo
     // through the table; butch's pool-voiced row answers Absent, which is what routes him through
     // the standing derivation rather than any default.
     && match host_ruled_build_pool_seat_count(host: operator_host_srv3) {
-        Present { value: n } => n == 4
+        Present { value: n } => n == 2
         Absent => false
       }
     && match host_ruled_build_pool_seat_count(host: operator_host_e2d4b7) {

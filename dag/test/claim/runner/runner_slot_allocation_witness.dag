@@ -7,7 +7,7 @@ import gunbc.runner.runner_slot_allocation { host_width_facts, gunbc_runner_slot
   authored_microvm_slots_charge_over, memory_admitted_width_of_envelope_over,
   transitional_ci_slot_memory_max_of_envelope_over, committed_width_of_over, committed_width_with_serving,
   srv1_microvm_shakedown_slot_realization, srv1_microvm_revision_job_slot_realization }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, host_build_pool_reservation, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, host_build_pool_reservation, ruled_seats_driven_pool, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
 }
@@ -191,15 +191,21 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
   // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18: srv3 112 GiB costs 4 (18->14),
   // srv4 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a silent widen; the
   // committed-width witness below agrees at the same charged numbers.
-  // srv3/srv4 are on the remote-build serving roster and resolve no dashboard instance, so
-  // gunbc.runner host_build_pool_reservation carves one CI slot from each into its build pool (14->13,
-  // 16->15) -- the slot leaves CI in the change that admitted the host, so the pool holds it. srv1 carries its
-  // own ledger and is untouched (7).
-  host_memory_admitted_width(host: operator_host_srv1) == 7
-    && host_memory_admitted_width(host: operator_host_srv3) == 13
-    && host_memory_admitted_width(host: operator_host_srv4) == 15
-    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv3)) == byte_size_count(b: gunbc_runner_slot_memory_max)
-    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv4)) == byte_size_count(b: gunbc_runner_slot_memory_max)
+  // srv3/srv4 are on the remote-build serving roster and the capacity ruling's CI-cost card
+  // (gunbc.design_ruling::remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27)
+  // rules their build pools at TWO footprint seats each -- 2 x footprint + census, composed from the
+  // leaf names by ruled_seats_driven_pool, never written. The pools are charged against the envelope
+  // and the widths below are the FOLD'S derived answers (read once through a probe of the real seam,
+  // then pinned here as the alarm this claim is): srv3 13 -> 11 and srv4 15 -> 11. srv1 carries its
+  // own ledger: its CI budget pays the standing user-work pool, re-priced to three footprint seats
+  // by the same card (7 -> 5 on this axis).
+  host_memory_admitted_width(host: operator_host_srv1) == 5
+    && host_memory_admitted_width(host: operator_host_srv3) == 11
+    && host_memory_admitted_width(host: operator_host_srv4) == 11
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv3))
+      == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv3, seats: 2))
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv4))
+      == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv4, seats: 2))
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -212,7 +218,7 @@ test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
     RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
     RunnerHostDeployZeroWidthAdmitted { spec: _ } => false
     RunnerHostDeployAdmitted { deploy } =>
-      deploy.runner_count == 8
+      deploy.runner_count == 6
         && deploy.runner_count == memory_admitted_total_width(host: operator_host_srv1)
   }
 }
@@ -295,14 +301,20 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  // srv3/srv4 committed widths are re-baselined from the pre-engine 18 to the charged values (their engine's
-  // cgroup MemoryMax is the 7th envelope term): srv3 112 GiB -> 14, srv4 64 GiB -> 16, and the remote-build
-  // build-pool carve takes one more slot from each now that both are on the serving roster (-> 13 / -> 15),
-  // held by the pool, so CI never loses a slot that a pool does not hold
-  // (conservation). The dynamic assertions below (committed == memory-admitted, and cpu axis > memory-admitted)
-  // prove memory is the binding axis at these charged, carved values; srv1 pays nothing and stays 7.
-  committed_width_is(host: operator_host_srv3, expected: 13)
-    && committed_width_is(host: operator_host_srv4, expected: 15)
+  // THE RULED BUILD POOLS ARE CHARGED: THE WIDTHS MOVE AND THE POOL HOLDS WHAT CI GIVES UP.
+  // srv3 13 -> 11 and srv4 15 -> 11 at the two-seat ruled pools (2 x footprint + census, ~57.2 GiB
+  // each; gunbc.design_ruling::
+  // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27, decision (1)). The
+  // 13/15 were the pool-less charged values; the ruling's first card expected srv4 15 -> 13, but the
+  // fold's ladder puts both hosts at 11 once a two-seat pool is held (srv4's higher uncharged axis
+  // collapses onto srv3's ladder), and the FOLD'S NUMBER IS PINNED -- the discrepancy is recorded in
+  // the ruling row, and no width row was forged to make the card's arithmetic come true. The dynamic
+  // assertions below (committed == memory-admitted, and cpu axis > memory-admitted) prove memory is
+  // the binding axis at these charged values. SRV1's assertion is deliberately DYNAMIC: its user-work
+  // slice just moved (3 footprint seats, 8 -> 6 committed, decision (2) of the same card) and this
+  // claim pins the equality, not a number that a slice re-price can silently stale.
+  committed_width_is(host: operator_host_srv3, expected: 11)
+    && committed_width_is(host: operator_host_srv4, expected: 11)
     && committed_width_is(host: operator_host_srv1, expected: memory_admitted_total_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
@@ -960,7 +972,7 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 8
+      w == 6
         && srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
         && srv1_membership_is(slot_index: 14, expect_member: true, expect_fabric: true)
         && srv1_membership_is(slot_index: 2, expect_member: true, expect_fabric: false)
@@ -983,15 +995,18 @@ test fn srv1_at_the_memory_width_keeps_the_deploy_slot_and_no_ci_slot_and_the_co
   let mem = host_committed_identities_at(host: operator_host_srv1, committed: host_memory_admitted_width(host: operator_host_srv1))
   let committed = host_committed_identities_at(host: operator_host_srv1, committed: memory_admitted_total_width(host: operator_host_srv1))
   host_authored_microvm_slots(host: operator_host_srv1).length() == 2
-    && mem.length() == 7
-    && mem.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 5
+    && mem.length() == 5
+    && mem.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 3
     && identity_in_list(identity: srv1_deploy_slot(), members: mem)
     && identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }, members: mem)
     && !identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 6 }, members: mem)
-    && committed.length() == 8
+    && committed.length() == 6
     && identity_in_list(identity: srv1_deploy_slot(), members: committed)
     && identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }, members: committed)
-    && identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 6 }, members: committed)
+    // At the ruled width 6 the sixth fleet slot is OUTSIDE the committed population (probe read
+    // 2026-11-27: the prefix reaches it only at the pre-ruling widths); the transitional srv1-01
+    // grant below is what still carries its remainder shape.
+    && !identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 6 }, members: committed)
     && !identity_in_list(identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 }, members: committed)
     && revision_job_slots.length() == 1
     && revision_job_slots_match_the_fleet_row()
@@ -1151,14 +1166,14 @@ test fn a_live_microvm_controller_restores_the_charge_and_srv1s_width_falls_back
   let revision_charge = byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
   let grant_charged = envelope - shakedown_charge - revision_charge - 1 * fleet
   let grant_released = envelope - 5 * fleet
-  memory_admitted_width_of_envelope_over(envelope: byte_size(envelope), authored_slots: authored, rows: realized) == 3
-    && host_memory_admitted_width(host: operator_host_srv1) == 7
+  memory_admitted_width_of_envelope_over(envelope: byte_size(envelope), authored_slots: authored, rows: realized) == 0
+    && host_memory_admitted_width(host: operator_host_srv1) == 5
     && match committed_width_of_over(f: f, rows: realized) {
-      RunnerWidthDerived { slots: w } => w == 4
+      RunnerWidthDerived { slots: w } => w == 2
       RunnerWidthUnresolved { cause: _ } => false
     }
     && match gunbc_runner_committed_width(host: operator_host_srv1) {
-      RunnerWidthDerived { slots: w } => w == 8
+      RunnerWidthDerived { slots: w } => w == 6
       RunnerWidthUnresolved { cause: _ } => false
     }
     && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(

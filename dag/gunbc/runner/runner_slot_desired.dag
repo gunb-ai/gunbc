@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7, operator_host_srv3, operator_host_srv4 }
-import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, remote_build_capacity_ruling_default_approved_2026_11_27 }
+import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, remote_build_capacity_ruling_default_approved_2026_11_27, remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown, compute_build_memory_ceiling_default }
 import gunbc.live_deploy.serving_child_observations { serving_child_residency, user_work_request_footprint_of, user_work_serving_census_headroom }
 
@@ -383,21 +383,29 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
   },
   RuledBuildPoolReservation {
     host: operator_host_srv3,
-    ruling: remote_build_capacity_ruling_default_approved_2026_11_27.reference,
-    // FOUR seats at the per-request footprint: the pool resolves as 4 x footprint + the fixed
-    // census headroom (~114 GiB at today's rows), the number the capacity ruling counted when
-    // it said srv3 drops two CI runners -- CI (15 x 25 GiB) + pool must fit the host's 502 GiB,
-    // and the ruled pool is CHARGED into the width envelope (gunbc.runner.runner_slot_allocation)
-    // so the arithmetic is conserved, not asserted. srv3's slice held zero safe seats under the
-    // old (slots x unit ceiling) sizing: memory.events oom_kill = 40 on 2026-11-26.
-    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } },
+    ruling: remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27.reference,
+    // TWO seats at the per-request footprint: the pool resolves as 2 x footprint + the fixed
+    // census headroom (~57.2 GiB at today's rows), derived -- no bytes written. The first capacity
+    // card said FOUR; its own "-2 CI runners" clause refuted that through the real width fold (a
+    // four-seat pool costs srv3 four derived CI slots), and the second card kept the CI cost and
+    // cut the count (gunbc.design_ruling::
+    // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27, approved by
+    // default on operator escalation msg_3789e805). Derived CI width 13 -> 11. The ruled pool is
+    // CHARGED into the width envelope (gunbc.runner.runner_slot_allocation), so the arithmetic is
+    // conserved, not asserted. srv3's slice held zero safe seats under the old (slots x unit
+    // ceiling) sizing: memory.events oom_kill = 40 on 2026-11-26 -- the footprint divisor is the
+    // defect's closure, and a two-seat pool is the widest the card's CI-cost bound allows.
+    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Zero } } },
   },
   RuledBuildPoolReservation {
     host: operator_host_srv4,
-    ruling: remote_build_capacity_ruling_default_approved_2026_11_27.reference,
-    // Four seats, same shape and same ruling as srv3 (its sibling CI host; no oom_kill incident
-    // of its own, the same blind sizing).
-    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } },
+    ruling: remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27.reference,
+    // Two seats, same shape and same ruling as srv3 (its sibling CI host; no oom_kill incident
+    // of its own, the same blind sizing). MEASURED NOTE: the card expected srv4 15 -> 13, but the
+    // fold's ladder puts srv4 at 11 with a two-seat pool -- its uncharged 15 collapses onto
+    // srv3's charged ladder -- and the fold's number is what the witnesses pin (recorded in the
+    // ruling row, not papered over).
+    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Zero } } },
   },
 ]
 
