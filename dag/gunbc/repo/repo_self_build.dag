@@ -9,7 +9,7 @@ import std.types { String, List, NonEmptyStr }
 // the same fork, in the build command, as DEFECT 4 had in the admission. Authoring a row without
 // landing its package now fails the build, which is the direction this file's header wants the wall
 // to face.
-import gunbc.stage0.stage0_crate_partition_emit { generated_partition_crate_rows_as_declared }
+import v2.workflow.rust_crate_partition { stage0_partition_package_names }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial, repo_self_warning_denial_rustflags }
 import extdeps.rust.cargo_build { cargo_clippy_command }
 import extdeps.exec.command { argv_words }
@@ -241,7 +241,7 @@ fn repo_self_clippy_command() -> String {
 // declared bin or crate outside both this list and the v1-compiler package remains unbuilt by any
 // required phase. That gap is the 2026-08-25 declared row and this command does not close it.
 fn repo_self_build_partition_crate_packages() -> List<String> {
-  generated_partition_crate_rows_as_declared() |> map(row => row.package_name)
+  stage0_partition_package_names()
 }
 
 // THE BUILD ENVIRONMENT EVERY SEED BINARY IS BUILT IN. One commit must give one sha256, and before

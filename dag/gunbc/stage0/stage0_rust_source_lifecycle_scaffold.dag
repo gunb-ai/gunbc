@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import v2.compiler.self_host.stage0_crate_layout { hand_maintained_stage0_filenames }
 import std.algebra { list_snoc_item, fold_list, length, list_map }
 import v2.std.text { String }
-import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
+import v2.workflow.rust_crate_partition { stage0_partition_crate_specs }
 
 data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 
@@ -311,9 +311,9 @@ data hand_maintained_stage0_filenames_authority_ref: DeclarationRef = Declaratio
   field: WholeDeclaration
 }
 
-data stage0_partition_crate_rows_authority_ref: DeclarationRef = DeclarationRef {
+data stage0_partition_crate_specs_authority_ref: DeclarationRef = DeclarationRef {
   module_path: "v2.workflow.rust_crate_partition",
-  decl_name: "stage0_partition_crate_rows",
+  decl_name: "stage0_partition_crate_specs",
   field: WholeDeclaration
 }
 
@@ -529,8 +529,8 @@ fn partition_crate_lib_repo_path(crate_dir: String) -> String {
 
 fn derived_partition_crate_lib_repo_paths() -> List<String> {
   list_map(
-    xs: stage0_partition_crate_rows(),
-    f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
+    xs: stage0_partition_crate_specs(),
+    f: fn(spec) { partition_crate_lib_repo_path(crate_dir: spec.crate_dir) }
   )
 }
 
@@ -826,7 +826,7 @@ fn duplicate_exact_paths_zero_holds() -> Bool {
 }
 
 fn partition_crate_paths_complete_holds() -> Bool {
-  length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
+  length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_specs())
 }
 
 data cssl_seed_linked_closure_assembly_repo_path: String = stage0_src_repo_path(

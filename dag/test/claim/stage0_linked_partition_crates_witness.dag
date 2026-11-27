@@ -4,7 +4,8 @@ import std.types { List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { length }
-import gunbc.crate_partition { Stage0PartitionCrateRow, Stage0FoundationCrate, Stage0LayeredCoreCrate, CompilationUnitId }
+import gunbc.crate_partition { Stage0FoundationCrate, Stage0LayeredCoreCrate, CompilationUnitId }
+import v2.workflow.rust_crate_partition { Stage0PartitionCrateSpec }
 import gunbc.stage0.stage0_executable_assembly_emit {
   LinkedPartitionCratesRendered,
   LinkedPartitionCratesRefused,
@@ -22,19 +23,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // dependencies closed over the modeled reexport edges. These claims supply a roster and a
 // dependency list at that fold's interface; the last one runs the live authorities.
 
-fn row(package: String, dir: String, deps: List<String>) -> Stage0PartitionCrateRow {
-  Stage0PartitionCrateRow {
+fn row(package: String, dir: String, deps: List<String>) -> Stage0PartitionCrateSpec {
+  Stage0PartitionCrateSpec {
     unit_id: package as CompilationUnitId,
     package_name: package,
     crate_dir: dir,
     kind: Stage0LayeredCoreCrate,
-    modules: [],
     reexport_packages: deps,
     carries_non_empty_wrappers: false,
   }
 }
 
-fn chain_rows() -> List<Stage0PartitionCrateRow> {
+fn chain_rows() -> List<Stage0PartitionCrateSpec> {
   [
     row(package: "a", dir: "src/a", deps: []),
     row(package: "b", dir: "src/b", deps: ["a"]),

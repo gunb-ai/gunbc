@@ -25,7 +25,7 @@ import v2.compiler.self_host.stage0_executable_assembly {
   stage0_host_shell_emitted_owner_count,
   stage0_host_shell_partition_dependencies,
   stage0_live_assembly_ownership_census,
-  stage0_live_partition_owned_module_basenames,
+  stage0_partition_owned_module_basenames,
   stage0_live_retained_pub_mod_basenames
 }
 import v2.compiler.self_host.stage0_crate_layout {
@@ -40,7 +40,13 @@ import v2.compiler.self_host.seed_retention_frontier {
   SeedRetainedIntrinsicSource,
   retained_reason_undeclared
 }
-import v2.workflow.rust_crate_partition { stage0_module_bearing_crate_rows, stage0_unit_runtime, stage0_unit_std_core }
+import v2.workflow.rust_crate_partition {
+  Stage0PartitionRowsDerived,
+  Stage0PartitionRowsRefused,
+  stage0_module_bearing_crate_rows,
+  stage0_unit_runtime,
+  stage0_unit_std_core
+}
 import std.algebra { length }
 import v2.std.text { String }
 
@@ -355,11 +361,17 @@ test fn w_host_shell_declares_exactly_what_the_partition_does_not_own() -> Bool 
 // of the host shell. This is the corpus-side half of the duplicate-owner refusal above: the
 // fixture proves the detector fires, this proves the live rosters do not trip it.
 test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool {
-  let partitioned = stage0_live_partition_owned_module_basenames()
-  let retained = stage0_live_retained_pub_mod_basenames()
-  !any(xs: partitioned, predicate: fn(p) {
-    any(xs: retained, predicate: fn(r) { r == p })
-  })
+  match stage0_module_bearing_crate_rows() {
+    Stage0PartitionRowsRefused { cause: _ } => false
+    Stage0PartitionRowsDerived { rows: rows } => {
+      let partitioned = stage0_partition_owned_module_basenames(partition_rows: rows)
+      let retained = stage0_live_retained_pub_mod_basenames()
+      (length(xs: partitioned) > 0)
+        && !any(xs: partitioned, predicate: fn(p) {
+          any(xs: retained, predicate: fn(r) { r == p })
+        })
+    }
+  }
 }
 
 // The live two-surface flip for v1.compiler.compiler_tests_rust. Partition ownership alone is
@@ -375,33 +387,39 @@ test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool {
 // declares the moved module makes the witness RED rather than letting the model agree with itself
 // while Rust compiles the path through two separate crates.
 test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -> Bool {
-  let module_basename = "v1_compiler_compiler_tests_rust"
-  let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
-  let census = stage0_live_assembly_ownership_census(
-    declared_modules: [module_basename],
-    emitted_module_basenames: [module_basename]
-  )
-  (length(xs: census.refusals) == 0)
-    && (length(xs: census.owners) == 1)
-    && any(xs: census.owners, predicate: fn(owner) {
-      match owner {
-        EmittedPartitionOwner { module_basename: m, package_name: p } =>
-          (m == module_basename) && (p == "v1-stage0-v1-infer")
-        HostShellEmittedOwner { module_basename: _, host_package: _ } => false
-        RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
-        BinaryEntrypointOwner { target: _, package_name: _ } => false
-        WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
-      }
-    })
-    && (stage0_host_shell_emitted_owner_count(census: census) == 0)
-    && (length(xs: stage0_host_shell_declared_modules(
-      declared_modules: [module_basename],
-      partition_rows: stage0_module_bearing_crate_rows()
-    )) == 0)
-    && !string_contains(
-      s: host_shell_lib,
-      pattern: "pub mod v1_compiler_compiler_tests_rust;"
-    )
+  match stage0_module_bearing_crate_rows() {
+    Stage0PartitionRowsRefused { cause: _ } => false
+    Stage0PartitionRowsDerived { rows: rows } => {
+      let module_basename = "v1_compiler_compiler_tests_rust"
+      let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
+      let census = stage0_live_assembly_ownership_census(
+        declared_modules: [module_basename],
+        emitted_module_basenames: [module_basename],
+        partition_rows: rows
+      )
+      (length(xs: census.refusals) == 0)
+        && (length(xs: census.owners) == 1)
+        && any(xs: census.owners, predicate: fn(owner) {
+          match owner {
+            EmittedPartitionOwner { module_basename: m, package_name: p } =>
+              (m == module_basename) && (p == "v1-stage0-v1-infer")
+            HostShellEmittedOwner { module_basename: _, host_package: _ } => false
+            RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
+            BinaryEntrypointOwner { target: _, package_name: _ } => false
+            WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
+          }
+        })
+        && (stage0_host_shell_emitted_owner_count(census: census) == 0)
+        && (length(xs: stage0_host_shell_declared_modules(
+          declared_modules: [module_basename],
+          partition_rows: rows
+        )) == 0)
+        && !string_contains(
+          s: host_shell_lib,
+          pattern: "pub mod v1_compiler_compiler_tests_rust;"
+        )
+    }
+  }
 }
 
 // The live two-surface flip for v1.compiler.infer_resolve, moved for the 2026-09-09 regen-round
@@ -410,33 +428,39 @@ test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -
 // mirror to its one partition owner, the shell subtraction must remove it, and the committed
 // host-shell lib.rs must not still declare it.
 test fn w_infer_resolve_moves_from_host_shell_to_one_partition_surface() -> Bool {
-  let module_basename = "v1_compiler_infer_resolve"
-  let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
-  let census = stage0_live_assembly_ownership_census(
-    declared_modules: [module_basename],
-    emitted_module_basenames: [module_basename]
-  )
-  (length(xs: census.refusals) == 0)
-    && (length(xs: census.owners) == 1)
-    && any(xs: census.owners, predicate: fn(owner) {
-      match owner {
-        EmittedPartitionOwner { module_basename: m, package_name: p } =>
-          (m == module_basename) && (p == "v1-stage0-v1-infer")
-        HostShellEmittedOwner { module_basename: _, host_package: _ } => false
-        RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
-        BinaryEntrypointOwner { target: _, package_name: _ } => false
-        WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
-      }
-    })
-    && (stage0_host_shell_emitted_owner_count(census: census) == 0)
-    && (length(xs: stage0_host_shell_declared_modules(
-      declared_modules: [module_basename],
-      partition_rows: stage0_module_bearing_crate_rows()
-    )) == 0)
-    && !string_contains(
-      s: host_shell_lib,
-      pattern: "pub mod v1_compiler_infer_resolve;"
-    )
+  match stage0_module_bearing_crate_rows() {
+    Stage0PartitionRowsRefused { cause: _ } => false
+    Stage0PartitionRowsDerived { rows: rows } => {
+      let module_basename = "v1_compiler_infer_resolve"
+      let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
+      let census = stage0_live_assembly_ownership_census(
+        declared_modules: [module_basename],
+        emitted_module_basenames: [module_basename],
+        partition_rows: rows
+      )
+      (length(xs: census.refusals) == 0)
+        && (length(xs: census.owners) == 1)
+        && any(xs: census.owners, predicate: fn(owner) {
+          match owner {
+            EmittedPartitionOwner { module_basename: m, package_name: p } =>
+              (m == module_basename) && (p == "v1-stage0-v1-infer")
+            HostShellEmittedOwner { module_basename: _, host_package: _ } => false
+            RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
+            BinaryEntrypointOwner { target: _, package_name: _ } => false
+            WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
+          }
+        })
+        && (stage0_host_shell_emitted_owner_count(census: census) == 0)
+        && (length(xs: stage0_host_shell_declared_modules(
+          declared_modules: [module_basename],
+          partition_rows: rows
+        )) == 0)
+        && !string_contains(
+          s: host_shell_lib,
+          pattern: "pub mod v1_compiler_infer_resolve;"
+        )
+    }
+  }
 }
 
 // The host shell links the partition through one declared edge, and it is the top module-bearing
@@ -603,10 +627,11 @@ test fn w_wet_module_registered_twice_with_conflicting_routes_refuses() -> Bool 
     && any(xs: refusals, predicate: fn(c) { refusal_is_registered_twice(cause: c, module_basename: "probe_wet_plain", route_count: 2) })
 }
 
-fn probe_live_owner_for(module_basename: String) -> List<Stage0ExecutableModuleOwner> {
+fn probe_live_owner_for(module_basename: String, partition_rows: List<Stage0PartitionCrateRow>) -> List<Stage0ExecutableModuleOwner> {
   let census = stage0_live_assembly_ownership_census(
     declared_modules: stage0_lib_declared_module_basenames(),
-    emitted_module_basenames: []
+    emitted_module_basenames: [],
+    partition_rows: partition_rows
   )
   fold(
     census.owners,
@@ -644,6 +669,13 @@ fn probe_basename_occurrences(module_basename: String, xs: List<String>) -> Int 
 // It is also the final consumer of stage0_lib_declared_module_basenames. Without it that
 // projection would be a definition-only statement about the crate, which is the inert-lens shape.
 test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
+  match stage0_module_bearing_crate_rows() {
+    Stage0PartitionRowsRefused { cause: _ } => false
+    Stage0PartitionRowsDerived { rows: partition_rows } => live_wet_registrations_own_their_declared_modules(partition_rows: partition_rows)
+  }
+}
+
+fn live_wet_registrations_own_their_declared_modules(partition_rows: List<Stage0PartitionCrateRow>) -> Bool {
   let rows = stage0_live_wet_lib_module_registrations()
   let declared = stage0_lib_declared_module_basenames()
   (length(xs: rows) > 0)
@@ -651,7 +683,7 @@ test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
          rows,
          init: true,
          f: fn(acc, row) {
-           let owners = probe_live_owner_for(module_basename: row.basename)
+           let owners = probe_live_owner_for(module_basename: row.basename, partition_rows: partition_rows)
            acc
              && (probe_basename_occurrences(module_basename: row.basename, xs: declared) == 1)
              && (length(xs: owners) == 1)

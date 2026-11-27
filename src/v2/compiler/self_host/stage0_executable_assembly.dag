@@ -7,7 +7,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { length }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.workflow.rust_crate_partition { stage0_module_bearing_crate_rows }
 import v2.compiler.self_host.stage0_crate_layout {
   WetActuatorDeclarationRoute,
   WetActuatorGeneratedRegistration,
@@ -501,10 +500,6 @@ fn stage0_partition_owned_module_basenames(
   fold(partition_rows, init: [], f: fn(acc, row) { concat(acc, row.modules) })
 }
 
-fn stage0_live_partition_owned_module_basenames() -> List<String> {
-  stage0_partition_owned_module_basenames(partition_rows: stage0_module_bearing_crate_rows())
-}
-
 fn stage0_live_retained_pub_mod_basenames() -> List<String> {
   hand_maintained_pub_mod_basenames()
 }
@@ -518,13 +513,17 @@ fn stage0_live_wet_lib_module_registrations() -> List<WetActuatorGeneratedRegist
   wet_actuator_lib_module_registrations()
 }
 
+// The partition rows are the caller's: they are derived (v2.workflow.rust_crate_partition
+// stage0_module_bearing_crate_rows) and can refuse, and the census has no answer to give over a
+// refused partition, so the caller matches the derivation and hands the rows in.
 fn stage0_live_assembly_ownership_census(
   declared_modules: List<String>,
-  emitted_module_basenames: List<String>
+  emitted_module_basenames: List<String>,
+  partition_rows: List<Stage0PartitionCrateRow>
 ) -> Stage0AssemblyOwnershipCensus {
   stage0_assembly_ownership_census(
     declared_modules: declared_modules,
-    partition_rows: stage0_module_bearing_crate_rows(),
+    partition_rows: partition_rows,
     emitted_module_basenames: emitted_module_basenames,
     retained_pub_mod_basenames: stage0_live_retained_pub_mod_basenames(),
     wet_lib_rows: stage0_live_wet_lib_module_registrations(),

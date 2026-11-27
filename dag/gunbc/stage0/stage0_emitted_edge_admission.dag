@@ -45,6 +45,14 @@ type Stage0EmittedTreePackages {
   host_shell_dependencies: List<String>
 }
 
+// THE PACKAGE GRAPH AS A CHANGE DECLARES IT, OR WHY IT DECLARES NONE. The partition rows are derived
+// from the change's own source tree (v2.workflow.rust_crate_partition stage0_partition_derivation),
+// and a tree the derivation refuses has no rows; the reason travels to the host as data, so the
+// host refuses with it rather than reading an empty package graph.
+type Stage0EmittedTreePackagesDeclaration
+  = Stage0EmittedTreePackagesDeclared { packages: Stage0EmittedTreePackages }
+  | Stage0EmittedTreePackagesRefused { reason: String }
+
 type Stage0EmittedModuleOwner
   = Stage0EmittedModuleOwned { package_name: String }
   | Stage0EmittedModuleNotCovered

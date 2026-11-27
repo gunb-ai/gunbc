@@ -264,9 +264,8 @@ data no_mirror_admissions: List<MissingMirrorAdmission> = []
 // roster carries. Anything wanting the basename of a declared module asks for THIS.
 //
 // WHAT THE AUTHORITY ACTUALLY CARRIES, so this call is not read as more than it is: a partition row
-// lists its units in the FLAT spelling already (`stage0_v1_infer_modules()` in
-// src/v2/workflow/rust_crate_partition.dag enumerates "v1_compiler_parse", not
-// "v1.compiler.parse"), so for every row the corpus holds today the projection is the identity and
+// lists its units in the FLAT spelling already (v2.workflow.rust_crate_partition
+// stage0_partition_derivation places "v1_compiler_parse", not "v1.compiler.parse"), so for every row the corpus holds today the projection is the identity and
 // the join is row string + ".rs". The dotted forms exercised below, and the ambiguous arm that
 // depends on two spellings meeting at one basename, are defense in depth against a row naming a
 // dotted module -- a shape the partition does not emit today, and one the witness

@@ -3,10 +3,20 @@ module gunbc.stage0.stage0_crate_partition_emit
 import gunbc.crate_partition { Stage0EmitCoreCrate, Stage0FoundationCrate, Stage0LayeredCoreCrate, Stage0PartitionCrateKind, Stage0PartitionCrateRow }
 
 import std.types { List }
-import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
+import v2.workflow.rust_crate_partition {
+  Stage0PartitionRowsDerived,
+  Stage0PartitionRowsRefused,
+  stage0_partition_crate_rows,
+  stage0_partition_derivation_refusal_line
+}
 import std.algebra { fold_list }
 import v2.std.text { String }
-import gunbc.stage0.stage0_emitted_edge_admission { Stage0EmittedTreePackages }
+import gunbc.stage0.stage0_emitted_edge_admission {
+  Stage0EmittedTreePackages,
+  Stage0EmittedTreePackagesDeclaration,
+  Stage0EmittedTreePackagesDeclared,
+  Stage0EmittedTreePackagesRefused
+}
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateKind,
   GeneratedPartitionCrateRow,
@@ -69,8 +79,22 @@ fn generated_partition_crate_row_from_authority(row: Stage0PartitionCrateRow) ->
 // `src/v1/05_emit_rust.dag` `emit_rust` already states: is a replacement partition in flight? When
 // one is, the fold is the authority. When none is -- the seed projecting itself, a fixture
 // instrument, a report over the committed tree -- the compiled rows ARE that declaration.
-fn generated_partition_crate_rows_as_declared() -> List<GeneratedPartitionCrateRow> {
-  stage0_partition_crate_rows() |> map(generated_partition_crate_row_from_authority)
+//
+// THE ROWS ARE DERIVED, SO THE DECLARATION CAN REFUSE. v2.workflow.rust_crate_partition derives
+// which modules each crate owns from the source tree's dependency facts, and a tree it cannot
+// derive from (an undeclared root, an unresolved import, a module no floor row covers) has no rows
+// to declare. That refusal is carried to every reader as its reason, never as an empty row set.
+type GeneratedPartitionRowsDeclaration
+  = GeneratedPartitionRowsDeclared { rows: List<GeneratedPartitionCrateRow> }
+  | GeneratedPartitionRowsRefused { reason: String }
+
+fn generated_partition_crate_rows_as_declared() -> GeneratedPartitionRowsDeclaration {
+  match stage0_partition_crate_rows() {
+    Stage0PartitionRowsRefused { cause: cause } =>
+      GeneratedPartitionRowsRefused { reason: stage0_partition_derivation_refusal_line(cause: cause) }
+    Stage0PartitionRowsDerived { rows: rows } =>
+      GeneratedPartitionRowsDeclared { rows: rows |> map(generated_partition_crate_row_from_authority) }
+  }
 }
 
 // THE PACKAGE GRAPH AN EMITTED TREE IS BUILT UNDER, WHEN A REPLACEMENT PARTITION IS IN FLIGHT.
@@ -103,11 +127,17 @@ fn generated_partition_crate_rows_as_declared() -> List<GeneratedPartitionCrateR
 fn stage0_emitted_tree_packages_as_declared(
   host_shell_package_name: String,
   host_shell_dependencies: List<String>
-) -> Stage0EmittedTreePackages {
-  Stage0EmittedTreePackages {
-    rows: generated_partition_crate_rows_as_declared(),
-    host_shell_package_name: host_shell_package_name,
-    host_shell_dependencies: host_shell_dependencies
+) -> Stage0EmittedTreePackagesDeclaration {
+  match generated_partition_crate_rows_as_declared() {
+    GeneratedPartitionRowsRefused { reason: reason } => Stage0EmittedTreePackagesRefused { reason: reason }
+    GeneratedPartitionRowsDeclared { rows: rows } =>
+      Stage0EmittedTreePackagesDeclared {
+        packages: Stage0EmittedTreePackages {
+          rows: rows,
+          host_shell_package_name: host_shell_package_name,
+          host_shell_dependencies: host_shell_dependencies
+        }
+      }
   }
 }
 
@@ -169,8 +199,20 @@ fn render_partition_crate_rows_items(rows: List<Stage0PartitionCrateRow>) -> Str
   })
 }
 
-fn expected_stage0_crate_partition_generated_dag() -> String {
-  let rows = stage0_partition_crate_rows()
+type Stage0CratePartitionGeneratedRender
+  = Stage0CratePartitionGeneratedRendered { content: String }
+  | Stage0CratePartitionGeneratedRefused { reason: String }
+
+fn expected_stage0_crate_partition_generated_dag() -> Stage0CratePartitionGeneratedRender {
+  match stage0_partition_crate_rows() {
+    Stage0PartitionRowsRefused { cause: cause } =>
+      Stage0CratePartitionGeneratedRefused { reason: stage0_partition_derivation_refusal_line(cause: cause) }
+    Stage0PartitionRowsDerived { rows: rows } =>
+      Stage0CratePartitionGeneratedRendered { content: render_stage0_crate_partition_generated_dag(rows: rows) }
+  }
+}
+
+fn render_stage0_crate_partition_generated_dag(rows: List<Stage0PartitionCrateRow>) -> String {
   concat(
     "module gunbc.stage0.stage0_crate_partition_generated\n\n",
     "import std.types { Bool, List, String }\n\n",

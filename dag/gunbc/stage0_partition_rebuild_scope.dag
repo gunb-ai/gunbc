@@ -23,7 +23,18 @@ import std.algebra { length }
 // what they now report is the partition the change declares, which is the only partition a next pass
 // can be built from.
 import gunbc.stage0.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
-import gunbc.stage0.stage0_crate_partition_emit { generated_partition_crate_rows_as_declared }
+import gunbc.stage0.stage0_crate_partition_emit {
+  GeneratedPartitionRowsDeclared,
+  GeneratedPartitionRowsRefused,
+  generated_partition_crate_rows_as_declared
+}
+import gunbc.rust_emitted_edge { rust_module_emit_filename }
+import v2.workflow.rust_crate_partition {
+  Stage0PartitionDerivationRefused,
+  Stage0PartitionDerived,
+  stage0_partition_derivation,
+  stage0_partition_package_names
+}
 import gunbc.stage0.stage0_partition_package_graph {
   stage0_host_shell_dependency_names,
   stage0_host_shell_package_name,
@@ -95,6 +106,7 @@ type RebuildScopeRefusalCause
   | MirrorHasMultipleOwningPackages { mirror: String, packages: List<String> }
   | PackageDependencyClosureUnderivable { package_name: String, detail: String }
   | ExecutableAssemblyNotCovered { executable_package: String, detail: String }
+  | PartitionRowsUnderivable { reason: String }
 
 type PartitionRebuildDecision
   = PartitionRebuildScopeDerived {
@@ -478,13 +490,17 @@ fn stage0_partition_rebuild_decision_today(
   unlocatable: List<String>,
   host_shell_modules: List<String>
 ) -> PartitionRebuildDecision {
-  stage0_partition_rebuild_decision(
-    changed_mirrors: changed_mirrors,
-    unlocatable: unlocatable,
-    rows: generated_partition_crate_rows_as_declared(),
-    executable: stage0_next_pass_executable_assembly(),
-    host_shell_modules: host_shell_modules
-  )
+  match generated_partition_crate_rows_as_declared() {
+    GeneratedPartitionRowsRefused { reason: reason } => RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: reason } }
+    GeneratedPartitionRowsDeclared { rows: rows } =>
+      stage0_partition_rebuild_decision(
+        changed_mirrors: changed_mirrors,
+        unlocatable: unlocatable,
+        rows: rows,
+        executable: stage0_next_pass_executable_assembly(),
+        host_shell_modules: host_shell_modules
+      )
+  }
 }
 
 // THE PACKAGES NOT COMPILED. Reported beside the closure because the guarantee this module makes
@@ -543,6 +559,8 @@ fn stage0_partition_rebuild_decision_line(decision: PartitionRebuildDecision) ->
       concat(concat("partition-rebuild: RebuildScopeRefused PackageDependencyClosureUnderivable package=", p), concat(" detail=", d))
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: p, detail: d } } =>
       concat(concat("partition-rebuild: RebuildScopeRefused ExecutableAssemblyNotCovered executable_package=", p), concat(" detail=", d))
+    RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: r } } =>
+      concat("partition-rebuild: RebuildScopeRefused PartitionRowsUnderivable reason=", r)
   }
 }
 
@@ -652,7 +670,8 @@ fn stage0_partition_rebuild_requires_whole_compiler_today(
 // consumer can read is not evidence of anything, and this is the exclusion the whole
 // change-denominated claim rests on. The emit shell is a partition package, so it appears here
 // whenever the changed mirrors do not reach it. UNDER ReleaseScopeEmpty THE CLOSURE IS EMPTY BY
-// CONSTRUCTION, so this answers EVERY package: the guarantee the host enforces is that the
+// CONSTRUCTION, so this answers EVERY package -- and a partition whose rows are not derivable has
+// no closure, so its exclusion is every package the crate specs name: the guarantee the host enforces is that the
 // verification build compiles no partition package, and an exclusion that names every package
 // is what makes a single compiled crate a located refusal.
 fn stage0_partition_rebuild_excluded_today(
@@ -660,14 +679,18 @@ fn stage0_partition_rebuild_excluded_today(
   unlocatable: List<String>,
   host_shell_modules: List<String>
 ) -> List<String> {
-  rebuild_scope_excluded_packages(
-    closure: stage0_partition_rebuild_packages_today(
-      changed_mirrors: changed_mirrors,
-      unlocatable: unlocatable,
-      host_shell_modules: host_shell_modules
-    ),
-    rows: generated_partition_crate_rows_as_declared()
-  )
+  match generated_partition_crate_rows_as_declared() {
+    GeneratedPartitionRowsRefused { reason: _ } => stage0_partition_package_names()
+    GeneratedPartitionRowsDeclared { rows: rows } =>
+      rebuild_scope_excluded_packages(
+        closure: stage0_partition_rebuild_packages_today(
+          changed_mirrors: changed_mirrors,
+          unlocatable: unlocatable,
+          host_shell_modules: host_shell_modules
+        ),
+        rows: rows
+      )
+  }
 }
 
 fn stage0_partition_rebuild_decision_line_today(
@@ -717,6 +740,22 @@ fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>)
   }
 }
 
+// A PARTITION MEMBER'S OWN EDIT EXPLAINS A MOVE. The partition's rows are derived from its members'
+// dependency facts (v2.workflow.rust_crate_partition stage0_partition_derivation), so an import added
+// to or removed from a member moves the rows -- pulls a module in, drops one, raises a placement --
+// while neither the authority file nor any mirror the regen graph reaches from that edit changes.
+// So an edited module the candidate tree places in the partition is an input of its rows, and
+// explains their move. A non-member's edit cannot move them: it is reached by no root. A tree whose
+// partition does not derive explains nothing here; its refusal is the rows' own, reported on the
+// decision line.
+fn stage0_partition_move_explained_by_edited_members(edited: List<String>) -> Bool {
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: _, placements: placements } =>
+      edited |> any(module_name => placements |> any(placement => placement.basename == rust_module_emit_filename(module_name: module_name)))
+  }
+}
+
 // THE EXPLANATION OF A PARTITION MOVE FROM THE CHANGE'S INPUTS. The authority path above is ONE input
 // of the two partition-generation mirrors: v1_compiler_stage0_crates.rs is rendered by
 // v1.compiler.stage0_crates, whose import closure (emit_rust, runtime_rust, extdeps.rust.*, ...) moves its
@@ -727,8 +766,10 @@ fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>)
 //   WholePopulation      the edit is under a declared generation-input prefix (v1.compiler.*): every
 //                        mirror's producer moved, so the move is explained. This is the bound's own
 //                        width, not narrowed here.
-//   AffectedMirrors      explained iff a partition-generation mirror is a member, or the authority
-//                        path is among the changed paths. A move with neither is drift.
+//   AffectedMirrors      explained iff a partition-generation mirror is a member, the authority
+//                        path is among the changed paths, or an edited module is a partition
+//                        member (stage0_partition_move_explained_by_edited_members). A move with
+//                        none of these is drift.
 //   EditedSetUnlocatable REFUSES and does not fall through to the authority path: an edit that could
 //                        not be read explains nothing.
 fn stage0_partition_move_explained_by_affected_inputs(
@@ -748,9 +789,10 @@ fn stage0_partition_move_explained_by_affected_inputs(
 fn stage0_partition_move_explained_by_bound(changed_paths: List<String>, bound: AffectedSetBound) -> Bool {
   match bound {
     WholePopulation { edited: _, generation_inputs: _ } => true
-    AffectedMirrors { edited: _, mirrors: m, bootstrap_products: _ } =>
+    AffectedMirrors { edited: e, mirrors: m, bootstrap_products: _ } =>
       count(rebuild_scope_changed_in_roster(changed_mirrors: m, roster: rebuild_scope_partition_generation_mirrors)) > 0
         || stage0_partition_move_explained_by_changed_paths(changed_paths: changed_paths)
+        || stage0_partition_move_explained_by_edited_members(edited: e)
     EditedSetUnlocatable { unlocatable: _, reason: _ } => false
   }
 }

@@ -96,19 +96,24 @@ import gunbc.rust_emitted_edge {
   rust_runtime_prelude_module
 }
 import v2.workflow.rust_crate_partition {
-  stage0_partition_crate_rows,
   resolve_partition_outcome,
   rust_crate_partition_module_bearing_unit_target,
-  stage0_interim_explicit_assignment,
-  stage0_source_module_dag,
-  stage0_source_module_dag_over,
+  stage0_partition_assignment,
+  stage0_partition_derivation,
+  stage0_partition_derivation_over,
   stage0_module_dag_merge_over,
-  Stage0SourceModuleDagDerived,
-  Stage0SourceModuleDagRefused,
-  Stage0PartitionedModuleUndeclared,
-  Stage0PartitionedModuleAmbiguous,
-  Stage0PartitionedDependencyUnresolved,
-  Stage0PartitionedDependencyOutsidePartition,
+  Stage0PartitionDerivation,
+  Stage0PartitionDerived,
+  Stage0PartitionDerivationRefused,
+  Stage0Placement,
+  Stage0UnitFloor,
+  Stage0SourceRootUndeclared,
+  Stage0SourceDependencyUnresolved,
+  Stage0PartitionedBasenameAmbiguous,
+  Stage0UnitFloorMissing,
+  Stage0UnitFloorUnranked,
+  stage0_partition_crate_specs,
+  stage0_unit_modules,
   stage0_resolve_partition_outcome,
   Stage0PartitionResolved,
   Stage0PartitionResolveRefused,
@@ -133,7 +138,6 @@ import v2.workflow.rust_crate_partition {
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_interface_grounding_target,
   stage0_module_bearing_unit_count,
-  stage0_v1_infer_modules,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
   Stage0PartitionReceiptFoldRefused,
@@ -342,14 +346,19 @@ test fn a_mutated_import_edge_moves_the_policy_assignment() -> Bool {
 }
 
 test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
-  let coverage_same = stage0_partition_member_coverage_consistent(
-    left: stage0_single_crate_fold_outcome(),
-    right: stage0_partition_receipt_outcome
-  )
-  perturbation_consistent(
-    reading: ForwardSameInSameOut,
-    output_responded: !coverage_same
-  )
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: _, placements: placements } => {
+      let coverage_same = stage0_partition_member_coverage_consistent(
+        left: stage0_single_crate_fold_outcome(modules: placements |> map(p => p.basename)),
+        right: stage0_partition_receipt_outcome
+      )
+      perturbation_consistent(
+        reading: ForwardSameInSameOut,
+        output_responded: !coverage_same
+      )
+    }
+  }
 }
 
 test fn witness_interim_physical_crate_count_holds() -> Bool {
@@ -360,10 +369,14 @@ test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
   stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
 }
 
-test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
+// THE ROUTE: the stage0 assignment is the derivation rule's, and its provenance names that rule.
+// This was HandExplicit while the roster and placement were hand lists.
+test fn witness_stage0_provenance_names_the_derivation_rule_holds() -> Bool {
   match stage0_partition_provenance() {
-    HandExplicit => true
-    PolicyDerived { policy: _ } => false
+    HandExplicit => false
+    PolicyDerived { policy: policy } =>
+      ((policy.module_path as String) == "v2.workflow.rust_crate_partition")
+        && ((policy.decl_name as String) == "stage0_partition_derivation_over")
   }
 }
 
@@ -393,7 +406,7 @@ test fn witness_runtime_unit_members_holds() -> Bool {
   }
 }
 
-// THIS WAS `== 9` AND THE 9 WAS THE WHOLE ASSERTION, which is why it is not `== 10` now.
+// THIS WAS `== 9` AND THE 9 WAS THE WHOLE ASSERTION, which is why it is not a count now.
 // #9689 added three modules to stage0 and the v1-infer roster gained one of them
 // (gunbc_rust_source_type_bindings), so the literal went stale the moment the roster it
 // measures changed -- and the only available repair for a literal is to retype it, which
@@ -401,11 +414,11 @@ test fn witness_runtime_unit_members_holds() -> Bool {
 // measure() == measure(), the manual update was the test's entire content.
 //
 // The join below is not that collapse, and the reason is which side each half comes from.
-// stage0_v1_infer_modules() is the DECLARED roster, a list in the partition authority.
-// unit.members is what came back through stage0_assign_modules_to_unit and then through
-// partition_fold_outcome -- the assignment map keyed by ModuleId, folded and grouped. So
-// this asserts the fold routed exactly the declared modules to this unit and invented,
-// dropped and misfiled none, which is a property of the plumbing rather than of the list.
+// The derivation's placements for this unit are what the rule decided; unit.members is what
+// came back through the assignment and then through partition_fold_outcome -- the map keyed by
+// ModuleId, folded and grouped. So this asserts the fold routed exactly the placed modules to
+// this unit and invented, dropped and misfiled none, which is a property of the plumbing rather
+// than of the rule.
 // It is honest about its blind spot: an error in the ROSTER ITSELF is invisible here, as it
 // was to the count, because both sides then move together. That class is the required build
 // lane's (gunbc.repo.repo_self_build repo_self_build_partition_crates_command), where rustc is
@@ -419,9 +432,14 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
         Present { value: unit } => {
-          let declared = stage0_v1_infer_modules()
+          let declared = match stage0_partition_derivation {
+            Stage0PartitionDerivationRefused { cause: _ } => []
+            Stage0PartitionDerived { module_dag: _, placements: placements } =>
+              stage0_unit_modules(placements: placements, unit_id: stage0_unit_v1_infer)
+          }
             |> map(basename => stage0_module_id(basename: basename))
-          (unit.members |> count) == (declared |> count)
+          ((declared |> count) > 0)
+            && (unit.members |> count) == (declared |> count)
             && declared |> all(d => unit.members |> any(m => m == d))
             && unit.members |> all(m => declared |> any(d => d == m))
         }
@@ -457,8 +475,8 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   match stage0_resolve_partition_outcome {
-    Stage0PartitionResolved { module_dag: _, assignment: resolved } => {
-      let expected = stage0_interim_explicit_assignment()
+    Stage0PartitionResolved { module_dag: _, assignment: resolved, placements: placements } => {
+      let expected = stage0_partition_assignment(placements: placements)
       (resolved |> count) == (expected |> count)
     }
     Stage0PartitionResolveRefused { cause: _ } => false
@@ -477,8 +495,8 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
 
 // ── THE TWO AUTHORITIES FOR "WHAT DOES THIS CRATE DEPEND ON", AND WHY THE BOUND IS AN EQUALITY ──
 //
-// rust_crate_partition_dissolve_on declares stage0's edges authored rather than derived. The size
-// of that gap is DERIVED by stage0_reexport_derivation_disagreements rather than transcribed into
+// stage0's edges were once authored rather than derived, and the re-export rows still are. The size
+// of any gap between them is DERIVED by stage0_reexport_derivation_disagreements rather than transcribed into
 // prose (gunbc.design_argument::how_to_work), and this pins its population at IDENTITY grain rather than by count: a count
 // equality would stay green if one unit were repaired while another began to diverge.
 //
@@ -608,7 +626,7 @@ test fn witness_interface_grounding_trigger_states_both_capability_halves_holds(
 fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroundingCapability) -> Bool {
   ((capability.contents_supply.module_path as String) == "v2.compiler.module_acquisition")
     && ((capability.contents_supply.decl_name as String) == "acquire_closure_of")
-    && ((capability.population.module_path as String) == "v2.workflow.emitted_closure_crate_partition")
+    && ((capability.population.module_path as String) == "v2.workflow.rust_crate_partition")
     && ((capability.population.decl_name as String) == "module_dag_from_dependency_facts")
 }
 
@@ -621,21 +639,31 @@ fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroun
 // made v1-stage0-v1-artifact derive only the runtime as a dependency. It is present here only if the
 // DAG is read from the dependency facts: re-authoring a hand list without it reds this claim.
 test fn stage0_source_edges_are_read_from_the_dependency_facts() -> Bool {
-  match stage0_source_module_dag {
-    Stage0SourceModuleDagRefused { cause: _ } => false
-    Stage0SourceModuleDagDerived { module_dag: source } =>
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: source, placements: _ } =>
       source.edges |> any(edge =>
         (edge.from as String) == "v1_compiler_languages" && (edge.to as String) == "extdeps_languages_dag_emit")
   }
 }
 
-// The derivation over SUPPLIED facts, so each arm is reached by an input built to reach it. Two
-// partitioned modules, p_low and p_high; p_high is declared at "f/high.dag".
+// THE DERIVATION OVER SUPPLIED FACTS, so each arm is reached by an input built to reach it. The
+// fixture's modules sit under `w`; the policy floors the whole namespace at u-a and raises w.high and
+// w.y to u-b, over the unit order u-rt < u-a < u-b. These claims supply the facts at the derivation's
+// interface; the live-tree claims above and below are the inhabitance claims that the real fact
+// producers reach it.
+fn witness_decl(module_name: String, path: String) -> ModuleDeclarationFact {
+  ModuleDeclarationFact { module: module_name, path: path }
+}
+
 fn witness_source_decls() -> List<ModuleDeclarationFact> {
   [
-    ModuleDeclarationFact { module: "p.low", path: "f/low.dag" },
-    ModuleDeclarationFact { module: "p.high", path: "f/high.dag" },
-    ModuleDeclarationFact { module: "p.elsewhere", path: "f/elsewhere.dag" },
+    witness_decl(module_name: "w.root", path: "f/root.dag"),
+    witness_decl(module_name: "w.low", path: "f/low.dag"),
+    witness_decl(module_name: "w.high", path: "f/high.dag"),
+    witness_decl(module_name: "w.stray", path: "f/stray.dag"),
+    witness_decl(module_name: "w.x", path: "f/x.dag"),
+    witness_decl(module_name: "w.y", path: "f/y.dag"),
   ]
 }
 
@@ -643,79 +671,216 @@ fn witness_source_dep(path: String, target: String, declared: Bool) -> ModuleDep
   ModuleDependencyEdge { path: path, target_module: target, target_declared: declared }
 }
 
-// The clean arm: an import and a reference joining one pair are ONE edge, a self dependency is no
-// edge, and a dependency of a module the partition does not own is not inspected at all.
-test fn stage0_source_derivation_records_each_dependency_once() -> Bool {
-  match stage0_source_module_dag_over(
-    basenames: ["p_low", "p_high"],
+fn witness_floors() -> List<Stage0UnitFloor> {
+  [
+    Stage0UnitFloor { prefix: "w", unit_id: "u-a" as CompilationUnitId },
+    Stage0UnitFloor { prefix: "w.high", unit_id: "u-b" as CompilationUnitId },
+    Stage0UnitFloor { prefix: "w.y", unit_id: "u-b" as CompilationUnitId },
+  ]
+}
+
+fn witness_order() -> List<CompilationUnitId> {
+  ["u-rt" as CompilationUnitId, "u-a" as CompilationUnitId, "u-b" as CompilationUnitId]
+}
+
+// The base tree's facts: w.root imports w.low (an import and a reference, so twice) and names
+// itself; w.stray is reached by no root and depends on a module nobody declares.
+fn witness_base_deps() -> List<ModuleDependencyEdge> {
+  [
+    witness_source_dep(path: "f/root.dag", target: "w.low", declared: true),
+    witness_source_dep(path: "f/root.dag", target: "w.low", declared: true),
+    witness_source_dep(path: "f/root.dag", target: "w.root", declared: true),
+    witness_source_dep(path: "f/stray.dag", target: "not.declared", declared: false),
+  ]
+}
+
+fn witness_derive(roots: List<String>, deps: List<ModuleDependencyEdge>) -> Stage0PartitionDerivation {
+  stage0_partition_derivation_over(
+    roots: roots,
+    floors: witness_floors(),
+    order: witness_order(),
     declarations: witness_source_decls(),
+    dependencies: deps
+  )
+}
+
+fn witness_unit_of(placements: List<Stage0Placement>, basename: String) -> String {
+  placements |> fold(init: "unplaced", f: fn(acc, placement) {
+    if placement.basename == basename { placement.unit_id as String } else { acc }
+  })
+}
+
+// The placements' basenames, IN ORDER: == on a list is not part of the dialect, so position i of
+// each is compared through a fold that carries the index.
+type WitnessOrderScan {
+  index: Int
+  ok: Bool
+}
+
+fn witness_nth_basename(placements: List<Stage0Placement>, wanted: Int) -> String {
+  let found = placements |> fold(init: WitnessNthScan { index: 0, value: "" }, f: fn(acc, p) {
+    if acc.index == wanted { WitnessNthScan { index: acc.index + 1, value: p.basename } } else { WitnessNthScan { index: acc.index + 1, value: acc.value } }
+  })
+  found.value
+}
+
+type WitnessNthScan {
+  index: Int
+  value: String
+}
+
+fn witness_basenames_are(placements: List<Stage0Placement>, expected: List<String>) -> Bool {
+  let scan = expected |> fold(init: WitnessOrderScan { index: 0, ok: true }, f: fn(acc, name) {
+    WitnessOrderScan { index: acc.index + 1, ok: acc.ok && witness_nth_basename(placements: placements, wanted: acc.index) == name }
+  })
+  (count(placements) == count(expected)) && scan.ok
+}
+
+// THE ROSTER IS THE ROOTS' CLOSURE PLUS THE RUNTIME, AND EACH DEPENDENCY IS ONE EDGE. w.stray is
+// declared and unresolvable, and the derivation never inspects it, because no root reaches it: an
+// unrelated broken module leaves the partition alone. The runtime is placed in the first unit, and
+// the placements come back in basename order, the order the crate rows list their modules in.
+test fn stage0_source_derivation_records_each_dependency_once() -> Bool {
+  match witness_derive(roots: ["w.root"], deps: witness_base_deps()) {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: dag, placements: placements } =>
+      witness_basenames_are(placements: placements, expected: [rust_runtime_prelude_module, "w_low", "w_root"])
+        && witness_unit_of(placements: placements, basename: rust_runtime_prelude_module) == "u-rt"
+        && witness_unit_of(placements: placements, basename: "w_low") == "u-a"
+        && witness_unit_of(placements: placements, basename: "w_root") == "u-a"
+        && (dag.edges |> count) == 1
+        && dag.edges |> all(edge => (edge.from as String) == "w_root" && (edge.to as String) == "w_low")
+  }
+}
+
+// ONE ADDED IMPORT, AND NO LIST EDITED. w.root now imports w.high, which the partition did not
+// hold: w.high joins at its own floor (u-b), and w.root, which depends on it, is raised to u-b with
+// it, because a crate:: path resolves only into a unit the importer's unit re-exports. w.low, which
+// the import does not touch, keeps u-a. A roster or a placement that ignored the facts would leave
+// w.high unplaced and w.root at u-a.
+test fn one_added_import_brings_a_module_in_and_raises_its_importer() -> Bool {
+  let deps = witness_base_deps() |> list_push(witness_source_dep(path: "f/root.dag", target: "w.high", declared: true))
+  match witness_derive(roots: ["w.root"], deps: deps) {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: _, placements: placements } =>
+      witness_unit_of(placements: placements, basename: "w_high") == "u-b"
+        && witness_unit_of(placements: placements, basename: "w_root") == "u-b"
+        && witness_unit_of(placements: placements, basename: "w_low") == "u-a"
+  }
+}
+
+// REMOVING THE LAST PATH DROPS THE MODULE. Without w.root's imports of w.low, nothing reaches w.low,
+// so it leaves the partition; the root stays.
+test fn removing_the_last_import_drops_a_non_root_module() -> Bool {
+  match witness_derive(roots: ["w.root"], deps: []) {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: _, placements: placements } =>
+      witness_basenames_are(placements: placements, expected: [rust_runtime_prelude_module, "w_root"])
+  }
+}
+
+// A CYCLE IS PLACED TOGETHER, WHATEVER ORDER ITS FACTS ARRIVE IN. w.x and w.y import each other;
+// w.x's floor is u-a and w.y's is u-b, so a member-by-member placement would split them and the
+// answer would depend on which was read first. Both orders give both u-b.
+test fn a_mixed_floor_cycle_lands_in_one_unit_in_either_input_order() -> Bool {
+  let forward = [
+    witness_source_dep(path: "f/x.dag", target: "w.y", declared: true),
+    witness_source_dep(path: "f/y.dag", target: "w.x", declared: true),
+  ]
+  let backward = [
+    witness_source_dep(path: "f/y.dag", target: "w.x", declared: true),
+    witness_source_dep(path: "f/x.dag", target: "w.y", declared: true),
+  ]
+  let reversed_decls = witness_source_decls() |> fold(init: [], f: fn(acc, decl) { [decl] |> concat(acc) })
+  let first = witness_derive(roots: ["w.x"], deps: forward)
+  let second = stage0_partition_derivation_over(
+    roots: ["w.y"],
+    floors: witness_floors(),
+    order: witness_order(),
+    declarations: reversed_decls,
+    dependencies: backward
+  )
+  match first {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: _, placements: a } =>
+      match second {
+        Stage0PartitionDerivationRefused { cause: _ } => false
+        Stage0PartitionDerived { module_dag: _, placements: b } =>
+          witness_unit_of(placements: a, basename: "w_x") == "u-b"
+            && witness_unit_of(placements: a, basename: "w_y") == "u-b"
+            && witness_unit_of(placements: b, basename: "w_x") == "u-b"
+            && witness_unit_of(placements: b, basename: "w_y") == "u-b"
+      }
+  }
+}
+
+// RED: a root the pool does not declare is refused by name, never an empty partition.
+test fn stage0_source_undeclared_root_refuses() -> Bool {
+  match witness_derive(roots: ["w.ghost"], deps: witness_base_deps()) {
+    Stage0PartitionDerivationRefused { cause: Stage0SourceRootUndeclared { module_name: module_name } } => module_name == "w.ghost"
+    _ => false
+  }
+}
+
+// RED: an unresolved dependency of a REACHED module refuses with its importer and target, never
+// dropping out of a closure that would then read as complete. (The same shape on w.stray, which no
+// root reaches, is the positive control above.)
+test fn stage0_source_unresolved_dependency_refuses() -> Bool {
+  match witness_derive(roots: ["w.root"], deps: [witness_source_dep(path: "f/root.dag", target: "w.missing", declared: false)]) {
+    Stage0PartitionDerivationRefused { cause: Stage0SourceDependencyUnresolved { importer_path: path, target_module: target } } =>
+      path == "f/root.dag" && target == "w.missing"
+    _ => false
+  }
+}
+
+// RED: two reached modules that emit to one mirror file would be one crate module with two
+// sources; the derivation names both instead of picking one.
+test fn stage0_source_ambiguous_basename_refuses() -> Bool {
+  let decls = witness_source_decls()
+    |> concat([witness_decl(module_name: "w.a_b", path: "f/a_b.dag"), witness_decl(module_name: "w.a.b", path: "f/a/b.dag")])
+  match stage0_partition_derivation_over(
+    roots: ["w.root"],
+    floors: witness_floors(),
+    order: witness_order(),
+    declarations: decls,
     dependencies: [
-      witness_source_dep(path: "f/high.dag", target: "p.low", declared: true),
-      witness_source_dep(path: "f/high.dag", target: "p.low", declared: true),
-      witness_source_dep(path: "f/high.dag", target: "p.high", declared: true),
-      witness_source_dep(path: "f/elsewhere.dag", target: "not.declared", declared: false),
+      witness_source_dep(path: "f/root.dag", target: "w.a_b", declared: true),
+      witness_source_dep(path: "f/root.dag", target: "w.a.b", declared: true),
     ]
   ) {
-    Stage0SourceModuleDagRefused { cause: _ } => false
-    Stage0SourceModuleDagDerived { module_dag: dag } =>
-      (dag.edges |> count) == 1
-        && dag.edges |> all(edge => (edge.from as String) == "p_high" && (edge.to as String) == "p_low")
-        && (dag.modules |> count) == 2
-  }
-}
-
-// RED: a partitioned module that depends on a module the partition does not own would be a
-// crate:: path into a crate it cannot reach. Dropping that edge is what the hand list did silently.
-test fn stage0_source_dependency_outside_the_partition_refuses() -> Bool {
-  match stage0_source_module_dag_over(
-    basenames: ["p_low", "p_high"],
-    declarations: witness_source_decls(),
-    dependencies: [witness_source_dep(path: "f/high.dag", target: "p.elsewhere", declared: true)]
-  ) {
-    Stage0SourceModuleDagRefused { cause: Stage0PartitionedDependencyOutsidePartition { importer: importer, target: target } } =>
-      importer == "p_high" && target == "p_elsewhere"
+    Stage0PartitionDerivationRefused { cause: Stage0PartitionedBasenameAmbiguous { basename: basename, modules: modules } } =>
+      basename == "w_a_b" && (modules |> count) == 2
     _ => false
   }
 }
 
-// RED: an unresolved dependency of a partitioned module refuses with its importer and target,
-// never dropping out of a graph that would then read as complete.
-test fn stage0_source_unresolved_dependency_refuses() -> Bool {
-  match stage0_source_module_dag_over(
-    basenames: ["p_low", "p_high"],
-    declarations: witness_source_decls(),
-    dependencies: [witness_source_dep(path: "f/low.dag", target: "p.missing", declared: false)]
+// RED: a reached module no floor row covers has no lowest unit, and the derivation refuses rather
+// than placing it by its dependencies alone.
+test fn stage0_source_module_without_a_floor_refuses() -> Bool {
+  let decls = witness_source_decls() |> list_push(witness_decl(module_name: "z.m", path: "f/z.dag"))
+  match stage0_partition_derivation_over(
+    roots: ["w.root"],
+    floors: witness_floors(),
+    order: witness_order(),
+    declarations: decls,
+    dependencies: [witness_source_dep(path: "f/root.dag", target: "z.m", declared: true)]
   ) {
-    Stage0SourceModuleDagRefused { cause: Stage0PartitionedDependencyUnresolved { importer_path: path, target_module: target } } =>
-      path == "f/low.dag" && target == "p.missing"
+    Stage0PartitionDerivationRefused { cause: Stage0UnitFloorMissing { module_name: module_name } } => module_name == "z.m"
     _ => false
   }
 }
 
-// RED: a roster basename no declared module projects to has no edges to read, and a module with
-// no edges is exactly what a silently incomplete graph looks like. The runtime alone is exempt.
-test fn stage0_source_undeclared_partitioned_module_refuses() -> Bool {
-  match stage0_source_module_dag_over(
-    basenames: [rust_runtime_prelude_module, "p_low", "p_ghost"],
+// RED: a floor row naming a unit the order does not list has no rank to compare.
+test fn stage0_source_floor_naming_an_unordered_unit_refuses() -> Bool {
+  match stage0_partition_derivation_over(
+    roots: ["w.root"],
+    floors: [Stage0UnitFloor { prefix: "w", unit_id: "u-nowhere" as CompilationUnitId }],
+    order: witness_order(),
     declarations: witness_source_decls(),
     dependencies: []
   ) {
-    Stage0SourceModuleDagRefused { cause: Stage0PartitionedModuleUndeclared { basename: basename } } =>
-      basename == "p_ghost"
-    _ => false
-  }
-}
-
-// RED: two declared modules projecting onto one basename would make the importer of every edge a
-// guess; the derivation names both instead of picking one.
-test fn stage0_source_ambiguous_partitioned_module_refuses() -> Bool {
-  match stage0_source_module_dag_over(
-    basenames: ["p_low"],
-    declarations: witness_source_decls() |> list_push(ModuleDeclarationFact { module: "p_low", path: "f/flat.dag" }),
-    dependencies: []
-  ) {
-    Stage0SourceModuleDagRefused { cause: Stage0PartitionedModuleAmbiguous { basename: basename, modules: modules } } =>
-      basename == "p_low" && (modules |> count) == 2
+    Stage0PartitionDerivationRefused { cause: Stage0UnitFloorUnranked { prefix: prefix, unit_id: unit } } =>
+      prefix == "w" && (unit as String) == "u-nowhere"
     _ => false
   }
 }
@@ -726,9 +891,9 @@ test fn stage0_source_ambiguous_partitioned_module_refuses() -> Bool {
 // the source list, so every one of these was derived. If the merge stopped reading the rows, or
 // the rows stopped naming the runtime module, the count moves and this reds.
 test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -> Bool {
-  match stage0_source_module_dag {
-    Stage0SourceModuleDagRefused { cause: _ } => false
-    Stage0SourceModuleDagDerived { module_dag: source } => {
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: source, placements: _ } => {
       let source_runtime_edges = source.edges
         |> filter(edge => (edge.to as String) == rust_runtime_prelude_module)
         |> count
@@ -754,9 +919,9 @@ test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
     to: EmittedModuleTarget { module: "v1_std_core" },
     provenance: RuntimePrelude
   }
-  match stage0_source_module_dag {
-    Stage0SourceModuleDagRefused { cause: _ } => false
-    Stage0SourceModuleDagDerived { module_dag: source } =>
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: source, placements: _ } =>
       match module_dag_with_emitted_edges(
         module_dag: source,
         emitted: module_dag_runtime_prelude_edges(module_dag: source) |> list_push(reverse)
@@ -776,9 +941,9 @@ test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
     to: EmittedModuleTarget { module: "not_a_stage0_module" },
     provenance: RuntimePrelude
   }
-  match stage0_source_module_dag {
-    Stage0SourceModuleDagRefused { cause: _ } => false
-    Stage0SourceModuleDagDerived { module_dag: source } =>
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: source, placements: _ } =>
       match module_dag_with_emitted_edges(module_dag: source, emitted: [stranger]) {
         ModuleDagEmittedRefused { cause: EmittedEdgeEndpointOutsideDag { from: from, to: to } } =>
           from == "v1_std_core" && to == "not_a_stage0_module"
@@ -820,6 +985,6 @@ test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
 // is part of the seed, and the build command consulted the previous answer.
 test fn the_required_build_phase_covers_every_declared_partition_package() -> Bool {
   let packages = repo_self_build_partition_crate_packages()
-  (stage0_partition_crate_rows() |> all(row => packages |> any(p => p == row.package_name)))
-    && (packages |> all(p => stage0_partition_crate_rows() |> any(row => row.package_name == p)))
+  (stage0_partition_crate_specs() |> all(spec => packages |> any(p => p == spec.package_name)))
+    && (packages |> all(p => stage0_partition_crate_specs() |> any(spec => spec.package_name == p)))
 }

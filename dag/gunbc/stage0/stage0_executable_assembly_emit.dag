@@ -1,7 +1,5 @@
 module gunbc.stage0.stage0_executable_assembly_emit
 
-import gunbc.crate_partition { Stage0PartitionCrateRow }
-
 import std.types { List }
 import v2.compiler.self_host.stage0_executable_assembly {
   stage0_host_shell_package_name,
@@ -10,7 +8,7 @@ import v2.compiler.self_host.stage0_executable_assembly {
 }
 import std.algebra { fold_list, list_map, length }
 import v2.std.text { String }
-import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
+import v2.workflow.rust_crate_partition { Stage0PartitionCrateSpec, stage0_partition_crate_specs }
 
 // THE BRIDGE, AND WHY THERE HAS TO BE ONE. v2.compiler.self_host.stage0_executable_assembly is
 // the authority for which package assembles the next-pass executable and which partition packages
@@ -72,7 +70,7 @@ type LinkedPartitionCratesRender
   = LinkedPartitionCratesRendered { content: String }
   | LinkedPartitionCratesRefused { reason: String }
 
-fn linked_partition_closure_step(rows: List<Stage0PartitionCrateRow>, acc: List<String>) -> List<String> {
+fn linked_partition_closure_step(rows: List<Stage0PartitionCrateSpec>, acc: List<String>) -> List<String> {
   fold_list(rows, empty: acc, cons: fn(reached, row) {
     if any(xs: reached, predicate: fn(p) { p == row.package_name }) {
       fold_list(row.reexport_packages, empty: reached, cons: fn(r, dep) {
@@ -89,13 +87,13 @@ fn linked_partition_closure_step(rows: List<Stage0PartitionCrateRow>, acc: List<
 // its two inputs -- the declared dependencies and the rostered rows -- as VALUES, so a claim can
 // supply a roster with a transitive child, or a dependency no row names, without editing the
 // authority; the live entry point below binds the real ones.
-fn linked_partition_packages(deps: List<String>, rows: List<Stage0PartitionCrateRow>) -> List<String> {
+fn linked_partition_packages(deps: List<String>, rows: List<Stage0PartitionCrateSpec>) -> List<String> {
   fold_list(rows, empty: deps, cons: fn(acc, _) {
     linked_partition_closure_step(rows: rows, acc: acc)
   })
 }
 
-fn linked_partition_crate_dirs(deps: List<String>, rows: List<Stage0PartitionCrateRow>) -> List<String> {
+fn linked_partition_crate_dirs(deps: List<String>, rows: List<Stage0PartitionCrateSpec>) -> List<String> {
   let reached = linked_partition_packages(deps: deps, rows: rows)
   list_map(
     xs: filter(xs: rows, predicate: fn(row) { any(xs: reached, predicate: fn(p) { p == row.package_name }) }),
@@ -103,11 +101,11 @@ fn linked_partition_crate_dirs(deps: List<String>, rows: List<Stage0PartitionCra
   )
 }
 
-fn unrostered_linked_packages(deps: List<String>, rows: List<Stage0PartitionCrateRow>) -> List<String> {
+fn unrostered_linked_packages(deps: List<String>, rows: List<Stage0PartitionCrateSpec>) -> List<String> {
   filter(xs: linked_partition_packages(deps: deps, rows: rows), predicate: fn(p) { !any(xs: rows, predicate: fn(row) { row.package_name == p }) })
 }
 
-fn render_linked_partition_crates(deps: List<String>, rows: List<Stage0PartitionCrateRow>) -> LinkedPartitionCratesRender {
+fn render_linked_partition_crates(deps: List<String>, rows: List<Stage0PartitionCrateSpec>) -> LinkedPartitionCratesRender {
   let unrostered = unrostered_linked_packages(deps: deps, rows: rows)
   if length(xs: unrostered) > 0 {
     LinkedPartitionCratesRefused {
@@ -127,5 +125,5 @@ fn render_linked_partition_crates(deps: List<String>, rows: List<Stage0Partition
 }
 
 fn expected_stage0_linked_partition_crates_txt() -> LinkedPartitionCratesRender {
-  render_linked_partition_crates(deps: stage0_host_shell_partition_dependencies, rows: stage0_partition_crate_rows())
+  render_linked_partition_crates(deps: stage0_host_shell_partition_dependencies, rows: stage0_partition_crate_specs())
 }
