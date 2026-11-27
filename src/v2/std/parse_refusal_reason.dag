@@ -48,6 +48,16 @@ import v2.std.node { Symbol }
 //                                     one the author meant by rule, so it refuses rather than pick:
 //                                     parenthesize, or join the comparisons with `&&`. Located at
 //                                     the second operator (v2.std.grammar InfixTable).
+//   ServiceNameMissing
+//     -- the `service` marker is followed by something other than a qualified name (`service {`); located at the marker.
+//   ServiceBodyOpenBraceMissing
+//     -- a service's name is not followed by `{` (`service S` then the next declaration); located at the name.
+//   OperationBodyEntryUnknown
+//     -- an operation body holds a token that is neither one of its entries nor the closing `}` (`volatile`: only readonly, idempotent and hermetic are modifiers); located at the token before it.
+//   StatusEntryArrowMissing
+//     -- a status entry of an `exit` or `response` block has its pattern but no `=>` (`0 Unit`); located at the pattern.
+//   StatusEntryExpressionMissing
+//     -- a status entry of a `mock_response` block has `pattern =>` but no expression (`0 =>` then `}`); located at the arrow.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq
   | DataValueMissingAfterEq
@@ -59,6 +69,11 @@ type ParseRefusalReason =
   | KeywordAsValueName
   | TokenStartsNotIncreasing
   | NonAssociativeOperatorChain
+  | ServiceNameMissing
+  | ServiceBodyOpenBraceMissing
+  | OperationBodyEntryUnknown
+  | StatusEntryArrowMissing
+  | StatusEntryExpressionMissing
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
@@ -73,5 +88,10 @@ fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
     KeywordAsValueName => ^parse_keyword_as_value_name
     TokenStartsNotIncreasing => ^parse_token_starts_not_increasing
     NonAssociativeOperatorChain => ^parse_non_associative_operator_chain
+    ServiceNameMissing => ^parse_service_name_missing
+    ServiceBodyOpenBraceMissing => ^parse_service_body_open_brace_missing
+    OperationBodyEntryUnknown => ^parse_operation_body_entry_unknown
+    StatusEntryArrowMissing => ^parse_status_entry_arrow_missing
+    StatusEntryExpressionMissing => ^parse_status_entry_expression_missing
   }
 }

@@ -1,0 +1,120 @@
+{
+  "image_sha256": "af9dd2d42128153f1036d7fcdd3f171774631aafef49a8c01bc7ed738beac364",
+  "sample_interval_ms": 10,
+  "resource": {
+    "wall_seconds": 112.50964327700058,
+    "user_cpu_seconds": 96.167041,
+    "sys_cpu_seconds": 14.351026,
+    "maxrss_kib": 2352628,
+    "exit_code": 0
+  },
+  "total_cpu_sampled_s": 90.31,
+  "named_candidates": [
+    {
+      "name": "build_module_context",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::build_module_context",
+          "inclusive_s": 1.34,
+          "exclusive_s": 0.0
+        }
+      ]
+    },
+    {
+      "name": "build_type_env",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::build_type_env",
+          "inclusive_s": 0.99,
+          "exclusive_s": 0.01
+        }
+      ]
+    },
+    {
+      "name": "infer_items_demanded",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::infer_items_demanded",
+          "inclusive_s": 0.22,
+          "exclusive_s": 0.0
+        }
+      ]
+    },
+    {
+      "name": "build_symbol_index_census",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::build_symbol_index_census",
+          "inclusive_s": 10.18,
+          "exclusive_s": 0.0
+        }
+      ]
+    },
+    {
+      "name": "realization_of",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::realization_of",
+          "inclusive_s": 0.5,
+          "exclusive_s": 0.0
+        }
+      ]
+    },
+    {
+      "name": "expand_transitive_services",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer_service::expand_transitive_services",
+          "inclusive_s": 0.01,
+          "exclusive_s": 0.0
+        }
+      ]
+    },
+    {
+      "name": "build_module_interface",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::build_module_interface",
+          "inclusive_s": 0.1,
+          "exclusive_s": 0.0
+        }
+      ]
+    },
+    {
+      "name": "rewire_type_env_parent_links",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::rewire_type_env_parent_links",
+          "inclusive_s": 0.34,
+          "exclusive_s": 0.02
+        }
+      ]
+    },
+    {
+      "name": "rewire_func_env_parent_links",
+      "resolved_symbols": [
+        {
+          "symbol": "v1_stage0_v1_infer::v1_compiler_infer::rewire_func_env_parent_links",
+          "inclusive_s": 0.2,
+          "exclusive_s": 0.01
+        }
+      ]
+    },
+    {
+      "name": "leaf_owner_modules_from_registry",
+      "resolved_symbols": []
+    }
+  ],
+  "observations": {
+    "count": 587,
+    "unique": 587,
+    "all_first_miss_absent": true
+  },
+  "stages": [
+    "\u2713 compile.frontend done in 32 seconds",
+    "\u2713 compile.normalize done in 5 seconds",
+    "\u2713 compile.reconcile done in 26 seconds",
+    "\u2713 compile.analyses done in 95ms"
+  ],
+  "exit_status": 0
+}

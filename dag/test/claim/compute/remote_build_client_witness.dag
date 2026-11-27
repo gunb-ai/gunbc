@@ -2,6 +2,9 @@ module test.claim.compute.remote_build_client_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.retry_law { RetryHintNone, retry_hint_from_delta }
+import extdeps.languages.json.emit { serialize_json }
+import std.process { ExitSuccess, ExitFailure }
 import product.host_identity { HostIdentity }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
@@ -34,10 +37,11 @@ import gunbc.compute.test_run {
 }
 import gunbc.compute.remote_build_client {
   remote_build_answer_word, remote_build_answer_text, remote_gate_step_outcome,
+  remote_compile_cli, remote_test_cli, remote_gate_cli,
   GateNoHostAdmitted, GateVerdictOnCode,
   remote_build_probe_leg_kind, remote_build_work_leg_kind, remote_build_work_leg_overrun_detail,
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
-  remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean,
+  remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean, remote_build_attempt_json,
   RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
   RemoteSelectionSent, RemoteSelectionDeclined, RemoteSelectionFailed,
   remote_selection_operation, remote_selection_declined, remote_selection_failed, remote_not_sent_json,
@@ -108,12 +112,23 @@ test fn a_run_is_served_only_when_every_request_was_served() -> Bool {
   let op = RemoteCompileEntry { entry: "dag/x.dag" as FilePath }
   let served = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostServed { receipt: "{}" } } }
   let failed = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostWorkFailed { receipt: "{}" } } }
-  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full" } }] } }
+  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: RetryHintNone } }] } }
   remote_build_run_served(r: w_run(results: [served, served]))
     && !remote_build_run_served(r: w_run(results: [served, failed]))
     && !remote_build_run_served(r: w_run(results: [full]))
     && !remote_build_run_served(r: w_run(results: []))
     && !remote_build_run_served(r: RemoteBuildNotSent { step: "push", detail: "refused" })
+}
+
+// THE RECEIPT RECORDS THE RETRY ALLOWANCE A CAPACITY-LIMITED HOST GRANTED. HostCapacityFull.retry is read
+// in production here: the attempt JSON CI consumes carries the named delay, so "capacity limited, retry
+// allowed" reaches the caller (and the serving router that will schedule the retry) rather than a bare no.
+// RED CONTROL: drop the retry member from remote_build_attempt_json and the delay arm goes red.
+test fn the_capacity_receipt_records_the_retry_allowance() -> Bool {
+  let with_delay = serialize_json(v: remote_build_attempt_json(a: RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: retry_hint_from_delta(delay: second(count: 30)) } }))
+  let no_delay = serialize_json(v: remote_build_attempt_json(a: RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: RetryHintNone } }))
+  let not_capacity = serialize_json(v: remote_build_attempt_json(a: RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostWorkFailed { receipt: "{}" } }))
+  with_delay.contains("\"retry\": \"30s\"") && no_delay.contains("\"retry\": \"none\"") && !not_capacity.contains("\"retry\"")
 }
 
 // A selected module that could not be sent counts against the run, as the local route counts an
@@ -443,4 +458,57 @@ test fn red_an_overran_work_leg_refuses_typed_and_stops_the_walk() -> Bool {
     )
     && string_contains(s: remote_build_answer_text(a: answer), pattern: "walk stops")
     && !match remote_gate_step_outcome(s: step) { GateVerdictOnCode => true  _ => false }
+}
+
+// ── THE CALL `gunbc run --arg` MAKES: EVERY CLIENT CLI, REQUIRED ARGS ONLY ───────────────────────
+//
+// WHY THESE ARE EXECUTED AND NOT MERELY WRITTEN: the two shape authorities on a call -- the compile
+// seam and the interpreter -- disagree about which parameters are required, and either can sit green
+// while the other refuses the route, so a call only the seam ever checked would pass here with ctrl's
+// route broken. Each CLI is therefore called the way argv calls it, both optionals omitted, and the
+// ANSWER is inspected: refused by the input it carries, at its own first gate (entry admission,
+// target-pattern parse, gate-row lookup), before any snapshot, tree listing, push, connection or receipt
+// write -- which is also why `worktree` names a path that does not exist, so that a refusal ever
+// reordered behind the snapshot still cannot reach a serving host or a key.
+//
+// THE RED IS THE INTERPRETER'S OWN: drop a `= none` and these stop being calls, and the claim run fails
+// with the interpreter's contract refusal -- no arm here models that error to catch it.
+//
+test fn the_client_clis_are_callable_with_only_their_required_args() -> Bool {
+  let nowhere = "/nonexistent.remote-build-client-cli-witness"
+  let compile = remote_compile_cli(worktree: nowhere, entry: "not-a-dag-entry.dag", receipt_path: nowhere)
+  let claims = remote_test_cli(worktree: nowhere, pattern: "not-a-target-pattern", receipt_path: nowhere)
+  let gate = remote_gate_cli(worktree: nowhere, label: "not-a-gate-label", receipt_path: nowhere)
+  match compile {
+    ExitFailure { code: 2, reason: r } => string_contains(s: r, pattern: "entry must be a .dag file under dag/")
+    ExitFailure { code: _, reason: _ } => false
+    ExitSuccess => false
+  }
+    && match claims {
+      ExitFailure { code: 2, reason: r } => string_contains(s: r, pattern: "gunbc remote test: ")
+      ExitFailure { code: _, reason: _ } => false
+      ExitSuccess => false
+    }
+    && match gate {
+      ExitFailure { code: 2, reason: r } => string_contains(s: r, pattern: "gunbc remote gate: ")
+      ExitFailure { code: _, reason: _ } => false
+      ExitSuccess => false
+    }
+}
+
+// AN OMITTED HOST AND AN EMPTY ONE ARE DIFFERENT CALLS, and only one of them walks the roster:
+// `--arg host=` is not "no pin", it is a pin named "" -- which `remote_build_host_pin` refuses as off-roster rather than widening to the roster, because
+// widening a pin the caller spelled is exactly the silent broadening this route refuses everywhere.
+// Absent is reachable only through the default above, so this pair is the other half of the claim
+// above: the default must mean Absent, and the empty text must NOT.
+test fn an_omitted_host_walks_the_roster_while_an_empty_one_refuses() -> Bool {
+  match remote_build_host_pin(text: none) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match remote_build_host_pin(text: Present { value: "" }) {
+      Present { value: PinOffRoster { pin: p, roster: r } } => p == "" && count(r) > 0
+      Absent => false
+      Present { value: _ } => false
+    }
 }

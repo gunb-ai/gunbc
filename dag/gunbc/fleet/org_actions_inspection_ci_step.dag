@@ -17,6 +17,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.auth.github_app_credential_step {
   gunbc_ci_org_admin_app_token_prelude
 }
@@ -26,7 +27,7 @@ data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = gunbc_run_step_ta
   function: "org_actions_inspect_wet",
 )
 
-fn gunbc_ci_org_actions_inspect_invoke() -> String {
+fn gunbc_ci_org_actions_inspect_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,

@@ -9,9 +9,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // 32794539384 measured the seven interruptions, and this consolidation is their bounded reshape.
 // Excluded from per-PR discovery via witness_exclusion_frontier row
 // enforcement_inventory_witness.dag (OfflineLocalRecipe, same dissolve_on as
-// enforcement_live_witness.dag). Local recipe: claim_batch --source-root dag --source-root
-// src/v2 --entry src/test.claim.enforcement_inventory_witness.dag --function
-// enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests
+// enforcement_live_witness.dag). Local recipe: gunbc test --wet
+// //test/claim/enforcement_inventory_witness:enforcement_inventory_global_receipt_holds. Two frontier-reconciliation tests
 // (enforcement_live specimen + row-count) are cheap but share this file grain.
 
 // Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through

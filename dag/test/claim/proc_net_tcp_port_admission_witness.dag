@@ -9,7 +9,7 @@
 //   bound is owned by the Port authority, not smuggled in via field width. Within four digits the only
 //   value checked_port refuses is 0000, which stays the kernel's marker for a socket with no bound
 //   port: the row answers TcpPortUnbound rather than minting Port 0.
-// RUN: gunbc run --claim-run --entry dag/test/claim/proc_net_tcp_port_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
+// RUN: gunbc test //test/claim/proc_net_tcp_port_admission_witness:<test fn>
 // EXPECT: each test fn answers true on the discriminating input.
 //    THE PAIR: 01BB admits as TcpPortBound { port: 443 }; 0000 is refused by checked_port (never a
 //    bound Port -- TcpPortUnbound). The syntax half: a 6-digit word "0001BB" and a 3-digit word "1BB"

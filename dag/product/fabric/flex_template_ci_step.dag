@@ -16,13 +16,14 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.diagnostic { Outcome }
 
 data gunbc_ci_flex_template_ensure_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "product.fabric.flex_vast_template_control",
   function: "ensure",
 )
 
-fn gunbc_ci_flex_template_ensure_invoke() -> String {
+fn gunbc_ci_flex_template_ensure_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_flex_template_ensure_target,

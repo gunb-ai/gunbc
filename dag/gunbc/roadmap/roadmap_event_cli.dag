@@ -53,8 +53,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_branch_tip,
   RoadmapEventCarrierLayout, EventPublishState,
   EventAppended, EventAlreadyPresent, EventAppendRefused, EventsRead, EventsReadRefused,
-  CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
-  carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
+  CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
 }
 
 // THE ONE WRITER. A session, an operator or a harness worker records a fact about a node with
@@ -200,7 +199,6 @@ fn roadmap_event_record_exit(exit: ProcessExit, closes: List<CarrierSnapshotClos
       SnapshotNotOpened => acc
       SnapshotClosed => acc
       SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => acc
-      SnapshotCloseVerificationFailed { worktree: _, verification: _ } => acc
     })
   }
 }

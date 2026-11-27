@@ -59,9 +59,8 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // Rung: mitigatable. Next-rung trigger: a witness home whose source roots reach src/v1, or a host
 // builtin exposing the parser's transport the way compile_dag_diagnostic_census exposes diagnostics.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
-//     --entry src/v1/tests/claim/type_declaration_occurrence_control_test.dag \
-//     --function production_parser_stamps_type_declarations_holds
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 \
+//     //v1/tests/claim/type_declaration_occurrence_control_test:production_parser_stamps_type_declarations_holds
 
 // THE SUBJECT. Three authored type-declaration forms in one module -- a record, a coproduct, and a
 // bare alias -- beside a function and a `data` value that must NOT be counted as type declarations.

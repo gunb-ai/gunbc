@@ -6,7 +6,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout, roadmap_event_snapshot_template, roadmap_event_snapshot_close,
-  carrier_exec, CarrierExecOk, CarrierExecFailed, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed, SnapshotCloseVerificationFailed, carrier_close_verification_reason,
+  carrier_exec, CarrierExecOk, CarrierExecFailed, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_event_snapshot_census {
   RoadmapSnapshotCensusPass, SnapshotCensusRecorded, SnapshotCensusRefused, roadmap_snapshot_census_at,
@@ -53,7 +53,6 @@ fn census_wet_closed(layout: RoadmapEventCarrierLayout) -> String {
     SnapshotClosed => "closed"
     SnapshotNotOpened => "not-opened"
     SnapshotCloseFailed { worktree: _, exit_code, stderr } => join(["close-failed ", to_string(value: exit_code), " ", stderr], "")
-    SnapshotCloseVerificationFailed { worktree: _, verification } => join(["close-unverified ", carrier_close_verification_reason(verification: verification)], "")
   }
 }
 

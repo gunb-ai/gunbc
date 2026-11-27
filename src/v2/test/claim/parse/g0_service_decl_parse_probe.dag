@@ -5,8 +5,9 @@ import v2.compiler.parse { ParseArtifact, parse_module }
 import v2.compiler.program_assembly { dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.language_model { LanguageModel }
+import std.algebra { fold_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, well_formed }
 import v2.std.text { String }
@@ -132,15 +133,15 @@ test fn smallest_service_tree_is_well_formed_holds() -> Bool {
 }
 
 test fn service_without_name_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: missing_name_red_source)
+  refuses_at_parse_as(src: missing_name_red_source, reason: ^parse_service_name_missing)
 }
 
 test fn service_without_brace_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: missing_brace_red_source)
+  refuses_at_parse_as(src: missing_brace_red_source, reason: ^parse_service_body_open_brace_missing)
 }
 
 test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: unknown_modifier_red_source)
+  refuses_at_parse_as(src: unknown_modifier_red_source, reason: ^parse_operation_body_entry_unknown)
 }
 
 // RESTORED (gunbc#11955). An earlier revision retired this claim as a gunbc.design_argument::guarantee_ladder (dissolution on climb) climb, arguing that
@@ -175,6 +176,30 @@ test fn a_lexical_failure_is_not_a_parse_door_refusal_holds() -> Bool {
 
 test fn service_keywords_remain_usable_as_names_holds() -> Bool {
   parses(src: keyword_as_name_source)
+}
+
+// THE RETAINED NAME-USABILITY CONTROL, ALL SEVEN SERVICE-FAMILY WORDS. The fixture above spells three
+// (from, input, transport); the row names seven: service, operation, requires, transport, exit,
+// response and mock_response. Each is used here as an ordinary name -- a parameter, a let binding --
+// in one module handed to G0's own lexer and grammar. It reds if any later change keywords a spelling
+// again. Two claims, one per boundary: tokenize ACCEPTS it (the lexical boundary, no keyword class
+// intercepts a word), and parse ACCEPTS it (the grammar boundary, a plain-name slot is not a choice
+// among marker words).
+data service_family_words_as_names_source: String = "module m\nfn f(service: Int, operation: Int, requires: Int, response: Int) -> Int { let transport = service\n let exit = operation\n let mock_response = requires\n transport + exit + mock_response + response }\n"
+
+fn tokenizes(src: String) -> Bool {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn all_seven_service_family_words_tokenize_as_names_holds() -> Bool {
+  tokenizes(src: service_family_words_as_names_source)
+}
+
+test fn all_seven_service_family_words_parse_as_names_holds() -> Bool {
+  parses(src: service_family_words_as_names_source)
 }
 
 test fn field_default_parses_holds() -> Bool {
@@ -242,11 +267,59 @@ test fn service_config_without_colon_still_refuses_holds() -> Bool {
 }
 
 test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: exit_entry_without_arrow_red_source)
+  refuses_at_parse_as(src: exit_entry_without_arrow_red_source, reason: ^parse_status_entry_arrow_missing)
 }
 
 test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
-  refuses_at_parse(src: mock_entry_without_expr_red_source)
+  refuses_at_parse_as(src: mock_entry_without_expr_red_source, reason: ^parse_status_entry_expression_missing)
+}
+
+// A parse-door refusal is typed, not merely non-acceptance: tokenize ACCEPTS the source and parse
+// REJECTS it with this fatal reason, raised by the parse stage from a grammar row's Expect
+// (v2.std.parse_refusal_reason), never the generic ^parse_g0_tokens_remain that would collapse the
+// five service-family refusals into one.
+fn refuses_at_parse_as(src: String, reason: Symbol) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Control: the typed assertion discriminates. The generic reason is not the missing-name refusal's
+// reason, so the five claims above cannot go green on a collapsed refusal.
+test fn a_parse_refusal_under_another_reason_is_not_accepted_holds() -> Bool {
+  !refuses_at_parse_as(src: missing_name_red_source, reason: ^parse_g0_tokens_remain)
+}
+
+data wrong_marker_word_source: String = "module m\nservicee S {\n}\n"
+
+data wrong_marker_case_source: String = "module m\nService S {\n}\n"
+
+data wrong_operation_entry_word_source: String = "module m\nservice S {\n  operation Op {\n    reqires Network\n  }\n}\n"
+
+// LIMB 3, A MEASURED LIMITATION -- NOT per-marker typed coverage. A wrong word in the service MARKER
+// position is refused at the parse door (tokenize accepts, parse rejects) but with the GENERIC
+// ^parse_g0_tokens_remain: the marker is a declaration-start alternative, so `servicee` is not
+// distinguishable from "not a service declaration at all" and the parse stage has nothing more
+// specific to say. These two claims pin the observed refusal, raising stage and reason; they are
+// green only because the reason is generic, and assert no typed marker reason.
+test fn a_wrong_marker_word_is_refused_at_parse_with_the_generic_reason_holds() -> Bool {
+  refuses_at_parse_as(src: wrong_marker_word_source, reason: ^parse_g0_tokens_remain)
+}
+
+test fn a_wrong_marker_case_is_refused_at_parse_with_the_generic_reason_holds() -> Bool {
+  refuses_at_parse_as(src: wrong_marker_case_source, reason: ^parse_g0_tokens_remain)
+}
+
+// Discriminator: the genericity above is a property of POSITION, not of weak refusal machinery. A
+// wrong word inside an operation body has its own typed reason.
+test fn a_wrong_word_in_an_operation_body_has_its_own_typed_reason_holds() -> Bool {
+  refuses_at_parse_as(src: wrong_operation_entry_word_source, reason: ^parse_operation_body_entry_unknown)
 }
 
 test fn plain_type_still_parses_holds() -> Bool {
@@ -254,8 +327,8 @@ test fn plain_type_still_parses_holds() -> Bool {
 }
 
 // ROUTE, not only parse. A service LOWERS at declaration grade. A service-level transport has no
-// operation entry to attach to and refuses located as unread. A config-only service and an empty
-// service admit: their members have carriers (XL-2 3c).
+// operation entry to attach to and refuses located as unread. A config-only service admits (XL-2 3c);
+// an empty service parses and is refused at normalize (see its claim).
 // This pair was the retention route before the lowering landed; the climb keeps it as the permanent
 // control that normalize discriminates on what a service carries (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The type
 // control is the positive half: a lowered type declaration is the cheapest lowered item.
@@ -301,8 +374,22 @@ test fn a_service_with_a_transport_is_refused_at_the_normalized_tree_door_holds(
   normalize_refuses_as(src: transport_only_service_source, reason: ^body_lowering_reason_service_member_unread)
 }
 
-test fn an_empty_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
-  normalize_admits(src: empty_service_source)
+// WHAT MAIN DOES TODAY, NOT A RULING ON WHAT IT SHOULD DO. `service S {}` parses (the service row's
+// body is repeat(service_body_entry), which admits zero entries) and normalize REFUSES it with
+// ^namespace_graft_body_dissolved_refused (measured at main's released binary; it is refused under the
+// same reason when the module also carries a function, so the module's lack of a function is not the
+// cause). It is not refused under wrapper_retention_not_normalized or service_member_unread, and a
+// config-only service admits. Whether an empty service is ADMISSIBLE IS UNSETTLED. Looked at, none
+// decides it: the grammar row (zero entries parse; parse is not normalize); the
+// compile_door_cause_ownership row for service_realization_unreachable ("a service whose members lower
+// admits on both normalize grades" is vacuously true for zero members, so it does not decide it); this
+// module's earlier comment claiming an empty service admits (a comment, not an authority); and the design
+// rulings searched. This claim records only the measured refusal and its reason so the divergence is
+// explicit and countable; it does not assert that refusal is right, and it changes no admission. The open
+// question is recorded at #gunbc.integration_concern.empty_service_parses_but_normalize_refuses_it::empty_service_parses_but_normalize_refuses_it
+// and this claim is re-pinned by whatever ruling settles it.
+test fn an_empty_service_parses_and_is_refused_at_normalize_by_the_namespace_graft_holds() -> Bool {
+  parses(src: empty_service_source) && normalize_refuses_as(src: empty_service_source, reason: ^namespace_graft_body_dissolved_refused)
 }
 
 test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
@@ -311,4 +398,15 @@ test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
 
 test fn config_only_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
   normalize_admits(src: config_only_service_source)
+}
+
+data service_generic_param_source: String = "module m\nservice S<T> {\n}\n"
+data service_generic_param_name_source: String = "module m\nfn f<T>(service: T) -> T { service }\n"
+
+test fn a_service_declaration_admits_no_generic_parameter_holds() -> Bool {
+  tokenizes(src: service_generic_param_source) && refuses_at_parse_as(src: service_generic_param_source, reason: ^parse_service_body_open_brace_missing)
+}
+
+test fn the_word_service_still_parses_beside_a_generic_parameter_holds() -> Bool {
+  parses(src: service_generic_param_name_source)
 }
