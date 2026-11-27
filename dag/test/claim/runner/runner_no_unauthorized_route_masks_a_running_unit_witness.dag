@@ -1,0 +1,232 @@
+// THE ROUTE CONTROLS FOR gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload.
+//
+// WHAT THIS MODULE PROVES, AND NOTHING WIDER. Every UNAUTHORIZED production route that can reach a
+// `systemctl mask` leg for a runner slot is driven here over a hermetic fixture host, and for EACH of them the
+// claim is the same pair: a slot whose unit is RUNNING (ActiveState=active with a live Runner.Worker in its
+// process listing) receives NO mask leg at all, and a slot whose unit is proven STOPPED (ActiveState=inactive)
+// still receives exactly one -- the second half is what keeps the first from passing vacuously. What the
+// executed evidence shows is that NO UNAUTHORIZED PRODUCTION ROUTE CONSTRUCTS MASK-OF-RUNNING; it says nothing
+// about routes this corpus does not build, and it is stated no broader than that
+// (gunbc.design_argument::epistemic_humility).
+//
+// THE NAME, AND WHY IT SAYS UNAUTHORIZED. An earlier revision of this module, and of the two rows it witnesses,
+// stated the prohibition for EVERY built route. That was too broad, and the refutation is inside this corpus:
+// test.claim.runner.runner_slot_provision_witness an_active_authorized_required_retiree_is_masked_and_not_deleted
+// drives a required retiree that is ACTIVE, enabled, with occupancy CgroupObservedPopulated, and asserts a mask
+// IS issued -- correctly. That route is the authorized exception below. Its witness stays green: it is the
+// exception's positive control, it was never a production drain route, and this module does not drive it.
+//
+// THE AUTHORIZED EXCEPTION, IN THE IDENTICAL WORDS USED IN THE ROADMAP ROW AND IN THE FAILURE-MODE RECORD (the
+// canonical single-line text lives in those two files): gunbc.runner.runner_slot_retirement::InterruptionAuthorization
+// is a sole_constructor type whose scope is a list of named units and which a witness cannot construct; a mask
+// issued for a unit inside that operator-minted scope is the intended retirement mechanism, not an unauthorized
+// mask, and its positive control is test.claim.runner.runner_slot_provision_witness
+// an_active_authorized_required_retiree_is_masked_and_not_deleted, which stays green.
+//
+// THE ROUTES, and where each one's evidence lives:
+//   1. THE FABRIC/RETIREE DRAIN LEG -- gunbc.runner.runner_host_file_converge runner_host_drain_leg_actuate,
+//      the actuation the apply driver maps every DrainNow candidate to. Its control is
+//      `the_unauthorized_fabric_retiree_drain_leg_issues_no_mask_for_a_running_unit` below; RED on main, where that arm
+//      called the masking entry drain_and_mask_runner_slot_over.
+//   2. THE SHARED DRAIN ACTUATOR under the one admission it constructs -- drain_runner_slot_under_under with
+//      NeverMaskARunningUnit, the answer the deleted default slot_drain_plan used to give with
+//      MaskWhileRunning. Its control is
+//      `the_unauthorized_shared_drain_actuator_under_the_only_admission_never_masks_a_running_unit`; RED on main driving
+//      drain_and_mask_runner_slot_over, the entry the deleted default granted.
+//   3. THE DrainAndMaskRunnerSlot REALIZATION -- gunbc.runner.runner_lifecycle_realize
+//      runner_lifecycle_realize_drain_and_mask_runner_slot, the host-effect arm that reaches the same
+//      actuator. Its control is `the_unauthorized_drain_and_mask_runner_slot_realization_never_masks_a_running_unit`;
+//      RED on main, where the arm passed the masking admission.
+//   4. WITHDRAW -- gunbc.runner.runner_host_withdraw reaches masking ONLY through the cap bracket's own pass
+//      (its import list holds drain_until_quiescent_over; a grep of the module for the shared masking
+//      actuator returns 0 hits). That route was repaired by PR #16519 and its control is the HISTORICAL PAIR
+//      recorded there: a_cap_bracket_pass_never_masks_a_running_runner_unit RED at that PR's parent, GREEN at
+//      its commit -- it is not re-run as RED on current main, because on current main it is not red.
+//   5. THE AUTHORIZED RETIREMENT MASK -- NOT DRIVEN HERE, AND NOT A DRAIN ROUTE. The retirement route masks a
+//      candidate ONLY inside an operator-minted scope: the production wrapper passes
+//      maskable: host_maskable_units(host) (gunbc.runner.runner_slot_provision) and the candidate list is filtered
+//      by unit_in_maskable_scope, which reads gunbc.runner.runner_slot_retirement::InterruptionAuthorization -- a
+//      sole_constructor whose scope is a list of named units and which a witness cannot construct. Its control
+//      asserts a mask for an ACTIVE unit there on purpose, and it stays green. This module's silence about that
+//      route is deliberate: driving it here would make this module claim something it never measured.
+//
+// EVERY ROUTE DRIVEN HERE HOLDS NO AUTHORIZATION. What separates routes 1-4 from route 5 is
+// gunbc.runner.runner_slot_retirement::InterruptionAuthorization: none of the drivers below can construct one (the
+// type is sole_constructor and the compiler refuses a witness that tries), so each route here is an UNAUTHORIZED
+// route by construction, and the pair below is the control on that population and no wider.
+//
+// A route is CLOSED here only by its own executed control or by a deleted symbol whose absence is counted:
+// the MaskWhileRunning arm, slot_drain_plan and drain_and_mask_runner_slot_over have 0 remaining references
+// outside the prose that names their deletion, so the state cannot be constructed at all
+// (gunbc.design_argument::fail_closed).
+module test.claim.runner.runner_no_unauthorized_route_masks_a_running_unit_witness
+
+import std.types { Bool, Int, String, List, NonEmptyStr }
+import std.algebra { string_contains }
+import gunbc.host.host_effect {
+  DrainAndMaskRunnerSlot, FleetSsh, HostEffectIntent, HostOs, host_effect_identity_evidence,
+}
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_actuation {
+  drain_runner_slot_under_over, NeverMaskARunningUnit, slot_actuation_outcome_wire,
+}
+import gunbc.runner.runner_host_file_converge { runner_host_drain_leg_actuate }
+import gunbc.runner.runner_lifecycle_realize { runner_lifecycle_realize_drain_and_mask_runner_slot }
+// The hermetic host: legs answered by position, the recorded ledger of every command the route dispatched,
+// and the systemctl/ps fixtures the actuation reads. Shared with the cap bracket's own witness rather than
+// re-derived here, so a control cannot drift from what the routes actually send.
+import test.claim.runner.runner_host_cap_bracket_witness {
+  BracketRun, Leg, bracket_run, count_containing, ledger_of, ps_leg, show_leg, step_leg, u,
+}
+
+// ── THE DRIVERS ─────────────────────────────────────────────────────────────────────────────
+//
+// Each driver runs ONE production route over the fixture host and returns what it dispatched. A leg list is
+// consumed positionally: the route takes the next leg for each command it sends, so the legs below are the
+// commands the route is EXPECTED to send, and an extra leg is a command that on main was sent and here is
+// simply never reached. They are supplied so a route that masks is SERVED a mask and counted rather than
+// failing on a missing leg -- the difference between a red control and a broken one.
+
+// A FRAME THAT ENDED IS NOT A PASS. ledger_of maps BracketRunEnded to the empty ledger, and an empty ledger
+// has zero masks in it; without this every claim below would be satisfied by a refusal at the subject or the
+// frame. Each claim demands the run completed before it counts anything.
+fn run_completed<T>(run: BracketRun<T>) -> Bool {
+  match run {
+    BracketRunReturned { value: _, legs: _, calls: _ } => true
+    BracketRunEnded { cause: _ } => false
+  }
+}
+
+fn masks_issued<T>(run: BracketRun<T>, unit: NonEmptyStr) -> Int {
+  count_containing(legs: ledger_of(r: run), needle: concat(" mask ", unit as String))
+}
+
+fn stops_issued<T>(run: BracketRun<T>, unit: NonEmptyStr) -> Int {
+  count_containing(legs: ledger_of(r: run), needle: concat(" stop ", unit as String))
+}
+
+fn wire_of(run: BracketRun<String>) -> String {
+  match run {
+    BracketRunReturned { value: w, legs: _, calls: _ } => w
+    BracketRunEnded { cause: _ } => "FRAME-ENDED"
+  }
+}
+
+// ROUTE 1: the fabric/retiree drain leg's own actuation entry -- the name the apply driver maps DrainNow to.
+fn drain_leg_over(legs: List<Leg>, unit: NonEmptyStr) -> BracketRun<String> {
+  bracket_run(legs: legs, body: fn(target, context) {
+    slot_actuation_outcome_wire(o: runner_host_drain_leg_actuate(target: target, context: context, unit: unit))
+  })
+}
+
+// ROUTE 2: the shared drain actuator, with the admission named at the call site.
+fn drain_actuator_over(legs: List<Leg>, unit: NonEmptyStr) -> BracketRun<String> {
+  bracket_run(legs: legs, body: fn(target, context) {
+    slot_actuation_outcome_wire(o: drain_runner_slot_under_over(target: target, context: context, unit: unit, admission: NeverMaskARunningUnit {}))
+  })
+}
+
+// ROUTE 3: the host-effect realization. The slot it names is srv3-02, the identity the bracket fixture's
+// show/ps legs answer for; the transport is the FleetSsh leaf the realization arm reads. The effect's NAME
+// is unchanged -- it still drains and masks -- it just never masks a unit that is running.
+fn drain_effect_over(legs: List<Leg>, slot: RunnerSlotIdentity) -> BracketRun<Int> {
+  bracket_run(legs: legs, body: fn(target, context) {
+    let _r = runner_lifecycle_realize_drain_and_mask_runner_slot(intent: HostEffectIntent {
+      target: HostOs { node: srv1_host },
+      effect: DrainAndMaskRunnerSlot { slot: slot },
+      evidence: host_effect_identity_evidence,
+      transport: FleetSsh { target: target, context: context, kind: ActuationLeg },
+      privilege_denial: none,
+    })
+    0
+  })
+}
+
+// THE LEGS A RUNNING SLOT GETS: the unit read answers active, and the process listing names a live
+// Runner.Worker for that unit. Behind them sit the mask and stop legs the masking route used to reach.
+fn running_slot_legs(n: String) -> List<Leg> {
+  [
+    show_leg(n: n, load: "loaded", file: "enabled", active: "active"),
+    ps_leg(listing: concat(u(n: n) as String, " Runner.Worker\n")),
+    step_leg(verb: "mask"),
+    step_leg(verb: "stop"),
+  ]
+}
+
+// THE LEGS A PROVEN-STOPPED SLOT GETS: inactive, so the actuator takes no worker read; the mask leg; then
+// the read-back the drain performs, answered masked-and-stopped.
+fn stopped_slot_legs(n: String) -> List<Leg> {
+  [
+    show_leg(n: n, load: "loaded", file: "enabled", active: "inactive"),
+    step_leg(verb: "mask"),
+    show_leg(n: n, load: "masked", file: "masked", active: "inactive"),
+  ]
+}
+
+// ── ROUTE 1: THE FABRIC/RETIREE DRAIN LEG ───────────────────────────────────────────────────
+
+// THE ROW'S CONTROL, FOR THE ROUTE THAT MASKED TODAY. On main the apply driver mapped every DrainNow
+// candidate to drain_and_mask_runner_slot_over, which supplied MaskWhileRunning: this claim ran RED at the
+// commit named in its PR description (one mask for srv3-02, which is active with a live worker), and GREEN
+// after the deletion, where the leg's actuation grants the only admission there is. The stopped half is the
+// positive control: a slot read inactive is still masked, so the running half cannot pass by the route never
+// masking anything at all.
+test fn the_unauthorized_fabric_retiree_drain_leg_issues_no_mask_for_a_running_unit() -> Bool {
+  let running = drain_leg_over(legs: running_slot_legs(n: "02"), unit: u(n: "02"))
+  let stopped = drain_leg_over(legs: stopped_slot_legs(n: "03"), unit: u(n: "03"))
+  run_completed(run: running)
+    && run_completed(run: stopped)
+    && masks_issued(run: running, unit: u(n: "02")) == 0
+    && stops_issued(run: running, unit: u(n: "02")) == 0
+    && string_contains(s: wire_of(run: running), pattern: "unmasked")
+    && masks_issued(run: stopped, unit: u(n: "03")) == 1
+    && string_contains(s: wire_of(run: stopped), pattern: "drained-masked-and-read-back")
+}
+
+// ── ROUTE 2: THE SHARED DRAIN ACTUATOR UNDER THE ONLY ADMISSION ─────────────────────────────
+
+// THE ROUTE THE DELETED DEFAULT SUPPLIED. slot_drain_plan answered MaskWhileRunning for every caller and
+// had no production caller left on main (its hits were its own definition plus 14 witness uses), so the
+// state it built was reachable only through the entries this module drives. RED on main driving
+// drain_and_mask_runner_slot_over; GREEN here under NeverMaskARunningUnit, the only arm left.
+test fn the_unauthorized_shared_drain_actuator_under_the_only_admission_never_masks_a_running_unit() -> Bool {
+  let running = drain_actuator_over(legs: running_slot_legs(n: "04"), unit: u(n: "04"))
+  let stopped = drain_actuator_over(legs: stopped_slot_legs(n: "05"), unit: u(n: "05"))
+  run_completed(run: running)
+    && run_completed(run: stopped)
+    && masks_issued(run: running, unit: u(n: "04")) == 0
+    && stops_issued(run: running, unit: u(n: "04")) == 0
+    && string_contains(s: wire_of(run: running), pattern: "DRAIN-PENDING")
+    && masks_issued(run: stopped, unit: u(n: "05")) == 1
+}
+
+// ── ROUTE 3: THE DrainAndMaskRunnerSlot REALIZATION ─────────────────────────────────────────
+
+// THE REALIZATION ARM, driven through its own effect rather than through the actuator it calls. On main the
+// arm passed the masking admission; the effect is authored nowhere today (0 construction sites), but an arm
+// able to name the masking admission would rebuild the deleted state the moment any author appears, so it
+// is controlled here and not left to the type. Same fixture, same pair, same counting.
+test fn the_unauthorized_drain_and_mask_runner_slot_realization_never_masks_a_running_unit() -> Bool {
+  let running_slot = RunnerSlotIdentity { host: "srv3" as HostIdentity, slot_index: 2 }
+  let stopped_slot = RunnerSlotIdentity { host: "srv3" as HostIdentity, slot_index: 6 }
+  let running = drain_effect_over(legs: running_slot_legs(n: "02"), slot: running_slot)
+  let stopped = drain_effect_over(legs: stopped_slot_legs(n: "06"), slot: stopped_slot)
+  run_completed(run: running)
+    && run_completed(run: stopped)
+    && masks_issued(run: running, unit: runner_slot_unit_name(slot: running_slot)) == 0
+    && stops_issued(run: running, unit: runner_slot_unit_name(slot: running_slot)) == 0
+    && masks_issued(run: stopped, unit: runner_slot_unit_name(slot: stopped_slot)) == 1
+}
+
+// THE POSITIVE CONTROL FOR THE REALIZATION ARM, stated separately: the arm still drains and masks a unit it
+// can prove stopped, and the drain it runs is the shared actuator's -- stop before mask, mask after.
+test fn the_unauthorized_drain_and_mask_runner_slot_realization_still_masks_a_proven_stopped_unit() -> Bool {
+  let slot = RunnerSlotIdentity { host: "srv3" as HostIdentity, slot_index: 6 }
+  let stopped = drain_effect_over(legs: stopped_slot_legs(n: "06"), slot: slot)
+  run_completed(run: stopped)
+    && masks_issued(run: stopped, unit: runner_slot_unit_name(slot: slot)) == 1
+}
