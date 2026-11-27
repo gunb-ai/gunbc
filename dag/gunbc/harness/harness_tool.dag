@@ -34,7 +34,7 @@ import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellSpawn, ShellSpawned, ShellSpawnFailed,
   JobRunning, JobFinished, JobExitedOutcome, JobSignaledOutcome,
   JobReapRefusedOutcome, harness_job_finished,
-  harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
+  harness_start_shell_job, harness_command_table, harness_read_job_text,
   JobTextRead, JobTextUnreadable,
   harness_replace_job, harness_find_job, harness_wait_until_any,
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
@@ -43,6 +43,7 @@ import gunbc.harness.harness_shell_job {
   harness_job_backstop_standing, harness_job_exit_interval_text, HarnessJobBackstopStanding,
   JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
+import gunbc.process_lifecycle { process_await_reap }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
 // A TOOL'S CONTRACT IS CARRIED IN ITS DECLARED SHAPE, AND ANY LIMIT IT ENFORCES IS REPORTED IN ITS
@@ -402,7 +403,7 @@ fn harness_run_command_scheduled(
         },
       }
     ShellSpawned { job } => {
-      let hold = harness_await_pid(pid: job.pid, remaining: schedule.inline_hold)
+      let hold = process_await_reap(pid: job.pid, remaining: schedule.inline_hold)
       match hold {
         StillRunning => {
           let jobs = harness_replace_job(jobs: environment.jobs, job: job)

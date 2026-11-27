@@ -1,0 +1,17 @@
+module test.claim.unknown_pipeline_driver_refusal
+
+// Replaces src/v1/tests/src/unknown_pipeline_driver_refusal_test.rs. Observable: the emitted main
+// for a corpus whose driver is spelled with its declaring module's qualifier, which the arm
+// selection cannot match: it must refuse with a located compile_error!, never render the direct
+// ingest main.
+
+data unknown_driver_probe_source: String = "module unknown_driver_probe\n\nimport std.compiler_entry \{ CompilerEntryDriver \}\n\ndata compiler_pipeline_entry: CompilerEntryDriver = std.compiler_entry.SourceRootEvalDriver\n\nfn probe_holds() -> Bool \{\n  true\n\}\n"
+
+test fn w_unrecognised_driver_reading_refuses_and_names_the_reading_test() -> Bool {
+  compile_dag_rust_emit_check(unknown_driver_probe_source, "src/main.rs", ["compile_error!", "does not recognise", "std.compiler_entry.SourceRootEvalDriver"], [])
+}
+
+// RED CONTROL: before the wall this rendered the direct-ingest main with zero diagnostics.
+test fn w_unrecognised_driver_does_not_render_the_direct_ingest_main_test() -> Bool {
+  compile_dag_rust_emit_check(unknown_driver_probe_source, "src/main.rs", [], ["compile_dag_source_to_target_text"])
+}

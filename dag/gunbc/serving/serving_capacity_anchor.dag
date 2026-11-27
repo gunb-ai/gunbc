@@ -8,7 +8,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cit
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings, ForkPrefillReading }
 import gunbc.serving.flash_next_topology { topology_dp }
-import gunbc.serving.srv1_topology_comparison { Srv1TopologyReading, srv1_topology_reading, srv1_layout }
+import gunbc.serving.srv1_topology_comparison { Srv1TopologyReading, srv1_topology_reading, srv1_layout, srv1_tp1_kv_capacity }
 import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, srv3_layout, srv4_layout }
 import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
 import gunbc.serving.serving_warm_admission { ServingWarmAdmission, WarmAdmit, WarmRungUnread, WarmRungRefused }
@@ -91,6 +91,48 @@ type ServingWarmSwap
   // It contributes nothing to held and is named in the bound (review 92430 / gentle-swift-129), so it can never
   // masquerade as a read obligation.
   | WarmSwapRefused { reason: NonEmptyStr, cites: NonEmptyStr }
+
+// ── THE CARD'S GPU KV POOL: THE MEMORY A LIVE TURN'S KV OCCUPIES, NOT THE PARKED WARM STORE ──────────
+//
+// serving_capacity_anchor is THE cap authority per card: the router's cap/retain already derive from this
+// module (gunbc.serving.router_dev_policy renders its upstreams from the shapes derived here). This adds the
+// SECOND, memory bound the cap must respect. The pool is DISTINCT from the warm store: LMCache L1 is a
+// parked-session budget on host RAM/disk (the `cache` of a WarmSwapRung), while the KV pool is on-GPU and
+// bounds how many live turns' KV fit at once. The srv1 cap-6 trial filled THIS pool to 99% for +2% output
+// with turns 60% slower (operator-observed receipt, ad-hoc engine-log reads) -- a card the count cap admits
+// can still be over its memory cap, which is why the cap keys on the pool and not on a seat count alone.
+//
+// FAIL CLOSED (gunbc.design_argument::fail_closed): the pool is a per-card TYPED reading. A vLLM card reports
+// it (GpuKvPoolRead); a Strata card declares it does not bind (GpuKvPoolNotBinding, with the trigger that
+// would make it bind); a GPU card nobody has read is GpuKvPoolUnread and the cap derivation REFUSES its row --
+// never a free slot, never an assumed capacity.
+type ServingGpuKvPool
+  = GpuKvPoolRead { tokens: TokenCount, standing: CitedFigureStanding, provenance: NonEmptyStr }
+  | GpuKvPoolNotBinding { reason: NonEmptyStr, trigger: NonEmptyStr }
+  | GpuKvPoolUnread { obligation: NonEmptyStr }
+
+// srv1's GPU KV pool, DERIVED from the row that OWNS the figure -- srv1_topology_comparison's TP=1 KV capacity
+// (kv_tokens_per_replica = 744,477, relayed 2026-11-08) -- together with that row's standing. It is NOT
+// re-literalled here: a second copy of the count could drift from the authority (single_authority /
+// minimize_redundancy). Absent a TP=1 topology row the pool is GpuKvPoolUnread, so the cap derivation refuses
+// rather than inventing a capacity (fail_closed).
+fn srv1_gpu_kv_pool() -> ServingGpuKvPool {
+  match srv1_tp1_kv_capacity() {
+    Present { value: row } => GpuKvPoolRead {
+      tokens: row.kv_tokens_per_replica,
+      standing: row.standing,
+      provenance: "srv1 TP=1 KV pool per replica, derived from gunbc.serving.srv1_topology_comparison's srv1_topology_kv_capacities (the relayed 2026-11-08 measurement)" as NonEmptyStr,
+    }
+    Absent => GpuKvPoolUnread { obligation: "No srv1 TP=1 KV pool row in srv1_topology_comparison; the pool is unread. Read the engine's 'GPU KV cache size' log line (num_gpu_blocks x block_size) and add the topology row before rendering this card's cap." as NonEmptyStr }
+  }
+}
+
+// THE POOL FLOOR now folds into the replica's capacity SHAPE, not into a router-only cap: see
+// gunbc.serving.serving_replica_profile::replica_shaped, which calls within_gpu_kv_pool once, at the shared
+// shape builder both the router row's cap and the engine's --parallel read. An earlier serving_card_cap /
+// gpu_kv_floor_cap helper is deleted -- a second application at the router renderer would cap the router while
+// the engine's --parallel (which reads the same shape's turns, not the router) still reserved more slots than
+// the card's pool holds (one-number-two-ends, single_authority; #17060 closed the same split one boundary up).
 
 type ServingWarmStore
   = WarmStoreKeeps { conversations: Nat }
@@ -242,6 +284,18 @@ type ServingHeldBound
   | HeldBySwapStoreRungRefused { reason: NonEmptyStr }
   | HeldByActiveShareRungRefused { reason: NonEmptyStr }
   | HeldByRetentionGrant
+  // (No GPU-KV arm here. ServingHeldBound answers "WHICH TERM BOUND THE CONVERSATIONS HELD"; the GPU KV pool
+  //  is a TURN-LOWERING term, recorded on ServingTurnsBound. A held binder must never be overwritten by a
+  //  turns binder -- that dropped the real held binder (HeldByRetentionGrant, HeldBySwapStoreRungRefused), the
+  //  very typed refusals that must not vanish (one field, two meanings; single_authority).)
+
+// WHICH TERM BOUND ADMITTED TURNS. turns is min(the reading's concurrency, conversations held, the GPU KV floor);
+// this records which of those was the binding term, SEPARATELY from `bound` (which answers what bound HELD), so a
+// pool-bound turn count can be told from a throughput-bound or held-bound one without overwriting the held binder.
+type ServingTurnsBound
+  = TurnsByThroughput
+  | TurnsByHeld
+  | TurnsByGpuKvPool { pool_tokens: TokenCount }
 
 // THE SHAPE KEEPS THE STANDING OF WHAT IT WAS DERIVED FROM (gunbc.design_argument::epistemic_humility: an inference is
 // typed as a bet, neither deleted nor promoted). ServingShapeDerived is reached only when every figure the derivation
@@ -249,8 +303,8 @@ type ServingHeldBound
 // and carries each such standing, as product.fabric.serving_recipe UnitCostEstimated does. A consumer decides whether
 // it admits an estimate; the derivation never promotes one.
 type ServingCapacityShape
-  = ServingShapeDerived { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond }
-  | ServingShapeEstimated { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond, standings: List<CitedFigureStanding> }
+  = ServingShapeDerived { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, turns_bound: ServingTurnsBound, cold_reread: Millisecond }
+  | ServingShapeEstimated { deployment: NonEmptyStr, turns: Nat, held: Nat, bound: ServingHeldBound, turns_bound: ServingTurnsBound, cold_reread: Millisecond, standings: List<CitedFigureStanding> }
   | ServingShapeRefused { deployment: NonEmptyStr, reason: ServingShapeRefusalReason }
 
 // WHY a shape was refused, as a FAILURE MODE rather than prose (fail_closed: "a wrong answer is a loud, typed,
@@ -271,6 +325,11 @@ type ServingShapeRefusalReason
   | ShapeLeastRateBelowPolicyAtConcurrency
   | ShapeNoResumableConversation
   | ShapeGrantRefused { detail: NonEmptyStr }
+  // The GPU KV pool bounds admitted concurrency: a pool below one conversation at the policy context, or an
+  // unread pool on a GPU card, is a typed refusal -- never a shape with 0 turns (fail_closed; the zero-floor
+  // refusal that lived in the router path moves here, to where the bound is stated).
+  | ShapeGpuKvPoolTooSmall { pool_tokens: TokenCount, context: TokenCount }
+  | ShapeGpuKvPoolUnread { obligation: NonEmptyStr }
 
 // Render a refusal for a diagnostic. Total over the failure modes; each names its fault. This is the ONLY home
 // for the wording; callers decide a case by matching the constructors above, never this string.
@@ -285,6 +344,8 @@ fn serving_shape_refusal_message(reason: ServingShapeRefusalReason) -> String {
     ShapeLeastRateBelowPolicyAtConcurrency => "at its measured concurrency the anchor gives each turn less than the policy's least stream rate, and no reading at a lower concurrency is supplied"
     ShapeNoResumableConversation => "the deployment can keep no conversation of the anchor context resumable within the swap wait"
     ShapeGrantRefused { detail: d } => concat("the grant refused: ", d as String)
+    ShapeGpuKvPoolTooSmall { pool_tokens: p, context: c } => concat("the GPU KV pool holds fewer than one conversation at the policy context (pool ", concat(to_string(token_count_value(t: p) as Int), concat(" tokens below the ", concat(to_string(token_count_value(t: c) as Int), " token context"))))
+    ShapeGpuKvPoolUnread { obligation: o } => concat("the GPU KV pool is unread: ", o as String)
   }
 }
 
@@ -293,7 +354,7 @@ fn shape_refused(a: ServingCapacityAnchor, reason: ServingShapeRefusalReason) ->
 }
 
 // The figures serving_held settles on, and the standings of the inputs that decided them.
-type ServingHeldFigures { turns: Nat, held: Nat, bound: ServingHeldBound, cold_reread: Millisecond, used: List<CitedFigureStanding> }
+type ServingHeldFigures { turns: Nat, held: Nat, bound: ServingHeldBound, turns_bound: ServingTurnsBound, cold_reread: Millisecond, used: List<CitedFigureStanding> }
 
 fn standing_is_uncited(s: CitedFigureStanding) -> Bool {
   match cited_figure_read_obligation(standing: s) {
@@ -305,9 +366,9 @@ fn standing_is_uncited(s: CitedFigureStanding) -> Bool {
 fn shape_of(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityShape {
   let uncited = filter(f.used, s => standing_is_uncited(s: s))
   if count(uncited) == 0 {
-    ServingShapeDerived { deployment: a.deployment, turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread }
+    ServingShapeDerived { deployment: a.deployment, turns: f.turns, held: f.held, bound: f.bound, turns_bound: f.turns_bound, cold_reread: f.cold_reread }
   } else {
-    ServingShapeEstimated { deployment: a.deployment, turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, standings: uncited }
+    ServingShapeEstimated { deployment: a.deployment, turns: f.turns, held: f.held, bound: f.bound, turns_bound: f.turns_bound, cold_reread: f.cold_reread, standings: uncited }
   }
 }
 
@@ -315,10 +376,10 @@ fn shape_of(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityS
 fn within_grant(a: ServingCapacityAnchor, f: ServingHeldFigures) -> ServingCapacityShape {
   match a.grant {
     GrantRefused { reason: r } => ServingShapeRefused { deployment: a.deployment, reason: ShapeGrantRefused { detail: r } }
-    GrantUnmodeled { obligation: o } => turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: o }]) })
+    GrantUnmodeled { obligation: o } => turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, turns_bound: f.turns_bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: o }]) })
     GrantAdmits { conversations: n } =>
       if n >= f.held { turns_within_held(a: a, f: f) }
-      else { turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: n, bound: HeldByRetentionGrant, cold_reread: f.cold_reread, used: f.used }) }
+      else { turns_within_held(a: a, f: ServingHeldFigures { turns: f.turns, held: n, bound: HeldByRetentionGrant, turns_bound: f.turns_bound, cold_reread: f.cold_reread, used: f.used }) }
   }
 }
 
@@ -333,7 +394,88 @@ fn turns_within_held(a: ServingCapacityAnchor, f: ServingHeldFigures) -> Serving
   } else if f.held >= f.turns {
     shape_of(a: a, f: f)
   } else {
-    shape_of(a: a, f: ServingHeldFigures { turns: f.held, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: ("held conversations lower turns from " + to_string(f.turns as Int) + " to " + to_string(f.held as Int) + "; no throughput reading exists at the lower concurrency, so its rate is extrapolated from the reading's") as NonEmptyStr }]) })
+    shape_of(a: a, f: ServingHeldFigures { turns: f.held, held: f.held, bound: f.bound, turns_bound: TurnsByHeld, cold_reread: f.cold_reread, used: concat(f.used, [TranscribedUncited { read_obligation: ("held conversations lower turns from " + to_string(f.turns as Int) + " to " + to_string(f.held as Int) + "; no throughput reading exists at the lower concurrency, so its rate is extrapolated from the reading's") as NonEmptyStr }]) })
+  }
+}
+
+// THE GPU KV POOL BOUNDS ADMITTED CONCURRENCY, AS A TURN-LOWERING TERM ON THE SHAPE. This is the earliest boundary
+// where the bound can be stated, so BOTH consumers -- the router's OwnedCap and the engine's --parallel -- take the
+// floored number from the ONE joined admission rather than the router applying a floor the engine never sees (the B3
+// class, one boundary later). It is the min(throughput_turns, grant_held, floor(gpu_kv_pool_tokens / policy context))
+// term: like within_grant and turns_within_held it lowers turns and records WHICH term won, and it refuses rather
+// than widening (fail_closed).
+//   * A shape already refused by an earlier term passes through unchanged -- the KV term never un-refuses a shape.
+//   * GpuKvPoolNotBinding (a Strata card parks idle sessions in host RAM) -- the pool does not bind; the shape is
+//     returned untouched so the card keeps its throughput/grant bound.
+//   * GpuKvPoolUnread on a card that must be bounded refuses with its own typed reason -- never a free cap.
+//   * GpuKvPoolRead: floor = pool_tokens / policy context (divided at the measure boundary -- both terms are
+//     TokenCount; the quotient is a dimensionless turn count). floor == 0 (fewer than one conversation fits) refuses --
+//     never a shape with 0 turns; floor below the derived turns lowers turns to floor, records TurnsByGpuKvPool on
+//     turns_bound (the held `bound` is left untouched), and carries the pool figure's standing (an uncited pool
+//     figure makes the shape an estimate, never promotes it); floor at or above turns leaves the shape untouched.
+fn within_gpu_kv_pool(shape: ServingCapacityShape, pool: ServingGpuKvPool, context: TokenCount) -> ServingCapacityShape {
+  match shape {
+    ServingShapeRefused { deployment: d, reason: r } => ServingShapeRefused { deployment: d, reason: r }
+    _ => match pool {
+      GpuKvPoolNotBinding { reason: _, trigger: _ } => shape
+      GpuKvPoolUnread { obligation: o } => ServingShapeRefused { deployment: shape_deployment(s: shape), reason: ShapeGpuKvPoolUnread { obligation: o } }
+      GpuKvPoolRead { tokens: tokens, standing: st, provenance: _ } => {
+        let ctx = token_count_value(t: context)
+        let pool_tokens = token_count_value(t: tokens)
+        if ctx == 0 {
+          ServingShapeRefused { deployment: shape_deployment(s: shape), reason: ShapeGpuKvPoolUnread { obligation: "policy anchor_context is zero, so the GPU KV pool floor (pool tokens / context) is undefined and the pool was never consulted; the serving_conversation_policy anchor_context must be read before this card's cap renders" as NonEmptyStr } }
+        } else {
+          let floor = pool_tokens / ctx
+          if floor == 0 {
+            ServingShapeRefused { deployment: shape_deployment(s: shape), reason: ShapeGpuKvPoolTooSmall { pool_tokens: tokens, context: context } }
+          } else if floor < shape_turns(s: shape) {
+            lower_turns_to_gpu_kv_floor(shape: shape, floor: floor, pool_tokens: tokens, standing: st)
+          } else {
+            shape
+          }
+        }
+      }
+    }
+  }
+}
+
+// Lower the shape's turns to the KV floor and record it on turns_bound. The held `bound` is left EXACTLY as the
+// earlier term set it (active share, swap store, retention grant, a named rung refusal): a turns binder never
+// overwrites the held binder, or the real reason conversations are held at h would vanish. The pool figure rides
+// on the shape: an uncited standing makes the result an estimate carrying it (never a derived figure leaning on a
+// transcription); a cited standing keeps a derived shape derived and adds nothing to an estimate's standings.
+fn lower_turns_to_gpu_kv_floor(shape: ServingCapacityShape, floor: Nat, pool_tokens: TokenCount, standing: CitedFigureStanding) -> ServingCapacityShape {
+  match shape {
+    ServingShapeDerived { deployment: d, turns: _, held: h, bound: bnd, cold_reread: c } =>
+      if standing_is_uncited(s: standing) {
+        ServingShapeEstimated { deployment: d, turns: floor, held: h, bound: bnd, turns_bound: TurnsByGpuKvPool { pool_tokens: pool_tokens }, cold_reread: c, standings: [standing] }
+      } else {
+        ServingShapeDerived { deployment: d, turns: floor, held: h, bound: bnd, turns_bound: TurnsByGpuKvPool { pool_tokens: pool_tokens }, cold_reread: c }
+      }
+    ServingShapeEstimated { deployment: d, turns: _, held: h, bound: bnd, cold_reread: c, standings: ss } =>
+      if standing_is_uncited(s: standing) {
+        ServingShapeEstimated { deployment: d, turns: floor, held: h, bound: bnd, turns_bound: TurnsByGpuKvPool { pool_tokens: pool_tokens }, cold_reread: c, standings: concat(ss, [standing]) }
+      } else {
+        ServingShapeEstimated { deployment: d, turns: floor, held: h, bound: bnd, turns_bound: TurnsByGpuKvPool { pool_tokens: pool_tokens }, cold_reread: c, standings: ss }
+      }
+    // Never reached: the caller passes refusals through before calling this.
+    ServingShapeRefused { deployment: d, reason: r } => ServingShapeRefused { deployment: d, reason: r }
+  }
+}
+
+fn shape_deployment(s: ServingCapacityShape) -> NonEmptyStr {
+  match s {
+    ServingShapeDerived { deployment: d, turns: _, held: _, bound: _, cold_reread: _ } => d
+    ServingShapeEstimated { deployment: d, turns: _, held: _, bound: _, cold_reread: _, standings: _ } => d
+    ServingShapeRefused { deployment: d, reason: _ } => d
+  }
+}
+
+fn shape_turns(s: ServingCapacityShape) -> Nat {
+  match s {
+    ServingShapeDerived { deployment: _, turns: t, held: _, bound: _, cold_reread: _ } => t
+    ServingShapeEstimated { deployment: _, turns: t, held: _, bound: _, cold_reread: _, standings: _ } => t
+    ServingShapeRefused { deployment: _, reason: _ } => 0
   }
 }
 
@@ -399,7 +541,7 @@ fn cache_standings(cache: ServingMemoryReading) -> List<CitedFigureStanding> {
 fn serving_held(turns: Nat, by_share: Nat, cold: Millisecond, a: ServingCapacityAnchor, p: ServingConversationPolicy) -> ServingHeldFigures {
   let wait = millisecond_count(m: p.max_swap_wait)
   if millisecond_count(m: cold) <= wait {
-    ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: [] }
+    ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, turns_bound: TurnsByThroughput, cold_reread: cold, used: [] }
   } else {
     let t = ladder_tally(rungs: a.warm_swap, wait: p.max_swap_wait, context: p.anchor_context)
     if t.read_any {
@@ -408,26 +550,26 @@ fn serving_held(turns: Nat, by_share: Nat, cold: Millisecond, a: ServingCapacity
         // does not disappear beside a read rung (gentle-swift-129). The limiter is preserved: swap store if the read
         // rungs alone are the smaller figure, active share if the cap binds.
         if t.kept < by_share {
-          ServingHeldFigures { turns: turns, held: t.kept, bound: HeldBySwapStoreRungRefused { reason: first_refusal(os: t.refused) }, cold_reread: cold, used: t.used }
+          ServingHeldFigures { turns: turns, held: t.kept, bound: HeldBySwapStoreRungRefused { reason: first_refusal(os: t.refused) }, turns_bound: TurnsByThroughput, cold_reread: cold, used: t.used }
         } else {
-          ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShareRungRefused { reason: first_refusal(os: t.refused) }, cold_reread: cold, used: t.used }
+          ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShareRungRefused { reason: first_refusal(os: t.refused) }, turns_bound: TurnsByThroughput, cold_reread: cold, used: t.used }
         }
       } else if t.kept < by_share {
-        ServingHeldFigures { turns: turns, held: t.kept, bound: HeldBySwapStore, cold_reread: cold, used: t.used }
+        ServingHeldFigures { turns: turns, held: t.kept, bound: HeldBySwapStore, turns_bound: TurnsByThroughput, cold_reread: cold, used: t.used }
       } else {
-        ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, cold_reread: cold, used: t.used }
+        ServingHeldFigures { turns: turns, held: by_share, bound: HeldByActiveShare, turns_bound: TurnsByThroughput, cold_reread: cold, used: t.used }
       }
     } else if count(t.refused) > 0 {
       // The store could not be used at all and the reason is a REFUSAL, not an absence of reading: the bound names
       // it (batch disables the slot endpoint, the model is mutable, the build changed, the budget does not fit, the
       // layout refused) so a reader is never handed a fabricated read obligation (fail_closed / review 92430).
-      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsRungRefused { reason: first_refusal(os: t.refused) }, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsRungRefused { reason: first_refusal(os: t.refused) }, turns_bound: TurnsByThroughput, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
     } else if count(t.unread) > 0 {
-      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsStoreUnread { obligation: first_obligation(os: t.unread) }, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsStoreUnread { obligation: first_obligation(os: t.unread) }, turns_bound: TurnsByThroughput, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
     } else if t.too_slow_any {
-      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsSwapTooSlow, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsSwapTooSlow, turns_bound: TurnsByThroughput, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
     } else {
-      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsNoWarmSwap, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
+      ServingHeldFigures { turns: turns, held: turns, bound: HeldToTurnsNoWarmSwap, turns_bound: TurnsByThroughput, cold_reread: cold, used: concat(t.used, [gpu_resident_turns()]) }
     }
   }
 }
@@ -457,7 +599,7 @@ fn serving_capacity_shape(a: ServingCapacityAnchor, p: ServingConversationPolicy
                 shape_refused(a: a, reason: ShapeLeastRateBelowPolicyAtConcurrency)
               } else {
                 let f = serving_held(turns: c, by_share: c * 1000 / share, cold: cold, a: a, p: p)
-                within_grant(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, cold_reread: f.cold_reread, used: concat([st, a.cold_prefill_standing], f.used) })
+                within_grant(a: a, f: ServingHeldFigures { turns: f.turns, held: f.held, bound: f.bound, turns_bound: f.turns_bound, cold_reread: f.cold_reread, used: concat([st, a.cold_prefill_standing], f.used) })
               }
           }
         }

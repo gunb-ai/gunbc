@@ -39,8 +39,10 @@ import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
+  recover_catalog_words, recover_catalog_unknown_leg_reason,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer , serving_door_leg_kind }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_apply_receipt_lines, ConvergeApplyTerminal, ApplySettled, ApplyRefused, ApplyUnhandled, ApplyStillNeedsWrites, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer , serving_door_leg_kind }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -141,6 +143,16 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
 // observe reports a spurious GroupAbsent and the plan picks up an extra groupadd the cell didn't mean.
 fn converged_groups() -> String {
   "gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:1005:\n"
+}
+
+// THE CONVERGED gunbc-compute GROUP ON A HOST WITH NO DASHBOARD INSTANCE (ken, operator_host_e2d4b7). Its
+// capacity-ledger service user is the remote-build account (capacity_ledger_directory_owner), NOT the
+// operator login, so the compute group carries exactly one member — gunbc-build. The operator login
+// briansrls does not exist on a fresh host and the account model never creates it, so a converged ken
+// group has no briansrls. This is the post-fix converged state; the upload-host fixture above keeps
+// briansrls because srv1/srv2 carry the operator login as their instance service principal.
+fn native_converged_groups() -> String {
+  "gunbc-compute:x:1006:gunbc-build\ngunbc-build:x:1005:\n"
 }
 
 // The authorized_keys content AS THE DESIRED STATE DECLARES IT, so a fixture that breaks some other leg
@@ -1251,7 +1263,7 @@ fn b3_run_failing(failing: String, a: ConvergeAction) -> ConvergeWriteOutcome {
 test fn execution_stops_at_first_failure_and_skips_the_dependents() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
   let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
-  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a))
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: ak_key, a: a))
   // The failing write itself IS attempted, with its cause kept; everything ordered after it is skipped.
   let failed_with_cause = match m.failed {
     Cons { head: f, tail: more } => f.key == ak_key && f.cause == b3_injected_cause && length(more) == 0
@@ -1260,12 +1272,16 @@ test fn execution_stops_at_first_failure_and_skips_the_dependents() -> Bool {
   failed_with_cause
     && m.skipped == map([b3_checkout(), b3_toolchain(), b3_binary()], a => converge_action_key(a))
     && m.attempted == [converge_action_key(b3_group()), ak_key]
+    // Only the write that settled BEFORE the failure is `applied`; the failed one and the skipped suffix are not.
+    && m.applied == [converge_action_key(b3_group())]
 }
 
 test fn execution_with_no_failure_attempts_everything() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
-  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
-  m.failed == [] && m.skipped == [] && m.attempted == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
+  let m = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  m.failed == [] && m.skipped == []
+    && m.attempted == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
+    && m.applied == map(b3_order(ak_path: ak_path), a => converge_action_key(a))
 }
 
 // Review 96096 (fail_closed): the receipt names the failed write WITH ITS CAUSE, not only its key, and
@@ -1273,12 +1289,44 @@ test fn execution_with_no_failure_attempts_everything() -> Bool {
 test fn the_apply_receipt_names_the_failed_write_and_its_cause() -> Bool {
   let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
   let ak_key = converge_action_key(b3_ak(ak_path: ak_path))
-  let lines = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: ak_key, a: a)))
-  let clean = converge_execution_receipt_lines(executed: converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], run: a => b3_run_failing(failing: "no-such-write", a: a)))
+  let failing = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: ak_key, a: a))
+  let clean = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  let lines = converge_apply_receipt_lines(executed: failing, terminal: ApplyStillNeedsWrites { count: 3 })
+  let settled = converge_apply_receipt_lines(executed: clean, terminal: ApplySettled)
   string_contains(s: lines, pattern: ak_key)
     && string_contains(s: lines, pattern: "Operation not permitted")
     && string_contains(s: lines, pattern: converge_action_key(b3_toolchain()))
-    && clean == ""
+    && settled == ""
+}
+
+// THE applied-then-refused receipt (the srv3 converge 45762320308 shape): every write settled — the apply
+// mutated every arm — and THEN the re-observe refused at recover-catalog. The receipt must name the applied
+// arms AND the refusal, and must NOT read like a converge that mutated nothing.
+test fn the_apply_receipt_names_applied_arms_then_the_refusal() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let executed = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  let refusal = "the re-observe refused after apply: recover-catalog: the seat census could not be read"
+  let lines = converge_apply_receipt_lines(executed: executed, terminal: ApplyRefused { reason: refusal })
+  string_contains(s: lines, pattern: "applied-then-refused")
+    && string_contains(s: lines, pattern: refusal)
+    && string_contains(s: lines, pattern: converge_action_key(b3_group()))
+    && string_contains(s: lines, pattern: converge_action_key(b3_binary()))
+    && !string_contains(s: lines, pattern: "refused-before-apply")
+}
+
+// RED CONTROL: the SAME refusal, but the apply mutated nothing (no arm settled). It must read
+// "refused-before-apply", name NO applied arm, and be a DIFFERENT receipt from the one above. Without the
+// applied/terminal split these two receipts are byte-identical — that conflation is the defect.
+test fn a_refusal_with_no_applied_arm_is_a_different_receipt() -> Bool {
+  let ak_path = "/home/gunbc-build/.ssh/authorized_keys"
+  let refusal = "the re-observe refused after apply: recover-catalog: the seat census could not be read"
+  let nothing = converge_apply_receipt_lines(executed: ConvergeExecuted { attempted: [], applied: [], failed: [], skipped: [] }, terminal: ApplyRefused { reason: refusal })
+  let executed = converge_execute_with(remaining: b3_order(ak_path: ak_path), attempted: [], applied: [], run: a => b3_run_failing(failing: "no-such-write", a: a))
+  let applied_then = converge_apply_receipt_lines(executed: executed, terminal: ApplyRefused { reason: refusal })
+  string_contains(s: nothing, pattern: "refused-before-apply")
+    && !string_contains(s: nothing, pattern: "applied-then-refused")
+    && !string_contains(s: nothing, pattern: converge_action_key(b3_group()))
+    && nothing != applied_then
 }
 
 // ── side-chat review of 2026-11-16, finding B4: an EXTRA ledger-group member is unhandled, not "fixed" ──
@@ -2077,7 +2125,7 @@ fn fully_matched_native_identity(d: RemoteBuildServingDesired, line: String, sid
   serving_observed_from_reads(
     elevation: est_elevation(), account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
-    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    group: est_s(native_converged_groups()), authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
@@ -2645,4 +2693,90 @@ test fn refused_passwd_read_drives_the_gate_to_the_systemd_read() -> Bool {
       is_read_systemd_choice(serving_slice_leg_choice(account_gate: gate))
     }
   }
+}
+
+// ── serving-observe-reads-absent-toolchain-as-drift (RB-M3 follow-up, lively-owl-722) ──
+//
+// End-to-end half of the follow-up: the OBSERVE now reads a fresh account's 127 toolchain listing as
+// DRIFT (see the setup witness), so the CONVERGE plans the bootstrap on exactly the host the live ken /
+// butch converges could not (rustup proven absent + `rustup toolchain list` exit 127). Before the fix
+// the assessment was indeterminate and converge_plan refused with ZERO writes; this claim is the red for
+// that: it requires the verified EnsureRustup before the EnsureToolchain on a refused-toolchain fresh host.
+
+// The fresh host (account absent, everything absent) with the toolchain listing REFUSED (the 127) rather
+// than merely established-absent -- the shape a real `rustup toolchain list` on an account with no rustup
+// produces. rustup itself is proven absent (the test -x leg).
+fn fresh_absent_observed_refused_toolchain(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(""),
+    group: est_s("root:x:0:\n"),
+    authorized_keys: est_s(""),
+    store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+    scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
+    checkout: est_absent(), toolchain: refused_b(), rustup: est_absent(),
+    serve_binary_sha256: Absent, checkout_revision: Absent,
+    authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: false },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+test fn a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => match rustup_init_release(version: serving_rustup_init_version, triple: "aarch64-unknown-linux-gnu") {
+      Absent => false
+      Present { value: r } => {
+        let a = serving_assess(d: d, o: fresh_absent_observed_refused_toolchain(forced_line(d), d), pin: pin_ok())
+        let ws = plan_writes(converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent()))
+        let carries = match rustup_write(ws) {
+          Absent => false
+          Present { value: w } => match w {
+            EnsureRustup { installer_url: u, expected_sha256: h, as_user: usr, rustup_home: rh, cargo_home: ch } =>
+              u == (rustup_init_url(r: r) as String) && string_contains(s: u, pattern: "/aarch64-unknown-linux-gnu/")
+                && h == (r.sha256 as String) && usr == d.account_name && rh == d.rustup_home && ch == d.cargo_home
+            _ => false
+          }
+        }
+        carries
+          && rank_of_rustup(ws: ws) < rank_of_toolchain(ws: ws)
+          && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name)
+      }
+    }
+  }
+}
+
+// THE CENSUS UNKNOWN REASON NAMES THE CENSUS, NOT THE TRANSPORT (plan node
+// remote-build-census-unknown-reason-names-the-census-not-the-transport). The leg's exit-2 arm takes
+// its reason from the census's own declared stdout words; stderr -- where the user-work-scope
+// trampoline's pre-wrap diagnostics print on EVERY census leg that must wrap into the capped slice --
+// is structurally invisible to it: recover_catalog_unknown_leg_reason's signature receives only
+// stdout. The second half pins the arm itself: the compose-from-stderr literal is gone from this
+// module's source, and the arm reads through the stdout-only function. Run 45762320308 logged
+// "user_work_scope: observed-bound arm did not admit (chain-unbounded)" -- printed before a SUCCESSFUL
+// wrap, beside a census that had answered in full -- as the census's cause; that conflation is red
+// here.
+test fn the_census_unknown_reason_names_the_census_not_the_transport() -> Bool {
+  let w = recover_catalog_words()
+  let census_words = "2c56092770fe88b27a6fb4c2baf546a5520ab42518314397904d2f0bd744b346#1: the attempt is already terminal:recovered"
+  let read = Filesystem.Read(path: "dag/gunbc/compute/remote_build_serving_converge.dag")
+  (match recover_catalog_unknown_leg_reason(stdout: join([w.unknown_header, " ", census_words, "\n"], "")) {
+    RecoverCatalogLegUnknown { detail: d } =>
+      string_contains(s: d, pattern: "terminal:recovered")
+        && !string_contains(s: d, pattern: "user_work_scope")
+    _ => false
+  })
+    && (match recover_catalog_unknown_leg_reason(stdout: join([w.established_header, "\n"], "")) {
+        RecoverCatalogLegUnknown { detail: d } => string_contains(s: d, pattern: "exited unknown")
+        _ => false
+      })
+    && read.success
+    && string_contains(s: read.content, pattern: "recover_catalog_unknown_leg_reason(stdout: r.stdout)")
+    && !string_contains(s: read.content, pattern: "the census door answered unknown: ")
 }

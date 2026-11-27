@@ -88,6 +88,7 @@ import std.algebra { empty_map, map_insert }
 import v2.std.witness { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit { ModuleDag, partition_provenance_eq, partition_unit_by_id }
+import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
 import gunbc.rust_emitted_edge {
   EmittedEdge,
   EmittedModuleTarget,
@@ -100,10 +101,18 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
   stage0_source_module_dag,
-  stage0_module_dag_merge,
+  stage0_source_module_dag_over,
+  stage0_module_dag_merge_over,
+  Stage0SourceModuleDagDerived,
+  Stage0SourceModuleDagRefused,
+  Stage0PartitionedModuleUndeclared,
+  Stage0PartitionedModuleAmbiguous,
+  Stage0PartitionedDependencyUnresolved,
+  Stage0PartitionedDependencyOutsidePartition,
   stage0_resolve_partition_outcome,
   Stage0PartitionResolved,
   Stage0PartitionResolveRefused,
+  Stage0PartitionSourceRefused,
   module_dag_with_emitted_edges,
   module_dag_runtime_prelude_edges,
   ModuleDagEmittedMerge,
@@ -130,6 +139,7 @@ import v2.workflow.rust_crate_partition {
   Stage0PartitionReceiptFoldRefused,
   Stage0PartitionReceiptOk,
   Stage0PartitionReceiptResolveRefused,
+  Stage0PartitionReceiptSourceRefused,
   stage0_partition_receipt_outcome,
   stage0_physical_crate_count,
   stage0_partition_row_lookups_resolved,
@@ -378,6 +388,7 @@ test fn witness_runtime_unit_members_holds() -> Bool {
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptSourceRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
@@ -417,6 +428,7 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptSourceRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
@@ -430,6 +442,7 @@ test fn witness_v1_artifact_unit_members_holds() -> Bool {
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptSourceRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
@@ -449,6 +462,7 @@ test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
       (resolved |> count) == (expected |> count)
     }
     Stage0PartitionResolveRefused { cause: _ } => false
+    Stage0PartitionSourceRefused { cause: _ } => false
   }
 }
 
@@ -505,8 +519,8 @@ test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit()
 
 // THE VACUOUS-GREEN GUARD, and it is the claim that keeps the one above honest. Subset-of-known-bad
 // is green when the disagreement set is EMPTY and equally green when the detector is BROKEN and
-// finds nothing -- the same observation from two different worlds. Today v1-stage0-v1-artifact
-// inhabits the set and masks that; when the edge list is derived the set empties and the mask goes
+// finds nothing -- the same observation from two different worlds. v1-stage0-v1-artifact used to
+// inhabit the set and mask that; the set emptied when the edge list was derived, and the mask went
 // with it, leaving a permanently green assertion with no evidence it can still see anything, which
 // is the inert lens gunbc.design_argument::fail_closed names. So the detector is run over SUPPLIED units and rows
 // carrying a PLANTED disagreement: "probe-diverging" authors a dependency the unit graph does not
@@ -600,22 +614,133 @@ fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroun
 
 
 
+// ── THE STAGE0 SOURCE EDGES ARE DERIVED ────────────────────────────────────────────────────
+//
+// POSITIVE CONTROL, ON THE LIVE TREE, ASSERTING THE ROUTE. v1_compiler_languages importing
+// extdeps.languages.dag.emit is an edge the old hand list never carried, and its absence was what
+// made v1-stage0-v1-artifact derive only the runtime as a dependency. It is present here only if the
+// DAG is read from the dependency facts: re-authoring a hand list without it reds this claim.
+test fn stage0_source_edges_are_read_from_the_dependency_facts() -> Bool {
+  match stage0_source_module_dag {
+    Stage0SourceModuleDagRefused { cause: _ } => false
+    Stage0SourceModuleDagDerived { module_dag: source } =>
+      source.edges |> any(edge =>
+        (edge.from as String) == "v1_compiler_languages" && (edge.to as String) == "extdeps_languages_dag_emit")
+  }
+}
+
+// The derivation over SUPPLIED facts, so each arm is reached by an input built to reach it. Two
+// partitioned modules, p_low and p_high; p_high is declared at "f/high.dag".
+fn witness_source_decls() -> List<ModuleDeclarationFact> {
+  [
+    ModuleDeclarationFact { module: "p.low", path: "f/low.dag" },
+    ModuleDeclarationFact { module: "p.high", path: "f/high.dag" },
+    ModuleDeclarationFact { module: "p.elsewhere", path: "f/elsewhere.dag" },
+  ]
+}
+
+fn witness_source_dep(path: String, target: String, declared: Bool) -> ModuleDependencyEdge {
+  ModuleDependencyEdge { path: path, target_module: target, target_declared: declared }
+}
+
+// The clean arm: an import and a reference joining one pair are ONE edge, a self dependency is no
+// edge, and a dependency of a module the partition does not own is not inspected at all.
+test fn stage0_source_derivation_records_each_dependency_once() -> Bool {
+  match stage0_source_module_dag_over(
+    basenames: ["p_low", "p_high"],
+    declarations: witness_source_decls(),
+    dependencies: [
+      witness_source_dep(path: "f/high.dag", target: "p.low", declared: true),
+      witness_source_dep(path: "f/high.dag", target: "p.low", declared: true),
+      witness_source_dep(path: "f/high.dag", target: "p.high", declared: true),
+      witness_source_dep(path: "f/elsewhere.dag", target: "not.declared", declared: false),
+    ]
+  ) {
+    Stage0SourceModuleDagRefused { cause: _ } => false
+    Stage0SourceModuleDagDerived { module_dag: dag } =>
+      (dag.edges |> count) == 1
+        && dag.edges |> all(edge => (edge.from as String) == "p_high" && (edge.to as String) == "p_low")
+        && (dag.modules |> count) == 2
+  }
+}
+
+// RED: a partitioned module that depends on a module the partition does not own would be a
+// crate:: path into a crate it cannot reach. Dropping that edge is what the hand list did silently.
+test fn stage0_source_dependency_outside_the_partition_refuses() -> Bool {
+  match stage0_source_module_dag_over(
+    basenames: ["p_low", "p_high"],
+    declarations: witness_source_decls(),
+    dependencies: [witness_source_dep(path: "f/high.dag", target: "p.elsewhere", declared: true)]
+  ) {
+    Stage0SourceModuleDagRefused { cause: Stage0PartitionedDependencyOutsidePartition { importer: importer, target: target } } =>
+      importer == "p_high" && target == "p_elsewhere"
+    _ => false
+  }
+}
+
+// RED: an unresolved dependency of a partitioned module refuses with its importer and target,
+// never dropping out of a graph that would then read as complete.
+test fn stage0_source_unresolved_dependency_refuses() -> Bool {
+  match stage0_source_module_dag_over(
+    basenames: ["p_low", "p_high"],
+    declarations: witness_source_decls(),
+    dependencies: [witness_source_dep(path: "f/low.dag", target: "p.missing", declared: false)]
+  ) {
+    Stage0SourceModuleDagRefused { cause: Stage0PartitionedDependencyUnresolved { importer_path: path, target_module: target } } =>
+      path == "f/low.dag" && target == "p.missing"
+    _ => false
+  }
+}
+
+// RED: a roster basename no declared module projects to has no edges to read, and a module with
+// no edges is exactly what a silently incomplete graph looks like. The runtime alone is exempt.
+test fn stage0_source_undeclared_partitioned_module_refuses() -> Bool {
+  match stage0_source_module_dag_over(
+    basenames: [rust_runtime_prelude_module, "p_low", "p_ghost"],
+    declarations: witness_source_decls(),
+    dependencies: []
+  ) {
+    Stage0SourceModuleDagRefused { cause: Stage0PartitionedModuleUndeclared { basename: basename } } =>
+      basename == "p_ghost"
+    _ => false
+  }
+}
+
+// RED: two declared modules projecting onto one basename would make the importer of every edge a
+// guess; the derivation names both instead of picking one.
+test fn stage0_source_ambiguous_partitioned_module_refuses() -> Bool {
+  match stage0_source_module_dag_over(
+    basenames: ["p_low"],
+    declarations: witness_source_decls() |> list_push(ModuleDeclarationFact { module: "p_low", path: "f/flat.dag" }),
+    dependencies: []
+  ) {
+    Stage0SourceModuleDagRefused { cause: Stage0PartitionedModuleAmbiguous { basename: basename, modules: modules } } =>
+      basename == "p_low" && (modules |> count) == 2
+    _ => false
+  }
+}
+
 // THE EMITTED RUNTIME EDGES REACH THE PARTITION FROM THE EMITTER'S OWN ROW PRODUCER. Positive
 // control: over the stage0 source DAG, the prelude rows merge, and every emitted member other than
 // the runtime module gains exactly one edge to it -- the hand-listed runtime edges are gone from
 // the source list, so every one of these was derived. If the merge stopped reading the rows, or
 // the rows stopped naming the runtime module, the count moves and this reds.
 test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -> Bool {
-  let source_runtime_edges = stage0_source_module_dag.edges
-    |> filter(edge => (edge.to as String) == rust_runtime_prelude_module)
-    |> count
-  match stage0_module_dag_merge {
-    ModuleDagEmittedRefused { cause: _ } => false
-    ModuleDagEmittedMerged { module_dag: merged } =>
-      source_runtime_edges == 0
-        && (merged.edges |> filter(edge => (edge.to as String) == rust_runtime_prelude_module) |> count)
-          == ((stage0_source_module_dag.modules |> count) - 1)
-        && (merged.edges |> count) == (stage0_source_module_dag.edges |> count) + ((stage0_source_module_dag.modules |> count) - 1)
+  match stage0_source_module_dag {
+    Stage0SourceModuleDagRefused { cause: _ } => false
+    Stage0SourceModuleDagDerived { module_dag: source } => {
+      let source_runtime_edges = source.edges
+        |> filter(edge => (edge.to as String) == rust_runtime_prelude_module)
+        |> count
+      match stage0_module_dag_merge_over(source: source) {
+        ModuleDagEmittedRefused { cause: _ } => false
+        ModuleDagEmittedMerged { module_dag: merged } =>
+          source_runtime_edges == 0
+            && (merged.edges |> filter(edge => (edge.to as String) == rust_runtime_prelude_module) |> count)
+              == ((source.modules |> count) - 1)
+            && (merged.edges |> count) == (source.edges |> count) + ((source.modules |> count) - 1)
+      }
+    }
   }
 }
 
@@ -629,13 +754,17 @@ test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
     to: EmittedModuleTarget { module: "v1_std_core" },
     provenance: RuntimePrelude
   }
-  match module_dag_with_emitted_edges(
-    module_dag: stage0_source_module_dag,
-    emitted: module_dag_runtime_prelude_edges(module_dag: stage0_source_module_dag) |> list_push(reverse)
-  ) {
-    ModuleDagEmittedRefused { cause: EmitterReverseEdge { from: from, to: to, provenance: RuntimePrelude } } =>
-      (from as String) == "std_algebra" && (to as String) == "v1_std_core"
-    _ => false
+  match stage0_source_module_dag {
+    Stage0SourceModuleDagRefused { cause: _ } => false
+    Stage0SourceModuleDagDerived { module_dag: source } =>
+      match module_dag_with_emitted_edges(
+        module_dag: source,
+        emitted: module_dag_runtime_prelude_edges(module_dag: source) |> list_push(reverse)
+      ) {
+        ModuleDagEmittedRefused { cause: EmitterReverseEdge { from: from, to: to, provenance: RuntimePrelude } } =>
+          (from as String) == "std_algebra" && (to as String) == "v1_std_core"
+        _ => false
+      }
   }
 }
 
@@ -647,10 +776,14 @@ test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
     to: EmittedModuleTarget { module: "not_a_stage0_module" },
     provenance: RuntimePrelude
   }
-  match module_dag_with_emitted_edges(module_dag: stage0_source_module_dag, emitted: [stranger]) {
-    ModuleDagEmittedRefused { cause: EmittedEdgeEndpointOutsideDag { from: from, to: to } } =>
-      from == "v1_std_core" && to == "not_a_stage0_module"
-    _ => false
+  match stage0_source_module_dag {
+    Stage0SourceModuleDagRefused { cause: _ } => false
+    Stage0SourceModuleDagDerived { module_dag: source } =>
+      match module_dag_with_emitted_edges(module_dag: source, emitted: [stranger]) {
+        ModuleDagEmittedRefused { cause: EmittedEdgeEndpointOutsideDag { from: from, to: to } } =>
+          from == "v1_std_core" && to == "not_a_stage0_module"
+        _ => false
+      }
   }
 }
 

@@ -8,12 +8,12 @@ import std.optional { Optional, Present, Absent, optional_present, optional_abse
 import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millisecond }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import gunbc.native_serve_probe_plan { NativeServeProbe }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
-// identity and dependency edges; this relation answers the separate realization question. In
-// particular, no command line, function name, or execution closure is carried here: selecting a
-// transport belongs to the later realization layer, not to either side of this model relation.
+// identity and dependency edges. This relation selects the producer and identifies its subject.
+// The realization selects the transport.
 // NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY AND ITS HOST DEADLINE. The entry is the
 // NativeClaimDriver program; the deadline is a std.measure Millisecond wall budget on the child
 // process after emit and build. Exceeding it is ObservationDidNotHold (gunbc test exit 1): the bound
@@ -28,11 +28,9 @@ import gunbc.native_serve_probe_plan { NativeServeProbe }
 // further served program is a binding row naming entry and probe, never a host branch. A separate arm because the
 // observation differs (a served process answering requests, not a report on stdout), so folding it
 // into the claim arm would give one arm two meanings.
-// CliWireProgramProducer IS GENERIC OVER ENTRY AND FUNCTION. The host evaluates that function in
-// the seed interpreter and classifies the returned CliWireResponse (the existing run_cli_wire_census
-// runner). NativeClaimProgramProducer is emit+run of a NativeClaimDriver; this arm is not that
-// driver. A second wet CliWire instrument is a binding row naming entry and function, never another
-// producer arm and never a string-match inside NativeClaimProgram.
+// An interpreted instrument binds a whole callable declaration. The registry emitter derives
+// its repository entry path when rendering the host row. The host evaluates the selected function
+// and classifies its CliWireResponse. Native claim and serve entries own built-process evidence.
 type TargetProducer
   = SelfHostProducer
   | RequiredFloorProducer
@@ -50,7 +48,7 @@ type TargetProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String, probe: NativeServeProbe }
-  | CliWireProgramProducer { entry: String, function: String }
+  | CliWireProgramProducer { target: GunbcRunStepTarget }
 
 // THE HOST EVALUATES THIS AT SPAWN so the child wall is the binding row's Millisecond, not a
 // second Duration literal. Present only when the producer is a NativeClaimProgramProducer whose
@@ -77,7 +75,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _, probe: _ } => optional_absent()
-    CliWireProgramProducer { entry: _, function: _ } => optional_absent()
+    CliWireProgramProducer { target: _ } => optional_absent()
   }
 }
 

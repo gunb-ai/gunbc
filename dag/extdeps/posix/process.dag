@@ -85,8 +85,46 @@ type ProcessGroupLeader sole_constructor {
   pgid: NonEmptyStr
 }
 
+// THE ONE RANGE kill(2) READS AS A SINGLE PROCESS (pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html).
+// 0 is the caller's own process group, -1 every process the caller may signal, any other negative a process
+// group; 1 is init. A decimal above pid_t's range (POSIX pid_t is a signed integer type; every Linux ABI makes
+// it 32-bit) is not a pid at all, and a realization that narrows it into pid_t can wrap it negative -- which is
+// the -1 case reached by the back door. So 2..=2147483647 is the whole admissible range, for a single-process
+// signal AND for a group signal's leader, and both mints below read it from here rather than restating it.
+data posix_pid_t_max: Int = 2147483647
+
+fn posix_pid_names_one_signalable_process(pid: Int) -> Bool {
+  pid > 1 && pid <= posix_pid_t_max
+}
+
+// A pid posix.Signal.TerminateProcess may be aimed at: exactly one process, never a group, never "everyone".
+// sole_constructor, so signal_target_pid is the ONLY mint and the refusal is not a check a caller may skip --
+// the same construction ProcessGroupLeader gives the group signal, for the same reason.
+type SignalTargetPid sole_constructor {
+  pid: NonEmptyStr
+}
+
+fn signal_target_pid(pid: Int) -> SignalTargetPid? {
+  if posix_pid_names_one_signalable_process(pid: pid) {
+    Present { value: SignalTargetPid { pid: to_string(value: pid) as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+// THE TEXT FORM, for a caller holding a pid as text read off a host file (cgroup.procs, a pid file). The text
+// must be exactly the decimal the pid renders back to -- a sign, padding, whitespace or a leading zero is not
+// silently normalized into some other process -- and it then passes the same range as signal_target_pid.
+fn signal_target_pid_of_text(text: String) -> SignalTargetPid? {
+  match parse_int(s: text) {
+    Absent => none
+    Present { value: pid } =>
+      if to_string(value: pid) == text { signal_target_pid(pid: pid) } else { none }
+  }
+}
+
 fn process_group_leader(spawned_pid: Int) -> ProcessGroupLeader? {
-  if spawned_pid > 1 {
+  if posix_pid_names_one_signalable_process(pid: spawned_pid) {
     Present { value: ProcessGroupLeader { pgid: to_string(value: spawned_pid) as NonEmptyStr } }
   } else {
     none
