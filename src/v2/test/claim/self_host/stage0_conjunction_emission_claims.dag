@@ -4,8 +4,15 @@ module v2.test.claim.self_host.stage0_conjunction_emission_claims
 // final head with the value-expression operand widening in place. It is the post-widening sibling of
 // stage0_conjunction_lowering_claims.dag and shares its door VERBATIM
 // (observe_provenanced_rust_emission_from_ingest against stage0_production_target_model), so verdicts are
-// comparable to the corpus_probes_* instrument. This entry holds ONLY claims that must PASS with the widening;
-// every one is expected PASS, so claim_batch exit 0 over THIS entry is the green evidence warm-fox reads. The
+// comparable to the corpus_probes_* instrument. The row-criteria claims here (conj/disj emits, the literal and
+// int-literal emits, the corpus named-refusal pair, the negate named-refusal battery, the prec_or grouping
+// controls, the flat-binding no-redundant-parens control) must PASS; the entry ALSO carries declared sibling
+// surface -- prefix_not_emits_holds, prec_not_grouped_and_flat_bodies_differ_holds,
+// prec_not_grouped_wraps_operand_holds -- which FAILs at this head pending
+// v2-core-emitter-emits-prefix-not-in-value-position (see the PR's declared-surface section), plus a
+// reason-naming battery with exactly one PASSing arm. Evidence runs claim-by-claim through the gunbc test claim
+// route, one claim label per operand; claim_batch, which executed the recorded pair, was deleted on main by
+// #16872, and an entry-wide exit status is NOT the green evidence. The
 // pre-widening reason-triangulation battery (which pinned the RED) stays in stage0_conjunction_lowering_claims
 // and is NOT folded in here, because with the widening its "subject refuses" witnesses contradict reality.
 //
