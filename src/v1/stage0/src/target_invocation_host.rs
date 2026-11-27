@@ -2782,17 +2782,43 @@ fn input_against_this_checkout(
     built_from: &str,
     here: &std::path::Path,
 ) -> Result<Option<BinaryInput>, String> {
-    let differs = || {
-        Some(BinaryInput::DiffersFromThisCheckout(
-            here.display().to_string(),
-        ))
-    };
     let built = input_content(std::path::Path::new(built_from))?
         .ok_or_else(|| format!("dep-info input {built_from} vanished while it was read"))?;
-    Ok(match input_content(here)? {
-        Some(content) if content == built => None,
-        _ => differs(),
-    })
+    let differing = match (&built, input_content(here)?) {
+        (built, Some(content)) if content == *built => return Ok(None),
+        (InputContent::Tree(theirs), Some(InputContent::Tree(ours))) => {
+            first_differing_path(theirs, &ours)
+                .map(|relative| here.join(relative))
+                .unwrap_or_else(|| here.to_path_buf())
+        }
+        _ => here.to_path_buf(),
+    };
+    Ok(Some(BinaryInput::DiffersFromThisCheckout(
+        differing.display().to_string(),
+    )))
+}
+
+fn first_differing_path(
+    theirs: &[(std::path::PathBuf, Vec<u8>)],
+    ours: &[(std::path::PathBuf, Vec<u8>)],
+) -> Option<std::path::PathBuf> {
+    use std::cmp::Ordering;
+    let (mut i, mut j) = (0, 0);
+    loop {
+        match (theirs.get(i), ours.get(j)) {
+            (None, None) => return None,
+            (Some((path, _)), None) | (None, Some((path, _))) => return Some(path.clone()),
+            (Some((a, a_bytes)), Some((b, b_bytes))) => match a.cmp(b) {
+                Ordering::Less => return Some(a.clone()),
+                Ordering::Greater => return Some(b.clone()),
+                Ordering::Equal if a_bytes != b_bytes => return Some(a.clone()),
+                Ordering::Equal => {
+                    i += 1;
+                    j += 1;
+                }
+            },
+        }
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -5201,7 +5227,7 @@ mod binary_freshness_tests {
             BinaryFreshness::Stale { input, .. } => {
                 assert_eq!(
                     input,
-                    edited.join("src/v1/stage0/src").display().to_string()
+                    edited.join("src/v1/stage0/src/lib.rs").display().to_string()
                 )
             }
             other => panic!("{other:?}"),
@@ -5210,7 +5236,10 @@ mod binary_freshness_tests {
         std::fs::write(added.join("src/v1/stage0/src/extra.rs"), "").unwrap();
         match verdict(&added) {
             BinaryFreshness::Stale { input, .. } => {
-                assert_eq!(input, added.join("src/v1/stage0/src").display().to_string())
+                assert_eq!(
+                    input,
+                    added.join("src/v1/stage0/src/extra.rs").display().to_string()
+                )
             }
             other => panic!("{other:?}"),
         }
