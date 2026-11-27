@@ -599,7 +599,6 @@ fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
 fn optional_declaration_identity() -> QualifiedName {
   [
     symbol_intern_lexeme(lexeme: "std"),
-    symbol_intern_lexeme(lexeme: "optional"),
     symbol_intern_lexeme(lexeme: "Optional")
   ]
 }
