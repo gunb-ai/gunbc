@@ -49,6 +49,7 @@ data gunbhub_source_of_truth_intention: String = "gunbc.plans.gunbhub_source_of_
 data github_actions_retirement_intention: String = "gunbc.plans.github_actions_retirement"
 data demand_engine_intention: String = "gunbc.plans.demand_engine_program"
 data gunb_ai_served_from_gunbc_intention: String = "gunbc.plans.gunb_ai_served_from_gunbc"
+data findings_reach_a_replan_intention: String = "gunbc.plans.findings_reach_a_replan"
 data remote_build_bandwidth_intention: String = "gunbc.plans.remote_build_bandwidth"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
@@ -299,6 +300,14 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.gunb_ai_served_from_gunbc (2026-11-24): the cutover, then the refresh that waits on it.
   serves(node: "gunb-ai-deploy-cutover", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 0),
   serves(node: "gunb-ai-content-refresh", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 1),
+  // gunbc.plans.findings_reach_a_replan (2026-11-27). Layer is edge depth; the project node is the grouping and is not bound.
+  serves(node: "replan-criterion-and-decision-modeled", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 0),
+  serves(node: "how-to-work-names-contributor-ownership", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 0),
+  serves(node: "criterion-reviewer-approves-its-criterion", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 0),
+  serves(node: "disproved-premise-is-a-submission-outcome", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 1),
+  serves(node: "owed-replan-refuses-dispatch", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 1),
+  serves(node: "escalations-route-to-the-replan", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 2),
+  serves(node: "dispatch-brief-asks-for-the-finding", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 2),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -362,6 +371,9 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.github_actions_retirement", decl_name: "github_actions_retirement_plan"), terminals: [nid(s: "github-actions-deleted")] },
   // gunb_ai_served_from_gunbc's one line ends at the refresh, which waits on the cutover along the prerequisite edge.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.gunb_ai_served_from_gunbc", decl_name: "gunb_ai_served_from_gunbc_plan"), terminals: [nid(s: "gunb-ai-content-refresh")] },
+  // findings_reach_a_replan ends at the continuation route and the brief (both downstream of the model), and at the two
+  // independent items, the design text and the reviewer verdict.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.findings_reach_a_replan", decl_name: "findings_reach_a_replan_plan"), terminals: [nid(s: "escalations-route-to-the-replan"), nid(s: "dispatch-brief-asks-for-the-finding"), nid(s: "how-to-work-names-contributor-ownership"), nid(s: "criterion-reviewer-approves-its-criterion")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {
