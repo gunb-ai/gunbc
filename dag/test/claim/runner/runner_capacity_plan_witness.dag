@@ -457,26 +457,6 @@ test fn ken_ruled_pool_is_one_footprint_seat_and_the_carve_never_refuses_it() ->
         Absent => true
       }
 }
-    // THE NEVER-REFUSED AT THE CARVE IS ASSERTED PURELY. ken's OWN committed width does not reach
-    // the ruled-zero arm yet: the width fold refuses BEFORE it (gunbc.runner.runner_slot_allocation
-    // committed_width_with_serving places the ruled arm after the session-denominator gate, by that
-    // row's own design), because ken's session reservation has never been read -- no row in
-    // gunbc.session_reservation_policy sizes host-e2d4b7, so his width states that cause. That is
-    // fail-closed, not a carve failure, and it is the SAME denominator gate srv14 had to pass before
-    // its ruled zero could answer; establishing ken's session reservation is a named next rung of his
-    // admission (same step-6 layer as the roster), not something this PR fabricates.
-    && match committed_width_after_reservation(committed_slots: 0, reserved_slots: 0) {
-        CeilingCleared { committed_slots: c, reserved_slots: r, spendable_ceiling: s } =>
-          c == 0 && r == 0 && s == 0
-        ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } => false
-      }
-    && !remote_build_host_is_serving(host: operator_host_e2d4b7)
-    && host_build_pool_reservation(host: operator_host_e2d4b7) == byte_size(0)
-    && match build_pool_ruled_seat_count_for_host(host: operator_host_e2d4b7) {
-        Present { value: _ } => false
-        Absent => true
-      }
-}
 
 // THE RULINGS ARE STAGED, NOT YET ADMITTED. The remote-build serving roster is srv3 and srv4
 // (gunbc.compute.remote_build_hosts::remote_build_serving_hosts), so NO ruled host is rostered today:
