@@ -2,6 +2,8 @@ module test.claim.compute.remote_build_client_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.retry_law { RetryHintNone, retry_hint_from_delta }
+import extdeps.languages.json.emit { serialize_json }
 import std.process { ExitSuccess, ExitFailure }
 import product.host_identity { HostIdentity }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
@@ -39,7 +41,7 @@ import gunbc.compute.remote_build_client {
   GateNoHostAdmitted, GateVerdictOnCode,
   remote_build_probe_leg_kind, remote_build_work_leg_kind, remote_build_work_leg_overrun_detail,
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
-  remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean,
+  remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean, remote_build_attempt_json,
   RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
   RemoteSelectionSent, RemoteSelectionDeclined, RemoteSelectionFailed,
   remote_selection_operation, remote_selection_declined, remote_selection_failed, remote_not_sent_json,
@@ -110,12 +112,23 @@ test fn a_run_is_served_only_when_every_request_was_served() -> Bool {
   let op = RemoteCompileEntry { entry: "dag/x.dag" as FilePath }
   let served = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostServed { receipt: "{}" } } }
   let failed = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostWorkFailed { receipt: "{}" } } }
-  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full" } }] } }
+  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: RetryHintNone } }] } }
   remote_build_run_served(r: w_run(results: [served, served]))
     && !remote_build_run_served(r: w_run(results: [served, failed]))
     && !remote_build_run_served(r: w_run(results: [full]))
     && !remote_build_run_served(r: w_run(results: []))
     && !remote_build_run_served(r: RemoteBuildNotSent { step: "push", detail: "refused" })
+}
+
+// THE RECEIPT RECORDS THE RETRY ALLOWANCE A CAPACITY-LIMITED HOST GRANTED. HostCapacityFull.retry is read
+// in production here: the attempt JSON CI consumes carries the named delay, so "capacity limited, retry
+// allowed" reaches the caller (and the serving router that will schedule the retry) rather than a bare no.
+// RED CONTROL: drop the retry member from remote_build_attempt_json and the delay arm goes red.
+test fn the_capacity_receipt_records_the_retry_allowance() -> Bool {
+  let with_delay = serialize_json(v: remote_build_attempt_json(a: RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: retry_hint_from_delta(delay: second(count: 30)) } }))
+  let no_delay = serialize_json(v: remote_build_attempt_json(a: RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: RetryHintNone } }))
+  let not_capacity = serialize_json(v: remote_build_attempt_json(a: RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostWorkFailed { receipt: "{}" } }))
+  with_delay.contains("\"retry\": \"30s\"") && no_delay.contains("\"retry\": \"none\"") && !not_capacity.contains("\"retry\"")
 }
 
 // A selected module that could not be sent counts against the run, as the local route counts an
