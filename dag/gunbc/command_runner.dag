@@ -333,9 +333,13 @@ fn git_route_wall_refusal_capture(command: ArgvCommand) -> ProcessCaptureOutcome
   }
 }
 
-// THE TYPED REFUSAL SURFACE: ProcessRunOutcome is the one meaning of "nothing ran". A transport that
-// refuses to build the command spawned nothing either, so it is the same arm, never an exit code:
-// no process ran, and a sentinel exit status would be a fabricated observation (gunbc.design_argument::fail_closed).
+// THE TYPED REFUSAL SURFACE: at this entry, ProcessRunOutcome::ProcessNotSpawned is the meaning of
+// "nothing ran". A transport that refuses to build the command spawned nothing either, so it is the
+// same arm, never an exit code: no process ran, and a sentinel exit status would be a fabricated
+// observation (gunbc.design_argument::fail_closed). At the CAPTURE grain the same rule has a declared
+// second leaf, ProcessCaptureOutcome::ProcessCaptureNotSpawned -- one rule, two grains, until PR C
+// folds both into SpawnOutcome<T> (the explanation and the machine-readable debt row sit on the type
+// in extdeps/shell/exec.dag: ProcessCaptureOutcome's comment and process_capture_outcome_dissolve_on).
 //
 // THIS IS ALSO THE ONLY ENTRY WHOSE PRODUCT IS THE RAW OBSERVATION **EVEN WHEN THE PROCESS FAILED**,
 // which is why the fleet's stdout-of-a-failed-run callers (the Firecracker serial-console receipts,
@@ -459,6 +463,14 @@ fn process_capture_admitted(captured: ProcessCaptureOutcome) -> Bool {
   }
 }
 
+// ONE HOME for the not-spawned receipt rendering: how "there was never a child" reads on a receipt,
+// shared by every grain that must say it (capture below, run above). Never blank, never invented:
+// program and cause come from the refusal that stopped the spawn, and PR C dissolves this row together
+// with the second not-spawned leaf it serves (see process_capture_outcome_dissolve_on).
+fn process_not_spawned_text(program: NonEmptyStr, cause: NonEmptyStr) -> String {
+  join(["(not spawned: ", trim(s: program), " -- ", trim(s: cause), ")"], "")
+}
+
 // A receipt line's text at the capture grain, and it is NOT a flattening back to the conflated shape:
 // the four states render to four DISTINGUISHABLE strings, so 'the child never spawned' cannot be
 // printed as '(no output)', which is the exact confusion ProcessOutputAbsent exists to prevent. Same
@@ -467,8 +479,7 @@ fn process_capture_admitted(captured: ProcessCaptureOutcome) -> Bool {
 fn process_capture_receipt_text(captured: ProcessCaptureOutcome) -> String {
   match captured {
     ProcessCaptured { outcome: o } => process_outcome_receipt_text(outcome: o)
-    ProcessCaptureNotSpawned { program: p, cause: c } =>
-      join(["(not spawned: ", trim(s: p), " -- ", trim(s: c), ")"], "")
+    ProcessCaptureNotSpawned { program: p, cause: c } => process_not_spawned_text(program: p, cause: c)
   }
 }
 
@@ -510,8 +521,7 @@ fn process_run_outcome_admitted(policy: ProcessExitPolicy, run: ProcessRunOutcom
 fn process_run_outcome_error_text(run: ProcessRunOutcome) -> String {
   match run {
     ProcessRan { observation: o } => o.stderr
-    ProcessNotSpawned { program: p, cause: c } =>
-      join(["(not spawned: ", trim(s: p), " -- ", trim(s: c), ")"], "")
+    ProcessNotSpawned { program: p, cause: c } => process_not_spawned_text(program: p, cause: c)
   }
 }
 
