@@ -2,6 +2,7 @@ module test.claim.workspace_workflow_dispatch_witness
 
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
 import std.types { Bool, String }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.fleet.fleet_converge_workflow {
   WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
   fleet_converge_job_with_steps, fleet_converge_shared_job_if, fleet_converge_after_grant_wait_if, fleet_converge_dispatch_inputs, fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
@@ -29,25 +30,31 @@ test fn workspace_operations_use_the_serialized_host_job_without_fleet_credentia
 }
 
 test fn workspace_image_build_preserves_ownership_and_archives_only_the_product() -> Bool {
-  let build = gunbc_ci_workspace_image_build_invoke()
   let paths = workspace_image_artifact_paths()
-  string_contains(s: build, pattern: "fakeroot -- ")
-    && string_contains(s: build, pattern: "workspace_image_build_wet")
-    && string_contains(s: paths, pattern: "/workspace.ext4")
-    && !string_contains(s: paths, pattern: "workspace-tree")
-    && !string_contains(s: paths, pattern: "squashfs")
+  match outcome_accepted_value(gunbc_ci_workspace_image_build_invoke()) {
+    Absent => false
+    Present { value: build } =>
+      string_contains(s: build, pattern: "fakeroot -- ")
+        && string_contains(s: build, pattern: "workspace_image_build_wet")
+        && string_contains(s: paths, pattern: "/workspace.ext4")
+        && !string_contains(s: paths, pattern: "workspace-tree")
+        && !string_contains(s: paths, pattern: "squashfs")
+  }
 }
 
 test fn revision_job_image_build_archives_only_the_product_and_its_digest_receipt() -> Bool {
-  let build = gunbc_ci_revision_job_image_build_invoke()
   let paths = revision_job_image_artifact_paths()
-  string_contains(s: build, pattern: "fakeroot -- ")
-    && string_contains(s: build, pattern: "revision_job_image_build_wet")
-    && string_contains(s: paths, pattern: "/revision-job.ext4")
-    && string_contains(s: paths, pattern: "/toolchain")
-    && string_contains(s: paths, pattern: "build-receipt.txt")
-    && !string_contains(s: paths, pattern: "revision-job-tree")
-    && !string_contains(s: paths, pattern: "squashfs")
+  match outcome_accepted_value(gunbc_ci_revision_job_image_build_invoke()) {
+    Absent => false
+    Present { value: build } =>
+      string_contains(s: build, pattern: "fakeroot -- ")
+        && string_contains(s: build, pattern: "revision_job_image_build_wet")
+        && string_contains(s: paths, pattern: "/revision-job.ext4")
+        && string_contains(s: paths, pattern: "/toolchain")
+        && string_contains(s: paths, pattern: "build-receipt.txt")
+        && !string_contains(s: paths, pattern: "revision-job-tree")
+        && !string_contains(s: paths, pattern: "squashfs")
+  }
 }
 
 test fn fleet_dispatch_stays_within_github_input_limit() -> Bool {
@@ -60,7 +67,9 @@ test fn fleet_dispatch_stays_within_github_input_limit() -> Bool {
 // condition is the grant-wait gate (fleet_converge_after_grant_wait_if) around the mode selector, so the
 // condition is compared exactly with that composition (nothing may be OR'd outside the selector) and the no-negative-clause law is asked of the selector alone.
 test fn dedicated_installs_do_not_also_run_the_shared_credentialed_job() -> Bool {
-  match fleet_converge_job_with_steps(steps: []).if_condition {
+  match outcome_accepted_value(fleet_converge_job_with_steps(steps: [])) {
+    Absent => false
+    Present { value: jj } => match jj.if_condition {
     Absent => false
     Present { value: condition } => condition == fleet_converge_after_grant_wait_if(after_build: true, mode_if: fleet_converge_shared_job_if)
       && string_contains(s: condition, pattern: "github.event.inputs.mode == 'workspace_image_build'")
@@ -71,5 +80,6 @@ test fn dedicated_installs_do_not_also_run_the_shared_credentialed_job() -> Bool
       && !string_contains(s: condition, pattern: "dashboard_deploy")
       && !string_contains(s: condition, pattern: "gcp_iam_converge")
       && !string_contains(s: fleet_converge_shared_job_if, pattern: " != ")
+  }
   }
 }

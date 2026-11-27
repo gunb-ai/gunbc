@@ -10,6 +10,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 
 import std.optional { Present, Absent }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, compute_root }
+import gunbc.compute.work_request { GunbcDriver, gunbc_binary_name, gunbc_cargo_package }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_work_slice_unit_name, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
@@ -2191,6 +2192,30 @@ test fn a_missing_native_sidecar_rebuilds_not_rerecords() -> Bool {
   }
 }
 
+// THE SINGLE CARGO-PACKAGE AUTHORITY (ken converge 45968626078): the native BuildServeBinary the planner
+// emits must carry the cargo package+bin that the ONE authority in gunbc.compute.work_request names — the
+// package `v1-compiler`, not the literal `gunbc` that has no package and made cargo answer `package ID
+// specification gunbc did not match any packages` (exit 101). The pair is read from the SAME authority the
+// worker build route uses, so the two sites cannot drift again. RED if the planner hardcodes any package/bin
+// other than the authority (e.g. reverts package to "gunbc").
+test fn the_native_build_carries_the_single_cargo_package_authority() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let ws = plan_writes(plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() }))
+      match first_where(ws, keep: a => match a { BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _ } => true  _ => false }) {
+        Absent => false
+        Present { value: a } => match a {
+          BuildServeBinary { checkout_dir: _, revision: _, package: p, bin: bn, target_dir: _, install_path: _ } =>
+            p == (gunbc_cargo_package(b: GunbcDriver) as String) && bn == (gunbc_binary_name(b: GunbcDriver) as String)
+              && p == "v1-compiler" && bn == "gunbc"
+          _ => false
+        }
+      }
+    }
+  }
+}
+
 // ---- THE SEAT RECOVERY LEG (increment 2) ----
 // The census arrives ALREADY JUDGED: its entries come from
 // gunbc.compute.attempt_lifecycle::recovery_write_authorization through the recovery door
@@ -2273,23 +2298,37 @@ test fn a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery() -> B
 test fn the_census_gate_asks_only_at_the_dispatched_revision() -> Bool {
   let pin_sha = "0000000000000000000000000000000000000000"
   let stale = "1111111111111111111111111111111111111111"
-  let asked = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, dispatched_revision: pin_sha) {
+  let present = ObservationEstablished { observed: true }
+  let asked = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: present, dispatched_revision: pin_sha) {
     CensusGateAsk => true
     CensusGateDefer { reason: _ } => false
   }
-  let deferred_stale = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, dispatched_revision: pin_sha) {
+  let deferred_stale = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, serve_binary: present, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: stale) && string_contains(s: r, pattern: pin_sha)
   }
-  let deferred_refused = match census_door_gate(checkout_revision: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.revision", cause: "the revision read was refused" } } }, dispatched_revision: pin_sha) {
+  let deferred_refused = match census_door_gate(checkout_revision: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.revision", cause: "the revision read was refused" } } }, serve_binary: present, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: "refused")
   }
-  let deferred_unrun = match census_door_gate(checkout_revision: Absent, dispatched_revision: pin_sha) {
+  let deferred_unrun = match census_door_gate(checkout_revision: Absent, serve_binary: present, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: "not established")
   }
-  asked && deferred_stale && deferred_refused && deferred_unrun
+  // THE SERVE-BINARY CARRIER (ken converge 45968626078): at the dispatched checkout revision, a PROVEN
+  // ABSENT serve binary DEFERS the census — the door is carried by the installed binary, and asking an
+  // absent one exits 127 and would indeterminate the whole assessment, stranding the binary write that
+  // carries the door. RED if the gate asks an absent-binary host.
+  let deferred_no_binary = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: ObservationEstablished { observed: false }, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "serve binary is not installed")
+  }
+  // A MERELY UNREAD presence still ASKS (a real read beats a skip nobody proved): only proven absence defers.
+  let asked_unread_binary = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: ObservationRefused { cause: ServingLegFailure { item: "seed.serve_binary", cause: "the presence read was refused" } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => true
+    CensusGateDefer { reason: _ } => false
+  }
+  asked && deferred_stale && deferred_refused && deferred_unrun && deferred_no_binary && asked_unread_binary
 }
 
 // RED CONTROL (live holder): an established 'hold' entry — a live or too-early holder, which the model

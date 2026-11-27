@@ -156,14 +156,39 @@ fn cargo_profile_wire(p: CargoProfile) -> String {
 // The claim-execution cutover (gunbc.plans.claim_execution_consolidation) deleted the `claim_batch`
 // binary: claims execute through the `gunbc test` route, which the compiler driver itself carries,
 // so the closed set is the driver alone.
-type GunbcBinary = GunbcDriver
+//
+// THE EMPTY PAYLOAD `{}` IS NOT OPTIONAL. A `type T = Foo` with a bare RHS and no `|`/payload is an
+// ALIAS (v1.compiler cli_run module_self_declared_names: "a coproduct alternates (`|`) or carries a
+// record payload (`{`); an alias does neither", and its corpus census found ZERO single-alternative
+// coproducts spelled bare). When #16872 narrowed this set from `GunbcDriver | ClaimBatchRunner` to the
+// driver alone, dropping the `|` silently turned it into an alias with no constructor behind it, so a
+// `match` on it reduced to nothing at RUNTIME (PatternMatchFailure) while still typechecking. The empty
+// record payload keeps it a real one-constructor coproduct, which is the shape the interpreter reduces
+// and the shape every other single-member closed set on main uses (cf. extdeps version types).
+type GunbcBinary = GunbcDriver {}
 
-// The single constructor as a member the families above can import.
-data GunbcDriver: GunbcBinary = GunbcDriver
+// The single constructor as a member the families above can import. The `{}` builds the empty-payload
+// constructor value; the match arms below key on the bare constructor name `GunbcDriver`.
+data GunbcDriver: GunbcBinary = GunbcDriver {}
 
 fn gunbc_binary_name(b: GunbcBinary) -> NonEmptyStr {
   match b {
     GunbcDriver => "gunbc" as NonEmptyStr
+  }
+}
+
+// THE CARGO PACKAGE THAT BUILDS EACH BINARY — the ONE authority for `-p <package>`, read by every site
+// that asks cargo to build a gunbc binary (the worker's build route in gunbc.compute.work_provider_local,
+// and the serving converge's native BuildServeBinary). It lives beside gunbc_binary_name because a binary
+// and the package that owns it are one fact about the same closed set: the `-p`/`--bin` pair a build
+// carries must agree, and two literals that must agree is exactly what drifted when the native build
+// named package "gunbc" (a package that does not exist) while the worker named "v1-compiler", so cargo
+// answered `package ID specification gunbc did not match any packages` (exit 101) on ken's serve build.
+// The package is a property of the binary, keyed on the SAME closed set, so a future binary may live in
+// another package without any call site restating a name.
+fn gunbc_cargo_package(b: GunbcBinary) -> NonEmptyStr {
+  match b {
+    GunbcDriver => "v1-compiler" as NonEmptyStr
   }
 }
 
