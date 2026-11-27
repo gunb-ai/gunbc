@@ -5,7 +5,7 @@ import std.algebra { list_append }
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
-import gunbc.auth.approval_google_enrolment { google_enrolment_transcript, google_enrolment_nonce }
+import gunbc.auth.approval_google_enrolment { google_enrolment_transcript, google_enrolment_nonce, google_enrollment_id }
 import extdeps.apple.app_attest { AttestKeyId }
 import gunbc.auth.approval_device_wire {
   DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid, PushRegistration,
@@ -57,7 +57,7 @@ fn redemption_vector(name: NonEmptyStr, decision: ProposedDecision, stored_reque
     name: name,
     input: DeviceRedemptionSigningInput {
       audience: approval_device_audience,
-      enrollment_id: "enr-7f3a",
+      enrollment_id: fx_enrollment_id,
       challenge: RedemptionChallenge {
         expires_at: "2026-09-18T12:05:00Z" as Timestamp,
         nonce_hex: "9c1d2e3f4a5b6c7d8e9fa0b1c2d3e4f5061728394a5b6c7d8e9fa0b1c2d3e4f5",
@@ -133,9 +133,9 @@ type ReadVector {
 }
 
 data read_vectors: List<ReadVector> = [
-  ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
-  ReadVector { name: "request", path: device_request_path(escalation_id: "esc-mtc1-boot-1"), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
-  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: "genr-fixture" as NonEmptyStr), enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: fx_enrollment_id, requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "request", path: device_request_path(escalation_id: "esc-mtc1-boot-1"), enrollment_id: fx_enrollment_id, requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "enrollment_readback", path: device_enrollment_path(enrollment_id: fx_enrollment_id), enrollment_id: fx_enrollment_id, requested_at: "2026-09-18T12:00:30Z" as Timestamp },
 ]
 
 fn read_vector_json(v: ReadVector) -> JsonValue {
@@ -154,8 +154,20 @@ fn read_vector_json(v: ReadVector) -> JsonValue {
 // ONE OF EVERY BODY THE TWO SIDES EXCHANGE, rendered by the wire's own encoders. The app encodes the
 // requests and must produce these bytes; it decodes the responses and must read these values.
 data fx_point: NonEmptyStr = "BHt2Zm9vYmFyYmF6cXV4"
+data fx_decision_key: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point }
+
+// ONE ENROLMENT ID FOR THE ONE FIXTURE DEVICE, minted by the broker's own fold. Every vector that
+// names the device's enrolment -- the grant, the readback and its path, the read and push
+// authentication, the redemption signing input, the revoked response -- reads this row, so the
+// app's Route.enrollment(grant.enrollment_id) is held to the very path the fixture emits. When
+// the grant and the path each spelled their own literal, the code-path cutover re-spelled one and
+// not the other and the vectors disagreed with themselves. The subject is the `sub` of the
+// fixture id_token in fx_env_enrolment_request, and google_enrollment_id gives the live shape
+// ("genr-" + padded base64url), not a hand-typed stand-in for it.
+data fx_google_subject: NonEmptyStr = "x"
+data fx_enrollment_id: NonEmptyStr = google_enrollment_id(subject: fx_google_subject, decision_key: fx_decision_key)
 data fx_push: PushRegistration = ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2c3d4e5f6" }
-data fx_read_auth: ReadAuthentication = ReadAuthentication { enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, assertion_b64: "omlzaWduYXR1cmU" }
+data fx_read_auth: ReadAuthentication = ReadAuthentication { enrollment_id: fx_enrollment_id, requested_at: "2026-09-18T12:00:30Z" as Timestamp, assertion_b64: "omlzaWduYXR1cmU" }
 
 fn fx_signing_input() -> DeviceRedemptionSigningInput {
   match first(redemption_vectors) { Present { value: v } => v.input  Absent => redemption_vector(name: "approve-plain", decision: ProposeApprove, stored_request_text: "{}").input }
@@ -177,7 +189,7 @@ data envelope_vectors: List<EnvelopeVector> = list_append(left: envelope_vectors
 
 data fx_env_enrolment_request: EnvelopeVector = EnvelopeVector { name: "enrolment_request", body: google_enrolment_request_json(r: GoogleEnrolmentRequest {
       platform: MobileIos,
-      decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: fx_point },
+      decision_key: fx_decision_key,
       attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0", id_token: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln",
     }) }
 
@@ -193,7 +205,7 @@ data fx_env_read_authentication: EnvelopeVector = EnvelopeVector { name: "read_a
 
 data fx_env_push_update_request: EnvelopeVector = EnvelopeVector { name: "push_update_request", body: push_update_request_json(r: PushUpdateRequest { auth: fx_read_auth, push: fx_push }) }
 
-data fx_env_enrolment_grant: EnvelopeVector = EnvelopeVector { name: "enrolment_grant", body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: "enr-482913" }) }
+data fx_env_enrolment_grant: EnvelopeVector = EnvelopeVector { name: "enrolment_grant", body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: fx_enrollment_id }) }
 
 data fx_env_pending_list: EnvelopeVector = EnvelopeVector { name: "pending_list", body: pending_list_json(rows: [PendingApproval { escalation_id: "esc-mtc1-boot-1", request_revision: "sha256:abab" }]) }
 
@@ -204,7 +216,7 @@ data fx_env_fetched_request: EnvelopeVector = EnvelopeVector { name: "fetched_re
       deny: VerbCapability { capability_text: "deny-text", capability_tag_b64url: "DfEI-CJIvDgDxhGnedEBCKWBrsxopGkEpUqVsl6enGg=" },
     }) }
 
-data fx_env_enrolment_readback: EnvelopeVector = EnvelopeVector { name: "enrolment_readback", body: enrolment_readback_json(r: EnrolmentReadback { enrollment_id: "enr-482913", standing: EnrolmentStandingActive }) }
+data fx_env_enrolment_readback: EnvelopeVector = EnvelopeVector { name: "enrolment_readback", body: enrolment_readback_json(r: EnrolmentReadback { enrollment_id: fx_enrollment_id, standing: EnrolmentStandingActive }) }
 
 data fx_env_redemption_response_lost_the_race: EnvelopeVector = EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) }
 
@@ -212,17 +224,15 @@ data fx_env_redemption_response_challenge_expired: EnvelopeVector = EnvelopeVect
 
 data fx_env_redemption_response_signed_for_another_request: EnvelopeVector = EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) }
 
-data fx_env_redemption_response_enrollment_revoked: EnvelopeVector = EnvelopeVector { name: "redemption_response_enrollment_revoked", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentRevoked { enrollment_id: "enr-482913" })) }
+data fx_env_redemption_response_enrollment_revoked: EnvelopeVector = EnvelopeVector { name: "redemption_response_enrollment_revoked", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentRevoked { enrollment_id: fx_enrollment_id })) }
 
 data fx_env_redemption_response_enrollment_unknown: EnvelopeVector = EnvelopeVector { name: "redemption_response_enrollment_unknown", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentUnknown)) }
 
-data fx_env_push_update_client_data: EnvelopeVector = EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String }
+data fx_env_push_update_client_data: EnvelopeVector = EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: fx_enrollment_id, requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String }
 
 data fx_env_request_path: EnvelopeVector = EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String }
 
-data fx_env_enrollment_id_fixture: EnvelopeVector = EnvelopeVector { name: "enrollment_id_fixture", body: "genr-fixture" }
-
-data fx_env_enrollment_path: EnvelopeVector = EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: "genr-fixture" as NonEmptyStr) as String }
+data fx_env_enrollment_path: EnvelopeVector = EnvelopeVector { name: "enrollment_path", body: device_enrollment_path(enrollment_id: fx_enrollment_id) as String }
 
 data envelope_vectors_fixed: List<EnvelopeVector> = [
   fx_env_enrolment_request,
@@ -241,7 +251,6 @@ data envelope_vectors_fixed: List<EnvelopeVector> = [
   fx_env_redemption_response_enrollment_unknown,
   fx_env_push_update_client_data,
   fx_env_request_path,
-  fx_env_enrollment_id_fixture,
   fx_env_enrollment_path,
 ]
 
