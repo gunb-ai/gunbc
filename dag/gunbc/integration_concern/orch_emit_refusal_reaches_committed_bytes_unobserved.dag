@@ -1,0 +1,38 @@
+module gunbc.integration_concern.orch_emit_refusal_reaches_committed_bytes_unobserved
+
+// One row of the integration-concern register. The roster derives the row from this file
+// (module gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, orch_emit_refusal_reaches_committed_bytes_unobserved_review }
+
+data orch_emit_refusal_reaches_committed_bytes_unobserved: IntegrationConcern = IntegrationConcern {
+  identity: "orch_emit_refusal_reaches_committed_bytes_unobserved",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.workflow.ci_workflow_run_emit", decl_name: "ci_workflow_run_emit_pipeline"),
+    requirement: "an orchestration run-body emit that cannot render its pipeline returns a typed, located refusal through the job-body chain unwrapped once at the artifact boundary, rather than rendering a __GUNBC_ORCH_EMIT_REFUSED__ marker that NO artifact-boundary gate scans -- today only one narrow witness asserts the token absent on the compiler-gate contract-stamp script, so a refusal in any other committed workflow's run body is silently committed as a passing step",
+    standing: RequirementEstablished { by: orch_emit_refusal_reaches_committed_bytes_unobserved_review },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.workflow.ci_workflow_run_emit", decl_name: "ci_workflow_run_emit_pipeline"),
+    tail: [
+      decl_ref(module_path: "v2.workflow.ci_workflow_run_emit", decl_name: "ci_workflow_run_emit_refused_poison"),
+    ],
+  },
+  question: "does any gate at the artifact boundary observe __GUNBC_ORCH_EMIT_REFUSED__? It does not -- only test.claim.compiler_gate_contract_stamp_witness asserts the token absent on one script; gunbc.tier_o_artifact_emit scans only the __GUNBC_INVOKE_EMIT_REFUSED__ family. When ci_workflow_run_emit_pipeline returns a typed Outcome (the same cutover as the invoke emitter), delete the poison and that witness's string_contains together so no orch refusal can be committed unobserved.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "723fc05d265c4a0b9a97a3a73e0d6f58b1b2d28a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.ci_workflow_run_emit", decl_name: "ci_workflow_run_emit_pipeline") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.compiler_gate_contract_stamp_witness", decl_name: "the_generated_step_has_no_warning_arm_and_no_override_input_holds") },
+        ],
+      },
+      account: "Recorded while integrating emitter_string_return_carries_no_typed_refusal. The operator asked, for the orch sentinel, whether anything observes it in rendered output. grep over the tree finds the token __GUNBC_ORCH_EMIT_REFUSED__ asserted absent in exactly one claim (the compiler-gate contract-stamp witness, a per-script assertion) and named in a comment beside fleet_keypair_mint's own token; gunbc.tier_o_artifact_emit.tier_o_workflow_produced scans only the invoke-family prefix. So the orch refusal is unobserved at the artifact boundary outside that one witness. Out of scope for the invoke-emitter PR (its producer is a different module and a different token); recorded so it is not left silent, to be dispatched as its own Outcome cutover.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
