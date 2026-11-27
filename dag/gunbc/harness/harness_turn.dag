@@ -3184,6 +3184,29 @@ fn harness_alignment_publication_text(adjudication: HarnessAlignmentAdjudication
 // no verdict the check can act on, a fingerprint the chain authority no longer derives, or a durable
 // event that recorded a DIFFERENT fingerprint than the chain now derives -- the last one being the
 // refusal that survives a caller re-keying its identity after the plan moved.
+// THE ONE COMPARISON OF THE PERSISTED EVIDENCE AGAINST WHAT THE BOUNDARY RECORDED. Ask it before you
+// pay for a check, and ask it again when the verdict is judged -- the same function, never a restatement
+// (gunbc.design_argument::single_authority): a second copy could drift from the first and let a round
+// that is already disqualified buy a check its durable record forbids.
+type HarnessAlignmentPersistedEvidence
+  = PersistedEvidenceAgrees { content: String }
+  | PersistedEvidenceAbsent { cause: String }
+  | PersistedEvidenceDisagrees { cause: String }
+
+fn harness_alignment_persisted_evidence(
+  observation_path: String,
+  recorded: HarnessAlignmentCheckpointEvidence,
+) -> HarnessAlignmentPersistedEvidence {
+  let read = Filesystem.Read(path: observation_path)
+  if !read.success || trim(s: read.content) == "" {
+    PersistedEvidenceAbsent { cause: join(["no durable checkpoint evidence at ", observation_path, " -- a worker's own aligned assertion is not evidence"], "") }
+  } else if recorded.observation_digest != harness_alignment_observation_digest(observation: read.content) {
+    PersistedEvidenceDisagrees { cause: "the persisted evidence does not match the digest the boundary recorded in its durable checkpoint event" }
+  } else {
+    PersistedEvidenceAgrees { content: read.content }
+  }
+}
+
 fn harness_alignment_adjudicate(
   checkpoint: AlignmentCheckpointIdentity,
   projection: HarnessAlignmentChainProjection,
@@ -3240,12 +3263,10 @@ fn harness_alignment_adjudicate(
             } else if recorded.observation_digest != evidence.observation_digest || recorded.conversation_tip != evidence.conversation_tip {
               AdjudicationRefused { cause: "the evidence presented for adjudication is not the evidence the durable checkpoint event bound -- a claim about the evidence is not the evidence" }
             } else {
-              let read = Filesystem.Read(path: observation_path)
-              if !read.success || trim(s: read.content) == "" {
-                AdjudicationRefused { cause: join(["no durable checkpoint evidence at ", observation_path, " -- a worker's own aligned assertion is not evidence"], "") }
-              } else if recorded.observation_digest != harness_alignment_observation_digest(observation: read.content) {
-                AdjudicationRefused { cause: "the persisted evidence does not match the digest the boundary recorded in its durable checkpoint event" }
-              } else {
+              match harness_alignment_persisted_evidence(observation_path: observation_path, recorded: recorded) {
+                PersistedEvidenceAbsent { cause } => AdjudicationRefused { cause: cause }
+                PersistedEvidenceDisagrees { cause } => AdjudicationRefused { cause: cause }
+                PersistedEvidenceAgrees { content: _ } => {
                 let verdict_read = Filesystem.Read(path: verdict_path)
                 if !verdict_read.success {
                   AdjudicationRefused { cause: join(["the check's verdict artifact is unreadable at ", verdict_path, " -- an undecided checkpoint does not resume"], "") }
@@ -3259,6 +3280,7 @@ fn harness_alignment_adjudicate(
                         cadence: harness_alignment_next_cadence(verdict: verdict, cadence: cadence),
                       } }
                   }
+                }
                 }
               }
             }
@@ -3682,29 +3704,43 @@ fn harness_alignment_adjudicate_and_resume(
     RecordedEvidenceAbsent { cause } =>
       harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: events)
     RecordedEvidence { evidence: recorded } =>
-      match harness_alignment_chain_projection(
-        chain: alignment_chain_for(node_id: node_id),
-        turns_elapsed: turns_elapsed,
-        cadence: cadence,
-        evidence: recorded,
-      ) {
-        ProjectionRefused { cause } =>
+      // THE ROUND IS DISQUALIFIED BEFORE ANYTHING IS PAID FOR IT. The persisted bytes are compared with the
+      // digest the boundary recorded -- the ONE comparison at harness_alignment_persisted_evidence, asked
+      // here and nowhere else -- BEFORE the chain is resolved and long before a check is convened. Convening
+      // a check and only then examining the evidence pays a round's cost on an evidence-less round whose
+      // refusal the durable record already answers, and the refusal arrives from inside the check instead of
+      // from the boundary that already knows. A disqualified round buys no check: the comparison is free,
+      // the check is not.
+      match harness_alignment_persisted_evidence(observation_path: observation_path, recorded: recorded) {
+        PersistedEvidenceAbsent { cause } =>
           harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: events)
-        ProjectionAdmitted { chain: chain, evidence: evidence } =>
-          harness_turn_supervise(
-            config: config,
-            checkpoint: checkpoint,
-            projection: harness_alignment_projection_with_chain(chain: chain, evidence: evidence),
+        PersistedEvidenceDisagrees { cause } =>
+          harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: events)
+        PersistedEvidenceAgrees { content: _ } =>
+          match harness_alignment_chain_projection(
+            chain: alignment_chain_for(node_id: node_id),
+            turns_elapsed: turns_elapsed,
             cadence: cadence,
-            check_prompt: check_prompt,
-            check_directory: check_directory,
-            round_steps: round_steps,
-            messages: messages,
-            steps_taken: steps_taken,
-            events: events,
-            repairs_used: repairs_used,
-          )
-      }
+            evidence: recorded,
+          ) {
+            ProjectionRefused { cause } =>
+              harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: events)
+            ProjectionAdmitted { chain: chain, evidence: evidence } =>
+              harness_turn_supervise(
+                config: config,
+                checkpoint: checkpoint,
+                projection: harness_alignment_projection_with_chain(chain: chain, evidence: evidence),
+                cadence: cadence,
+                check_prompt: check_prompt,
+                check_directory: check_directory,
+                round_steps: round_steps,
+                messages: messages,
+                steps_taken: steps_taken,
+                events: events,
+                repairs_used: repairs_used,
+              )
+          }
+          }
   }
     }
   }
