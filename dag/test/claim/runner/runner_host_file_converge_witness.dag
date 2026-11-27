@@ -251,6 +251,14 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_superseded_dropin_paths,
   runner_host_control_shadow_paths,
 }
+import gunbc.runner.runner_host_file_converge {
+  deploy_slot_account_standing_after_dispatched_create,
+  runner_spec_account_standing_after_dispatched_create,
+  DeploySlotAccountReadPresent, DeploySlotAccountReadUnreadable,
+  RunnerSpecAccountReadPresent, RunnerSpecAccountReadUnreadable,
+  RunnerSpecAccountUnanswered,
+  deploy_slot_account_line, deploy_slot_account_is_held,
+}
 import extdeps.systemd.unit_file { systemd_drop_in_applies_after }
 import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path, gpu_docker_labels_dropin_path }
 import gunbc.host.host_axis_caps { derived_runner_slot_cap_members }
@@ -2425,4 +2433,46 @@ test fn a_written_fragment_owes_the_reload_and_nothing_else_does() -> Bool {
     && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAppliedObserveOnly), also_changed: false)
     && manager_reload_owed_for_results(results: [], also_changed: true)
     && !manager_reload_owed_for_results(results: [], also_changed: false)
+}
+
+// A DISPATCHED useradd WHOSE REPLY COULD NOT BE READ SETTLES BY THE INDEPENDENT POST-WRITE GETENT,
+// NEVER AS AccountMissing (#17119 manager item 5, follow-up of #16984). useradd was SENT, so the
+// account may exist; the only honest settle is getent. Both converge paths (deploy-slot and spec-account)
+// settle a dispatched create through one pure fold, driven here to its typed receipt and exit: a readback
+// that CONFIRMS presence settles present/created (held/settled true); a readback that cannot settle leaves
+// the effect UNKNOWN (held/settled false) and the receipt is never MISSING / still-absent / refused -- it
+// WAS sent. Red-by-mutation: fold DeploySlotAccountReadUnreadable and RunnerSpecAccountReadUnreadable back
+// into DeploySlotAccountMissing / RunnerSpecAccountMissing and this returns false.
+fn a_dispatched_account_create_settles_by_getent_never_missing() -> Bool {
+  let ds_present = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadPresent { uid: 999, passwd_line: "jobuser:x:999:999::/home/jobuser:" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let ds_present_line = deploy_slot_account_line(ds_present)
+  let ds_present_ok = deploy_slot_account_is_held(ds_present)
+    && string_contains(s: ds_present_line, pattern: "created")
+    && !string_contains(s: ds_present_line, pattern: "MISSING")
+    && !string_contains(s: ds_present_line, pattern: "UNKNOWN")
+  let ds_unknown = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadUnreadable { cause: "the getent reply carried an inconsistent wire shape" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let ds_unknown_line = deploy_slot_account_line(ds_unknown)
+  let ds_unknown_ok = !deploy_slot_account_is_held(ds_unknown)
+    && string_contains(s: ds_unknown_line, pattern: "UNKNOWN")
+    && !string_contains(s: ds_unknown_line, pattern: "MISSING")
+    && !string_contains(s: ds_unknown_line, pattern: "never")
+    && !string_contains(s: ds_unknown_line, pattern: "still absent")
+    && !string_contains(s: ds_unknown_line, pattern: "refused")
+  let sp_login = "gunbc-runner" as NonEmptyStr
+  let sp_present = runner_spec_account_standing_after_dispatched_create(login: sp_login, readback: RunnerSpecAccountReadPresent { uid: 998 }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let sp_present_ok = runner_spec_account_settled(sp_present)
+    && (match sp_present { RunnerSpecAccountCreated { login: l, uid: _ } => (l as String) == "gunbc-runner" _ => false })
+  let sp_unknown = runner_spec_account_standing_after_dispatched_create(login: sp_login, readback: RunnerSpecAccountReadUnreadable { cause: "the getent reply carried an inconsistent wire shape" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let sp_unknown_ok = !runner_spec_account_settled(sp_unknown)
+    && (match sp_unknown { RunnerSpecAccountUnanswered { login: l, cause: c } => (l as String) == "gunbc-runner" && string_contains(s: (c as String), pattern: "dispatched") && !string_contains(s: (c as String), pattern: "still absent") _ => false })
+  ds_present_ok && ds_unknown_ok && ds_unknown_never_never_sent_check() && sp_present_ok && sp_unknown_ok
+}
+
+// the deploy-slot unknown receipt never reads a sent leg as never-sent
+fn ds_unknown_never_never_sent_check() -> Bool {
+  let ds_unknown = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadUnreadable { cause: "the getent reply carried an inconsistent wire shape" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let line = deploy_slot_account_line(ds_unknown)
+  !string_contains(s: line, pattern: "never")
+    && !string_contains(s: line, pattern: "still absent")
+    && !string_contains(s: line, pattern: "refused")
 }

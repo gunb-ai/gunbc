@@ -2276,6 +2276,11 @@ type DeploySlotAccountStanding
   | DeploySlotAccountPresent { uid: Int, passwd_line: NonEmptyStr }
   | DeploySlotAccountCreated { uid: Int, passwd_line: NonEmptyStr }
   | DeploySlotAccountMissing { cause: NonEmptyStr }
+  // useradd was DISPATCHED and its reply came back unreadable (overran / wire-inconsistent), and the
+  // independent post-write getent readback could NOT settle it: the account may or may not exist.
+  // Not "Missing" (which reads as not-created / never-sent) -- useradd WAS sent, so the effect is
+  // unknown until a later read settles it. (#17119 item 5, follow-up of #16984.)
+  | DeploySlotAccountUnanswered { cause: NonEmptyStr }
 
 type DeploySlotAccountRead
   = DeploySlotAccountReadPresent { uid: Int, passwd_line: NonEmptyStr }
@@ -2325,6 +2330,20 @@ fn deploy_slot_account_step(read: DeploySlotAccountRead, mode: FleetHostFileConv
   }
 }
 
+// THE SETTLE OF A DISPATCHED useradd WHOSE REPLY WE COULD NOT READ. The useradd was SENT, so the
+// account may exist or not; the only honest settle is the independent post-write getent (the same
+// readback the converged path runs). This is that fold, kept pure so a witness drives it. Presence
+// settles Created; a POSITIVE absent settles Missing; a readback that could not be read leaves the
+// effect UNKNOWN (DeploySlotAccountUnanswered) -- NEVER Missing, which would read a dispatched leg as
+// never-sent. (#17119 item 5, follow-up of #16984; mirrors converge_runner_spec_account.)
+fn deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountRead, dispatch_cause: String) -> DeploySlotAccountStanding {
+  match readback {
+    DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
+    DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: concat(dispatch_cause, "; the independent getent readback shows the account still absent") as NonEmptyStr }
+    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountUnanswered { cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
+  }
+}
+
 fn converge_deploy_slot_account(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2339,14 +2358,14 @@ fn converge_deploy_slot_account(
       DeploySlotAccountSettled { standing: st } => st
       DeploySlotAccountCreate =>
         match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) }) {
-        TypedArgvExecOverran { deadline: d } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
-        TypedArgvExecWireInconsistent { fault: f } => DeploySlotAccountMissing { cause: concat("useradd leg: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
-          TypedArgvExecRefused { reason: why } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", why) as NonEmptyStr }
+        TypedArgvExecOverran { deadline: d } => deploy_slot_account_standing_after_dispatched_create(readback: observe_deploy_slot_account(subject: subject, context: context), dispatch_cause: join(["useradd leg overran (", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d), ")"], ""))
+        TypedArgvExecWireInconsistent { fault: f } => deploy_slot_account_standing_after_dispatched_create(readback: observe_deploy_slot_account(subject: subject, context: context), dispatch_cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), ")"], ""))
+          TypedArgvExecRefused { reason: why } => DeploySlotAccountMissing { cause: concat("useradd leg refused before any leg ran: ", why) as NonEmptyStr }
           TypedArgvExecConverged { result: r } =>
             match observe_deploy_slot_account(subject: subject, context: context) {
               DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
               DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
-              DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountMissing { cause: concat("created, but the readback could not read it: ", c) as NonEmptyStr }
+              DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountUnanswered { cause: concat("useradd ran but the readback could not read the account: ", c) as NonEmptyStr }
             }
         }
     }
@@ -2433,6 +2452,19 @@ fn observe_runner_spec_account(subject: RunnerHostFileSubject, context: FleetSsh
 // THE SAME DECISION SHAPE AS THE DEPLOY SLOT'S ACCOUNT, applied to each spec name: only an absent
 // account in an apply run with the administrator's privilege is created; observe mode reads and
 // creates nothing; unreadable is not absence and creates nothing.
+// THE SETTLE OF A DISPATCHED useradd WHOSE REPLY WE COULD NOT READ, factored out so the overrun and
+// the wire-inconsistent arms share ONE fold (single_authority -- they were two identical matches) and a
+// witness can drive it. Presence settles Created; a POSITIVE absent settles Missing; a readback that
+// could not be read leaves the effect UNKNOWN (RunnerSpecAccountUnanswered), never Missing -- useradd WAS
+// sent, its effect is unknown. (Mirrors deploy_slot_account_standing_after_dispatched_create.)
+fn runner_spec_account_standing_after_dispatched_create(login: NonEmptyStr, readback: RunnerSpecAccountRead, dispatch_cause: String) -> RunnerSpecAccountStanding {
+  match readback {
+    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: login, uid: u }
+    RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: login, cause: join([dispatch_cause, "; the independent getent readback shows the account still absent"], "") as NonEmptyStr }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: login, cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
+  }
+}
+
 fn converge_runner_spec_account(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2454,17 +2486,9 @@ fn converge_runner_spec_account(
             AdministratorPrivilegeAvailable =>
               match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
               TypedArgvExecOverran { deadline: d } =>
-                match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
-                  RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
-                  RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd leg overran (", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d), "); the independent getent readback shows the account still absent"], "") as NonEmptyStr }
-                  RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: role.login, cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
-                }
+                runner_spec_account_standing_after_dispatched_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), dispatch_cause: join(["useradd leg overran (", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d), ")"], ""))
               TypedArgvExecWireInconsistent { fault: f } =>
-                match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
-                  RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
-                  RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), "); the independent getent readback shows the account still absent"], "") as NonEmptyStr }
-                  RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: role.login, cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
-                }
+                runner_spec_account_standing_after_dispatched_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), dispatch_cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), ")"], ""))
                 TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", why) as NonEmptyStr }
                 TypedArgvExecConverged { result: r } =>
                   match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
@@ -2579,6 +2603,7 @@ fn deploy_slot_account_is_held(standing: DeploySlotAccountStanding) -> Bool {
     DeploySlotAccountPresent { uid: _, passwd_line: _ } => true
     DeploySlotAccountCreated { uid: _, passwd_line: _ } => true
     DeploySlotAccountMissing { cause: _ } => false
+    DeploySlotAccountUnanswered { cause: _ } => false
     HostHasNoDeploySlot => false
   }
 }
@@ -3445,6 +3470,7 @@ fn deploy_slot_host_reading_observed(r: DeploySlotHostReading) -> Bool {
 fn deploy_slot_role_dropin_bar(account: DeploySlotAccountStanding, trees: List<RunnerSlotTreeStanding>) -> NonEmptyStr? {
   match account {
     DeploySlotAccountMissing { cause: c } => Present { value: join(["the deploy slot's account ", deploy_slot_job_user as String, " is not held: ", c as String], "") as NonEmptyStr }
+    DeploySlotAccountUnanswered { cause: c } => Present { value: join(["the deploy slot's account ", deploy_slot_job_user as String, " was dispatched but its effect is unknown: ", c as String], "") as NonEmptyStr }
     _ => {
       let pending = filter(trees, t => !runner_slot_tree_held(standing: t))
       if length(pending) == 0 { none } else {
@@ -3527,6 +3553,7 @@ fn deploy_slot_account_line(standing: DeploySlotAccountStanding) -> String {
     DeploySlotAccountPresent { uid: u, passwd_line: l } => join(["deploy-slot-account=present uid=", to_string(u), " passwd=", l as String, "\n"], "")
     DeploySlotAccountCreated { uid: u, passwd_line: l } => join(["deploy-slot-account=created uid=", to_string(u), " passwd=", l as String, "\n"], "")
     DeploySlotAccountMissing { cause: c } => join(["deploy-slot-account=MISSING ", c as String, "\n"], "")
+    DeploySlotAccountUnanswered { cause: c } => join(["deploy-slot-account=UNKNOWN(effect unknown) ", c as String, "\n"], "")
   }
 }
 
