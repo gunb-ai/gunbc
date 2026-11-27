@@ -624,7 +624,7 @@ fn configuration_warm_agent_capacity(c: ReplicaConfiguration) -> Optional<WarmAg
       if c.replica_count == 0 {
         Absent
       } else {
-        Present { value: WarmAgentCapacityFigure { value: per_engine.value * c.replica_count, basis: per_engine.basis } }
+        Present { value: WarmAgentCapacityFigure { value: per_engine.value, basis: per_engine.basis } }
       }
   }
 }
