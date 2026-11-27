@@ -16,6 +16,7 @@ import extdeps.ssh.session {
   ssh_session_exec_wire_refusal_text,
 }
 import std.measure { Second, second_count }
+import std.retry_law { RetryHint, RetryHintNone, RetryHintDelay, RetryHintUnresolved }
 import std.nat { nat_to_decimal_string }
 import extdeps.bazel.label { render_label }
 import extdeps.bazel.target_pattern {
@@ -524,7 +525,7 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostServed { receipt: _ } => "served"
     HostWorkFailed { receipt: _ } => "work-failed"
     HostWorkInFlight { receipt: _ } => "work-in-flight"
-    HostCapacityFull { detail: _ } => "capacity-full"
+    HostCapacityFull { detail: _, retry: _ } => "capacity-full"
     HostCannotServe { detail: _ } => "cannot-serve"
     HostUnreachable { detail: _ } => "unreachable"
     HostRefusedRequest { detail: _ } => "request-refused"
@@ -542,7 +543,7 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostServed { receipt } => receipt
     HostWorkFailed { receipt } => receipt
     HostWorkInFlight { receipt } => receipt
-    HostCapacityFull { detail } => detail
+    HostCapacityFull { detail, retry: _ } => detail
     HostCannotServe { detail } => detail
     // The detail IS the verdict, rendered by fabric; nothing here re-describes it.
     HostExecutionClassRefused { admission: _, detail } => detail
@@ -554,12 +555,32 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
   }
 }
 
+// HOW A HOST'S RETRY ALLOWANCE READS IN THE RECEIPT: the delay it named, "none" when it named no delay
+// (retry still allowed, the caller's own backoff applies), or "unresolved" when it named an unreadable
+// count. This is the production reader of HostCapacityFull.retry -- the receipt is what CI and the
+// serving router consume, so the capacity-limited answer reaches them as "retry allowed", not a bare no.
+fn remote_build_retry_hint_word(h: RetryHint) -> String {
+  match h {
+    RetryHintNone => "none"
+    RetryHintDelay { delay: d } => concat(nat_to_decimal_string(value: second_count(s: d)), "s")
+    RetryHintUnresolved { cause: c } => concat("unresolved: ", c as String)
+  }
+}
+
 fn remote_build_attempt_json(a: RemoteBuildAttempt) -> JsonValue {
-  json_object(members: [
+  let base = [
     json_kv(key: "host", value: json_string(s: a.host as String)),
     json_kv(key: "answer", value: json_string(s: remote_build_answer_word(a: a.answer))),
     json_kv(key: "text", value: json_string(s: remote_build_answer_text(a: a.answer))),
-  ])
+  ]
+  // A capacity-limited host's retry allowance rides into the receipt so the caller sees "capacity limited,
+  // retry allowed" with the named delay -- the first step toward the serving router's RetryHint (operator
+  // direction 2026-11-26); the router node is the acting consumer that will schedule the retry.
+  let members = match a.answer {
+    HostCapacityFull { retry, detail: _ } => concat(base, [json_kv(key: "retry", value: json_string(s: remote_build_retry_hint_word(h: retry)))])
+    _ => base
+  }
+  json_object(members: members)
 }
 
 fn remote_build_operation_json(op: RemoteBuildOperation) -> JsonValue {
@@ -698,7 +719,7 @@ fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
         HostWorkFailed { receipt: _ } => GateVerdictOnCode
         HostRefusedRequest { detail: _ } => GateRequestRejected
         HostWorkInFlight { receipt: _ } => GateNoHostAdmitted
-        HostCapacityFull { detail: _ } => GateNoHostAdmitted
+        HostCapacityFull { detail: _, retry: _ } => GateNoHostAdmitted
         HostCannotServe { detail: _ } => GateNoHostAdmitted
         HostUnreachable { detail: _ } => GateNoHostAdmitted
         // A host the fleet's execution class refused never judged the code either: the work was refused
