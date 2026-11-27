@@ -264,8 +264,8 @@ fn node_orch_operator_out_of_band_preserved() -> List<NodeOrchOperatorOutOfBandE
 
 // ── THE INTAKE STANDING THE ACCESS DECISION READS BEFORE IT USES THE ROSTER ────────────────────────
 //
-// THE CLASS THIS KILLS, at its third site (gunbc.recurring_failure_mode.
-// declared_uncitedness_ignored_by_admission, 2026-11-21 receipt): the H11SSL unit-1 intake receipt
+// WHAT THIS ESTABLISHES, at the third site of gunbc.recurring_failure_mode.
+// declared_uncitedness_ignored_by_admission (2026-11-21 receipt): the H11SSL unit-1 intake receipt
 // (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt) carries accounts_and_ssh_keys_report
 // as NotRelayed -- "the operator lists the accounts installed and which authorized keys they carry" is an
 // OPEN obligation as of 2026-10-24 -- while that host's access was gated by a key sitting outside
@@ -273,6 +273,22 @@ fn node_orch_operator_out_of_band_preserved() -> List<NodeOrchOperatorOutOfBandE
 // remaining debt exactly here: "the access gate and the roster of keys still do not read it". The folds
 // above decide ownership against the roster; nothing in this module consulted the record that states what
 // accounts and keys the hand install put on the host in the first place.
+//
+// WHAT IS NOT CLAIMED, said plainly because the ledger row above says a claim of closure here would be the
+// very defect it tracks ("Claiming the instance closed would be the reader-as-defect failure this very row
+// names"). This block establishes that the standing CAN travel with the access verdict, that the two
+// refusals are distinguishable by cause, and that a gap-declaring report can never be admitted whole. It
+// does NOT close the instance, and it does not make the class dead: host_access_admission has no
+// production caller at this commit -- git grep finds it called only from
+// dag/test/claim/host/host_access_standing_witness.dag, which is an executing route but not the gate. THE
+// NAMED CONSUMER AND ITS TRIGGER: the apply projection of this account's authorized_keys plan -- the first
+// fold that turns a MembershipPlan from host_authorized_keys_reconcile into writes for the
+// host-administrator account, whose apply-grain policy this module's own comment above reserves to a human
+// (membership_effects_wholesale_refuse_policy_note) -- must call host_access_admission and carry its
+// accounts_keys arm into the receipt it writes, exactly as gunbc.gpu_market.realization_join now calls
+// board_comparison_admission. Until that fold exists, the rung this row reports stays where the ledger
+// row left it, at mitigatable-caught-in-review: a standing can now travel with the decision it qualifies,
+// which is the precondition the trigger needs, not the trigger met.
 //
 // WHY THE STANDING TRAVELS WITH THE VERDICT RATHER THAN BESIDE IT
 // (gunbc.design_argument::epistemic_humility; the same rule the rate table already applies at
@@ -294,7 +310,8 @@ fn node_orch_operator_out_of_band_preserved() -> List<NodeOrchOperatorOutOfBandE
 // its own owed receipt, the operator's to file), it does not source the citation that would ground a marked
 // figure, and it does not decide the purchase. It also does not change host_authorized_keys_reconcile or
 // authorized_key_ownership above: those folds stay as the membership spine's ownership decision, and this
-// block is the standing read a consumer of THAT decision must make when the host has an intake receipt.
+// block is the standing read the consumer of THAT decision must make when the host has an intake receipt --
+// and, as the paragraph above says, that consumer is named with its trigger rather than pretended.
 
 // WHAT THE INTAKE RECORD DECLARES ABOUT ITS OWN accounts_and_ssh_keys_report. Three arms, and they are not
 // interchangeable: the cited arm is the only one that lets the roster stand as the whole description, and
