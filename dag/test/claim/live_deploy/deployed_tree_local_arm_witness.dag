@@ -231,6 +231,7 @@ test fn witness_a_wire_inconsistent_leg_is_never_read_as_not_attempted() -> Bool
     DeployedTreeLegNotAttempted { reason: _ } => false
     DeployedTreeLegRan { result: _ } => false
     DeployedTreeLegOverran { deadline: _ } => false
+    DeployedTreeLegUnansweredOverrun { reason: _ } => false
   }
 }
 
