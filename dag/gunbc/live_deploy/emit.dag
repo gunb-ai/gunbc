@@ -1725,7 +1725,7 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
   match attempt_worker_concurrent_peak_check(bound: attempt_worker_slice_memory_max) {
     PeakBoundExceeded { excess: _ } =>
       AttemptWorkerSliceUnitFileRefused {
-        cause: "attempt-worker MemoryMax is below the measured concurrent attempt peak-sum (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+        cause: "attempt-worker MemoryMax is below the measured concurrent attempt peak-sum (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (gunbc.design_argument::fail_closed)",
       }
     PeakBoundHolds { margin: _ } =>
   match attempt_worker_slice_memory_high() {

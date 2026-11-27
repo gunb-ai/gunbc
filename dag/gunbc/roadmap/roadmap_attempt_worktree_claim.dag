@@ -288,7 +288,7 @@ type ClaimCapture
 // ended keeps its claim, so its tree is never reclaimed out from under a session that will resume or be
 // restored (operator ruling M3: losing a resumable worker's tree is a defect). This coproduct is deliberately
 // THREE-VALUED so an unreadable ledger or a missing attempt row reads as UNKNOWN -- which the release treats
-// as KEPT with a typed reason, never as 'ended' (DESIGN §5: fail closed, never fabricate an ending). It is
+// as KEPT with a typed reason, never as 'ended' (#gunbc.design_argument::fail_closed: fail closed, never fabricate an ending). It is
 // derived in exactly one place (belt_lineage_standing over the single ContinuationPlan), and the release reads
 // ONLY this -- no second 'is it ended' rule lives in the claim classifier.
 type LineageStanding

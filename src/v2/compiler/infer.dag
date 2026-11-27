@@ -267,7 +267,7 @@ fn infer_branch_shape_invalid_diagnostic(node: Node) -> Diagnostic {
 
 // The condition and the then arm are read and only the else arm is missing: that is the ELSE-LESS shape, not
 // a malformed Branch. This route types a Branch as a VALUE, and a value needs an arm for the path the
-// condition does not take, so it refuses -- with the cause the slot table actually answered (DESIGN 5).
+// condition does not take, so it refuses -- with the cause the slot table actually answered (#gunbc.design_argument::fail_closed).
 fn infer_branch_else_less_as_value_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_branch_else_less_as_value,
@@ -6604,7 +6604,7 @@ fn infer_gather_fold_failure_node() -> Node {
 
 // THE ELSE-LESS BRANCH'S OWN FACTS: a DECIDED ANSWER that the node produces no value (ruling
 // keen-heron-809, option 2c), carried as its own arm on the grounding coproduct -- NOT a NotDerivedSite,
-// whose default is the counted frontier (DESIGN 5: a decided answer is not ignorance). The condition is
+// whose default is the counted frontier (#gunbc.design_argument::fail_closed: a decided answer is not ignorance). The condition is
 // still judged Bool and the then arm is still folded (its effects are the Branch's, conditionally); the
 // node gets no type, no witness and no denotation. Every consumer that owes a value refuses these facts
 // with infer_branch_else_less_as_value; the binder-absent Bind is the one site that admits them.

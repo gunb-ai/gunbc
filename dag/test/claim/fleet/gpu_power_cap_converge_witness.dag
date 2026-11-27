@@ -20,7 +20,7 @@ import gunbc.serving.gpu_power_state_policy {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUPPLIED READINGS AT THE CONVERGE'S BOUNDARY (DESIGN section 3, a witness discriminates at one interface).
+// SUPPLIED READINGS AT THE CONVERGE'S BOUNDARY (#gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 // The real producer of the readback text is `nvidia-smi -i <UUID> --query-gpu=...` on srv1; the row below has
 // the shape that argv emits (the twelve columns of the H11 capture in nvidia_smi_power_state_witness), and the
 // srv1 run at boot is the inhabitance receipt. The supplied ports stand for the card, not for the decision.

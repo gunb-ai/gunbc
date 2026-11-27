@@ -31,9 +31,9 @@ type BeltNodeLineageTerminal
   | LineageTerminal { why: String }
   // A RETIRED node is terminal too, but it is a DIFFERENT terminality from a closed one: the
   // operator ended the lineage, and the standing names who (by) and why. Carried typed so dispatch
-  // can refuse with the retiring principal and reason rather than re-tagging prose (DESIGN §4c);
+  // can refuse with the retiring principal and reason rather than re-tagging prose (#gunbc.design_argument::source_annotations);
   // named LineageRetired, not bare Retired, because Retired is already the event-kind constructor in
-  // gunbc.roadmap.roadmap_event_log (one spelling must not stand for two facts, DESIGN §3).
+  // gunbc.roadmap.roadmap_event_log (one spelling must not stand for two facts, #gunbc.design_argument::single_authority).
   | LineageRetired { by: String, reason: String }
   | LineageTerminalUnreadable { reason: String }
 
@@ -48,7 +48,7 @@ fn belt_node_lineage_terminal_read(instance: HostDashboardInstance, node_id: Str
           let standing = roadmap_issue_state(envs: envs).standing
           if roadmap_standing_is_retired(standing: standing) {
             // The retirement standing names the principal (by) and the reason; carry them typed
-            // rather than flattening to a "NodeRetired:" prose tag (DESIGN §4c/§5).
+            // rather than flattening to a "NodeRetired:" prose tag (#gunbc.design_argument::source_annotations/§#gunbc.design_argument::fail_closed).
             match standing {
               NodeRetired { by, reason } => LineageRetired { by: event_principal_label(p: by), reason: reason as String }
               // Unreachable: roadmap_standing_is_retired answers true only for NodeRetired. Fail closed

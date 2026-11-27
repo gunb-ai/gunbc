@@ -2,7 +2,7 @@ module v1.compiler.rest_cause_text
 
 // ONE AUTHORITY FOR THE DECLARED-SIDE RestBodyUndecodable CAUSE TEXT.
 //
-// WHY THIS MODULE EXISTS (DESIGN 3 single_authority / method_separate_order_compose --
+// WHY THIS MODULE EXISTS (gunbc.design_argument::single_authority / method_separate_order_compose --
 // "define each rule at its authority and reuse its definitions and valid results").
 // The REST response decode mints a RestBodyUndecodable whose `cause` leaves the compiler as the
 // only field of that refusal, and its consumer is gunbc.heal_publication rest_refusal_text -- a

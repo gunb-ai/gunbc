@@ -375,7 +375,7 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
 // hold the work. This fold hoists that same decision to before launch for the user-work slice, so the
 // caller defers (a retry) instead of starting a unit the kernel is about to kill mid-run.
 //
-// THE CHARGE IS WHAT THE KERNEL SAYS IS RESIDENT, NOT THE PRODUCER'S CEILING. §3b: an operating limit's
+// THE CHARGE IS WHAT THE KERNEL SAYS IS RESIDENT, NOT THE PRODUCER'S CEILING. §#gunbc.design_argument::conformance: an operating limit's
 // budget is the consumer's demand, never the producer's floor. The standing daemons each carry the
 // build-sized per-unit MemoryMax (the runner slot) yet resolve only the corpus at boot (a few GiB each);
 // charging admission at the declared ceiling would refuse reviews that do fit, which is the slice's whole
@@ -384,7 +384,7 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
 //
 // UNBOUNDED OR ABSENT CEILING IS THE CALLER'S, NOT THE FOLD'S. The fold decides a fit only over finite
 // readings. A slice with no finite cap (MemoryMax=infinity) or an absent one cannot establish a fit at all,
-// and §6b is explicit that nothing launches into an unbounded pool -- so the CALLER, which reads the slice's
+// and §#gunbc.design_argument::root_generalization is explicit that nothing launches into an unbounded pool -- so the CALLER, which reads the slice's
 // MemoryMax as its own typed value (parse_systemd_memory_limit_show → MemoryLimitUnbounded / MemoryLimitAbsent),
 // defers with that reason before ever reaching this fold. The fold never sees a zero standing in for "no
 // limit": zero here means a finite zero-byte ceiling, which is genuinely a room nothing fits under (Below).
@@ -393,7 +393,7 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
 // ruled pool width, supplied by the caller), the OBSERVED resident charge (the slice cgroup memory.current),
 // and the requesting unit's bound. It derives available = ceiling - charged, then asks the ONE fit rule
 // (std.measure measure_fits) whether the bound fits that room -- the same rule gunbc.compute.host_capacity
-// compute_reserve_against consumes, so neither pool re-writes the comparison (DESIGN 6b root generalization;
+// compute_reserve_against consumes, so neither pool re-writes the comparison (#gunbc.design_argument::root_generalization root generalization;
 // 2: no net concept by re-invention). A resident charge at/above the ceiling leaves no room and is refused
 // Below with available 0. The verdict is the shared MeasureFit: the caller maps Fits to launching and Below
 // to a typed deferral carrying the request and the room. A zero ceiling is a finite bound nothing fits under
@@ -425,7 +425,7 @@ fn user_work_slice_admit_against(
 // unbounded/absent, or a non-numeric wire value. It lives HERE, beside the fold it wraps, so the one slice-room
 // authority has one verdict type; the belt's obligation, reviewer and auditor launch legs all match on it
 // (roadmap_belt_actuate). An Unreadable is NEVER coerced to Fits -- a slice that cannot be read is refused,
-// never assumed to have room (fail-closed, DESIGN 3b).
+// never assumed to have room (fail-closed, #gunbc.design_argument::conformance).
 type BeltSliceFitCheck
   = BeltSliceFits { available: ByteSize }
   | BeltSliceFull { requested: ByteSize, available: ByteSize }

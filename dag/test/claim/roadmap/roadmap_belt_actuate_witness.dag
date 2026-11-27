@@ -2855,7 +2855,7 @@ test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
   let refused = belt_spawn_route_for_decision(decision: Refuse { cause: BranchAbsent, reason: "x" }, request: LaunchAutonomous)
   // CONTINUE (NextAttempt) is discriminated by WHO REQUESTED the launch, which is the control that keeps
   // the autonomous wake from flapping: the operator's claim starts the next attempt from the branch head;
-  // the belt's own autonomous wake must NOT (DESIGN §5: a flapping engine is bounded; the operator chooses,
+  // the belt's own autonomous wake must NOT (#gunbc.design_argument::fail_closed: a flapping engine is bounded; the operator chooses,
   // so a lineage is never continued against its evidence). Same decision, same from_branch, opposite route.
   let claim = LaunchForClaim { node: "n1" as RoadmapNodeId, claim: "0000000000000000" as RoadmapEventId }
   let next_attempt_claim = belt_spawn_route_for_decision(decision: NextAttempt { reason: "review requested changes", from_branch: "roadmap/n1/a1" }, request: claim)

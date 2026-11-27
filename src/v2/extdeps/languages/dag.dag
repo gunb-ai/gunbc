@@ -1732,7 +1732,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
   dag_grammar_expr_builder(binary_production: ^dag_production_binary_expr)
 }
 
-// ONE builder for the ordinary and condition expression layers (DESIGN 6b): the four-arm choice
+// ONE builder for the ordinary and condition expression layers (#gunbc.design_argument::root_generalization): the four-arm choice
 // is one copy; only the binary production differs -- the condition side reads the gated record
 // chain. A new arm reaches both routes by construction.
 fn dag_grammar_expr_builder(binary_production: Symbol) -> GrammarExpr {
@@ -2011,7 +2011,7 @@ fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   )
 }
 
-// ONE list of postfix suffix rows (DESIGN section 3: the fact lives here, once). The postfix
+// ONE list of postfix suffix rows (#gunbc.design_argument::single_authority: the fact lives here, once). The postfix
 // repeat in dag_grammar_postfix_expr_builder folds these suffix bodies; the condition peek
 // dag_grammar_expr_continuation_head_expr folds these continuation heads. A new postfix suffix is
 // ONE row here and reaches both -- the drift the corpus datum in
@@ -2064,7 +2064,7 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
 }
 
 
-// ONE builder for both ident-suffix productions (DESIGN 6b): the chains differ only in the
+// ONE builder for both ident-suffix productions (#gunbc.design_argument::root_generalization): the chains differ only in the
 // record arm -- the condition arm additionally peeks the continuation head after the closing
 // brace. Everything else is one copy.
 fn dag_grammar_primary_ident_suffix_builder(record_arm: GrammarExpr) -> GrammarExpr {
@@ -2190,7 +2190,7 @@ fn dag_grammar_condition_binary_expr_expr() -> GrammarExpr {
 // WHERE: the if-condition and the match-scrutinee slots read this production; WHY: the seed's
 // parse_if and parse_match share one no-brace condition parser (v1 02_parse parse_if,
 // parse_match -> parse_expr_no_brace), and v2 keeps that separation in one grammar production
-// read in both directions (DESIGN section 4), not in a parser-side retry.
+// read in both directions (#gunbc.design_argument::closed_grounded_substrate), not in a parser-side retry.
 fn dag_grammar_condition_expr_expr() -> GrammarExpr {
   dag_grammar_expr_builder(binary_production: ^dag_production_condition_binary_expr)
 }

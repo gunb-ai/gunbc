@@ -1197,7 +1197,7 @@ fn tailscale_join_first_matching(
 // shape, time and Z included) and its exact civil-from-days inverse, divided by the measure module's
 // seconds-per-day. A misprinted stamp yields Absent -- which tailscale_fleet_auth_key_usable_on fails
 // closed on. An unreadable clock is not an unexpired key
-// (DESIGN §2, gunbc.design_argument::minimize_redundancy; review 95852 deleted the first draft's
+// (#gunbc.design_argument::minimize_redundancy, gunbc.design_argument::minimize_redundancy; review 95852 deleted the first draft's
 // hand-written digit parser, a second authority for the same wire form).
 fn tailscale_join_today_from_clock(reading: NonEmptyStr?) -> Optional<Iso8601CivilDate> {
   match reading {

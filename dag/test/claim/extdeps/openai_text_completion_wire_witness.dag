@@ -5,7 +5,7 @@ module test.claim.extdeps.openai_text_completion_wire_witness
 //
 // The two text-completion bodies type `object` as `OpenAiTextCompletionObject`, a carrier obtainable only
 // through the checked constructor `openai_text_completion_object`, which yields Present for the documented
-// constant and Absent for everything else (DESIGN section 4, gunbc.design_ruling
+// constant and Absent for everything else (#gunbc.design_argument::closed_grounded_substrate, gunbc.design_ruling
 // where_refinements_retire_for_checked_constructors; the shape is extdeps.languages.json.grammar's
 // JsonNumberLexeme). Two of the rows EXECUTE that constructor -- its other consumer is a decoder that does
 // not exist yet (S3 of `gunbc.plans.fabric_serving_router`) -- so a constant that drifted, or a constructor

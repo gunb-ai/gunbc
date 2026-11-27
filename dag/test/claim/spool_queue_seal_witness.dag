@@ -30,7 +30,7 @@ import std.nat { Nat, Zero, Succ }
 // control. The effects RESOLVE (their stripped twins are the MissingExport probes for the operations that must not
 // exist), the sealed SpoolEntryKey cannot be spelled or cast outside its declaring file, and the raw stage-path
 // functions and HostSpoolStage are GONE (importing them is a MissingExport). Former expecting-red claims were
-// converted, not deleted (DESIGN section 4b, dissolution on climb).
+// converted, not deleted (#gunbc.design_argument::guarantee_ladder, dissolution on climb).
 
 fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)

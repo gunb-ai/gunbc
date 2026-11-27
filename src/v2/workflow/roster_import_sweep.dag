@@ -4127,7 +4127,7 @@ fn roster_exit_reason_is(exit: ProcessExit, reason: String) -> Bool {
   }
 }
 
-// THE SUPPLIED COMPANIONS (DESIGN 3, a witness discriminates at one interface): the rename-text controls are about the
+// THE SUPPLIED COMPANIONS (#gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the rename-text controls are about the
 // rewrite given a companion, so they take the companion as a supplied value instead of re-deriving it from the real
 // std.algebra and std.optional on every run (that derivation normalizes the 93KB std.algebra). The real producer is
 // asserted to emit exactly these values by roster_import_sweep_real_route_inhabitance, which is NOT on the controls label.

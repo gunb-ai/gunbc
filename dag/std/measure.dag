@@ -292,7 +292,7 @@ fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
 
-// THE ONE FIT RULE, homed once (DESIGN 6b: a second local copy of one rule is the trigger for a root
+// THE ONE FIT RULE, homed once (#gunbc.design_argument::root_generalization: a second local copy of one rule is the trigger for a root
 // generalization; 2: net concepts must not grow by re-invention). Given a room `available` and a
 // `requested`, it is the single answer to "does this request fit the room?" -- Fits carries the room so
 // the caller can see what was free; Below carries both the request and the room it did not fit, which is

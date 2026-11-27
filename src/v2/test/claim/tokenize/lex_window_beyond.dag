@@ -494,7 +494,7 @@ test fn a_window_is_the_whole_text_exactly_when_it_holds_all_of_it() -> Bool {
     && dag_prefix_complete(text: "", window: 5)
 }
 
-// A NEGATIVE WINDOW IS UNWRITABLE (DESIGN section 4b, a climb to rung 4; tidy-ant-251 msg_31998a49). LexWalkUntil's
+// A NEGATIVE WINDOW IS UNWRITABLE (#gunbc.design_argument::guarantee_ladder, a climb to rung 4; tidy-ant-251 msg_31998a49). LexWalkUntil's
 // scalars is a COUNT, so it is a std.nat Nat and lex_window's `n < 0` arm is deleted. The conjunct that said "a
 // negative window holds nothing" moved here, in FORM not meaning: the negative window is now refused at the
 // type boundary. The fixture source writes it in a record field of LexWalkUntil's shape and is refused by

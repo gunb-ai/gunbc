@@ -707,7 +707,7 @@ fn deploy_apply_user_work_slice_unit_file(host: HostIdentity) -> UserWorkSliceUn
     match user_work_cgroup_peak_check(bound: ceiling) {
       PeakBoundExceeded { excess: _ } =>
         UserWorkSliceUnitFileRefused {
-          cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+          cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (gunbc.design_argument::fail_closed)",
         }
       PeakBoundHolds { margin: _ } => user_work_slice_unit_file_for_host_ceiling(memory_max: ceiling)
     }
@@ -1204,11 +1204,11 @@ fn deploy_apply_srv1_gpu_power_cap_plan(spec: DeploymentSpec, revision: ReleaseR
     let admissions = gpu_cap_admissions_on(host: spec.target.host.identity)
     let refused = gpu_cap_refused_boards(admissions: admissions)
     if length(refused) > 0 {
-      ApplyPlanRefused { step: "gpu-power-cap", reason: join(["live-deploy apply refused: the GPU power cap for ", join(refused, ", "), " is outside the device's reported range, so the cap unit would fail at boot and keep the serving engine down (DESIGN 5: refuse, never clamp)"], "") }
+      ApplyPlanRefused { step: "gpu-power-cap", reason: join(["live-deploy apply refused: the GPU power cap for ", join(refused, ", "), " is outside the device's reported range, so the cap unit would fail at boot and keep the serving engine down (gunbc.design_argument::fail_closed: refuse, never clamp)"], "") }
     } else {
       match srv1_gpu_power_cap_unit_file(host: spec.target.host.identity, revision: revision) {
         Srv1GpuPowerCapUnitRefused { cause: _ } =>
-          ApplyPlanRefused { step: "gpu-power-cap", reason: "live-deploy apply refused: the GPU power-cap unit's host argument was not admitted (DESIGN 5: refuse, never widen)" }
+          ApplyPlanRefused { step: "gpu-power-cap", reason: "live-deploy apply refused: the GPU power-cap unit's host argument was not admitted (gunbc.design_argument::fail_closed: refuse, never widen)" }
         Srv1GpuPowerCapUnitReady { file: f } =>
           ApplyPlanReady { legs: concat(gpu_cap_report_legs(admissions: admissions), [
             apply_staged_leg(step: "gpu-power-cap-unit", dest: srv1_gpu_power_cap_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f))),

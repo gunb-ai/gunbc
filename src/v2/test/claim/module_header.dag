@@ -521,7 +521,7 @@ test fn a_first_window_that_holds_no_scalar_is_refused() -> Bool {
   header_from(reader: reader(), content: "module a.b\n", window: 0) == "refused"
 }
 
-// A NEGATIVE FIRST WINDOW IS UNWRITABLE (DESIGN section 4b, a climb to rung 4; tidy-ant-251 msg_31998a49). The window
+// A NEGATIVE FIRST WINDOW IS UNWRITABLE (#gunbc.design_argument::guarantee_ladder, a climb to rung 4; tidy-ant-251 msg_31998a49). The window
 // is a COUNT of scalars, so module_header_read_from takes a std.nat Nat and the `< 1` refusal that once also
 // answered -4 now answers only 0 (above). The RED moved, in FORM not meaning: what was "a negative window is
 // refused at read time" is now "a negative window is refused at the type boundary, before any read". The
