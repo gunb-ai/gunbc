@@ -1,6 +1,6 @@
 # Parse-Population Baseline — Measurement Report
 
-Scope: measured evidence for the `emission-real-consumer-profiles` row. Realization-vs-algorithm attribution is not establishable on srv1 under current host policy (§7) and is raised as a criteria question for the reviewer.
+Scope: measured evidence for the `emission-real-consumer-profiles` row. The attribution element is discharged in **counter units** per the reviewer's ruling (§7, §7a) — labelled counter attribution, not time sampling; no time-share claim is made anywhere in this file.
 
 Row: `emission-real-consumer-profiles`.
 Host: srv1 (`srv1.tailecbe08.ts.net`, aarch64, kernel 7.0.0-43-generic), heavy-slot evidence runs, `HEAVY_OWNER=bright-hawk-891`, one stage per acquisition.
@@ -35,7 +35,7 @@ perf record -e cpu-clock -g -o /tmp/probe_cpu.data -- sleep 1
   RECORD_EXIT=255
 ```
 
-No hardware *or* software event samples at paranoid 4. valgrind, strace, ltrace, gdb are not installed (installing any is a host change requiring the operator). Therefore **the row's `first_slice` "perf self time" is not obtainable on srv1 under current policy.** This measurement substitutes whole-process wall clock and peak RSS via GNU `/usr/bin/time`, and §7 states plainly why that substitute cannot carry the attribution the row wants.
+No hardware *or* software event samples at paranoid 4. valgrind, strace, ltrace, gdb are not installed (installing any is a host change requiring the operator). Therefore **the row's `first_slice` "perf self time" is not obtainable on srv1 under current policy.** This measurement substitutes whole-process wall clock and peak RSS via GNU `/usr/bin/time`, and §7 states plainly why that substitute cannot carry the attribution the row wants. The perf-sample route was subsequently **retired for this node** by the reviewer's ruling (neat-badger-614, relayed by warm-fox-517 2026-11-27T19:5xZ): route (b), per-phase counters, discharges the attribution element in counter units (§7a), so nothing here waits on a host change. The §2 capability measurements stand as recorded evidence of why sampling was not used.
 
 ## 3. Emitted artifact — proof it is emitted, not interpreted
 
@@ -214,6 +214,16 @@ The emitted roster `.rs` is **NOT committed at main** (main builds the roster fr
 counts are an observation of what the compiler already produces; they are input to the planning row, not a
 bound contract of this PR.
 
+### 4c. Literal-count reconciliation — 191 = 170 + 20 + 1 (review follow-up, method stated)
+
+A reviewer count found **191** `ParsePopulationRow` literals in the carrier where the report claims **170** fixed rows. The reconciliation, produced by `awk` over the **enclosing binding** (attribute each literal to the nearest preceding top-level `data`/`type`/`fn`/`let` header line, not by a substring count — a substring count also catches the type declaration and every `ParsePopulationRow` annotation site, which is the source of the overcount):
+
+- **170** literals live in `data parse_population_baseline_rows` — the two fixed populations (five largest + 165 size-tail), the only rows the report counts.
+- **20** literals are the `rse_population_*` helper fixtures (nine helper bindings, each carrying its own small `ParsePopulationRow` list used by the witness's named negatives).
+- **1** is the declaration line `type ParsePopulationRow {` itself.
+
+191 = 170 + 20 + 1. The five population shape names (`FiveLargest`, `Sample165SizeTail`, `VerdictOnly165Reuse`, `InstrumentCheckPop5`, `FullRootsReference`) exist only on the measurement receipts (`ParsePopulationMeasurementRow` side), not among the 170. The report's 170 stands.
+
 ## 5. Cells — raw output, real rc, load alongside every cell
 
 **Typed home (review 98937 F4).** These cells are projections; their one typed home is
@@ -221,7 +231,7 @@ bound contract of this PR.
 `ParsePopulationMeasurementReceipt` per cell: printed counters, real rc, binary sha256, tree sha, host,
 boot id), consumed by the witness legs `parse_population_measurement_receipts_record_the_sweep_holds`
 and `parse_population_receipt_publishability_refuses_planted_failed_cell_holds` (parses only — the module is
-not enrolled on the required floor; execution pending A/B/C). `planning_has_one_home` bars this file from being a **plan** home — the plan
+not enrolled on the required floor; both legs green by execution in the pp_batch2 19-operand run and the §7a step pair). `planning_has_one_home` bars this file from being a **plan** home — the plan
 (roadmap row, stall, route-A referent) lives in `.dag` carriers; what sits here is a measurement
 **transcript** — raw runner output no `.dag` route can produce — and per `source_annotations` the receipt
 FACTS now live typed, with this section rendering them. Retyped per review 98981: peak RSS is a
@@ -245,8 +255,7 @@ the verbatim prints below.
 
 Refusal comparability: every cell reports the same declared-refusal count as the reference run (the
 values are in the typed receipts; the publishability witness leg asserts exactly this), so all cells measure
-the same program and are publishable. Load averages at run time were recorded in the run logs behind the
-acquisitions and are deliberately not re-typed here — no claim consumes them.
+the same program and are publishable. **Load sample beside the median receipts (review follow-up):** the run2b cells (A/B/C re-run under the loosened gate) carry load1 sample `44.02/128` captured at run time; the run2 cells carry `not captured at run time; no retroactive sample exists` — stated literally, no retroactive sample was manufactured. Beyond these samples, load averages at run time were recorded in the run logs behind the acquisitions and are deliberately not re-typed here — no claim consumes them.
 
 Verdict-only control (cell C) printed:
 ```
@@ -278,7 +287,7 @@ parse-verdict reuse: ancestor=none reused=0 miss_identity_absent=166 miss_identi
   band, with the 5-module full-roots cell the higher of the pair — allocator-resident peak, whole-process
   (values in the binding, not retyped).
 
-## 7. Attribution findings — the honest negative
+## 7. Attribution findings — the honest negative (sampling tier), superseded for the handback element by the §7/§7a counter ruling
 
 The row's `boundary` asks each hot spot be attributed to a building-block/composite contract it violates, **or to the algorithm itself** (realization vs algorithm). On srv1 under current policy this attribution **cannot be produced**, for two independent reasons, stated plainly so the numbers are not read as the ones the ticket asked for:
 
@@ -290,7 +299,49 @@ The row's `boundary` asks each hot spot be attributed to a building-block/compos
 
 **Seed-vs-emitted is not a usable realization cell either.** The v1 seed binary has no `parse-population` subcommand (`unrecognized subcommand`, exit 2); a seed cell is a missing capability, not a cost. The realization split the verb *can* express is `--reuse-from` vs reuse-OFF, which §7(2) shows is not establishable here.
 
-**Therefore:** the baseline is taken (fixed populations, byte-identity proven, refusal-comparable, wall/RSS min+median with load), but the realization-vs-algorithm attribution the `boundary` requires is a criteria decision for the reviewer. It needs one of: (a) an operator-approved `perf_event_paranoid ≤ 2` window on srv1 for true self-time sampling with frame-pointer call graphs, or (b) per-phase counters emitted by the parse-population verb (a carrier change), or (c) acceptance of a CI published-ancestor receipts cache to make the verdict-only control live. None of (a)/(b)/(c) is in this row's cleared scope.
+**Therefore (superseding the earlier criteria-question framing):** the baseline is taken (fixed populations, byte-identity proven, refusal-comparable, wall/RSS min+median with load), and the attribution element the `boundary` requires — "each hot spot attributed to a building-block or composite contract it violates, or to the algorithm itself" — is discharged by the reviewer's ruling **in counter units**. Ruling, verbatim (neat-badger-614, relayed by warm-fox-517): *"Route (b) discharges 'per consumer, the attributed profile' as long as the attribution is stated in COUNTER units (per-phase steps, TEXT_LOOKUP_CHARS_WALKED, eval_steps per label, and cpu_ms as the runner reports it), labelled plainly as counter attribution and not time sampling. No time-share claim may be made that the counters don't measure."* The perf window (a) is retired for this node — the ruling made `perf_event_paranoid` irrelevant here; the CI receipts cache (c) remains relevant only to the cell-C control-as-designed result above, which stays exactly as recorded (inconclusive by construction on this host, do not repeat). The counter-unit attribution itself is §7a.
+
+## 7a. Counter attribution — the fixed 19-operand batch (counter units, not time sampling)
+
+Per the ruling (§7): every number here is in **counter units**, taken verbatim from the runner's own stream
+(`eval_steps=<n> cpu_ms=<n>` per label from `src/v1/stage0/src/target_invocation_host.rs`, the same lines the
+`HELD`/`DID-NOT-HOLD`/`UNOBSERVED` verdicts print beside). This section is labelled **counter attribution**;
+it is not a profile and makes no time-share claim. Wall appears only as each leg's total (§7a-run), never
+apportioned to a consumer.
+
+**Run provenance (step-pair acquisition, 2026-11-27).** Poller `pp_acquire_step_pair.sh`, `POLLER_START host=srv1 BOOT=c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4 PID=1188990 OWNER=bright-hawk-891 MAX=20 SLEEP=180s`; gate line `[2026-11-27T20:12:13Z] TRY=1/20 load1=39.18 load5=40.04 real_occupants=10 -> GATE_PASS`. In-slot: acquisition line `heavy-slot: slot 8/12 acquired by bright-hawk-891 at 2026-11-27T20:12:13Z`, `SLOTTED_PID=1189059 CGROUP=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-1189017.scope`, `SLOT_OWNERSHIP_PRECONDITION=ok file=/home/briansrls/.heavy-slots/slot8.who`, `IN_SLOT HEAD=b0fff7396d295dc937dcc04a317a80196ff4c1ab`, `IN_SLOT disk_sha256=5aafd4fb6bc9e92bc4722c8fd85407351f9f7f235fc269f84d2afad90a86420e` — read again before the AFTER leg (`AFTER_LEG_PRECHECK disk_sha256_read_before_leg=` same value). Freshness line both legs: `gunbc test: binary fresh against its dep-info: /home/briansrls/tmp-bright-hawk-891/pp-build/target/release/gunbc inputs=268`. Provenance statement: **binary built-from-0d77469ccb92, executed at tree b0fff7396d2**, `git diff --name-only 0d77469ccb92 HEAD` prints exactly `docs/plans/parse-population-baseline-measurement-report.md` (rc 0) and the `dag/`-scoped diff is 0 files — the claim inputs are byte-identical across the whole chain, and the freshness inputs (268 dep-info entries, no `.dag`/`.md` among them) are unaffected. Both legs invoked from `cwd=/home/briansrls/tmp-bright-hawk-891/pp-build` with the relative binary path. The 19 operands were printed and the count asserted from the file (`OPERAND_COUNT=19 (asserted 19)`, `wc -l < leg_labels_final.txt` = 19).
+
+**Named expectations printed BEFORE the legs** (verbatim from the log): `eval_steps` per label EQUAL across legs (equality; a nonzero delta makes the step meter untrustworthy — a finding, not a pass); batch total EQUAL; held_count 19/19 both legs; `cpu_ms` **no direction asserted** (reported only, wall noise); rc 0 expected, rc 124 = TIMEOUT_NOT_RESULT (report, no trim, no re-arm). Hot-spot targets named from the retained instrument cells: `…roster_is_unique_holds` (eval_steps 134401), `…roster_byte_invariants_hold` (10739), `…selection_rule_is_modelled_holds` (7470) — the pair brackets all three.
+
+**Results (runner's own stream; logs retained at `/home/briansrls/tmp-bright-hawk-891/step_pair/{before,after}.log`).** BEFORE 20:12:13Z–20:19:06Z, AFTER 20:19:06Z–20:25:15Z, each leg's rc on its own line: `RC_BEFORE=0`, `RC_AFTER=0`; `SLOT_RC=0`. Summary lines, both legs verbatim: `19 claim(s): 19 held, 0 did not hold, 0 unobserved`. `STEP_MAP_COUNTS before=19 after=19 (expect 19 19)`, `EVAL_STEPS_IDENTICAL all 19 labels`, `HELD_BEFORE=19 HELD_AFTER=19`, `VERDICT_STEP_PAIR=STABLE — step meter trustworthy for the repair before/after pair`. Batch wall totals: BEFORE 413 s, AFTER 369 s (leg totals only; not apportioned). Per-label counters, `eval_steps` identical across legs on every label; `cpu_ms` shown before/after (noise, no direction asserted):
+
+| label (suffix after `…witness:`) | eval_steps | cpu_ms B/A |
+|---|---|---|
+| roster_byte_invariants_hold | 10739 | 19/18 |
+| roster_cardinality_holds | 2429 | 2/2 |
+| roster_duplicate_key_refuses | 2102 | 6/5 |
+| roster_is_unique_holds | 134401 | 91/89 |
+| roster_rows_ordered_descending_holds | 4266 | 5/5 |
+| cardinality_refuses_mistyped_real_row_holds | 211 | 0/0 |
+| cell_measurement_pairing_is_constructed_not_checked_holds | 404 | 1/1 |
+| cell_renderings_are_distinct_holds | 262 | 0/0 |
+| duration_ordering_refuses_reversed_triple_holds | 53 | 0/0 |
+| measurement_receipts_record_the_sweep_holds | 373 | 0/0 |
+| ordering_accepts_descending_holds | 112 | 0/0 |
+| ordering_refuses_ascending_holds | 111 | 0/0 |
+| receipt_publishability_refuses_planted_failed_cell_holds | 47 | 0/0 |
+| reconcile_predicate_refuses_bad_row_holds | 299 | 0/0 |
+| selection_breaks_tie_by_path_holds | 249 | 0/0 |
+| selection_rule_is_modelled_holds | 7470 | 9/8 |
+| stall_capability_extraction_distinguishes_planted_values_holds | 45 | 0/0 |
+| stall_trigger_capability_declared_holds | 33 | 0/0 |
+| top_n_window_discriminates_holds | 187 | 0/0 |
+
+Batch totals (wrapper arithmetic over the runner's own per-label `eval_steps`, computed by `awk` with rc 0 printed): `BATCH_TOTAL_EVAL_STEPS_BEFORE=163793`, `BATCH_TOTAL_EVAL_STEPS_AFTER=163793`.
+
+**What the counter units attribute.** Three legs carry 93.2 % of the batch's `eval_steps` (134401+10739+7470 = 152610 of 163793; `awk 'BEGIN{printf "share=%.4f\n", 152610/163793}'` → 0.9317, rc 0 — a counter-share of the step budget, which the counters do measure; it is not a wall-time share): `roster_is_unique_holds`, `roster_byte_invariants_hold`, `selection_rule_is_modelled_holds`. All three are the whole-roster folds over the 170-row `data parse_population_baseline_rows` — their step cost is the folds visiting 170 rows × their predicate width, i.e. the algorithm's declared work over the fixed denominator, not an unplanned realization cost: no collection/allocation counter fires unusually (the batch runs on pre-built values; `minor_faults`/context-switch counters in the typed process-times receipts show no differential), and no building-block contract they exercise is violated (the witness's own named negatives — duplicate key, ascending order, reversed triple, planted receipt, mistyped row — all refuse, §5a). Attribution per the ruling's options: **algorithm**, for all three hot legs — the per-row predicate evaluation of key-uniqueness and byte-invariants over 170 fixed rows. Nothing here becomes a row for `emission-ownership-facts-survive-lowering` (no realization defect observed in counter terms); no constant-rule-per-character interpretation cost appears in the claim route (that cost lives in the verb route, whose counters are recorded in the typed receipts and §5).
+
+**Disclosed limits and observer defects (kept, not deleted).** (1) `BEFORE_COUNTER_LINES`/`AFTER_COUNTER_LINES` printed `no counter lines in stream`: the `population parses:` / `meta-parse verdict reuse:` / `[cost-partition]` / `TEXT_LOOKUP_CHARS_WALKED` prints belong to the parse-population **verb** route, not the claim-test route this batch takes; those verb counters were captured earlier and live in the typed receipts (§5), and their absence here is route scope, not loss. (2) The wrapper's first total lines printed empty (`join: missing operand` — `join -o 1.1,1.2` misused with one file); totals were recomputed from the retained per-label step maps with plain `awk` (rc 0, printed above). The defect stays in `/home/briansrls/tmp-bright-hawk-891/step_pair.log` at its original position.
 
 ## 8. Reproducibility observation (relay)
 
@@ -320,8 +371,10 @@ the model should generate"):
   PR #17037 review thread — events belong to the PR, not to a projection.
 - **Execution status of the claims**: honest tier labels sit on each claim in the witness and in the
   acceptance request; "parses + required lane" vs "green by execution in run <link>" per the work-item
-  lifecycle. The srv1 re-execution (A/B/C) is the open acquisition, held by the lane manager until the head
-  is final.
+  lifecycle. All 19 witness legs are **green by execution**: the 19-operand batch (`19 claim(s): 19 held,
+  0 did not hold, 0 unobserved`, pp_batch2 run — link in the PR #17037 evidence comments), reproduced
+  identically by the §7a step pair, with the two mutation controls each flipping exactly the pre-named leg
+  (§5a). No acquisition is currently held or pending on this node.
 
 What remains in this file is deliberately only what no `.dag` carrier can hold: the premise finding (§1), the
 host-capability readings with their real exit codes (§2), the emittedness proof (§3), the staging/byte-identity
