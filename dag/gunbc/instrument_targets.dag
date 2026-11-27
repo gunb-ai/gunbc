@@ -1305,6 +1305,38 @@ fn list_append_wall_fold_cannot_absorb_a_two_binding() -> TargetBinding {
   }
 }
 
+// THE DEPTH RED: the same wall over a fixture whose element demand carries an unsolved type variable
+// BELOW the ceiling this row's commit removed (sixteen). rc 1 where the walk still stops there, rc 0
+// where it walks the shape. `gunbc test //gunbc/instruments:list-append-wall-deep-unbound-element`.
+fn list_append_wall_deep_unbound_element_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-deep-unbound-element" } }
+}
+
+fn list_append_wall_deep_unbound_element_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_deep_unbound_element_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "deep_unbound_element_wire")
+    }
+  }
+}
+
+// THE DEPTH CONTROL: the same twenty-four-deep shape with a SETTLED core, admitted with no row of the
+// target class -- deep is not refused, and the uncapped recursion returns (rc 0, no stack overflow).
+// `gunbc test //gunbc/instruments:list-append-wall-deep-resolved-element`.
+fn list_append_wall_deep_resolved_element_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-deep-resolved-element" } }
+}
+
+fn list_append_wall_deep_resolved_element_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_deep_resolved_element_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "deep_resolved_element_wire")
+    }
+  }
+}
+
 // THE CARRIER: the same rule at the declared (non-generic) `run` carrier, seventeen legs.
 
 fn free_monoid_carrier_text_at_string_run_label() -> Label {
@@ -1382,7 +1414,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
     native_emission_controls_binding(), fleet_convergence_verdict_route_binding(),
-    list_append_wall_element_at_list_position_binding(), list_append_wall_refusal_names_parameter_binding(), list_append_wall_list_still_admitted_binding(), list_append_wall_element_at_element_position_binding(), list_append_wall_three_arms_observable_binding(), list_append_wall_arms_differ_by_target_row_binding(), list_append_wall_all_legs_binding(), list_append_wall_fold_cannot_absorb_a_two_binding(),
+    list_append_wall_element_at_list_position_binding(), list_append_wall_refusal_names_parameter_binding(), list_append_wall_list_still_admitted_binding(), list_append_wall_element_at_element_position_binding(), list_append_wall_three_arms_observable_binding(), list_append_wall_arms_differ_by_target_row_binding(), list_append_wall_all_legs_binding(), list_append_wall_fold_cannot_absorb_a_two_binding(), list_append_wall_deep_unbound_element_binding(), list_append_wall_deep_resolved_element_binding(),
     free_monoid_carrier_text_at_string_run_binding(), free_monoid_carrier_two_runs_admitted_binding(), free_monoid_carrier_list_push_admitted_binding(), free_monoid_carrier_all_legs_binding(),
     native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]

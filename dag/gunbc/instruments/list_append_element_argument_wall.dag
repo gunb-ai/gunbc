@@ -338,7 +338,7 @@ fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
 //
 // WHY A WIRE FUNCTION PER LEG AND NOT ONLY ONE FOLD. The node's red control is per-leg ("the repro
 // refuses ... AND the two positive controls still pass"), and a fold answers that question with one
-// exit for the module's six assertions -- a reader could not tell which leg answered. Per-leg labels keep each
+// exit for the module's eight assertions -- a reader could not tell which leg answered. Per-leg labels keep each
 // leg's own exit at the process boundary; the fold below enrolls the whole population in one address,
 // including any leg added later, so a new leg cannot be written and left unaddressed.
 
@@ -400,6 +400,88 @@ fn arms_differ_by_target_row_wire() -> CliWireResponse {
   )
 }
 
+// THE DEPTH FIXTURES FOR THIS ROW'S OWN COMMIT. The predicate that keeps the wall's abstention
+// reachable (`element_demand_direct_call_argument_formal_is_unbound`) used to stop walking at a
+// ceiling of SIXTEEN and answer `false` -- "no unbound type variable" -- for anything deeper, which on
+// this seam releases the pair as UndecidableGenericFormal (advisory) without ever asking the question.
+// That is a silent widen at a literal with no stated basis (gunbc.design_argument::fail_closed: "A
+// failure arm refuses, never widens, and every degradation is typed, located and countable"), and the
+// ceiling is gone. These two fixtures are its controls, one axis apart: the SAME twenty-four-deep
+// literal list, with an unsolved empty list at the core in one and a settled String list in the other.
+// Twenty-four, not seventeen, so the depth that used to be cut off is comfortably past the number.
+//
+// The unsolved core is the shape a real author writes by accident (`list_append` over a list of lists
+// of ... nothing yet), and the wall has to say the same thing about it as it says about the settled
+// one: text cannot stand where a run of a non-Char element is demanded. The resolved twin is the proof
+// that the deeper walk did not turn the wall into a ban on deep types, and -- the walk recursing
+// twenty-four levels with no ceiling -- that the cooperative stack growth holds (no overflow, rc 0).
+fn eh_f2_deep_unsolved_literal() -> String {
+  "[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]"
+}
+
+fn eh_f2_deep_resolved_literal() -> String {
+  "[[[[[[[[[[[[[[[[[[[[[[[[[\"a\"]]]]]]]]]]]]]]]]]]]]]]]]]"
+}
+
+fn eh_f2_deep_probe_source(literal: String) -> String {
+  "module eh_f2_deep\n"
+    + "import std.algebra { list_append, is_empty }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn probe() -> Bool { is_empty(xs: list_append(" + literal + ", \"bc\")) }\n"
+}
+
+fn eh_f2_deep_unsolved_element_source() -> String {
+  eh_f2_deep_probe_source(literal: eh_f2_deep_unsolved_literal())
+}
+
+fn eh_f2_deep_resolved_element_source() -> String {
+  eh_f2_deep_probe_source(literal: eh_f2_deep_resolved_literal())
+}
+
+// THE DEPTH RED: the unsolved-core fixture must carry the SAME refusal as the shallow repro -- one
+// blocking row of the target class at the target subject. rc 1 on a tree whose walk stops at the old
+// ceiling, rc 0 on one that walks the shape.
+fn a_deep_unbound_element_below_the_removed_ceiling_is_still_judged() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_deep_unsolved_element_source()),
+      keep: rows =>
+        census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: target_class, wanted_subject: target_subject)
+    ),
+    holds: fn(n) { n == 1 }
+  ))
+}
+
+// THE DEPTH CONTROL: the settled twin at the same depth carries NO row of the target class. Deep is not
+// refused; unsolved-and-text-at-a-run is. Same acquisition as the red above, so the pair also shows the
+// recursion returned rather than blowing the stack.
+fn a_deep_fully_resolved_element_tree_is_still_admitted() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_deep_resolved_element_source()),
+      keep: rows => census_blocking_rows_of_class(rows: rows, wanted: target_class)
+    ),
+    holds: fn(n) { n == 0 }
+  ))
+}
+
+// THE DEPTH RED, addressed. rc 1 where the walk still stops at the ceiling, rc 0 where it walks the
+// shape. `gunbc test //gunbc/instruments:list-append-wall-deep-unbound-element`.
+fn deep_unbound_element_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "a_deep_unbound_element_below_the_removed_ceiling_is_still_judged"),
+    verdict: a_deep_unbound_element_below_the_removed_ceiling_is_still_judged()
+  )
+}
+
+// THE DEPTH CONTROL, addressed. `gunbc test //gunbc/instruments:list-append-wall-deep-resolved-element`.
+fn deep_resolved_element_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "a_deep_fully_resolved_element_tree_is_still_admitted"),
+    verdict: a_deep_fully_resolved_element_tree_is_still_admitted()
+  )
+}
+
 // THE WHOLE WALL IN ONE ADDRESS: every leg's row printed with its own verdict and code, one exit for
 // the run taken by #gunbc.compile_census_probe::census_worst_exit so a could-not-run (2) is never
 // demoted to a finding (1). `gunbc test //gunbc/instruments:list-append-wall-all-legs`.
@@ -412,6 +494,8 @@ fn wall_all_legs_wire() -> CliWireResponse {
       element_at_element_position_wire(),
       three_arms_observable_wire(),
       arms_differ_by_target_row_wire(),
+      deep_unbound_element_wire(),
+      deep_resolved_element_wire(),
     ],
     subject: "list-append-wall"
   )
