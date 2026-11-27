@@ -325,6 +325,17 @@ fn git_route_wall_refusal_exit(command: ArgvCommand) -> ProcessExit {
   exit_failure(reason: concat("git route wall: bare mutating argv refused at workdir-free route for program ", concat(command.program.invocation, "; use gunbc.git_workdir_free_route")))
 }
 
+
+// THE TYPED REFUSAL FOR THE CAPTURE ENTRY (run_shell_command_capture). Same meaning as
+// git_route_wall_refusal: no child was ever created, so the honest answer is the typed
+// not-spawned arm of ProcessCaptureOutcome -- never a ProcessCaptured verdict, never an exit code.
+fn git_route_wall_refusal_capture(command: ArgvCommand) -> ProcessCaptureOutcome {
+  ProcessCaptureNotSpawned {
+    program: command.program.invocation,
+    cause: concat("git route wall: bare mutating argv refused at workdir-free route for program ", concat(command.program.invocation, "; use gunbc.git_workdir_free_route")) as NonEmptyStr,
+  }
+}
+
 // THE TYPED REFUSAL SURFACE: ProcessRunOutcome is the one meaning of "nothing ran". A transport that
 // refuses to build the command spawned nothing either, so it is the same arm, never an exit code:
 // no process ran, and a sentinel exit status would be a fabricated observation (gunbc.design_argument::fail_closed).
@@ -378,7 +389,7 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
   }
 }
 
-// THE UNCHECKED ROUTE, declared (gunbc.design_argument::guarantee_ladder / fail_closed). Capture's
+// THE CAPTURE ROUTE, now fully guarded (gunbc.design_argument::guarantee_ladder / fail_closed). Capture's
 // product is stdout, so its answer is ProcessCaptureOutcome: ProcessCaptured carries the
 // classify_process_observation verdict under ExitZeroSucceeds over an observation that EXISTS, and
 // ProcessCaptureNotSpawned carries the case where no child was ever created. It is the entry that
@@ -387,22 +398,26 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
 // verdicts over an observed run. That fabrication is gone: the transport's refusal is now a typed
 // arm naming the program and the cause, exactly as observe_outcome has always spelled it.
 //
-// STILL UNGATED, COUNTED, AND WHY. The wall gate runs in observe_outcome, run_shell_command and
-// run_shell_command_stdin_local; capture does not consult it yet. The original reason -- a refusal
-// could only ride the fabricated sentinel, so gating would spread the fabrication -- NO LONGER
-// HOLDS, because the typed not-spawned arm above is the repair that reason named. What remains
-// between this entry and git_route_wall_admits is the red control set that has to prove a gate here
-// actually refuses (bare mutating argv, an absolute /usr/bin/git spelling, and the SSH arm) plus the
-// mutation control that proves those claims can go red; landing the gate before its controls is a
-// guarantee with nothing holding it accountable. Counted here, in the open, until that lands.
-// ONE live git caller runs through capture today, named precisely:
+// GATED, LIKE THE OTHER THREE ENTRIES (round 6, brief goal 2). The wall gate now runs in
+// observe_outcome, run_shell_command, run_shell_command_stdin_local AND capture: a bare mutating
+// git argv (any spelling, local or ssh) answers ProcessCaptureNotSpawned with the wall's cause
+// BEFORE command_over_transport is consulted -- no fabricated verdict, never a ProcessCaptured
+// claim about a child that never ran (gunbc.design_argument::fail_closed). The original reason
+// capture waited -- a refusal could only ride the fabricated -1 sentinel, so gating would spread
+// the fabrication -- was retired by the typed not-spawned arm above; what kept the gate back
+// since was its CONTROL SET, now landed in test/claim/git_command_runner_route_wall_witness:
+// bare-mutating local/add, absolute /usr/bin/git, deep absolute, and the SSH arm over THIS entry,
+// plus the gate-inversion mutation (muts M18) that proves those claims go red when the gate is
+// deleted. ONE live git caller runs through capture today:
 //   gunbc.runner.runner_revision_job_guest::revision_job_tree_steps (git init / add / snapshot commit /
 //   diff-tree, L100-110) is executed through capture by test/claim/runner/runner_revision_job_guest_
-//   wet_witness::run_all. Its commands are all `-C`-dressed (the shipped builders), so the wall ADMITS
-//   them -- which is why gating here breaks no caller, and why the gap is a counted one and not a
-//   live hazard.
+//   wet_witness::run_all. Its commands are all `-C`-dressed (the shipped builders), so the wall
+//   ADMITS them -- witnessed by that wet claim, not by prose.
 fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessCaptureOutcome
 {
+  if !git_route_wall_admits(command: command) {
+    git_route_wall_refusal_capture(command: command)
+  } else {
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
       ProcessCaptureNotSpawned {
@@ -430,6 +445,7 @@ fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) 
           ),
         }
       }
+  }
   }
 }
 

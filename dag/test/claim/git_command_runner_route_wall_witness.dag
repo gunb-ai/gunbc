@@ -46,8 +46,8 @@ import extdeps.git {
 }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.tools.ls { ls_program }
-import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, process_observation }
-import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command, run_shell_command_stdin_local, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, process_observation, ProcessCaptured, ProcessCaptureNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command, run_shell_command_stdin_local, run_shell_command_capture, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
 import gunbc.remote_shell_command { openssh_login_shell_interpretation }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +270,49 @@ test fn test_non_git_passes_gate() -> Bool {
   git_route_wall_admits(
     command: argv_ls(),
   )
+}
+
+// ---------------------------------------------------------------------------
+// RED CONTROL 6 (round 6, brief goals 2 and 5): THE CAPTURE ENTRY IS GATED. A refusal at the
+// wall must surface as ProcessCaptureNotSpawned carrying the wall's cause -- never a
+// ProcessCaptured verdict over a child that never ran -- for bare mutating argv local, the
+// absolute /usr/bin/git spelling, and the SSH arm. Deleting the gate turns every claim in this
+// block red (gate-removal mutation, brief goal 5's mutation control).
+// ---------------------------------------------------------------------------
+
+test fn test_refused_bare_mutating_capture_local() -> Bool {
+  match run_shell_command_capture(command: argv_bare_commit(), transport: LocalExec) {
+    ProcessCaptureNotSpawned { program: _, cause: c } => string_contains(s: c, pattern: "git route wall")
+    ProcessCaptured { outcome: _ } => false
+  }
+}
+
+test fn test_refused_bare_mutating_capture_local_add() -> Bool {
+  match run_shell_command_capture(command: argv_bare_add(), transport: LocalExec) {
+    ProcessCaptureNotSpawned { program: _, cause: c } => string_contains(s: c, pattern: "git route wall")
+    ProcessCaptured { outcome: _ } => false
+  }
+}
+
+test fn test_refused_absolute_capture_local() -> Bool {
+  match run_shell_command_capture(command: argv_absolute_commit(), transport: LocalExec) {
+    ProcessCaptureNotSpawned { program: _, cause: c } => string_contains(s: c, pattern: "git route wall")
+    ProcessCaptured { outcome: _ } => false
+  }
+}
+
+test fn test_refused_bare_mutating_capture_ssh() -> Bool {
+  match run_shell_command_capture(command: argv_bare_commit(), transport: test_ssh_transport) {
+    ProcessCaptureNotSpawned { program: _, cause: c } => string_contains(s: c, pattern: "git route wall")
+    ProcessCaptured { outcome: _ } => false
+  }
+}
+
+test fn test_refused_absolute_add_capture_ssh() -> Bool {
+  match run_shell_command_capture(command: argv_absolute_add(), transport: test_ssh_transport) {
+    ProcessCaptureNotSpawned { program: _, cause: c } => string_contains(s: c, pattern: "git route wall")
+    ProcessCaptured { outcome: _ } => false
+  }
 }
 
 // ---------------------------------------------------------------------------
