@@ -190,13 +190,15 @@ fn front_end_continue_parse(
 // an executing route is v2.test.claim.staged_front_end
 // staged_front_end_produces_the_authored_parse_for_an_annotated_module, positive on a commented module and zero
 // on an uncommented one.
-// THE LOSS GUARD DOES NOT LIVE HERE ANY MORE. Its worst case is captures x rows calls to the borrowed
-// std.source_annotation::region_contains -- a proven cost-shape defect, which
-// gunbc.design_argument::how_to_work does not allow to ship -- and no production route reaches its answer, so
-// it lives with the lane that executes it by name: v2.test.claim.staged_front_end
-// front_end_annotation_guard_refuses_an_edge_loss_the_fold_dropped and
-// ..._accepts_the_graph_the_fold_made_from_the_same_captures. It returns here when the fold carries a per-row
-// capture count: rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count).
+// ANNOTATION-ATTACHMENT LOSS IS NOT CHECKED HERE, OR ANYWHERE ELSE. A guard for it stood in this module and
+// then in its test module, where its only consumers were tests of itself; it was deleted rather than left
+// asserting its own existence, and the hole it covered is tracked by the gunbc roadmap node
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count), whose carrier is
+// dag/std/source_annotation.dag. The guard's cost shape -- captures x rows calls to the borrowed
+// std.source_annotation::region_contains, a proven defect gunbc.design_argument::how_to_work does not allow to
+// ship -- was MOVED OFF THE PARSE PATH, NOT FIXED. The concrete precondition for a loss check landing anywhere
+// is the fold carrying the absorbed capture count, so the check costs one integer per row instead of a cross
+// product; naming that precondition is what makes the deferral bounded rather than a wish.
 // The row itself asks for no production refusal; its handback is "A production route calls
 // parse_module_authored -- fn front_end_parse_step in v2.compiler.staged_front_end -- and its consumer claim
 // staged_front_end_produces_the_authored_parse_for_an_annotated_module passes by name."
@@ -241,7 +243,7 @@ fn front_end_parse_step(
 // front_end_placement_next_rung_is_declared_and_names_the_control reads it back and refuses if the condition is
 // ever BOUND while no floor can execute -- which is the one thing here that a predicate can decide without
 // re-typing this carrier's prose and grepping it.
-data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, front_end_unlanded_annotation_diagnostic checks loss only and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
+data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, the agreement control stays manual and ungated, attachment loss is checked by nothing in the tree, and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
 
 
 
