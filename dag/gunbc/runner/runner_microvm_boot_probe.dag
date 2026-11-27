@@ -757,7 +757,14 @@ fn boot_probe_verdict_by_content(
   console: BootProbeConsole,
   exit_code: Int,
 ) -> BootProbeVerdict {
-  if exit_code != 0 {
+  if exit_code == 124 {
+    BootExceededHostDeadline {
+      deadline: runner_microvm_boot_probe_deadline,
+      console: console.stdout,
+      console_cause: console.read_cause,
+      detail: "the bounded boot exited 124, which the bounder uses when its deadline expires",
+    }
+  } else if exit_code != 0 {
     BootVmmFailed { exit_code: exit_code, console: console.stdout, detail: console.stderr }
   } else if console.stdout == "" {
     BootProducedNoConsole {
