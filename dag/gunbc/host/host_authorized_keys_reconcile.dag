@@ -16,6 +16,14 @@ import gunbc.fleet.fleet_intent_network { operator_lan_segment, srv1_tailscale_e
 import product.network_topology { NetworkSegment, NetworkEndpoint }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership, Owned }
+import extdeps.external_authority {
+  CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, ExternalAuthority,
+  cited_figure_read_obligation,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
+  HandInstallRecordedField, OperatorRelayed, NotRelayed, RelayedDay,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_reconcile,
@@ -252,4 +260,131 @@ fn node_orch_operator_out_of_band_preserved() -> List<NodeOrchOperatorOutOfBandE
     node_orch_operator_out_of_band_entries(),
     e => authorized_key_ownership(e.key) == none,
   )
+}
+
+// ── THE INTAKE STANDING THE ACCESS DECISION READS BEFORE IT USES THE ROSTER ────────────────────────
+//
+// THE CLASS THIS KILLS, at its third site (gunbc.recurring_failure_mode.
+// declared_uncitedness_ignored_by_admission, 2026-11-21 receipt): the H11SSL unit-1 intake receipt
+// (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt) carries accounts_and_ssh_keys_report
+// as NotRelayed -- "the operator lists the accounts installed and which authorized keys they carry" is an
+// OPEN obligation as of 2026-10-24 -- while that host's access was gated by a key sitting outside
+// gunbc.fleet.fleet_ssh_access::fleet_authorized_keys. The 2026-11-23 CHECKED paragraph of that row put the
+// remaining debt exactly here: "the access gate and the roster of keys still do not read it". The folds
+// above decide ownership against the roster; nothing in this module consulted the record that states what
+// accounts and keys the hand install put on the host in the first place.
+//
+// WHY THE STANDING TRAVELS WITH THE VERDICT RATHER THAN BESIDE IT
+// (gunbc.design_argument::epistemic_humility; the same rule the rate table already applies at
+// product.node_power_envelope::rank_specific_2dpc_clock, and the comparison site at
+// gunbc.gpu_market.comparison_standing). The fleet roster is the fleet's ONLY record of who may reach a
+// host. When the intake record says its own accounts-and-keys report is unrelayed, the roster is not a
+// complete description of that host -- and a consumer must not be able to produce a verdict that reads it
+// as one. So:
+//   - a key outside the roster while the accounts report declares itself incomplete (NotRelayed, or relayed
+//     under a standing that says it is a transcription) is REFUSED with the cause naming that condition, and
+//     the verdict carries the standing VALUE and the declaring record's obligation text verbatim;
+//   - the same roster with nothing outside it is DOWNGRADED, not admitted: the roster covered everything
+//     observed, and the fleet still may not state that the roster is the whole of what is on the host;
+//   - only a report relayed AND cited to an authority admits, and that arm carries NO obligation -- the
+//     negative shape, so a consumer that stuffed an obligation into every arm could not pass either
+//     (gunbc.design_argument::fail_closed: a refusal is not a format, and neither is an apology).
+//
+// WHAT THIS DOES NOT DO, per the row's out_of_scope: it does not relay the accounts-and-keys report (that is
+// its own owed receipt, the operator's to file), it does not source the citation that would ground a marked
+// figure, and it does not decide the purchase. It also does not change host_authorized_keys_reconcile or
+// authorized_key_ownership above: those folds stay as the membership spine's ownership decision, and this
+// block is the standing read a consumer of THAT decision must make when the host has an intake receipt.
+
+// WHAT THE INTAKE RECORD DECLARES ABOUT ITS OWN accounts_and_ssh_keys_report. Three arms, and they are not
+// interchangeable: the cited arm is the only one that lets the roster stand as the whole description, and
+// the two marked arms carry the obligation the record itself states -- never a paraphrase, taken from
+// extdeps.external_authority::cited_figure_read_obligation for a relayed figure and from the record's own
+// NotRelayed field for an unrelayed one.
+type HostAccountsKeysStanding
+  = AccountsKeysRelayedCited { value: NonEmptyStr, authority: ExternalAuthority }
+  | AccountsKeysRelayedMarked { value: NonEmptyStr, standing: CitedFigureStanding, read_obligation: NonEmptyStr }
+  | AccountsKeysGroundedByReceipt { value: NonEmptyStr, standing: CitedFigureStanding }
+  | AccountsKeysNotRelayed { as_of_relayed_day: NonEmptyStr, read_obligation: NonEmptyStr }
+
+fn host_accounts_keys_standing(field: HandInstallRecordedField) -> HostAccountsKeysStanding {
+  match field {
+    OperatorRelayed { figure: reported } => match reported.standing {
+      CitedToAuthority { authority: authority } => AccountsKeysRelayedCited { value: reported.value, authority: authority }
+      ObservedByReceipt { observed: _ } => AccountsKeysGroundedByReceipt { value: reported.value, standing: reported.standing }
+      _ => match cited_figure_read_obligation(standing: reported.standing) {
+        Present { value: obligation } => AccountsKeysRelayedMarked {
+          value: reported.value, standing: reported.standing, read_obligation: obligation,
+        }
+        Absent => AccountsKeysGroundedByReceipt { value: reported.value, standing: reported.standing }
+      }
+    }
+    NotRelayed { as_of_relayed_day: day, read_obligation: obligation } =>
+      AccountsKeysNotRelayed { as_of_relayed_day: day, read_obligation: obligation }
+  }
+}
+
+// IS THIS STANDING ONE THAT DECLARES ITSELF INCOMPLETE? Named once here so no consumer writes its own
+// arm-list and drifts. A relayed-and-cited report is complete for this purpose; everything else -- the
+// transcription arm, the receipt-grounded arm, and the unrelayed arm -- says the record does not settle
+// what accounts and keys the install left on the host.
+fn host_accounts_keys_declares_gap(standing: HostAccountsKeysStanding) -> Bool {
+  match standing {
+    AccountsKeysRelayedCited { value: _, authority: _ } => false
+    _ => true
+  }
+}
+
+// THE CAUSE, TYPED: the two refusals are different events and must not be reported alike. A foreign key
+// against a RELAYED, cited accounts report is an ordinary out-of-roster key -- the operator has told us
+// what is on the host and this key is not what they named. A foreign key while the accounts report
+// declares itself incomplete is undecidable: the fleet cannot tell a hand-added operator credential from
+// an intruder's, because the record that would say is unrelayed. Collapsing the two is how a gap becomes a
+// routine refusal and stops being visible.
+type HostAccessRefusal
+  = OutOfRosterKeyAgainstRelayedAccounts
+  | OutOfRosterKeyUndecidableOnUndeclaredAccounts
+
+// THE ACCESS DECISION, with the standing it was built on in its own text.
+type HostAccessAdmission
+  = AccessAdmitted { host: NonEmptyStr, rostered: List<SshPublicKey>, accounts_keys: HostAccountsKeysStanding }
+  | AccessDowngraded { host: NonEmptyStr, rostered: List<SshPublicKey>, accounts_keys: HostAccountsKeysStanding }
+  | AccessRefused {
+      host: NonEmptyStr,
+      out_of_roster: List<SshPublicKey>,
+      cause: HostAccessRefusal,
+      accounts_keys: HostAccountsKeysStanding,
+    }
+
+fn host_keys_in_roster(observed: List<SshPublicKey>) -> List<SshPublicKey> {
+  filter(observed, k => any(fleet_authorized_keys, r => authorized_key_identity_eq(a: r.material, b: k.material)))
+}
+
+fn host_keys_out_of_roster(observed: List<SshPublicKey>) -> List<SshPublicKey> {
+  filter(observed, k => any(fleet_authorized_keys, r => authorized_key_identity_eq(a: r.material, b: k.material)) == false)
+}
+
+fn host_access_admission(
+  host: NonEmptyStr,
+  observed: List<SshPublicKey>,
+  accounts_report: HandInstallRecordedField,
+) -> HostAccessAdmission {
+  let standing = host_accounts_keys_standing(field: accounts_report)
+  let out_of_roster = host_keys_out_of_roster(observed: observed)
+  if count(out_of_roster) > 0 {
+    AccessRefused {
+      host: host,
+      out_of_roster: out_of_roster,
+      cause: if host_accounts_keys_declares_gap(standing: standing) {
+        OutOfRosterKeyUndecidableOnUndeclaredAccounts
+      } else {
+        OutOfRosterKeyAgainstRelayedAccounts
+      },
+      accounts_keys: standing,
+    }
+  } else if host_accounts_keys_declares_gap(standing: standing) {
+    AccessDowngraded { host: host, rostered: host_keys_in_roster(observed: observed), accounts_keys: standing }
+  } else {
+    AccessAdmitted { host: host, rostered: host_keys_in_roster(observed: observed), accounts_keys: standing }
+  }
 }
