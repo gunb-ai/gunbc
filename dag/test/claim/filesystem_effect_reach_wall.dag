@@ -744,36 +744,90 @@ fn real_direct_identities_equal_contract(report: FilesystemEffectCensusReport) -
        )
 }
 
-fn real_rows_leg(rows: List<DeclPhase1Row>) -> Bool {
-  let reaches = filesystem_effect_reaches_from_phase1_rows(
-    rows: rows,
-    free_primitive_identity: filesystem_primitive_identity,
-    bound_handler_identity: filesystem_handler_identity
-  )
-  let report = filesystem_effect_emitted_closure_census(
+// THE REAL-ROWS LEGS, SPLIT INTO INDIVIDUALLY-NAMED CLAIMS (manager ordering mandate msg_db29f8a4,
+// plan approval msg_0cbd099e): the conjunction that used to live here conjoined three facts plus a
+// fixture-confinement expectation and a Bool could not name which conjunct failed. The confinement
+// expectation was the WRONG EXPECTATION (a contracted debt site is a real-corpus direct reach by
+// construction — the wall refusing it is the establishment, not a gap), so the offenders arm now
+// ASSERTS NAMEABILITY (every offender appears as its own assembled "offender <module>#<decl>#<occ>"
+// line on the census log) and confinement is reported as a separate named arm whose red is the
+// cause-naming evidence and a stop-gate, never patched around. One ingest, one shared resolution
+// (single_authority): all five claims read the SAME real_resolver_rows data.
+fn real_rows_report(rows: List<DeclPhase1Row>) -> FilesystemEffectCensusReport {
+  filesystem_effect_emitted_closure_census(
     population_source: filesystem_effect_emitted_closure_population,
     rows: rows,
     free_primitive_identity: filesystem_primitive_identity,
     bound_handler_identity: filesystem_handler_identity
   )
-  filesystem_effect_debt_join_holds(reaches: reaches)
-    && real_direct_identities_equal_contract(report: report)
-    && (any(
-      xs: report.offenders,
-      predicate: fn(o) {
-        let site = filesystem_effect_reach_site(reach: o)
-        if qualified_name_to_dotted_string(qn: site.module) == "v2.test.fixture.wall_population" {
-          true
-        } else if qualified_name_to_dotted_string(qn: site.module) == "v2.test.fixture.filesystem_read_homonym" {
-          true
-        } else {
-          false
-        }
-      }
-    ) == false)
 }
 
-data real_resolver_verdict: Outcome<Bool> =
+fn real_rows_debt_join_leg(rows: List<DeclPhase1Row>) -> Bool {
+  filesystem_effect_debt_join_holds(
+    reaches: filesystem_effect_reaches_from_phase1_rows(
+      rows: rows,
+      free_primitive_identity: filesystem_primitive_identity,
+      bound_handler_identity: filesystem_handler_identity
+    )
+  )
+}
+
+fn real_rows_contract_leg(rows: List<DeclPhase1Row>) -> Bool {
+  real_direct_identities_equal_contract(report: real_rows_report(rows: rows))
+}
+
+// NAMEABILITY: no offender without its own located line. An offender whose site cannot be named
+// (module, enclosing declaration, occurrence) refuses THIS arm — a census that refuses without
+// naming is an oracle, not a report. Vacuity guard: an empty offender list is VOID here, not green;
+// the nonempty population is asserted, and the contract arm below grounds who must be in it.
+fn real_rows_offenders_named_leg(rows: List<DeclPhase1Row>) -> Bool {
+  let report = real_rows_report(rows: rows)
+  let log = filesystem_effect_census_log(report: report)
+  (length(xs: report.offenders) > 0)
+    && fold_list(
+         xs: report.offenders,
+         empty: true,
+         cons: fn(acc, o) {
+           if !acc {
+             false
+           } else {
+             let site = filesystem_effect_reach_site(reach: o)
+             string_contains(
+               s: log,
+               pattern: concat("offender ", filesystem_effect_debt_site_identity(site: site))
+             )
+           }
+         }
+       )
+}
+
+// THE REPORTED CONTAINMENT ARM (named; its RED is cause-naming and a stop-gate per msg_0cbd099e,
+// never authored around): every offender is either a contracted debt site or one of the two
+// witness fixture modules. A real-corpus module beyond those populations shows here.
+fn real_rows_fixture_or_contract_leg(rows: List<DeclPhase1Row>) -> Bool {
+  let report = real_rows_report(rows: rows)
+  let contract = filesystem_effect_debt_contract_identity_strings()
+  fold_list(
+    xs: report.offenders,
+    empty: true,
+    cons: fn(acc, o) {
+      if !acc {
+        false
+      } else {
+        let site = filesystem_effect_reach_site(reach: o)
+        let mod = qualified_name_to_dotted_string(qn: site.module)
+        (mod == "v2.test.fixture.wall_population")
+          || (mod == "v2.test.fixture.filesystem_read_homonym")
+          || real_identity_contains(
+               xs: contract,
+               needle: filesystem_effect_debt_site_identity(site: site)
+             )
+      }
+    }
+  )
+}
+
+data real_resolver_rows: Outcome<List<DeclPhase1Row>> =
   bind_outcome(
     o: native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"]),
     f: fn(ingest) {
@@ -781,18 +835,51 @@ data real_resolver_verdict: Outcome<Bool> =
         o: native_test_context_from_ingest(ingest: ingest),
         f: fn(c) {
           match c.resolution {
-            Rejected { diagnostics: _ } => outcome_accepted(value: false)
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
             Accepted { value: shared, diagnostics: _ } =>
-              outcome_accepted(value: real_rows_leg(rows: closure_declarations_demand(shared: shared).rows))
+              outcome_accepted(value: closure_declarations_demand(shared: shared).rows)
           }
         }
       )
     }
   )
 
+// THE CONJUNCTION KEEPS ITS NAME (the srv1 leg list is keyed on it): all four named legs at once.
 test fn filesystem_effect_census_over_real_resolver_rows_matches_the_contract() -> Bool {
-  match real_resolver_verdict {
-    Accepted { value: verdict, diagnostics: _ } => verdict
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } =>
+      real_rows_debt_join_leg(rows: rows)
+        && real_rows_contract_leg(rows: rows)
+        && real_rows_offenders_named_leg(rows: rows)
+        && real_rows_fixture_or_contract_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_debt_join_holds() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_debt_join_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_direct_identities_equal_contract() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_contract_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_offenders_named_in_census_log() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_offenders_named_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_offenders_within_contract_or_fixtures() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_fixture_or_contract_leg(rows: rows)
     Rejected { diagnostics: _ } => false
   }
 }
