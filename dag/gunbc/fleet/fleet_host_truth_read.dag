@@ -104,7 +104,7 @@ fn host_truth_axes_match(left: HostTruthAxis, right: HostTruthAxis) -> Bool {
     TruthDeclaredHardwareEnumerates => match right { TruthDeclaredHardwareEnumerates => true other => false }
     TruthEnabledUnitHasItsHardware => match right { TruthEnabledUnitHasItsHardware => true other => false }
     TruthIdentityAnchoredNotAddressed => match right { TruthIdentityAnchoredNotAddressed => true other => false }
-    TruthCapBindsDeclaredWorkingSet => match right { TruthCapBindsDeclaredWorkingSet => true other => false }
+    TruthCapBindsDeclaredWorkingSet => match right { TruthCapBindsDeclaredWorkingSet => true TruthSlotSwapBackingDeclared => true other => false }
     TruthSlotSwapBackingDeclared => match right { TruthSlotSwapBackingDeclared => true other => false }
   }
 }
