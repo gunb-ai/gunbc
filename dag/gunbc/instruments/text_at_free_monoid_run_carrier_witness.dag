@@ -1,4 +1,4 @@
-module test.claim.text_at_free_monoid_run_carrier_witness
+module gunbc.instruments.text_at_free_monoid_run_carrier_witness
 
 // WHAT THIS WITNESS HOLDS. A text (String) value is the free monoid over Char: std.coercion
 // declares `String -> FreeMonoid` among the GROUNDED identity carriers (data
@@ -30,6 +30,18 @@ module test.claim.text_at_free_monoid_run_carrier_witness
 // holds that boundary, and the refusal itself lives in the relation (declared_type_inhabitance)
 // rather than in a second checker at the call seam (the ruling the seam's own comment records:
 // tidy-ant-251, 2026-10-20 -- the call's own solved map, no second solver, one rule at the seam).
+
+//
+// WHY THIS MODULE IS AN INSTRUMENT AND NOT A CLAIM MODULE (moved out of `test.claim` on 2026-11-27).
+// Its legs read census rows, and the census door REFUSES under the claim route for a measured, mechanical
+// reason -- a second resident pool demanded over the corpus roots. The finding, with both verbatim causes
+// and the logs that carry them, is stated once beside the door-choice comment of
+// gunbc.instruments.list_append_element_argument_wall ("WHERE THE DOOR ANSWERS AND WHERE IT REFUSES"); it
+// is cited here rather than copied (gunbc.design_argument::single_authority). A leg whose door refuses
+// cannot fail on that route, so it is not evidence there; these legs are executed one per dispatch under
+// `gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --entry
+// dag/gunbc/instruments/text_at_free_monoid_run_carrier_witness.dag --function <leg>`, where the observed
+// arm answers, and each leg carries its own exit status: 0 held, 1 a finding, 2 could not run, cause named.
 
 import gunbc.compile_census_probe {
   census_exit,
@@ -147,30 +159,30 @@ fn wall_rows_at_parameter(source: String, parameter: String) -> CompileDiagnosti
   }
 }
 
-test fn text_actual_at_run_of_string_is_refused_naming_the_right_parameter() -> ProcessExit {
+fn text_actual_at_run_of_string_is_refused_naming_the_right_parameter() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: repro_list_append_text_actual, parameter: "right"), holds: fn(n) { n >= 1 }))
 }
 
-test fn the_same_call_over_two_runs_is_not_refused() -> ProcessExit {
+fn the_same_call_over_two_runs_is_not_refused() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_list_append_two_runs, parameter: "right"), holds: fn(n) { n == 0 }))
 }
 
-test fn list_push_takes_an_element_where_an_element_is_required() -> ProcessExit {
+fn list_push_takes_an_element_where_an_element_is_required() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_list_push_element, parameter: "item"), holds: fn(n) { n == 0 }))
 }
 
 // Keyed on BOTH parameters the fixture actually names -- list_append declares (left, right), so
 // filtering on an "xs" this call never spells would be green whatever the compiler did. Text over
 // the declared Char is the identity std.types declares, so neither run position may be refused.
-test fn text_at_a_run_over_char_is_the_declared_identity() -> ProcessExit {
+fn text_at_a_run_over_char_is_the_declared_identity() -> ProcessExit {
   census_exit(census_sum_verdict(first: wall_rows_at_parameter(source: control_text_at_char_run, parameter: "left"), second: wall_rows_at_parameter(source: control_text_at_char_run, parameter: "right"), holds: fn(n) { n == 0 }))
 }
 
-test fn text_at_a_declared_run_over_char_is_not_refused() -> ProcessExit {
+fn text_at_a_declared_run_over_char_is_not_refused() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_declared_char_run, parameter: "xs"), holds: fn(n) { n == 0 }))
 }
 
-test fn text_at_a_declared_run_of_string_is_refused_without_generics() -> ProcessExit {
+fn text_at_a_declared_run_of_string_is_refused_without_generics() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_string_run, parameter: "xs"), holds: fn(n) { n >= 1 }))
 }
 
@@ -195,40 +207,40 @@ test fn text_at_a_declared_run_of_string_is_refused_without_generics() -> Proces
 // the rc).
 data expected_rows_at_text_over_a_declared_int_run: Int = 1
 
-test fn text_at_a_declared_run_of_int_is_refused_as_a_change_of_interpretation() -> ProcessExit {
+fn text_at_a_declared_run_of_int_is_refused_as_a_change_of_interpretation() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_of_int, parameter: "xs"), holds: fn(n) { n == expected_rows_at_text_over_a_declared_int_run }))
 }
 
-test fn an_int_at_a_run_carrier_is_refused_as_it_already_was() -> ProcessExit {
+fn an_int_at_a_run_carrier_is_refused_as_it_already_was() -> ProcessExit {
   census_exit(census_verdict(census: blocking_class_census(source: control_int_at_run_carrier, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
 }
 
-test fn text_at_the_list_alias_spelling_is_still_refused_once() -> ProcessExit {
+fn text_at_the_list_alias_spelling_is_still_refused_once() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_list_alias, parameter: "xs"), holds: fn(n) { n == 1 }))
 }
 
-test fn runs_of_different_elements_at_one_element_variable_are_refused() -> ProcessExit {
+fn runs_of_different_elements_at_one_element_variable_are_refused() -> ProcessExit {
   census_exit(census_verdict(census: blocking_class_census(source: control_list_alias_two_run_elements, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
 }
 
-test fn a_sibling_at_a_different_element_variable_grounds_nothing_at_the_run_carrier() -> ProcessExit {
+fn a_sibling_at_a_different_element_variable_grounds_nothing_at_the_run_carrier() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_two_element_variables, parameter: "a"), holds: fn(n) { n == 0 }))
 }
 
 
-test fn a_local_char_spelling_at_a_run_carrier_is_refused() -> ProcessExit {
+fn a_local_char_spelling_at_a_run_carrier_is_refused() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_local_char_spelling_run, parameter: "xs"), holds: fn(n) { n >= 1 }))
 }
 
-test fn the_qualified_char_declaration_at_a_run_carrier_is_the_identity() -> ProcessExit {
+fn the_qualified_char_declaration_at_a_run_carrier_is_the_identity() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_qualified_char_run, parameter: "xs"), holds: fn(n) { n == 0 }))
 }
 
-test fn an_int_at_an_element_the_sibling_run_grounds_is_refused() -> ProcessExit {
+fn an_int_at_an_element_the_sibling_run_grounds_is_refused() -> ProcessExit {
   census_exit(census_verdict(census: blocking_class_census(source: control_int_at_element_settled_by_sibling, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
 }
 
-test fn text_at_a_module_local_alias_of_the_run_carrier_is_refused() -> ProcessExit {
+fn text_at_a_module_local_alias_of_the_run_carrier_is_refused() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_local_alias_of_carrier, parameter: "xs"), holds: fn(n) { n >= 1 }))
 }
 
@@ -251,13 +263,13 @@ data control_text_at_run_element_settled_by_a_lambda: String = "module witness_f
 // borrowed from a sibling) and states nothing about whether the call is well typed. The row records
 // what the PRE-EXISTING arm does here, observed as 1 on the main binary at 56d460116d6252f6ec8dfe889ea358c804685861;
 // it is not a claim that this call is ill typed, and it is not re-keyed to agree with the wall.
-test fn text_at_a_run_whose_element_the_call_never_settles_is_no_verdict() -> ProcessExit {
+fn text_at_a_run_whose_element_the_call_never_settles_is_no_verdict() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_element_unsettled, parameter: "xs"), holds: fn(n) { n >= 1 }))
 }
 
 // ABSTAIN, with the reason named, as above: a lambda parameter settles the element only through an
 // inference the wall does not read as a declaration, so the rule states nothing here. Observed as 1
 // on the main binary at the same sha: pre-existing behaviour, recorded not adjudicated.
-test fn text_at_a_run_whose_element_a_lambda_settles_is_no_verdict() -> ProcessExit {
+fn text_at_a_run_whose_element_a_lambda_settles_is_no_verdict() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_element_settled_by_a_lambda, parameter: "xs"), holds: fn(n) { n >= 1 }))
 }

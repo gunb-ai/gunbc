@@ -1,8 +1,7 @@
-module test.claim.list_append_element_argument_wall
+module gunbc.instruments.list_append_element_argument_wall
 
 import std.types { String }
 import std.algebra { string_contains }
-import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.process { ProcessExit }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
@@ -58,14 +57,23 @@ import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_
 // (diagnostic_class, subject_name, blocking), and a differential between the two arms in which the
 // shared closure cancels key by key.
 
-// HONEST ABOUT ITS OWN READS: the census resolves its synthetic source through
-// build_module_path_index_from_witness_roots, which walks the live tree. Declared rather than left to
-// the fail-closed default, on the same reasoning as test.claim.compile_diagnostic_census_witness.
-// CONSEQUENCE FOR EXECUTION: a claim that reads the ambient checkout is admitted by --wet, which is
-// the mode that runs it; the default --hermetic mode withholds the ambient read, and its own verdict
-// lines for these legs are recorded beside the wet ones rather than hidden, so a reader can see which
-// mode decided what.
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+// WHERE THE DOOR ANSWERS AND WHERE IT REFUSES -- MEASURED, BECAUSE IT DECIDES WHERE THESE LEGS MAY LIVE.
+// The census resolves its synthetic source by building a fixture closure over source roots, and under the
+// CLAIM ROUTE that build is contested. With the corpus roots `--source-root dag --source-root src/v1
+// --source-root src/v2`, a single-label selection answers `CensusNotRunnable` with the cause naming
+// `SharedIndexSecondResidentPool: slot 0 already holds roots [\"dag\", \"src/v1\", \"src/v2\"]; roots
+// [\"dag\", \"src/v2\"] demanded at src/v1/stage0/src/cli_run.rs:3690 would be a second resident pool on
+// this thread` (stages3/logs94_evidence.out, the c1/c2/c3 verbatim lines), and a whole-module selection
+// answers the same arm with a DIFFERENT cause, naming `stdlib source is unresolved in this build` alone
+// (stages3/logs91_probe.out, the probe's `p_cause_*` legs: the builtin half named, the imported half not).
+// A leg that reads a row through a refusing door is neither red nor green -- it is a leg that belongs in
+// no batch. So these legs are not claims: they are INSTRUMENT LEGS, and they are executed on the run
+// route, one dispatch per leg, `gunbc run --source-root dag --source-root src/v1 --source-root src/v2
+// --entry dag/gunbc/instruments/list_append_element_argument_wall.dag --function <leg>`, where the
+// entry-scoped load leaves the door's closure authority uncontested and the observed arm answers. The
+// three states survive at the process boundary: exit 0 held, exit 1 an observation that disagreed, exit 2
+// could not run with the door's cause. The witness module moved here from `test.claim` for the same
+// measured reason; its header carries its own copy of the finding.
 
 // THE TARGET KEY, read off the instrument's own output on the head-built compiler at 3201529903d
 // (stages3/logs75_runner.out, leg census_head_repro_at_freemonoid_fold; the same row re-read at the
@@ -170,7 +178,7 @@ fn on_observed_rows(
 // fixture starts refusing for a second, unintended reason: the wall would still prove SOMETHING refuses
 // while having stopped proving THIS refuses. Read on the observed arm; the not-runnable arm keeps its
 // cause and exits 2, so a census that did not run can never satisfy this leg.
-test fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> ProcessExit {
+fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> ProcessExit {
   census_exit(census_verdict(
     census: on_observed_rows(
       census: census_of(source: eh_f2_repro_ticket_source()),
@@ -187,7 +195,7 @@ test fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> Proc
 // PARAMETER `right` as the position that was refused; and that subject carries the inhabitance REASON
 // token by name. A refusal that cannot say which position and why is not one an author can act on, and
 // the mix-up this class exists to catch is only fixed by a message that names them.
-test fn the_refusal_names_the_parameter_and_the_reason() -> ProcessExit {
+fn the_refusal_names_the_parameter_and_the_reason() -> ProcessExit {
   let census = census_of(source: eh_f2_repro_ticket_source())
   census_verdict_all([
     census_verdict(
@@ -227,7 +235,7 @@ test fn the_refusal_names_the_parameter_and_the_reason() -> ProcessExit {
 // permanently red check dressed as rigour. The not-runnable arm exits 2 carrying the door's cause, so an
 // empty census and a census that never ran cannot both satisfy it. Without this leg the red above could be green for any
 // reason at all: a broken import, a misspelled type, a renamed module.
-test fn a_list_still_takes_that_position() -> ProcessExit {
+fn a_list_still_takes_that_position() -> ProcessExit {
   census_exit(census_verdict(
     census: on_observed_rows(
       census: census_of(source: eh_f2_pair_same_container_source()),
@@ -241,7 +249,7 @@ test fn a_list_still_takes_that_position() -> ProcessExit {
 // half: a list plus an element at `list_push`, where the element at `item` IS the declared type, stays
 // admitted. Same arm discipline as the control above, so the three arms cannot be confused with each
 // other, or with a census that did not run (exit 2, cause named, never exit 0).
-test fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> ProcessExit {
+fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> ProcessExit {
   census_exit(census_verdict(
     census: on_observed_rows(
       census: census_of(source: eh_f2_list_push_element_source()),
@@ -256,7 +264,7 @@ test fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> 
 // regression in the compiler. All three sources must land on the observed arm: any one of them landing on the
 // not-runnable arm returns exit 2 naming that source's cause, so a door that stopped being able to run
 // is measured as unable to run, not as a compiler that stopped refusing.
-test fn all_three_arms_are_observable_censuses() -> ProcessExit {
+fn all_three_arms_are_observable_censuses() -> ProcessExit {
   census_verdict_all([
     census_ran(census: census_of(source: eh_f2_repro_ticket_source())),
     census_ran(census: census_of(source: eh_f2_pair_same_container_source())),
@@ -272,7 +280,7 @@ test fn all_three_arms_are_observable_censuses() -> ProcessExit {
 // or loses one, if an advisory appears on one side only, and -- unlike a net-count form -- if any
 // ambient class or subject is substituted for another at equal cardinality. Both arms must be the
 // observed arm for the comparison to mean anything.
-test fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
+fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
   // Each census is bound ONCE so the builtin is reached once per source and both conjuncts below read
   // the same forced observation, exactly as #gunbc.compile_census_probe::deleted_callable_route_verdicts
   // does for its red probe.
