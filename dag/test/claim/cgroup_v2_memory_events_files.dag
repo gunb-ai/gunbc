@@ -2,6 +2,7 @@ module test.claim.cgroup_v2_memory_events_files
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.linux.cgroup_v2_memory {
   MemoryEvents, MemoryEventsLocal, CumulativeCounter,
   cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
@@ -83,5 +84,33 @@ test fn an_unparseable_counter_is_a_refusal_not_a_zero() -> Bool {
   match cgroup_memory_events_field(body: "low notanumber\nhigh 1\nmax 2\noom 3\noom_kill 4\n", key: "low") {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// ── THE DOOR ────────────────────────────────────────────────────────────────────────────────────────
+//
+// A single ProcessExit entry so the posted manual receipt is ONE command (gunbc run --entry <this file> --function run_cgroup_v2_memory_events_files_witness). Every claim in
+// this module is hermetic, so hermetic discovery remains the authority on WHICH claims exist and
+// runs each of them independently of this list -- which is why this call list can stay a plain
+// roster without a second enumeration of the module's declarations: completeness is owned by the
+// discovery lane (single authority), and this door only aggregates verdicts for one receipt.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { return "" }
+  return concat(name, "\n")
+}
+
+fn run_cgroup_v2_memory_events_files_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "the_events_files_are_named_by_the_kernel_and_share_a_kind", held: the_events_files_are_named_by_the_kernel_and_share_a_kind()),
+    check_or_name(name: "the_local_events_file_is_not_the_hierarchical_one", held: the_local_events_file_is_not_the_hierarchical_one()),
+    check_or_name(name: "a_complete_events_body_reads_all_five_counters", held: a_complete_events_body_reads_all_five_counters()),
+    check_or_name(name: "an_events_body_missing_one_field_refuses_naming_it", held: an_events_body_missing_one_field_refuses_naming_it()),
+    check_or_name(name: "the_events_wire_prints_zeros_and_refusals_apart", held: the_events_wire_prints_zeros_and_refusals_apart()),
+    check_or_name(name: "an_unparseable_counter_is_a_refusal_not_a_zero", held: an_unparseable_counter_is_a_refusal_not_a_zero()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("cgroup_v2_memory_events_files claims red: ", red) }
   }
 }

@@ -117,7 +117,11 @@ fn remote_build_serve_front_door_turn(
   accept_instant: String,
   raw_command: String?,
   principal: RemoteBuildServePrincipal,
-  admission: RemoteBuildDoorAdmission,
+  // LAZY, AND DELIBERATELY SO (review 99441): the ledger is asked ONLY at the hand-off gate below.
+  // The probe arm returns before this is ever called, so a probe never resolves the capacity subject,
+  // opens the capacity store or scans the seat-charge map -- a demand an arm does not consume is not
+  // paid for by that arm (gunbc.design_argument::minimize_redundancy).
+  ask_admission: fn(String) -> RemoteBuildDoorAdmission,
 ) -> RemoteBuildFrontDoorTurn {
   if serve_binary == "" || repo_root == "" || host == "" || leg_ceiling == "" {
     // The words came from the roster through remote_build_serve_front_door_run_words and arrived
@@ -171,7 +175,7 @@ fn remote_build_serve_front_door_turn(
           // refusing it outright. This gate is the pre-check that stops the boot pile-up; the
           // child's own ledger compare-and-set remains the exclusion between concurrent
           // acquisitions, unchanged.
-          match admission {
+          match ask_admission(host) {
             DoorAdmitted { held: _, seats: _ } => FrontDoorHandOffToChild {
               hand_off: remote_build_serve_hand_off(
                 serve_binary: serve_binary as NonEmptyStr,
@@ -242,8 +246,14 @@ fn remote_build_serve_front_door_probe_answer(host: String, principal: RemoteBui
 // fail-closed direction is refusal (gunbc.design_argument::fail_closed), in the room/readiness
 // ending that moves the request to the next host rather than refusing the request itself.
 //
-// THE WET READER IS remote_build_serve_front_door_admission; the turn above is pure and takes the
-// verdict as an argument, so every arm is decidable in the witness without a host.
+// THE WET READER IS remote_build_serve_front_door_admission; the turn above is pure and asks for the
+// verdict through a THUNK the CLI fills, so every arm is decidable in the witness without a host and
+// the probe arm never reaches the ledger at all (review 99441: an effectful demand with no consumer
+// on the arm that pays for it). What the entry statically carries is declared, not smuggled: the seat
+// ledger (gunbc.compute.host_capacity, 352 modules) rides every leg of this door -- measured at this
+// head, door entry closure_files=375, resolve 44.6 s. What stays BANNED at the door is the
+// systemctl/host-effect machinery for the hand-off diagnostic, measured at closure_files 866/874 and
+// resolve ~130 s on this same entry -- the ceiling the slice-diagnostic comment refuses to cross.
 type RemoteBuildDoorAdmission
   = DoorAdmitted { held: Nat, seats: Nat }
   | DoorPoolFull { held: Nat, seats: Nat }
@@ -310,7 +320,7 @@ fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_ro
         accept_instant: int_to_decimal_string(value: epoch_secs_of_millis(millis: accepted)),
         raw_command: shell.Env.Get(name: remote_build_ssh_command_variable).value,
         principal: remote_build_serve_probe_principal(),
-        admission: remote_build_serve_front_door_admission(host: host),
+        ask_admission: h => remote_build_serve_front_door_admission(host: h),
       ) {
         FrontDoorAnswer { ending, detail } => remote_build_serve_answer(ending: ending, text: detail)
         FrontDoorHandOffToChild { hand_off } => remote_build_serve_front_door_hand_off(hand_off: hand_off)

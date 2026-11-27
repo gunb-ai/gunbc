@@ -43,6 +43,7 @@ import std.algebra { length, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { byte_size_count, kibibyte, kibibyte_to_byte_size }
 import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -315,4 +316,42 @@ test fn the_limit_wires_render_the_three_standings_apart() -> Bool {
   systemd_cgroup_memory_limit_wire(limit: MemoryLimitUnbounded) == "infinity"
     && systemd_cgroup_memory_limit_wire(limit: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 26214400)) }) == "26843545600"
     && string_contains(s: systemd_cgroup_memory_limit_wire(limit: MemoryLimitAbsent), pattern: "unreadable")
+}
+
+// ── THE DOOR ────────────────────────────────────────────────────────────────────────────────────────
+//
+// A single ProcessExit entry so the posted manual receipt is ONE command (gunbc run --entry <this file> --function run_host_memory_envelope_observe_witness). Every claim in
+// this module is hermetic, so hermetic discovery remains the authority on WHICH claims exist and
+// runs each of them independently of this list -- which is why this call list can stay a plain
+// roster without a second enumeration of the module's declarations: completeness is owned by the
+// discovery lane (single authority), and this door only aggregates verdicts for one receipt.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { return "" }
+  return concat(name, "\n")
+}
+
+fn run_host_memory_envelope_observe_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "an_unreachable_subject_refuses_and_never_reports_memory", held: an_unreachable_subject_refuses_and_never_reports_memory()),
+    check_or_name(name: "the_quiescent_receipt_carries_host_total_and_mem_available", held: the_quiescent_receipt_carries_host_total_and_mem_available()),
+    check_or_name(name: "witness_envelope_from_complete_meminfo_observes", held: witness_envelope_from_complete_meminfo_observes()),
+    check_or_name(name: "witness_envelope_missing_memavailable_refuses_not_widens", held: witness_envelope_missing_memavailable_refuses_not_widens()),
+    check_or_name(name: "witness_top_level_slice_is_direct_child_of_root_cgroup", held: witness_top_level_slice_is_direct_child_of_root_cgroup()),
+    check_or_name(name: "witness_runner_parent_slice_is_read_though_not_top_level", held: witness_runner_parent_slice_is_read_though_not_top_level()),
+    check_or_name(name: "witness_envelope_projects_host_mem_available_observation", held: witness_envelope_projects_host_mem_available_observation()),
+    check_or_name(name: "witness_sleek_owl_397_receipt_instant_is_the_srv1_reading", held: witness_sleek_owl_397_receipt_instant_is_the_srv1_reading()),
+    check_or_name(name: "witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values", held: witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()),
+    check_or_name(name: "memory_events_parses_all_five_counters", held: memory_events_parses_all_five_counters()),
+    check_or_name(name: "memory_events_refuses_naming_the_missing_counter", held: memory_events_refuses_naming_the_missing_counter()),
+    check_or_name(name: "the_events_wire_renders_zeros_and_refusals_apart", held: the_events_wire_renders_zeros_and_refusals_apart()),
+    check_or_name(name: "the_envelope_receipt_prints_slice_limits_and_events", held: the_envelope_receipt_prints_slice_limits_and_events()),
+    check_or_name(name: "the_quiescent_receipt_carries_the_slice_block_both_ways", held: the_quiescent_receipt_carries_the_slice_block_both_ways()),
+    check_or_name(name: "peer_show_field_reads_the_keyed_line_and_nothing_else", held: peer_show_field_reads_the_keyed_line_and_nothing_else()),
+    check_or_name(name: "the_limit_wires_render_the_three_standings_apart", held: the_limit_wires_render_the_three_standings_apart()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("host_memory_envelope_observe_witness claims red: ", red) }
+  }
 }

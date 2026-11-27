@@ -140,7 +140,7 @@ fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFron
     accept_instant: w_accept_instant,
     raw_command: raw,
     principal: principal,
-    admission: w_admission_admitted(),
+    ask_admission: _ => w_admission_admitted(),
   )
 }
 
@@ -154,7 +154,7 @@ fn w_request_turn(admission: RemoteBuildDoorAdmission) -> RemoteBuildFrontDoorTu
     accept_instant: w_accept_instant,
     raw_command: Present { value: join([remote_build_protocol_word as String, " compile abc build"], "") },
     principal: w_principal_admitted(),
-    admission: admission,
+    ask_admission: _ => admission,
   )
 }
 
@@ -347,7 +347,7 @@ test fn a_host_off_the_serving_row_is_refused_at_the_door() -> Bool {
     accept_instant: w_accept_instant,
     raw_command: Present { value: remote_build_probe_text as String },
     principal: w_principal_admitted(),
-    admission: w_admission_admitted(),
+    ask_admission: _ => w_admission_admitted(),
   ) {
     FrontDoorAnswer { ending: ServeHostCannotServe, detail: d } =>
       contains(haystack: d, needle: "not-a-serving-host")
@@ -365,11 +365,11 @@ test fn a_door_rendered_without_a_binary_or_a_checkout_runs_nothing() -> Bool {
     FrontDoorHandOffToChild { hand_off: _ } => true
     _ => false
   }
-    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted(), admission: w_admission_admitted()) {
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted(), ask_admission: _ => w_admission_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
          _ => false
        }
-    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted(), admission: w_admission_admitted()) {
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted(), ask_admission: _ => w_admission_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
          _ => false
        }
@@ -441,6 +441,24 @@ test fn an_unresolvable_capacity_subject_refuses_the_hand_off() -> Bool {
   match w_request_turn(admission: DoorSubjectUnresolved { detail: "host srv-test has no capacity home" }) {
     FrontDoorAnswer { ending: ServeHostCannotServe, detail: detail } =>
       contains(haystack: detail, needle: "capacity home")
+    _ => false
+  }
+}
+
+// RED CONTROL FOR THE LAZY GATE (review 99441): THE PROBE ARM NEVER ASKS THE LEDGER. A poison
+// thunk -- a ledger standing that would refuse any hand-off -- is supplied where the probe arm runs.
+// The probe does not consult it and still answers ready. Were the ledger read eager again, or the
+// gate moved above the probe arm, the poison would mint host_full for a probe and this claim goes
+// red. (gunbc.design_argument::demand_before_materialization -- the probe pays for the probe.)
+test fn a_probe_never_asks_the_ledger() -> Bool {
+  match remote_build_serve_front_door_turn(
+    host: w_serving_host(), serve_binary: w_bin, repo_root: w_repo, leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
+    raw_command: Present { value: remote_build_probe_text as String },
+    principal: w_principal_admitted(),
+    ask_admission: _ => DoorPoolFull { held: 9, seats: 2 },
+  ) {
+    FrontDoorAnswer { ending: ServeReady, detail: _ } => true
     _ => false
   }
 }
@@ -655,6 +673,7 @@ fn run_remote_build_serve_front_door_witness() -> ProcessExit {
     check_or_name(name: "a_full_seat_pool_refuses_the_hand_off_with_the_capacity_vocabulary", held: a_full_seat_pool_refuses_the_hand_off_with_the_capacity_vocabulary()),
     check_or_name(name: "an_unreadable_seat_ledger_refuses_the_hand_off", held: an_unreadable_seat_ledger_refuses_the_hand_off()),
     check_or_name(name: "an_unresolvable_capacity_subject_refuses_the_hand_off", held: an_unresolvable_capacity_subject_refuses_the_hand_off()),
+    check_or_name(name: "a_probe_never_asks_the_ledger", held: a_probe_never_asks_the_ledger()),
     check_or_name(name: "a_contract_legal_ready_exits_six_and_the_client_still_reads_it_ready", held: a_contract_legal_ready_exits_six_and_the_client_still_reads_it_ready()),
     check_or_name(name: "a_receipt_goes_out_byte_exact_and_a_refusal_keeps_its_stderr", held: a_receipt_goes_out_byte_exact_and_a_refusal_keeps_its_stderr()),
     check_or_name(name: "the_probe_entry_imports_none_of_the_request_path", held: the_probe_entry_imports_none_of_the_request_path()),
