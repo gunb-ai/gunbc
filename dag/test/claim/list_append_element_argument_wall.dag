@@ -1,19 +1,22 @@
 module test.claim.list_append_element_argument_wall
 
-import std.types { Bool, String }
+import std.types { String }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.process { ProcessExit }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
   census_rows_of_class,
-  census_total_count,
-  census_count_at_key,
+  census_blocking_rows_of_class,
+  census_blocking_rows_of_class_at_subject,
   censuses_differ_by_exactly_the_target_key,
   compile_dag_diagnostic_census
 }
+import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, census_ran, census_premise }
 
 // THE WALL THIS CLAIM CARRIES. `std.algebra.list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>)`
 // is an APPLIED generic at both positions, and before the repair an element could be handed to a
@@ -130,22 +133,52 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
+// THE ARM-PRESERVING PROJECTOR. Every leg below narrows the ROWS of an observed census; none of them
+// narrows the ARMS. A wrapper that mapped the not-runnable arm to an empty row list would make a control
+// that never ran indistinguishable from a control that ran and observed nothing -- the exact fail-open
+// the census module closed when it deleted its own `census_rows` accessor (its note above
+// `census_blocking_rows`). So the narrowing lives here, once, and passes the cause through untouched for
+// `census_exit` to render as exit code 2 with `not evaluated: census not runnable: <cause>` -- the
+// contract's "no observation" code (gunbc.design_document::ci_contract_blocks), the sole place an
+// integer appears in this file (the verdict is a sum, #gunbc.compile_census_probe::CensusVerdict).
+fn on_observed_rows(
+  census: CompileDiagnosticCensus,
+  keep: fn(List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow>
+) -> CompileDiagnosticCensus {
+  match census {
+    CensusObserved { rows: rows } => CensusObserved { rows: keep(rows) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
+// WHY THE LEGS RETURN A PROCESS EXIT AND NOT A BOOL. A Bool leg flattens "the door refused to run" into
+// `false`, the same verdict as "the door ran and disagreed" -- which is what made the first cut of this
+// carrier route-inert: under a whole-tree claim selection the door answers CensusNotRunnable for every
+// subject that imports the stdlib (its measured cause: `stdlib source is unresolved in this build`, the
+// probe's p_cause_* legs naming that half alone), so six Bool legs read `false` identically on a tree
+// WITH the wall and a tree WITHOUT it -- neither red nor green, legs that belong to no batch. On the run
+// route the same door answers the observed arm, and the three-state verdict keeps the two failures apart
+// at the process boundary: exit 0 held, exit 1 an observation that disagreed (a finding), exit 2 could
+// not run with the door's own cause. The form is main's own -- the seal witnesses
+// (test.claim.outcome_laundering_seal_witness, test.claim.transition_lease_store_seal_witness) carry
+// census rows through #gunbc.compile_census_probe::deleted_callable_route_verdicts, and the three states
+// are what that module exists to distinguish (#gunbc.compile_census_probe::census_exit). Each leg is
+// therefore executed by name on the run route, and every leg in the evidence names the route it is
+// evidence on.
+
 // THE DISCRIMINATING RED, exact and pinned to the subject. `>= 1` would keep green on the day the
 // fixture starts refusing for a second, unintended reason: the wall would still prove SOMETHING refuses
-// while having stopped proving THIS refuses. Read on the observed arm; the not-runnable arm answers
-// false, so a census that did not run can never satisfy this leg.
-test fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> Bool {
-  match census_of(source: eh_f2_repro_ticket_source()) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: target_class)) == 1
-        && census_count_at_key(
-          rows: rows,
-          diagnostic_class: target_class,
-          subject_name: target_subject,
-          blocking: true
-        ) == 1
-    CensusNotRunnable { cause: _ } => false
-  }
+// while having stopped proving THIS refuses. Read on the observed arm; the not-runnable arm keeps its
+// cause and exits 2, so a census that did not run can never satisfy this leg.
+test fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_repro_ticket_source()),
+      keep: rows =>
+        census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: target_class, wanted_subject: target_subject)
+    ),
+    holds: fn(n) { n == 1 }
+  ))
 }
 
 // THE SAME RED READ AS REASON AND LOCUS RATHER THAN AS A HISTOGRAM KEY -- the node's red control asks
@@ -154,70 +187,81 @@ test fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> Bool
 // PARAMETER `right` as the position that was refused; and that subject carries the inhabitance REASON
 // token by name. A refusal that cannot say which position and why is not one an author can act on, and
 // the mix-up this class exists to catch is only fixed by a message that names them.
-test fn the_refusal_names_the_parameter_and_the_reason() -> Bool {
-  match census_of(source: eh_f2_repro_ticket_source()) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: target_class)) >= 1
-        && census_total_count(
-          rows: census_blocking_rows(rows: rows)
+test fn the_refusal_names_the_parameter_and_the_reason() -> ProcessExit {
+  let census = census_of(source: eh_f2_repro_ticket_source())
+  census_verdict_all([
+    census_verdict(
+      census: on_observed_rows(census: census, keep: rows => census_rows_of_class(rows: rows, wanted: target_class)),
+      holds: fn(n) { n >= 1 }
+    ),
+    census_verdict(
+      census: on_observed_rows(
+        census: census,
+        keep: rows =>
+          census_blocking_rows(rows: rows)
             |> filter(r =>
               (r.diagnostic_class as String) == target_class
                 && string_contains(s: r.subject_name, pattern: required_parameter_phrase)
             )
-        ) == 1
-        && census_total_count(
-          rows: census_blocking_rows(rows: rows)
+      ),
+      holds: fn(n) { n == 1 }
+    ),
+    census_verdict(
+      census: on_observed_rows(
+        census: census,
+        keep: rows =>
+          census_blocking_rows(rows: rows)
             |> filter(r =>
               (r.diagnostic_class as String) == target_class
                 && string_contains(s: r.subject_name, pattern: required_reason_token)
             )
-        ) == 1
-    CensusNotRunnable { cause: _ } => false
-  }
+      ),
+      holds: fn(n) { n == 1 }
+    )
+  ])
 }
 
 // THE FIRST POSITIVE CONTROL, ON THE RUNNABLE ARM: the same call with a LIST in the second position
 // must be admitted. This leg matches the observed arm and asserts zero BLOCKING rows OF THE TARGET
 // CLASS there -- not "zero rows", which an importing fixture can never show and which would be a
-// permanently red check dressed as rigour. The not-runnable arm answers false, so an empty census and a
-// census that never ran cannot both satisfy it. Without this leg the red above could be green for any
+// permanently red check dressed as rigour. The not-runnable arm exits 2 carrying the door's cause, so an
+// empty census and a census that never ran cannot both satisfy it. Without this leg the red above could be green for any
 // reason at all: a broken import, a misspelled type, a renamed module.
-test fn a_list_still_takes_that_position() -> Bool {
-  match census_of(source: eh_f2_pair_same_container_source()) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: target_class)) == 0
-    CensusNotRunnable { cause: _ } => false
-  }
+test fn a_list_still_takes_that_position() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_pair_same_container_source()),
+      keep: rows => census_blocking_rows_of_class(rows: rows, wanted: target_class)
+    ),
+    holds: fn(n) { n == 0 }
+  ))
 }
 
 // THE SECOND POSITIVE CONTROL, ON THE RUNNABLE ARM, on the callee the node names as the author's other
 // half: a list plus an element at `list_push`, where the element at `item` IS the declared type, stays
 // admitted. Same arm discipline as the control above, so the three arms cannot be confused with each
-// other, or with a census that did not run.
-test fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> Bool {
-  match census_of(source: eh_f2_list_push_element_source()) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: target_class)) == 0
-    CensusNotRunnable { cause: _ } => false
-  }
+// other, or with a census that did not run (exit 2, cause named, never exit 0).
+test fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_list_push_element_source()),
+      keep: rows => census_blocking_rows_of_class(rows: rows, wanted: target_class)
+    ),
+    holds: fn(n) { n == 0 }
+  ))
 }
 
 // THE ARM DISCIPLINE STATED AS ITS OWN LEG, so a door that stopped being able to run fails HERE, with
 // its own name, instead of quietly turning the two controls into two `false`s that look like a
-// regression in the compiler. All three sources must land on the observed arm.
-test fn all_three_arms_are_observable_censuses() -> Bool {
-  match census_of(source: eh_f2_repro_ticket_source()) {
-    CensusObserved { rows: _ } =>
-      match census_of(source: eh_f2_pair_same_container_source()) {
-        CensusObserved { rows: _ } =>
-          match census_of(source: eh_f2_list_push_element_source()) {
-            CensusObserved { rows: _ } => true
-            CensusNotRunnable { cause: _ } => false
-          }
-        CensusNotRunnable { cause: _ } => false
-      }
-    CensusNotRunnable { cause: _ } => false
-  }
+// regression in the compiler. All three sources must land on the observed arm: any one of them landing on the
+// not-runnable arm returns exit 2 naming that source's cause, so a door that stopped being able to run
+// is measured as unable to run, not as a compiler that stopped refusing.
+test fn all_three_arms_are_observable_censuses() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: eh_f2_repro_ticket_source())),
+    census_ran(census: census_of(source: eh_f2_pair_same_container_source())),
+    census_ran(census: census_of(source: eh_f2_list_push_element_source()))
+  ])
 }
 
 // THE ONE-AXIS RECEIPT. The producer makes the two SOURCES differ by one token; this makes the two
@@ -228,19 +272,30 @@ test fn all_three_arms_are_observable_censuses() -> Bool {
 // or loses one, if an advisory appears on one side only, and -- unlike a net-count form -- if any
 // ambient class or subject is substituted for another at equal cardinality. Both arms must be the
 // observed arm for the comparison to mean anything.
-test fn the_two_arms_differ_by_exactly_the_target_row() -> Bool {
-  match census_of(source: eh_f2_repro_ticket_source()) {
-    CensusObserved { rows: red } =>
-      match census_of(source: eh_f2_pair_same_container_source()) {
-        CensusObserved { rows: green } =>
-          censuses_differ_by_exactly_the_target_key(
-            red: red,
-            green: green,
-            target_class: target_class,
-            target_subject: target_subject
-          )
+test fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
+  // Each census is bound ONCE so the builtin is reached once per source and both conjuncts below read
+  // the same forced observation, exactly as #gunbc.compile_census_probe::deleted_callable_route_verdicts
+  // does for its red probe.
+  let red = census_of(source: eh_f2_repro_ticket_source())
+  let green = census_of(source: eh_f2_pair_same_container_source())
+  census_verdict_all([
+    census_ran(census: red),
+    census_ran(census: green),
+    census_premise(
+      name: "the two observed censuses differ by exactly the one row keyed on the target class and subject",
+      holds: match red {
+        CensusObserved { rows: red_rows } => match green {
+          CensusObserved { rows: green_rows } =>
+            censuses_differ_by_exactly_the_target_key(
+              red: red_rows,
+              green: green_rows,
+              target_class: target_class,
+              target_subject: target_subject
+            )
+          CensusNotRunnable { cause: _ } => false
+        }
         CensusNotRunnable { cause: _ } => false
       }
-    CensusNotRunnable { cause: _ } => false
-  }
+    )
+  ])
 }
