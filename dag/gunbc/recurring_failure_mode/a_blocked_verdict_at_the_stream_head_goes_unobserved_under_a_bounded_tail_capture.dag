@@ -1,0 +1,46 @@
+module gunbc.recurring_failure_mode.a_blocked_verdict_at_the_stream_head_goes_unobserved_under_a_bounded_tail_capture
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+// THE BLIND-TAIL CLASS: a witness capture that keeps only the LAST bytes of a stream, feeding a
+// classifier whose evidence lives at the HEAD. The capture itself announces the truncation
+// (extdeps.gunbc service gunbc.WitnessBin operation Run models stderr_truncated with its byte
+// counts beside stderr), and the verdict fold consumes only the retained string -- so a compiler
+// whose blocking errors printed first and advisories flooded after is reported as UNOBSERVED, not
+// BLOCKED. The announcement is modelled and ignored; the absence claim is made from a window that
+// declared the absence unknowable.
+
+data a_blocked_verdict_at_the_stream_head_goes_unobserved_under_a_bounded_tail_capture: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_blocked_verdict_at_the_stream_head_goes_unobserved_under_a_bounded_tail_capture" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "the capture already self-announces: gunbc.WitnessBin.Run carries stderr_truncated, stderr_total_bytes and stderr_retained_bytes beside stderr, so the fold cannot plead missing channels. The prevention is model-local and mechanical: the classifier input list gains the flags it currently omits, and a verdict of ABSENCE-of-error-lines returned on stderr_truncated becomes a typed refusal instead of an unobserved reading" } },
+
+  receipts: [
+    "**an observer reads a bounded TAIL while the verdict lives at the STREAM HEAD** (a run whose diagnostics are ordered errors-first, advisories-after -- the compiler's own ordering -- is classified from the last window of the stream. The retained window holds only advisory lines and the closing total; the error-prefixed lines were evicted at the head before the classifier ever saw them).",
+
+    "INVALID STATE: a classifier that derives a verdict from the CONTENT of a window while ignoring the window's own BOUNDS. gunbc.live_deploy.pre_swap_admission fn serve_entry_compile_verdict_of takes (exit_success, exit_code, stderr) and folds a nonzero exit with no error-prefixed line to ServeEntryCompileUnobserved; its sibling serve_command_verdict_of takes the same triple. Both consume only the stderr STRING, never stderr_truncated / stderr_total_bytes / stderr_retained_bytes that the same gunbc.WitnessBin.Run invocation carries. A blocked compile and a binary that failed to spawn leave the same visible surface inside a truncated tail -- three-way conflation the classifier's own comment admits: '(the binary missing, a spawn failure) is unobserved, never admitted'.",
+
+    "HARM: a false negative at the exact moment it matters. Serve-entry compile blocking -- the check that guards a live-deploy admission -- reads as an observation problem instead of a blocked tree, so a real blocker routes as 're-instrument the probe' while the tree stays blocked. The soft verdict neither stops the line nor says the truth; its detail ('exited N with no error line') is honest about the window and mute about the bounds, which is precisely fail-closed's failure by wording.",
+
+    "SPECIMEN (EXECUTED; raw receipts at ~/scratch/wise-fox-453/gate-diag.txt on srv1, from the diagnostic leg of wise-fox-453, run msg_8ea688ae; capture at 76638001d773). The serve-entry claim ran the real binary over the gate route and exited NONZERO with the compiler's own closing line verbatim: '2 blocking error(s), 31888 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)'. The retained stderr is the LAST 16384 bytes: the file opens mid-path on a TRUNCATED FIRST LINE ('admap_session_activation_ensure.dag:221:11]: effect summary incomplete: ...' -- the leading 'error[' / 'advisory[dag/gunbc/roadm' evicted), carries ZERO error-prefixed lines (grep -c over the captured file), and ends with the total line naming 2 blocking errors. The classifier found no error-prefixed line in the tail and returned ServeEntryCompileUnobserved where the run was ServeEntryCompileBlocked { blocking: 2 }. The diagnostic re-instrumentation -- the same claim with stderr_capture raised to BoundedTail { bytes: byte_size(count: 134217728) } -- is what re-exposed the head; the fix for this class must not require a 128MiB capture to see its own subject.",
+
+    "DISTINGUISHING FACTS, nearest rows first. NOT a_refused_secondary_read_aborts_an_observer_before_its_receipt: there a failed secondary read ABORTS the observer before its receipt -- the observer stops; here the observer completes and PRONOUNCES from a window. NOT truncated_local_diagnostics_indistinguishable_from_the_complete_set: there the truncation is an unannounced CRASH mid-run whose partial output is read as a verdict set, caught by expertise (abort lines, missing standing receipt); here the truncation is a DELIBERATE, self-announced capture policy whose announcement exists in the model and is dropped by the consumer -- the artifact says 'I truncated' in typed fields and the fold does not read them. NOT instrument_output_read_as_subject_content: there the instrument answered its own question faithfully and its output was substituted for the subject's; here the instrument's output is the right subject, merely clipped. And this is not a capability ceiling: the fields needed to prevent it are already modelled.",
+
+    "WHY IT SURVIVES REVIEW: the classifier is correct about the window it holds, and the detail string reads like proper fail-closed caution. Nothing on the classifier's surface shows that its input declared itself partial -- the tell is in three fields a different module carries.",
+
+    "RUNG: found at the rung MechanicallyPreventable (a real executed refusal in the wild caught it -- the diagnostic leg proved Blocked-by-2 that the fold had read Unobserved), standing AT CEILING 2: the repair is to make the fold consume the capture's own announcement -- on stderr_truncated, an absence-of-error-lines verdict must refuse typed ('bounded tail cannot establish absence; retained X of Y bytes') instead of claiming Unobserved, or the caller must re-run with an announced-complete capture before pronouncing.",
+
+    "REVIEW TELL: a classifier over captured stream text that claims an ABSENCE while stderr_truncated is true, or while stderr_retained_bytes is below stderr_total_bytes. Ask whether the absence can be established from the retained window alone, and what in the artifact says the window was complete.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.gunbc", decl_name: "Run"),
+    decl_ref(module_path: "gunbc.live_deploy.pre_swap_admission", decl_name: "serve_entry_compile_verdict_of"),
+    decl_ref(module_path: "gunbc.live_deploy.pre_swap_admission", decl_name: "serve_command_verdict_of"),
+    decl_ref(module_path: "gunbc.live_deploy.pre_swap_admission", decl_name: "observe_serve_entry_compile_clean"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.truncated_local_diagnostics_indistinguishable_from_the_complete_set", decl_name: "truncated_local_diagnostics_indistinguishable_from_the_complete_set"),
+  ],
+}
