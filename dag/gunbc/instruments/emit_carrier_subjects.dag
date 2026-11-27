@@ -295,6 +295,13 @@ fn car_window(subject: CarSubject, src: List<Int>) -> BatteryWindow uses counter
 // `violating_form` in gunbc.emit_building_block_contracts (the sequence row's from OwningRetainAddedToObservation to
 // CopyOfUnchangedContext, the map row's the other way) and the row must REFUSE, because the axis it is judged on
 // stops being the axis the violation lives on -- which is exactly how the row stops being decorative.
+// KNOWN COSMETIC DEFECT, recorded rather than carried silently. Both single-axis rows below join `axis` to `vocab`
+// with no separator, so the printed row reads `judged_on_retained_handles=truevocabulary_applicable=true`. The two
+// values stay individually legible and no verdict reads the separator -- `held` is computed from the parsed booleans
+// and from `block_is_applicable`, never from this string -- so it is formatting, not measurement. It is deliberately
+// NOT fixed at the head whose case digests were sealed in the PR run link, because inserting the missing
+// `concat(observed_text, " ", vocab)` moves each row's digest while changing no verdict, and the digest is evidence.
+// Fix it at the next head that touches this file for another reason.
 fn carrier_sequence_snapshot_retained_on_its_own_axis(seq_snapshot: BatteryWindow, seq_snapshot_retained: BatteryWindow) -> AllocationCase {
   let block_id = "persistent_sequence_carrier_snapshot"
   let judged_on_handles = retaining_rows_on_block(block_id: block_id) > 0
