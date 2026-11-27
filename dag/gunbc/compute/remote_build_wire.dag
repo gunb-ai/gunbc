@@ -141,6 +141,16 @@ data remote_build_serve_cli_function: NonEmptyStr = "remote_build_serve_cli"
 data remote_build_serve_front_door_entry_file: NonEmptyStr = "dag/gunbc/compute/remote_build_serve_front_door.dag"
 data remote_build_serve_front_door_function: NonEmptyStr = "remote_build_serve_front_door_cli"
 
+// THE HOST-SIDE WALL-BOUND ARGUMENTS. The leg ceiling rides in the FORCED COMMAND (the front door's own
+// argv), not in SSH_ORIGINAL_COMMAND, so it is host-declared from the same authority the client arms its
+// leg with (gunbc.fleet.fleet_known_hosts_anchor fleet_leg_wall_deadline, HostBuildLeg) and an old client
+// cannot bypass it; changing the ceiling needs a reconverge to reach authorized_keys. The door reads the
+// ceiling from its argv and stamps the accept instant from its own host clock, then hands both to the
+// request entry, which runs the granted unit under the remaining budget. They are named here once so the
+// renderer, the door and the request entry spell the same argument and no one re-types it.
+data remote_build_leg_ceiling_argument: NonEmptyStr = "leg_ceiling"
+data remote_build_accept_instant_argument: NonEmptyStr = "accept_instant"
+
 fn remote_build_run_words(
   serve_binary: NonEmptyStr,
   repo_root: NonEmptyStr,
@@ -174,7 +184,7 @@ fn remote_build_serve_run_words(serve_binary: NonEmptyStr, repo_root: NonEmptySt
 // the serving binary and the checkout as arguments -- the same two facts the authorized_keys line itself
 // spells today, which the door needs because it is the one that runs the request entry -- while the
 // entry and function the child runs stay fixed data here.
-fn remote_build_serve_front_door_run_words(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String) -> List<NonEmptyStr> {
+fn remote_build_serve_front_door_run_words(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String, leg_ceiling: NonEmptyStr) -> List<NonEmptyStr> {
   list_append(
     remote_build_run_words(
       serve_binary: serve_binary,
@@ -186,6 +196,7 @@ fn remote_build_serve_front_door_run_words(serve_binary: NonEmptyStr, repo_root:
     [
       "--arg", concat("serve_binary=", serve_binary as String) as NonEmptyStr,
       "--arg", concat("repo_root=", repo_root as String) as NonEmptyStr,
+      "--arg", concat(remote_build_leg_ceiling_argument as String, "=", leg_ceiling as String) as NonEmptyStr,
     ],
   )
 }
@@ -226,17 +237,26 @@ type RemoteBuildHandOff {
   arguments: List<String>
 }
 
-fn remote_build_serve_hand_off(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String) -> RemoteBuildHandOff {
+// THE HAND-OFF CARRIES THE WALL BOUND TO THE REQUEST ENTRY. The ceiling is the door's own argv value
+// (host-declared), and the accept instant is the door's host-clock reading at the moment it accepted the
+// request; both ride as arguments the door adds, never as the client's command (which stays only in the
+// inherited SSH_ORIGINAL_COMMAND). The request entry subtracts the elapsed wait from the ceiling at each
+// unit launch and runs the granted unit under what remains.
+fn remote_build_serve_hand_off(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String, leg_ceiling: NonEmptyStr, accept_instant: NonEmptyStr) -> RemoteBuildHandOff {
   let words = remote_build_serve_run_words(serve_binary: serve_binary, repo_root: repo_root, host: host)
+  let bound_arguments: List<String> = [
+    "--arg", concat(remote_build_leg_ceiling_argument as String, "=", leg_ceiling as String) as String,
+    "--arg", concat(remote_build_accept_instant_argument as String, "=", accept_instant as String) as String,
+  ]
   match first(words) {
     Present { value: program } => RemoteBuildHandOff {
       program: program,
       workdir: repo_root,
-      arguments: skip(xs: map(words, w => w as String), n: 1),
+      arguments: concat(skip(xs: map(words, w => w as String), n: 1), bound_arguments),
     }
     Absent =>
       // UNWRITABLE IN PROSPECT: remote_build_run_words always puts the binary first. Matching is here
       // because the alternative is a fabricated program.
-      RemoteBuildHandOff { program: serve_binary, workdir: repo_root, arguments: [] }
+      RemoteBuildHandOff { program: serve_binary, workdir: repo_root, arguments: bound_arguments }
   }
 }
