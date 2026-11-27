@@ -2782,18 +2782,70 @@ fn input_against_this_checkout(
     built_from: &str,
     here: &std::path::Path,
 ) -> Result<Option<BinaryInput>, String> {
-    let built = std::fs::read(built_from)
-        .map_err(|e| format!("cannot read dep-info input {built_from}: {e}"))?;
-    match std::fs::read(here) {
-        Ok(bytes) if bytes == built => Ok(None),
-        Ok(_) => Ok(Some(BinaryInput::DiffersFromThisCheckout(
+    let differs = || {
+        Some(BinaryInput::DiffersFromThisCheckout(
             here.display().to_string(),
-        ))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Some(
-            BinaryInput::DiffersFromThisCheckout(here.display().to_string()),
-        )),
-        Err(e) => Err(format!("cannot read {}: {e}", here.display())),
+        ))
+    };
+    let built = input_content(std::path::Path::new(built_from))?
+        .ok_or_else(|| format!("dep-info input {built_from} vanished while it was read"))?;
+    Ok(match input_content(here)? {
+        Some(content) if content == built => None,
+        _ => differs(),
+    })
+}
+
+#[derive(PartialEq, Eq)]
+enum InputContent {
+    File(Vec<u8>),
+    Tree(Vec<(std::path::PathBuf, Vec<u8>)>),
+}
+
+fn input_content(path: &std::path::Path) -> Result<Option<InputContent>, String> {
+    let unreadable = |e: std::io::Error| format!("cannot read {}: {e}", path.display());
+    match std::fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(unreadable(e)),
+        Ok(meta) if meta.is_dir() => {
+            let mut files = Vec::new();
+            tree_files(path, std::path::Path::new(""), &mut files)?;
+            files.sort();
+            let mut tree = Vec::with_capacity(files.len());
+            for relative in files {
+                let full = path.join(&relative);
+                let bytes = std::fs::read(&full)
+                    .map_err(|e| format!("cannot read {}: {e}", full.display()))?;
+                tree.push((relative, bytes));
+            }
+            Ok(Some(InputContent::Tree(tree)))
+        }
+        Ok(_) => std::fs::read(path)
+            .map(|bytes| Some(InputContent::File(bytes)))
+            .map_err(unreadable),
     }
+}
+
+fn tree_files(
+    root: &std::path::Path,
+    relative: &std::path::Path,
+    out: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
+    let dir = root.join(relative);
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+        let child = relative.join(entry.file_name());
+        let kind = entry
+            .file_type()
+            .map_err(|e| format!("cannot stat {}: {e}", root.join(&child).display()))?;
+        if kind.is_dir() {
+            tree_files(root, &child, out)?;
+        } else {
+            out.push(child);
+        }
+    }
+    Ok(())
 }
 
 /// THE ANCHOR IS WHEN COMPILATION STARTED, NOT WHEN THE BINARY WAS LINKED. An input edited after
@@ -5131,6 +5183,7 @@ mod binary_freshness_tests {
         let edited = checkout("edited", "fn a() { edited() }");
         let inputs = vec![
             built.join("src/v1/stage0/Cargo.toml").display().to_string(),
+            built.join("src/v1/stage0/src").display().to_string(),
             built.join("src/v1/stage0/src/lib.rs").display().to_string(),
             registry.display().to_string(),
         ];
@@ -5142,16 +5195,23 @@ mod binary_freshness_tests {
         };
         assert!(matches!(
             verdict(&same),
-            BinaryFreshness::Fresh { inputs: 3, .. }
+            BinaryFreshness::Fresh { inputs: 4, .. }
         ));
         match verdict(&edited) {
-            BinaryFreshness::Stale { input, .. } => assert_eq!(
-                input,
-                edited
-                    .join("src/v1/stage0/src/lib.rs")
-                    .display()
-                    .to_string()
-            ),
+            BinaryFreshness::Stale { input, .. } => {
+                assert_eq!(
+                    input,
+                    edited.join("src/v1/stage0/src").display().to_string()
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+        let added = checkout("added", "fn a() {}");
+        std::fs::write(added.join("src/v1/stage0/src/extra.rs"), "").unwrap();
+        match verdict(&added) {
+            BinaryFreshness::Stale { input, .. } => {
+                assert_eq!(input, added.join("src/v1/stage0/src").display().to_string())
+            }
             other => panic!("{other:?}"),
         }
         assert!(matches!(
