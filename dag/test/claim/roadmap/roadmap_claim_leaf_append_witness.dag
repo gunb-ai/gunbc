@@ -231,7 +231,18 @@ fn admitted_leaf_claims(layout: RoadmapEventCarrierLayout) -> Bool {
     WriterAppended { id: id, close_lines: close_lines } =>
       claim("the real leaf claim appended and its snapshot closed cleanly", count(close_lines) == 0)
         && match read_log_snapshot(layout: layout) {
-            Observed { events: events, ids_joined: ids_joined, wire_joined: wire_joined, envelopes: envelopes } =>
+            Observed { events: events, ids_joined: ids_joined, wire_joined: wire_joined, envelopes: envelopes } => {
+              let first = match envelopes.first() {
+                Present { value: env } => match env.event.kind {
+                  Claimed { grain } => match grain {
+                    AtPath { path } => claim("the reader decodes a Claimed whose grain names item/stage/piece/member the claim named",
+                      path.item == item() && path.stage == 0 && path.piece == 0 && path.member == 0)
+                    Pathless => claim("the reader decoded a PATHLESS grain where the claim named 0/0/0 -- the wire lost the leaf", false)
+                  }
+                  _ => claim("the reader decoded a kind other than Claimed", false)
+                }
+                Absent => claim("the read back no envelopes", false)
+              }
               claim("the append changed the log: exactly one event now stands for the item", events == 1)
                 && claim("the log holds the event the append answered with", ids_joined == (id as String))
                 && claim("the committed bytes carry the leaf the claim named",
@@ -239,18 +250,7 @@ fn admitted_leaf_claims(layout: RoadmapEventCarrierLayout) -> Bool {
                        && string_contains(s: wire_joined, pattern: "stage")
                        && string_contains(s: wire_joined, pattern: "piece")
                        && string_contains(s: wire_joined, pattern: "member"))
-                && (let first = match envelopes.first() {
-                     Present { value: env } => match env.event.kind {
-                       Claimed { grain } => match grain {
-                         AtPath { path } => claim("the reader decodes a Claimed whose grain names item/stage/piece/member the claim named",
-                           path.item == item() && path.stage == 0 && path.piece == 0 && path.member == 0)
-                         Pathless => claim("the reader decoded a PATHLESS grain where the claim named 0/0/0 -- the wire lost the leaf", false)
-                       }
-                       _ => claim("the reader decoded a kind other than Claimed", false)
-                     }
-                     Absent => claim("the read back no envelopes", false)
-                   }
-                   first)
+                && first
             }
             Unreadable { step: step, reason: reason } => claim(
               "the log could not be read back after the append (" + step + ": " + reason + ")", false)
@@ -276,39 +276,40 @@ fn planted_refusal_claims(layout: RoadmapEventCarrierLayout) -> Bool {
     operation: "op-cool-moth-146-seed-000")
   match seed {
     WriterAppended { id: seed_id, close_lines: seed_close } => match read_log_snapshot(layout: layout) {
-      Observed { events: seed_events, ids_joined: seed_ids, wire_joined: seed_wire, envelopes: _ } =>
+      Observed { events: seed_events, ids_joined: seed_ids, wire_joined: seed_wire, envelopes: _ } => {
+        let planted_id = planted_envelope_id()
+        let route = record_claimed_through_the_guard_route(
+          layout: layout, node: item(), leaf_stage: "1", leaf_piece: "0", leaf_member: "0",
+          operation: "op-cool-moth-146-planted-100")
         claim("the accepted real claim is on the log (clean close, one event), so 'unchanged' is measured against a non-empty log",
           count(seed_close) == 0 && seed_events == 1 && seed_ids == (seed_id as String))
-          && (let planted_id = planted_envelope_id()
-              let route = record_claimed_through_the_guard_route(
-                layout: layout, node: item(), leaf_stage: "1", leaf_piece: "0", leaf_member: "0",
-                operation: "op-cool-moth-146-planted-100")
-              match route {
-                GuardRefused { tag: tag, reason_text: reason_text } =>
-                  claim("the planted path 1/0/0 refused BEFORE any write, by the carrier's own leaf claim, typed leaf-path-unknown",
-                    tag == "leaf-path-unknown")
-                    && claim("the refusal is the carrier's rendered text, naming the planted path",
-                         string_contains(s: reason_text, pattern: "1/0/0")
-                           && string_contains(s: reason_text, pattern: "not a leaf"))
-                    && match read_log_snapshot(layout: layout) {
-                         Observed { events: after_events, ids_joined: after_ids, wire_joined: after_wire, envelopes: _ } =>
-                           claim("the refused append left the log unchanged: same event count", after_events == 1)
-                             && claim("same event ids", after_ids == seed_ids)
-                             && claim("same committed bytes, wire for wire", after_wire == seed_wire)
-                             && claim("the planted claim is nowhere on the log -- the writer never ran",
-                                  !string_contains(s: after_ids, pattern: planted_id as String))
-                         Unreadable { step: step, reason: reason } => claim(
-                           "the log could not be read back after the refusal (" + step + ": " + reason + ")", false)
-                       }
-                WriterAppended { id: planted, close_lines: _ } => claim(
-                  "RED: the planted nonexistent leaf 1/0/0 was WRITTEN (event " + (planted as String) + ") -- append admission is not enforced", false)
-                WriterAlreadyPresent { id: _, close_lines: _ } => claim(
-                  "RED: the planted path answered as already-present -- it reached the writer, which is the same failure", false)
-                WriterRefused { step: step, reason: reason, close_lines: _ } => claim(
-                  "the planted path reached the WRITER and died at " + step + " (" + reason + ") -- it must refuse at the guard, before any write", false)
-                ParserMalformed { field: field, why: why } => claim(
-                  "the planted path was refused as MALFORMED at field '" + field + "' (" + why + ") -- it must be well-formed and still not a leaf", false)
-              })
+          && match route {
+            GuardRefused { tag: tag, reason_text: reason_text } =>
+              claim("the planted path 1/0/0 refused BEFORE any write, by the carrier's own leaf claim, typed leaf-path-unknown",
+                tag == "leaf-path-unknown")
+                && claim("the refusal is the carrier's rendered text, naming the planted path",
+                     string_contains(s: reason_text, pattern: "1/0/0")
+                       && string_contains(s: reason_text, pattern: "not a leaf"))
+                && match read_log_snapshot(layout: layout) {
+                     Observed { events: after_events, ids_joined: after_ids, wire_joined: after_wire, envelopes: _ } =>
+                       claim("the refused append left the log unchanged: same event count", after_events == 1)
+                         && claim("same event ids", after_ids == seed_ids)
+                         && claim("same committed bytes, wire for wire", after_wire == seed_wire)
+                         && claim("the planted claim is nowhere on the log -- the writer never ran",
+                              !string_contains(s: after_ids, pattern: planted_id as String))
+                     Unreadable { step: step, reason: reason } => claim(
+                       "the log could not be read back after the refusal (" + step + ": " + reason + ")", false)
+                   }
+            WriterAppended { id: planted, close_lines: _ } => claim(
+              "RED: the planted nonexistent leaf 1/0/0 was WRITTEN (event " + (planted as String) + ") -- append admission is not enforced", false)
+            WriterAlreadyPresent { id: _, close_lines: _ } => claim(
+              "RED: the planted path answered as already-present -- it reached the writer, which is the same failure", false)
+            WriterRefused { step: step, reason: reason, close_lines: _ } => claim(
+              "the planted path reached the WRITER and died at " + step + " (" + reason + ") -- it must refuse at the guard, before any write", false)
+            ParserMalformed { field: field, why: why } => claim(
+              "the planted path was refused as MALFORMED at field '" + field + "' (" + why + ") -- it must be well-formed and still not a leaf", false)
+          }
+      }
       Unreadable { step: step, reason: reason } => claim(
         "the log could not be read after seeding (" + step + ": " + reason + ")", false)
     }
