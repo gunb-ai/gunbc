@@ -84,9 +84,15 @@ import v2.workflow.floor_preparation_diff_scope {
 // ----------------------------------------------------------------------------------------------
 // SUPPLY DATA. Paths and digests the measurement is pinned to. One authority, read by every leg;
 // the digests are NOT trusted from here -- each is recomputed from disk at run time by sha256sum
-// through RunArgv and compared to these values and to release-bins.manifest, and the run refuses
-// before spawning any leg when a supply disagrees, is 0 bytes, or hashes to the empty-string
-// digest. A 0-byte download that exits 0 has fooled this lane; the byte count is checked beside
+// through RunArgv and compared to these values, and the run refuses before spawning any leg when
+// a supply disagrees, is 0 bytes, or hashes to the empty-string digest. The model's PIN is the
+// authority; agreement with a locally-held copy of release-bins.manifest is CORROBORATION only,
+// so the receipt renders the manifest as a token -- `manifest=matched` when the local line equals
+// the recomputed digest, `manifest=absent` when no line exists -- never as a claim that the
+// manifest was consulted when it was not. No release-bins.manifest ships in the repo and no
+// downloadable release-bins artifact exists on main today, so "manifest-pinned" is never claimed:
+// the binaries are release-bins UNPACKED, pinned by the values below, cross-checked against the
+// caller-supplied manifest copy when one is present. A 0-byte download that exits 0 has fooled this lane; the byte count is checked beside
 // the digest for exactly that reason.
 // ----------------------------------------------------------------------------------------------
 
@@ -95,8 +101,9 @@ import v2.workflow.floor_preparation_diff_scope {
 // and policy enters only through the caller's environment, which is the parameter channel for an
 // entry point that takes no argv. The caller MUST set: FLOOR_CHECKOUT (the checkout under
 // measurement), FLOOR_HEAVY_SLOT (the shared limiter's location), FLOOR_CLAIM_BATCH, FLOOR_GUNBC
-// (the pinned release binaries) and FLOOR_MANIFEST (the release manifest the shas are checked
-// against); HEAVY_OWNER carries the slot attribution, and the limiter itself refuses an unset
+// (the pinned release binaries, release-bins UNPACKED -- the model pins are the authority) and
+// FLOOR_MANIFEST (a copy of release-bins.manifest used only for cross-checking; a supply whose
+// manifest has no line for it renders manifest=absent, never a fabricated match); HEAVY_OWNER carries the slot attribution, and the limiter itself refuses an unset
 // owner with exit 64, so no leg can run unattributed. When a required variable is unset the run
 // refuses on the verify-pinned-supplies receipt NAMING the variables -- no invented default can
 // quietly point a measurement at the wrong tree. The pasteable entry point therefore carries its
@@ -106,7 +113,7 @@ import v2.workflow.floor_preparation_diff_scope {
 //     FLOOR_HEAVY_SLOT=$HOME/bin/heavy-slot \
 //     FLOOR_CLAIM_BATCH=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/claim_batch \
 //     FLOOR_GUNBC=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/gunbc \
-//     FLOOR_LEG_DRIVER=$HOME/scratch/$HEAVY_OWNER/bin/eagle-leg-driver \
+//     FLOOR_LEG_DRIVER=$HOME/scratch/$HEAVY_OWNER/bin/eagle-leg-driver-v3 \
 //     FLOOR_MANIFEST=$HOME/scratch/$HEAVY_OWNER/bin/bins/release-bins.manifest
 //   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
@@ -191,9 +198,14 @@ data floor_preparation_pinned_gunbc_sha: String =
 // supply like claim_batch: argv[1] is the log path, the rest is program+arguments passed verbatim
 // to exec with the streams appended to that file. No shell string is built from leg data; the
 // driver is a fixed lane tool, not generated text, and a tampered driver cannot fake the verdict
-// lines the census claim cross-checks against the retained log.
+// lines the census claim cross-checks against the retained log. v3 (the pinned sha below) also
+// enforces the claim_batch pin AT THE LEG LAYER -- the leg refuses (exit 97) rather than exec a
+// claim_batch whose on-disk sha256 is not the model's pinned release -- and prints the
+// acquisition-identity block (pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY with tracked dirt only
+// per the repo_self_build.dag:302-311 doctrine, and sha256+bytes of every file operand) from the
+// leg's own process, so the log itself carries what the leg judged.
 data floor_preparation_pinned_leg_driver_sha: String =
-  "a86094e69ce71dd96eb1e00e63188d77de2b92eb254f1b50f1ca9379f858fa33"
+  "c09c3bf1754104cf0871e2eff617f7234c22f4b8322db003213c9a782a80da3c"
 
 data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
@@ -562,7 +574,9 @@ fn floor_preparation_receipt(step: String, detail: String) -> String {
 
 // ----------------------------------------------------------------------------------------------
 // SUPPLY INTEGRITY. sha256sum runs through the same spawn surface; the comparisons are model
-// code, against BOTH the pinned value above and the release manifest line.
+// code against the PINNED value above, which is the authority. The caller-supplied manifest line
+// is corroboration: its token is rendered on the receipt (matched/absent) and a line that exists
+// must agree, but no check claims a manifest it did not read.
 // ----------------------------------------------------------------------------------------------
 
 // Absence is TYPED, never a fabricated "" or -1 (review 97872): a failed checksum command or an
@@ -634,8 +648,8 @@ fn floor_preparation_supply_check(name: String, path: String, expected: String) 
   let manifest = floor_preparation_manifest_sha(kind: name)
   let admitted = match digest_opt {
     Present { value: d } => match bytes_opt {
-      Present { value: b } => d != floor_preparation_empty_sha && d == expected && manifest == d
-      && byte_size_count(b) > 0
+      Present { value: b } => d != floor_preparation_empty_sha && d == expected
+        && (manifest == "" || manifest == d) && byte_size_count(b) > 0
       Absent {} => false
     }
     Absent {} => false
@@ -672,12 +686,19 @@ fn floor_preparation_supply_line(r: FloorPreparationSupplyReceipt) -> String {
     Present { value: b } => to_string(byte_size_count(b))
     Absent {} => "BYTES_UNREADABLE"
   }
+  let manifest_matched_flag = r.manifest == digest_text
+  let manifest_token_if_line = if manifest_matched_flag { "matched" } else { "unmatched" }
+  let manifest_token = if r.manifest == "" { "absent" } else { manifest_token_if_line }
   if r.admitted {
     // A required-env receipt carries no digest or count: render only what it read. An admitted
     // binary receipt must print both, so Absent never rides along on a pass line.
     match r.digest {
-      Present { value: d } => concat(concat(concat("[runner-supply] name=", r.name), concat(" sha256=", d)),
-        concat(" bytes=", bytes_text))
+      Present { value: d } => {
+        let supply_line_1 = concat("[runner-supply] name=", r.name)
+        let supply_line_2 = concat(supply_line_1, concat(" sha256=", d))
+        let supply_line_3 = concat(supply_line_2, concat(" bytes=", bytes_text))
+        concat(supply_line_3, concat(" manifest=", manifest_token))
+      }
       Absent {} => concat("[runner-supply] name=", r.name)
     }
   } else {
@@ -1213,6 +1234,27 @@ fn floor_preparation_capture_run() -> String {
       tree_sha: tree_sha, kept_count: length(xs: kept_graded), outcome: graded,
       captured: graded_transcript)
     let graded_receipt = floor_preparation_leg_receipt(r: graded_record)
+    // TRANSPORT TRUNCATION IS A HARD STOP (run9o, royal-newt ruling 2026-11-27). A leg killed at
+    // its bound -- claim_batch exit 124 from /usr/bin/timeout -- has NOT completed, whatever rows
+    // it printed first: run9o's graded leg died at rc=124 with kept_rows=97 of the untrimmed 139,
+    // and the census then refused on missing graded rows for a reason its text did not state.
+    // A bound is legitimate; treating a truncated leg as a completed one is not. So a 124 here
+    // refuses BEFORE the consumer/census legs run against partial rows, and the refusal NAMES the
+    // leg and the timeout bound. The skipped legs record rc=124 with empty transcripts themselves:
+    // skipped, never silently green.
+    let transport_timeout_rc = 124
+    let untrimmed_truncated = untrimmed.rc == transport_timeout_rc
+    let graded_truncated = length(xs: survivors) > 0 && graded.rc == transport_timeout_rc
+    let transport_ok = !untrimmed_truncated && !graded_truncated
+    let transport_line = if untrimmed_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-untrimmed rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_untrimmed_bound()))))
+    } else if graded_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-graded rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_graded_bound()))))
+    } else {
+      "[leg-transport] hold=clean no leg died at its bound"
+    }
     // TRANSCRIPT RECEIPTS. Each leg's full stream already lives on disk (script -qef LOG --);
     // the receipt names the file and counts what the transcript holds, so a spawn that produced
     // no transcript is visible on the receipts as bytes=0 verdicts=0 rather than as silence.
@@ -1287,16 +1329,25 @@ fn floor_preparation_capture_run() -> String {
         list_push(xs: acc, item: name)
       })
     let claims_a_args = floor_preparation_claims_leg_argv(leg_a_roster)
-    let claims_a = floor_preparation_spawn_slot_captured(
-      label: "leg-claims-a", bound: floor_preparation_claims_bound(),
-      binary: floor_preparation_pinned_claim_batch(),
-      args: claims_a_args)
+    let claims_a = if transport_ok {
+      floor_preparation_spawn_slot_captured(
+        label: "leg-claims-a", bound: floor_preparation_claims_bound(),
+        binary: floor_preparation_pinned_claim_batch(),
+        args: claims_a_args)
+    } else {
+      FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
+        stderr: "skipped: a capture leg was truncated at its transport bound; census legs do not judge partial rows" }
+    }
     // A gate that discards the only stream telling it WHAT IT EXECUTED is not a gate. The claim
     // leg's FULL transcript -- PASS/FAIL/UNOBSERVED verdicts (claim_batch.rs prints them with
     // println!, i.e. STDOUT; run8's gate read stderr and could never see a verdict) plus every
     // resolve banner and phase line -- is read back from the script log and its size reported,
     // so a missing-roster verdict can be read, not guessed.
-    let claims_transcript = floor_preparation_read_captured(label: "leg-claims-a")
+    let claims_transcript = if transport_ok {
+      floor_preparation_read_captured(label: "leg-claims-a")
+    } else {
+      "transport truncated: leg-claims-a skipped"
+    }
     let claims_stderr_text = match checked_int_to_nat(n: claims_transcript.length()) {
       Present { value: k } => to_string(byte_size_count(byte_size(count: k)))
       Absent {} => "BYTES_UNREADABLE"
@@ -1330,11 +1381,20 @@ fn floor_preparation_capture_run() -> String {
       path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
       content: concat(concat(retained_header, "\n"), retained))).success
     let claims_b_args = floor_preparation_claims_leg_argv(floor_preparation_consumer_claims)
-    let claims_b = floor_preparation_spawn_slot_captured(
-      label: "leg-claims-b", bound: floor_preparation_claims_bound(),
-      binary: floor_preparation_pinned_claim_batch(),
-      args: claims_b_args)
-    let claims_b_transcript = floor_preparation_read_captured(label: "leg-claims-b")
+    let claims_b = if transport_ok {
+      floor_preparation_spawn_slot_captured(
+        label: "leg-claims-b", bound: floor_preparation_claims_bound(),
+        binary: floor_preparation_pinned_claim_batch(),
+        args: claims_b_args)
+    } else {
+      FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
+        stderr: "skipped: a capture leg was truncated at its transport bound; census legs do not judge partial rows" }
+    }
+    let claims_b_transcript = if transport_ok {
+      floor_preparation_read_captured(label: "leg-claims-b")
+    } else {
+      "transport truncated: leg-claims-b skipped"
+    }
     let passed_b = floor_preparation_pass_names(stdout_text: claims_b_transcript)
     let missing_b = fold(floor_preparation_consumer_claims,
       init: [], f: (acc, name) =>
@@ -1433,10 +1493,11 @@ fn floor_preparation_capture_run() -> String {
       if own_roster_clean { "retained=written own_roster_clean=true" } else { "retained=written own_roster_clean=false" }
     } else { "retained=WRITE_FAILED" }
     let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
-    if !report_ok || length(xs: missing) > 0 || !splice_ok || !retained_write || !own_roster_clean {
-      concat(join(all_receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
+    let receipts_with_transport = list_push(xs: all_receipts, item: transport_line)
+    if !report_ok || length(xs: missing) > 0 || !splice_ok || !retained_write || !own_roster_clean || !transport_ok {
+      concat(join(receipts_with_transport, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
-      concat(join(all_receipts, "\n"),
+      concat(join(receipts_with_transport, "\n"),
         concat("\n", concat(join(report_lines, "\n"),
           concat("\n", floor_preparation_receipt("terminal-gate", "ALL_GATES_GREEN")))))
     }
