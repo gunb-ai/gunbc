@@ -32,9 +32,13 @@ import gunbc.parse_population_baseline_roster {
   parse_population_stall_next_rung_capability,
   ParsePopulationMeasurementReceipt,
   ParsePopulationCellMeasurement,
+  ParsePopulationMeasurementCellKind, ParsePopulationSampleShape,
+  CellREF, CellA, CellB, CellC, CellE,
+  FiveLargest, Sample165SizeTail, FullRootsReference,
   parse_population_measurement_receipts,
   parse_population_receipts_are_publishable,
   parse_population_receipt_durations_are_ordered,
+  parse_population_receipt_measurement_shape_is_sealed,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -166,22 +170,20 @@ test fn parse_population_cardinality_refuses_mistyped_real_row_holds() -> Bool {
 // its only consumer is a decoration; the ledger-line function is deleted from the carrier, and with it the
 // leg's old name (it named that deleted artefact; the tsv join dag/gunbc/witness/witness_row_cost_basis.tsv
 // carries no parse_population rows -- 0 hits -- so the rename breaks no join). Review point (warm-fox, final
-// head): f() == f() cannot fail in any world; the equality now joins TWO INDEPENDENT ROUTES to the same
-// value: route A is the carrier's extraction parse_population_stall_next_rung_capability over the rostered
-// stall (its own match, imported directly), route B is the carrier's beside-grammar reader, a different
-// expression in a different position that must return the same text. Tampering demonstration (which edit
-// makes this leg fail): (1) edit the carrier's extraction to return a constant (or reach past the trigger's
-// value) -> route A and route B diverge, leg prints DID NOT HOLD; (2) swap a planted stall into the rostered
-// binding -> the labelled negative control "planted" (0 occurrences in the authority file) fires, leg prints
-// DID NOT HOLD. Editing the AUTHORITY's prose cannot redden this leg -- both routes read the same authority,
-// so a reword moves them together (that is the point of deriving from the authority rather than copying a
-// literal). WHAT THIS LEG DOES NOT CARRY, stated honestly: it does not assert the capability's CONTENT --
+// head, 8f213df09bd): an equality whose right side is DEFINED as its left side -- the beside-grammar
+// reader is one line calling the extraction -- is f(x) == f(x) wearing a wrapper and cannot fail in any
+// world, so that conjunct is DELETED rather than dressed up; the leg keeps only the two arms that can
+// actually fail. Tampering demonstration (executed at the acquisition, not argued): swap a planted stall
+// into the rostered binding -> the labelled negative control "planted" (0 occurrences in the authority
+// file) fires and the leg prints DID NOT HOLD. Editing the AUTHORITY's prose cannot redden this leg --
+// it reads the authority through the carrier and asserts no literal, which is the point: the truth is
+// derived, not copied. WHAT THIS LEG DOES NOT CARRY, stated honestly: it does not assert the capability's CONTENT --
 // "emitted, declared route" now lives in exactly one place, the authority file
 // dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag, guarded by no leg;
 // the leg carries non-emptiness (stall_trigger_admission refuses an empty trigger) and the no-planted-leak
 // control only. Value-sensitivity of the extraction itself lives in the planted pair below.
 test fn parse_population_stall_trigger_capability_declared_holds() -> Bool {
-  parse_population_stall_next_rung_capability(stall: parse_population_carrier_reader_beside_grammar_stall) == parse_population_carrier_reader_beside_grammar_stall_capability() && parse_population_carrier_reader_beside_grammar_stall_capability() != "" && !string_contains(s: parse_population_carrier_reader_beside_grammar_stall_capability(), pattern: "planted")
+  parse_population_carrier_reader_beside_grammar_stall_capability() != "" && !string_contains(s: parse_population_carrier_reader_beside_grammar_stall_capability(), pattern: "planted")
 }
 
 // THE EXTRACTION, TESTED THROUGH THE CARRIER'S OWN FUNCTION (review 99025 F1: no local copy -- a witness that
@@ -272,4 +274,35 @@ test fn parse_population_receipt_publishability_refuses_planted_failed_cell_hold
 
 fn parse_population_receipt_count(receipts: List<ParsePopulationMeasurementReceipt>) -> Int {
   fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
+}
+
+// 18. THE SHAPE SEAL IS AN ENFORCED GATE, NOT CONVENTION (review 99118 F2). Two arms, one run: the real
+// five receipts all seal true (each cell carries its allowed measurement shape), and a planted ProcessTimes
+// capture under cell A (the wrong cell for a getrusage row) seals false. Edit the seal to admit
+// ProcessTimes under A and the second arm goes DID NOT HOLD -- the old fold skipped the question
+// entirely, so no edit to it reddened anything.
+test fn parse_population_receipt_measurement_shape_seal_refuses_mismatch_holds() -> Bool {
+  parse_population_receipt_measurement_shape_is_sealed(receipt: parse_population_measurement_receipts[0]) &&
+  !parse_population_receipt_measurement_shape_is_sealed(receipt: ParsePopulationMeasurementReceipt {
+    cell: CellA, population: FiveLargest, runs: 1,
+    measurement: ProcessTimes { utime: microsecond(count: 1), stime: microsecond(count: 1), minor_faults: 1, major_faults: 0, voluntary_ctx_switches: 0, involuntary_ctx_switches: 0 },
+    peak_rss: byte_size(count: 1), modules: 1, declared_refusals: 0, rc: 0,
+    binary_sha256: sha256_digest(digest_hex: "0000000000000000000000000000000000000000000000000000000000000000"),
+    tree_sha: "planted", host: operator_host_srv1, boot_id: "planted-boot",
+    fault_injection: "none", note: "ProcessTimes under A: the shape seal must refuse this"
+  })
+}
+
+// 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): every real receipt's
+// cell renders non-empty and the five renderings are pairwise distinct -- collapse any arm of
+// parse_population_measurement_cell_kind_render onto another and this leg goes DID NOT HOLD. The
+// report and the roster read these renderings; they copy nothing.
+test fn parse_population_cell_renderings_are_distinct_holds() -> Bool {
+  host_identity_eq(a: parse_population_measurement_receipts[0].host, b: operator_host_srv1)
+  && string_contains(s: parse_population_measurement_cell_kind_render(cell: CellREF), pattern: "REF")
+  && parse_population_measurement_cell_kind_render(cell: CellREF) != parse_population_measurement_cell_kind_render(cell: CellA)
+  && parse_population_measurement_cell_kind_render(cell: CellA) != parse_population_measurement_cell_kind_render(cell: CellB)
+  && parse_population_measurement_cell_kind_render(cell: CellB) != parse_population_measurement_cell_kind_render(cell: CellC)
+  && parse_population_measurement_cell_kind_render(cell: CellC) != parse_population_measurement_cell_kind_render(cell: CellE)
+  && parse_population_sample_shape_render(shape: FiveLargest) != parse_population_sample_shape_render(shape: Sample165SizeTail)
 }

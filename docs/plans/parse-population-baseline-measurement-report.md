@@ -191,7 +191,7 @@ voluntary_ctx_switches, involuntary_ctx_switches}` for the getrusage leg — so 
 once, and the witness adds a second refusal leg: a planted reversed `min > max` triple is refused by
 `parse_population_receipt_durations_are_ordered` (a state prose in a String could not express).
 
-`rc` is taken from the command directly (`RC=$?` immediately after `/usr/bin/time … "$BIN" "$@"`), never through a pipe. The verb counts one extra module per population (166 for the staged 165, 10567 for 10562) — a stable +~5 offset from the enumeration, reported as the verb prints it.
+`rc` is taken from the command directly (`RC=$?` immediately after `/usr/bin/time … "$BIN" "$@"`), never through a pipe. The verb counts a few more modules per population than the staged file count — a stable offset from the enumeration; the per-cell counts are the `runs`/`modules` fields of the binding rows, not repeated here.
 
 Machine: srv1, 48–50 concurrent sessions, load average 15–21 during the sweep (other lanes running `claim_batch` over the floor and a `--regen-round-cost` converge; slots 2,3,6,7,11 held by four other owners).
 

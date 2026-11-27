@@ -1,6 +1,6 @@
 module gunbc.parse_population_baseline_roster
 
-import std.types { Bool, Int, List, String, NonEmptyStr, CommitSha }
+import std.types { Bool, Int, List, String, CommitSha }
 import std.content_hash { Sha256Digest }
 import std.measure { ByteSize, Microsecond, byte_size, microsecond, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
@@ -10,6 +10,8 @@ import gunbc.guarantee_stall { NextRungTrigger, GuaranteeStall }
 import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall {
   parse_population_carrier_reader_beside_grammar_stall,
 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import product.host_identity { HostIdentity, host_identity_eq }
 
 // THE PARSE-POPULATION BASELINE ROSTER: the single typed authority for the two fixed parse
 // populations named by roadmap row emission-real-consumer-profiles first_slice ("the 5 largest dag
@@ -248,9 +250,40 @@ data parse_population_baseline_rows: List<ParsePopulationRow> = [
 // measurement — repeated wall-clock runs vs one getrusage capture — are separate variants with named
 // parts, not prose in a String (review 98981: "A String leaf hiding named parts is anemic
 // modeling"; cell E no longer repeats the RSS fact that peak_rss already carries).
+// THE CELL AND THE POPULATION ARE DECLARED COPRODUCTS, not free text (review 99118 F2: cell: NonEmptyStr
+// held tags from a closed set and population: NonEmptyStr re-recorded membership the roster already
+// derives from rank -- an undeclared sum type, a second place that independently decides it). The arms
+// are the closed set the sweep can contain; an unknown cell or population is now unrepresentable, and
+// the renderings below are the one home for any display label.
+type ParsePopulationMeasurementCellKind = CellREF | CellA | CellB | CellC | CellE
+
+// The population a cell measures: membership is the ROSTER'S OWN derivation (rank from position in the
+// 170-row size-descending binding), never a free-text label. FullRootsReference is the unfiltered run.
+type ParsePopulationSampleShape = FiveLargest | Sample165SizeTail | VerdictOnly165Reuse | InstrumentCheckPop5 | FullRootsReference
+
+fn parse_population_measurement_cell_kind_render(cell: ParsePopulationMeasurementCellKind) -> String {
+  match cell {
+    CellREF => "REF"
+    CellA => "A"
+    CellB => "B"
+    CellC => "C"
+    CellE => "E"
+  }
+}
+
+fn parse_population_sample_shape_render(shape: ParsePopulationSampleShape) -> String {
+  match shape {
+    FiveLargest => "Five Largest (5)"
+    Sample165SizeTail => "165-Sample (size tail)"
+    VerdictOnly165Reuse => "165-Sample verdict-only (--reuse-from)"
+    InstrumentCheckPop5 => "instrument-check, roots_pop5 (getrusage, not perf)"
+    FullRootsReference => "full dag+src/v2 roots"
+  }
+}
+
 type ParsePopulationMeasurementReceipt {
-  cell: NonEmptyStr
-  population: NonEmptyStr
+  cell: ParsePopulationMeasurementCellKind
+  population: ParsePopulationSampleShape
   runs: Int
   measurement: ParsePopulationCellMeasurement
   peak_rss: ByteSize
@@ -259,8 +292,8 @@ type ParsePopulationMeasurementReceipt {
   rc: Int
   binary_sha256: Sha256Digest
   tree_sha: CommitSha
-  host: NonEmptyStr
-  boot_id: NonEmptyStr
+  host: HostIdentity
+  boot_id: String
 }
 
 // The cell's timing kind: A/B/C/REF are repeated wall-clock runs of the verb; E is a single
@@ -278,45 +311,45 @@ type ParsePopulationCellMeasurement
 // test.claim.parse_population_baseline_roster_witness (publishability + refusal legs, and the
 // duration-ordering discriminator), green by execution pending (A/B/C).
 data parse_population_measurement_receipts: List<ParsePopulationMeasurementReceipt> = [
-  ParsePopulationMeasurementReceipt { cell: "REF", population: "full dag+src/v2 roots", runs: 1,
+  ParsePopulationMeasurementReceipt { cell: CellREF, population: FullRootsReference, runs: 1,
     measurement: WallStat { min_wall: microsecond(count: 563940000),
       median_wall: microsecond(count: 563940000), max_wall: microsecond(count: 563940000) },
     peak_rss: byte_size(count: 673443840), modules: 10567, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: operator_host_srv1,
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
-  ParsePopulationMeasurementReceipt { cell: "A", population: "Five Largest (5)", runs: 3,
+  ParsePopulationMeasurementReceipt { cell: CellA, population: FiveLargest, runs: 3,
     measurement: WallStat { min_wall: microsecond(count: 20160000),
       median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 23300000) },
     peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: operator_host_srv1,
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
-  ParsePopulationMeasurementReceipt { cell: "B", population: "165-Sample (size tail)", runs: 3,
+  ParsePopulationMeasurementReceipt { cell: CellB, population: Sample165SizeTail, runs: 3,
     measurement: WallStat { min_wall: microsecond(count: 132190000),
       median_wall: microsecond(count: 132510000), max_wall: microsecond(count: 143840000) },
     peak_rss: byte_size(count: 503054336), modules: 166, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: operator_host_srv1,
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
-  ParsePopulationMeasurementReceipt { cell: "C", population: "165-Sample verdict-only (--reuse-from)", runs: 1,
+  ParsePopulationMeasurementReceipt { cell: CellC, population: VerdictOnly165Reuse, runs: 1,
     measurement: WallStat { min_wall: microsecond(count: 136660000),
       median_wall: microsecond(count: 136660000), max_wall: microsecond(count: 136660000) },
     peak_rss: byte_size(count: 500129792), modules: 166, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: operator_host_srv1,
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
-  ParsePopulationMeasurementReceipt { cell: "E", population: "instrument-check, roots_pop5 (getrusage, not perf)", runs: 1,
+  ParsePopulationMeasurementReceipt { cell: CellE, population: InstrumentCheckPop5, runs: 1,
     measurement: ProcessTimes { utime: microsecond(count: 28920000), stime: microsecond(count: 610000),
       minor_faults: 160128, major_faults: 0, voluntary_ctx_switches: 2, involuntary_ctx_switches: 212 },
     peak_rss: byte_size(count: 668962816), modules: 5, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: operator_host_srv1,
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
 ]
 
@@ -330,17 +363,33 @@ fn parse_population_receipts_are_publishable(receipts: List<ParsePopulationMeasu
     acc && r.rc == 0 && r.declared_refusals == 0 && r.runs > 0 && r.modules > 0
       && measure_le(a: byte_size(count: 0), b: r.peak_rss)
       && !measure_le(a: r.peak_rss, b: byte_size(count: 0))
-      && string_contains(s: r.host, pattern: "srv1")
+      && host_identity_eq(a: r.host, b: operator_host_srv1)
   })
 }
 
 // The duration invariant the statistics must obey — min <= median <= max, compared IN the Microsecond
-// measure. WallStat cells only; a ProcessTimes cell has no such triple and passes vacuously. The
-// witness plants a reversed triple (a representable forbidden state: min recorded from the wrong end
-// of the run list) and watches this refuse it.
+// measure — AND the sealed shape rule above, in one fold: a receipt under the wrong cell is refused,
+// not skipped. The witness plants a reversed triple (a representable forbidden state: min recorded from
+// the wrong end of the run list) and a mismatched shape, and watches this refuse both.
+// WHICH CELLS TAKE WHICH MEASUREMENT SHAPE IS TYPED, NOT CONVENTION (review 99118 F2: the old fold let
+// every ProcessTimes receipt pass whatever cell it sat under -- a leg that could not fail). Cell E is
+// the getrusage capture and ONLY E may carry one; REF/A/B/C are repeated wall-clock runs and must carry
+// the ordered triple. Both directions are falsifiable: the witness plants a reversed triple AND a
+// mismatched shape.
+fn parse_population_receipt_measurement_shape_is_sealed(receipt: ParsePopulationMeasurementReceipt) -> Bool {
+  match receipt.cell {
+    CellE => match receipt.measurement { ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _, voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => true, WallStat { min_wall: _, median_wall: _, max_wall: _ } => false },
+    CellREF => match receipt.measurement { WallStat { min_wall: _, median_wall: _, max_wall: _ } => true, ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _, voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => false },
+    CellA => match receipt.measurement { WallStat { min_wall: _, median_wall: _, max_wall: _ } => true, ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _, voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => false },
+    CellB => match receipt.measurement { WallStat { min_wall: _, median_wall: _, max_wall: _ } => true, ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _, voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => false },
+    CellC => match receipt.measurement { WallStat { min_wall: _, median_wall: _, max_wall: _ } => true, ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _, voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => false }
+  }
+}
+
 fn parse_population_receipt_durations_are_ordered(receipts: List<ParsePopulationMeasurementReceipt>) -> Bool {
   fold_list(xs: receipts, empty: true, cons: fn(acc, r) {
-    acc && match r.measurement {
+    acc && parse_population_receipt_measurement_shape_is_sealed(receipt: r)
+      && match r.measurement {
       WallStat { min_wall: lo, median_wall: med, max_wall: hi } =>
         measure_le(a: lo, b: med) && measure_le(a: med, b: hi),
       ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _,
