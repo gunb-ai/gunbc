@@ -1,0 +1,8 @@
+2026-11-27T02:17:26Z power limits: 0, Tesla V100-SXM2-16GB, 150.00 W;1, Tesla PG500-216, 100.00 W;2, Tesla P100-PCIE-16GB, 125.00 W;
+2026-11-27T02:17:26Z starting strata server (cfg-john3, gpu 0,1,2)
+2026-11-27T02:17:26Z server already running: reusing it
+2026-11-27T02:19:09Z server ready (/v1/models 200) after 105 s; layer split: [strata] 2026-11-27 02:17:09 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/
+2026-11-27T02:19:13Z SMOKE 17*23 -> 391
+2026-11-27T02:19:13Z warm150k start
+2026-11-27T02:25:40Z warm150k done rc=0
+2026-11-27T02:25:40Z STRATA3 DONE

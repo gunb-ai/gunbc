@@ -1,0 +1,22 @@
+gpu0 Tesla V100-SXM2-16GB mem=15.8GiB sms=80 dtype=fp16
+gpu0 mem: 12 GiB verify mismatches=0
+gpu0 burn: t=30s tflops=66.02 checksum_mismatches=0
+gpu0 burn: t=60s tflops=65.61 checksum_mismatches=0
+gpu0 burn: t=90s tflops=65.37 checksum_mismatches=0
+gpu0 burn: t=120s tflops=65.53 checksum_mismatches=0
+gpu0 burn: t=151s tflops=65.63 checksum_mismatches=0
+gpu0 burn: t=181s tflops=65.68 checksum_mismatches=0
+gpu0 burn: t=211s tflops=65.70 checksum_mismatches=0
+gpu0 burn: t=241s tflops=65.71 checksum_mismatches=0
+gpu0 burn: t=271s tflops=65.71 checksum_mismatches=0
+gpu0 burn: t=301s tflops=65.69 checksum_mismatches=0
+gpu0 burn: t=331s tflops=65.68 checksum_mismatches=0
+gpu0 burn: t=361s tflops=65.66 checksum_mismatches=0
+gpu0 burn: t=391s tflops=65.64 checksum_mismatches=0
+gpu0 burn: t=421s tflops=65.63 checksum_mismatches=0
+gpu0 burn: t=451s tflops=65.61 checksum_mismatches=0
+gpu0 burn: t=481s tflops=65.60 checksum_mismatches=0
+gpu0 burn: t=512s tflops=65.58 checksum_mismatches=0
+gpu0 burn: t=542s tflops=65.57 checksum_mismatches=0
+gpu0 burn: t=572s tflops=65.56 checksum_mismatches=0
+gpu0 burn: DONE t=600s tflops=65.54 checksum_mismatches=0

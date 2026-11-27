@@ -1,0 +1,60 @@
+module gunbc.recurring_failure_mode.bmc_fan_posture_judged_from_a_hand_read_outside_the_observation_joins
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A CONCLUSION ABOUT A BMC'S FAN POSTURE DRAWN FROM ONE HAND READ THAT LACKS THE TWO JOINS THAT JUDGE IT. A fan
+// posture is a fact over time and over host state: what the firmware does to a zone after it was written, and
+// what the controller's readings mean given whether the host is powered and posted. A single hand read of a zone
+// byte or a sensor table answers neither, and the two specimens below are the two ways that single read misled
+// the same session on the same board in the same night -- once into trusting a duty the firmware had already
+// rewritten, once into calling a powered-off host's quiet sensors a dead controller. They are ONE row because
+// they are one move with one remedy: the posture is read through the observation that carries the joins (the
+// zone read back after the write and over the window that matters, and the chassis power and POST state beside
+// the sensor table), never concluded from the byte or the table alone.
+
+data bmc_fan_posture_judged_from_a_hand_read_outside_the_observation_joins: RecurringFailureMode = RecurringFailureMode {
+  identity: "bmc_fan_posture_judged_from_a_hand_read_outside_the_observation_joins" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a fan-posture converge leg for Supermicro BMCs that writes the zone through extdeps.bmc.supermicro_oem_fan SetZoneDuty and judges the posture only from GetZoneDuty readbacks taken over the window it is asked about (refusing, never assuming, when a readback differs from the write -- the trigger extdeps.bmc.supermicro_oem_fan supermicro_oem_fan_consumer_frontier already names), and that reads chassis power and the host's POST state (product.fan_policy_standing HostPostState, extdeps.bmc.ipmi_sdr sdr_temperature_publication) before it reads a silent sensor table as anything. SUFFICIENT FOR retiring john's hand-written chassis-fan-guard.service only when that leg runs on john and its readback is the evidence a benchmark row's fan standing is read from; a leg that writes without reading back, or reads once, is the specimen again.",
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE: a fan posture -- 'zone 1 is at 100%', 'the BMC has failed' -- concluded from one hand read of a zone byte or a sensor table, with neither the readback over time that says whether the firmware kept the write nor the chassis power and POST state that say what a silent sensor means. HARM: benchmark rows whose thermal readings are reported under a fan state they did not have, and an unneeded controller reset. It is SILENT: the zone write returns success, the readback a moment later echoes it, and nothing goes red when the firmware rewrites it two minutes later -- which is why the class was found below the ladder.**",
+
+    "**SPECIMEN 1, john (H11SSL unit 4, host-ba61f9), 2026-11-26/27: a hand-set zone duty assumed to hold while the BMC's curve rewrote it.** The session set fan mode Heavy IO (raw 0x30 0x45 0x01 0x04) and zone 1 to 0x64 (raw 0x30 0x70 0x66 0x01 0x01 0x64) at 23:09:51Z, again after the card-swap power cycle at 01:52:36Z, and again at 03:13Z, treated each write as standing, and ran thermal and serving benchmarks as if the chassis fans were at 100%. They were not held: artifacts/host-observations/john-serving-2026-11-27/fans-ab-20261127T034432Z.csv (srv2's BMC poll, every ~10 s) reads zone 1 at 0x64 from 03:44:07Z until 03:46:23Z, then 0x2f at 03:46:26Z -- 54 s into a full burn -- then a step-by-step ramp back to 0x64 by 03:47:59Z as the cards heated, a step-down to 0x39 after the burn, and a ramp back to 0x64 under the next serving load. No power cycle and no host write in that span: in Heavy IO the firmware runs a temperature-following curve that rewrites the zone, and the duty also resets on every power-off. Three runs (two serving, one burn) have no fan log at all, so their fan state is PROBABLY 100% under load (the curve rises under load) and not proven; THERMAL-NOTES.txt in that directory carries the caveat, and gunbc.serving.john_strata_bench_receipt carries each run's zone reading as logged or unlogged.",
+
+    "**SPECIMEN 2, the same board, 2026-11-27 03:13Z: a powered-off host's controller read as a failed one.** Finding every BMC sensor at 'No Reading', both zones at 0x32 and the SEL full, the session concluded the BMC's sensor polling had died and issued `mc reset cold`. The host was POWERED OFF -- the operator was changing cards; it booted at 03:12:41Z with no clean shutdown record -- and silent sensors with a 0x32 duty are this board's normal state with the host off or in POST. The reset was unnecessary, and the note that recorded the misreading (THERMAL-NOTES.txt 03:16:58Z) had to be corrected six minutes later (03:23:09Z). The model already separates these states: product.fan_policy_standing HostPostState keeps HostPoweredOff and HostPoweredOnPrePost apart from HostPosted, extdeps.bmc.ipmi_sdr sdr_temperature_publication distinguishes TemperatureSensorsSilent from an unreadable table, and gunbc.machine_intake.chassis_fan_establishment PostPowerFanRefusal refuses a fan verdict while the chassis is not on. The hand read went around every one of those joins.",
+
+    "**WHY ONE ROW AND NOT TWO.** The invalid states differ (a held duty that was not; a failed controller that was not), but the move is the same -- a posture concluded from a single hand read outside the observation that carries the joins -- and so are the recognition rule, the remedy and the next rung: route the reading through the modeled observation. Filing two rows would let each be closed by its own narrow guard (a 10 s re-assert loop; a 'check power first' note) while the move itself stays available for the next fan fact. The distinguishing facts keep the two specimens apart inside this row.",
+
+    "**DISTINGUISHING FACTS.** Not gunbc.recurring_failure_mode::a_passive_accelerator_sits_in_a_zone_that_does_not_follow_it: there the firmware zone cannot see the passive card at all; here the firmware DOES run a temperature-following curve (and john's BMC exposes a GPU1 Temp sensor in its poll), and the defect is a write assumed to stand against it. Not gunbc.recurring_failure_mode::adjacent_passive_accelerators_starve_each_other, which is about placement; john's slot comparison (the passive V100-32 slowed at 81:00 and not at c1:00) is CONFOUNDED with exactly this class, because the 81:00 runs have no fan log. And not the unread-firmware question extdeps.bmc.supermicro_oem_fan supermicro_unwritten_duty_standing asks -- what a zone holds in a mode when NO host has written duty: john's reading answers a different question, Heavy IO after a write, and does not discharge that standing. Related, not this class: gunbc.integration_concern.h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer, the unit-3 report that a hand setting reverts at every power-off -- the same board family's duty floor, still without a home in the fan layer.",
+
+    "**RECOGNITION RULE:** a fan state ('held', 'at 100%', 'failed', 'dead sensors') stated about a BMC from one read taken by hand, with no readback series covering the window the claim is about and no chassis power or POST reading beside it. The tells: a benchmark row whose fan standing cites the moment of the write instead of a log over its window; a controller reset justified by a sensor table alone.",
+
+    "**RUNG FOUND AT: below the ladder** -- nothing reported either misreading; both were found by the operator and the session reading a later log. **CURRENT: mitigatable.** On john, chassis-fan-guard.service (hand-written, artifacts/host-observations/john-serving-2026-11-27/chassis-fan-guard.sh) re-asserts 0x64 every 10 s in band and journals each correction, so the zone is held to within ~10 s and every rewrite is counted; and the benchmark receipt carries each run's zone as ZoneOneLogged or ZoneOneUnlogged, so an unlogged run cannot read as held (gunbc.serving.john_strata_bench_receipt zone_one_held_full). It is a mitigation: a dead guard fails open to the firmware curve, and the guard itself is the hand-written loop this row's trigger replaces. **CEILING: mechanically preventable** -- the firmware's curve is an external fact (outside the modeled guarantee), so the posture can be read back and refused, not made unwritable. **NEXT-RUNG TRIGGER:** the trigger_capability above.",
+
+    "**CONSUMPTION:** this per-class record joins the derived gunbc.recurring_failure_mode roster. Its discriminating probe is test.claim.serving.john_strata_bench_receipt_witness the_bmc_rewrote_the_hand_set_zone_where_nothing_held_it, which reads the logged zone bytes of the unguarded runs through the Supermicro OEM reply parser and requires the BMC's rewrite below the written 0x64 to be visible there, the guarded runs to read held, and an unlogged window never to read held.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.bmc.supermicro_oem_fan", decl_name: "supermicro_oem_fan_consumer_frontier"),
+    decl_ref(module_path: "extdeps.bmc.supermicro_oem_fan", decl_name: "supermicro_unwritten_duty_standing"),
+    decl_ref(module_path: "product.fan_policy_standing", decl_name: "HostPostState"),
+    decl_ref(module_path: "extdeps.bmc.ipmi_sdr", decl_name: "sdr_temperature_publication"),
+    decl_ref(module_path: "gunbc.machine_intake.chassis_fan_establishment", decl_name: "PostPowerFanRefusal"),
+    decl_ref(module_path: "gunbc.integration_concern.h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer", decl_name: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer"),
+    decl_ref(module_path: "gunbc.serving.john_strata_bench_receipt", decl_name: "zone_one_held_full"),
+    decl_ref(module_path: "test.claim.serving.john_strata_bench_receipt_witness", decl_name: "the_bmc_rewrote_the_hand_set_zone_where_nothing_held_it"),
+  ],
+}

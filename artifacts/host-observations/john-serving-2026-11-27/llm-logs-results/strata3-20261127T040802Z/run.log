@@ -1,0 +1,8 @@
+2026-11-27T04:08:03Z power limits: 0, Tesla V100-SXM2-16GB, 150.00 W;1, Tesla P100-PCIE-16GB, 125.00 W;2, Tesla PG500-216, 100.00 W;
+2026-11-27T04:08:03Z starting strata server (cfg-john3.json)
+2026-11-27T04:08:59Z server ready (/v1/models 200) after 55 s
+2026-11-27T04:08:59Z split: strata generate: layer split auto: K=21,22 would give a stage fewer than 3 layers (a tiny expert cache there clamps the prompt chunk of every card, #1616); chose K=19,22 instead (34.2 ms per decode window, not 33.8) strata generate: layer split auto: K=19,22 - predicted 34.2 ms per decode window; the caches hold 20767 of 24576 profiled pairs (~99.4% of the routed mass), best of 1855 placements strata generate: layer split auto: NEAR TIE - K=22,25 is predicted 34.4 ms per decode window, within 0.
+2026-11-27T04:09:01Z SMOKE 17*23 -> 391
+2026-11-27T04:09:01Z warm150k start
+2026-11-27T04:12:53Z warm150k done rc=0
+2026-11-27T04:12:53Z STRATA3 DONE

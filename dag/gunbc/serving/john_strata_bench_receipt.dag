@@ -1,0 +1,607 @@
+module gunbc.serving.john_strata_bench_receipt
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat, nat_max }
+import std.optional { Present, Absent }
+import std.measure {
+  Watt, watt, Celsius, celsius, celsius_count, Millisecond, millisecond, millisecond_count, Second, second,
+  MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, TokenCount, token_count,
+  Percent, percent_count,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.nvidia.management_library {
+  NvmlClocksEventReason, NvmlClocksEventSwPowerCap, NvmlClocksEventSwThermalSlowdown,
+  NvmlClocksEventHwThermalSlowdown, NvmlClocksEventHwSlowdown, nvml_clocks_event_mask, nvml_clocks_event_reason_bit,
+}
+import extdeps.bmc.supermicro_oem_fan { SupermicroFanMode, supermicro_zone_duty_answer }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_ba61f9 }
+
+// JOHN'S STRATA SERVING SETUP AND THE RUNS IT RESTS ON, 2026-11-26/27: what the committed files say, typed.
+//
+// THE FILES ARE THE AUTHORITY, this module transcribes them: artifacts/host-observations/john-serving-2026-11-27/,
+// every file pinned in its SHA256SUMS, each run's rows and telemetry by the digests carried on its row below. The
+// directory's 00_README.txt names every producer (strata_bench.py and warm150k_john.py by digest, because the
+// repository's .gitignore excludes *.py; the shell drivers under producers/), the awk that re-derives every
+// per-card count and fan count below from the committed files, and every caveat. The precedents are
+// gunbc.serving.h11_r9700_strata_bench_receipt (pinned files, transcribed) and
+// gunbc.serving.t10_pair_strata_bench_receipt (relayed, TranscribedUncited); this one is the first kind.
+//
+// WHY NOT gunbc.serving.serving_benchmark_run_receipt. Same reason as the R9700 receipt: these are
+// strata_bench.py and warm150k_john.py summary rows, not gpu-bench request/v4 rows, so they cannot inhabit
+// serving-benchmark/1 (stated divergence, gunbc.design_argument::conformance).
+//
+// WHY THE CARDS ARE SPELLED HERE AND NOT IN gunbc.fleet.gpu_device_observation. That module is the home of a
+// card's identity and limit range, and it keys a device by board asset. No GPU UUID or board serial was read on
+// john, and 10de:1df0 (nvidia-smi "Tesla PG500-216", the operator's V100 32 GB) has no extdeps.gpu board catalog
+// row, so no asset row can be grounded yet. What a run row carries is what THAT RUN's files print -- name, bus,
+// the power.limit on every sample -- as the run's conditions, the way the R9700 receipt carries the cap in force.
+// The frontier below names the read that moves the cards to their home.
+//
+// FAN STANDING IS PART OF EVERY THERMAL ROW. john's BMC rewrites a hand-set chassis zone duty with its own
+// temperature-following curve (gunbc.recurring_failure_mode::bmc_fan_posture_judged_from_a_hand_read_outside_the_observation_joins),
+// so a run's thermal reading means nothing without the zone-1 duty over its measured window, and four rows have
+// no fan log at all. The zone reading is carried as the duty bytes the BMC poll printed, read through
+// extdeps.bmc.supermicro_oem_fan, never as a percent typed by hand.
+
+// The cooler a card carries, as the operator reports it. No read of a heatsink exists; the two passive cards are
+// the ones whose temperature follows the chassis zone.
+type JohnCardCooling = BlowerCooler | PassiveHeatsink
+
+type JohnCard {
+  // nvidia-smi's name, as the run's gpu.csv prints it.
+  name: NonEmptyStr
+  // The PCI function, where a committed read pairs it with the name (each run row's layout_read says which).
+  pci_bus: NonEmptyStr?
+  cooling: JohnCardCooling
+  // The power.limit every sample of the run's gpu.csv printed for this card. Absent where the limit changed
+  // during the run or no telemetry is committed.
+  power_limit: Watt?
+}
+
+// How many 1 s samples of a card read one clocks_event_reasons column Active. The reason is extdeps' NVML
+// vocabulary, so a count cannot name a reason NVML does not have.
+type ReasonSamples {
+  reason: NvmlClocksEventReason
+  samples: Nat
+}
+
+// One card's 1 s nvidia-smi telemetry over a run's whole gpu.csv (idle samples included), reduced by the awk in
+// 00_README.txt.
+type CardTelemetry {
+  name: NonEmptyStr
+  samples: Nat
+  temperature_max: Celsius
+  events: List<ReasonSamples>
+}
+
+// Chassis zone 1 (FANA/FANB) over a run's measured window. Logged: srv2's BMC poll read the zone every ~10 s and
+// the lowest and highest duty bytes it printed are carried as printed. Unlogged: no fan log covers the window, and
+// the account says what is probable and why it is not proven.
+type ZoneOneReading
+  = ZoneOneLogged { samples: Nat, duty_low_byte: NonEmptyStr, duty_high_byte: NonEmptyStr, guard_running: Bool }
+  | ZoneOneUnlogged { account: NonEmptyStr }
+
+type WarmTurn {
+  // 2 is the srv1 lil measured warm turn; 3-6 each add a 2000-token tool delta.
+  turn: Nat
+  prompt_tokens: TokenCount
+  time_to_first_token: Millisecond
+  decode: MilliTokensPerSecond
+  completion_tokens: TokenCount
+  // The bench's cache_hit_pct_p50 in tenths of a percent (99.9 is 999).
+  cache_hit_permille: Nat
+}
+
+type ColdTurn
+  = ColdTurnAnswered { prompt_tokens: TokenCount, time_to_first_token: Millisecond }
+  | ColdTurnAbandoned { tokens_processed: TokenCount, after: Second, verdict: NonEmptyStr }
+
+type BenchEngine
+  = StrataSm60Build { commit: NonEmptyStr }
+  | LlamaCppBuild { commit: NonEmptyStr }
+
+type LayerSplit
+  = SplitAuto { chosen: NonEmptyStr? }
+  | SplitForced { boundaries: NonEmptyStr }
+  | SplitByHand { placement: NonEmptyStr }
+
+type LayoutStanding
+  = DeFactoLayout
+  | SupersededLayout { why: NonEmptyStr }
+
+type LongContextRun {
+  run: NonEmptyStr
+  rows_sha256: NonEmptyStr?
+  telemetry_sha256: NonEmptyStr?
+  engine: BenchEngine
+  // The cards the engine was given, in nvidia-smi PCI order.
+  serving: List<JohnCard>
+  // Where the run's name-to-bus pairing was read.
+  layout_read: NonEmptyStr
+  split: LayerSplit
+  standing: LayoutStanding
+  zone_one: ZoneOneReading
+  cold: ColdTurn
+  turns: List<WarmTurn>
+  telemetry: List<CardTelemetry>
+}
+
+type ConcurrencyPoint {
+  concurrency: Nat
+  aggregate: MilliTokensPerSecond
+  time_to_first_token_median: Millisecond
+  decode_median: MilliTokensPerSecond
+  gpu_temperature_max: Celsius
+  // The bench's gpu_throttle_reasons_seen: the OR of clocks_event_reasons.active over the point.
+  clocks_event_mask_seen: Nat
+  // The bench's own gpu_avg_w, truncated to a whole watt.
+  bench_gpu_power_mean: Watt
+}
+
+type ConcurrencySweep {
+  run: NonEmptyStr
+  rows_sha256: NonEmptyStr
+  telemetry_sha256: NonEmptyStr
+  // The engine config's parallel: the batch slots Strata reserves.
+  engine_slots: Nat
+  output_tokens_per_request: TokenCount
+  zone_one: ZoneOneReading
+  points: List<ConcurrencyPoint>
+  telemetry: List<CardTelemetry>
+}
+
+type PinnedFile {
+  path: NonEmptyStr
+  sha256: NonEmptyStr
+}
+
+// THE DE FACTO SETUP (operator, 2026-11-27, gunbc.design_ruling::john_de_facto_serving_setup_2026_11_27). The
+// cards and their limits, the engine slots, the fan posture and the files that hold it on the host.
+type JohnServingSetup {
+  host: HostIdentity
+  cards: List<JohnCard>
+  engine: BenchEngine
+  engine_slots: Nat
+  port: Nat
+  fan_mode: SupermicroFanMode
+  zone_one_duty_byte: NonEmptyStr
+  fan_guard_period: Second
+  files: List<PinnedFile>
+  // The runs that measured THIS setup.
+  warm_evidence: NonEmptyStr
+  concurrency_evidence: NonEmptyStr
+}
+
+fn reasons(power_cap: Nat, sw_thermal: Nat, hw_slowdown: Nat, hw_thermal: Nat) -> List<ReasonSamples> {
+  [
+    ReasonSamples { reason: NvmlClocksEventSwPowerCap, samples: power_cap },
+    ReasonSamples { reason: NvmlClocksEventSwThermalSlowdown, samples: sw_thermal },
+    ReasonSamples { reason: NvmlClocksEventHwSlowdown, samples: hw_slowdown },
+    ReasonSamples { reason: NvmlClocksEventHwThermalSlowdown, samples: hw_thermal },
+  ]
+}
+
+fn telemetry(name: String, samples: Nat, temp_max: Int, power_cap: Nat, sw_thermal: Nat) -> CardTelemetry {
+  // hw_slowdown and hw_thermal_slowdown read Active on no sample of any committed run; they are carried as the
+  // zero they read, not dropped, so a claim about thermal slowdown asks both columns.
+  CardTelemetry { name: name as NonEmptyStr, samples: samples, temperature_max: celsius(count: temp_max), events: reasons(power_cap: power_cap, sw_thermal: sw_thermal, hw_slowdown: 0, hw_thermal: 0) }
+}
+
+fn turn(n: Nat, prompt: Nat, ttft_ms: Nat, decode_milli: Nat, out: Nat, hit: Nat) -> WarmTurn {
+  WarmTurn {
+    turn: n,
+    prompt_tokens: token_count(count: prompt),
+    time_to_first_token: millisecond(count: ttft_ms),
+    decode: milli_tokens_per_second(count: decode_milli),
+    completion_tokens: token_count(count: out),
+    cache_hit_permille: hit,
+  }
+}
+
+fn point(c: Nat, agg_milli: Nat, ttft_ms: Nat, decode_milli: Nat, temp_max: Int, mask: Nat, power_w: Nat) -> ConcurrencyPoint {
+  ConcurrencyPoint {
+    concurrency: c,
+    aggregate: milli_tokens_per_second(count: agg_milli),
+    time_to_first_token_median: millisecond(count: ttft_ms),
+    decode_median: milli_tokens_per_second(count: decode_milli),
+    gpu_temperature_max: celsius(count: temp_max),
+    clocks_event_mask_seen: mask,
+    bench_gpu_power_mean: watt(count: power_w),
+  }
+}
+
+fn card(name: String, bus: String, cooling: JohnCardCooling, limit_w: Nat) -> JohnCard {
+  JohnCard { name: name as NonEmptyStr, pci_bus: Present { value: bus as NonEmptyStr }, cooling: cooling, power_limit: Present { value: watt(count: limit_w) } }
+}
+
+data john_strata_engine: BenchEngine = StrataSm60Build { commit: "8c5fafc1" as NonEmptyStr }
+
+// The de facto layout: passive / blower (middle slot) / passive. Bus pairing read by
+// thermal/ab-20261127T034432Z/run.log; no power-off between that read and 05:31Z (fans-ab-*.csv is continuous).
+data john_v100_16_blower_at_01: JohnCard = card(name: "Tesla V100-SXM2-16GB", bus: "00000000:01:00.0", cooling: BlowerCooler, limit_w: 150)
+data john_p100_passive_at_81: JohnCard = card(name: "Tesla P100-PCIE-16GB", bus: "00000000:81:00.0", cooling: PassiveHeatsink, limit_w: 125)
+data john_v100_32_passive_at_c1: JohnCard = card(name: "Tesla PG500-216", bus: "00000000:C1:00.0", cooling: PassiveHeatsink, limit_w: 100)
+
+data john_de_facto_cards: List<JohnCard> = [john_v100_16_blower_at_01, john_p100_passive_at_81, john_v100_32_passive_at_c1]
+
+data john_de_facto_layout_read: NonEmptyStr = "thermal/ab-20261127T034432Z/run.log layout line (index, pci.bus_id, name, power.limit), boot 03:42:51Z; the same names and limits print on every sample of the run's gpu.csv" as NonEmptyStr
+
+data john_layout_with_v100_32_at_81_read: NonEmptyStr = "thermal/run-20261127T015819Z/limits.txt (01:00 150 W, 81:00 100 W, C1:00 125 W) with that run's run.log card list (0 V100-SXM2-16GB, 1 PG500-216, 2 P100); the swap at ~03:05Z moved the cards" as NonEmptyStr
+
+data john_unlogged_fan_account: NonEmptyStr = "No fan log covers this run. Zone 1 was set 0x64 by hand at 01:52:36Z after the card-swap power cycle; the host then ran until the ~03:05Z power-off with nothing reading the zone. The BMC curve raises zone 1 toward 0x64 under load (fans-ab-*.csv), so 100% under load is PROBABLE and not proven (THERMAL-NOTES.txt, the 03:23:09Z correction)." as NonEmptyStr
+
+data john_long_context_runs: List<LongContextRun> = [
+  // THE DE FACTO RUN. Fans: at 04:08:22Z the session found zone 1 at 0x43, re-set it and started the guard, which
+  // corrected 0x40 at 04:08:43Z, before the cold prompt was sent (04:09:01Z); every one of the 44 BMC samples from
+  // warm150k start to done read 0x64.
+  LongContextRun {
+    run: "strata3-20261127T040802Z" as NonEmptyStr,
+    rows_sha256: Present { value: "6a7cf60b9822252db24184d45969fdbf56390ed4f81c3d91cedb31415d76cd49" as NonEmptyStr },
+    telemetry_sha256: Present { value: "721bf89744501888c02a52515cd2b857823e5159478ab840fca6356546811c04" as NonEmptyStr },
+    engine: john_strata_engine,
+    serving: john_de_facto_cards,
+    layout_read: john_de_facto_layout_read,
+    split: SplitAuto { chosen: Present { value: "K=19,22 (run.log 'split:' line: K=21,22 refused for a stage under 3 layers; near tie K=22,25)" as NonEmptyStr } },
+    standing: DeFactoLayout,
+    zone_one: ZoneOneLogged { samples: 44, duty_low_byte: "64" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: true },
+    cold: ColdTurnAnswered { prompt_tokens: token_count(count: 150284), time_to_first_token: millisecond(count: 153600) },
+    turns: [
+      turn(n: 2, prompt: 150355, ttft_ms: 2410, decode_milli: 48300, out: 512, hit: 999),
+      turn(n: 3, prompt: 152897, ttft_ms: 6140, decode_milli: 51100, out: 512, hit: 987),
+      turn(n: 4, prompt: 155458, ttft_ms: 6210, decode_milli: 53100, out: 512, hit: 987),
+      turn(n: 5, prompt: 158039, ttft_ms: 8270, decode_milli: 51200, out: 512, hit: 984),
+      turn(n: 6, prompt: 160619, ttft_ms: 6370, decode_milli: 53700, out: 418, hit: 987),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 277, temp_max: 58, power_cap: 19, sw_thermal: 0),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 277, temp_max: 65, power_cap: 25, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 277, temp_max: 75, power_cap: 77, sw_thermal: 0),
+    ],
+  },
+  // TWO CARDS, P100 OUT: the blower V100-16 moved to 81:00 and the V100-32 at c1:00. The pairing is the operator
+  // session's statement (THERMAL-NOTES.txt 03:23:09Z); this run's gpu.csv prints names and indices, not buses.
+  LongContextRun {
+    run: "strata3-20261127T031708Z" as NonEmptyStr,
+    rows_sha256: Present { value: "ce49daaefc6cbf69b472eb70a9f33685dd658b74649c9e6139ef04eb59765c80" as NonEmptyStr },
+    telemetry_sha256: Present { value: "e03fb6eaa2327ec306560e8d7c1c1858449e5e6c8ef274e7d3f85a478d16e67f" as NonEmptyStr },
+    engine: john_strata_engine,
+    serving: [
+      JohnCard { name: "Tesla V100-SXM2-16GB" as NonEmptyStr, pci_bus: Present { value: "00000000:81:00.0" as NonEmptyStr }, cooling: BlowerCooler, power_limit: Present { value: watt(count: 150) } },
+      JohnCard { name: "Tesla PG500-216" as NonEmptyStr, pci_bus: Present { value: "00000000:C1:00.0" as NonEmptyStr }, cooling: PassiveHeatsink, power_limit: Present { value: watt(count: 100) } },
+    ],
+    layout_read: "THERMAL-NOTES.txt 03:23:09Z correction (operator session's statement of the post-power-off layout); run.log prints the two names and limits" as NonEmptyStr,
+    split: SplitAuto { chosen: Absent },
+    standing: SupersededLayout { why: "the P100 was reinstalled at 81:00 and the blower V100-16 moved to the middle slot (01:00) at ~03:40Z; the three-card layout is the one the operator kept" as NonEmptyStr },
+    zone_one: ZoneOneLogged { samples: 21, duty_low_byte: "64" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: false },
+    cold: ColdTurnAnswered { prompt_tokens: token_count(count: 150403), time_to_first_token: millisecond(count: 148300) },
+    turns: [
+      turn(n: 2, prompt: 150471, ttft_ms: 510, decode_milli: 50900, out: 512, hit: 1000),
+      turn(n: 3, prompt: 153006, ttft_ms: 6100, decode_milli: 52200, out: 512, hit: 987),
+      turn(n: 4, prompt: 155582, ttft_ms: 8580, decode_milli: 54500, out: 512, hit: 983),
+      turn(n: 5, prompt: 158117, ttft_ms: 6180, decode_milli: 51400, out: 512, hit: 987),
+      turn(n: 6, prompt: 160690, ttft_ms: 8150, decode_milli: 55700, out: 512, hit: 984),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 299, temp_max: 57, power_cap: 22, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 299, temp_max: 76, power_cap: 83, sw_thermal: 0),
+    ],
+  },
+  // THE PASSIVE CARDS ALONE (serving A/B S1): the blower V100-16 present and idle. The fans were on the BMC curve
+  // (the guard did not exist yet): zone 1 ramped from 0x39 to 0x64 over the first ~80 s of load.
+  LongContextRun {
+    run: "strata3-20261127T035851Z" as NonEmptyStr,
+    rows_sha256: Present { value: "fa2b60ec508cf46f0eb2b00ad9680eaeb3b2e4ffff7c9a3b560e2369d62da14e" as NonEmptyStr },
+    telemetry_sha256: Present { value: "8fac2ab2060cb7407f6ceb414fc155a72c1b6c8801e3f9f09689277a646537fb" as NonEmptyStr },
+    engine: john_strata_engine,
+    serving: [john_p100_passive_at_81, john_v100_32_passive_at_c1],
+    layout_read: john_de_facto_layout_read,
+    split: SplitAuto { chosen: Absent },
+    standing: SupersededLayout { why: "an A/B arm, stopped by the operator before its three-card arm S2 ran; one run, its P100 in thermal slowdown on 44 samples, its fans on the BMC curve" as NonEmptyStr },
+    zone_one: ZoneOneLogged { samples: 54, duty_low_byte: "39" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: false },
+    cold: ColdTurnAnswered { prompt_tokens: token_count(count: 150363), time_to_first_token: millisecond(count: 214300) },
+    turns: [
+      turn(n: 2, prompt: 150420, ttft_ms: 2190, decode_milli: 38400, out: 512, hit: 1000),
+      turn(n: 3, prompt: 152995, ttft_ms: 10650, decode_milli: 66300, out: 512, hit: 983),
+      turn(n: 4, prompt: 155537, ttft_ms: 8300, decode_milli: 74800, out: 512, hit: 987),
+      turn(n: 5, prompt: 158080, ttft_ms: 8150, decode_milli: 74500, out: 377, hit: 987),
+      turn(n: 6, prompt: 160518, ttft_ms: 8380, decode_milli: 74800, out: 116, hit: 987),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 340, temp_max: 42, power_cap: 0, sw_thermal: 0),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 340, temp_max: 80, power_cap: 84, sw_thermal: 44),
+      telemetry(name: "Tesla PG500-216", samples: 340, temp_max: 76, power_cap: 90, sw_thermal: 0),
+    ],
+  },
+  // THREE CARDS WITH THE PASSIVE V100-32 AT 81:00: it reached 84 C with software thermal slowdown on 130 of 468
+  // samples (28%) and decoded ~30 tok/s. No fan log.
+  LongContextRun {
+    run: "strata3-20261127T021726Z" as NonEmptyStr,
+    rows_sha256: Present { value: "76ec2facdbdad9fa5d0817c2bc14f4b280d9249ee6f1c87d6a59f58eddbd68cc" as NonEmptyStr },
+    telemetry_sha256: Present { value: "0b6d4bcd6b098bfc6da85bcda07a2bf2c6a2feaabf945184b6f40a8c77f40038" as NonEmptyStr },
+    engine: john_strata_engine,
+    serving: [
+      card(name: "Tesla V100-SXM2-16GB", bus: "00000000:01:00.0", cooling: BlowerCooler, limit_w: 150),
+      card(name: "Tesla PG500-216", bus: "00000000:81:00.0", cooling: PassiveHeatsink, limit_w: 100),
+      card(name: "Tesla P100-PCIE-16GB", bus: "00000000:C1:00.0", cooling: PassiveHeatsink, limit_w: 125),
+    ],
+    layout_read: john_layout_with_v100_32_at_81_read,
+    split: SplitAuto { chosen: Absent },
+    standing: SupersededLayout { why: "the passive V100-32 at 81:00 thermally throttled; the cards were re-seated so it sits at c1:00" as NonEmptyStr },
+    zone_one: ZoneOneUnlogged { account: john_unlogged_fan_account },
+    cold: ColdTurnAnswered { prompt_tokens: token_count(count: 150066), time_to_first_token: millisecond(count: 261900) },
+    turns: [
+      turn(n: 2, prompt: 150124, ttft_ms: 2980, decode_milli: 30300, out: 512, hit: 1000),
+      turn(n: 3, prompt: 152698, ttft_ms: 12870, decode_milli: 28000, out: 512, hit: 986),
+      turn(n: 4, prompt: 155279, ttft_ms: 12480, decode_milli: 30800, out: 113, hit: 987),
+      turn(n: 5, prompt: 157436, ttft_ms: 12580, decode_milli: 28500, out: 512, hit: 987),
+      turn(n: 6, prompt: 159996, ttft_ms: 12180, decode_milli: 29700, out: 414, hit: 987),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 468, temp_max: 55, power_cap: 21, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 468, temp_max: 84, power_cap: 34, sw_thermal: 130),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 468, temp_max: 62, power_cap: 19, sw_thermal: 0),
+    ],
+  },
+  // THE SAME CARDS WITH THE SPLIT FORCED to 10,32 (P100 layers 0-9, V100-32 10-31, V100-16 32-47): the slowdown
+  // moved to the P100 (222 of 462 samples, 48%), the V100-32 still slowed on 46. No fan log.
+  LongContextRun {
+    run: "strata3-20261127T025302Z" as NonEmptyStr,
+    rows_sha256: Present { value: "24adc320d31ff4a6b0c7e83f5d1cbe5278f8d65c7dce1995ba0d417d064c4b7d" as NonEmptyStr },
+    telemetry_sha256: Present { value: "2a876175fc997d528bf4becdd7ef42c1fe76d964ced3b10e687f203f98209d9c" as NonEmptyStr },
+    engine: john_strata_engine,
+    serving: [
+      card(name: "Tesla V100-SXM2-16GB", bus: "00000000:01:00.0", cooling: BlowerCooler, limit_w: 150),
+      card(name: "Tesla PG500-216", bus: "00000000:81:00.0", cooling: PassiveHeatsink, limit_w: 100),
+      card(name: "Tesla P100-PCIE-16GB", bus: "00000000:C1:00.0", cooling: PassiveHeatsink, limit_w: 125),
+    ],
+    layout_read: john_layout_with_v100_32_at_81_read,
+    split: SplitForced { boundaries: "10,32 (cfg-john3-k10-32.json.redacted)" as NonEmptyStr },
+    standing: SupersededLayout { why: "forcing the split moved the thermal slowdown from the V100-32 to the P100 and lengthened the cold turn; the layout itself was then changed" as NonEmptyStr },
+    zone_one: ZoneOneUnlogged { account: john_unlogged_fan_account },
+    cold: ColdTurnAnswered { prompt_tokens: token_count(count: 149998), time_to_first_token: millisecond(count: 352700) },
+    turns: [
+      turn(n: 2, prompt: 150063, ttft_ms: 2690, decode_milli: 31300, out: 512, hit: 1000),
+      turn(n: 3, prompt: 152618, ttft_ms: 14160, decode_milli: 46700, out: 512, hit: 987),
+      turn(n: 4, prompt: 155207, ttft_ms: 15810, decode_milli: 46600, out: 512, hit: 987),
+      turn(n: 5, prompt: 157790, ttft_ms: 14600, decode_milli: 60300, out: 512, hit: 987),
+      turn(n: 6, prompt: 160350, ttft_ms: 14570, decode_milli: 53800, out: 512, hit: 987),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 462, temp_max: 53, power_cap: 9, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 462, temp_max: 84, power_cap: 41, sw_thermal: 46),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 462, temp_max: 80, power_cap: 71, sw_thermal: 222),
+    ],
+  },
+  // llama.cpp ON THE M40 AND THE P100, before the card swap. The evidence is the step log's 01:42:54Z RESULT line;
+  // the run's jsonl is empty because the cold turn never answered, and its gpu.csv is not committed. The power
+  // limits changed mid-run (gpu-power-cap.service applied the minimums at 01:26:54Z), so none is carried. The M40
+  // (sm_52) cannot run Strata, which needs sm_60 or newer.
+  LongContextRun {
+    run: "warm150k-20261127T011141Z-lidon" as NonEmptyStr,
+    rows_sha256: Absent,
+    telemetry_sha256: Absent,
+    engine: LlamaCppBuild { commit: "3cf03257f" as NonEmptyStr },
+    serving: [
+      JohnCard { name: "Tesla M40 24GB" as NonEmptyStr, pci_bus: Absent, cooling: PassiveHeatsink, power_limit: Absent },
+      JohnCard { name: "Tesla P100-PCIE-16GB" as NonEmptyStr, pci_bus: Absent, cooling: PassiveHeatsink, power_limit: Absent },
+    ],
+    layout_read: "john-hand-steps.log 01:07:40Z and 01:42:54Z lines (operator session's statements; no bus read is committed for the M40 layout)" as NonEmptyStr,
+    split: SplitByHand { placement: "-dev CUDA1,CUDA0 -ts 24,24, experts L14-23 on the P100 and L33-47 on the M40, 23 layers on the CPU, -ub 512" as NonEmptyStr },
+    standing: SupersededLayout { why: "operator verdict: unusable for long-context agent work; the M40 was then removed" as NonEmptyStr },
+    zone_one: ZoneOneUnlogged { account: "No fan log covers this run. Zone 1 was set 0x64 by hand at 23:09:51Z on 2026-11-26 and nothing read it afterwards; the BMC curve rewrites a hand-set zone (fans-ab-*.csv), so the duty during this run is unknown." as NonEmptyStr },
+    cold: ColdTurnAbandoned { tokens_processed: token_count(count: 124928), after: second(count: 1860), verdict: "cold 150k prefill not completed after 31 min (~66 tok/s average, falling with depth); the operator abandoned the run as unusable and warm turns were never reached" as NonEmptyStr },
+    turns: [],
+    telemetry: [],
+  },
+]
+
+// THE CONCURRENCY SWEEPS ON THE DE FACTO CARDS: strata_bench.py --mode concurrency, 84-token prompts, 1024 tokens
+// out per request, one repeat. parallel 4 is the setup; parallel 8 (cfg-john3-p8, two batch groups of 4) is the
+// alternative the operator weighed and did not keep. Both ran with the guard holding zone 1 at 0x64.
+data john_concurrency_sweeps: List<ConcurrencySweep> = [
+  ConcurrencySweep {
+    run: "agg-20261127T042225Z" as NonEmptyStr,
+    rows_sha256: "d1e0929b53600248be8199715ccd44f8bfa03f7b64156c88119b89858d861d82" as NonEmptyStr,
+    telemetry_sha256: "0c80f4ec97e1e0582d1f4242735a354f15808810a50cf5dfc31ecf7a231180d5" as NonEmptyStr,
+    engine_slots: 4,
+    output_tokens_per_request: token_count(count: 1024),
+    zone_one: ZoneOneLogged { samples: 75, duty_low_byte: "64" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: true },
+    points: [
+      point(c: 1, agg_milli: 50820, ttft_ms: 1443, decode_milli: 54691, temp_max: 56, mask: 4, power_w: 200),
+      point(c: 2, agg_milli: 66930, ttft_ms: 1819, decode_milli: 35579, temp_max: 59, mask: 4, power_w: 231),
+      point(c: 4, agg_milli: 87310, ttft_ms: 2800, decode_milli: 23228, temp_max: 65, mask: 4, power_w: 246),
+      point(c: 8, agg_milli: 86970, ttft_ms: 13725, decode_milli: 18970, temp_max: 71, mask: 4, power_w: 244),
+      point(c: 16, agg_milli: 79480, ttft_ms: 37129, decode_milli: 13359, temp_max: 78, mask: 4, power_w: 237),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 392, temp_max: 59, power_cap: 3, sw_thermal: 0),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 392, temp_max: 57, power_cap: 4, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 392, temp_max: 78, power_cap: 150, sw_thermal: 0),
+    ],
+  },
+  ConcurrencySweep {
+    run: "agg-p8-20261127T043648Z" as NonEmptyStr,
+    rows_sha256: "5f5aac63ab01ebd37ff3103fbe8d6620a7356edd360c314b04a392a204b80335" as NonEmptyStr,
+    telemetry_sha256: "80ade2902b7832d00f784618040999a38dbb076dc1b0ea84dafe581a3fd22356" as NonEmptyStr,
+    engine_slots: 8,
+    output_tokens_per_request: token_count(count: 1024),
+    zone_one: ZoneOneLogged { samples: 61, duty_low_byte: "64" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: true },
+    points: [
+      point(c: 4, agg_milli: 80200, ttft_ms: 3512, decode_milli: 21532, temp_max: 61, mask: 4, power_w: 230),
+      point(c: 8, agg_milli: 95190, ttft_ms: 5956, decode_milli: 12788, temp_max: 68, mask: 4, power_w: 229),
+      point(c: 16, agg_milli: 87250, ttft_ms: 25992, decode_milli: 10146, temp_max: 75, mask: 4, power_w: 231),
+    ],
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 319, temp_max: 60, power_cap: 5, sw_thermal: 0),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 319, temp_max: 57, power_cap: 5, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 319, temp_max: 75, power_cap: 103, sw_thermal: 0),
+    ],
+  },
+]
+
+// THE FULL-LOAD BURNS (burnin.py fp16, cards at their minimum limits). The passive cards throttle under a
+// sustained full burn; the blower V100 never does. Neither burn had its zone held: the all-three burn has no fan
+// log, and phase A was on the BMC curve (0x2f..0x64, 79 samples) -- 62 of them at 0x64.
+type BurnRun {
+  run: NonEmptyStr
+  telemetry_sha256: NonEmptyStr
+  serving: List<JohnCard>
+  zone_one: ZoneOneReading
+  telemetry: List<CardTelemetry>
+}
+
+data john_burn_runs: List<BurnRun> = [
+  BurnRun {
+    run: "thermal/run-20261127T015819Z" as NonEmptyStr,
+    telemetry_sha256: "ef9af6715a450b1f6a75a463e06de98bf95d2689016ed5c43c9f0675f7341aeb" as NonEmptyStr,
+    serving: [
+      card(name: "Tesla V100-SXM2-16GB", bus: "00000000:01:00.0", cooling: BlowerCooler, limit_w: 150),
+      card(name: "Tesla PG500-216", bus: "00000000:81:00.0", cooling: PassiveHeatsink, limit_w: 100),
+      card(name: "Tesla P100-PCIE-16GB", bus: "00000000:C1:00.0", cooling: PassiveHeatsink, limit_w: 125),
+    ],
+    zone_one: ZoneOneUnlogged { account: john_unlogged_fan_account },
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 634, temp_max: 67, power_cap: 454, sw_thermal: 0),
+      telemetry(name: "Tesla PG500-216", samples: 634, temp_max: 84, power_cap: 152, sw_thermal: 298),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 634, temp_max: 80, power_cap: 143, sw_thermal: 375),
+    ],
+  },
+  BurnRun {
+    run: "thermal/ab-20261127T034432Z" as NonEmptyStr,
+    telemetry_sha256: "efecf856625af6f1356646172425cf8d1953615d9a325d4f3187539fa640c7f7" as NonEmptyStr,
+    serving: [john_p100_passive_at_81, john_v100_32_passive_at_c1],
+    zone_one: ZoneOneLogged { samples: 79, duty_low_byte: "2f" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: false },
+    telemetry: [
+      telemetry(name: "Tesla V100-SXM2-16GB", samples: 449, temp_max: 42, power_cap: 0, sw_thermal: 0),
+      telemetry(name: "Tesla P100-PCIE-16GB", samples: 449, temp_max: 80, power_cap: 173, sw_thermal: 193),
+      telemetry(name: "Tesla PG500-216", samples: 449, temp_max: 83, power_cap: 266, sw_thermal: 0),
+    ],
+  },
+]
+
+data john_de_facto_serving_setup: JohnServingSetup = JohnServingSetup {
+  host: operator_host_ba61f9,
+  cards: john_de_facto_cards,
+  engine: john_strata_engine,
+  engine_slots: 4,
+  port: 18081,
+  // Heavy IO, as the guard script sets and reads it (raw 0x30 0x45 0x01 0x04).
+  fan_mode: SupermicroFanMode { code: 4 },
+  zone_one_duty_byte: "64" as NonEmptyStr,
+  fan_guard_period: second(count: 10),
+  files: [
+    PinnedFile { path: "john-strata.service" as NonEmptyStr, sha256: "6731e22523dfbe541a93809fb24f465c86e2f0178194a4a8a5844c841679a646" as NonEmptyStr },
+    PinnedFile { path: "cfg-john3.json.redacted" as NonEmptyStr, sha256: "461b0d050dc26563c9245832d4add2d3153161993d03b3d3484a66e2d295d462" as NonEmptyStr },
+    PinnedFile { path: "gpu-power-cap.service" as NonEmptyStr, sha256: "711efe2998ba9cd750bf2faac14f9738f03c61424d59848376f5a11b8d3ec318" as NonEmptyStr },
+    PinnedFile { path: "gpu-power-cap.sh" as NonEmptyStr, sha256: "15b1d79243bfb90ee45a986ba9776649eefb4a8c4ed86f2a4669ff0ee2ac7d4f" as NonEmptyStr },
+    PinnedFile { path: "chassis-fan-guard.service" as NonEmptyStr, sha256: "6bf414ab72679182ba0747dd66d1476d389f0da76252e7fa5b197dbc42958690" as NonEmptyStr },
+    PinnedFile { path: "chassis-fan-guard.sh" as NonEmptyStr, sha256: "b63cb5b28dec0f531f35f7a73420cbead02712d5a738f701e106445db4740ff3" as NonEmptyStr },
+  ],
+  warm_evidence: "strata3-20261127T040802Z" as NonEmptyStr,
+  concurrency_evidence: "agg-20261127T042225Z" as NonEmptyStr,
+}
+
+// ── READERS ──────────────────────────────────────────────────────────────────────────────────────────
+
+fn same_reason(a: NvmlClocksEventReason, b: NvmlClocksEventReason) -> Bool {
+  nvml_clocks_event_reason_bit(r: a) == nvml_clocks_event_reason_bit(r: b)
+}
+
+fn card_event_samples(t: CardTelemetry, r: NvmlClocksEventReason) -> Nat {
+  fold(t.events.filter(e => same_reason(a: e.reason, b: r)), init: 0, f: (acc, e) => acc + e.samples)
+}
+
+// Software and hardware thermal slowdown together: a claim that a card did not thermally throttle asks both.
+fn card_thermal_slowdown_samples(t: CardTelemetry) -> Nat {
+  card_event_samples(t: t, r: NvmlClocksEventSwThermalSlowdown) + card_event_samples(t: t, r: NvmlClocksEventHwThermalSlowdown)
+}
+
+fn telemetry_thermally_clean(ts: List<CardTelemetry>) -> Bool {
+  ts.length() > 0 && ts.all(t => card_thermal_slowdown_samples(t: t) == 0)
+}
+
+fn telemetry_of(ts: List<CardTelemetry>, name: String) -> CardTelemetry? {
+  ts.filter(t => (t.name as String) == name).first()
+}
+
+// A zone duty byte as the BMC poll printed it, read through the Supermicro OEM reply parser.
+fn zone_one_duty(byte: NonEmptyStr) -> Percent? {
+  supermicro_zone_duty_answer(stdout: " " + (byte as String))
+}
+
+fn duty_is_full(byte: NonEmptyStr) -> Bool {
+  match zone_one_duty(byte: byte) { Present { value: p } => percent_count(p) == 100  Absent => false }
+}
+
+// THE ZONE WAS HELD AT 100% OVER THE WINDOW: logged, and the lowest byte the poll printed parses to 100. An
+// unlogged window is never held, whatever was probable.
+fn zone_one_held_full(z: ZoneOneReading) -> Bool {
+  match z {
+    ZoneOneLogged { samples: n, duty_low_byte: lo, duty_high_byte: hi, guard_running: _ } => n > 0 && duty_is_full(byte: lo) && duty_is_full(byte: hi)
+    ZoneOneUnlogged { account: _ } => false
+  }
+}
+
+// THE BMC REWROTE A HAND-SET 100% DUTY BELOW IT inside a logged window: the high byte is 100 and the low byte
+// parses below it. This is the class's discriminating reading.
+fn zone_one_rewritten_below_full(z: ZoneOneReading) -> Bool {
+  match z {
+    ZoneOneLogged { samples: _, duty_low_byte: lo, duty_high_byte: hi, guard_running: _ } =>
+      duty_is_full(byte: hi) && match zone_one_duty(byte: lo) { Present { value: p } => percent_count(p) < 100  Absent => false }
+    ZoneOneUnlogged { account: _ } => false
+  }
+}
+
+// The only reason a mask names is the software power cap, and no bit is outside NVML's vocabulary.
+fn mask_names_only_power_cap(mask: Nat) -> Bool {
+  let m = nvml_clocks_event_mask(mask: mask)
+  m.unmodeled_bits == 0 && m.reasons.length() == 1 && m.reasons.all(r => same_reason(a: r, b: NvmlClocksEventSwPowerCap))
+}
+
+fn run_named(name: String) -> LongContextRun? {
+  john_long_context_runs.filter(r => (r.run as String) == name).first()
+}
+
+fn sweep_with_slots(slots: Nat) -> ConcurrencySweep? {
+  john_concurrency_sweeps.filter(s => s.engine_slots == slots).first()
+}
+
+fn best_aggregate(s: ConcurrencySweep) -> Nat {
+  fold(s.points, init: 0, f: (acc, p) => nat_max(a: acc, b: milli_tokens_per_second_count(r: p.aggregate)))
+}
+
+fn point_at(s: ConcurrencySweep, c: Nat) -> ConcurrencyPoint? {
+  s.points.filter(p => p.concurrency == c).first()
+}
+
+fn cards_agree(a: List<JohnCard>, b: List<JohnCard>) -> Bool {
+  a.length() == b.length()
+    && a.all(x => b.any(y => (x.name as String) == (y.name as String) && match x.pci_bus {
+      Present { value: xb } => match y.pci_bus { Present { value: yb } => (xb as String) == (yb as String)  Absent => false }
+      Absent => false
+    }))
+}
+
+// THE SETUP IS THE MEASURED ONE: its cards are the de facto run's cards (by name and bus), the run it names is the
+// de facto layout's warm run, the zone was held at 100% over that run, no card thermally slowed, and the
+// concurrency sweep it names reserved the setup's slots.
+fn setup_rests_on_its_runs(s: JohnServingSetup) -> Bool {
+  match run_named(name: s.warm_evidence as String) {
+    Absent => false
+    Present { value: r } =>
+      cards_agree(a: s.cards, b: r.serving)
+        && match r.standing { DeFactoLayout => true  SupersededLayout { why: _ } => false }
+        && zone_one_held_full(z: r.zone_one)
+        && telemetry_thermally_clean(ts: r.telemetry)
+        && match john_concurrency_sweeps.filter(c => (c.run as String) == (s.concurrency_evidence as String)).first() {
+          Absent => false
+          Present { value: c } => c.engine_slots == s.engine_slots && zone_one_held_full(z: c.zone_one) && telemetry_thermally_clean(ts: c.telemetry)
+        }
+        && duty_is_full(byte: s.zone_one_duty_byte)
+  }
+}
+
+data john_strata_bench_receipt_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.design_argument::consumption: read today by test.claim.serving.john_strata_bench_receipt_witness (the setup rests on its runs; the de facto runs are thermally clean with the zone held; the 81:00 throttle is kept with its unlogged fan standing; the 4-slot choice is the operator's, not the sweep's maximum; the BMC's rewrite of the hand-set zone is read through the OEM parser) and by gunbc.design_ruling::john_de_facto_serving_setup_2026_11_27, which governs john_de_facto_serving_setup. TRIGGERS, each its own: (1) an nvidia-smi --query-gpu=pci.bus_id,uuid,serial read on john committed like artifacts/host-observations/ken-gpu-read-2026-11-18/, plus an extdeps.gpu board catalog row for 10de:1df0 grounded in an NVIDIA document, moves the three cards into gunbc.fleet.gpu_device_observation and gunbc.fleet.fleet_physical_inventory, and JohnCard keeps only the run's conditions; (2) gunbc.fleet.gpu_power_cap_boot_state HandAppliedCapMechanism gains a per-card target (john caps each card at its OWN minimum: 150, 125 and 100 W, which one target_watts cannot carry) and gpu-power-cap.service enters hand_applied_cap_mechanisms; (3) john's Strata engine gets a gunbc.serving.serving_replica_profile row (and a serving_host_memory engine row for its MemoryMax 100G) when it is admitted to the router -- until then john_de_facto_serving_setup is the only record of its slots, and gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them names what goes wrong if a router cap is later written beside it." as NonEmptyStr
+)

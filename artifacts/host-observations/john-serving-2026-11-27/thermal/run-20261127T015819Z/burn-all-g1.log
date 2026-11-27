@@ -1,0 +1,22 @@
+gpu1 Tesla PG500-216 mem=31.7GiB sms=72 dtype=fp16
+gpu1 mem: 12 GiB verify mismatches=0
+gpu1 burn: t=30s tflops=30.34 checksum_mismatches=0
+gpu1 burn: t=60s tflops=30.01 checksum_mismatches=0
+gpu1 burn: t=90s tflops=29.77 checksum_mismatches=0
+gpu1 burn: t=120s tflops=29.40 checksum_mismatches=0
+gpu1 burn: t=150s tflops=29.02 checksum_mismatches=0
+gpu1 burn: t=181s tflops=28.54 checksum_mismatches=0
+gpu1 burn: t=211s tflops=27.42 checksum_mismatches=0
+gpu1 burn: t=242s tflops=25.81 checksum_mismatches=0
+gpu1 burn: t=273s tflops=24.04 checksum_mismatches=0
+gpu1 burn: t=303s tflops=22.45 checksum_mismatches=0
+gpu1 burn: t=334s tflops=21.06 checksum_mismatches=0
+gpu1 burn: t=364s tflops=19.91 checksum_mismatches=0
+gpu1 burn: t=395s tflops=18.94 checksum_mismatches=0
+gpu1 burn: t=426s tflops=18.11 checksum_mismatches=0
+gpu1 burn: t=457s tflops=17.39 checksum_mismatches=0
+gpu1 burn: t=488s tflops=16.77 checksum_mismatches=0
+gpu1 burn: t=519s tflops=16.21 checksum_mismatches=0
+gpu1 burn: t=550s tflops=15.72 checksum_mismatches=0
+gpu1 burn: t=581s tflops=15.28 checksum_mismatches=0
+gpu1 burn: DONE t=601s tflops=15.02 checksum_mismatches=0

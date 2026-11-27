@@ -1,0 +1,352 @@
+[strata] 2026-11-27 02:17:09 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 12288 --conversation-cache-slots 6 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 4
+strata generate: layer split across 3 GPUs: CUDA0, then CUDA1,2 (split auto)
+strata generate: layer split: CUDA1 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split: CUDA2 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split auto: CUDA0 56 SMs at 1.33 GHz -> 0.98 ms per layer, 11.28 GiB free before its session carve
+strata generate: layer split auto: CUDA1 72 SMs at 1.38 GHz -> 0.73 ms per layer, 30.15 GiB free before its session carve
+strata generate: layer split auto: CUDA2 80 SMs at 1.53 GHz -> 0.59 ms per layer, 13.18 GiB free before its session carve
+strata generate: layer split auto: CUDA0 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA1 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA2 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: K=2,30 would give a stage fewer than 3 layers (a tiny expert cache there clamps the prompt chunk of every card, #1616); chose K=3,32 instead (34.2 ms per decode window, not 34.0)
+strata generate: layer split auto: K=3,32 - predicted 34.2 ms per decode window; the caches hold 21962 of 24576 profiled pairs (~99.7% of the routed mass), best of 1855 placements
+strata generate: layer split auto: NEAR TIE - K=3,29 is predicted 34.3 ms per decode window, within 0.2% of K=3,32 (34.2 ms); the cards differ, so the prediction may not rank them (it prices decode, not the prompt). To try the other: --layer-split 3,29
+strata generate: layer split: CUDA1 loads the dense weights of layers 3-31 only
+strata generate: layer split: CUDA1 holds its weights; 29.16 GiB free (its session follows)
+strata generate: layer split: CUDA2 loads the dense weights of layers 32-47 only
+strata generate: layer split: CUDA2 holds its weights; 14.12 GiB free (its session follows)
+strata generate: layer split: CUDA1 holds its weights, session [3, 32); 28.53 GiB free
+strata generate: layer split: CUDA2 holds its weights, session [32, 48) and the head; 13.27 GiB free
+strata generate: --batch-groups auto: 2 groups of 2 slots
+strata generate: --batch: 4 slot sessions on CUDA0 (0.14 GiB each); 11.27 GiB free
+strata generate: --batch: 4 slot sessions on CUDA1 (0.63 GiB each); 25.99 GiB free
+strata generate: --batch: 4 slot sessions on CUDA2 (0.35 GiB each); 11.85 GiB free
+strata generate: --batch 4: the slot sessions take 0.55 GiB of VRAM on CUDA0 that the expert cache would otherwise hold
+strata generate: layer split, CUDA1: 25.98 GiB free of 31.73, room for experts 24.76 GiB
+strata generate: layer split: CUDA1 runs layers 3-31, expert cache 13306 slots (24.76 GiB), 13306 of its 14848 profiled pairs; slot 0 verified
+strata generate: layer split, CUDA2: 11.04 GiB free of 15.77, room for experts 9.82 GiB
+strata generate: layer split: CUDA2 runs layers 32-47, expert cache 4881 slots (9.81 GiB), 4881 of its 8192 profiled pairs; slot 0 verified
+strata generate: layer split: CUDA0 runs layers 0-2
+strata generate: layer split auto: L2 probe: the split is startable on the live free figures
+strata serve: layer split: 80% of the experts resident, the prompt path's streamed ring 96 slots
+strata serve: layer split: layers 0-2 (CUDA0), 3-31 (CUDA1), 32-47 (CUDA2), one hand-off per window
+strata verify: batch windows of up to 4 sequences (layers [0, 3))
+strata verify: batch windows of up to 4 sequences (layers [3, 32))
+strata verify: batch windows of up to 4 sequences (layers [32, 48))
+strata serve: adaptive overlap: off: not on a layer split
+[strata] 2026-11-27 03:17:09 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 12288 --conversation-cache-slots 6 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 4
+strata generate: layer split across 2 GPUs: CUDA0, then CUDA1 (split auto)
+strata generate: layer split: CUDA1 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split auto: CUDA0 80 SMs at 1.53 GHz -> 0.59 ms per layer, 11.07 GiB free before its session carve
+strata generate: layer split auto: CUDA1 72 SMs at 1.38 GHz -> 0.73 ms per layer, 29.17 GiB free before its session carve
+strata generate: layer split auto: CUDA0 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA1 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: K=22 - predicted 33.6 ms per decode window; the caches hold 19220 of 24576 profiled pairs (~99.1% of the routed mass), best of 46 placements
+strata generate: layer split auto: NEAR TIE - K=19 is predicted 33.8 ms per decode window, within 0.5% of K=22 (33.6 ms); the cards differ, so the prediction may not rank them (it prices decode, not the prompt). To try the other: --layer-split 19
+strata generate: layer split: CUDA1 loads the dense weights of layers 22-47 only
+strata generate: layer split: CUDA1 holds its weights; 29.35 GiB free (its session follows)
+strata generate: layer split: CUDA1 holds its weights, session [22, 48) and the head; 28.30 GiB free
+strata generate: --batch-groups auto: 2 groups of 2 slots
+strata generate: --batch: 4 slot sessions on CUDA0 (0.43 GiB each); 9.59 GiB free
+strata generate: --batch: 4 slot sessions on CUDA1 (0.56 GiB each); 26.03 GiB free
+strata generate: --batch 4: the slot sessions take 1.72 GiB of VRAM on CUDA0 that the expert cache would otherwise hold
+strata generate: layer split, CUDA1: 25.22 GiB free of 31.73, room for experts 24.00 GiB
+strata generate: layer split: CUDA1 runs layers 22-47, expert cache 11981 slots (24.00 GiB), 11981 of its 13312 profiled pairs; slot 0 verified
+strata generate: layer split: CUDA0 runs layers 0-21
+strata generate: layer split auto: L2 probe: the split is startable on the live free figures
+strata serve: layer split: layers 0-21 (CUDA0), 22-47 (CUDA1), one hand-off per window
+strata verify: batch windows of up to 4 sequences (layers [0, 22))
+strata verify: batch windows of up to 4 sequences (layers [22, 48))
+strata serve: adaptive overlap: off: not on a layer split
+strata serve: WARNING: only 491 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 768 to the config's args, or lower --max-context / --batch
+strata serve: WARNING: only 351 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 896 to the config's args, or lower --max-context / --batch
+[strata] 2026-11-27 04:08:04 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 12288 --conversation-cache-slots 6 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 4
+strata generate: layer split across 3 GPUs: CUDA0, then CUDA1,2 (split auto)
+strata generate: layer split: CUDA1 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split: CUDA2 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split auto: CUDA0 80 SMs at 1.53 GHz -> 0.59 ms per layer, 11.07 GiB free before its session carve
+strata generate: layer split auto: CUDA1 56 SMs at 1.33 GHz -> 0.98 ms per layer, 14.35 GiB free before its session carve
+strata generate: layer split auto: CUDA2 72 SMs at 1.38 GHz -> 0.73 ms per layer, 29.17 GiB free before its session carve
+strata generate: layer split auto: CUDA0 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA1 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA2 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: K=21,22 would give a stage fewer than 3 layers (a tiny expert cache there clamps the prompt chunk of every card, #1616); chose K=19,22 instead (34.2 ms per decode window, not 33.8)
+strata generate: layer split auto: K=19,22 - predicted 34.2 ms per decode window; the caches hold 20767 of 24576 profiled pairs (~99.4% of the routed mass), best of 1855 placements
+strata generate: layer split auto: NEAR TIE - K=22,25 is predicted 34.4 ms per decode window, within 0.4% of K=19,22 (34.2 ms); the cards differ, so the prediction may not rank them (it prices decode, not the prompt). To try the other: --layer-split 22,25
+strata generate: layer split: CUDA1 loads the dense weights of layers 19-21 only
+strata generate: layer split, CUDA1: WARNING the split search priced this stage's weights at 309 MiB, it took 312 MiB
+strata generate: layer split: CUDA1 holds its weights; 15.27 GiB free (its session follows)
+strata generate: layer split: CUDA2 loads the dense weights of layers 22-47 only
+strata generate: layer split: CUDA2 holds its weights; 29.35 GiB free (its session follows)
+strata generate: layer split: CUDA1 holds its weights, session [19, 22); 15.14 GiB free
+strata generate: layer split: CUDA2 holds its weights, session [22, 48) and the head; 28.30 GiB free
+strata generate: --batch-groups auto: 2 groups of 2 slots
+strata generate: --batch: 4 slot sessions on CUDA0 (0.36 GiB each); 9.93 GiB free
+strata generate: --batch: 4 slot sessions on CUDA1 (0.13 GiB each); 14.59 GiB free
+strata generate: --batch: 4 slot sessions on CUDA2 (0.56 GiB each); 26.03 GiB free
+strata generate: --batch 4: the slot sessions take 1.45 GiB of VRAM on CUDA0 that the expert cache would otherwise hold
+strata generate: layer split, CUDA1: 14.59 GiB free of 15.89, room for experts 13.36 GiB
+strata generate: layer split: CUDA1 runs layers 19-21, expert cache 1536 slots (2.65 GiB), 1536 of its 1536 profiled pairs; slot 0 verified
+strata generate: layer split, CUDA2: 25.22 GiB free of 31.73, room for experts 24.00 GiB
+strata generate: layer split: CUDA2 runs layers 22-47, expert cache 11981 slots (24.00 GiB), 11981 of its 13312 profiled pairs; slot 0 verified
+strata generate: layer split: CUDA0 runs layers 0-18
+strata generate: layer split auto: L2 probe: the split is startable on the live free figures
+strata serve: layer split: 76% of the experts resident, the prompt path's streamed ring 96 slots
+strata serve: layer split: layers 0-18 (CUDA0), 19-21 (CUDA1), 22-47 (CUDA2), one hand-off per window
+strata verify: batch windows of up to 4 sequences (layers [0, 19))
+strata verify: batch windows of up to 4 sequences (layers [19, 22))
+strata verify: batch windows of up to 4 sequences (layers [22, 48))
+strata serve: adaptive overlap: off: not on a layer split
+strata serve: WARNING: only 493 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 768 to the config's args, or lower --max-context / --batch
+strata serve: WARNING: only 351 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 896 to the config's args, or lower --max-context / --batch
+strata batch: slot 0 takes 85 tokens (copied in 158.0 ms)
+strata verify: captured the batch window over slots 0
+strata verify: captured the batch window over slots 0
+strata verify: captured the batch window over slots 0
+strata batch: slot 2 takes 84 tokens (copied in 159.5 ms)
+strata verify: captured the batch window over slots 2
+strata verify: captured the batch window over slots 2
+strata verify: captured the batch window over slots 2
+strata batch: slot 0 gave back 596 tokens of this conversation (all it holds) in 103.1 ms
+strata batch: slot 1 takes 614 tokens (copied in 93.5 ms)
+strata verify: captured the batch window over slots 0,1
+strata verify: captured the batch window over slots 0,1
+strata verify: captured the batch window over slots 0,1
+strata batch: slot 2 gave back 596 tokens of this conversation (all it holds) in 92.4 ms
+strata batch: slot 0 takes 614 tokens (copied in 100.0 ms)
+strata batch (pipelined, 2 groups of 2): 1517 group-steps, 2009 rows in 29263 ms = 68.7 rows/s (admissions included)
+strata batch: slot 0 takes 89 tokens (copied in 155.1 ms)
+strata batch: slot 2 takes 84 tokens (copied in 47.1 ms)
+strata batch: slot 1 takes 84 tokens (copied in 36.3 ms)
+strata batch: slot 3 takes 84 tokens (copied in 39.2 ms)
+strata verify: captured the batch window over slots 2,3
+strata verify: captured the batch window over slots 2,3
+strata verify: captured the batch window over slots 2,3
+strata batch: slot 0 takes 614 tokens (copied in 48.3 ms)
+strata batch: slot 2 takes 614 tokens (copied in 37.3 ms)
+strata batch: slot 1 gave back 596 tokens of this conversation (all it holds) in 29.2 ms
+strata batch: slot 1 takes 614 tokens (copied in 29.4 ms)
+strata batch: slot 3 takes 614 tokens (copied in 37.6 ms)
+strata batch (pipelined, 2 groups of 2): 2015 group-steps, 4016 rows in 45583 ms = 88.1 rows/s (admissions included)
+strata batch: slot 0 takes 89 tokens (copied in 36.2 ms)
+strata batch: slot 2 takes 84 tokens (copied in 36.1 ms)
+strata batch: slot 1 takes 84 tokens (copied in 36.5 ms)
+strata batch: slot 3 takes 84 tokens (copied in 36.6 ms)
+strata batch: slot 0 takes 84 tokens (copied in 36.4 ms)
+strata batch: slot 2 takes 614 tokens (copied in 37.5 ms)
+strata batch: slot 1 gave back 596 tokens of this conversation (all it holds) in 29.4 ms
+strata batch: slot 1 takes 614 tokens (copied in 30.0 ms)
+strata batch: slot 3 takes 84 tokens (copied in 35.9 ms)
+strata batch: slot 2 takes 614 tokens (copied in 37.4 ms)
+strata batch: slot 1 takes 84 tokens (copied in 38.2 ms)
+strata batch: slot 0 takes 614 tokens (copied in 37.1 ms)
+strata batch: slot 3 takes 84 tokens (copied in 36.0 ms)
+strata batch: slot 2 takes 614 tokens (copied in 37.3 ms)
+strata batch: slot 0 takes 614 tokens (copied in 37.1 ms)
+strata batch: slot 1 gave back 596 tokens of this conversation (all it holds) in 28.8 ms
+strata batch: slot 1 takes 614 tokens (copied in 30.4 ms)
+strata batch: slot 3 gave back 596 tokens of this conversation (all it holds) in 29.3 ms
+strata batch: slot 3 takes 614 tokens (copied in 29.7 ms)
+strata batch (pipelined, 2 groups of 2): 4047 group-steps, 8036 rows in 93146 ms = 86.3 rows/s (admissions included)
+strata batch: slot 0 takes 86 tokens (copied in 35.8 ms)
+strata batch: slot 2 takes 86 tokens (copied in 37.2 ms)
+strata batch: slot 1 takes 86 tokens (copied in 37.2 ms)
+strata batch: slot 3 takes 85 tokens (copied in 37.8 ms)
+strata batch: slot 0 takes 85 tokens (copied in 36.3 ms)
+strata batch: slot 2 takes 85 tokens (copied in 36.1 ms)
+strata batch: slot 1 takes 86 tokens (copied in 36.5 ms)
+strata batch: slot 3 takes 85 tokens (copied in 36.5 ms)
+strata batch: slot 0 takes 85 tokens (copied in 36.3 ms)
+strata batch: slot 2 takes 615 tokens (copied in 37.6 ms)
+strata batch: slot 1 takes 85 tokens (copied in 35.9 ms)
+strata batch: slot 3 takes 86 tokens (copied in 36.3 ms)
+strata batch: slot 2 takes 616 tokens (copied in 38.6 ms)
+strata batch: slot 0 takes 615 tokens (copied in 37.5 ms)
+strata batch: slot 1 takes 85 tokens (copied in 35.8 ms)
+strata batch: slot 3 takes 615 tokens (copied in 37.2 ms)
+strata batch: slot 2 takes 616 tokens (copied in 36.9 ms)
+strata batch: slot 0 takes 615 tokens (copied in 37.7 ms)
+strata batch: slot 3 takes 85 tokens (copied in 36.4 ms)
+strata batch: slot 1 takes 85 tokens (copied in 37.5 ms)
+strata batch: slot 2 takes 615 tokens (copied in 37.4 ms)
+strata batch: slot 0 takes 616 tokens (copied in 37.7 ms)
+strata batch: slot 3 takes 615 tokens (copied in 37.6 ms)
+strata batch: slot 1 takes 616 tokens (copied in 37.0 ms)
+strata batch: slot 2 takes 615 tokens (copied in 38.0 ms)
+strata batch: slot 0 takes 615 tokens (copied in 38.4 ms)
+strata batch: slot 3 takes 86 tokens (copied in 36.3 ms)
+strata batch: slot 1 takes 86 tokens (copied in 36.4 ms)
+strata batch: slot 2 takes 615 tokens (copied in 38.4 ms)
+strata batch: slot 0 takes 615 tokens (copied in 37.0 ms)
+strata batch: slot 3 gave back 598 tokens of this conversation (all it holds) in 28.7 ms
+strata batch: slot 3 takes 616 tokens (copied in 29.9 ms)
+strata batch: slot 1 gave back 598 tokens of this conversation (all it holds) in 29.3 ms
+strata batch: slot 1 takes 616 tokens (copied in 31.1 ms)
+strata batch (pipelined, 2 groups of 2): 8114 group-steps, 16080 rows in 205107 ms = 78.4 rows/s (admissions included)
+[strata] 2026-11-27 05:30:08 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 12288 --conversation-cache-slots 6 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 4
+[strata] 2026-11-27 05:30:20 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 12288 --conversation-cache-slots 6 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 4
+strata generate: layer split across 3 GPUs: CUDA0, then CUDA1,2 (split auto)
+strata generate: layer split: CUDA1 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split: CUDA2 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split auto: CUDA0 80 SMs at 1.53 GHz -> 0.59 ms per layer, 11.07 GiB free before its session carve
+strata generate: layer split auto: CUDA1 56 SMs at 1.33 GHz -> 0.98 ms per layer, 14.35 GiB free before its session carve
+strata generate: layer split auto: CUDA2 72 SMs at 1.38 GHz -> 0.73 ms per layer, 29.17 GiB free before its session carve
+strata generate: layer split auto: CUDA0 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA1 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA2 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: K=21,22 would give a stage fewer than 3 layers (a tiny expert cache there clamps the prompt chunk of every card, #1616); chose K=19,22 instead (34.2 ms per decode window, not 33.8)
+strata generate: layer split auto: K=19,22 - predicted 34.2 ms per decode window; the caches hold 20767 of 24576 profiled pairs (~99.4% of the routed mass), best of 1855 placements
+strata generate: layer split auto: NEAR TIE - K=22,25 is predicted 34.4 ms per decode window, within 0.4% of K=19,22 (34.2 ms); the cards differ, so the prediction may not rank them (it prices decode, not the prompt). To try the other: --layer-split 22,25
+strata generate: layer split: CUDA1 loads the dense weights of layers 19-21 only
+strata generate: layer split, CUDA1: WARNING the split search priced this stage's weights at 309 MiB, it took 312 MiB
+strata generate: layer split: CUDA1 holds its weights; 15.27 GiB free (its session follows)
+strata generate: layer split: CUDA2 loads the dense weights of layers 22-47 only
+strata generate: layer split: CUDA2 holds its weights; 29.35 GiB free (its session follows)
+strata generate: layer split: CUDA1 holds its weights, session [19, 22); 15.14 GiB free
+strata generate: layer split: CUDA2 holds its weights, session [22, 48) and the head; 28.30 GiB free
+strata generate: --batch-groups auto: 2 groups of 2 slots
+strata generate: --batch: 4 slot sessions on CUDA0 (0.36 GiB each); 9.94 GiB free
+strata generate: --batch: 4 slot sessions on CUDA1 (0.13 GiB each); 14.59 GiB free
+strata generate: --batch: 4 slot sessions on CUDA2 (0.56 GiB each); 26.03 GiB free
+strata generate: --batch 4: the slot sessions take 1.45 GiB of VRAM on CUDA0 that the expert cache would otherwise hold
+strata generate: layer split, CUDA1: 14.59 GiB free of 15.89, room for experts 13.36 GiB
+strata generate: layer split: CUDA1 runs layers 19-21, expert cache 1536 slots (2.65 GiB), 1536 of its 1536 profiled pairs; slot 0 verified
+strata generate: layer split, CUDA2: 25.22 GiB free of 31.73, room for experts 24.00 GiB
+strata generate: layer split: CUDA2 runs layers 22-47, expert cache 11981 slots (24.00 GiB), 11981 of its 13312 profiled pairs; slot 0 verified
+strata generate: layer split: CUDA0 runs layers 0-18
+strata generate: layer split auto: L2 probe: the split is startable on the live free figures
+strata serve: layer split: 76% of the experts resident, the prompt path's streamed ring 96 slots
+strata serve: layer split: layers 0-18 (CUDA0), 19-21 (CUDA1), 22-47 (CUDA2), one hand-off per window
+strata verify: batch windows of up to 4 sequences (layers [0, 19))
+strata verify: batch windows of up to 4 sequences (layers [19, 22))
+strata verify: batch windows of up to 4 sequences (layers [22, 48))
+strata serve: adaptive overlap: off: not on a layer split
+[strata] 2026-11-27 04:30:11 engine started: /home/ubuntu/strata-test/strata-main/build-sm60/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 12288 --conversation-cache-slots 6 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 8
+strata generate: layer split across 3 GPUs: CUDA0, then CUDA1,2 (split auto)
+strata generate: layer split: CUDA1 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split: CUDA2 PCIe probe 12.7 GB/s (best of 12.7 12.7 12.7 12.6) -> pcie_frac 0.35
+strata generate: layer split auto: CUDA0 80 SMs at 1.53 GHz -> 0.59 ms per layer, 11.07 GiB free before its session carve
+strata generate: layer split auto: CUDA1 56 SMs at 1.33 GHz -> 0.98 ms per layer, 14.35 GiB free before its session carve
+strata generate: layer split auto: CUDA2 72 SMs at 1.38 GHz -> 0.73 ms per layer, 29.17 GiB free before its session carve
+strata generate: layer split auto: CUDA0 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA1 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: CUDA2 link 12.7 GB/s -> miss cost x1.00
+strata generate: layer split auto: K=21,22 would give a stage fewer than 3 layers (a tiny expert cache there clamps the prompt chunk of every card, #1616); chose K=19,22 instead (34.2 ms per decode window, not 33.8)
+strata generate: layer split auto: K=19,22 - predicted 34.2 ms per decode window; the caches hold 20767 of 24576 profiled pairs (~99.4% of the routed mass), best of 1855 placements
+strata generate: layer split auto: NEAR TIE - K=22,25 is predicted 34.4 ms per decode window, within 0.4% of K=19,22 (34.2 ms); the cards differ, so the prediction may not rank them (it prices decode, not the prompt). To try the other: --layer-split 22,25
+strata generate: layer split: CUDA1 loads the dense weights of layers 19-21 only
+strata generate: layer split, CUDA1: WARNING the split search priced this stage's weights at 309 MiB, it took 312 MiB
+strata generate: layer split: CUDA1 holds its weights; 15.27 GiB free (its session follows)
+strata generate: layer split: CUDA2 loads the dense weights of layers 22-47 only
+strata generate: layer split: CUDA2 holds its weights; 29.35 GiB free (its session follows)
+strata generate: layer split: CUDA1 holds its weights, session [19, 22); 15.14 GiB free
+strata generate: layer split: CUDA2 holds its weights, session [22, 48) and the head; 28.30 GiB free
+strata generate: --batch-groups auto: 2 groups of 4 slots
+strata generate: --batch: 8 slot sessions on CUDA0 (0.36 GiB each); 8.48 GiB free
+strata generate: --batch: 8 slot sessions on CUDA1 (0.13 GiB each); 14.05 GiB free
+strata generate: --batch: 8 slot sessions on CUDA2 (0.56 GiB each); 23.76 GiB free
+strata generate: --batch 8: the slot sessions take 2.90 GiB of VRAM on CUDA0 that the expert cache would otherwise hold
+strata generate: layer split, CUDA1: 14.03 GiB free of 15.89, room for experts 12.81 GiB
+strata generate: layer split: CUDA1 runs layers 19-21, expert cache 1536 slots (2.65 GiB), 1536 of its 1536 profiled pairs; slot 0 verified
+strata generate: layer split, CUDA2: 22.95 GiB free of 31.73, room for experts 21.73 GiB
+strata generate: layer split: CUDA2 runs layers 22-47, expert cache 10854 slots (21.73 GiB), 10854 of its 13312 profiled pairs; slot 0 verified
+strata generate: layer split: CUDA0 runs layers 0-18
+strata generate: layer split auto: L2 probe: the split is startable on the live free figures
+strata serve: layer split: layers 0-18 (CUDA0), 19-21 (CUDA1), 22-47 (CUDA2), one hand-off per window
+strata verify: batch windows of up to 8 sequences (layers [0, 19))
+strata verify: batch windows of up to 8 sequences (layers [19, 22))
+strata verify: batch windows of up to 8 sequences (layers [22, 48))
+strata serve: adaptive overlap: off: not on a layer split
+strata serve: WARNING: only 481 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 768 to the config's args, or lower --max-context / --batch
+strata batch: slot 0 takes 85 tokens (copied in 158.7 ms)
+strata verify: captured the batch window over slots 0
+strata verify: captured the batch window over slots 0
+strata verify: captured the batch window over slots 0
+strata batch: slot 4 takes 84 tokens (copied in 161.0 ms)
+strata verify: captured the batch window over slots 4
+strata verify: captured the batch window over slots 4
+strata verify: captured the batch window over slots 4
+strata batch: slot 1 takes 84 tokens (copied in 159.1 ms)
+strata verify: captured the batch window over slots 0,1
+strata verify: captured the batch window over slots 0,1
+strata verify: captured the batch window over slots 0,1
+strata batch: slot 5 takes 84 tokens (copied in 160.7 ms)
+strata verify: captured the batch window over slots 4,5
+strata verify: captured the batch window over slots 4,5
+strata verify: captured the batch window over slots 4,5
+strata batch: slot 0 gave back 596 tokens of this conversation (all it holds) in 103.3 ms
+strata batch: slot 2 takes 614 tokens (copied in 93.2 ms)
+strata verify: captured the batch window over slots 0,1,2
+strata verify: captured the batch window over slots 0,1,2
+strata verify: captured the batch window over slots 0,1,2
+strata serve: WARNING: only 345 MiB of VRAM free at the start of this request (below 512 MiB): when the card is this full the driver can page GPU memory to system RAM, decode falls to a few tok/s and a window may never finish (#2065). Add --vram-reserve-mib 896 to the config's args, or lower --max-context / --batch
+strata batch: slot 4 gave back 596 tokens of this conversation (all it holds) in 92.7 ms
+strata batch: slot 0 takes 614 tokens (copied in 99.9 ms)
+strata batch: slot 1 gave back 596 tokens of this conversation (all it holds) in 92.6 ms
+strata batch: slot 4 takes 614 tokens (copied in 100.2 ms)
+strata batch: slot 5 gave back 596 tokens of this conversation (all it holds) in 90.2 ms
+strata batch: slot 1 takes 614 tokens (copied in 100.1 ms)
+strata batch (pipelined, 2 groups of 4): 2011 group-steps, 4019 rows in 49492 ms = 81.2 rows/s (admissions included)
+strata batch: slot 0 takes 85 tokens (copied in 155.6 ms)
+strata batch: slot 4 takes 84 tokens (copied in 154.9 ms)
+strata batch: slot 1 takes 84 tokens (copied in 158.4 ms)
+strata batch: slot 5 takes 84 tokens (copied in 168.6 ms)
+strata batch: slot 2 takes 84 tokens (copied in 156.2 ms)
+strata batch: slot 6 takes 84 tokens (copied in 157.8 ms)
+strata verify: captured the batch window over slots 4,5,6
+strata verify: captured the batch window over slots 4,5,6
+strata verify: captured the batch window over slots 4,5,6
+strata batch: slot 3 takes 84 tokens (copied in 161.6 ms)
+strata verify: captured the batch window over slots 0,1,2,3
+strata verify: captured the batch window over slots 0,1,2,3
+strata verify: captured the batch window over slots 0,1,2,3
+strata batch: slot 7 takes 84 tokens (copied in 158.8 ms)
+strata verify: captured the batch window over slots 4,5,6,7
+strata verify: captured the batch window over slots 4,5,6,7
+strata verify: captured the batch window over slots 4,5,6,7
+strata batch: slot 0 takes 614 tokens (copied in 170.7 ms)
+strata batch: slot 1 gave back 596 tokens of this conversation (all it holds) in 104.8 ms
+strata batch: slot 4 takes 614 tokens (copied in 100.8 ms)
+strata batch: slot 1 takes 614 tokens (copied in 166.4 ms)
+strata batch: slot 5 gave back 79 tokens of this conversation (its turn checkpoint) in 88.3 ms
+strata batch: slot 2 takes 614 tokens (copied in 168.0 ms)
+strata batch: slot 3 gave back 596 tokens of this conversation (all it holds) in 101.9 ms
+strata batch: slot 5 takes 614 tokens (copied in 100.7 ms)
+strata batch: slot 7 gave back 596 tokens of this conversation (all it holds) in 90.1 ms
+strata batch: slot 6 takes 614 tokens (copied in 100.1 ms)
+strata batch: slot 3 takes 614 tokens (copied in 167.9 ms)
+strata batch: slot 7 takes 614 tokens (copied in 167.7 ms)
+strata batch (pipelined, 2 groups of 4): 2018 group-steps, 8040 rows in 84735 ms = 94.9 rows/s (admissions included)
+strata batch: slot 0 takes 86 tokens (copied in 166.2 ms)
+strata batch: slot 4 takes 85 tokens (copied in 155.9 ms)
+strata batch: slot 1 takes 85 tokens (copied in 165.8 ms)
+strata batch: slot 5 takes 85 tokens (copied in 158.9 ms)
+strata batch: slot 2 takes 85 tokens (copied in 168.8 ms)
+strata batch: slot 6 takes 85 tokens (copied in 155.4 ms)
+strata batch: slot 3 takes 86 tokens (copied in 171.2 ms)
+strata batch: slot 7 takes 86 tokens (copied in 166.6 ms)
+strata batch: slot 0 takes 85 tokens (copied in 166.4 ms)
+strata batch: slot 4 takes 86 tokens (copied in 167.3 ms)
+strata batch: slot 1 takes 86 tokens (copied in 167.3 ms)
+strata batch: slot 2 takes 616 tokens (copied in 168.1 ms)
+strata batch: slot 5 takes 616 tokens (copied in 168.3 ms)
+strata batch: slot 6 takes 615 tokens (copied in 167.4 ms)
+strata batch: slot 3 takes 86 tokens (copied in 169.0 ms)
+strata batch: slot 7 takes 615 tokens (copied in 167.3 ms)
+strata batch: slot 2 takes 85 tokens (copied in 169.2 ms)
+strata batch: slot 5 takes 86 tokens (copied in 167.6 ms)
+strata batch: slot 6 takes 85 tokens (copied in 166.2 ms)
+strata batch: slot 7 takes 615 tokens (copied in 167.4 ms)
+strata batch: slot 0 takes 85 tokens (copied in 167.6 ms)
+strata batch: slot 4 takes 616 tokens (copied in 167.7 ms)
+strata batch: slot 1 takes 615 tokens (copied in 168.1 ms)
+strata batch: slot 3 takes 615 tokens (copied in 171.0 ms)
+strata batch: slot 7 takes 615 tokens (copied in 168.5 ms)
+strata batch: slot 4 takes 615 tokens (copied in 168.3 ms)
+strata batch: slot 1 takes 616 tokens (copied in 167.2 ms)
+strata batch: slot 2 takes 616 tokens (copied in 169.4 ms)
+strata batch: slot 5 takes 615 tokens (copied in 168.1 ms)
+strata batch: slot 6 takes 615 tokens (copied in 166.9 ms)
+strata batch: slot 3 takes 616 tokens (copied in 167.9 ms)
+strata batch: slot 0 takes 615 tokens (copied in 167.8 ms)
+strata batch (pipelined, 2 groups of 4): 4046 group-steps, 16082 rows in 186345 ms = 86.3 rows/s (admissions included)

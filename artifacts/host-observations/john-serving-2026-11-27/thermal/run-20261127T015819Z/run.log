@@ -1,0 +1,8 @@
+2026-11-27T01:58:20Z cards: 0, Tesla V100-SXM2-16GB, 150.00 W;1, Tesla PG500-216, 100.00 W;2, Tesla P100-PCIE-16GB, 125.00 W; guard limits: gpu2=83C gpu1=89C gpu0=88C 
+2026-11-27T01:58:20Z idle baseline
+2026-11-27T01:58:40Z PHASE all start
+  gpu0: mismatches=0 | gpu0 burn: DONE t=600s tflops=65.54 checksum_mismatches=0
+  gpu1: mismatches=0 | gpu1 burn: DONE t=601s tflops=15.02 checksum_mismatches=0
+  gpu2: mismatches=0 | gpu2 burn: DONE t=602s tflops=2.50 checksum_mismatches=0
+2026-11-27T02:08:46Z PHASE done
+2026-11-27T02:09:46Z RUN DONE /home/ubuntu/thermal/results/run-20261127T015819Z
