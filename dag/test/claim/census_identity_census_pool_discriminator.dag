@@ -1,0 +1,80 @@
+module test.claim.census_identity_census_pool_discriminator
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DISCRIMINATOR FOR THE census_exit RED (probe branch only; not a row member).
+// PROBE REF ONLY - NEVER MERGED, NEVER ENROLLED ON MAIN.
+// a_unimported_cross_module_census_callee_replicates_the_red is AUTHORED to DID-NOT-HOLD: it
+// replicates an existing red to separate two causes. Enrolled on main it would redden the
+// corpus floor on a probe fixture and be cited as a witness to an invariant it does not test.
+// Three callee names, deliberately DISTINCT, so the probe hit file attributes by callee name
+// without any compiler change: each reading is identifiable by which name has a census hit.
+//   census_exit_unimported    - declared in a SECOND fixture module, NOT import-listed (replicates
+//                               test.claim.census_identity_callable_not_a_type_witness:a_census_identity_exit_call_inhabits_process_exit)
+//   census_exit_same_module   - declared and called in the SAME fixture module (separates
+//                               "cross-module fixture declaration" from "fixture-authored module at all")
+//   census_exit_imported      - declared in a second fixture module AND import-listed by name
+//                               (tells whether the func_env answers it before the arm is ever entered)
+
+data un_decoy: String = "module kmfx.un_decoy\n\ntype ProcessExit = ExitSuccess | ExitFailure { reason: String }\n\nfn census_exit_unimported(reason: String) -> ProcessExit {\n  ExitFailure { reason: reason }\n}\n"
+
+data un_probe: String = "module kmfx.un_probe\n\nimport kmfx.un_decoy { ProcessExit }\n\nfn pick(flag: Bool) -> ProcessExit {\n  if flag { ExitSuccess } else { census_exit_unimported(\"x\") }\n}\n"
+
+data sm_probe: String = "module kmfx.sm_probe\n\ntype ProcessExit = ExitSuccess | ExitFailure { reason: String }\n\nfn census_exit_same_module(reason: String) -> ProcessExit {\n  ExitFailure { reason: reason }\n}\n\nfn pick(flag: Bool) -> ProcessExit {\n  if flag { ExitSuccess } else { census_exit_same_module(\"x\") }\n}\n"
+
+data im_decoy: String = "module kmfx.im_decoy\n\ntype ProcessExit = ExitSuccess | ExitFailure { reason: String }\n\nfn census_exit_imported(reason: String) -> ProcessExit {\n  ExitFailure { reason: reason }\n}\n"
+
+data im_probe: String = "module kmfx.im_probe\n\nimport kmfx.im_decoy { ProcessExit, census_exit_imported }\n\nfn pick(flag: Bool) -> ProcessExit {\n  if flag { ExitSuccess } else { census_exit_imported(\"x\") }\n}\n"
+
+fn run_two(decoy: String, probe: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "kmfx_decoy.dag", content: decoy),
+      fixture_source(path: "kmfx_probe.dag", content: probe)
+    ],
+    entry: "kmfx_probe.dag"
+  })
+}
+
+fn run_one(probe: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "kmfx_probe.dag", content: probe)
+    ],
+    entry: "kmfx_probe.dag"
+  })
+}
+
+fn completed_without_blocking(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { diagnostics: rows, module_count: _, emitted_files: _, resolved_rust_functions: _, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: rows) |> count) == 0
+    FixtureCompileRefused { diagnostics: _, module_count: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn a_unimported_cross_module_census_callee_replicates_the_red() -> Bool {
+  completed_without_blocking(o: run_two(decoy: un_decoy, probe: un_probe))
+}
+
+test fn a_same_module_census_callee_completes() -> Bool {
+  completed_without_blocking(o: run_one(probe: sm_probe))
+}
+
+test fn a_import_listed_census_callee_completes() -> Bool {
+  completed_without_blocking(o: run_two(decoy: im_decoy, probe: im_probe))
+}
