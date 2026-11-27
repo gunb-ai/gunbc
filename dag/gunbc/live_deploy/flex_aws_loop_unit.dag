@@ -17,7 +17,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.live_deploy.emit { release_locus_workspace_root_environment }
 
 // THE AWS SPOT DEMAND FILLER AS A SERVICE OF SRV1 (gunbc.plans.aws_spot_serving, roadmap leaf
-// aws-spot-unattended-settled). It replaces the transient `systemd-run --user` unit that ran from a
+// aws-spot-unattended). It replaces the transient `systemd-run --user` unit that ran from a
 // hand-synced, non-git copy (~/gunbc-flex-run, 2026-11-25), which survived no reboot and ran whatever was last
 // copied: the unit is installed by the srv1 deploy, runs THE DEPLOYED REVISION from the approval broker's
 // release locus (the same tree, binary and service user the broker and its sidecar run from), and starts at

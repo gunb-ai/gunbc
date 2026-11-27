@@ -1170,17 +1170,34 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     roadmap_node(
       identity: "rn_0JXP0SRJPJEZD2KEEBWDJ4MK9D",
-      id: "aws-spot-unattended-settled",
+      id: "aws-spot-unattended",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/plans/aws_spot_serving.dag"),
       line: ticket(t: fields(
-          headline: "The loop runs unattended on srv1 under its cap and its AWS cost is observed, retiring aws_flex_settlement_unobserved",
-          boundary: "Serves gunbc.plans.aws_spot_serving. The srv1 deploy installs the loop as a service on the deployed revision (gunbc.live_deploy.flex_aws_loop_unit); the waiters a rented card could take are the demand signal (gunbc.serving.flex_aws_router_rows flex_aws_rentable_waiting); cards drain when idle and terminate themselves on a stale heartbeat (gunbc.design_ruling aws_spot_idle_release_and_dead_man_2026_11_25); an AWS Budget is the backstop above the loop's own burn ceiling; settlement joins billing observations by instance id.",
-          displaced_cost: "Without it every card is a hand-started experiment and its cost is an estimate.",
-          first_slice: "The timer unit and one unattended launch-serve-release cycle with its cost row.",
-          red_control: "A pass that cannot read the stranded count launches nothing; the Budget action fires on a test budget.",
-          out_of_scope: "Quota increases (aws_spot_quota_requests_held_2026_11_25).",
-          handback: "The unattended cycle's receipts and the settled cost rows."
+          headline: "The loop runs unattended on srv1, on the deployed revision, under its card and burn ceilings",
+          boundary: "Serves gunbc.plans.aws_spot_serving. The srv1 deploy installs the loop as a service on the deployed revision (gunbc.live_deploy.flex_aws_loop_unit), replacing the transient unit run from a synced copy since 2026-11-25 (stopping a transient unit deletes it, and the 2026-11-26 07:47 UTC user-wide SIGTERM on srv1 took it down with nothing to restart it). The router's unplaceable rented demand is the purchase signal (gunbc.serving.flex_aws_router_rows flex_aws_rented_unplaceable); cards drain when idle and terminate themselves on a stale heartbeat (gunbc.design_ruling aws_spot_idle_release_and_dead_man_2026_11_25); an AWS Budget is the backstop above the loop's own burn ceiling. Settlement is its own node, aws-spot-settlement-observed.",
+          displaced_cost: "Without it the loop is a hand-started process that a host event can stop with nothing to bring it back.",
+          first_slice: "The deployed unit, and one unattended launch-serve-release cycle on it.",
+          red_control: "A pass that cannot read the router's demand launches nothing; the Budget action fires on a test budget.",
+          out_of_scope: "Quota increases (aws_spot_quota_requests_held_2026_11_25); observed cost (aws-spot-settlement-observed).",
+          handback: "The deploy receipt and the unattended cycle's pass receipts."
+        )),
+      parent: in_project(project: "aws-spot-serving", contribution: "One link of the AWS spot chain: observe, launch, boot, enroll, drain, settle."),
+      centering: plan(text: "dag/gunbc/plans/aws_spot_serving.dag"),
+    ),
+    roadmap_node(
+      identity: "rn_NFAKTXE16Q7M28CSQYJNSRS7V0",
+      id: "aws-spot-settlement-observed",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/aws_spot_serving.dag"),
+      line: ticket(t: fields(
+          headline: "Each AWS card's billed cost is read from an AWS billing record joined by instance id, retiring aws_flex_settlement_unobserved",
+          boundary: "Serves gunbc.plans.aws_spot_serving. Deliberately left open when gunbc#17108 landed the loop (operator, 2026-11-26: mark it in the plan so it is not forgotten). EC2 has no per-instance charges call, so the billed amount exists only in AWS billing data: a Data Exports (CUR 2.0) export with resource ids, delivered to S3 and refreshed up to a few times a day, at most about 24 hours behind usage. No export exists in the account at 2026-11-26. Two parts, in order: (1) the export and its bucket are a modeled converge like gunbc.fleet.flex_aws_regions (Plan/Apply, read back), under a principal scoped to that export and bucket, never a hand-run CLI call or the account root; (2) a reader of the delivered rows, written against a real delivery rather than a guessed schema, that joins line items to the loop's cards by instance id and hands each card's billed amount to gunbc.serving.rented_settlement beside the Vast charges walk, so the budget wall reads observed spend. Until then the wall counts max(admitted spot price, MaxPrice) times billed time and the AWS Budget is the backstop (gunbc.rung_drop aws_flex_settlement_unobserved).",
+          displaced_cost: "AWS spend is an estimate: an over-spend is caught only by the Budget backstop, not observed per card as Vast spend is.",
+          first_slice: "The export converge applied and read back, and the first delivery's rows for one card the loop bought, read by hand to fix the reader's input shape.",
+          red_control: "A card whose rows are absent from a delivery that covers its running hours is reported unsettled, never zero; a row whose resource id names no card of ours is not attributed to one.",
+          out_of_scope: "Cost Explorer as the source (no per-instance figures without paid resource-level opt-in); reconciling credits against the 10k/25k credit program.",
+          handback: "The export's read-back, one card's billed amount next to the loop's own estimate for it, and the rung drop's retirement."
         )),
       parent: in_project(project: "aws-spot-serving", contribution: "One link of the AWS spot chain: observe, launch, boot, enroll, drain, settle."),
       centering: plan(text: "dag/gunbc/plans/aws_spot_serving.dag"),
