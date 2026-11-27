@@ -836,11 +836,16 @@ fn h11_engine_figures() -> ReplicaFigures {
 // relation between two figures of one candidate. So "this candidate's observed population exceeds its own
 // host-total warm capacity" cannot be said in that vocabulary without minting a funded warm-session surplus
 // axis and re-answering that module's witnesses. Minting an axis the fleet has not funded IS a placement
-// decision, and this row refuses to take one: its out_of_scope (dag/gunbc/roadmap/roadmap_authority.dag:8516)
-// is "Any --prompt-cache value on a live host -- no tuning from here", and its boundary (:8513) says the
-// ratio is carried "so a future tuning decision reads a measurement instead of a default". The consumer sits
+// decision, and this row refuses to take one. CITED BY SYMBOL, not by position (gunbc.design_argument::
+// single_authority: "Cite the symbol, not the position ... a position is carried only where no symbol exists
+// (a generated artifact, a data row, a line inside a blob), and then beside the symbol, never as the
+// citation"): the row lives as a data row inside #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes,
+// named by its id "fleet-truth-prefix-cache-sized-to-population" and its identity
+// rn_DGSZ32J4QFKMKBQYC25T6WEZDG, whose out_of_scope is "Any --prompt-cache value on a live host -- no tuning
+// from here" and whose boundary says the ratio is carried "so a future tuning decision reads a measurement
+// instead of a default". The consumer sits
 // on the far side of this frontier by the row's own design; what this change owes is that the measurement is
 // there, typed, and loud when it is breached -- which is what the two red controls answer for.
 data prefix_cache_capacity_choice_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.serving.serving_replica_choice gains one funded SelectionAxis over the surplus between a candidate's host-total warm-session capacity (configuration_warm_session_capacity) and its observed admitted population (ConcurrentAgentPopulation), plus the HardConstraint putting that surplus at or above zero, with that module's witnesses re-answered for the new axis -- TRIGGERED BY the placement or tuning decision this row exists to inform: the row's boundary (dag/gunbc/roadmap/roadmap_authority.dag:8513) carries the ratio so that 'a future tuning decision reads a measurement instead of a default', and its out_of_scope (:8516) forbids taking that decision from here. SUFFICIENT FOR: a candidate whose observed population exceeds the capacity its own rows declare is refused a place by the selection instead of ranked beside one that fits, and a tuning decision reads the carried permille instead of the inherited six-checkpoint default." as NonEmptyStr,
+  description: "gunbc.serving.serving_replica_choice gains one funded SelectionAxis over the surplus between a candidate's host-total warm-session capacity (configuration_warm_session_capacity) and its observed admitted population (ConcurrentAgentPopulation), plus the HardConstraint putting that surplus at or above zero, with that module's witnesses re-answered for the new axis -- TRIGGERED BY the placement or tuning decision this row exists to inform: the row's boundary carries the ratio so that 'a future tuning decision reads a measurement instead of a default', and its out_of_scope -- 'Any --prompt-cache value on a live host -- no tuning from here' -- forbids taking that decision from here; that row is a data row inside gunbc.roadmap.roadmap_authority declared_roadmap_nodes, named by its id 'fleet-truth-prefix-cache-sized-to-population' and its identity rn_DGSZ32J4QFKMKBQYC25T6WEZDG. SUFFICIENT FOR: a candidate whose observed population exceeds the capacity its own rows declare is refused a place by the selection instead of ranked beside one that fits, and a tuning decision reads the carried permille instead of the inherited six-checkpoint default." as NonEmptyStr,
 )
