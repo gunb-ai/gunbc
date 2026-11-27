@@ -1395,6 +1395,16 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
   tokenize_prepared(text: text, file: file, prepared: prepare_lex_rules(rules: rules))
 }
 
+// THE AUTHORED DOOR BESIDE `tokenize`: the SAME single walk, keeping every capture the semantic walk
+// made, so an authored consumer (v2.compiler.parse parse_module_authored) reads the one lex and never
+// re-lexes (v2.compiler.tokenize lex_walk_artifact says the artifact that is not this one walk is a
+// second lex beside it). The semantic stream a caller that reads no prose still needs is
+// lex_artifact_semantic_tokens of this result -- the same tokens `tokenize` returns, so this door adds
+// no second answer beside `tokenize`; it is the same walk with the prose half kept.
+fn tokenize_artifact(text: String, file: Symbol, rules: LexRules) -> Outcome<LexArtifact> {
+  tokenize_artifact_prepared(text: text, file: file, prepared: prepare_lex_rules(rules: rules))
+}
+
 // THE COMPILED RULES ARE A PROPERTY OF THE LANGUAGE, NOT OF THE TEXT. Compiling a rule set (each
 // rule's matcher, the first-character dispatch over them, one dispatch per declared mode) and
 // checking its mode declarations depend on the rules alone, so prepare_lex_rules does that once and

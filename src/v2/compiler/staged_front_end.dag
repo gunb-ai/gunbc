@@ -2,12 +2,14 @@ module v2.compiler.staged_front_end
 
 import std.types { List }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
+import v2.compiler.parse { authored_parse_annotations, authored_parse_semantic, parse_module_authored }
 import v2.compiler.resolve { ResolvedTree, resolve }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.tokenize { tokenize_artifact }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { list_snoc_item }
-import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
+import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
+import std.algebra { list_snoc_item, length }
+import std.source_annotation { source_annotation_graph_rows }
+import v2.std.compilers.lexing { LexArtifact, lex_artifact_semantic_tokens, token_stream_remaining_count }
 import v2.std.language_model { LanguageModel }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -25,7 +27,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   diagnostics_merge,
-  rejected_with_pending
+  rejected_with_pending,
 }
 import v2.std.node { Node, Symbol, node_subtree_count }
 
@@ -55,7 +57,7 @@ type FrontEndStage
 
 type FrontEndStageReceipt
   = TokenizedSource { token_count: Int }
-  | ParsedModule { node_count: Int }
+  | ParsedModule { node_count: Int, annotation_count: Int }
   | NormalizedModule { node_count: Int }
   | ResolvedModule { node_count: Int }
 
@@ -141,18 +143,20 @@ fn front_end_bounded(
 }
 
 fn front_end_tokenize_step(source: String, file: Symbol, lm: LanguageModel, depth: Int) -> FrontEndRun {
-  match tokenize(text: source, file: file, rules: lm.lex) {
+  match tokenize_artifact(text: source, file: file, rules: lm.lex) {
     Rejected { diagnostics: r } =>
       front_end_stopped(steps: [], stage: FrontEndTokenize, diagnostics: r)
-    Accepted { value: tokens, diagnostics: d } =>
+    Accepted { value: artifact, diagnostics: d } =>
       front_end_continue_parse(
         steps: front_end_passed(
           steps: [],
           stage: FrontEndTokenize,
-          receipt: TokenizedSource { token_count: token_stream_remaining_count(stream: tokens) },
+          receipt: TokenizedSource {
+            token_count: token_stream_remaining_count(stream: lex_artifact_semantic_tokens(artifact: artifact))
+          },
           diagnostics: d
         ),
-        tokens: tokens,
+        artifact: artifact,
         lm: lm,
         depth: depth
       )
@@ -161,40 +165,68 @@ fn front_end_tokenize_step(source: String, file: Symbol, lm: LanguageModel, dept
 
 fn front_end_continue_parse(
   steps: List<FrontEndStageStep>,
-  tokens: TokenStream,
+  artifact: LexArtifact,
   lm: LanguageModel,
   depth: Int
 ) -> FrontEndRun {
   if depth <= front_end_stage_index(stage: FrontEndTokenize) {
     front_end_bounded(steps: steps, stage: FrontEndTokenize)
   } else {
-    front_end_parse_step(steps: steps, tokens: tokens, lm: lm, depth: depth)
+    front_end_parse_step(steps: steps, artifact: artifact, lm: lm, depth: depth)
   }
 }
 
+// THE PARSE STAGE LEXES AUTHORED AND READS BOTH HALVES OF WHAT IT ATTACHED. The stage calls the authored
+// sibling of parse_module -- the same semantic parse of the same one lex, plus every capture attached to its gap
+// by the SHARED rule (std.source_annotation attach_annotations) -- and reads the semantic half forward through
+// authored_parse_semantic, plus the annotation half ONCE, as a receipt quantity: annotation_count is
+// length(xs:) over the fold's emitted rows (source_annotation_graph_rows of authored_parse_annotations), the
+// same idiom as the lex stage's token_count. It is a RECEIPT number reported by the stage, NOT the fold's
+// per-row absorbed-capture count (that quantity is a roadmap row's, not this one's: the deferral and its
+// precondition are written on source-annotation-fold-carries-absorbed-capture-count) -- and it judges nothing:
+// no span is compared here, and the count is never
+// compared against the capture count, which would decide std.source_annotation annotation_attach_step's join
+// rule in a second place (gunbc.design_argument::single_authority). The guard that would catch an
+// attachment loss is therefore deferred, and its precondition is that fold carrying the absorbed per-row
+// count: with no per-row number there is nothing for a consumer to compare against. That deferral is
+// carried by the roadmap row named above, not by this file. The named consumer that reads it back over
+// an executing route is v2.test.claim.staged_front_end
+// staged_front_end_produces_the_authored_parse_for_an_annotated_module, positive on a commented module and zero
+// on an uncommented one.
+// `annotation_text` is .dag's delimiter stripping, named at the .dag entry above (run_front_end_to
+// already calls dag_language_model()); the parse itself names no annotation syntax.
 fn front_end_parse_step(
   steps: List<FrontEndStageStep>,
-  tokens: TokenStream,
+  artifact: LexArtifact,
   lm: LanguageModel,
   depth: Int
 ) -> FrontEndRun {
-  match parse_module(tokens: tokens, grammar: lm.grammar) {
+  match parse_module_authored(
+    artifact: artifact,
+    grammar: lm.grammar,
+    annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }
+  ) {
     Rejected { diagnostics: r } =>
       front_end_stopped(steps: steps, stage: FrontEndParse, diagnostics: r)
-    Accepted { value: artifact, diagnostics: d } =>
+    Accepted { value: authored, diagnostics: d } =>
+      let semantic = authored_parse_semantic(artifact: authored)
       front_end_continue_normalize(
         steps: front_end_passed(
           steps: steps,
           stage: FrontEndParse,
-          receipt: ParsedModule { node_count: node_subtree_count(n: artifact.tree) },
+          receipt: ParsedModule {
+            node_count: node_subtree_count(n: semantic.tree),
+            annotation_count: length(xs: source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored))),
+          },
           diagnostics: d
         ),
-        parse_tree: artifact.tree,
+        parse_tree: semantic.tree,
         lm: lm,
         depth: depth
       )
   }
 }
+
 
 fn front_end_continue_normalize(
   steps: List<FrontEndStageStep>,

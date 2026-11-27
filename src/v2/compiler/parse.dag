@@ -157,7 +157,6 @@ fn parse_node_has_authored_edge(node: Node, name: Symbol) -> Bool {
 
 fn parse_node_is_source_region(node: Node) -> Bool {
   parse_node_has_authored_edge(node: node, name: ^grammar_production_identity_node_projection)
-    || parse_node_has_authored_edge(node: node, name: ^grammar_infix_left_node_projection)
 }
 
 fn authored_region_walk_children(index: SpanIndex, node: Node, parent: AnnotationScope, acc: AuthoredRegionWalk) -> AuthoredRegionWalk {
