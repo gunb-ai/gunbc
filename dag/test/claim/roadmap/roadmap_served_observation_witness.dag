@@ -2,13 +2,18 @@ module test.claim.roadmap.roadmap_served_observation_witness
 
 import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemReadSucceeded, FilesystemFileObservation }
 
-import std.types { String, Int, Bool, List, FilePath }
+import std.types { String, Int, Bool, List, FilePath, NonEmptyStr }
 import extdeps.http.server { text_html_utf8, text_plain_utf8, application_json_utf8 }
-import gunbc.host.host_layout { instance_receipts_dir }
+import extdeps.shell
+import gunbc.host.host_layout { instance_receipts_dir, srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_path_is_under,
+  HostDashboardInstance,
+  isolated_dashboard_instance,
+  DashboardActuating,
 }
 import gunbc.roadmap.roadmap_serve { roadmap_serve_route_specs, ObservationJsonHandler }
 import gunbc.roadmap.roadmap_served_observation {
@@ -337,8 +342,27 @@ test fn standing_publishes_observed_at_and_identity_when_present() -> Bool {
 // Same law as the belt tick receipt's home: the index and every body are per-instance, under the
 // instance's own receipts dir, never under the host-shared attempt-state root, and no two kinds
 // share a body path.
+// The instance is ISOLATED over a witness-made directory, the same posture as the sealed create-once
+// stores' witness: the mint OBSERVES its root (mkdir + list), and srv1's live root /opt/gunbc is not
+// creatable where claims execute. The homing law is instance-independent -- it is read off the mint's
+// own derivation, which is what the deleted per-instance path routes used to hand out.
+fn served_observation_homing_instance(dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "srvobs-homing" as NonEmptyStr),
+    instance_id: "srvobs-homing" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+}
+
 test fn the_snapshot_files_are_homed_in_the_instance_receipts_dir_not_the_shared_root() -> Bool {
-  let instance = srv1_live_dashboard_instance()
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_srvobs_homing.XXXXXX").path
+  let instance = served_observation_homing_instance(dir: dir)
   let shared = dashboard_instance_dispatch_attempt_state_root(instance: instance)
   let receipts = instance_receipts_dir(instance_root: instance.instance_root as String)
   // The two per-instance path routes are deleted with the seal; the names exist only as derivations
