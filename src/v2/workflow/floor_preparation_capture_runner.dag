@@ -303,6 +303,14 @@ data floor_preparation_claim_roster: List<String> = [
 // The runner's own steps, as data. The witness binds these names to code paths in this module by
 // requiring each step's receipt line to appear in a run; no marker comments, no grep of a script.
 
+// THE CONSUMER ROSTER (leg b): the three committed-capture witnesses that read the retained log the
+// runner just stamped. They run AFTER the write, over the model-rendered claims argv.
+data floor_preparation_consumer_claims: List<String> = [
+  "floor_preparation_the_committed_census_is_honest",
+  "floor_preparation_the_committed_capture_is_measured_not_authored",
+  "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
+]
+
 data floor_preparation_runner_modelled_steps: List<String> = [
   "verify-pinned-supplies", "build-argv-from-population", "leg-untrimmed",
   "derive-pass-set", "leg-graded", "fold-legs", "write-retained", "splice-capture-rows",
@@ -726,6 +734,16 @@ fn floor_preparation_plan_receipt(plan: FloorPreparationRunnerPlan) -> String {
 
 fn floor_preparation_functions_for(entry: String) -> String {
   join(floor_preparation_entry_claim_names(entry: entry), ",")
+}
+
+// THE CLAIMS-LEG ARGV, AS MODEL RENDERING (not inline at the spawn site): the same structural
+// witness that checks the untrimmed/graded argv shape checks THIS one, witness entry included.
+// An argv built inline at the spawn site is invisible to `leg_argv_is_model_rendered`, which is how
+// the claims legs went red forever: the population never names the witness module as an entry, so
+// only a claims-specific renderer can carry the hint.
+fn floor_preparation_claims_leg_argv(roster: List<String>) -> List<String> {
+  let roots = fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root]))
+  concat(roots, ["--entry", floor_preparation_witness_module, "--functions", join(roster, ",")])
 }
 
 fn floor_preparation_leg_argv(entries: List<String>) -> List<String> {
@@ -1210,17 +1228,12 @@ fn floor_preparation_capture_run() -> String {
     // not-clean -> the cache witness refuses -> and the terminal gate refuses the run. Main's ten
     // no longer decide this module's verdict: they are printed, labelled, and not gating.
     let leg_a_roster = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
-      if name == "floor_preparation_the_committed_census_is_honest"
-        || name == "floor_preparation_the_committed_capture_is_measured_not_authored"
-        || name == "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log" {
+      if floor_preparation_has_exact_row(rows: floor_preparation_consumer_claims, wanted: name) {
         acc
       } else {
         list_push(xs: acc, item: name)
       })
-    let claims_a_args = concat(
-      fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
-      ["--entry", floor_preparation_witness_module,
-       "--functions", join(leg_a_roster, ",")])
+    let claims_a_args = floor_preparation_claims_leg_argv(leg_a_roster)
     let claims_a = floor_preparation_spawn_slot_captured(
       label: "leg-claims-a", bound: floor_preparation_claims_bound(),
       binary: floor_preparation_pinned_claim_batch(),
@@ -1263,20 +1276,14 @@ fn floor_preparation_capture_run() -> String {
     let retained_write = (Filesystem.Write(
       path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
       content: concat(concat(retained_header, "\n"), retained))).success
-    let claims_b_args = concat(
-      fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
-      ["--entry", floor_preparation_witness_module,
-       "--functions", "floor_preparation_the_committed_census_is_honest,floor_preparation_the_committed_capture_is_measured_not_authored,floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log"])
+    let claims_b_args = floor_preparation_claims_leg_argv(floor_preparation_consumer_claims)
     let claims_b = floor_preparation_spawn_slot_captured(
       label: "leg-claims-b", bound: floor_preparation_claims_bound(),
       binary: floor_preparation_pinned_claim_batch(),
       args: claims_b_args)
     let claims_b_transcript = floor_preparation_read_captured(label: "leg-claims-b")
     let passed_b = floor_preparation_pass_names(stdout_text: claims_b_transcript)
-    let missing_b = fold([
-      "floor_preparation_the_committed_census_is_honest",
-      "floor_preparation_the_committed_capture_is_measured_not_authored",
-      "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log"],
+    let missing_b = fold(floor_preparation_consumer_claims,
       init: [], f: (acc, name) =>
       if floor_preparation_has_exact_row(rows: passed_b, wanted: name) { acc } else { list_push(xs: acc, item: name) })
     let missing = concat(missing_a, missing_b)

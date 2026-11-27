@@ -56,6 +56,7 @@ import v2.workflow.floor_preparation_split {
 import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_runner_modelled_steps,
   floor_preparation_leg_argv,
+  floor_preparation_claims_leg_argv,
   floor_preparation_population_entries,
   floor_preparation_bound_operand,
   floor_preparation_untrimmed_bound,
@@ -974,13 +975,20 @@ fn runner_holds_no_shell_authority() -> Bool {
 // attached; these are the elements the instrument refuses without.
 fn leg_argv_is_model_rendered() -> Bool {
   let argv_text = join(floor_preparation_leg_argv(entries: floor_preparation_population_entries()), "\n")
+  let claims_text = join(floor_preparation_claims_leg_argv(["floor_preparation_the_fold_refuses_what_it_cannot_read"]), "\n")
   text_contains(argv_text, "--source-root")
     && text_contains(argv_text, "src/v1")
     && text_contains(argv_text, "--entry")
     && text_contains(argv_text, "--functions")
-    && text_contains(argv_text, floor_preparation_witness_entry_hint())
     && !text_contains(argv_text, "sh -c")
     && !text_contains(argv_text, "&&")
+    && text_contains(claims_text, "--source-root")
+    && text_contains(claims_text, "src/v1")
+    && text_contains(claims_text, "--entry")
+    && text_contains(claims_text, "--functions")
+    && text_contains(claims_text, floor_preparation_witness_entry_hint())
+    && !text_contains(claims_text, "sh -c")
+    && !text_contains(claims_text, "&&")
 }
 
 fn floor_preparation_witness_entry_hint() -> String {
