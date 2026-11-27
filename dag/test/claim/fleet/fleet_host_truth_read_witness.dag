@@ -1,6 +1,6 @@
 module test.claim.fleet.fleet_host_truth_read_witness
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { string_contains }
 import std.list { distinct_by_key, first_where }
@@ -14,6 +14,7 @@ import gunbc.fleet.fleet_host_truth_read {
   TruthSlotSwapBackingDeclared,
   host_truth_axis_rule,
   host_truth_axes,
+  host_truth_axes_match,
   HostTruthRead,
   HostTruthReadCause,
   HostTruthObserved,
@@ -435,9 +436,14 @@ test fn a_divergence_says_which_rule_it_broke_on_which_host() -> Bool {
     expectation: declared(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: truth_size(56), by: "the serving grant's slot"),
   )
   let text = host_truth_divergence_locator(comparison: comparison)
-  text == host_truth_axis_rule(axis: TruthCapBindsDeclaredWorkingSet) + " -- host srv4 carries a cap below the working set the serving grant's slot declares for the role it runs"
+  // the remedy is part of the line now: the row's red_control is that the five arms stay separate because
+  // their remedies are separate, and a line that named only the drift would leave the choice of remedy to the
+  // reader. This expected string is this file's own words for the cap axis's remedy -- the same oracle the two
+  // RED_ remedy claims use, not a read-back of host_truth_remedy_says.
+  text == host_truth_axis_rule(axis: TruthCapBindsDeclaredWorkingSet) + " -- host srv4 carries a cap below the working set the serving grant's slot declares for the role it runs; remedy: refuse the placement whose binding cap sits under the working set the role declares"
     && string_contains(s: text, pattern: "srv4")
     && string_contains(s: text, pattern: "the serving grant's slot")
+    && string_contains(s: text, pattern: "refuse the placement")
     // the quantities ride on the arm as quantities, not only as text in the line: whoever refuses the host
     // can act on the cap it found, and "40 GiB" is one size however the cgroup file spelled it.
     && match comparison {
@@ -552,4 +558,214 @@ test fn RED_a_value_that_is_not_the_shape_its_axis_relates_refuses_instead_of_gu
       read: observed(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: truth_count(4)),
       expectation: declared(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: truth_size(40), by: "the serving grant's slot"),
     )), pattern: "the read did not supply one")
+}
+
+// THE FIVE REMEDIES AND THE ADMIT WITNESS PER ARM, planted before the fold that carries them. The row's own
+// red_control, verbatim: "A planted divergence that does not refuse, or an arm collapsed into another because
+// the merged verdict was easier to carry, fails the row: the arms stay separate because their remedies are
+// separate (remove hardware, retire a unit, re-anchor a key, refuse a placement, provision backing)."
+//
+// MEASURED AT THE COMMIT THIS BLOCK WAS PLANTED INTO, in dag/gunbc/fleet/fleet_host_truth_read.dag with the
+// word-boundary pattern (^|[^a-z0-9_])WORD([^a-z0-9_]|$), counting matching lines: "remove" in a rule or
+// relation string 0, retire 0, re-anchor 0, reanchor 0, placement 0, provision 0. The module says which rule a
+// divergence broke and which two quantities differ, and never says which of the five remedies follows -- so a
+// reader of a refusal line still has to open this file to know what to do, and nothing in the tree can tell
+// that a merged remedy would have been wrong. The two remedy claims below are RED at this commit for exactly
+// that reason and turn green only when a remedy authority joins the line, one per axis.
+//
+// THE MARKERS ARE THIS FILE'S OWN ORACLE, not a read-back of the model. Deriving the expected word from the
+// remedy authority would make the claim `measure() == measure()`, which is a change detector and not a witness
+// (gunbc.design_argument::fail_closed). Its referent is the row's parenthesised list of five remedies.
+fn remedy_marker(axis: HostTruthAxis) -> String {
+  match axis {
+    TruthDeclaredHardwareEnumerates => "remove"
+    TruthEnabledUnitHasItsHardware => "retire"
+    TruthIdentityAnchoredNotAddressed => "re-anchor"
+    TruthCapBindsDeclaredWorkingSet => "placement"
+    TruthSlotSwapBackingDeclared => "provision"
+  }
+}
+
+// THE PLANTED DIVERGENCE PER AXIS, at the grain the five RED_ controls above already plant (the same hosts,
+// the same values, the same declaring authorities) so the remedy claim runs on the row's divergence and not on
+// a softer one.
+fn planted_divergence_host(axis: HostTruthAxis) -> NonEmptyStr {
+  match axis {
+    TruthDeclaredHardwareEnumerates => "butch" as NonEmptyStr
+    TruthEnabledUnitHasItsHardware => "dan" as NonEmptyStr
+    TruthIdentityAnchoredNotAddressed => "butch" as NonEmptyStr
+    TruthCapBindsDeclaredWorkingSet => "srv4" as NonEmptyStr
+    TruthSlotSwapBackingDeclared => "butch" as NonEmptyStr
+  }
+}
+
+fn planted_divergence_read(axis: HostTruthAxis) -> HostTruthRead {
+  match axis {
+    TruthDeclaredHardwareEnumerates => observed(host: "butch" as NonEmptyStr, axis: axis, value: truth_count(0))
+    TruthEnabledUnitHasItsHardware => observed(host: "dan" as NonEmptyStr, axis: axis, value: truth_marking("strata-expert-lock=enabled,gpu=a16-count=0"))
+    TruthIdentityAnchoredNotAddressed => observed(host: "butch" as NonEmptyStr, axis: axis, value: truth_marking("ed25519 SHA256:9kQ2..."))
+    TruthCapBindsDeclaredWorkingSet => observed(host: "srv4" as NonEmptyStr, axis: axis, value: truth_size(40))
+    TruthSlotSwapBackingDeclared => observed(host: "butch" as NonEmptyStr, axis: axis, value: truth_unbounded())
+  }
+}
+
+fn planted_divergence_declaration(axis: HostTruthAxis) -> HostTruthExpectation {
+  match axis {
+    TruthDeclaredHardwareEnumerates => declared(host: "butch" as NonEmptyStr, axis: axis, expected: truth_count(4), by: "the serving layout's pool row")
+    TruthEnabledUnitHasItsHardware => declared(host: "dan" as NonEmptyStr, axis: axis, expected: truth_marking("strata-expert-lock=enabled,gpu=a16-count=2"), by: "serving/host memory")
+    TruthIdentityAnchoredNotAddressed => declared(host: "butch" as NonEmptyStr, axis: axis, expected: truth_marking("ed25519 SHA256:4fB7..."), by: "fleet/host key enrollment")
+    TruthCapBindsDeclaredWorkingSet => declared(host: "srv4" as NonEmptyStr, axis: axis, expected: truth_size(56), by: "the serving grant's slot")
+    TruthSlotSwapBackingDeclared => declared(host: "butch" as NonEmptyStr, axis: axis, expected: truth_size(0), by: "the runner slot's desired shape")
+  }
+}
+
+// THE READ THAT AGREES on the same axis against the same declaration -- the pair that lets the admit claims
+// below say "this axis, this host, divergence in, agreement out" instead of resting on the fixture's shape.
+fn agreeing_read(axis: HostTruthAxis) -> HostTruthRead {
+  match axis {
+    TruthDeclaredHardwareEnumerates => observed(host: "butch" as NonEmptyStr, axis: axis, value: truth_count(4))
+    TruthEnabledUnitHasItsHardware => observed(host: "dan" as NonEmptyStr, axis: axis, value: truth_marking("strata-expert-lock=enabled,gpu=a16-count=2"))
+    TruthIdentityAnchoredNotAddressed => observed(host: "butch" as NonEmptyStr, axis: axis, value: truth_marking("ed25519 SHA256:4fB7..."))
+    TruthCapBindsDeclaredWorkingSet => observed(host: "srv4" as NonEmptyStr, axis: axis, value: truth_size(64))
+    TruthSlotSwapBackingDeclared => observed(host: "butch" as NonEmptyStr, axis: axis, value: truth_size(0))
+  }
+}
+
+fn planted_divergence_line(axis: HostTruthAxis) -> String {
+  host_truth_divergence_locator(comparison: host_truth_compare(
+    read: planted_divergence_read(axis: axis),
+    expectation: planted_divergence_declaration(axis: axis),
+  ))
+}
+
+// RED -- A PLANTED DIVERGENCE THAT DOES NOT SAY WHAT TO DO ABOUT IT. One per axis, over all five axes.
+test fn RED_a_planted_divergence_names_the_remedy_for_its_axis() -> Bool {
+  host_truth_axes().all(axis => string_contains(s: planted_divergence_line(axis: axis), pattern: remedy_marker(axis: axis)))
+}
+
+// ONE LEVEL OF LAMBDA PER CLAIM: the axis list is projected by named helpers rather than nested inline, so
+// every call's callee identity is established where it is made.
+fn axes_matching(axis: HostTruthAxis) -> List<HostTruthAxis> {
+  host_truth_axes().filter(other => host_truth_axes_match(left: axis, right: other))
+}
+
+fn axes_other_than(axis: HostTruthAxis) -> List<HostTruthAxis> {
+  host_truth_axes().filter(other => host_truth_axes_match(left: other, right: axis) == false)
+}
+
+fn line_names_marker(line: String, axis: HostTruthAxis) -> Bool {
+  string_contains(s: line, pattern: remedy_marker(axis: axis))
+}
+
+fn line_names_any_other_axis_marker(line: String, axis: HostTruthAxis) -> Bool {
+  axes_other_than(axis: axis).any(other => string_contains(s: line, pattern: remedy_marker(axis: other)))
+}
+
+// RED -- AN ARM COLLAPSED INTO ANOTHER BECAUSE THE MERGED VERDICT WAS EASIER TO CARRY. Every axis must name
+// its own marker and none of the other four, so one sentence shared by two axes, or one sentence shared by
+// all five, fails here even if it passes the claim above.
+test fn RED_no_axis_borrows_another_axis_remedy() -> Bool {
+  host_truth_axes().all(axis =>
+    line_names_marker(line: planted_divergence_line(axis: axis), axis: axis)
+      && line_names_any_other_axis_marker(line: planted_divergence_line(axis: axis), axis: axis) == false
+  )
+}
+
+// THE FIVE PLANTED DIVERGENCES DIVERGE; none of them is a refusal, and none is agreement. The row's control
+// starts from a planted divergence that does not refuse, so the planting itself is witnessed before the
+// remedy is asked of it.
+test fn the_five_planted_divergences_are_divergences_and_not_refusals() -> Bool {
+  host_truth_axes().all(axis =>
+    class_of(comparison: host_truth_compare(
+      read: planted_divergence_read(axis: axis),
+      expectation: planted_divergence_declaration(axis: axis),
+    )) == TruthClassDivergence
+  )
+}
+
+// TWO AXES CANNOT BE READ AS ONE, and the mechanism is the model's own pairing refusal rather than a parallel
+// one invented here: a hardware read answered against a cap declaration refuses, and the refusal carries both
+// axes so the crossing is locatable. Green before the remedy fold and it must stay green -- this is the half
+// of the control that a fold which merged the axes would break.
+test fn a_read_answered_against_another_axis_refuses_and_names_both_axes() -> Bool {
+  match host_truth_compare(
+    read: observed(host: "srv4" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: truth_count(4)),
+    expectation: declared(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: truth_size(56), by: "the serving grant's slot"),
+  ) {
+    TruthPairingRefused { why: _, pairing: p } =>
+      host_truth_axes_match(left: p.read_axis, right: p.expectation_axis) == false
+        && host_truth_axes_match(left: p.read_axis, right: TruthDeclaredHardwareEnumerates)
+        && host_truth_axes_match(left: p.expectation_axis, right: TruthCapBindsDeclaredWorkingSet)
+    _ => false
+  }
+}
+
+// ONE REMEDY PER AXIS PRESUPPOSES ONE AXIS PER AXIS. Each of the five matches exactly one member of the sum,
+// so a remedy keyed on an axis cannot be keyed on two of them.
+test fn each_axis_matches_itself_and_no_other_axis() -> Bool {
+  host_truth_axes().all(axis => axes_matching(axis: axis).length() == 1)
+}
+
+// THE ADMIT WITNESS PER ARM (first_slice: "one planted-divergence witness per arm and one admit witness per
+// arm"). Measured at the commit this block was planted into: 26 test fns, 19 RED_ prefixed, 3 whose names
+// mention admission and none of them per axis -- so the per-arm half of first_slice is what is missing, not a
+// duplicate of what is there. Each claim admits the host on the strength of one axis and asks whether the
+// axis's own divergence takes it off: the grain a roster acts at.
+fn axis_admits(host: NonEmptyStr, axis: HostTruthAxis, read: HostTruthRead) -> Bool {
+  fleet_truth_admits_host(verdict: fleet_host_truth_verdict_for_host(
+    host: host,
+    reads: [read],
+    expectations: [planted_divergence_declaration(axis: axis)],
+  ))
+}
+
+test fn the_hardware_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
+  axis_admits(host: planted_divergence_host(axis: TruthDeclaredHardwareEnumerates), axis: TruthDeclaredHardwareEnumerates, read: agreeing_read(axis: TruthDeclaredHardwareEnumerates))
+    && axis_admits(host: planted_divergence_host(axis: TruthDeclaredHardwareEnumerates), axis: TruthDeclaredHardwareEnumerates, read: planted_divergence_read(axis: TruthDeclaredHardwareEnumerates)) == false
+}
+
+test fn the_enabled_unit_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
+  axis_admits(host: planted_divergence_host(axis: TruthEnabledUnitHasItsHardware), axis: TruthEnabledUnitHasItsHardware, read: agreeing_read(axis: TruthEnabledUnitHasItsHardware))
+    && axis_admits(host: planted_divergence_host(axis: TruthEnabledUnitHasItsHardware), axis: TruthEnabledUnitHasItsHardware, read: planted_divergence_read(axis: TruthEnabledUnitHasItsHardware)) == false
+}
+
+test fn the_identity_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
+  axis_admits(host: planted_divergence_host(axis: TruthIdentityAnchoredNotAddressed), axis: TruthIdentityAnchoredNotAddressed, read: agreeing_read(axis: TruthIdentityAnchoredNotAddressed))
+    && axis_admits(host: planted_divergence_host(axis: TruthIdentityAnchoredNotAddressed), axis: TruthIdentityAnchoredNotAddressed, read: planted_divergence_read(axis: TruthIdentityAnchoredNotAddressed)) == false
+}
+
+test fn the_cap_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
+  axis_admits(host: planted_divergence_host(axis: TruthCapBindsDeclaredWorkingSet), axis: TruthCapBindsDeclaredWorkingSet, read: agreeing_read(axis: TruthCapBindsDeclaredWorkingSet))
+    && axis_admits(host: planted_divergence_host(axis: TruthCapBindsDeclaredWorkingSet), axis: TruthCapBindsDeclaredWorkingSet, read: planted_divergence_read(axis: TruthCapBindsDeclaredWorkingSet)) == false
+}
+
+test fn the_swap_backing_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
+  axis_admits(host: planted_divergence_host(axis: TruthSlotSwapBackingDeclared), axis: TruthSlotSwapBackingDeclared, read: agreeing_read(axis: TruthSlotSwapBackingDeclared))
+    && axis_admits(host: planted_divergence_host(axis: TruthSlotSwapBackingDeclared), axis: TruthSlotSwapBackingDeclared, read: planted_divergence_read(axis: TruthSlotSwapBackingDeclared)) == false
+}
+
+// A REFUSAL CARRIES NO REMEDY. A read that did not happen establishes nothing about the machine, so what it
+// owes is the probe repaired or the host reached -- not a judgment about hardware, units, keys, caps or
+// backing. Printing a machine remedy on an unread axis would attach a remedy to a fact nobody read, which is
+// the fabricated located cause gunbc.design_argument::fail_closed refuses, and it is the same discipline that
+// keeps host_truth_read_cause_explains from naming WHICH kind of "no" a cgroup property gave. So: the cause is
+// the loud half of a refusal, the remedy is the loud half of a divergence, and neither stands in for the other.
+test fn a_refusal_names_its_cause_and_invents_no_remedy() -> Bool {
+  let line = host_truth_divergence_locator(comparison: host_truth_compare(
+    read: refused(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, cause: HostTruthProbeAbsent { probe: "the per-host PCI class count" }),
+    expectation: declared(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, expected: truth_count(4), by: "the serving layout's pool row"),
+  ))
+  string_contains(s: line, pattern: "the probe this axis needs is not on that host")
+    && string_contains(s: line, pattern: "remedy:") == false
+}
+
+// EACH REMEDY MARKER APPEARS ON EXACTLY ONE AXIS LINE. Five markers, five axes, one axis each: a fold that
+// merged two axes into one remedy would leave a marker missing from one line and present on two, and this
+// counts it rather than trusting that the fold was written carefully.
+test fn each_remedy_marker_appears_on_exactly_one_axis_line() -> Bool {
+  host_truth_axes().all(axis =>
+    host_truth_axes()
+      .filter(other => string_contains(s: planted_divergence_line(axis: other), pattern: remedy_marker(axis: axis)))
+      .length() == 1
+  )
 }

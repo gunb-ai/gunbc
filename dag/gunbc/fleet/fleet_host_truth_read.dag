@@ -34,6 +34,16 @@ import std.measure { ByteSize, byte_size_count }
 // dag/test/claim/fleet/fleet_host_truth_read_witness.dag is for: every arm is reachable on any machine,
 // because every input is supplied.
 //
+// CORRECTION OF THAT STANDING, at the time of writing and stated here rather than left stale: the mode landed
+// as gunbc.fleet.fleet_host_truth_observe, dispatched as the host_truth_read_observe step and mode word of the
+// fleet-converge route. It reads the two axes that have an on-route producer today (the cgroup cap and the slot
+// swap backing, by consuming the memory envelope's slice readings) and returns TYPED REFUSALS for the other
+// three (the presented host key, the per-host PCI class count, the per-host enabled-unit list), so the fold can
+// only ever answer HostTruthRefused or HostTruthDiverges while those three go unread. Producing the three is a
+// separate row's work, not this module's; what this module owes in the meantime is that a divergence says which
+// of its five remedies applies, which is what host_truth_axis_remedy and host_truth_remedy_says are for and
+// what the observe step's receipt prints.
+//
 // NOTHING HERE READS A HOST. The mode reads the host and supplies observations; this module decides what
 // they mean, which is what makes the reds reachable and is the same split as gunbc.host.memory_envelope.
 // The reads the mode will supply already exist as separate authorities: gunbc.fleet.fleet_physical_inventory
@@ -96,6 +106,54 @@ fn host_truth_axes_match(left: HostTruthAxis, right: HostTruthAxis) -> Bool {
     TruthIdentityAnchoredNotAddressed => match right { TruthIdentityAnchoredNotAddressed => true other => false }
     TruthCapBindsDeclaredWorkingSet => match right { TruthCapBindsDeclaredWorkingSet => true other => false }
     TruthSlotSwapBackingDeclared => match right { TruthSlotSwapBackingDeclared => true other => false }
+  }
+}
+
+// WHAT TO DO ABOUT A DIVERGENCE, one per axis, typed rather than prose. red_control for this row names the
+// reason the five may not be merged: "the arms stay separate because their remedies are separate (remove
+// hardware, retire a unit, re-anchor a key, refuse a placement, provision backing)". A divergence that prints
+// only what differs leaves the reader to decide which of those five is meant, and that is where a merged
+// verdict becomes cheaper to carry than a discriminated one -- the collapse the row forbids. So the remedy is
+// a member of a closed sum, keyed off the axis by host_truth_axis_remedy and impossible to give to two axes at
+// once, exactly as host_truth_axes_match makes two axes being read as one impossible at the pairing.
+//
+// WHY THE REMEDY RIDES THE DIVERGENCE AND NOT THE REFUSAL: a refusal is a read that did not happen, and what
+// it needs is the probe repaired or the host reached -- not a judgment about the machine. Printing "remove the
+// hardware the model declares" on an axis that was never read would put a remedy on a fact the read never
+// established, which is a fabricated located cause (gunbc.design_argument::fail_closed, and the same reasoning
+// that keeps host_truth_read_cause_explains from naming WHICH kind of "no" a cgroup property gave).
+type HostTruthRemedy
+  = TruthRemoveDeclaredHardware
+  | TruthRetireEnabledUnit
+  | TruthReanchorHostKey
+  | TruthRefusePlacement
+  | TruthProvisionSlotBacking
+
+// ONE REMEDY PER AXIS, matched on the constructor the way host_truth_axes_match matches the axis itself, so a
+// sixth axis cannot be added without the compiler asking which remedy it carries.
+fn host_truth_axis_remedy(axis: HostTruthAxis) -> HostTruthRemedy {
+  match axis {
+    TruthDeclaredHardwareEnumerates => TruthRemoveDeclaredHardware
+    TruthEnabledUnitHasItsHardware => TruthRetireEnabledUnit
+    TruthIdentityAnchoredNotAddressed => TruthReanchorHostKey
+    TruthCapBindsDeclaredWorkingSet => TruthRefusePlacement
+    TruthSlotSwapBackingDeclared => TruthProvisionSlotBacking
+  }
+}
+
+// THE REMEDY SAID OUT LOUD, in the row's five words. The remedy half of red_control is what makes a divergence
+// actionable without opening this file, and the cap axis is the one that says REFUSE: this module refuses the
+// host through fleet_truth_admits_host, and the placement that would have used it is what the refusal is about
+// -- the joining of that refusal to a roster's placement decision is roadmap
+// fleet-truth-rosters-consume-the-read and fleet-truth-serving-leaf-caps-joined-to-working-set, children of
+// this row, not vocabulary this module owns to invent.
+fn host_truth_remedy_says(remedy: HostTruthRemedy) -> String {
+  match remedy {
+    TruthRemoveDeclaredHardware => "remove the hardware the model declares and the machine no longer enumerates"
+    TruthRetireEnabledUnit => "retire the enabled unit whose hardware is gone"
+    TruthReanchorHostKey => "re-anchor the host key against the enrolled fingerprint"
+    TruthRefusePlacement => "refuse the placement whose binding cap sits under the working set the role declares"
+    TruthProvisionSlotBacking => "provision the swap backing the envelope declares for that slot"
   }
 }
 
@@ -578,7 +636,7 @@ fn fleet_truth_roster_refusals(reads: List<HostTruthRead>, expectations: List<Ho
 // WHAT A REFUSAL SAYS OUT LOUD: the axis's recognition rule and the host, never a count alone.
 fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
   match comparison {
-    TruthDivergent { host: h, axis: a, observed: _, expected: _, declared_by: d } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " " + host_truth_relation_says(axis: a, declared_by: d)
+    TruthDivergent { host: h, axis: a, observed: _, expected: _, declared_by: d } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " " + host_truth_relation_says(axis: a, declared_by: d) + "; remedy: " + host_truth_remedy_says(remedy: host_truth_axis_remedy(axis: a))
     TruthValueShapeRefused { host: h, axis: a, why: w } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + w
     TruthAgrees { host: h, axis: a, at_run: _, receipt: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " agrees"
     TruthUnread { host: h, axis: a, cause: c } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + host_truth_read_cause_explains(cause: c)
