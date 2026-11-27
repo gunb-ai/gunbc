@@ -30,25 +30,31 @@ test fn workspace_operations_use_the_serialized_host_job_without_fleet_credentia
 }
 
 test fn workspace_image_build_preserves_ownership_and_archives_only_the_product() -> Bool {
-  let build = gunbc_ci_workspace_image_build_invoke()
   let paths = workspace_image_artifact_paths()
-  string_contains(s: build, pattern: "fakeroot -- ")
-    && string_contains(s: build, pattern: "workspace_image_build_wet")
-    && string_contains(s: paths, pattern: "/workspace.ext4")
-    && !string_contains(s: paths, pattern: "workspace-tree")
-    && !string_contains(s: paths, pattern: "squashfs")
+  match outcome_accepted_value(gunbc_ci_workspace_image_build_invoke()) {
+    Absent => false
+    Present { value: build } =>
+      string_contains(s: build, pattern: "fakeroot -- ")
+        && string_contains(s: build, pattern: "workspace_image_build_wet")
+        && string_contains(s: paths, pattern: "/workspace.ext4")
+        && !string_contains(s: paths, pattern: "workspace-tree")
+        && !string_contains(s: paths, pattern: "squashfs")
+  }
 }
 
 test fn revision_job_image_build_archives_only_the_product_and_its_digest_receipt() -> Bool {
-  let build = gunbc_ci_revision_job_image_build_invoke()
   let paths = revision_job_image_artifact_paths()
-  string_contains(s: build, pattern: "fakeroot -- ")
-    && string_contains(s: build, pattern: "revision_job_image_build_wet")
-    && string_contains(s: paths, pattern: "/revision-job.ext4")
-    && string_contains(s: paths, pattern: "/toolchain")
-    && string_contains(s: paths, pattern: "build-receipt.txt")
-    && !string_contains(s: paths, pattern: "revision-job-tree")
-    && !string_contains(s: paths, pattern: "squashfs")
+  match outcome_accepted_value(gunbc_ci_revision_job_image_build_invoke()) {
+    Absent => false
+    Present { value: build } =>
+      string_contains(s: build, pattern: "fakeroot -- ")
+        && string_contains(s: build, pattern: "revision_job_image_build_wet")
+        && string_contains(s: paths, pattern: "/revision-job.ext4")
+        && string_contains(s: paths, pattern: "/toolchain")
+        && string_contains(s: paths, pattern: "build-receipt.txt")
+        && !string_contains(s: paths, pattern: "revision-job-tree")
+        && !string_contains(s: paths, pattern: "squashfs")
+  }
 }
 
 test fn fleet_dispatch_stays_within_github_input_limit() -> Bool {
