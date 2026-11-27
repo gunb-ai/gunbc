@@ -1,9 +1,12 @@
 module gunbc.compute.remote_build
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.measure { Second }
+import std.measure { Second, second, second_count }
 import std.optional { Present, Absent }
-import std.algebra { trim }
+import std.algebra { trim, skip }
+import std.nat { nat_to_decimal_string }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.retry_law { RetryHint, retry_no_hint, retry_hint_from_delta, retry_hint_unresolved }
 import product.host_identity { HostIdentity }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex, git_object_id_eq }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
@@ -646,9 +649,26 @@ type RemoteBuildHostAnswer
   = HostServed { receipt: String }
   | HostWorkFailed { receipt: String }
   | HostWorkInFlight { receipt: String }
-  | HostCapacityFull { detail: String }
+  // A CAPACITY-LIMITED ANSWER, WITH A RETRY ALLOWANCE. "Room and the host's own readiness move the
+  // request on" -- so this arm is never final, and it carries the host's retry allowance as a
+  // std.retry_law RetryHint: the same carrier the serving router reads (gunbc.retry_http_hint maps an
+  // upstream Retry-After into it; std.retry_law treats a hint as a LOWER BOUND on the caller's backoff,
+  // never a permission gate). A host that refused to start at its wait bound, or whose pool is full,
+  // says "capacity limited, retry allowed", not "no". RetryHintNone means the host named no delay and
+  // the caller's own law supplies the backoff. This is the first step toward the one-router plan item
+  // (gunbc.plans.fabric_serving_router): the end user sees one router whose capacity answer is
+  // retry-allowed, and the remote-build answer now speaks that shape.
+  | HostCapacityFull { detail: String, retry: RetryHint }
   | HostCannotServe { detail: String }
   | HostUnreachable { detail: String }
+  // THE HOST WAS REACHED AND NEVER ANSWERED. Distinct from HostUnreachable (the transport never
+  // reached a host -- ssh's own 255) and from HostCannotServe (a declaration the host SPOKE in the
+  // binary's own vocabulary). An unread exit -- no ending header, an exit outside both vocabularies --
+  // says nothing about the host's standing; it is the fourth case: connected, silent. Carries the raw
+  // exit so a reader can tell which silence it was without parsing prose (review 99224: a fact that
+  // must survive rides a typed carrier). Moves the request on like the transport silence: nothing was
+  // sent, the next candidate is tried, and the host's standing is untouched.
+  | HostUnknown { exit_code: Int, detail: String }
   | HostRefusedRequest { detail: String }
   | HostOutcomeUnknown { detail: String }
   // A LEG THAT RAN OUT OF ITS WALL CLOCK. This arm exists because an overrun is not an answer: the
@@ -684,9 +704,10 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
     HostServed { receipt: _ } => false
     HostWorkFailed { receipt: _ } => false
     HostWorkInFlight { receipt: _ } => false
-    HostCapacityFull { detail: _ } => true
+    HostCapacityFull { detail: _, retry: _ } => true
     HostCannotServe { detail: _ } => true
     HostUnreachable { detail: _ } => true
+    HostUnknown { exit_code: _, detail: _ } => true
     HostRefusedRequest { detail: _ } => false
     HostOutcomeUnknown { detail: _ } => false
     // Nothing was sent on a probe that overran, so the next candidate is tried; the overrun is in the
@@ -934,11 +955,19 @@ data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_ad
 // the forced entry ran and spoke the serving contract (or the binary's own typed refusal -- exits 0, 1,
 // 2 are the gunbc binary speaking before the contract, review 95521). ProbeUnreachable is the transport
 // saying it never reached a host (ssh's own 255). PROBE UNRECOGNIZED is the fourth, different thing:
-// the transport connected and something on the far side exited with a code that is neither an ending
-// word nor the binary's own vocabulary -- the forced entry's scope wrapper dying at admission (exit 6,
-// srv3 2026-11-27) is the canonical case. That is NOT a host declaration: an unread exit is a host that
-// never answered, and it must never be recorded as a host standing (manager ruling 2026-11-27:
-// unrecognized probe = UNKNOWN host, never "answered, do not retry" and never a cannot-serve standing).
+// the transport connected and something on the far side exited with NO ending header and a code outside
+// both vocabularies -- a wrapper abort, a signal death. That is NOT a host declaration: an unread exit
+// is a host that never answered, and it must never be recorded as a host standing (manager ruling
+// 2026-11-27: unrecognized probe = UNKNOWN host, never "answered, do not retry" and never a
+// cannot-serve standing).
+//
+// A TRAP THIS DECODER HAS NEARLY CLAIMED TWICE: THE READY ANSWER'S OWN CODE IS 6
+// (remote_build_serve_exit_code, ServeReady -- gunbc.compute.remote_build_wire). A probe leg whose
+// transport line renders '✗ ... (exit=6)' while stdout carries the 'ending=ready' header is a host
+// that ANSWERED READY -- 6 is the contract speaking, not a failure, and the generic non-zero renderer
+// has no way to know that. The srv3 2026-11-27 probe was exactly this shape; reading its 6 as an
+// unread exit was the misdiagnosis this comment forecloses. Header present -> recognized; header
+// absent -> only then does the exit decide, and 6 with no header is unknown, not ready.
 type RemoteBuildProbe
   = ProbeReady
   | ProbeUnreachable { detail: String }
@@ -984,7 +1013,7 @@ fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
   match p {
     ProbeReady => none
     ProbeUnreachable { detail } => Present { value: HostUnreachable { detail: detail } }
-    ProbeUnrecognized { exit_code: _, detail } => Present { value: HostUnreachable { detail: detail } }
+    ProbeUnrecognized { exit_code, detail } => Present { value: HostUnknown { exit_code: exit_code, detail: detail } }
     ProbeCannotServe { detail } => Present { value: HostCannotServe { detail: detail } }
   }
 }
@@ -1015,10 +1044,48 @@ fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, s
     ServeServed => HostServed { receipt: body }
     ServeWorkEndedUnsuccessfully => HostWorkFailed { receipt: body }
     ServeRequestRefused => HostRefusedRequest { detail: concat(body, stderr) }
-    ServeHostFull => HostCapacityFull { detail: concat(body, stderr) }
+    ServeHostFull => HostCapacityFull { detail: concat(body, stderr), retry: remote_build_retry_hint_of_body(body: body) }
     ServeWorkInFlight => HostWorkInFlight { receipt: body }
     ServeHostCannotServe => HostCannotServe { detail: concat(body, stderr) }
     ServeReady => HostOutcomeUnknown { detail: "a work request was answered as a probe" }
+  }
+}
+
+// THE RETRY ALLOWANCE RIDES IN THE BODY, NOT THE HEADER. The header law (ending word + matching exit
+// code) is what admits an answer at all (remote_build_answer_from_exit); widening it would weaken the
+// one check that separates "this host ran the contract" from "this host did not". So a capacity-limited
+// answer carries its retry allowance as the FIRST line of the body -- "retry_after=<delta-seconds>" --
+// which is already free-form per ending. Absent parses to RetryHintNone: retry is still allowed and the
+// caller's own std.retry_law backoff applies. A present-but-unreadable count is RetryHintUnresolved,
+// because the law refuses rather than treating an unknown bound as no bound (gunbc.design_argument::fail_closed).
+data remote_build_retry_after_word: NonEmptyStr = "retry_after"
+
+// The declared minimum back-off a host names when it refuses to start at its wait bound. The front door
+// holds no queue estimate (it never reads the capacity ledger -- that is the request path's closure), so
+// this is the "declared minimum" branch of the operator's rule, not a measured queue wait. It is a LOWER
+// BOUND on the caller's retry, not a permission, and it is deliberately small: a large hint would stall
+// the whole roster's retry law off one loaded host, and the request moves to the next host regardless.
+data remote_build_capacity_retry_floor: Second = second(count: 30)
+
+// Mints a capacity-limited body: the retry allowance first, then the human-readable detail.
+fn remote_build_capacity_body(retry_after: Second, detail: String) -> String {
+  join([remote_build_retry_after_word as String, "=", nat_to_decimal_string(second_count(retry_after)), "\n", detail], "")
+}
+
+// Reads the retry allowance back out of a body, at the one place the client answer is minted.
+fn remote_build_retry_hint_of_body(body: String) -> RetryHint {
+  let first_line = match split(s: body, delimiter: "\n") |> first { Present { value: l } => l  Absent => "" }
+  let parts = split(s: first_line, delimiter: "=")
+  let word = match parts |> first { Present { value: w } => w  Absent => "" }
+  if word != (remote_build_retry_after_word as String) { return retry_no_hint() }
+  let value = match parts |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+  match parse_int(text: value) {
+    Absent => retry_hint_unresolved(cause: "retry_after was not a count" as NonEmptyStr)
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => retry_hint_unresolved(cause: "retry_after was not a non-negative count" as NonEmptyStr)
+        Present { value: k } => retry_hint_from_delta(delay: second(count: k))
+      }
   }
 }
 
