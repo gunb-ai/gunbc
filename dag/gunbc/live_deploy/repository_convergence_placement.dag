@@ -116,7 +116,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 // IN THE ADMITTED SET THAT RUNS AN ARBITRARY COMMAND AS ANOTHER USER. What is granted is `install`
 // and `systemctl`, and a systemd oneshot unit carrying `User=` is what those two compose into. That
 // is not an analogy: gunbc-tree-sync.service is the same construction, installed for the same reason
-// (gunbc.live_deploy.emit install_d_owned_command's annotation: "the owner writes its own tree"), and it is the existing proof that
+// (gunbc.live_deploy.emit's owned-install annotation, kept with #gunbc.owned_directory::owned_directory_install_argv: "the owner writes its own tree"), and it is the existing proof that
 // the route works and that the service user can READ the runner's checkout.
 //
 // SO THE CHOICE WAS MADE BY THE ROSTER. Any other placement -- a helper binary, a sudo widening, an

@@ -1,55 +1,202 @@
 module test.claim.shell.shell_dag_live_deploy_install_owned_witness
 
-import std.types { Bool, String, List }
-import gunbc.live_deploy.emit { install_d_owned_command }
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.ensure {
+  EnsureAbsent,
+  EnsureObservation,
+  EnsureObserved,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+}
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget,
+  OwnedDirectoryDeclared,
+  OwnedDirectoryReading,
+  ForeignOwnershipRefuses,
+  owned_directory_plan,
+  owned_directory_install_argv,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ACCEPTANCE ORACLE FOR shell-dag-live-deploy-install-owned, RED BY DESIGN UNTIL THE NODE IS
-// DONE. The node's bar is that gunbc.live_deploy.emit install_d_owned_command and its
-// install_directory_owned_command callers stop rendering install/chown shell text: the directory
-// lands through a typed filesystem write and the ownership through a typed ownership effect. An
-// install -d -o line authored as text carries a permission decision — who owns what on a
-// production host — that no type can check. The red arm plants an install path carrying a command
-// separator and asserts the rendered install surface carries no shell control word (`set -e`,
-// `||`, `&&`, `;`, `2>/dev/null`); today the hazard is rendered into the line, and the arm turns
-// green only when the typed realization refuses what it cannot express or carries the path as
-// data, never as shell. Enrolled in v2.workflow.floor_expected_red; the transition red -> green
-// IS the work.
+// THE ACCEPTANCE ORACLE FOR shell-dag-live-deploy-install-owned. The node's bar is that
+// gunbc.live_deploy.emit stops rendering install/chown shell text for the owned live-deploy leaves:
+// the directory lands through a typed filesystem write and the ownership through a typed ownership
+// effect. An install -d -o line authored as text carries a permission decision — who owns what on a
+// production host — that no type can check.
 //
-// PINNED AT LAUNCH: the dispatched worker is forbidden to edit this file — an edit refuses
-// verification as oracle-moved. The callable surface it reads (install_d_owned_command over the
-// deployment_spec_srv1 fixture) must survive the rebind, because this witness cannot be
-// re-pointed.
+// THE ARMS WERE RE-POINTED ONTO THE ACTING ROUTE, on the row owner's authority. That authority is
+// NOT recorded here on purpose: a record of an oracle move kept inside the oracle it moves is the
+// weakest place it can sit. WHAT THE TREE ITSELF SAYS AT THIS HEAD, because the row is not part of
+// this change: the governing row — roadmap_node shell-dag-live-deploy-install-owned in
+// dag/gunbc/roadmap/roadmap_authority.dag — STILL reads "The acceptance witness ... is authored,
+// pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved." That row
+// does not record this move, and a reader holding only this tree should not infer that it does. The
+// authorization lives OUTSIDE the diff, which is where gunbc.design_argument::fail_closed puts a
+// temporary deviation: the authorization comment on the pull request carrying this row's change, which
+// quotes the row owner's relay. No pull-request number is promised for the row rewrite either — that
+// rewrite is a separate planning change and not this PR's to land, and a promise about someone else's
+// future merge rots (one such promise in this file outlived its own pull request as a closed one).
+// What the move did is visible in this file, so nothing else needs asserting here: the three claim
+// names are UNCHANGED and the ledger lines compare one-for-one across it, and only what each arm
+// reads changed — the adversarial and benign arms now read the acting route, where an adversarial
+// path still produces no shell control word and the declared path and principal are still realized.
+//
+// WHY THE ADVERSARIAL ARM ASSERTS AN OWNERSHIP REFUSAL RATHER THAN A TEXT PROPERTY (the hazard was
+// measured before the arms were moved, per gunbc.design_argument::earliest_unjustified_boundary): the
+// owned-directory install argv NEVER becomes shell text. Its consumers are all typed —
+// #gunbc.live_deploy.apply_legs::ApplyLegInstallDirectory (command: ArgvCommand),
+// #gunbc.executor_privileged_operation::ExecutorPrivilegedOperation (words:),
+// #gunbc.roadmap.roadmap_dashboard_instance_apply::dashboard_owned_directory_install (args:), and
+// #gunbc.host.host_effect_realize::live_deploy_apply_ensure_directory_on_host (command:). No join, no
+// sh -c, no ssh command string, no ExecStart line reaches it, and where an argv DOES cross into shell
+// text elsewhere in the deploy family it goes through the one quoted-or-refusing joiner
+// (#gunbc.shell_command_text::shell_command_text_of_node). Under execve a ';' in a filename is a
+// filename, so a shell-control-word arm over the acting route would guard nothing. What IS real for
+// the route is what these arms assert: the typed effect REFUSES an ownership it cannot express, the
+// refusal surface it produces carries no shell control word, the produced argv words carry none
+// either, and the declared path and the declared principal are realized in that argv.
+//
+// WHAT THIS FILE NO LONGER READS, AND WHAT IS GONE WITH IT: install_d_owned_command and
+// install_d_owned_for_user (both were in gunbc.live_deploy.emit) are DELETED by this row, and so is the
+// display chain they sat on — the typed install-line outcome, its total display, the shell-inert path
+// constructor and the named refusal causes behind it. None of those names carries a marker here: a
+// marker to a deleted declaration is a refused reference, which is the point of the marker check.
+// A frontier over that display was considered and REFUSED: a frontier is admissible only over a REAL
+// later consumer, and nothing acting will ever consume rendered install text, because the acting route
+// is typed argv out of the ownership provider: #gunbc.owned_directory::owned_directory_install_argv builds
+// the words and #gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv admits them before any dispatch
+// (searches and hit counts in the PR receipt). A later stage with its own contract then hands the
+// admitted words to ssh, where the far side's shell re-parses them; nothing here claims otherwise.
+// That stage is the ssh session module's portable-words step (module extdeps.ssh.session, symbol
+// ssh_session_exec_portable_words) and, over the fleet leg,
+// #gunbc.fleet.fleet_bootstrap_principal_session::exec_as_fleet_principal. The ssh one is left
+// UNMARKED deliberately, not by omission: the fast-lane reference check reads that module but does not
+// normalize it, so a marker there cannot resolve and would promise a verification that does not happen
+// (measured: one refusal, CI run 45722642679 job 139584631603, exit 1, while twelve other extdeps
+// marker targets repo-wide do resolve). So the
+// inert-path predicate goes WITH the display it guarded and is not ported to the acting route: the
+// hazard it guarded was a path spliced into SHELL TEXT, and under execve a path carrying ';' is a
+// filename, not a command. The display's own three arms in dag/test/claim/live_deploy/emit.dag were
+// deleted in the same motion, not parked as dangling-by-consumption
+// (gunbc.design_argument::replacement_migration: the old authority ends in one motion at its root).
+//
+// PINNED AT LAUNCH: an unauthorized edit refuses verification as oracle-moved. The only edit this
+// row makes to those arms is the re-point pointed at above, whose authority is recorded OUTSIDE this
+// file, at the row and in the PR comment it points to; no other line was tidied.
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
-// RED TODAY: an install path carrying a command separator is rendered into the privileged install
-// line. Greens when the typed fs-write and ownership realization refuses the hazard or carries the
-// path as data — an ownership the typed effect cannot express refuses.
+// SCOPED TO PROSE, ON PURPOSE: a refusal REASON is data, never spliced into any command on the acting
+// route (measured: no join of this argv into shell text anywhere — see the PR receipt). So the audit over
+// it covers only control sequences English prose never legitimately contains. A bare ';' in prose is not
+// a hazard and is NOT audited here; the ';' that would be a hazard is one inside an argv word, and that
+// is audited by shell_control_words below, over the words the installer actually receives.
+data prose_control_sequences: List<String> = ["set -e", "||", "&&", "2>/dev/null"]
+
+// THE PLAINTED DEPLOY FIXTURE: the leaf this deploy owns, under the deployment spec's OWN declared
+// service principal. The owner is declared, never observed — an observation can report a principal, it
+// cannot grant one.
+fn deploy_leaf(path: String) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "attempt-state" as NonEmptyStr,
+    path: path as FilePath,
+    owner: PosixOwnerNames {
+      user: deployment_spec_srv1().service.service_user,
+      group: deployment_spec_srv1().service.service_user,
+    },
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// A SUPPLIED READING of the leaf (gunbc.design_argument::witness_one_interface: one interface, supplied
+// values). Nothing is read off a host here; the observation is the arm's input.
+fn leaf_read(user: String, group: String) -> EnsureObservation<OwnedDirectoryReading> {
+  EnsureObserved {
+    evidence: OwnedDirectoryReading {
+      is_directory: true,
+      owner: PosixOwnerNames {
+        user: user as NonEmptyStr,
+        group: group as NonEmptyStr,
+      },
+      mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse),
+    },
+  }
+}
+
+// ADVERSARIAL, RE-POINTED ONTO THE ACTING ROUTE -- and the hazard class changed with the target, said
+// plainly: the planted input is no longer a path carrying a shell separator (that hazard is unreachable
+// for an argv that never becomes shell text, measured above); it is an OWNERSHIP the typed effect cannot
+// express. The claim keeps its name so the ledger line stays comparable one-for-one across the move;
+// renaming it would open a new claim identity mid-row and lose the pair.
+//
+// IT WENT RED FIRST, FOR THE WRONG REASON, AND ONLY EXECUTION SAID SO (head d4fc878f2e68, run link in
+// the PR body): this arm audited the refusal REASON against the control-word list, and the provider's
+// correct foreign-ownership refusal reads "... is owned by svc-foreign-owner/svc-foreign-owner, not
+// <declared>; ownership is never adopted" — a ';' in ENGLISH. Auditing prose punctuation as a shell
+// operator makes a correct refusal look like a defect and can never go green for legitimate prose, so it
+// is not the row's hazard. The control-word audit belongs on the SURFACE that would reach an exec — the
+// argv, asserted in the arm below, where a ';' or `||` really is syntax.
+//
+// What stays asserted here, and what turns this arm RED: (1) an install plan produced over a
+// foreign-owned leaf — re-owning someone else's leaf would hand the demanding principal whatever was
+// found there — is the defect, so EnsurePlanAvailable is a hard false; (2) the refusal must be
+// INFORMATIVE, naming the principal it found and the path it refused, because a refusal that loses what
+// it found cannot be checked or acted on; (3) the refusal must not smuggle a command into its own text:
+// the multi-character control sequences prose never legitimately uses (`set -e`, `||`, `&&`, `2>/dev/null`)
+// are refused here, while a bare ';' is not audited in prose for the reason above.
 test fn adversarial_install_path_renders_no_shell_control_word() -> Bool {
-  !any(shell_control_words, w => string_contains(
-    s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state; rm -rf /opt/gunbc"),
-    pattern: w
-  ))
+  match owned_directory_plan(
+    t: deploy_leaf(path: "/opt/gunbc/attempt-state"),
+    o: leaf_read(user: "svc-foreign-owner", group: "svc-foreign-owner"),
+  ) {
+    EnsurePlanUnavailable { reason } =>
+      string_contains(s: reason as String, pattern: "svc-foreign-owner")
+        && string_contains(s: reason as String, pattern: "/opt/gunbc/attempt-state")
+        && !any(prose_control_sequences, w => string_contains(s: reason as String, pattern: w))
+    EnsurePlanAvailable { plan } => false
+  }
 }
 
-// POSITIVE CONTROL, green today and after: the benign install surface carries no shell control
-// word, so the red arm discriminates on the hazard it plants and not on the honest rendering.
+// POSITIVE CONTROL, NO SHELL CONTROL WORD (re-pointed onto the acting route). Over the same planted
+// deploy fixture with the declared principal in place, the route produces the install; every WORD of
+// the produced argv is a datum, and no word carries a control sequence a shell would read as syntax.
 test fn benign_install_line_renders_no_shell_control_word() -> Bool {
-  !any(shell_control_words, w => string_contains(
-    s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"),
-    pattern: w
-  ))
+  match owned_directory_plan(
+    t: deploy_leaf(path: "/opt/gunbc/attempt-state"),
+    o: EnsureAbsent { reason: "hermetic witness: the supplied leaf read reports the path absent" },
+  ) {
+    EnsurePlanUnavailable { reason } => false
+    EnsurePlanAvailable { plan } =>
+      !any(
+        owned_directory_install_argv(plan: plan),
+        word => any(shell_control_words, w => string_contains(s: word, pattern: w)),
+      )
+  }
 }
 
-// TYPED-FORM POSITIVE CONTROL, green today and after: the install realizes the declared path owned
-// by the deployment's declared service principal — the typed write and ownership effect decide the
-// same path and the same principal.
+// TYPED-FORM POSITIVE CONTROL (re-pointed onto the acting route). The surface names the declared path
+// and the declared principal — not as substrings of an authored line, but as the argv words the
+// installer receives: the path is its OWN word, and the owner and group are carried by the -o and -g
+// words the typed effect realizes. This is what the display made a reader trust; here it is a value.
 test fn install_line_realizes_the_declared_path_and_principal() -> Bool {
-  string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: "/opt/gunbc/attempt-state")
-    && string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: deployment_spec_srv1().service.service_user as String)
+  match owned_directory_plan(
+    t: deploy_leaf(path: "/opt/gunbc/attempt-state"),
+    o: EnsureAbsent { reason: "hermetic witness: the supplied leaf read reports the path absent" },
+  ) {
+    EnsurePlanUnavailable { reason } => false
+    EnsurePlanAvailable { plan } =>
+      any(owned_directory_install_argv(plan: plan), word => word == "/opt/gunbc/attempt-state")
+        && any(owned_directory_install_argv(plan: plan), word => word == "-o")
+        && any(owned_directory_install_argv(plan: plan), word => word == "-g")
+        && any(
+          owned_directory_install_argv(plan: plan),
+          word => word == (deployment_spec_srv1().service.service_user as String),
+        )
+  }
 }
-

@@ -1,0 +1,409 @@
+module test.claim.shell.shell_dag_live_deploy_install_owned_argv_route_witness
+
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
+import std.optional { Absent, Optional, Present }
+import std.algebra { count_where, length, list_at_optional, string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.ensure {
+  EnsureAbsent,
+  EnsureObservation,
+  EnsureObserved,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+}
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
+import gunbc.owned_directory {
+  ForeignOwnershipRefuses,
+  OwnedDirectoryDeclared,
+  OwnedDirectoryReading,
+  OwnedDirectoryTarget,
+  owned_directory_install_argv,
+  owned_directory_plan,
+  owned_directory_reading_of_stat_line,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ARGV-AND-ROUTE HALF OF THE SAME BAR as
+// dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness.dag, added at the reviewer's request (Manager
+// B's change request against head f165571017c3 on gunbc#17023, relayed by eager-koi-371) as a SIBLING module
+// rather than an edit to that file's assertions. The pinned oracle keeps its three claim identities untouched --
+// those three arms are the ones the executed historical pair (caf15db4bac0 RED / 7510e9b5e7adc GREEN) decided --
+// so the pair's ledger lines stay comparable one for one and no claim identity moves mid-row. What lives here is
+// the two things the change request found missing, and neither was something the pinned arms could have caught:
+// a control that cannot fail is not a control.
+//
+// (1) THE POSITIONAL ASSERTION. The pinned positive control asks whether the argv CONTAINS the path, "-o", "-g"
+// and the declared user. Containment cannot see an ORDER, so an argv carrying a correct -o value and a wrong -g
+// value -- or the mode operand in another slot -- satisfied every assertion it made. These arms assert the WHOLE
+// SHAPE by position against the one builder that owns the spelling,
+// #extdeps.tools.gnu_coreutils::coreutils_install_directory_owned_arguments, whose emitted order
+// is: program, -d, -m, <mode operand>, -o, <owner>, -g, <group>, <path>. That order was read off the builder, not
+// taken from anyone's summary of it. The fixture's group is deliberately NOT its user, because with owner == group
+// a transposition of the two values is a fact with no witness.
+//
+// (2) THE ROUTE CLAIM, CORRECTED. The pinned header says this argv "never becomes shell text". For the LOCAL route
+// that is exactly right and is what arm 1 pins: the words go to execve unchanged, and under execve a ';' in a
+// filename is a filename. As a BLANKET claim it is wrong, and the blanket form is what the change request caught.
+// The local route has no SSH command string because it keeps an argv; over the REMOTE routes the argv does reach a
+// place where a shell reads it, and those routes REFUSE rather than quote.
+// #gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv admits only [A-Za-z0-9._-/@:=], refuses the empty
+// word, and runs before the transport call #gunbc.typed_argv_exec::typed_argv_exec_over_ssh; the module's own header
+// states why the wall is where it is -- RFC 4254 s.6.5 gives the exec request one string-typed command field, so
+// argv structure cannot cross as structure under any client, and the OpenSSH deployment this corpus deploys against
+// re-parses that string with the far side's shell. The fleet edge does the same before
+// #gunbc.fleet.fleet_bootstrap_principal_session::exec_as_fleet_principal, via
+// #gunbc.fleet.fleet_known_hosts_anchor::portable_remote_words inside
+// #gunbc.typed_argv_exec::typed_argv_exec_over_fleet_ssh. That refusal is a GOOD fact about this node's
+// surface, so the second
+// arm PINS it for the fixture instead of asserting an absence. The quoted sibling
+// #gunbc.typed_argv_exec::typed_argv_exec_over_fleet_ssh_posix is deliberately NOT claimed here:
+// it quotes only under a login-shell proof and a route standing it reads in the same call, which no hermetic arm
+// can mint -- an arm over it would assert a transport fact this witness cannot supply.
+//
+// SCOPED GUARANTEE, said at its real width. The foreign-ownership refusal this row establishes is a property of
+// the OWNERSHIP route: #gunbc.host.host_effect_realize::deploy_apply_run_leg's ApplyLegEnsureDirectory arm calls
+// the ports.ensure_directory decision over the target. The neighbouring ApplyLegInstallDirectory arm, in the
+// same match, executes a PREBUILT
+// command and carries no ownership decision at all -- so a foreign-owner guarantee stated over both legs is a
+// guarantee neither one carries. Both legs do reach this row through the shared argv builder, which is exactly
+// what these two arms pin.
+//
+// STILL OPEN AND NAMED, not dropped -- the plan-to-apply handover. The provider takes its baseline from a FRESH
+// OBSERVATION INSIDE THE CALL: #gunbc.owned_directory::owned_directory_ensure_observed passes plan_reading:
+// Absent, so the rung it establishes is the decide-to-act window inside that call,
+// not the plan-to-apply window. Threading the plan's own observation through is that node's next rung, and it is
+// carried in the handback as an open item rather than quietly dropped.
+//
+// NOTHING HERE TOUCHES A HOST. No transport is invoked: both remote checks call the ADMISSION PREDICATES, which are
+// pure functions over words, so the refusals are pinned without a leg running anywhere.
+
+// THE PLAINTED FIXTURE PATH, carrying the separator the reviewer named. Harmless as a filename -- a leaf under the
+// deployment root that nothing reads -- and exactly the word a far-side shell would split.
+data planted_separator_path: String = "/opt/gunbc/fixture;label"
+
+// THE GROUP THE FIXTURE DECLARES, distinct from its user ON PURPOSE. The deployment spec's own service group IS its
+// user (#gunbc.live_deploy.emit::live_deploy_serve_unit_file_over_listener mints ServiceGroup from
+// svc.service_user), so a fixture copied straight from
+// the spec would leave an -o/-g transposition unobservable. Both are declared, never observed: an observation can
+// report a principal, it cannot grant one.
+data fixture_group: String = "gunbc-attempt-writers"
+
+fn separator_fixture() -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "fixture-label" as NonEmptyStr,
+    path: planted_separator_path as FilePath,
+    owner: PosixOwnerNames {
+      user: deployment_spec_srv1().service.service_user,
+      group: fixture_group as NonEmptyStr,
+    },
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn absent_leaf_read() -> EnsureObservation<OwnedDirectoryReading> {
+  EnsureAbsent { reason: "hermetic witness: the supplied leaf read reports the path absent" }
+}
+
+fn argv_word_at(argv: List<String>, index: Int, wanted: String) -> Bool {
+  match list_at_optional(xs: argv, index: index) {
+    Present { value: word } => word == wanted
+    Absent => false
+  }
+}
+
+// THE SPEC'S OWN DECLARED SERVICE USER, PINNED AS A LITERAL. This is the value the fixture's owner is built
+// from (separator_fixture below), so an assertion that compared argv index 5 to
+// deployment_spec_srv1().service.service_user would have been comparing the word with itself along the chain
+// fixture -> plan -> argv -- a control that cannot fail, and the wet diagnostic found it by PRINTING the argv
+// rather than by reading it: the realized word is "briansrls". Now the value is pinned on both sides of the
+// chain: this literal pins what the spec declares (a spec edit that moves service_user breaks the witness),
+// and the positional check below pins what the argv carries. Both are needed; neither alone is a control.
+data spec_service_user_literal: String = "briansrls"
+
+// THE MODE, PINNED TO THE DECLARATION RATHER THAN TO THE BUILDER THAT USES IT. Asserting the operand only
+// against coreutils_directory_mode_operand would compare the value with itself: a flipped bit in
+// gunbc.managed_directory and a dropped leading zero in the builder are two different defects, and each has to
+// break this witness on its own. So the six permission bits and the three special bits are stated here, the
+// four-digit spelling they render is stated here, and the operand is asserted below to be that spelling with
+// the builder's leading zero in front of it. The four digits ARE special, owner, group, other
+// (#extdeps.access.posix::file_mode_octal), so the five-digit operand is
+// not a typo for 0755: GNU coreutils keeps an existing directory's set-id bits under a mode of four or fewer
+// digits and states them explicitly under a five-digit one (the rule the builder states in
+// #extdeps.tools.gnu_coreutils::coreutils_directory_mode_operand), and this row's operand is the explicit form.
+// DirectoryOwnerAllEveryoneTraverse is rwxr-xr-x with setuid, setgid and sticky all false
+// (#gunbc.managed_directory::declared_directory_mode), so the digit it must render is 0755. Both spellings were
+// PRINTED, not
+// reasoned about: the diagnostic at probe-cr.log printed `mode_dump: file_mode_octal=0755,
+// operand_via_builder=00755`.
+fn declared_mode_is_the_pinned_everyone_traverse() -> Bool {
+  let m: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+  m.owner.read && m.owner.write && m.owner.execute
+    && m.group.read && !m.group.write && m.group.execute
+    && m.other.read && !m.other.write && m.other.execute
+    && !m.setuid && !m.setgid && !m.sticky
+    && file_mode_octal(mode: m) == "0755"
+}
+
+// THE FIRST MISMATCH, NAMED. Both arms return ProcessExit because that is the only channel the harness prints a
+// reason on: the harness renderer report_outcome (src/v1/stage0/src/bin/claim_batch.rs) renders Pass as
+// `PASS {fn}`, an ExitFailure of code 2
+// as `UNOBSERVED`, and any other code as `FAIL {fn} (returned ProcessExit::ExitFailure, code {code}: {reason})`,
+// while a Bool claim that does not hold prints the bare word `FAIL {fn}`. A one-word FAIL cannot distinguish
+// the plan refusing from a position being wrong from a module that never resolved -- so each position reports
+// itself, and each is a DIFFERENT defect class: a length that is not 9 is a splice or a split; index 3 against
+// the literal is a builder that stopped stating the special digit; index 3 against the derived spelling is a
+// declaration that moved under a stale literal; the bit check is a declaration that moved under any literal at
+// all; 5 and 7 are an -o/-g transposition; 8 and the occurrence count are the planted word quoted, spliced, or
+// used twice.
+fn word_mismatch(argv: List<String>, index: Int, wanted: String) -> String {
+  let at: String = match list_at_optional(xs: argv, index: index) {
+    Present { value: word } => word
+    Absent => "<absent>"
+  }
+  concat(concat(concat("index ", int_to_decimal_string(value: index)), concat(" got ", at)), concat(" want ", wanted))
+}
+
+// THE OPERANDS ARE BOUND IN lets, NOT CAST IN THE CONDITIONS. `as` is not accepted in
+// if-condition position by the parser: an `if ... as String != x` arm fails at the cast token
+// with "expected LBrace, found Ident" (the parser's own diagnostic on the first draft of this arm, which
+// cost a leg). service_user is NonEmptyStr (#gunbc.live_deploy.spec::DeploymentServiceConfig), so the cast is
+// required;
+// it is taken once here and every condition below compares plain values.
+fn first_shape_mismatch(argv: List<String>) -> String {
+  let spec_user: String = deployment_spec_srv1().service.service_user as String
+  let planted_occurrences: Int = count_where(xs: argv, predicate: w => w == planted_separator_path)
+  if length(xs: argv) != 9 {
+    concat("length: got ", concat(int_to_decimal_string(value: length(xs: argv)), " want 9"))
+  } else if !argv_word_at(argv: argv, index: 0, wanted: "install") {
+    word_mismatch(argv: argv, index: 0, wanted: "install")
+  } else if !argv_word_at(argv: argv, index: 1, wanted: "-d") {
+    word_mismatch(argv: argv, index: 1, wanted: "-d")
+  } else if !argv_word_at(argv: argv, index: 2, wanted: "-m") {
+    word_mismatch(argv: argv, index: 2, wanted: "-m")
+  } else if !argv_word_at(argv: argv, index: 3, wanted: "00755") {
+    word_mismatch(argv: argv, index: 3, wanted: "00755")
+  } else if !argv_word_at(
+    argv: argv,
+    index: 3,
+    wanted: concat("0", file_mode_octal(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse))),
+  ) {
+    "index 3 is not the derived operand 0 <> file_mode_octal(declared_directory_mode(DirectoryOwnerAllEveryoneTraverse))"
+  } else if !declared_mode_is_the_pinned_everyone_traverse() {
+    "declared_directory_mode(DirectoryOwnerAllEveryoneTraverse) moved off rwxr-xr-x with setuid, setgid and sticky all false, or its four-digit spelling moved off 0755"
+  } else if !argv_word_at(argv: argv, index: 4, wanted: "-o") {
+    word_mismatch(argv: argv, index: 4, wanted: "-o")
+  } else if !argv_word_at(argv: argv, index: 5, wanted: spec_service_user_literal) {
+    word_mismatch(argv: argv, index: 5, wanted: spec_service_user_literal)
+  } else if !argv_word_at(argv: argv, index: 6, wanted: "-g") {
+    word_mismatch(argv: argv, index: 6, wanted: "-g")
+  } else if !argv_word_at(argv: argv, index: 7, wanted: fixture_group) {
+    word_mismatch(argv: argv, index: 7, wanted: fixture_group)
+  } else if !argv_word_at(argv: argv, index: 8, wanted: planted_separator_path) {
+    word_mismatch(argv: argv, index: 8, wanted: planted_separator_path)
+  } else if planted_occurrences != 1 {
+    concat("planted path occurs ", concat(int_to_decimal_string(value: planted_occurrences), " times, want exactly 1"))
+  } else if spec_user != spec_service_user_literal {
+    concat("the deployment spec no longer declares the pinned service user: got ", spec_user)
+  } else if spec_user == fixture_group {
+    "the fixture's group is no longer distinct from its user, so an -o/-g transposition has no witness"
+  } else {
+    "ok"
+  }
+}
+
+fn shape_verdict(argv: List<String>) -> ProcessExit {
+  let why: String = first_shape_mismatch(argv: argv)
+  if why == "ok" {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: concat("shape_mismatch: ", why) }
+  }
+}
+
+// ADVERSARIAL-PATH CONTROL, RESTORED. An admitted creation plan over a path carrying ';' realizes as a TYPED
+// WRITE whose path is ONE word and the FINAL word -- not spliced, not split, not quoted into a command -- and
+// the whole argv matches the builder's fixed order by position: install, -d, -m, <mode operand>, -o, <owner>,
+// -g, <group>, <path> (#extdeps.tools.gnu_coreutils::coreutils_install_directory_owned_arguments, read off the
+// builder rather than from anyone's summary of it).
+// The plan's refusal is reported as its own class rather than folded into the same verdict: an admission
+// refusal is news about who may own the leaf, and a positional mismatch is news about the write.
+test fn separator_path_realizes_as_one_final_argv_element() -> ProcessExit {
+  match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
+    EnsurePlanUnavailable { reason } => ExitFailure { code: 1, reason: concat("plan_refused: ", reason) }
+    EnsurePlanAvailable { plan } => shape_verdict(argv: owned_directory_install_argv(plan: plan))
+  }
+}
+
+// THE REMOTE ROUTE, PINNED AS A REFUSAL RATHER THAN ASSERTED AS AN ABSENCE, with each wall's failure named
+// separately: the ssh edge refusing nothing, the ssh edge refusing but not naming the planted word, the ssh
+// edge refusing for some other reason, and the fleet admission admitting the argv at all are four different
+// facts, and a one-word FAIL would have merged them. The same nine words are handed to the ADMISSION PREDICATES
+// -- pure functions over words -- so no transport runs and nothing reaches a host. Both walls must refuse: the
+// ssh edge (#gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv, whose allowlist is
+// [A-Za-z0-9._-/@:=]) and the fleet edge (#gunbc.fleet.fleet_known_hosts_anchor::portable_remote_words, the same
+// alphabet). Naming the planted path is the assertion, not an accident of
+// the outcome: every other word is inside the alphabet ("install", "-d", "-m", "00755", "-o", "-g", an account
+// name, a group name), so the path is the only word that can be the first offender.
+fn remote_refusal_verdict(argv: List<String>) -> ProcessExit {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Absent => ExitFailure { code: 1, reason: "ssh_edge_accepted_the_argv: no refusal before dispatch" }
+    Present { value: why } =>
+      if !string_contains(s: why, pattern: planted_separator_path) {
+        ExitFailure { code: 1, reason: concat("ssh_refusal_does_not_name_the_planted_word: ", why) }
+      } else if !string_contains(s: why, pattern: "outside portable allowlist") {
+        ExitFailure { code: 1, reason: concat("ssh_refusal_wrong_class: ", why) }
+      } else {
+        match portable_remote_words(raws: argv) {
+          Present { value: _admitted } =>
+            ExitFailure { code: 1, reason: "fleet_admission_accepted_the_argv: a nonportable word passed the fleet edge" }
+          Absent => ExitSuccess
+        }
+      }
+  }
+}
+
+test fn remote_routes_refuse_the_separator_word_before_dispatch() -> ProcessExit {
+  match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
+    EnsurePlanUnavailable { reason } => ExitFailure { code: 1, reason: concat("plan_refused: ", reason) }
+    EnsurePlanAvailable { plan } => remote_refusal_verdict(argv: owned_directory_install_argv(plan: plan))
+  }
+}
+
+// ── THE THIRD LEG OF THE ROW'S red_control: AN OWNERSHIP THE TYPED EFFECT CANNOT EXPRESS REFUSES ────────
+//
+// THE ROW HAS THREE LEGS AND THIS ARMS THE THIRD, which the two arms above do not. The pinned module's arms
+// adversarial_install_path_renders_no_shell_control_word and benign_install_line_renders_no_shell_control_word
+// carry "no shell control word in the rendered install surface"; install_line_realizes_the_declared_path_and_principal
+// here together with separator_path_realizes_as_one_final_argv_element carries "the positive control asserts the
+// typed write and ownership effect over a planted deploy fixture". A transposed-but-well-formed owner -- which is
+// what the deliberate negative control in the run receipt does -- is NOT this leg. It shows the positional
+// assertion can fail, on a value the effect is perfectly able to carry. This leg asks what happens when the
+// ownership CANNOT be carried, and the typed effect answers in two places, both on the route this node's install
+// actually travels through (#gunbc.owned_directory::owned_directory_plan, then
+// #gunbc.owned_directory::owned_directory_install_argv):
+//
+//  (a) A PRINCIPAL THE TYPE CANNOT NAME. PosixOwnerNames carries NonEmptyStr, so an empty user or group is not an
+//      ownership with a blank in it -- it is no reading at all.
+//      #gunbc.owned_directory::owned_directory_reading_of_stat_line returns none for an empty user and for an
+//      empty group. Asserting the refusal alone is worthless: a parser that refuses everything passes it. So the
+//      arm first asserts the EXPRESSIBLE line parses to the planted principal, and only then that the two
+//      unexpressible ones do not -- the positive control is inside the arm, not beside it.
+//  (b) A PRINCIPAL THE EFFECT WILL NOT ADOPT. root:root is perfectly expressible and is still nothing this
+//      install may carry: a present directory under another principal yields EnsurePlanUnavailable whose reason
+//      states the rule and NAMES the principal found. Accepting any refusal would let a missing-path or mode
+//      refusal stand in for the ownership rule, so the reason is asserted to contain both the rule's own words
+//      and the word for the principal it found.
+//
+// ZERO COVERAGE BEFORE THIS ARM, MEASURED: git grep -E '"directory\|\|' -- dag = 0 hits in 0 files. The upstream
+// malformed-line arm (test.claim.owned_directory_witness,
+// the_stat_identity_line_parses_and_a_malformed_line_does_not) exercises a wrong FIELD COUNT, not an empty
+// principal; that file's a_foreign_owner_refuses_and_is_never_adopted refuses at the DECISION over its own
+// target, while this arm sits at this node's surface, over the plan builder the live_deploy install-owned leaf
+// calls. Mode text is three digits because that is the spelling the parser is exercised with upstream.
+data expressible_stat_line: String = "directory|briansrls|gunbc-attempt-writers|755"
+data empty_user_stat_line: String = "directory||gunbc-attempt-writers|755"
+data empty_group_stat_line: String = "directory|briansrls||755"
+data foreign_stat_line: String = "directory|root|root|755"
+data foreign_principal_word: String = "root"
+data never_adopted_rule_words: String = "never adopted"
+
+fn reading_is_the_planted_principal(r: OwnedDirectoryReading) -> Bool {
+  let user: String = r.owner.user as String
+  let group: String = r.owner.group as String
+  r.is_directory && user == spec_service_user_literal && group == fixture_group
+}
+
+fn reading_words(r: OwnedDirectoryReading) -> String {
+  let user: String = r.owner.user as String
+  let group: String = r.owner.group as String
+  concat(concat("user=", user), concat(" group=", group))
+}
+
+// (a) THE UNEXPRESSIBLE PRINCIPAL: the expressible line MUST parse, and the two unexpressible ones MUST NOT.
+fn expressible_control_parses() -> Bool {
+  match owned_directory_reading_of_stat_line(line: expressible_stat_line) {
+    Present { value: r } => reading_is_the_planted_principal(r: r)
+    Absent => false
+  }
+}
+
+fn unexpressible_group_refused() -> Optional<String> {
+  match owned_directory_reading_of_stat_line(line: empty_group_stat_line) {
+    Present { value: r } => Present { value: concat("an EMPTY GROUP was accepted as a reading: ", reading_words(r: r)) }
+    Absent => Absent
+  }
+}
+
+fn unexpressible_user_refused() -> Optional<String> {
+  match owned_directory_reading_of_stat_line(line: empty_user_stat_line) {
+    Present { value: r } => Present { value: concat("an EMPTY USER was accepted as a reading: ", reading_words(r: r)) }
+    Absent => unexpressible_group_refused()
+  }
+}
+
+fn unexpressible_principal_failure() -> Optional<String> {
+  if !expressible_control_parses() {
+    Present { value: "the expressible control line did not parse to the planted principal, so both refusals below would be vacuous" }
+  } else {
+    unexpressible_user_refused()
+  }
+}
+
+// (b) THE UNADOPTABLE PRINCIPAL: expressible, present, and refused by the very plan the install would have used.
+// The reason is required to carry the rule's own words AND to name the principal it found, which is what stops a
+// missing-path or mode refusal standing in for the ownership rule. That makes this arm sensitive to that wording:
+// if #gunbc.owned_directory::owned_directory_plan changes those words, this arm FAILS, and it fails on purpose.
+fn refusal_reason_refused(reason: String) -> Optional<String> {
+  if reason == "" {
+    Present { value: "the refusal carried no reason, so any refusal at all would have satisfied this arm" }
+  } else if !string_contains(s: reason, pattern: never_adopted_rule_words) {
+    Present { value: concat("the refusal does not state the ownership rule: ", reason) }
+  } else if !string_contains(s: reason, pattern: foreign_principal_word) {
+    Present { value: concat("the refusal does not name the principal it found: ", reason) }
+  } else {
+    Absent
+  }
+}
+
+fn unadoptable_plan_failure(t: OwnedDirectoryTarget, reading: OwnedDirectoryReading) -> Optional<String> {
+  match owned_directory_plan(t: t, o: EnsureObserved { evidence: reading }) {
+    EnsurePlanAvailable { plan: _ } =>
+      Present { value: "a plan CARRIED a foreign owner: the effect adopted an ownership it declares it never adopts" }
+    EnsurePlanUnavailable { reason } => refusal_reason_refused(reason: reason)
+  }
+}
+
+fn unadoptable_owner_failure() -> Optional<String> {
+  match owned_directory_reading_of_stat_line(line: foreign_stat_line) {
+    Absent => Present { value: "the foreign control line did not parse, so the arm cannot test a refusal it cannot build" }
+    Present { value: r } => unadoptable_plan_failure(t: separator_fixture(), reading: r)
+  }
+}
+
+test fn the_typed_effect_refuses_an_ownership_it_cannot_carry() -> ProcessExit {
+  match unexpressible_principal_failure() {
+    Present { value: why } => ExitFailure { code: 1, reason: concat("unexpressible_principal: ", why) }
+    Absent => unadoptable_arm()
+  }
+}
+
+// THE SECOND HALF OF THE SAME CLAIM, split into its own arm body so every branch in this file is a plain match
+// arm or a plain fn-body if branch: the first draft of this arm nested an else-if chain inside a match arm
+// inside a match arm and the closure refused it -- "if branches resolve to incompatible types:
+// Node(Optional<Primitive(String)>) vs Product(Unit)" -- and that failure is recorded in the run receipt rather
+// than edited out. Splitting is the fix, and it also makes each refusal face readable on its own.
+fn unadoptable_arm() -> ProcessExit {
+  match unadoptable_owner_failure() {
+    Present { value: why } => ExitFailure { code: 1, reason: concat("unadoptable_owner: ", why) }
+    Absent => ExitSuccess
+  }
+}
