@@ -65,26 +65,6 @@ type AuthoredBinderKind
   | ParameterBinder
   | LambdaParameterBinder
 
-fn authored_binder_kind_eq(a: AuthoredBinderKind, b: AuthoredBinderKind) -> Bool {
-  match a {
-    LetBinder => match b {
-      LetBinder => true
-      ParameterBinder => false
-      LambdaParameterBinder => false
-    }
-    ParameterBinder => match b {
-      LetBinder => false
-      ParameterBinder => true
-      LambdaParameterBinder => false
-    }
-    LambdaParameterBinder => match b {
-      LetBinder => false
-      ParameterBinder => false
-      LambdaParameterBinder => true
-    }
-  }
-}
-
 type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
@@ -277,7 +257,7 @@ fn correction_eq(a: Correction, b: Correction) -> Bool {
     BinderUseExplicitnessRequired { binder: ka } => match b {
       Suggested { node: _ } => false
       Unavailable { reason: _ } => false
-      BinderUseExplicitnessRequired { binder: kb } => authored_binder_kind_eq(a: ka, b: kb)
+      BinderUseExplicitnessRequired { binder: kb } => ka == kb
     }
   }
 }
