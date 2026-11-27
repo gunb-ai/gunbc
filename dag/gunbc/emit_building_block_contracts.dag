@@ -183,9 +183,16 @@ type MispairedProbe {
 // entry's claim, and the test that separates a real not_held from an instrument artefact. Row identities
 // are concat(prefix, "_", block_id, suffix) with the suffixes:
 //
-//   _reading_taken                              the PASS arm's own reading           allocation_battery:78
-//   _violating_variant_above_contract_arm       the violating arm is visible         allocation_battery:129
-//   _violating_variant_within_contract_arm      the violating arm is NOT visible     allocation_battery:140
+//   _reading_taken                              the PASS arm's own reading
+//   _violating_variant_above_contract_arm       the violating arm is visible
+//   _violating_variant_within_contract_arm      the violating arm is NOT visible
+// Each of those three identities is BUILT, not declared, so it is named by its builder and not located by
+// a line: #gunbc.instruments.allocation_battery::subject_case makes the reading row,
+// #gunbc.instruments.allocation_battery::violation_case makes the discriminating row, and
+// #gunbc.instruments.allocation_battery::violation_contract_holds_case makes the red row, which holds only
+// when the violation is NOT visible on the axis its own form names. A `file:line` pointer was written here
+// in the first draft and is exactly the second, positional naming scheme that any edit above it silently
+// invalidates, so it is gone #gunbc.design_argument::single_authority.
 //   _observation_calibrates_a_measured_floor_with_a_difference, _meter_discriminates_a_copying_arm_above_empty
 //                                               the meter's floor and its ability to see a copy
 //   _availability_provider_registered_by_the_selecting_main   the counter is wired
