@@ -921,7 +921,11 @@ fn retained_cache_agrees() -> Bool {
   let untrimmed = floor_preparation_untrimmed_capture()
   let state = retained_fold()
   retained_header_clean(retained_lines())
-    && state.section == "untrimmed"
+    // The retained_body contract is SECTION untrimmed FIRST, SECTION graded LAST, so the fold's
+    // closing state names the section it ended in. (run9m: this read "untrimmed" while the body
+    // contract ends graded -- a witness no run could satisfy, the same broken-gate class as the
+    // clean-bit suppression the ruling removed.)
+    && state.section == "graded"
     && state.graded_rows == length(xs: graded)
     && state.untrimmed_rows == length(xs: untrimmed)
     && state.graded_phase == count_starting(graded, "[floor-phase]")

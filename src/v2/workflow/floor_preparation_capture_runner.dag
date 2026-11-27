@@ -66,6 +66,7 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_pass_prefix,
   floor_preparation_fail_prefix,
   floor_preparation_unobserved_prefix,
+  floor_preparation_witness_prefix,
   floor_preparation_cause_refused,
   floor_preparation_cause_unobserved,
   floor_preparation_cause_no_verdict,
@@ -395,6 +396,43 @@ fn floor_preparation_kept_line(line: String) -> Bool {
 fn floor_preparation_kept(text: String) -> List<String> {
   fold(floor_preparation_lines(text: text), init: [], f: (acc, line) =>
     if floor_preparation_kept_line(line: line) { list_push(xs: acc, item: line) } else { acc })
+}
+
+// THE GRADED CAPTURE IS GREEN BY CONSTRUCTION. The measured and cache witnesses read FAIL and
+// UNOBSERVED rows from the UNTRIMMED block only, where the census gives each one a cause; a
+// graded block carrying them makes those witnesses refuse on every run of main, because the ten
+// externally-owned FAILs reappear in the graded leg too (the survivors are ENTRY-grained: an
+// entry with any surviving claim re-runs its failed siblings as well -- observed in run9m, where
+// kept_graded carried FAIL/UNOBSERVED rows and all three committed-capture consumers refused).
+// So the two verdict classes are trimmed HERE, at the two boundaries that feed committed
+// artifacts -- the rendered capture block and the retained log's graded section -- with each
+// trimmed verdict taking its paired [witness] line with it. What is trimmed stays observable:
+// the leg transcript on disk keeps the raw output, and the header tallies fold the UNTRIMMED
+// kept rows, so the external counts still print the ten and the five.
+type FloorPreparationTrimState {
+  kept: List<String>,
+  dropping: Bool,
+}
+
+fn floor_preparation_trim_step(acc: FloorPreparationTrimState, line: String) -> FloorPreparationTrimState {
+  if starts_with(s: line, prefix: floor_preparation_fail_prefix) {
+    FloorPreparationTrimState { kept: acc.kept, dropping: true }
+  } else if starts_with(s: line, prefix: floor_preparation_unobserved_prefix) {
+    FloorPreparationTrimState { kept: acc.kept, dropping: true }
+  } else if acc.dropping {
+    if starts_with(s: line, prefix: floor_preparation_witness_prefix) {
+      FloorPreparationTrimState { kept: acc.kept, dropping: true }
+    } else {
+      FloorPreparationTrimState { kept: list_push(xs: acc.kept, item: line), dropping: false }
+    }
+  } else {
+    FloorPreparationTrimState { kept: list_push(xs: acc.kept, item: line), dropping: false }
+  }
+}
+
+fn floor_preparation_trim_green(rows: List<String>) -> List<String> {
+  fold(rows, init: FloorPreparationTrimState { kept: [], dropping: false },
+    f: (acc, line) => floor_preparation_trim_step(acc: acc, line: line)).kept
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -918,7 +956,7 @@ fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
 
 fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
   concat(concat("SECTION untrimmed\n", join(floor_preparation_kept(text: untrimmed_stdout), "\n")),
-    concat("\nSECTION graded\n", join(floor_preparation_kept(text: graded_stdout), "\n")))
+    concat("\nSECTION graded\n", join(floor_preparation_trim_green(rows: floor_preparation_kept(text: graded_stdout)), "\n")))
 }
 
 fn floor_preparation_byte_text(value: Optional<ByteSize>) -> String {
@@ -1198,7 +1236,7 @@ fn floor_preparation_capture_run() -> String {
         head_sha: head_sha, tree_sha: tree_sha,
         rc: graded_record.rc, kept_count: graded_record.kept_count)]
     let capture_block = floor_preparation_render_capture_block(
-      untrimmed: kept_untrimmed, graded: kept_graded,
+      untrimmed: kept_untrimmed, graded: floor_preparation_trim_green(rows: kept_graded),
       provenance: provenance_rows, requested: requested_rows_rendered)
     let authority_path_abs = concat(concat(floor_preparation_runner_root(), "/"), floor_preparation_authority_path)
     let authority_read = Filesystem.Read(path: authority_path_abs)
