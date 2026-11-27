@@ -14,10 +14,12 @@
 // per-axis observations; until that lands this function is the one authority every key consumes.
 
 use std::fs;
+use std::io::{self, Read};
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use sha2::Digest;
+use sha2::{Digest, Sha256};
 
 use crate::v1_compiler_compile::SourceFile;
 use crate::v1_rt::{self, Hash};
@@ -204,4 +206,136 @@ pub fn symbol_census_key(modules: &[(String, String)], closure_roster: &[String]
         census_key_field(&mut hash, content.as_bytes());
     }
     hex::encode(hash.finalize())
+}
+
+// --- one shadow-record format (the v1 compiler reuse experiments) ---------------------
+//
+// The production observer (`cli_run::materialization_shadow`) and the S1/S4 cache-key fixture
+// both store fixed-size, integrity-checked digests of a compiler answer. This is the SINGLE
+// authority for that on-disk format — record layout, SHA-256 integrity, create-only publish and
+// the read/compare state machine — so the two experiments cannot drift apart (DESIGN
+// §Single authority). It is parameterised only by a caller-supplied schema tag, so a question
+// with a different schema shares the one format. It stores digests only; it never feeds an answer
+// back to the compiler.
+
+/// A 32-byte content digest used as a shadow record key or value.
+pub type ShadowFingerprint = [u8; 32];
+
+/// State of the record that may already exist for a key before a round runs.
+pub enum ShadowPrior {
+    Absent,
+    Observed(ShadowFingerprint),
+    Corrupt,
+    Unreadable(io::Error),
+}
+
+/// Outcome of comparing the stored prior against the fresh answer.
+pub enum ShadowObservation {
+    Published,
+    Equal,
+    Different(&'static str),
+    Corrupt,
+    Io(&'static str, io::Error),
+}
+
+/// A 64-byte record: the 32-byte answer followed by a SHA-256 integrity tag over
+/// `schema || key || value`.
+pub fn shadow_record(
+    schema: &[u8],
+    key: &ShadowFingerprint,
+    value: &ShadowFingerprint,
+) -> [u8; 64] {
+    let mut hash = Sha256::new();
+    hash.update(schema);
+    hash.update(key);
+    hash.update(value);
+    let mut bytes = [0; 64];
+    bytes[..32].copy_from_slice(value);
+    bytes[32..].copy_from_slice(&hash.finalize());
+    bytes
+}
+
+/// Read the record at `path` for `key`, distinguishing absent / intact / corrupt / unreadable.
+pub fn shadow_read_prior(path: &Path, schema: &[u8], key: &ShadowFingerprint) -> ShadowPrior {
+    let mut open = fs::OpenOptions::new();
+    open.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A damaged experiment entry can be a FIFO or symlink. It must not block the compiler.
+        open.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
+    let file = match open.open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return ShadowPrior::Absent,
+        Err(error) => return ShadowPrior::Unreadable(error),
+    };
+    match file.metadata() {
+        Ok(metadata) if metadata.is_file() && metadata.len() == 64 => (),
+        Ok(_) => return ShadowPrior::Corrupt,
+        Err(error) => return ShadowPrior::Unreadable(error),
+    }
+    let mut bytes = Vec::new();
+    if let Err(error) = file.take(65).read_to_end(&mut bytes) {
+        return ShadowPrior::Unreadable(error);
+    }
+    let Ok(slice) = <&[u8; 64]>::try_from(bytes.as_slice()) else {
+        return ShadowPrior::Corrupt;
+    };
+    let mut value = [0; 32];
+    value.copy_from_slice(&slice[..32]);
+    if &shadow_record(schema, key, &value) == slice {
+        ShadowPrior::Observed(value)
+    } else {
+        ShadowPrior::Corrupt
+    }
+}
+
+/// Compare the stored prior against the fresh answer and, when absent, publish a new record
+/// atomically (create-only). A disagreement never overwrites its evidence.
+pub fn shadow_compare_and_record(
+    path: &Path,
+    schema: &[u8],
+    key: &ShadowFingerprint,
+    prior: ShadowPrior,
+    fresh: &ShadowFingerprint,
+) -> ShadowObservation {
+    match prior {
+        ShadowPrior::Absent => {
+            // Atomic create-only. A concurrent winner is read and checked against the
+            // actual fresh result. Never overwrite a discrepancy or a damaged record.
+            let publish = path
+                .to_str()
+                .ok_or_else(|| io::Error::other("shadow path is not UTF-8"))
+                .and_then(|p| {
+                    crate::v1_rt::gunbc_file_write_create_new(
+                        p,
+                        &shadow_record(schema, key, fresh),
+                        None,
+                    )
+                });
+            match publish {
+                Ok(()) => ShadowObservation::Published,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    match shadow_read_prior(path, schema, key) {
+                        ShadowPrior::Observed(value) if value == *fresh => {
+                            ShadowObservation::Published
+                        }
+                        ShadowPrior::Observed(_) => ShadowObservation::Different("raced"),
+                        ShadowPrior::Corrupt => ShadowObservation::Corrupt,
+                        ShadowPrior::Unreadable(e) => ShadowObservation::Io("unreadable", e),
+                        ShadowPrior::Absent => ShadowObservation::Io(
+                            "unreadable",
+                            io::Error::other("concurrent record disappeared"),
+                        ),
+                    }
+                }
+                Err(error) => ShadowObservation::Io("unwritable", error),
+            }
+        }
+        ShadowPrior::Observed(value) if value == *fresh => ShadowObservation::Equal,
+        ShadowPrior::Observed(_) => ShadowObservation::Different("hit"),
+        ShadowPrior::Corrupt => ShadowObservation::Corrupt,
+        ShadowPrior::Unreadable(error) => ShadowObservation::Io("unreadable", error),
+    }
 }

@@ -25,6 +25,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
+use v1_compiler::closure_identity::{
+    shadow_compare_and_record, shadow_read_prior, shadow_record, ShadowFingerprint as Fingerprint,
+    ShadowObservation as Observation,
+};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, front_end_sources, SourceFile};
 use v1_compiler::v1_compiler_infer::build_symbol_index_census;
 use v1_compiler::v1_compiler_normalize::normalize_graph;
@@ -38,7 +42,6 @@ const TREE_ENV: &str = "GBC_CK_TREE";
 const STORE_ENV: &str = "GBC_CK_STORE";
 const DERIV_ENV: &str = "GBC_CK_DERIV";
 const CONSUMER_ENV: &str = "GBC_CK_CONSUMER";
-type Fingerprint = [u8; 32];
 
 // A consumer file whose own bytes are held fixed across the provider scenarios. The bare
 // leaf `Banner` is its declared reference; a separate provider declaring the same leaf flips
@@ -73,107 +76,9 @@ struct WorkerResult {
 // of the same record format and comparison semantics rather than reaching into the seed.
 // ---------------------------------------------------------------------------
 
-enum Prior {
-    Absent,
-    Observed(Fingerprint),
-    Corrupt,
-}
-
 fn field(hash: &mut Sha256, bytes: &[u8]) {
     hash.update((bytes.len() as u64).to_le_bytes());
     hash.update(bytes);
-}
-
-fn record(key: &Fingerprint, value: &Fingerprint) -> [u8; 64] {
-    let mut hash = Sha256::new();
-    hash.update(SCHEMA);
-    hash.update(key);
-    hash.update(value);
-    let mut bytes = [0; 64];
-    bytes[..32].copy_from_slice(value);
-    bytes[32..].copy_from_slice(&hash.finalize());
-    bytes
-}
-
-fn read_prior(path: &Path, key: &Fingerprint) -> Prior {
-    let mut open = fs::OpenOptions::new();
-    open.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        open.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
-    }
-    let file = match open.open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Prior::Absent,
-        // For this fixture anything unreadable is treated as a missing entry; the production
-        // observer's unreadable/refusal channel is not the property under test here.
-        Err(_) => return Prior::Absent,
-    };
-    match file.metadata() {
-        Ok(metadata) if metadata.is_file() && metadata.len() == 64 => (),
-        Ok(_) => return Prior::Corrupt,
-        Err(_) => return Prior::Absent,
-    }
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    if file.take(65).read_to_end(&mut bytes).is_err() {
-        return Prior::Absent;
-    }
-    let Ok(slice) = <&[u8; 64]>::try_from(bytes.as_slice()) else {
-        return Prior::Corrupt;
-    };
-    let mut value = [0; 32];
-    value.copy_from_slice(&slice[..32]);
-    if &record(key, &value) == slice {
-        Prior::Observed(value)
-    } else {
-        Prior::Corrupt
-    }
-}
-
-enum Observation {
-    Published,
-    Equal,
-    Different,
-    Corrupt,
-}
-
-fn compare_and_record(
-    path: &Path,
-    key: &Fingerprint,
-    prior: Prior,
-    fresh: &Fingerprint,
-) -> Observation {
-    match prior {
-        Prior::Absent => {
-            // Atomic create-only, exactly as the observer publishes. Never overwrite.
-            let bytes = record(key, fresh);
-            match crate_v1_write_create_new(path, &bytes) {
-                Ok(()) => Observation::Published,
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    match read_prior(path, key) {
-                        Prior::Observed(value) if value == *fresh => Observation::Published,
-                        Prior::Observed(_) => Observation::Different,
-                        Prior::Corrupt => Observation::Corrupt,
-                        Prior::Absent => Observation::Published,
-                    }
-                }
-                Err(_) => Observation::Corrupt,
-            }
-        }
-        Prior::Observed(value) if value == *fresh => Observation::Equal,
-        Prior::Observed(_) => Observation::Different,
-        Prior::Corrupt => Observation::Corrupt,
-    }
-}
-
-fn crate_v1_write_create_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .and_then(|mut file| std::io::Write::write_all(&mut file, bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -421,12 +326,19 @@ fn run_worker() {
         return;
     };
     let path = store.join("symbol-census-v1").join(&key_hex);
-    let observation = compare_and_record(&path, &key, read_prior(&path, &key), &digest);
+    let observation = shadow_compare_and_record(
+        &path,
+        SCHEMA,
+        &key,
+        shadow_read_prior(&path, SCHEMA, &key),
+        &digest,
+    );
     let (lookup, comparison) = match observation {
         Observation::Published => ("miss", "absent"),
         Observation::Equal => ("hit", "equal"),
-        Observation::Different => ("hit", "different"),
+        Observation::Different(_) => ("hit", "different"),
         Observation::Corrupt => ("corrupt", "unavailable"),
+        Observation::Io(_, _) => ("unavailable", "io-error"),
     };
     emit(&WorkerResult {
         derivation,
@@ -559,7 +471,7 @@ fn bytes_only_key_serves_a_stale_census_answer_under_a_valid_provider() {
     let mut stored_arr = [0u8; 32];
     stored_arr.copy_from_slice(stored_value);
     assert_eq!(
-        &record(&key_bytes, &stored_arr)[..],
+        &shadow_record(SCHEMA, &key_bytes, &stored_arr)[..],
         &stored[..],
         "the stored record is intact (valid integrity bytes)"
     );
