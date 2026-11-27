@@ -1,7 +1,8 @@
 module test.claim.workspace_network_producer_witness
 
 import std.types { Bool, NonEmptyStr }
-import gunbc.runner.runner_microvm_network_observe { network_read_outcome, PrivilegedRead, PrivilegedReadCaptured }
+import gunbc.runner.runner_microvm_network_observe { network_read_outcome }
+import gunbc.runner.runner_microvm_network_converge { PrivilegedRead, PrivilegedReadCaptured }
 import gunbc.host.host_effect { SshShell }
 import gunbc.executor_privileged_operation { ReadNftRuleset }
 import extdeps.shell.exec { ProcessCaptureNotSpawned }

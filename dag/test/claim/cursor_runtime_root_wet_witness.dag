@@ -7,7 +7,7 @@ import extdeps.shell
 import extdeps.clock { Clock }
 import extdeps.exec.command { LocalExec, argv_words }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEntryPresence, filesystem_entry_presence, filesystem_listing_observation }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_entry_presence, filesystem_listing_observation }
 import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused, PosixShKeepFile }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
@@ -37,7 +37,7 @@ import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_
 // second production identity and no fallback: production supplies cursor_agent_pinned_program().
 // ACTIVATION GATE (after the pinned install, before C1a): (a) and (c), on the pinned path with the custody
 // key. Written now, run nothing until the install readback holds.
-data cursor_wet_user_copy: String = "/home/briansrls/.local/share/cursor-agent/versions/2026.09.15-d2fe57e/cursor-agent"
+data cursor_wet_user_copy: String = "/opt/cursor-agent-home/.local/share/cursor-agent/versions/2026.11.22-e9042b2/cursor-agent"
 data cursor_wet_invalid_key: String = "gunbc-wet-invalid-key\n"
 
 fn wet_scratch(label: String) -> String {
@@ -145,11 +145,19 @@ fn wet_standing_reason(s: ProviderStanding) -> String {
 // --list-models entry (the discriminating fact: an invalid probe persists nothing anyway, so no-auth proves
 // nothing). Then root D is removed and read back absent. The snapshot is taken from a planted custody holding a
 // deliberately fake key; no real key is read.
-fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: FilesystemEntryPresence, ambient_key_required: Bool) -> Bool {
+fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(ambient_key_required: Bool) -> Bool {
   let ambient_ok = !ambient_key_required || wet_ambient_key_is_set()
   let scratch = wet_scratch(label: "d")
   let custody = wet_scratch(label: "dcust")
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
+  // The presence is the REAL listing of the directory the stand-in was just written into: a completed,
+  // positive reading about the subject itself (the listing carries its name), so the fold runs past the
+  // pinned-path check without depending on any particular host install.
+  let listed = Filesystem.List(path: scratch)
+  let presence = filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: scratch, success: listed.success, entries: listed.entries, error: listed.error),
+    name: "cursor-agent-stand-in",
+  )
   let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
   let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
     Absent => false
@@ -269,22 +277,11 @@ test fn an_invalid_key_under_a_fresh_root_reads_rejected_and_leaves_no_auth_stat
 }
 
 test fn an_unavailable_sandbox_stops_the_ordering_at_the_sandbox_refusal_before_any_list_models() -> Bool {
-  wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: wet_stand_in_presence(), ambient_key_required: false)
+  wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(ambient_key_required: false)
 }
 
 test fn an_absent_pinned_realization_reaches_no_invocation() -> Bool {
   wet_absent_realization_reaches_no_invocation()
-}
-
-// The stand-in's own presence observation (the user copy's directory), so the real fold runs past the
-// pinned-path check; the pinned check itself is covered by the pure witness.
-fn wet_stand_in_presence() -> FilesystemEntryPresence {
-  let directory = "/home/briansrls/.local/share/cursor-agent/versions/2026.09.15-d2fe57e"
-  let listed = Filesystem.List(path: directory)
-  filesystem_entry_presence(
-    listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error),
-    name: "cursor-agent",
-  )
 }
 
 // ACTIVATION-GATE entries (pinned path, custody key): NOT RUN until the install readback holds.
@@ -299,7 +296,7 @@ test fn activation_supplied_invalid_key_decides_over_retained_stored_auth() -> B
 // (f) runs under an AMBIENT FAKE KEY, e.g. `CURSOR_API_KEY=gunbc-wet-ambient-fake claim_batch --wet ...`; the preflight
 // child must receive it unset (the log shows `key=` empty) and the sandbox refusal still wins.
 test fn the_keyless_preflight_receives_no_ambient_key() -> Bool {
-  wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: wet_stand_in_presence(), ambient_key_required: true)
+  wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(ambient_key_required: true)
 }
 
 test fn a_stalled_key_probe_is_bounded_and_cleanup_still_runs() -> Bool {
