@@ -7,22 +7,22 @@ use crate::v1_compiler_compile::SourceFile;
 use crate::v1_std_core::NewlineIndex;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::Instant;
 
 const QUESTION: &str = "v1.std.core::build_newline_index";
 const SCHEMA: &[u8] = b"newline-index-shadow-v1";
-type Fingerprint = [u8; 32];
 
-enum Prior {
-    Absent,
-    Observed(Fingerprint),
-    Corrupt,
-    Unreadable(io::Error),
-}
+// The record format (layout, integrity hash, create-only publish) has ONE authority:
+// `closure_identity`. The observer and the cache-key fixture both call those functions, so
+// the experiment's stored-record format cannot drift between them.
+use crate::closure_identity::{
+    shadow_compare_and_record, shadow_read_prior, shadow_record, ShadowFingerprint as Fingerprint,
+    ShadowObservation as Observation, ShadowPrior as Prior,
+};
 
 struct Probe {
     key: Fingerprint,
@@ -90,52 +90,6 @@ fn answer(index: &NewlineIndex) -> (Fingerprint, u64) {
     (hash.finalize().into(), bytes)
 }
 
-fn record(key: &Fingerprint, value: &Fingerprint) -> [u8; 64] {
-    let mut hash = Sha256::new();
-    hash.update(SCHEMA);
-    hash.update(key);
-    hash.update(value);
-    let mut bytes = [0; 64];
-    bytes[..32].copy_from_slice(value);
-    bytes[32..].copy_from_slice(&hash.finalize());
-    bytes
-}
-
-fn read_prior(path: &Path, key: &Fingerprint) -> Prior {
-    let mut open = fs::OpenOptions::new();
-    open.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        // A damaged experiment entry can be a FIFO or symlink. It must not block the compiler.
-        open.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
-    }
-    let file = match open.open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Prior::Absent,
-        Err(error) => return Prior::Unreadable(error),
-    };
-    match file.metadata() {
-        Ok(metadata) if metadata.is_file() && metadata.len() == 64 => (),
-        Ok(_) => return Prior::Corrupt,
-        Err(error) => return Prior::Unreadable(error),
-    }
-    let mut bytes = Vec::new();
-    if let Err(error) = file.take(65).read_to_end(&mut bytes) {
-        return Prior::Unreadable(error);
-    }
-    let Ok(slice) = <&[u8; 64]>::try_from(bytes.as_slice()) else {
-        return Prior::Corrupt;
-    };
-    let mut value = [0; 32];
-    value.copy_from_slice(&slice[..32]);
-    if &record(key, &value) == slice {
-        Prior::Observed(value)
-    } else {
-        Prior::Corrupt
-    }
-}
-
 pub(super) fn begin(sources: &[Rc<SourceFile>]) -> Result<Option<Round>, String> {
     let Some(root) = std::env::var_os("GUNBC_MATERIALIZATION_SHADOW_DIR") else {
         return Ok(None);
@@ -158,7 +112,7 @@ pub(super) fn begin(sources: &[Rc<SourceFile>]) -> Result<Option<Round>, String>
         .map(|source| {
             let start = Instant::now();
             let key = input_key(image, source);
-            let prior = read_prior(&directory.join(hex::encode(key)), &key);
+            let prior = shadow_read_prior(&directory.join(hex::encode(key)), SCHEMA, &key);
             Probe {
                 key,
                 prior,
@@ -201,7 +155,7 @@ pub(super) fn observe(
         let (fresh, bytes) = answer(index);
         let path = round.directory.join(hex::encode(probe.key));
         let (lookup, comparison, reason) =
-            match compare_and_record(&path, &probe.key, probe.prior, &fresh) {
+            match shadow_compare_and_record(&path, SCHEMA, &probe.key, probe.prior, &fresh) {
                 Observation::Published => ("miss", "absent", None),
                 Observation::Equal => ("hit", "equal", None),
                 Observation::Different(lookup) => (
@@ -238,52 +192,6 @@ pub(super) fn observe(
     first_refusal.map_or(Ok(()), Err)
 }
 
-enum Observation {
-    Published,
-    Equal,
-    Different(&'static str),
-    Corrupt,
-    Io(&'static str, io::Error),
-}
-
-fn compare_and_record(
-    path: &Path,
-    key: &Fingerprint,
-    prior: Prior,
-    fresh: &Fingerprint,
-) -> Observation {
-    match prior {
-        Prior::Absent => {
-            // Atomic create-only. A concurrent winner is read and checked against the
-            // actual fresh result. Never overwrite a discrepancy or a damaged record.
-            let publish = path
-                .to_str()
-                .ok_or_else(|| io::Error::other("shadow path is not UTF-8"))
-                .and_then(|p| {
-                    crate::v1_rt::gunbc_file_write_create_new(p, &record(key, fresh), None)
-                });
-            match publish {
-                Ok(()) => Observation::Published,
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => match read_prior(path, key) {
-                    Prior::Observed(value) if value == *fresh => Observation::Published,
-                    Prior::Observed(_) => Observation::Different("raced"),
-                    Prior::Corrupt => Observation::Corrupt,
-                    Prior::Unreadable(e) => Observation::Io("unreadable", e),
-                    Prior::Absent => Observation::Io(
-                        "unreadable",
-                        io::Error::other("concurrent record disappeared"),
-                    ),
-                },
-                Err(error) => Observation::Io("unwritable", error),
-            }
-        }
-        Prior::Observed(value) if value == *fresh => Observation::Equal,
-        Prior::Observed(_) => Observation::Different("hit"),
-        Prior::Corrupt => Observation::Corrupt,
-        Prior::Unreadable(error) => Observation::Io("unreadable", error),
-    }
-}
-
 #[test]
 fn a_valid_prior_disagreement_and_an_integrity_failure_are_distinct() {
     let dir = std::env::temp_dir().join(format!(
@@ -302,14 +210,20 @@ fn a_valid_prior_disagreement_and_an_integrity_failure_are_distinct() {
     let prior_index = crate::v1_std_core::build_newline_index("sample.dag".into(), "b\n".into());
     let (different, _) = answer(&prior_index);
     assert_ne!(fresh, different);
-    let before = record(&key, &different);
+    let before = shadow_record(SCHEMA, &key, &different);
     fs::write(&path, before).unwrap();
     assert!(matches!(
-        compare_and_record(&path, &key, read_prior(&path, &key), &fresh),
+        shadow_compare_and_record(
+            &path,
+            SCHEMA,
+            &key,
+            shadow_read_prior(&path, SCHEMA, &key),
+            &fresh
+        ),
         Observation::Different("hit")
     ));
     assert!(matches!(
-        compare_and_record(&path, &key, Prior::Absent, &fresh),
+        shadow_compare_and_record(&path, SCHEMA, &key, Prior::Absent, &fresh),
         Observation::Different("raced")
     ));
     assert_eq!(
@@ -321,7 +235,13 @@ fn a_valid_prior_disagreement_and_an_integrity_failure_are_distinct() {
     damaged[32] ^= 1;
     fs::write(&path, damaged).unwrap();
     assert!(matches!(
-        compare_and_record(&path, &key, read_prior(&path, &key), &fresh),
+        shadow_compare_and_record(
+            &path,
+            SCHEMA,
+            &key,
+            shadow_read_prior(&path, SCHEMA, &key),
+            &fresh
+        ),
         Observation::Corrupt
     ));
     assert_eq!(fs::read(&path).unwrap(), damaged);

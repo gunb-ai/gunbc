@@ -41,6 +41,7 @@ import gunbc.machine_intake.prior_life_capture_live {
 import extdeps.github.actions { Job, Step, RunStep, UsesStep, max_job_timeout_minutes }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.measure { second_count }
 import gunbc.design_ruling { DesignRuling, design_rulings }
 import std.decl_ref { declaration_ref_display_key }
@@ -110,11 +111,15 @@ test fn the_step_fold_is_the_phases_it_declares() -> Bool {
 // declared legs, and is strictly above the allowance it used to carry -- the allowance is the figure that
 // killed run 44249358201 at 05m00s with the door's first BMC call still queued.
 test fn the_arrival_converge_step_ships_the_fold() -> Bool {
-  let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
-  t.length() == 1
-    && all(t, m => m >= 0)
-    && all(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
-    && all(t, m => m > gunbc_ci_aux_step_timeout_minutes)
+  match outcome_accepted_value(fleet_converge_arrival_converge_job()) {
+    Absent => false
+    Present { value: job } =>
+      let t = arrival_step_timeouts(job: job, step_id: "arrival_converge")
+      t.length() == 1
+        && all(t, m => m >= 0)
+        && all(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
+        && all(t, m => m > gunbc_ci_aux_step_timeout_minutes)
+  }
 }
 
 // THE RAISE AND ITS PERMISSION TRAVEL TOGETHER, read as carriers. If the step and job figures are raised,
@@ -134,17 +139,23 @@ test fn the_shipped_raise_carries_its_ledger_row() -> Bool {
     design_rulings(),
     r => declaration_ref_display_key(ref: r.reference) == "gunbc.design_ruling::srv15_arrival_converge_step_raised_to_21_minutes"
   )
-  let step = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
-  let job = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
-  rows.length() == 1
-    && match rows.first() {
-         Present { value: row } => governs_the_ci_contract(row: row)
-         Absent => false
-       }
-    && step.length() == 1
-    && all(step, m => m >= 0)
-    && all(step, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
-    && job == fleet_converge_arrival_converge_job_backstop_timeout_minutes()
+  // fleet_converge_arrival_converge_job() yields Outcome<Job>; a refused job build is not a shipped raise,
+  // so unwrap the accepted job at the arm value (where the checker resolves) and fail the witness on Absent.
+  match outcome_accepted_value(fleet_converge_arrival_converge_job()) {
+    Absent => false
+    Present { value: job } =>
+      let step = arrival_step_timeouts(job: job, step_id: "arrival_converge")
+      let job_minutes = arrival_job_timeout_minutes(job: job)
+      rows.length() == 1
+        && match rows.first() {
+             Present { value: row } => governs_the_ci_contract(row: row)
+             Absent => false
+           }
+        && step.length() == 1
+        && all(step, m => m >= 0)
+        && all(step, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
+        && job_minutes == fleet_converge_arrival_converge_job_backstop_timeout_minutes()
+  }
 }
 
 
@@ -184,14 +195,18 @@ test fn the_leg_rosters_are_what_the_bounds_fold() -> Bool {
 // fold -- and it is what the job carries. It must still cover its own steps, and it must not have slid back
 // to the flat sum the file used to emit.
 test fn the_derived_job_backstop_is_shipped_and_covers_its_steps() -> Bool {
-  let shipped = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
-  let derived = fleet_converge_arrival_converge_job_backstop_timeout_minutes()
-  let steps = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
-      + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
-  shipped > 0
-    && shipped == derived
-    && derived == steps
-    && shipped != gunbc_ci_aux_step_timeout_minutes + 20
+  match outcome_accepted_value(fleet_converge_arrival_converge_job()) {
+    Absent => false
+    Present { value: job } =>
+      let shipped = arrival_job_timeout_minutes(job: job)
+      let derived = fleet_converge_arrival_converge_job_backstop_timeout_minutes()
+      let steps = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+          + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
+      shipped > 0
+        && shipped == derived
+        && derived == steps
+        && shipped != gunbc_ci_aux_step_timeout_minutes + 20
+  }
 }
 
 // THE CEILING IS CHECKED, NEVER CLAMPED: the job's backstop sits under
@@ -199,8 +214,12 @@ test fn the_derived_job_backstop_is_shipped_and_covers_its_steps() -> Bool {
 // generation route consults. If a future leg roster pushes the figure past the ceiling, generation
 // refuses with a named reason -- the claim goes RED at the same moment, which is the point.
 test fn the_arrival_job_backstop_holds_under_the_platform_ceiling() -> Bool {
-  arrival_converge_ceiling_holds()
-    && arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job()) <= max_job_timeout_minutes
+  match outcome_accepted_value(fleet_converge_arrival_converge_job()) {
+    Absent => false
+    Present { value: job } =>
+      arrival_converge_ceiling_holds()
+        && arrival_job_timeout_minutes(job: job) <= max_job_timeout_minutes
+  }
 }
 
 fn arrival_converge_ceiling_holds() -> Bool {
@@ -211,7 +230,10 @@ fn arrival_converge_ceiling_holds() -> Bool {
 // on the aux figure -- they print nothing and read nothing from the controller, so widening them would
 // hide a change of character. Pinned so the arrival step's raise cannot be used as cover.
 test fn the_arrival_jobs_aux_steps_stay_on_the_aux_figure() -> Bool {
-  let admit = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_admit")
+  let admit = match outcome_accepted_value(fleet_converge_arrival_converge_job()) {
+    Present { value: job } => arrival_step_timeouts(job: job, step_id: "arrival_admit")
+    Absent => []
+  }
   admit.length() == 1 && all(admit, m => m >= 0) && all(admit, m => m == gunbc_ci_aux_step_timeout_minutes)
 }
 
@@ -219,12 +241,15 @@ test fn the_arrival_jobs_aux_steps_stay_on_the_aux_figure() -> Bool {
 // RED here rather than silently the loosest budget in the file (GitHub's own default for an undeclared
 // step is the job's ceiling, not zero). This is the claim that makes the -1 marker load-bearing.
 test fn the_arrival_budgets_are_all_declared() -> Bool {
-  let job = fleet_converge_arrival_converge_job()
-  let converge = arrival_step_timeouts(job: job, step_id: "arrival_converge")
-  let admit = arrival_step_timeouts(job: job, step_id: "arrival_admit")
-  converge.length() == 1
-    && admit.length() == 1
-    && all(converge, m => m >= 0)
-    && all(admit, m => m >= 0)
-    && arrival_job_timeout_minutes(job: job) >= 0
+  match outcome_accepted_value(fleet_converge_arrival_converge_job()) {
+    Absent => false
+    Present { value: job } =>
+      let converge = arrival_step_timeouts(job: job, step_id: "arrival_converge")
+      let admit = arrival_step_timeouts(job: job, step_id: "arrival_admit")
+      converge.length() == 1
+        && admit.length() == 1
+        && all(converge, m => m >= 0)
+        && all(admit, m => m >= 0)
+        && arrival_job_timeout_minutes(job: job) >= 0
+  }
 }

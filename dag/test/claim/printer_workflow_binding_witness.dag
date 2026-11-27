@@ -2,6 +2,7 @@ module test.claim.printer_workflow_binding_witness
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.github.action_release { action_release_uses_text }
 import gunbc.fleet.fleet_converge_workflow {
@@ -40,10 +41,12 @@ fn requests_google_credential(st: Step) -> Bool {
 // is minted inside start_authorized, after the decision, via gunbc.fleet.printer_mint_at_use
 // (guarded by the mint claims in operator_approval_window_witness).
 test fn separate_job_uses_dedicated_identity() -> Bool {
-  let job = fleet_converge_printer_job()
-  job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
+  match outcome_accepted_value(fleet_converge_printer_job()) {
+    Absent => false
+    Present { value: job } => job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
     && !any(job.steps, s => requests_google_credential(st: s))
     && any(job.needs, n => n == "build")
+  }
 }
 
 // POSITIVE counterpart: the replacement mint asks for THE PRINTER'S OWN identity, derived from the

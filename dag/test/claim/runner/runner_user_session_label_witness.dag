@@ -95,7 +95,8 @@ import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigg
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, WorkflowRun, Completed, InProgress, Success, Failure }
 import std.types { CommitSha, Secret }
 import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_workflow_mode_wire, RunnerUserSessionConverge, RunnerBrowserToolchainConverge }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of, fleet_converge_workflow_mode_wire, RunnerUserSessionConverge, RunnerBrowserToolchainConverge }
+import v2.std.diagnostic { outcome_accepted_value }
 import extdeps.github.actions { Workflow }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with, runner_user_session_receipt_unreadable }
 import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_mode_wire }
@@ -819,7 +820,11 @@ test fn the_newest_run_is_read_and_a_stale_newest_receipt_refuses() -> Bool {
 // RED control: change the workflow's run_name to a literal of another shape and the first arm goes red.
 test fn the_producer_run_name_is_a_title_the_selection_qualifies() -> Bool {
   let placeholder = fleet_converge_run_title(mode: "${{ inputs.mode }}", host: "${{ inputs.host }}", nonce: "${{ inputs.transaction_nonce }}")
-  match fleet_converge_workflow.run_name {
+  // The committed fleet-converge workflow is emitted through the retyped run-step family, so its value is now an
+  // Outcome<Workflow>. Fail-closed: a refused emission makes this claim RED rather than silently true.
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wfcw } => match wfcw.run_name {
     Present { value: rendered } =>
       rendered == placeholder
         && match fleet_converge_producer_run_select(
@@ -839,6 +844,7 @@ test fn the_producer_run_name_is_a_title_the_selection_qualifies() -> Bool {
           ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
         }
     Absent => false
+    }
   }
 }
 

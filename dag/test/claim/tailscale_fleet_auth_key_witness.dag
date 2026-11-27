@@ -14,6 +14,7 @@ module test.claim.tailscale_fleet_auth_key_witness
 // fails the compile the moment an arm lacks a row) is the load-bearing pair.
 
 import std.logic { Bool }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.algebra { string_contains }
 import std.measure { second, second_count, seconds_per_day }
 import std.types { NonEmptyStr }
@@ -638,7 +639,10 @@ test fn w_wet_entry_target_resolves_to_the_real_wet_function() -> Bool {
     ref: gunbc_ci_tailscale_join_target.declaration,
     pool_roots: witness_layer_roots,
   )
-  match target_resolution {
+  match outcome_accepted_value(gunbc_ci_tailscale_join_invoke()) {
+    Absent => false
+    Present { value: s } =>
+      match target_resolution {
       DeclarationRefResolved { declaration_identity: id } =>
         id.qualified_name == "gunbc.tailscale_join_converge.tailscale_join_converge_ci_wet"
       DeclarationRefModuleAbsent { reference: _ } => false
@@ -646,7 +650,8 @@ test fn w_wet_entry_target_resolves_to_the_real_wet_function() -> Bool {
       DeclarationRefFieldAbsent { reference: _ } => false
       DeclarationRefAmbiguous { reference: _, candidates: _ } => false
     }
-    && string_contains(s: gunbc_ci_tailscale_join_invoke(), pattern: "tailscale_join_converge_ci_wet")
+    && string_contains(s: s, pattern: "tailscale_join_converge_ci_wet")
+  }
 }
 
 test fn w_population_and_tags_are_consistent() -> Bool {

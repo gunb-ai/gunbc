@@ -188,7 +188,7 @@ import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
   WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
-  GunbcBinary, GunbcDriver, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
+  GunbcBinary, GunbcDriver, gunbc_binary_name, gunbc_cargo_package, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -855,7 +855,7 @@ fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLa
     BuildGunbcBinaries { profile, bins } =>
       concat(
         concat([compute_program(instance: instance, cap: CargoCapability), "build", "--target-dir", layout.target_dir], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
-        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
+        concat(["-p", gunbc_cargo_package(b: GunbcDriver) as String], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
       [compute_dependency_program(dependency: dependency, bin: GunbcDriver), "compile",
@@ -884,7 +884,7 @@ fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLa
     TestGateSubject { label } =>
       concat(
         [compute_program(instance: instance, cap: CargoCapability), "run", "--target-dir", layout.target_dir, "--release",
-         "-p", "v1-compiler", "--bin", gunbc_binary_name(b: GunbcDriver) as String, "--"],
+         "-p", gunbc_cargo_package(b: GunbcDriver) as String, "--bin", gunbc_binary_name(b: GunbcDriver) as String, "--"],
         invocation_words_bare(words: gunbc_test_invocation_words(label: render_label(l: label))),
       )
   }
