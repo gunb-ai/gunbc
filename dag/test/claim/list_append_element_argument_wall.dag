@@ -1,0 +1,246 @@
+module test.claim.list_append_element_argument_wall
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+  census_count_at_key,
+  censuses_differ_by_exactly_the_target_key,
+  compile_dag_diagnostic_census
+}
+
+// THE WALL THIS CLAIM CARRIES. `std.algebra.list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>)`
+// is an APPLIED generic at both positions, and before the repair an element could be handed to a
+// position whose declared formal is `FreeMonoid<T>` while `T` was still an unsolved variable. The call
+// then compiled and returned a plausible list, so the author's `list_push` / `list_append` mix-up was
+// found only by a reviewer or by a wrong answer downstream (the node's displaced_cost). The repair is
+// the seam-local predicate `element_demand_direct_call_argument_formal_is_unbound` in
+// src/v1/04_infer.dag, beside `direct_call_argument_inhabitance_diags`: where a demand for an ELEMENT
+// reaches a direct-call argument whose formal is an applied generic whose type variable is genuinely
+// unsolved, the pair is judged against the call's own substitution basis instead of being released as
+// UndecidableGenericFormal, and the refusal is the located
+// `direct_call_formal_has_unbound_type_variable` diagnostic carrying its inhabitance reason.
+
+// WHY THE SUBJECT LIVES HERE AS SOURCE TEXT, AND WHY THE DOOR IS THE DIRECT ONE.
+// gunbc.design_argument::guarantee_ladder says a state unrepresentable in the accepted corpus is still
+// representable as source handed to the compiler by a fixture, and the compiler refusing it is the
+// enrollable evidence -- the sentence as it is actually written in the header comment of
+// dag/test/claim/census_app_acquisition_refusal_probe_witness.dag. A committed .dag file carrying
+// the refused call would fail the fold before any claim in it ran, putting a refused subject into the
+// whole-tree population and making the fold's green set depend on this wall. A `data String` handed to
+// the declared census door cannot do that: the refused program never enters the fold and the known-red
+// roster is never touched. Precedent for the FORM -- a refused subject carried as source text through
+// this same door -- is test.claim.machine_intake.no_fallback_plan_ineligibility_wall and
+// gunbc.recurring_failure_mode.seed_admits_a_keyword_as_a_pattern_binder.
+//
+// THE DOOR IS `compile_dag_diagnostic_census` AND NOT THE `census_rows_for` WRAPPER IN
+// gunbc.compile_census_probe, and that is a measured choice rather than a style one. The wrapper maps
+// the builtin's `CensusNotRunnable { cause }` arm to `none`, so a claim matching on it cannot tell
+// "these are the rows" from "the census never ran", and cannot name the cause when it did not. The
+// node's red control asks the controls to PASS, which is an assertion about the RUNNABLE arm; an
+// assertion about an arm the surface has erased is not one. So every leg below matches the two typed
+// arms and states which arm it is reading.
+
+// WHAT THE CENSUS DOES AND DOES NOT COVER, stated because it decides which exactness is authorable.
+// `compile_dag_diagnostic_census` reports the diagnostics of the WHOLE compilation the fixture is
+// handed to -- the fixture and its imported closure together -- and carries no projector separating
+// fixture rows from closure rows. A total-count assertion is therefore a statement about the corpus,
+// not about this wall, and is not made here. The two exact forms ARE used: a count scoped to
+// (diagnostic_class, subject_name, blocking), and a differential between the two arms in which the
+// shared closure cancels key by key.
+
+// HONEST ABOUT ITS OWN READS: the census resolves its synthetic source through
+// build_module_path_index_from_witness_roots, which walks the live tree. Declared rather than left to
+// the fail-closed default, on the same reasoning as test.claim.compile_diagnostic_census_witness.
+// CONSEQUENCE FOR EXECUTION: a claim that reads the ambient checkout is admitted by --wet, which is
+// the mode that runs it; the default --hermetic mode withholds the ambient read, and its own verdict
+// lines for these legs are recorded beside the wet ones rather than hidden, so a reader can see which
+// mode decided what.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE TARGET KEY, read off the instrument's own output on the head-built compiler at 3201529903d
+// (stages3/logs75_runner.out, leg census_head_repro_at_freemonoid_fold; the same row re-read at the
+// rebased head in stages3/logs80_carrier.out) rather than guessed. The class my refusal projects as,
+// and the subject it names. The subject carries the refusal's own reason, so the key pins WHICH
+// inhabitance refusal fired, not merely that one did.
+data target_class: String = "DeclaredTypeNotInhabited"
+
+data target_subject: String = "direct call argument for parameter 'right' [RefusedTextAtRunOfNonCharElement: a text value inhabits a FreeMonoid carrier only as a run over Char (std.coercion's grounded identity carrier String -> FreeMonoid); the carrier's declared element is not Char, so the text does not inhabit it]"
+
+// THE PARTS OF THAT SUBJECT THE NODE REQUIRES THE DIAGNOSTIC TO NAME, spelled separately from the key
+// so a leg can fail when the message stops naming them even while some other subject still matches.
+data required_parameter_phrase: String = "direct call argument for parameter 'right'"
+
+data required_reason_token: String = "RefusedTextAtRunOfNonCharElement"
+
+// ONE AXIS BY CONSTRUCTION, NOT BY MAINTENANCE. Both arms come out of this producer, parameterised by
+// the second argument's spelling and nothing else: same module name, same import list, same helper,
+// same expected list, same equality function. So the one-axis relation is a property of the producer
+// rather than an alignment between two literals a reader would have to check and a future edit could
+// silently break. The axis is exactly the author error the node names -- an element handed to
+// `list_append` where `list_push` was meant.
+fn eh_f2_probe_source(second_argument: String) -> String {
+  "module eh_f2_subject\n"
+    + "import std.algebra { list_append }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_append([\"a\"], "
+    + second_argument
+    + "), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+// THE TWO SUBJECTS THE REFUSAL CLASS NAMES. `eh_f2_repro_ticket` is the ticket's repro in shape: an
+// element at the second `FreeMonoid<T>` position. `eh_f2_pair_same_container` is its control, one
+// token away: a list in that same position.
+data eh_f2_repro_ticket_element: String = "\"bc\""
+
+data eh_f2_pair_same_container_element: String = "[\"bc\"]"
+
+fn eh_f2_repro_ticket_source() -> String {
+  eh_f2_probe_source(second_argument: eh_f2_repro_ticket_element)
+}
+
+fn eh_f2_pair_same_container_source() -> String {
+  eh_f2_probe_source(second_argument: eh_f2_pair_same_container_element)
+}
+
+// THE DECLARED-ELEMENT CONTROL. `list_push<T>(xs: FreeMonoid<T>, item: T)` asks for an element at
+// `item` BY DECLARATION, so an element there IS the declared type and must stay admitted. This is the
+// arm that keeps the wall from being a "second argument of a generic list function refuses" rule
+// wearing the right clothes: it fires on the shape the wall must never touch.
+fn eh_f2_list_push_element_source() -> String {
+  "module eh_f2_list_push\n"
+    + "import std.algebra { list_push }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_push(xs: [\"a\"], item: \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+// THE DOOR, handed through unchanged. No leg below invents a third arm: the census either observed
+// rows or could not run, and a leg that cannot tell which has not measured anything.
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// THE DISCRIMINATING RED, exact and pinned to the subject. `>= 1` would keep green on the day the
+// fixture starts refusing for a second, unintended reason: the wall would still prove SOMETHING refuses
+// while having stopped proving THIS refuses. Read on the observed arm; the not-runnable arm answers
+// false, so a census that did not run can never satisfy this leg.
+test fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> Bool {
+  match census_of(source: eh_f2_repro_ticket_source()) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: target_class)) == 1
+        && census_count_at_key(
+          rows: rows,
+          diagnostic_class: target_class,
+          subject_name: target_subject,
+          blocking: true
+        ) == 1
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// THE SAME RED READ AS REASON AND LOCUS RATHER THAN AS A HISTOGRAM KEY -- the node's red control asks
+// that the refusal NAME the argument and the parameter, and a count cannot show that. Three assertions
+// on the observed arm: the class is the inhabitance class; some blocking row's subject names the
+// PARAMETER `right` as the position that was refused; and that subject carries the inhabitance REASON
+// token by name. A refusal that cannot say which position and why is not one an author can act on, and
+// the mix-up this class exists to catch is only fixed by a message that names them.
+test fn the_refusal_names_the_parameter_and_the_reason() -> Bool {
+  match census_of(source: eh_f2_repro_ticket_source()) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: target_class)) >= 1
+        && census_total_count(
+          rows: census_blocking_rows(rows: rows)
+            |> filter(r =>
+              (r.diagnostic_class as String) == target_class
+                && string_contains(s: r.subject_name, pattern: required_parameter_phrase)
+            )
+        ) == 1
+        && census_total_count(
+          rows: census_blocking_rows(rows: rows)
+            |> filter(r =>
+              (r.diagnostic_class as String) == target_class
+                && string_contains(s: r.subject_name, pattern: required_reason_token)
+            )
+        ) == 1
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// THE FIRST POSITIVE CONTROL, ON THE RUNNABLE ARM: the same call with a LIST in the second position
+// must be admitted. This leg matches the observed arm and asserts zero BLOCKING rows OF THE TARGET
+// CLASS there -- not "zero rows", which an importing fixture can never show and which would be a
+// permanently red check dressed as rigour. The not-runnable arm answers false, so an empty census and a
+// census that never ran cannot both satisfy it. Without this leg the red above could be green for any
+// reason at all: a broken import, a misspelled type, a renamed module.
+test fn a_list_still_takes_that_position() -> Bool {
+  match census_of(source: eh_f2_pair_same_container_source()) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: target_class)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// THE SECOND POSITIVE CONTROL, ON THE RUNNABLE ARM, on the callee the node names as the author's other
+// half: a list plus an element at `list_push`, where the element at `item` IS the declared type, stays
+// admitted. Same arm discipline as the control above, so the three arms cannot be confused with each
+// other, or with a census that did not run.
+test fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> Bool {
+  match census_of(source: eh_f2_list_push_element_source()) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: target_class)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// THE ARM DISCIPLINE STATED AS ITS OWN LEG, so a door that stopped being able to run fails HERE, with
+// its own name, instead of quietly turning the two controls into two `false`s that look like a
+// regression in the compiler. All three sources must land on the observed arm.
+test fn all_three_arms_are_observable_censuses() -> Bool {
+  match census_of(source: eh_f2_repro_ticket_source()) {
+    CensusObserved { rows: _ } =>
+      match census_of(source: eh_f2_pair_same_container_source()) {
+        CensusObserved { rows: _ } =>
+          match census_of(source: eh_f2_list_push_element_source()) {
+            CensusObserved { rows: _ } => true
+            CensusNotRunnable { cause: _ } => false
+          }
+        CensusNotRunnable { cause: _ } => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// THE ONE-AXIS RECEIPT. The producer makes the two SOURCES differ by one token; this makes the two
+// CENSUSES differ by one row -- a population identity, not a cardinality. Whatever the shared closure
+// contributes cancels key by key, so the wall is measured against the other arm rather than against a
+// literal copied out of today's tree (gunbc.design_argument::fail_closed: a measurement of the current
+// tree is not an oracle). It goes red if the red arm picks up a second refusal, if the green arm gains
+// or loses one, if an advisory appears on one side only, and -- unlike a net-count form -- if any
+// ambient class or subject is substituted for another at equal cardinality. Both arms must be the
+// observed arm for the comparison to mean anything.
+test fn the_two_arms_differ_by_exactly_the_target_row() -> Bool {
+  match census_of(source: eh_f2_repro_ticket_source()) {
+    CensusObserved { rows: red } =>
+      match census_of(source: eh_f2_pair_same_container_source()) {
+        CensusObserved { rows: green } =>
+          censuses_differ_by_exactly_the_target_key(
+            red: red,
+            green: green,
+            target_class: target_class,
+            target_subject: target_subject
+          )
+        CensusNotRunnable { cause: _ } => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
