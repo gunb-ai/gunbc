@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7, operator_host_srv3, operator_host_srv4 }
-import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, remote_build_capacity_ruling_default_approved_2026_11_27, remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27 }
+import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, remote_build_capacity_ruling_default_approved_2026_11_27, remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27, remote_build_capacity_ruling_srv4_seat_card_default_approved_2026_11_27 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown, compute_build_memory_ceiling_default }
 import gunbc.live_deploy.serving_child_observations { serving_child_residency, user_work_request_footprint_of, user_work_serving_census_headroom }
 
@@ -399,13 +399,21 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
   },
   RuledBuildPoolReservation {
     host: operator_host_srv4,
-    ruling: remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27.reference,
-    // Two seats, same shape and same ruling as srv3 (its sibling CI host; no oom_kill incident
-    // of its own, the same blind sizing). MEASURED NOTE: the card expected srv4 15 -> 13, but the
-    // fold's ladder puts srv4 at 11 with a two-seat pool -- its uncharged 15 collapses onto
-    // srv3's charged ladder -- and the fold's number is what the witnesses pin (recorded in the
-    // ruling row, not papered over).
-    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Zero } } },
+    // ONE seat, on the operator's srv4 card of 2026-11-27 (approved by default on escalation
+    // msg_4c5d45c5): "A: srv4 1 seat if it costs <=2 runners, else srv4 0 seats for now". The
+    // card exists because option A's srv4 half was internally inconsistent -- the fold prices a
+    // TWO-seat srv4 pool at FOUR runners (measured 15 -> 11 on the pre-#17186 tree, review
+    // 99338), not the promised -2 -- and the
+    // card was decided on the fold's own numbers, not an author's reading: measured at this head
+    // (engine sha256 6ec8c202...), ONE seat costs srv4 ONE runner (the committed width fold lands
+    // at 14, against srv3's ruled -2 landing at 11 -- well inside the card's ceiling of two), so
+    // the "1 seat" branch is live and the "0 seats for now" branch is not. The count is the
+    // card's own word, kept untouched; the pool behind it is NOT written here -- it resolves as
+    // 1 x footprint + census headroom through ruled_seats_driven_pool, the same authority as
+    // every seat-driven row. The width witness (runner_slot_allocation_witness) pins the fold's
+    // derived 14 and the pool equality; this row carries no bytes and no width.
+    ruling: remote_build_capacity_ruling_srv4_seat_card_default_approved_2026_11_27.reference,
+    size: RuledSeatsNamed { seats: Succ { prev: Zero } },
   },
 ]
 

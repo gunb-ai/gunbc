@@ -191,21 +191,33 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
   // as the 7th envelope term, so they admit FEWER slots than the pre-engine 18: srv3 112 GiB costs 4 (18->14),
   // srv4 64 GiB costs 2 (18->16). The reservation is a priced model fact, not a silent widen; the
   // committed-width witness below agrees at the same charged numbers.
-  // srv3/srv4 are on the remote-build serving roster and the capacity ruling's CI-cost card
+  // srv3 is on the remote-build serving roster and the capacity ruling's CI-cost card
   // (gunbc.design_ruling::remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27)
-  // rules their build pools at TWO footprint seats each -- 2 x footprint + census, composed from the
-  // leaf names by ruled_seats_driven_pool, never written. The pools are charged against the envelope
-  // and the widths below are the FOLD'S derived answers (read once through a probe of the real seam,
-  // then pinned here as the alarm this claim is): srv3 13 -> 11 and srv4 15 -> 11. srv1 carries its
-  // own ledger: its CI budget pays the standing user-work pool, re-priced to three footprint seats
-  // by the same card (7 -> 5 on this axis).
+  // rules its build pool at TWO footprint seats -- 2 x footprint + census, composed from the leaf
+  // names by ruled_seats_driven_pool, never written. The pool is charged against the envelope and
+  // the width below is the FOLD'S derived answer (read once through a probe of the real seam, then
+  // pinned here as the alarm this claim is): srv3 13 -> 11, the card's number, -2 exactly.
+  // SRV4 CARRIES ITS CARD POOL OF ONE SEAT (gunbc.design_ruling::
+  // remote_build_capacity_ruling_srv4_seat_card_default_approved_2026_11_27, escalation
+  // msg_4c5d45c5, approved by default 2026-11-27): option A's two-seat shape cost srv4 FOUR
+  // runners (card-era fold reading, pre-#17186), refuting the card's own "-2 CI cost" on this host (review 99338), so the host went
+  // back to the operator, whose card ruled "srv4 1 seat if it costs <=2 runners, else srv4 0
+  // seats for now". The fold's measured answer at this head (engine sha256 6ec8c202..., ladders
+  // rung by rung against the real seam): today's 0-seat posture is 13, the one-seat footprint
+  // pool lands the committed width at 12 -- a cost of ONE runner, inside the card's ceiling of
+  // two, so the one-seat branch is live. (The 15 the card was put on its escalation with was the
+  // fold's answer on the pre-#17186 tree; on today's rows the fold says 13, and the witnesses
+  // pin today's fold, not yesterday's number.) The pins below are the FOLD'S derived answers,
+  // pinned as the alarm this claim is; the pool is checked against ruled_seats_driven_pool at
+  // the card's own count, never a literal. srv1 carries its own ledger: its CI budget pays the standing user-work pool,
+  // re-priced to three footprint seats by the same card (7 -> 5 on this axis).
   host_memory_admitted_width(host: operator_host_srv1) == 5
     && host_memory_admitted_width(host: operator_host_srv3) == 11
-    && host_memory_admitted_width(host: operator_host_srv4) == 11
+    && host_memory_admitted_width(host: operator_host_srv4) == 12
     && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv3))
       == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv3, seats: 2))
     && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv4))
-      == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv4, seats: 2))
+      == byte_size_count(b: ruled_seats_driven_pool(host: operator_host_srv4, seats: 1))
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -301,20 +313,25 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  // THE RULED BUILD POOLS ARE CHARGED: THE WIDTHS MOVE AND THE POOL HOLDS WHAT CI GIVES UP.
-  // srv3 13 -> 11 and srv4 15 -> 11 at the two-seat ruled pools (2 x footprint + census, ~57.2 GiB
-  // each; gunbc.design_ruling::
-  // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27, decision (1)). The
-  // 13/15 were the pool-less charged values; the ruling's first card expected srv4 15 -> 13, but the
-  // fold's ladder puts both hosts at 11 once a two-seat pool is held (srv4's higher uncharged axis
-  // collapses onto srv3's ladder), and the FOLD'S NUMBER IS PINNED -- the discrepancy is recorded in
-  // the ruling row, and no width row was forged to make the card's arithmetic come true. The dynamic
-  // assertions below (committed == memory-admitted, and cpu axis > memory-admitted) prove memory is
-  // the binding axis at these charged values. SRV1's assertion is deliberately DYNAMIC: its user-work
-  // slice just moved (3 footprint seats, 8 -> 6 committed, decision (2) of the same card) and this
-  // claim pins the equality, not a number that a slice re-price can silently stale.
+  // THE RULED BUILD POOL IS CHARGED: THE WIDTH MOVES AND THE POOL HOLDS WHAT CI GIVES UP.
+  // srv3 13 -> 11 at its two-seat ruled pool (2 x footprint + census, ~57.2 GiB;
+  // gunbc.design_ruling::
+  // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27, decision (1)) -- the
+  // 13 was the carve-charged value; the card's number held exactly for srv3. SRV4 LANDS AT 12 on
+  // its card pool of ONE seat (gunbc.design_ruling::
+  // remote_build_capacity_ruling_srv4_seat_card_default_approved_2026_11_27, escalation
+  // msg_4c5d45c5): option A's two-seat shape cost four runners on the tree the card was priced on, which is why the host went back
+  // to the operator instead of an author's reading being encoded; the card's "1 seat if it costs
+  // <=2 runners" was measured through this same fold (engine sha256 6ec8c202...): posture 13 ->
+  // one-seat pool 12, a cost of ONE runner -- condition met, one-seat branch live. No width row
+  // was forged to make any card's arithmetic come true: 12 is the fold's derived
+  // RunnerWidthDerived, pinned here as the alarm it is. The dynamic assertions below (committed == memory-admitted, and cpu axis >
+  // memory-admitted) prove memory is the binding axis at these charged values. SRV1's assertion is
+  // deliberately DYNAMIC: its user-work slice just moved (3 footprint seats, 8 -> 6 committed,
+  // decision (2) of the same card) and this claim pins the equality, not a number that a slice
+  // re-price can silently stale.
   committed_width_is(host: operator_host_srv3, expected: 11)
-    && committed_width_is(host: operator_host_srv4, expected: 11)
+    && committed_width_is(host: operator_host_srv4, expected: 12)
     && committed_width_is(host: operator_host_srv1, expected: memory_admitted_total_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
@@ -978,7 +995,10 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
         && srv1_membership_is(slot_index: 2, expect_member: true, expect_fabric: false)
         && srv1_membership_is(slot_index: 1, expect_member: true, expect_fabric: false)
         && srv1_membership_is(slot_index: 3, expect_member: true, expect_fabric: false)
-        && srv1_membership_is(slot_index: 6, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: 6, expect_member: false, expect_fabric: false)
+        // 05/06 LEFT THE POPULATION when the CI-cost card's decision (2) re-priced srv1's slice to three
+        // footprint seats (committed 8 -> 6): the two authored fabric members occupy width positions, so
+        // the GitHub identities stop at 04 -- membership truth probed on the real seam 2026-11-27.
         && srv1_membership_is(slot_index: 7, expect_member: false, expect_fabric: false)
   }
 }
@@ -1169,8 +1189,14 @@ test fn a_live_microvm_controller_restores_the_charge_and_srv1s_width_falls_back
   memory_admitted_width_of_envelope_over(envelope: byte_size(envelope), authored_slots: authored, rows: realized) == 0
     && host_memory_admitted_width(host: operator_host_srv1) == 5
     && match committed_width_of_over(f: f, rows: realized) {
-      RunnerWidthDerived { slots: w } => w == 2
-      RunnerWidthUnresolved { cause: _ } => false
+      // THE CHARGED READING NOW REFUSES, WHERE IT ONCE DERIVED 2: with the controller realized the
+      // envelope leaves no remainder to grant the declared transitional CI slot, and the fold refuses
+      // the width at WidthSlotShapeInadmissible rather than commit the slot at MemoryMax zero -- the
+      // seam probe of 2026-11-27 (width_probe6::c_shape, HELD) pins the cause. A refusal under the
+      // charged reading is the same fail-closed posture the released reading's absence of charge
+      // removes; the LIVE width below stays Derived 6.
+      RunnerWidthUnresolved { cause: WidthSlotShapeInadmissible { reason: _ } } => true
+      _ => false
     }
     && match gunbc_runner_committed_width(host: operator_host_srv1) {
       RunnerWidthDerived { slots: w } => w == 6

@@ -280,13 +280,20 @@ test fn a_ruled_zero_host_pool_comes_from_the_ruling_not_a_carved_slot() -> Bool
   // THE TABLE NOW CARRIES FOUR RULED HOSTS, each row naming ITS OWN ruling and sizing itself in
   // ONE of the two ruling voices (RuledBuildPoolSize): srv14's ruling named the pool -- 192 GiB,
   // retired from serving (2026-11-24); the capacity ruling (2026-11-27, default-approved on
-  // operator escalation msg_0e98e799-02d9-4c24-91f1-88db8921f577) named ken's count (1); and the
-  // CI-cost correction card (same day, default-approved on escalation msg_3789e805) cut srv3 and
-  // srv4 to TWO seats each, keeping its first card's -2 CI-cost bound (gunbc.design_ruling::
+  // operator escalation msg_0e98e799-02d9-4c24-91f1-88db8921f577) named ken's count (1); the
+  // CI-cost correction card (same day, default-approved on escalation msg_3789e805) cut srv3 to
+  // TWO seats, keeping its first card's -2 CI-cost bound (gunbc.design_ruling::
   // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27 -- the 4-seat reading
   // of the first card was internally inconsistent with that bound and is superseded; the row says
-  // so). All seat-driven pools resolve from the footprint authority, so those rows carry no bytes
-  // to drift. A row citing the wrong ruling, naming a size in the wrong voice, or restating a pool
+  // so); and srv4's own card (same day again, default-approved on escalation msg_4c5d45c5) put it
+  // at ONE seat -- option A's two-seat shape cost srv4 four CI runners on the tree the card was
+  // priced on (the fold, 15 -> 11, pre-#17186), so
+  // the host went back to the operator rather than an author's reading being encoded (review
+  // 99338, option (c)); the card's "1 seat if it costs <=2 runners" was decided on the fold's own
+  // measured answer (posture 13 -> one-seat pool 12: a cost of one runner, inside the card's
+  // ceiling of two).
+  // All seat-driven pools resolve from the footprint authority, so those rows carry no bytes to
+  // drift. A row citing the wrong ruling, naming a size in the wrong voice, or restating a pool
   // the authority no longer composes fails here, host by host.
   all(ruled_build_pool_reservations, r =>
     ((r.host as String) == "srv14"
@@ -312,11 +319,12 @@ test fn a_ruled_zero_host_pool_comes_from_the_ruling_not_a_carved_slot() -> Bool
         })
     || ((r.host as String) == "srv4"
       && (r.ruling.module_path as String) == "gunbc.design_ruling"
-      && (r.ruling.decl_name as String) == "remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27"
+      && (r.ruling.decl_name as String) == "remote_build_capacity_ruling_srv4_seat_card_default_approved_2026_11_27"
       && match r.size {
           RuledPoolNamed { bytes: _ } => false
-          RuledSeatsNamed { seats } => seats == 2
-        }))
+          RuledSeatsNamed { seats } => seats == 1
+        })
+    )
     && ruled_build_pool_reservations.length() == 4
     && filter(ruled_build_pool_reservations, r => (r.host as String) == "srv14").length() == 1
     && filter(ruled_build_pool_reservations, r => (r.host as String) == "host-e2d4b7").length() == 1
@@ -519,7 +527,7 @@ test fn the_ruled_rows_are_staged_until_the_roster_admits_them() -> Bool {
 // PER-REQUEST IN-SLICE FOOTPRINT (floor((pool - census headroom) / footprint), min one) -- the
 // standing rule the capacity ruling itself declares, cited from
 // gunbc.design_ruling::remote_build_capacity_ruling_default_approved_2026_11_27 -- while a ruling
-// that names counts (ken 1, srv3 2, srv4 2 -- the CI-cost card's counts) keeps its own word untouched, and the pools behind
+// that names counts (ken 1, srv3 2 from the CI-cost card, srv4 1 from the srv4 card) keeps its own word untouched, and the pools behind
 // those counts are composed from the same authority, never written. Asserted purely: the rostered
 // conversions flip live only when an admission enrolls a host, through code witnessed here.
 test fn a_ruled_pool_of_many_footprint_sizes_admits_many_builds_not_two() -> Bool {
@@ -727,11 +735,15 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
     members: committed_members_of(host: operator_host_srv1),
     requested_width: committed_width_of(host: operator_host_srv1),
     observed: []
-  )) == [1, 2, 3, 4, 5, 6]
-    // srv1's committed GitHub identities are 01..06 since gunbc.design_ruling::srv1_microvm_slot_charge_waits_for_realization
-    // released srv1-13/14's charge while they are read not realized (width 8 = 01..06 + 13 + 14); before it
-    // they were 01..02. The proposition is unchanged: the additions are exactly the GitHub identities, and the
-    // two fabric-purpose members inside the committed range are never among them.
+  )) == [1, 2, 3, 4]
+    // SRV1'S COMMITTED POPULATION IS NOW SIX WIDE (01..04 + 13 + 14): the capacity ruling's CI-cost card
+    // (gunbc.design_ruling::remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27,
+    // decision (2)) re-priced srv1's user-work slice to three footprint seats and the fold derives the
+    // committed width 8 -> 6 -- probed on the real seam 2026-11-27: 01..04 and the two authored fabric
+    // members are IN the population, 05/06 are outside it (the two fabric members occupy width positions,
+    // so the GitHub identities stop at 04). Before the card the width was 8 and the additions were 01..06.
+    // The proposition is unchanged and stays load-bearing: the additions are exactly the GitHub identities,
+    // and the two fabric-purpose members inside the committed range are never among them.
     && !added_indices_contains(
       added_indices(actions: addition_actions(
         members: committed_members_of(host: operator_host_srv1),
@@ -865,7 +877,10 @@ test fn the_additions_run_is_general_across_transitions() -> Bool {
     && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
     && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
     && nat_range_inclusive(lo: 6, hi: 5) == []
-    && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 0)).length() == 6
+    && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 0)).length() == 4
+    // the four GitHub identities 01..04 of srv1's six-wide committed population (width 8 -> 6 by the
+    // CI-cost card's decision (2), probed on the real seam 2026-11-27); 13/14 are fabric-purpose and
+    // never among the additions.
     && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 3, observed: observed_prefix(host: operator_host_srv1, n: 0)).length() == 3
     && addition_actions(members: committed_members_of(host: operator_host_srv1), requested_width: 6, observed: observed_prefix(host: operator_host_srv1, n: 6)).length() == 0
 }
