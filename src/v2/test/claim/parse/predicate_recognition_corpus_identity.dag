@@ -345,8 +345,13 @@ fn row_line(row: String) -> String {
 }
 
 // THE EMITTER. Returns (not asserts) the per-row table, so a leg's log holds the raw quantities the
-// recorded column was filled from. claim_batch prints a returned non-Bool value on its FAIL line:
-// that line is the artifact, and its exit status is NOT a result of this node's control.
+// recorded column was filled from. THE ARTIFACT IS A PRINTED LINE, NOT AN EXIT CODE: this emitter is
+// not a `test fn`, so no route hands it a verdict; it is read by EXECUTING it --
+// `gunbc run --source-root dag --source-root src/v2 --entry <this module> --function report_corpus_identity`
+// -- and the host prints the String it returns inside its refusal "function `report_corpus_identity`
+// returned `...`, not `ProcessExit`". That printed line is the artifact; the refusal's exit status is
+// NOT a result of this node's control. The verdicts are the `test fn`s below, run as
+// `gunbc test //v2/test/claim/parse/predicate_recognition_corpus_identity:<test fn>`.
 fn report_corpus_identity() -> String {
   fold_list(
     xs: corpus_rows(),

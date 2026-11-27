@@ -288,8 +288,13 @@ fn guard_composition_retains(prov: ParseProvenanceState) -> Int {
 // policy PRODUCTION uses for that site, which is what the node's handback is about. On the un-fixed
 // leg the two columns are equal, because the policy production uses is Minting; on the fixed leg the
 // second column is 0 while the first stays at the baseline, which is the only shape that makes a zero
-// mean something. claim_batch prints a returned non-Bool value on its FAIL line: that line is the
-// artifact, and its exit status is not a result of this node's control.
+// mean something. THE ARTIFACT IS A PRINTED LINE, NOT AN EXIT CODE. This emitter is not a `test fn`,
+// so no route hands it a verdict; it is read by EXECUTING it --
+// `gunbc run --source-root dag --source-root src/v2 --entry <this module> --function report_mint_instrument`
+// -- and the host prints the String it returns inside its refusal "function `report_mint_instrument`
+// returned `...`, not `ProcessExit`". That printed line is the artifact; the refusal's exit status is
+// not a result of this node's control. The verdicts are the `test fn`s below, run as
+// `gunbc test //v2/test/claim/parse/predicate_recognition_mint_probe:<test fn>`.
 fn bool_as_int(value: Bool) -> Int {
   if value { 1 } else { 0 }
 }
