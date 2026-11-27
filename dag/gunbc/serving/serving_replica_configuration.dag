@@ -562,7 +562,7 @@ fn configuration_warm_agent_capacity(c: ReplicaConfiguration) -> Optional<Nat> {
       if c.replica_count == 0 {
         Absent
       } else {
-        Present { value: per_engine * c.replica_count }
+        Present { value: per_engine }
       }
   }
 }
