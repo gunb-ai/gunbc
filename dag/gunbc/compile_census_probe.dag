@@ -391,10 +391,18 @@ fn census_wire_exit(wire: CliWireResponse) -> ProcessExit {
   }
 }
 
-fn census_legs_wire(legs: List<CliWireResponse>) -> CliWireResponse {
+fn census_legs_wire(legs: List<CliWireResponse>, subject: String) -> CliWireResponse {
+  // THE MEMBER COUNT IS PRINTED BY THE FOLD ITSELF, counted over the members rather than restated
+  // beside them, so a fold that quietly received fewer legs than its subject declares is visible in the
+  // bytes and not merely in the row's prose: a missing leg is a missing control, not a cheaper run.
+  let members = fold(
+    legs,
+    init: 0,
+    f: (acc, _) => acc + 1
+  )
   let bytes = fold(
     legs,
-    init: "",
+    init: concat(concat("fold subject=", concat(subject, concat(" members=", concat(to_string(members), "\n"))))),
     f: (acc, wire) => concat(acc, census_wire_bytes(wire: wire))
   )
   let exit = fold(

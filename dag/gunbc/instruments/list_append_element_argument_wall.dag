@@ -1,8 +1,8 @@
 module gunbc.instruments.list_append_element_argument_wall
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import std.algebra { string_contains }
-import std.process { ProcessExit }
+import std.process { ProcessExit, ExitSuccess }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -16,7 +16,7 @@ import gunbc.compile_diagnostic_census {
   compile_dag_diagnostic_census
 }
 import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, census_ran, census_premise , census_leg_wire, census_legs_wire }
-import gunbc.cli_wire { CliWireResponse }
+import gunbc.cli_wire { CliWireResponse, CliWireUnprintable }
 
 // THE WALL THIS CLAIM CARRIES. `std.algebra.list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>)`
 // is an APPLIED generic at both positions, and before the repair an element could be handed to a
@@ -404,12 +404,42 @@ fn arms_differ_by_target_row_wire() -> CliWireResponse {
 // the run taken by #gunbc.compile_census_probe::census_worst_exit so a could-not-run (2) is never
 // demoted to a finding (1). `gunbc test //gunbc/instruments:list-append-wall-all-legs`.
 fn wall_all_legs_wire() -> CliWireResponse {
-  census_legs_wire([
-    element_at_list_position_wire(),
-    refusal_names_parameter_wire(),
-    list_still_admitted_wire(),
-    element_at_element_position_wire(),
-    three_arms_observable_wire(),
-    arms_differ_by_target_row_wire(),
-  ])
+  census_legs_wire(
+    [
+      element_at_list_position_wire(),
+      refusal_names_parameter_wire(),
+      list_still_admitted_wire(),
+      element_at_element_position_wire(),
+      three_arms_observable_wire(),
+      arms_differ_by_target_row_wire(),
+    ],
+    subject: "list-append-wall"
+  )
+}
+
+// THE FOLD CANNOT ABSORB A COULD-NOT-RUN, AS A LEG AND NOT AS A READING OF THE CODE.
+// `census_worst_exit` is a maximum over the members' codes. That is a claim a reviewer cannot check by
+// reading it, and no other leg in this module can make it: every member of `#wall_all_legs_wire` is an
+// ANSWER, so that fold never sees a 2 and its rc says nothing about the loudest state. This leg builds
+// the loudest state on purpose -- one member that HELD, one member the renderer refused -- so the fold
+// must answer 2 with a member that held printed in front of it. Its expectation is the SAME ON BOTH
+// TREES, rc 2 with the wall and rc 2 without it: the property is about the fold, not about the
+// compiler, which is what makes it a control rather than a restatement of the wall. If this ever exits
+// 1, a census that could not run has begun to read as a wall that did not fire -- the absorbing answer
+// #gunbc.design_argument::fail_closed forbids, and the reason #census_worst_exit is a maximum at all.
+fn fold_cannot_absorb_a_two_wire() -> CliWireResponse {
+  census_legs_wire(
+    [
+      census_leg_wire(identity: "fold-absorption/member-that-held", verdict: ExitSuccess),
+      CliWireUnprintable { cause: fold_absorption_refusal_cause() }
+    ],
+    subject: "list-append-wall-fold-absorption"
+  )
+}
+
+// The cause is a NON-EMPTY string by type, and it is written through a function whose return type is
+// `NonEmptyStr` rather than as a bare literal inside the record, because that is the form this repo has
+// a precedent for (gunbc.build_target::required_aggregate_target_name).
+fn fold_absorption_refusal_cause() -> NonEmptyStr {
+  "fold-absorption/member-the-renderer-refused"
 }

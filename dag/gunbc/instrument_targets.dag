@@ -1286,6 +1286,25 @@ fn list_append_wall_all_legs_binding() -> TargetBinding {
   }
 }
 
+// THE FOLD'S OWN CONTROL, and the only leg in this module whose expectation does not depend on the
+// wall: one member that HELD folded with one member the renderer refused, so the run MUST exit 2 -- on
+// the tree with the wall and on the tree without it. It exists because `census_worst_exit` is a maximum
+// over member codes, and every other member of `#wall_all_legs_wire` is an answer: no fold that only
+// holds can show that a 2 survives it. rc 1 here means a census that could not run is being reported as
+// a wall that did not fire. `gunbc test //gunbc/instruments:list-append-wall-fold-cannot-absorb-a-two`.
+fn list_append_wall_fold_cannot_absorb_a_two_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-fold-cannot-absorb-a-two" } }
+}
+
+fn list_append_wall_fold_cannot_absorb_a_two_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_fold_cannot_absorb_a_two_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "fold_cannot_absorb_a_two_wire")
+    }
+  }
+}
+
 // THE CARRIER: the same rule at the declared (non-generic) `run` carrier, seventeen legs.
 
 fn free_monoid_carrier_text_at_string_run_label() -> Label {
@@ -1363,7 +1382,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
     native_emission_controls_binding(), fleet_convergence_verdict_route_binding(),
-    list_append_wall_element_at_list_position_binding(), list_append_wall_refusal_names_parameter_binding(), list_append_wall_list_still_admitted_binding(), list_append_wall_element_at_element_position_binding(), list_append_wall_three_arms_observable_binding(), list_append_wall_arms_differ_by_target_row_binding(), list_append_wall_all_legs_binding(),
+    list_append_wall_element_at_list_position_binding(), list_append_wall_refusal_names_parameter_binding(), list_append_wall_list_still_admitted_binding(), list_append_wall_element_at_element_position_binding(), list_append_wall_three_arms_observable_binding(), list_append_wall_arms_differ_by_target_row_binding(), list_append_wall_all_legs_binding(), list_append_wall_fold_cannot_absorb_a_two_binding(),
     free_monoid_carrier_text_at_string_run_binding(), free_monoid_carrier_two_runs_admitted_binding(), free_monoid_carrier_list_push_admitted_binding(), free_monoid_carrier_all_legs_binding(),
     native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]

@@ -404,6 +404,16 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-fold-cannot-absorb-a-two".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "fold_cannot_absorb_a_two_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "free-monoid-carrier-text-at-string-run-refused".to_string(),
             },
             TargetProducer::CliWireProgram {

@@ -343,5 +343,5 @@ fn carrier_all_legs_wire() -> CliWireResponse {
     census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_module_local_alias_of_the_run_carrier_is_refused"), verdict: text_at_a_module_local_alias_of_the_run_carrier_is_refused()),
     census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_run_whose_element_the_call_never_settles_is_no_verdict"), verdict: text_at_a_run_whose_element_the_call_never_settles_is_no_verdict()),
     census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_run_whose_element_a_lambda_settles_is_no_verdict"), verdict: text_at_a_run_whose_element_a_lambda_settles_is_no_verdict()),
-  ])
+  ], subject: "text-at-free-monoid-run-carrier")
 }
