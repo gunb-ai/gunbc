@@ -9,6 +9,7 @@ import std.measure {
   measure_add, measure_sub, measure_fit_count_floor, MeasureDifference, MeasureSubtrahendExceedsMinuend,
 }
 import std.list { first_where }
+import std.algebra { FreeSemigroup }
 import gunbc.fleet.fleet_host_identity { HostIdentity }
 
 // ── THE SERVING CHILD, THE DOOR, AND THE SLICE-FIT INEQUALITY ─────────────────────────────────
@@ -92,10 +93,12 @@ fn user_work_slice_fits(slots: Nat, footprint: ByteSize, slice_max: ByteSize) ->
 // instrumented prints -- the [pre-entry] process_cpu max_rss_kib line the engine emits per run --
 // from serving-route dispatches.
 
-// THE STANDING OF A RESIDENCY FIGURE: measured readings carry the named instrument and receipts;
+// THE STANDING OF A RESIDENCY FIGURE: measured readings carry the named instrument and at least
+// one receipt -- non-emptiness is CONSTRUCTED (FreeSemigroup, the non-empty carrier named by
+// gunbc.design_ruling::nonemptiness_is_constructed_or_proved), never re-checked at read time;
 // a bet says so in its type. A reader consuming a bet as fact is the defect the type prevents.
 type ServingChildBoundStanding
-  = EngineInstrument { instrument: NonEmptyStr, receipts: List<NonEmptyStr> }
+  = EngineInstrument { instrument: NonEmptyStr, receipts: FreeSemigroup<NonEmptyStr> }
   | Bet { basis: NonEmptyStr }
 
 // THE ADMISSION FLOOR FOR THE SERVING CHILD: 6.0 GiB, declared at or above the worst instrumented
@@ -109,7 +112,10 @@ data serving_child_engine_bound: ServingChildBound = ServingChildBound {
   bytes: byte_size(6442450944),
   standing: EngineInstrument {
     instrument: "engine [pre-entry] process_cpu max_rss_kib print",
-    receipts: ["45773631715 (max_rss_kib 6090188)", "45774944663 (max_rss_kib 3663224)"],
+    receipts: FreeSemigroup {
+      head: "45773631715 (max_rss_kib 6090188)",
+      tail: ["45774944663 (max_rss_kib 3663224)"],
+    },
   },
 }
 
@@ -126,11 +132,13 @@ fn serving_child_bound_covers_the_worst_instrumented_reading() -> Bool {
 }
 
 // THE BOUND'S STANDING IS AN INSTRUMENT, NOT A PLAN QUOTE -- the stale-subject class of review
-// 99177 cannot return through this row unnoticed.
+// 99177 cannot return through this row unnoticed. Non-emptiness of the receipts and the
+// instrument's presence are CONSTRUCTED by the type (review 99201), so this predicate says one
+// thing only: the standing is the instrument arm, not a bet.
 fn serving_child_bound_stands_on_the_engine_print() -> Bool {
   match serving_child_engine_bound.standing {
-    EngineInstrument { instrument, receipts } => byte_size_count(b: serving_child_engine_bound.bytes) > 0 && instrument != "" && first_where(receipts, r => true) != Absent
-    Bet { basis } => false
+    EngineInstrument { instrument: _, receipts: _ } => byte_size_count(b: serving_child_engine_bound.bytes) > 0
+    Bet { basis: _ } => false
   }
 }
 

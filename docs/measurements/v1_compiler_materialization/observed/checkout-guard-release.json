@@ -1,0 +1,228 @@
+{
+  "cases": [
+    {
+      "case": "cold-match",
+      "sha256": "af9dd2d42128153f1036d7fcdd3f171774631aafef49a8c01bc7ed738beac364",
+      "elapsed_s": 114.675,
+      "user_cpu_s": 98.497184,
+      "sys_cpu_s": 14.172641,
+      "max_rss_kib": 2342760,
+      "rc": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "guard_refusal": [],
+      "guard_holds": true,
+      "trace_holds": true,
+      "probes": 587,
+      "unique_inputs": 587,
+      "host_events": [
+        "\u25d0 started Filesystem.Read /tmp/fleet-converge-plan/plan_receipt.json",
+        "\u25d0 started git.Core.RevParseInRepo",
+        "\u2713 git.Core.RevParseInRepo done in 2ms"
+      ],
+      "pre_entry_ms": {
+        "workspace_discovery": 4,
+        "pool_source_newline_index": 1312,
+        "pool_source_tokenize": 11385,
+        "demand_layout_acquire": 29665,
+        "pool_heads_parse": 3852,
+        "pool_census_parse": 5130,
+        "closure_name_census_build": 1902,
+        "reference_pool_names_from_census": 82,
+        "closure_load": 0,
+        "closure_parse": 0,
+        "closure_resolve": 0,
+        "closure_normalize": 0,
+        "closure_typecheck": 0,
+        "closure_parent_envs": 0,
+        "closure_reconcile_assembly": 0,
+        "closure_ownership": 0,
+        "reconcile_root_bare_underlay": 0,
+        "reconcile_root_variant_base": 0,
+        "resolve_entry_graph_inclusive": 114209
+      },
+      "lookup_counts": {
+        "miss": 587
+      },
+      "comparisons": {
+        "absent": 587
+      },
+      "semantic_payload_bytes_computed": 111263042,
+      "journal_files": 587,
+      "journal_bytes": 37568,
+      "trace_errors": [],
+      "input_set_digest": "c1f7624c5a8a52b7ce7b6a485b5471ba2b20bcba0c05988c9b273845eef0ba67"
+    },
+    {
+      "case": "warm-match",
+      "sha256": "af9dd2d42128153f1036d7fcdd3f171774631aafef49a8c01bc7ed738beac364",
+      "elapsed_s": 78.675,
+      "user_cpu_s": 68.609525,
+      "sys_cpu_s": 9.594895,
+      "max_rss_kib": 2343356,
+      "rc": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "guard_refusal": [],
+      "guard_holds": true,
+      "trace_holds": true,
+      "probes": 587,
+      "unique_inputs": 587,
+      "host_events": [
+        "\u25d0 started Filesystem.Read /tmp/fleet-converge-plan/plan_receipt.json",
+        "\u25d0 started git.Core.RevParseInRepo",
+        "\u2713 git.Core.RevParseInRepo done in 11ms"
+      ],
+      "pre_entry_ms": {
+        "workspace_discovery": 2,
+        "pool_source_newline_index": 969,
+        "pool_source_tokenize": 9447,
+        "demand_layout_acquire": 20109,
+        "pool_heads_parse": 2761,
+        "pool_census_parse": 3893,
+        "closure_name_census_build": 1574,
+        "reference_pool_names_from_census": 80,
+        "closure_load": 0,
+        "closure_parse": 0,
+        "closure_resolve": 0,
+        "closure_normalize": 0,
+        "closure_typecheck": 0,
+        "closure_parent_envs": 0,
+        "closure_reconcile_assembly": 0,
+        "closure_ownership": 0,
+        "reconcile_root_bare_underlay": 0,
+        "reconcile_root_variant_base": 0,
+        "resolve_entry_graph_inclusive": 78182
+      },
+      "lookup_counts": {
+        "hit": 587
+      },
+      "comparisons": {
+        "equal": 587
+      },
+      "semantic_payload_bytes_computed": 111263042,
+      "journal_files": 587,
+      "journal_bytes": 37568,
+      "trace_errors": [],
+      "input_set_digest": "c1f7624c5a8a52b7ce7b6a485b5471ba2b20bcba0c05988c9b273845eef0ba67"
+    },
+    {
+      "case": "warm-mismatch",
+      "sha256": "af9dd2d42128153f1036d7fcdd3f171774631aafef49a8c01bc7ed738beac364",
+      "elapsed_s": 76.021,
+      "user_cpu_s": 68.132903,
+      "sys_cpu_s": 7.5070689999999995,
+      "max_rss_kib": 2344080,
+      "rc": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "guard_refusal": [
+        "fleet_converge_plan_revision: CheckoutHeadMismatch \u2014 the plan ran at a58ba3e3d4ae4725915cadbcf6275bc84a25152f but the checkout is at 0f36c96f528f6fcef055f121e6b323ae5420a352"
+      ],
+      "guard_holds": true,
+      "trace_holds": true,
+      "probes": 587,
+      "unique_inputs": 587,
+      "host_events": [
+        "\u25d0 started Filesystem.Read /tmp/fleet-converge-plan/plan_receipt.json",
+        "\u25d0 started git.Core.RevParseInRepo",
+        "\u2713 git.Core.RevParseInRepo done in 3ms"
+      ],
+      "pre_entry_ms": {
+        "workspace_discovery": 2,
+        "pool_source_newline_index": 768,
+        "pool_source_tokenize": 8930,
+        "demand_layout_acquire": 19449,
+        "pool_heads_parse": 3069,
+        "pool_census_parse": 4039,
+        "closure_name_census_build": 1904,
+        "reference_pool_names_from_census": 102,
+        "closure_load": 0,
+        "closure_parse": 0,
+        "closure_resolve": 0,
+        "closure_normalize": 0,
+        "closure_typecheck": 0,
+        "closure_parent_envs": 0,
+        "closure_reconcile_assembly": 0,
+        "closure_ownership": 0,
+        "reconcile_root_bare_underlay": 0,
+        "reconcile_root_variant_base": 0,
+        "resolve_entry_graph_inclusive": 75682
+      },
+      "lookup_counts": {
+        "hit": 587
+      },
+      "comparisons": {
+        "equal": 587
+      },
+      "semantic_payload_bytes_computed": 111263042,
+      "journal_files": 587,
+      "journal_bytes": 37568,
+      "trace_errors": [],
+      "input_set_digest": "c1f7624c5a8a52b7ce7b6a485b5471ba2b20bcba0c05988c9b273845eef0ba67"
+    },
+    {
+      "case": "cold-mismatch",
+      "sha256": "af9dd2d42128153f1036d7fcdd3f171774631aafef49a8c01bc7ed738beac364",
+      "elapsed_s": 80.136,
+      "user_cpu_s": 70.607104,
+      "sys_cpu_s": 8.826378,
+      "max_rss_kib": 2348772,
+      "rc": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "guard_refusal": [
+        "fleet_converge_plan_revision: CheckoutHeadMismatch \u2014 the plan ran at a58ba3e3d4ae4725915cadbcf6275bc84a25152f but the checkout is at 0f36c96f528f6fcef055f121e6b323ae5420a352"
+      ],
+      "guard_holds": true,
+      "trace_holds": true,
+      "probes": 587,
+      "unique_inputs": 587,
+      "host_events": [
+        "\u25d0 started Filesystem.Read /tmp/fleet-converge-plan/plan_receipt.json",
+        "\u25d0 started git.Core.RevParseInRepo",
+        "\u2713 git.Core.RevParseInRepo done in 5ms"
+      ],
+      "pre_entry_ms": {
+        "workspace_discovery": 2,
+        "pool_source_newline_index": 825,
+        "pool_source_tokenize": 9271,
+        "demand_layout_acquire": 21120,
+        "pool_heads_parse": 3642,
+        "pool_census_parse": 4933,
+        "closure_name_census_build": 1729,
+        "reference_pool_names_from_census": 120,
+        "closure_load": 0,
+        "closure_parse": 0,
+        "closure_resolve": 0,
+        "closure_normalize": 0,
+        "closure_typecheck": 0,
+        "closure_parent_envs": 0,
+        "closure_reconcile_assembly": 0,
+        "closure_ownership": 0,
+        "reconcile_root_bare_underlay": 0,
+        "reconcile_root_variant_base": 0,
+        "resolve_entry_graph_inclusive": 79190
+      },
+      "lookup_counts": {
+        "miss": 587
+      },
+      "comparisons": {
+        "absent": 587
+      },
+      "semantic_payload_bytes_computed": 111263042,
+      "journal_files": 587,
+      "journal_bytes": 37568,
+      "trace_errors": [],
+      "input_set_digest": "c1f7624c5a8a52b7ce7b6a485b5471ba2b20bcba0c05988c9b273845eef0ba67"
+    }
+  ],
+  "conditions": {
+    "each_case_reached_its_expected_guard_outcome": true,
+    "each_case_reached_its_expected_shadow_observation": true,
+    "each_case_observed_the_receipt_and_a_fresh_git_head": true,
+    "no_trace_errors": true,
+    "one_binary": true,
+    "every_input_has_the_same_source_and_fresh_answer_across_processes": true,
+    "cold_and_warm_match_stdout_agree": true,
+    "cold_and_warm_mismatch_stdout_agree": true,
+    "cold_and_warm_located_mismatch_agree": true
+  },
+  "all_passed": true
+}
