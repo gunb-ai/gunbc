@@ -745,7 +745,7 @@ fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
     tree: parse_population_correct_real_row_slice()) >= 1
 }
 
-// THE EXTRACTION THE LEDGER LINE AND THE WITNESS SHARE: the next-rung trigger's capability is readable ONLY
+// THE EXTRACTION THE WITNESS AND THE TYPED ACCESSOR SHARE: the next-rung trigger's capability is readable ONLY
 // through the declared NextRungTrigger constructor (gunbc.guarantee_stall declares it as a single record, and
 // climbs_when_awaiting is the declared constructor), so the extraction is declared as a function over a
 // stall that pattern-matches that shape. The WITNESS PLANTS STALLS AND CALLS THIS (review 99025 F1: a witness
@@ -773,12 +773,15 @@ fn parse_population_carrier_reader_beside_grammar_stall_capability() -> String {
 // a data binding; blocker ClimbableButUnbuilt. The route-A tracking row is labelled honestly: a PLANNED row
 // in DRAFT plan PR #17116, not on main at this head. Background (warm-fox-517 split ruling, review 98836):
 // the shell scaffolds, their awk/grep/sed reader and the hand reconciliation are OUT of this merge -- a
-// second parser beside the grammar could mis-parse a field without changing its line count. The consumer
-// below renders the rostered row's capability into a ledger line; the witness guards it with a discriminating
-// pair (red when the extraction stops honoring the declared trigger shape). Bounded: climbs when the STAFFED
-// capability lands, not on an open-ended future capability and not on the plan row reaching done.
-fn parse_population_carrier_reader_rung_drop_ledger_line() -> String {
-  concat(
-    concat("rung-stall: ", "gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall"),
-    concat(" | ", parse_population_carrier_reader_beside_grammar_stall_capability()))
-}
+// second parser beside the grammar could mis-parse a field without changing its line count. The witness
+// guards the stall's honesty through the carrier's extraction parse_population_stall_next_rung_capability,
+// with a discriminating pair (red when the extraction stops honoring the declared trigger shape). Bounded:
+// climbs when the STAFFED capability lands, not on an open-ended future capability and not on the plan row
+// reaching done.
+//
+// NO LEDGER-LINE FUNCTION (review 99088 F2): an earlier parse_population_carrier_reader_rung_drop_ledger_line()
+// built a string whose only caller was a witness substring check -- a string builder with a test as its only
+// consumer is a decoration, not a consumer (gunbc.design_argument::consumption). It is deleted, not stubbed:
+// the stall's honesty is asserted through the typed accessor parse_population_carrier_reader_beside_grammar_stall_capability
+// over the rostered row, and the row's identity is carried by the named binding itself, not by a string that
+// repeats it.

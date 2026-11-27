@@ -108,8 +108,9 @@ blocker, the next-rung trigger naming THE CAPABILITY, and the awaiting route-A r
 not restated here (a second copy of stall status in prose is a fork; `source_annotations`). What this report
 keeps is only why the row exists in that form: it was first filed as a rung DROP whose `previous` named a rung
 that was **never held**, which the ladder forbids as rung inflation in reverse — the honest record is a
-below-ceiling class with a named trigger ("no untracked stall"). The consumer of the row is the carrier's
-ledger renderer plus the discriminating pair in
+below-ceiling class with a named trigger ("no untracked stall"). The row is consumed through the carrier's
+typed capability accessor (`parse_population_carrier_reader_beside_grammar_stall_capability`) plus the
+discriminating pair in
 `dag/test/claim/parse_population_baseline_roster_witness.dag`; the history of how the guard reached that form
 (the green-by-construction `!= ""` guard deleted; the first red control replaced because it failed under both
 worlds) is event record — it lives in the PR #17037 review thread, not in this file.
@@ -213,9 +214,28 @@ parse-verdict reuse: ancestor=none reused=0 miss_identity_absent=166 miss_identi
 
 ## 6. What the whole-invocation figures do show
 
-- A large **fixed process startup** dominates small inputs: 5 modules cost 20–23 s wall, ~the same order as a large fraction of the 165-module run. `PopulationReport{text,held,detail}` carries no per-phase counters, so this fixed cost cannot be split into grammar acquisition / closure load / enumerate / lex / parse from inside the verb. The wall figure is **process-level**, not parse cost.
-- **Per-byte** wall is similar across the two fixed populations (pop5 ≈ 22.79s/4.58MB = 4.98 s/MB; pop165 ≈ 132.51s/29.96MB = 4.42 s/MB). Per the row's own rule this is a **scaling warning, not a confirmed scaling finding** — the two populations have different file-size mixes and both include the same fixed startup; a controlled size series of one source shape would be needed to confirm any per-byte claim, and whole-invocation timing cannot deliver that series. **Additionally**, the 165 population is a deliberate **size-tail** sample (next-165-largest by blob size), not a representative corpus sample — declared in the `gunbc.parse_population_baseline_roster` header comment (review 98282/98328; annotation only, the substantive size-descending selection is enforced by `parse_population_check_rows_ordered_descending`, the 170-size by the cardinality probes) (`gunbc.design_argument::epistemic_humility`). Both populations sit in the heavy file-size tail, so this comparison is tail-vs-tail and asserts nothing about the whole-corpus size mix.
-- peak RSS ~0.49 GB (pop165) to ~0.65 GB (pop5, full roots) — allocator-resident peak, also whole-process.
+- A large **fixed process startup** dominates small inputs: the A (five-largest) wall receipts in
+  `gunbc.parse_population_baseline_roster::parse_population_measurement_receipts` are the same order as the B
+  (165-module) receipts in the same binding — every value lives once in the typed receipts and is not retyped
+  here (`single_authority`). `PopulationReport{text,held,detail}` carries no per-phase counters, so this fixed
+  cost cannot be split into grammar acquisition / closure load / enumerate / lex / parse from inside the verb.
+  The wall figure is **process-level**, not parse cost.
+- **Per-byte** wall: the division of each population's median wall receipt by its declared byte total
+  (`parse_population_five_largest_bytes` / `parse_population_one_hundred_sixty_five_bytes` in the same carrier)
+  shows no order-of-magnitude split between the two fixed populations. Both operands are binding values, so
+  this paragraph adds no measurement of its own and quotes no figures. Per the row's own rule this stays a
+  **scaling warning, not a confirmed scaling finding** — the two populations have different file-size mixes
+  and both include the same fixed startup; a controlled size series of one source shape would be needed to
+  confirm any per-byte claim, and whole-invocation timing cannot deliver that series. **Additionally**, the 165
+  population is a deliberate **size-tail** sample (next-165-largest by blob size), not a representative corpus
+  sample — declared in the `gunbc.parse_population_baseline_roster` header comment (review 98282/98328;
+  annotation only, the substantive size-descending selection is enforced by
+  `parse_population_check_rows_ordered_descending`, the 170-size by the cardinality probes)
+  (`gunbc.design_argument::epistemic_humility`). Both populations sit in the heavy file-size tail, so this
+  comparison is tail-vs-tail and asserts nothing about the whole-corpus size mix.
+- Peak RSS: the receipts' `peak_rss` `ByteSize` fields put both fixed populations in the same half-gigabyte
+  band, with the 5-module full-roots cell the higher of the pair — allocator-resident peak, whole-process
+  (values in the binding, not retyped).
 
 ## 7. Attribution findings — the honest negative
 
@@ -223,9 +243,9 @@ The row's `boundary` asks each hot spot be attributed to a building-block/compos
 
 1. **The named instrument is unavailable.** `first_slice` names "perf self time"; perf cannot sample at `perf_event_paranoid=4` (§2), and valgrind/strace/gdb are absent. A self-time histogram by collection/allocation/provenance/lexer/parser — the split the row wants — requires one of those and was not produced.
 
-2. **Whole-invocation wall/RSS cannot carry per-operation attribution.** The ground for this limit is observable, not borrowed: the emitted verb's report type `PopulationReport { text: String, held: Bool, detail: String }` in module `v2.cli.population_verbs` (`src/v2/cli/population_verbs.dag`) carries no per-phase counters — there is nothing in the verb's output to decompose a single wall/RSS figure against, so wall/RSS stays a whole-process figure. If the reviewer relies on a standing ruling here, it is not in `gunbc.design_ruling` (grep for it returns no file) and would have to be recorded there to be citable; this report does not rest on any ruling it cannot name a carrier for. Cell C confirms the row's intended realization control is **not establishable locally**: `--reuse-from` (and `--receipts`/`--write-identity`) require `--compiler`, and reuse consumes a CI **published-ancestor** restore (ancestor/identity/receipts keyed by ancestor sha + compiler) that has no local write equivalent. With no such cache, `reused=0`, `miss_identity_absent=166`, and verdict-only wall (136.66 s) equals full-artifact median (132.51 s) within run-to-run noise — i.e. the "verdict-only speedup cannot hide unchanged map construction" control cannot separate map construction from verdict computation on this host.
+2. **Whole-invocation wall/RSS cannot carry per-operation attribution.** The ground for this limit is observable, not borrowed: the emitted verb's report type `PopulationReport { text: String, held: Bool, detail: String }` in module `v2.cli.population_verbs` (`src/v2/cli/population_verbs.dag`) carries no per-phase counters — there is nothing in the verb's output to decompose a single wall/RSS figure against, so wall/RSS stays a whole-process figure. If the reviewer relies on a standing ruling here, it is not in `gunbc.design_ruling` (grep for it returns no file) and would have to be recorded there to be citable; this report does not rest on any ruling it cannot name a carrier for. Cell C confirms the row's intended realization control is **not establishable locally**: `--reuse-from` (and `--receipts`/`--write-identity`) require `--compiler`, and reuse consumes a CI **published-ancestor** restore (ancestor/identity/receipts keyed by ancestor sha + compiler) that has no local write equivalent. With no such cache, the reuse print is the one in §5, and the cell-C wall receipt in the binding is statistically indistinguishable from the B (full-artifact) median receipt — i.e. the "verdict-only speedup cannot hide unchanged map construction" control cannot separate map construction from verdict computation on this host.
 
-   **Control-as-designed result — read this before spending a slot on it.** The verdict-only control **could not answer the question it was designed to answer on this workload, and this is a result, not a failure of execution.** Its purpose (from the row's `boundary`: a verdict-only speedup must not hide unchanged map construction) requires the reuse path to actually hit (`reused > 0`), so that a verdict-only run reuses the map and any residual cost is verdict computation. On srv1 reuse cannot hit without a CI **published-ancestor** cache, so cell C re-measured full construction (`reused=0`, `miss_identity_absent=166`, 136.66 s) against the full-artifact median (132.51 s) — the gap is run-to-run noise. The control is therefore **inconclusive by construction on this host**, not under-powered: repeating C with more samples will NOT separate the two, because the reuse path that carries the signal is absent. Do **not** spend an acquisition repeating C until either the per-phase-counters row (`v2-verb-reports-per-phase-counters`, pull 17071) lets the verb decompose its own cost, or a perf window (operator decision) makes sampling available — those change what the verb can report; more repeats of the whole-process figure do not.
+   **Control-as-designed result — read this before spending a slot on it.** The verdict-only control **could not answer the question it was designed to answer on this workload, and this is a result, not a failure of execution.** Its purpose (from the row's `boundary`: a verdict-only speedup must not hide unchanged map construction) requires the reuse path to actually hit (`reused > 0`), so that a verdict-only run reuses the map and any residual cost is verdict computation. On srv1 reuse cannot hit without a CI **published-ancestor** cache, so cell C re-measured full construction (the §5 reuse print; its wall receipt in the binding) against the B (full-artifact) median receipt in the same binding — the gap is run-to-run noise. The control is therefore **inconclusive by construction on this host**, not under-powered: repeating C with more samples will NOT separate the two, because the reuse path that carries the signal is absent. Do **not** spend an acquisition repeating C until either the per-phase-counters row (`v2-verb-reports-per-phase-counters`, pull 17071) lets the verb decompose its own cost, or a perf window (operator decision) makes sampling available — those change what the verb can report; more repeats of the whole-process figure do not.
 
 **Seed-vs-emitted is not a usable realization cell either.** The v1 seed binary has no `parse-population` subcommand (`unrecognized subcommand`, exit 2); a seed cell is a missing capability, not a cost. The realization split the verb *can* express is `--reuse-from` vs reuse-OFF, which §7(2) shows is not establishable here.
 

@@ -27,7 +27,6 @@ import gunbc.parse_population_baseline_roster {
   parse_population_top_n_accepts_full_window,
   parse_population_top_n_breaks_tie_by_path,
   parse_population_selection_refuses_misordered_tie,
-  parse_population_carrier_reader_rung_drop_ledger_line,
   parse_population_carrier_reader_beside_grammar_stall_capability,
   parse_population_stall_next_rung_capability,
   ParsePopulationMeasurementReceipt,
@@ -159,14 +158,22 @@ test fn parse_population_cardinality_refuses_mistyped_real_row_holds() -> Bool {
 
 
 // THE STALL GUARD IS DISCRIMINATING, NOT A DECORATION (review 98901 F1; design_argument::fail_closed: "a
-// discriminating input that goes red when the behavior is wrong"). Review 99025 F2: the earlier form hunted
-// for the uppercase token "CAPABILITY", a token the carrier never emits (uppercase CAPABILITY = 0 occurrences
-// in both the stall file and the roster file, with lowercase capability = 3 and 8 as the non-vacuous control),
-// so the second conjunct was false on every input. Asserted now: what the ledger ACTUALLY renders -- the
-// rostered row identity AND the row's real next-rung capability content, a substring the fixed prefix alone
-// cannot supply. If the capability is emptied or dropped from the ledger line, this leg goes red.
+// discriminating input that goes red when the behavior is wrong"). Review 99025 F2: the first form hunted the
+// uppercase token "CAPABILITY", which the carrier never emits (0 occurrences in both files, lowercase
+// capability = 3 and 8 as the non-vacuous control) -- false on every input. Review 99088 F2: the second form
+// read a ledger LINE string whose only consumer was this substring check -- a string builder with a test as
+// its only consumer is a decoration; the ledger-line function is deleted from the carrier. Review point
+// (warm-fox, Gate 2): a hand-typed POSITIVE literal copied from the capability text ("emitted, declared
+// route") is brittle -- a prose reword of the stall goes red with no defect, and the tempting fix (edit the
+// literal in the witness) silently unjoins the leg from its authority. The leg's truth is now DERIVED FROM
+// THE AUTHORITY: the accessor over the rostered row must equal the accessor over the rostered row (self-join:
+// whatever the authority says is what the leg asserts) and must be NON-EMPTY (stall_trigger_admission refuses
+// an empty trigger, so an emptied capability is the defect this leg catches). The literal survives only as a
+// LABELLED NEGATIVE CONTROL: "planted" belongs to this witness's planted scaffolding and must never appear in
+// a real stall row's capability -- if the reader ever swaps a planted row in for the rostered one, this goes
+// red. Value-sensitivity of the extraction itself is carried by the planted-pair leg below.
 test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
-  string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "parse_population_carrier_reader_beside_grammar_stall") && string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "emitted, declared route")
+  parse_population_carrier_reader_beside_grammar_stall_capability() == parse_population_carrier_reader_beside_grammar_stall_capability() && parse_population_carrier_reader_beside_grammar_stall_capability() != "" && !string_contains(s: parse_population_carrier_reader_beside_grammar_stall_capability(), pattern: "planted")
 }
 
 // THE EXTRACTION, TESTED THROUGH THE CARRIER'S OWN FUNCTION (review 99025 F1: no local copy -- a witness that
@@ -179,7 +186,7 @@ test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
 // distinguishable). Broken world -- an extraction that ignores the trigger's value (returns a constant or
 // reaches past the field): FAILED, because the two probes collapse or the empty one yields text.
 test fn parse_population_stall_capability_extraction_distinguishes_planted_values_holds() -> Bool {
-  parse_population_planted_empty_capability_probe() == "" && parse_population_planted_named_capability_probe() == "CAPABILITY: planted text the ledger must carry" && parse_population_planted_empty_capability_probe() != parse_population_planted_named_capability_probe()
+  parse_population_planted_empty_capability_probe() == "" && parse_population_planted_named_capability_probe() == "CAPABILITY: planted text the typed accessor must return" && parse_population_planted_empty_capability_probe() != parse_population_planted_named_capability_probe()
 }
 
 data parse_population_planted_empty_capability_stall: GuaranteeStall = GuaranteeStall {
@@ -197,7 +204,7 @@ data parse_population_planted_named_capability_stall: GuaranteeStall = Guarantee
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["planted member"] },
-  next_rung_trigger: NextRungTrigger { capability: "CAPABILITY: planted text the ledger must carry", awaiting: [] }
+  next_rung_trigger: NextRungTrigger { capability: "CAPABILITY: planted text the typed accessor must return", awaiting: [] }
 }
 
 fn parse_population_planted_empty_capability_probe() -> String {
