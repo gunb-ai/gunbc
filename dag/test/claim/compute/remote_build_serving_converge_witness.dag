@@ -3165,7 +3165,7 @@ fn run_remote_build_serving_converge_witness() -> ProcessExit {
 // (stderr-substring absence, nonzero-as-absence, exit-1-as-false-property) turns one red.
 
 fn conv_r(code: Int, out: String, err: String) -> TypedArgvExecOutcome {
-  TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: out, stderr: err } }
+  TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: out, stderr: err, wall_deadline_seconds: Absent } }
 }
 
 fn conv_refused(reason: String) -> TypedArgvExecOutcome {
