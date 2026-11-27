@@ -1,0 +1,185 @@
+module test.claim.declared_entry_call_shape_witness
+
+// THE WITNESS LANE FOR THE DECLARED-ENTRY CALL-SHAPE INSTRUMENT
+// (dag/gunbc/instruments/declared_entry_call_shape.dag, roadmap row
+// `gunbc-entries-resolve-checked-in-ci`).
+//
+// WHY THIS LANE EXISTS SEPARATELY FROM THE INSTRUMENT'S OWN RED CONTROLS. The instrument is a scanner: it
+// reads .dag text and predicts what the resolver would refuse. Every one of its three real defects so far
+// was a scanner defect that produced a PLAUSIBLE verdict -- and a plausible wrong verdict from a check that
+// prints a count is worse than silence:
+//   - `count(split(s: f, delimiter: n))` counts the PIECES a split produces, not the occurrences of its
+//     delimiter, so no argument list ever closed and every call harvested the labels of the calls after it:
+//     723 refusals on remote_build_client.dag, all invented, all against `trim`, whose only parameter is `s`.
+//   - reading the whole tree to find reverse importers cost 5 min 18 s before printing anything.
+//   - splitting the file on the delimiter `name(` attributed `decide_run(r:, js:)` to the local `fn run(id,
+//     attempt_n, …)`: 28 refusals of code that compiles and runs.
+// None of those showed up in the red controls, which only ever ask "did it refuse". These claims ask the
+// other half -- "did it refuse THE RIGHT THING, and did it stay silent on the thing that is fine" -- and the
+// accepting arms are where a scanner that over-refuses dies. The instrument's own closure is pinned here too
+// (w_import_lines), because a check enrolled in CI under a budget stops being a check the moment someone
+// imports a hub into it.
+
+import std.types { String, Bool, List }
+import std.algebra { string_contains }
+import gunbc.instruments.declared_entry_call_shape {
+  declared_entry_call_shape_findings, declared_entry_call_shape_missing_entry_files,
+  declared_entry_call_shape_scope, declared_entry_call_shape_verdict,
+  declared_entry_call_shape_failure_reason, declared_entry_call_shape_counts,
+  declared_entry_call_shape_module_file, declared_entry_call_shape_import_lines,
+}
+
+data w_dir: String = "dag/test/fixture/declared_entry_call_shape"
+data w_instrument: String = "dag/gunbc/instruments/declared_entry_call_shape"
+
+fn w_file(name: String) -> String {
+  join([w_dir, "/", name, ".dag"], "")
+}
+
+fn w_lines(list: List<String>) -> String {
+  join(list, "|")
+}
+
+fn w_refused(changed: String, candidates: String) -> Bool {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict(
+    changed_paths: changed, candidate_paths: candidates)) != ""
+}
+
+fn w_reason(changed: String, candidates: String) -> String {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict(
+    changed_paths: changed, candidate_paths: candidates))
+}
+
+fn w_has(hay: String, needle: String) -> Bool {
+  string_contains(s: hay, pattern: needle)
+}
+
+// ── THE TWO REFUSALS, EACH WITH ITS ACCEPTING ARM ──────────────────────────────────────────────────────
+
+// THE FIRST REFUSAL: a caller label the attributed declaration does not name. The label is the one the real
+// break used, and the accepting arm below is what makes this claim mean something: a scanner that refused
+// everything would pass a "did it refuse" test and fail this pair.
+test fn a_label_the_declaration_does_not_name_is_refused() -> Bool {
+  let findings = declared_entry_call_shape_findings(
+    files: [w_file(name: "callee"), w_file(name: "caller_bad")])
+  length(xs: findings) == 1
+    && w_has(hay: w_lines(list: findings), needle: "claim_run")
+    && w_has(hay: w_lines(list: findings), needle: "fixture_step")
+    && w_has(hay: w_lines(list: findings), needle: "source_roots")
+}
+
+test fn a_call_that_names_every_declared_parameter_is_accepted() -> Bool {
+  length(xs: declared_entry_call_shape_findings(
+    files: [w_file(name: "callee"), w_file(name: "caller_ok")])) == 0
+}
+
+// THE SECOND REFUSAL: a `--entry` route naming a .dag that does not exist. The accepting arm is the route in
+// caller_ok.dag, which names a file that does exist -- so this cannot pass by the population rule rejecting
+// every route shape.
+test fn a_route_naming_no_file_is_refused() -> Bool {
+  let missing = declared_entry_call_shape_missing_entry_files(files: [w_file(name: "route_missing")])
+  length(xs: missing) == 1
+    && w_has(hay: w_lines(list: missing), needle: "no_such_entry_file.dag")
+    && w_has(hay: w_reason(changed: w_file(name: "route_missing"), candidates: ""), needle: "no file")
+    // AND IT IS THE MISSING-FILE ARM THAT SPOKE, NOT THE LABEL ARM: the file's own call sites are clean, so
+    // a refusal here that also carried label findings would mean the scanner is confused about what it found.
+    && w_has(hay: w_reason(changed: w_file(name: "route_missing"), candidates: ""),
+             needle: "0 label refusals")
+}
+
+test fn a_route_naming_a_real_file_is_accepted() -> Bool {
+  length(xs: declared_entry_call_shape_missing_entry_files(files: [w_file(name: "caller_ok")])) == 0
+}
+
+// ── THE SCOPE, WHICH IS THE CLAIM THE CI STEP DEPENDS ON ───────────────────────────────────────────────
+
+// THE REVERSE BREAK, AND THE ONE THE CI STEP IS FOR: a PR narrows a declaration and never touches the caller.
+// Scanning changed files alone passes it. The step hands the instrument the changed file plus the files the
+// index says may import it, and the instrument decides for itself who imports what.
+test fn an_untouched_caller_of_a_narrowed_declaration_is_still_checked() -> Bool {
+  w_refused(changed: w_file(name: "narrow_callee"), candidates: w_file(name: "wide_caller"))
+    && w_has(hay: w_reason(changed: w_file(name: "narrow_callee"), candidates: w_file(name: "wide_caller")),
+             needle: "receipt_rel")
+}
+
+// A candidate the index over-included must be DROPPED, not checked as if it were an importer: an instrument
+// that trusts the index's membership answer would refuse a file that never names the module.
+test fn the_scope_is_the_changed_files_plus_only_the_files_that_import_them() -> Bool {
+  let scope = declared_entry_call_shape_scope(
+    changed_paths: w_file(name: "narrow_callee"),
+    candidate_paths: join([w_file(name: "wide_caller"), "\n", w_file(name: "route_missing")], ""))
+  w_lines(list: scope) == join([w_file(name: "narrow_callee"), w_file(name: "wide_caller")], "|")
+}
+
+// AN EMPTY SCOPE IS A BROKEN STEP, NOT A PASS. The step is allowed to skip an empty .dag diff out loud; the
+// instrument is not allowed to report green over nothing.
+test fn an_empty_scope_is_refused_rather_than_green() -> Bool {
+  w_refused(changed: "", candidates: "")
+    && w_has(hay: w_reason(changed: "", candidates: ""), needle: "empty scope")
+}
+
+// A GREEN LINE MUST SAY WHAT IT LOOKED AT: the counts line names the changed files, the reverse-imported
+// files it read, the named imports it could not attribute, and both refusal counts. A check whose silence is
+// indistinguishable from success gets deleted the first time it disagrees with something.
+test fn the_counts_line_states_what_the_verdict_actually_read() -> Bool {
+  let counts = declared_entry_call_shape_counts(
+    changed_paths: join([w_file(name: "callee"), "\n", w_file(name: "caller_ok")], ""),
+    candidate_paths: "")
+  w_has(hay: counts, needle: "2 changed")
+    && w_has(hay: counts, needle: "0 reverse-imported")
+    && w_has(hay: counts, needle: "skipped unattributed")
+    && w_has(hay: counts, needle: "0 label refusals")
+    && w_has(hay: counts, needle: "0 missing entry files")
+}
+
+// ── THE RULES THE INSTRUMENT MUST OWN EXACTLY ONCE ─────────────────────────────────────────────────────
+
+// THE MODULE-PATH RULE. `v2.` names a corpus, not a directory, and `std.x` lives under the dag root. The
+// first version nested `v2.` and could not find a declaration file for one whole corpus, which is an
+// under-refuse: it looks exactly like code being fine.
+test fn the_module_path_rule_resolves_both_corpora_and_refuses_nothing_invented() -> Bool {
+  declared_entry_call_shape_module_file(module: "v2.workflow.gunbc_invoke_step_emit")
+    == "src/v2/workflow/gunbc_invoke_step_emit.dag"
+    && declared_entry_call_shape_module_file(module: "std.types") == "dag/std/types.dag"
+    && declared_entry_call_shape_module_file(module: "gunbc.compute.remote_build_serve")
+       == "dag/gunbc/compute/remote_build_serve.dag"
+}
+
+// THE IMPORT RULE, PINNED ON THE INSTRUMENT ITSELF. It is a CI step under a job budget; its slimness is the
+// reason it can be one. This is the w_import_lines idiom from the front-door witness, and it is the claim
+// that reddens the day someone imports a hub -- at which point the honest move is to move the check to a
+// job with a real budget, not to widen a line here.
+test fn the_instrument_names_only_std_and_the_filesystem() -> Bool {
+  w_lines(list: declared_entry_call_shape_import_lines(path: join([w_instrument, ".dag"], "")))
+    == join([
+      "import std.types { List, String }",
+      "import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }",
+      "import std.algebra { trim, string_contains }",
+      "import std.list { list_member, distinct_by_key }",
+      "import std.optional { Present, Absent }",
+      "import extdeps.filesystem.filesystem_io { Filesystem }",
+    ], "|")
+}
+
+// THE SAME RULE, READ FROM A FIXTURE: the import lines of a real caller give the module it names, which is
+// what the reverse pass and the callee lookup both consume. If the parser learned to read something that is
+// not an import -- a call, a string, a comment -- the instrument starts inventing callees.
+test fn the_import_reader_returns_imports_and_nothing_else() -> Bool {
+  w_lines(list: declared_entry_call_shape_import_lines(path: w_file(name: "caller_bad")))
+    == join(["import std.types { List, String }",
+             "import test.fixture.declared_entry_call_shape.callee { fixture_step }"], "|")
+}
+
+// A FILE THAT DECLARES IT MUST NOT RESOLVE IS SKIPPED -- AND SAYS SO. The only two files in the tracked tree
+// carrying a label the declaration does not name are both enrolled-red controls whose purpose is to be
+// refused by the engine (`dag/test/probe/census_app_acquisition_forged_probe.dag`, 3 sites;
+// `src/v2/test/claim/long/imported_decl_emit_probe.dag`, 5). The instrument does not mirror that refusal, and
+// it does not hush it either: the skip is counted in the line the step prints. This claim pins both halves,
+// so an exemption that silently grows -- or a skip rule that quietly stops working -- is a red witness.
+test fn a_file_that_declares_it_must_not_resolve_is_skipped_and_counted() -> Bool {
+  let forged = "dag/test/probe/census_app_acquisition_forged_probe.dag"
+  length(xs: declared_entry_call_shape_findings(files: [forged])) == 0
+    && length(xs: declared_entry_call_shape_missing_entry_files(files: [forged])) == 0
+    && w_has(hay: declared_entry_call_shape_counts(changed_paths: forged, candidate_paths: ""),
+             needle: "1 self-declared no-resolve controls skipped")
+}

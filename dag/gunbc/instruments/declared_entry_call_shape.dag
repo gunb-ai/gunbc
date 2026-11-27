@@ -410,11 +410,6 @@ fn cs_head_matches(head: String, name: String, qualified: Bool) -> Bool {
                       && ends_with(s: head, suffix: join([".", name], "")))
 }
 
-fn cs_called_labels(text: String, fn_name: String, qualified: Bool) -> List<String> {
-  flat_map(filter(cs_call_sites(text: text), site => cs_head_matches(head: site.head, name: fn_name,
-                                                                      qualified: qualified)),
-           site => site.labels)
-}
 
 fn cs_fragments(part: String) -> List<String> {
   cs_top_walk(fragments: split(s: cs_call_body(tail: part), delimiter: ","), depth: 0)
@@ -506,17 +501,19 @@ fn cs_label_ok(label: String, declared: List<String>) -> Bool {
 // ── THE TWO REFUSALS ───────────────────────────────────────────────────────────────────────────────────
 
 // THE FIRST: every attributed call whose labels the attributed declaration does not name.
-fn cs_pair_findings(file: String, text: String, callee: String, name: String, label_of_module: String,
-                    qualified: Bool) -> List<String> {
+fn cs_pair_findings(file: String, sites: List<CallSite>, callee: String, name: String,
+                    label_of_module: String, qualified: Bool) -> List<String> {
   if callee == "" {
     []
   } else {
     let declared = cs_declared_names(param_text: cs_fn_params(text: cs_read(path: callee), fn_name: name))
+    let called = flat_map(filter(sites, site => cs_head_matches(head: site.head, name: name,
+                                                                qualified: qualified)),
+                          site => site.labels)
     if length(xs: declared) == 0 {
       []
     } else {
-      map(filter(cs_called_labels(text: text, fn_name: name, qualified: qualified),
-                 label => !cs_label_ok(label: label, declared: declared)),
+      map(filter(called, label => !cs_label_ok(label: label, declared: declared)),
           label => join([file, ": ", name, " from ", label_of_module, " passes ", label,
                         "  declared: ", join(declared, ", ")], ""))
     }
@@ -524,14 +521,23 @@ fn cs_pair_findings(file: String, text: String, callee: String, name: String, la
 }
 
 fn cs_findings(file: String) -> List<String> {
+  if cs_declares_no_resolve(path: file) { [] } else { cs_findings_of_read_file(file: file) }
+}
+
+fn cs_findings_of_read_file(file: String) -> List<String> {
   let text = cs_read(path: file)
+  // ONE PARSE PER FILE, NOT ONE PER CANDIDATE NAME. The first version called the scanner inside the loop over
+  // the file's imports, so a file with twenty imports was scanned twenty times: the whole-tree calibration
+  // took over thirty minutes and was killed at its own timeout. The call sites are a fact about the file; a
+  // candidate declaration only filters them.
+  let sites = cs_call_sites(text: text)
   concat(
     flat_map(distinct_by_key(cs_import_pairs(text: text), q => join([q.module, q.name], ".")),
-             pair => cs_pair_findings(file: file, text: text, callee: cs_module_file(module: pair.module),
+             pair => cs_pair_findings(file: file, sites: sites, callee: cs_module_file(module: pair.module),
                                       name: pair.name, label_of_module: pair.module, qualified: true)),
     flat_map(distinct_by_key(cs_local_fn_names(text: text), q => q),
-             name => cs_pair_findings(file: file, text: text, callee: file, name: name, label_of_module: file,
-                                      qualified: false)))
+             name => cs_pair_findings(file: file, sites: sites, callee: file, name: name,
+                                      label_of_module: file, qualified: false)))
 }
 
 // The functions this file declares. The historical break this row is named for was of THIS shape:
@@ -576,6 +582,14 @@ fn cs_route_lines(text: String) -> List<String> {
 }
 
 fn cs_missing_entry_files(file: String) -> List<String> {
+  if cs_declares_no_resolve(path: file) {
+    []
+  } else {
+    cs_missing_entry_lines(file: file)
+  }
+}
+
+fn cs_missing_entry_lines(file: String) -> List<String> {
   map(filter(cs_entry_literals(file: file), entry => !cs_exists(path: entry)),
       entry => join([file, ": --entry names no file: ", entry], ""))
 }
@@ -655,6 +669,22 @@ fn cs_scope_is_empty(paths: String) -> Bool {
   length(xs: cs_changed(paths: paths)) == 0
 }
 
+// THE ONE SKIPPED POPULATION: a file that declares, in its own text, that it must not resolve. Enrolled-red
+// controls and forged probes exist to be refused BY THE ENGINE -- `dag/test/probe/
+// census_app_acquisition_forged_probe.dag` opens "THIS MODULE MUST NOT RESOLVE", and
+// `src/v2/test/claim/long/imported_decl_emit_probe.dag` opens "Enrolled RED" -- and those two files are the
+// ONLY two in the whole tracked tree with a label the declaration does not name (8 sites: 5 and 3, the
+// calibration read this module was written against). Mirroring their refusal would make a CI step red over
+// code whose greenness is not the question, and the engine stays the authority on what they refuse: this
+// instrument's limit is its two refusals. What makes the skip a rule and not an escape hatch is that the
+// declaration has to be IN THE FILE -- a module cannot be exempted by its path, its package, or a list
+// somewhere else -- and the count is printed in the verdict line, so an exemption that grows is visible.
+fn cs_declares_no_resolve(path: String) -> Bool {
+  let text = cs_read(path: path)
+  string_contains(s: text, pattern: "MUST NOT RESOLVE")
+    || string_contains(s: text, pattern: "Enrolled RED")
+}
+
 fn cs_all_findings(scope: List<String>) -> List<String> {
   flat_map(scope, file => cs_findings(file: file))
 }
@@ -676,7 +706,9 @@ fn cs_counts(changed: List<String>, scope: List<String>) -> String {
         to_string(length(xs: scope) - length(xs: changed)), " reverse-imported files (of the index candidates), ",
         to_string(cs_unattributed(scope: scope)), " named imports skipped unattributed; ",
         to_string(length(xs: cs_all_findings(scope: scope))), " label refusals, ",
-        to_string(length(xs: cs_all_missing_entries(scope: scope))), " missing entry files"], "")
+        to_string(length(xs: cs_all_missing_entries(scope: scope))), " missing entry files, ",
+        to_string(length(xs: filter(scope, file => cs_declares_no_resolve(path: file)))),
+        " self-declared no-resolve controls skipped"], "")
 }
 
 fn cs_verdict(changed_paths: String, candidate_paths: String) -> ProcessExit {
@@ -734,12 +766,29 @@ fn declared_entry_call_shape_scope(changed_paths: String, candidate_paths: Strin
   cs_scope(changed_paths: changed_paths, candidate_paths: candidate_paths)
 }
 
+// THE PATH PRODUCTION RUNS, NOT ITS INNER STEP. The witness asks the instrument what it would answer and
+// must get the answer the CI step gets, empty-scope refusal included; pointing this at the inner fold made
+// the witness test a function nothing executes.
 fn declared_entry_call_shape_verdict(changed_paths: String, candidate_paths: String) -> ProcessExit {
-  cs_verdict(changed_paths: changed_paths, candidate_paths: candidate_paths)
+  declared_entry_call_shape_body(changed_paths: changed_paths, candidate_paths: candidate_paths)
 }
 
 // The instrument's own import lines, as read from source: the pin lives in the witness so the instrument
 // cannot quietly widen its own closure and stay green.
+// THE COUNTS LINE, EXPOSED FOR THE WITNESS. A green verdict must say what it looked at, and the claim that
+// it does has to read the same string the CI step prints -- not a re-derivation of it.
+fn declared_entry_call_shape_counts(changed_paths: String, candidate_paths: String) -> String {
+  cs_counts(changed: cs_changed(paths: changed_paths),
+            scope: cs_scope(changed_paths: changed_paths, candidate_paths: candidate_paths))
+}
+
+// THE MODULE-PATH RULE, EXPOSED FOR THE WITNESS: `v2.` names the corpus, not a directory, and a module with
+// no file under any root is not a declaration source. The first version nested `v2.` as a directory and so
+// could not find the declaration file for exactly one corpus -- an under-refuse, silent as green.
+fn declared_entry_call_shape_module_file(module: String) -> String {
+  cs_module_file(module: module)
+}
+
 fn declared_entry_call_shape_import_lines(path: String) -> List<String> {
   filter(cs_code_lines(text: cs_read(path: path)), line => starts_with(s: trim(s: line), prefix: "import "))
 }
