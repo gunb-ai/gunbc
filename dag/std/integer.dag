@@ -104,7 +104,7 @@ fn uint8_of_int(value: Int) -> UInt8Result {
   match int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
     Absent => UInt8OutOfRange { observed: value }
     Present { value: modulus } =>
-      if value < 0 || value >= modulus {
+      if value < 0 || value >= modulus * 2 {
         UInt8OutOfRange { observed: value }
       } else {
         UInt8Ready { value: value }
