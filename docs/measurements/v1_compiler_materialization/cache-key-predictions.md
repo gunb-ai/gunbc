@@ -71,3 +71,24 @@ resolved-reference digest) and whether the corrected key is introduced inside th
 observer or as a parallel probe are recorded here as the one design choice being confirmed
 with the owning session. The hit/miss/disagree structure above is independent of that
 choice and is the prediction being preserved.
+
+## Rename control (added after review 99286; committed before running)
+
+`symbol_census_key` binds (module path, source bytes); it never binds the logical source-file
+name. But `build_symbol_index_census` consumes the per-file `NewlineIndex` map (keyed by file) and
+the resolved graph carries source-located nodes, so the `SymbolIndex` the census returns may
+record the file identity. A cached answer keyed without file identity could then be reused when
+the file is renamed.
+
+Scenario R1: rename the consumer file `helper.dag` -> `renamed.dag`, keeping the bytes and the
+`module census.helper` declaration identical, then recompute under the S4 key with the same store.
+
+| id | Scenario | S4 corrected key | census answer digest |
+| --- | --- | --- | --- |
+| R1a | Cold, consumer as `helper.dag`, empty store | miss (absent), store fresh answer (the baseline digest `89f2a524…`) | baseline |
+| R1b | Rename to `renamed.dag` (identical bytes + module), same store | **unchanged** (module path + bytes unchanged; the key never sees the file name) | **PREDICTION: changes** — the `SymbolIndex` carries `index.file` and source-located nodes, so a different file name yields a different canonical answer |
+
+Consequence predicted for R1b: the intact record under the unchanged key now disagrees with the
+fresh answer → `hit/different`. That is a cache-key defect: the key omits a source-file identity
+the answer depends on. If instead the fresh answer digest comes out **equal**, the key is correct
+as-is and this becomes a regression guard rather than a defect.
