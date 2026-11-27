@@ -2,6 +2,7 @@ module test.claim.parse_population_baseline_roster_witness
 
 import std.types { Bool, Int, String, List, CommitSha }
 import std.algebra { string_contains, fold_list }
+import std.list { distinct_by_key }
 import std.measure { byte_size, microsecond }
 import std.content_hash { Sha256Digest }
 import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
@@ -32,14 +33,13 @@ import gunbc.parse_population_baseline_roster {
   parse_population_stall_next_rung_capability,
   ParsePopulationMeasurementReceipt,
   ParsePopulationCellMeasurement,
-  ParsePopulationMeasurementCellKind, ParsePopulationSampleShape,
-  CellREF, CellA, CellB, CellC, CellE,
+  WallCell, ParsePopulationSampleShape,
+  CellREF, CellA, CellB, CellC,
   FiveLargest, Sample165SizeTail, FullRootsReference,
   parse_population_measurement_receipts,
   parse_population_receipts_are_publishable,
   parse_population_receipt_durations_are_ordered,
-  parse_population_receipt_measurement_shape_is_sealed,
-  parse_population_measurement_cell_kind_render,
+  parse_population_measurement_cell_render,
   parse_population_sample_shape_render,
 }
 
@@ -245,8 +245,8 @@ test fn parse_population_measurement_receipts_record_the_sweep_holds() -> Bool {
 // REFUSED by the ordering predicate. A String wall_seconds could not express this state at all
 // (anemic modeling); the typed triple makes it expressible AND refused.
 data parse_population_planted_reversed_stat_receipt: ParsePopulationMeasurementReceipt =
-  ParsePopulationMeasurementReceipt { cell: CellA, population: FiveLargest, runs: 3,
-    measurement: WallStat { min_wall: microsecond(count: 23300000),
+  ParsePopulationMeasurementReceipt { population: FiveLargest, runs: 3,
+    measurement: WallStat { cell: CellA, min_wall: microsecond(count: 23300000),
       median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 20160000) },
     peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
@@ -262,8 +262,8 @@ test fn parse_population_duration_ordering_refuses_reversed_triple_holds() -> Bo
 // a cell whose command failed but whose number was recorded anyway — must be REFUSED by the same
 // predicate. If publishability ever degrades to a constant readback, this leg goes red by name.
 data parse_population_planted_failed_receipt: ParsePopulationMeasurementReceipt =
-  ParsePopulationMeasurementReceipt { cell: CellB, population: Sample165SizeTail, runs: 1,
-    measurement: WallStat { min_wall: microsecond(count: 1000000),
+  ParsePopulationMeasurementReceipt { population: Sample165SizeTail, runs: 1,
+    measurement: WallStat { cell: CellB, min_wall: microsecond(count: 1000000),
       median_wall: microsecond(count: 1000000), max_wall: microsecond(count: 1000000) },
     peak_rss: byte_size(count: 1024), modules: 1, declared_refusals: 0, rc: 1,
     binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
@@ -279,36 +279,39 @@ fn parse_population_receipt_count(receipts: List<ParsePopulationMeasurementRecei
   fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
 }
 
-// 18. THE SHAPE SEAL IS AN ENFORCED GATE, NOT CONVENTION (review 99118 F2). Two arms, one run: the real
-// five receipts all seal true (each cell carries its allowed measurement shape), and a planted ProcessTimes
-// capture under cell A (the wrong cell for a getrusage row) seals false. Edit the seal to admit
-// ProcessTimes under A and the second arm goes DID NOT HOLD -- the old fold skipped the question
-// entirely, so no edit to it reddened anything.
-test fn parse_population_receipt_measurement_shape_seal_refuses_mismatch_holds() -> Bool {
-  let first_receipt = parse_population_measurement_receipts[0]
-  let planted_process_times_under_a = ParsePopulationMeasurementReceipt {
-    cell: CellA, population: FiveLargest, runs: 1,
-    measurement: ProcessTimes { utime: microsecond(count: 1), stime: microsecond(count: 1), minor_faults: 1, major_faults: 0, voluntary_ctx_switches: 0, involuntary_ctx_switches: 0 },
-    peak_rss: byte_size(count: 1), modules: 1, declared_refusals: 0, rc: 0,
-    binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
-    tree_sha: "0000000000000000000000000000000000000000" as CommitSha, host: "srv1" as HostIdentity,
-    boot_id: "planted-boot"
-  }
-  parse_population_receipt_measurement_shape_is_sealed(receipt: first_receipt)
-  && !parse_population_receipt_measurement_shape_is_sealed(receipt: planted_process_times_under_a)
+// 18. THE BAD PAIRING HAS NO CONSTRUCTOR (review 99218, fail_closed + guarantee_ladder: construction
+// over validation). The cell tag lives INSIDE the measurement coproduct: WallStat names a WallCell,
+// ProcessTimes names none, so { cell: CellE, measurement: WallStat } cannot be written and the
+// five-arm seal predicate is deleted rather than trusted. What the leg EXECUTES is the observable of
+// that construction: the five real receipts render exactly one label per cell — the complete set
+// REF, A, B, C, E with no duplicates, and E rendered by exactly the one ProcessTimes receipt. Edit
+// any arm of the render (collapse two, or drop E) and this leg goes DID NOT HOLD.
+test fn parse_population_cell_measurement_pairing_is_constructed_not_checked_holds() -> Bool {
+  let labels = map(parse_population_measurement_receipts, r => parse_population_measurement_cell_render(measurement: r.measurement))
+  count(labels) == 5
+  && count(distinct_by_key(xs: labels, key: l => l)) == 5
+  && any(labels, l => l == "REF") && any(labels, l => l == "A")
+  && any(labels, l => l == "B") && any(labels, l => l == "C")
+  && any(labels, l => l == "E")
+  && count(filter(labels, l => l == "E")) == 1
 }
 
-// 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): every real receipt's
-// cell renders non-empty and the five renderings are pairwise distinct -- collapse any arm of
-// parse_population_measurement_cell_kind_render onto another and this leg goes DID NOT HOLD. The
-// report and the roster read these renderings; they copy nothing.
+// 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): the renderings over the
+// real receipts' measurements are pairwise distinct and the population renderings distinguish the two
+// fixed samples -- collapse any arm of parse_population_measurement_cell_render onto another and this
+// leg goes DID NOT HOLD. The report and the roster read these renderings; they copy nothing.
 test fn parse_population_cell_renderings_are_distinct_holds() -> Bool {
   let r0 = parse_population_measurement_receipts[0]
+  let m0 = r0.measurement
+  let m1 = parse_population_measurement_receipts[1].measurement
+  let m2 = parse_population_measurement_receipts[2].measurement
+  let m3 = parse_population_measurement_receipts[3].measurement
+  let m4 = parse_population_measurement_receipts[4].measurement
   host_identity_eq(a: r0.host, b: "srv1" as HostIdentity)
-  && string_contains(s: parse_population_measurement_cell_kind_render(cell: CellREF), pattern: "REF")
-  && parse_population_measurement_cell_kind_render(cell: CellREF) != parse_population_measurement_cell_kind_render(cell: CellA)
-  && parse_population_measurement_cell_kind_render(cell: CellA) != parse_population_measurement_cell_kind_render(cell: CellB)
-  && parse_population_measurement_cell_kind_render(cell: CellB) != parse_population_measurement_cell_kind_render(cell: CellC)
-  && parse_population_measurement_cell_kind_render(cell: CellC) != parse_population_measurement_cell_kind_render(cell: CellE)
+  && string_contains(s: parse_population_measurement_cell_render(measurement: m0), pattern: "REF")
+  && parse_population_measurement_cell_render(measurement: m0) != parse_population_measurement_cell_render(measurement: m1)
+  && parse_population_measurement_cell_render(measurement: m1) != parse_population_measurement_cell_render(measurement: m2)
+  && parse_population_measurement_cell_render(measurement: m2) != parse_population_measurement_cell_render(measurement: m3)
+  && parse_population_measurement_cell_render(measurement: m3) != parse_population_measurement_cell_render(measurement: m4)
   && parse_population_sample_shape_render(shape: FiveLargest) != parse_population_sample_shape_render(shape: Sample165SizeTail)
 }
