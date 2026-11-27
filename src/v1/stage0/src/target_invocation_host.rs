@@ -2570,6 +2570,7 @@ fn run_claim_selection(
             ),
         };
     }
+    eprintln!("{}", crate::v1_compiler_infer::probe_counter_totals_line());
     let note = if fold.verdicts.is_empty() {
         " — the pattern selected no discovered claim"
     } else {

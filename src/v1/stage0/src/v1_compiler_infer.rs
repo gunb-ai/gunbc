@@ -31552,10 +31552,143 @@ pub fn type_match_for_direct_call_target(
     }
 }
 
+// PROBE ONLY — red-control/effect-join-census-fallback-arm-removed — NEVER MERGE.
+// Counters plus one environment-gated semantic override on the arm-K census subpath.
+// Mirror-only: the .dag authority is deliberately untouched, so the mirror-consistency
+// lens would refuse this pair; that is why this exists only on an unmerged probe ref.
+static PROBE_C0_CALL_TARGET_ENTRIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_C1_ARM_K_ENTRIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_C2_ARM_K_CENSUS_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_C3_ARM_D_ENTRIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_C4_ARM_D_CENSUS_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_C5_ARM_K_CENSUS_DROPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_SWITCH_CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+static PROBE_INLINE_CAP: u64 = 200;
+static PROBE_INLINE_K: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_INLINE_D: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PROBE_HIT_FILE: std::sync::Mutex<std::option::Option<std::fs::File>> =
+    std::sync::Mutex::new(std::option::Option::None);
+
+// The complete hit population is retained in a file; the inline log carries at most
+// PROBE_INLINE_CAP per arm so a corpus pass stays reviewable. The totals line is the
+// measurement and is printed regardless of the cap.
+fn probe_record_hit(line: &str) {
+    match std::env::var("GUNBC_PROBE_HIT_FILE") {
+        std::result::Result::Ok(path) => {
+            if !path.is_empty() {
+                if let std::result::Result::Ok(mut guard) = PROBE_HIT_FILE.lock() {
+                    if guard.is_none() {
+                        match std::fs::OpenOptions::new().create(true).append(true).open(path.as_str()) {
+                            std::result::Result::Ok(f) => *guard = std::option::Option::Some(f),
+                            std::result::Result::Err(_) => {}
+                        }
+                    }
+                    if let std::option::Option::Some(f) = guard.as_mut() {
+                        use std::io::Write;
+                        let _ = f.write_all(line.as_bytes());
+                        let _ = f.write_all(b"
+");
+                    }
+                }
+            }
+        }
+        std::result::Result::Err(_) => {}
+    }
+}
+
+fn probe_emit_inline(arm: &str, line: &str, seq: u64) {
+    let counter = if arm == "KernelMethodOnly" { &PROBE_INLINE_K } else { &PROBE_INLINE_D };
+    if seq <= PROBE_INLINE_CAP {
+        eprintln!("{}", line);
+    }
+    if seq == PROBE_INLINE_CAP + 1 {
+        eprintln!(
+            "PROBE_INLINE_CAP_REACHED arm={} inline_printed={} the complete list is in GUNBC_PROBE_HIT_FILE",
+            arm, PROBE_INLINE_CAP
+        );
+    }
+    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn probe_switch_on() -> bool {
+    *PROBE_SWITCH_CACHE.get_or_init(|| {
+        match std::env::var("GUNBC_PROBE_DROP_ARM_K_CENSUS") {
+            std::result::Result::Ok(v) => v == "1",
+            std::result::Result::Err(_) => false,
+        }
+    })
+}
+
+fn probe_note_arm(arm: &str, name: String) -> String {
+    if arm == "KernelMethodOnly" {
+        PROBE_C1_ARM_K_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    } else if arm == "DeclarationOnly" {
+        PROBE_C3_ARM_D_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    name
+}
+
+fn probe_census(
+    arm: &str,
+    name: String,
+    found: std::option::Option<std::rc::Rc<crate::v1_compiler_infer_lookup::BorrowedCensusDecl>>,
+) -> std::option::Option<std::rc::Rc<crate::v1_compiler_infer_lookup::BorrowedCensusDecl>> {
+    match found.as_ref() {
+        std::option::Option::Some(bd) => {
+            if arm == "KernelMethodOnly" {
+                let n = PROBE_C2_ARM_K_CENSUS_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let line = format!(
+                    "PROBE_CENSUS_HIT arm=KernelMethodOnly seq={} callee={:?} owner_module_path={:?}",
+                    n + 1,
+                    name.clone(),
+                    bd.owner_module_path.clone()
+                );
+                probe_record_hit(&line);
+                probe_emit_inline("KernelMethodOnly", &line, n + 1);
+                if probe_switch_on() {
+                    PROBE_C5_ARM_K_CENSUS_DROPPED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    eprintln!(
+                        "PROBE_OVERRIDE_APPLIED arm=KernelMethodOnly callee={:?} census_present_treated_as_absent",
+                        name.clone()
+                    );
+                    return std::option::Option::None;
+                }
+            } else if arm == "DeclarationOnly" {
+                let n = PROBE_C4_ARM_D_CENSUS_HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let line = format!(
+                    "PROBE_CENSUS_HIT arm=DeclarationOnly seq={} callee={:?} owner_module_path={:?}",
+                    n + 1,
+                    name.clone(),
+                    bd.owner_module_path.clone()
+                );
+                probe_record_hit(&line);
+                probe_emit_inline("DeclarationOnly", &line, n + 1);
+            }
+        }
+        std::option::Option::None => {}
+    }
+    found
+}
+
+pub fn probe_counter_totals_line() -> String {
+    format!(
+        "PROBE_TOTALS C0_call_target_entries={} C1_arm_kernel_method_only={} C2_arm_k_census_hits={} C3_arm_declaration_only={} C4_arm_d_census_hits={} C5_arm_k_census_dropped={} switch_on={}",
+        PROBE_C0_CALL_TARGET_ENTRIES.load(std::sync::atomic::Ordering::SeqCst),
+        PROBE_C1_ARM_K_ENTRIES.load(std::sync::atomic::Ordering::SeqCst),
+        PROBE_C2_ARM_K_CENSUS_HITS.load(std::sync::atomic::Ordering::SeqCst),
+        PROBE_C3_ARM_D_ENTRIES.load(std::sync::atomic::Ordering::SeqCst),
+        PROBE_C4_ARM_D_CENSUS_HITS.load(std::sync::atomic::Ordering::SeqCst),
+        PROBE_C5_ARM_K_CENSUS_DROPPED.load(std::sync::atomic::Ordering::SeqCst),
+        probe_switch_on()
+    )
+}
+
 pub fn call_target_for_direct_call(
     scope: Rc<InferScope>,
     func_name: String,
 ) -> Rc<CallTargetOutcome> {
+    PROBE_C0_CALL_TARGET_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if (crate::v1_compiler_infer_env::declared_module_owner(
         scope.type_env.symbol_index.clone(),
         func_name.clone(),
@@ -31635,7 +31768,7 @@ pub fn call_target_for_direct_call(
     NonDeclarationBinding::BuiltinFunction => Rc::new(CallTargetOutcome::BuiltinCallableResolved {
     primitive_name: func_name.clone(),
 }),
-    NonDeclarationBinding::KernelMethodOnly => match crate::v1_compiler_infer_lookup::census_declaration_identity(scope.type_env.clone(), func_name.clone()) {
+    NonDeclarationBinding::KernelMethodOnly => match probe_census("KernelMethodOnly", func_name.clone(), crate::v1_compiler_infer_lookup::census_declaration_identity(scope.type_env.clone(), probe_note_arm("KernelMethodOnly", func_name.clone()))) {
     Some(bd) => Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
     declared: Rc::new(DeclaredCallableIdentity {
     owner_module_path: bd.owner_module_path.clone(),
@@ -31647,7 +31780,7 @@ pub fn call_target_for_direct_call(
     name: func_name.clone(),
 }),
 },
-    NonDeclarationBinding::DeclarationOnly => match crate::v1_compiler_infer_lookup::census_declaration_identity(scope.type_env.clone(), func_name.clone()) {
+    NonDeclarationBinding::DeclarationOnly => match probe_census("DeclarationOnly", func_name.clone(), crate::v1_compiler_infer_lookup::census_declaration_identity(scope.type_env.clone(), probe_note_arm("DeclarationOnly", func_name.clone()))) {
     Some(bd) => match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(scope.type_env.clone(), func_name.clone())).clone() {
     FuncSigLookup::FuncSigResolved { sig: s, declared: d, .. } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
     sig: s.clone(),
