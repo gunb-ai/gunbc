@@ -5,6 +5,7 @@ import std.algebra { string_contains, fold_list }
 import std.measure { byte_size, microsecond }
 import std.content_hash { Sha256Digest }
 import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
+import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall { parse_population_carrier_reader_beside_grammar_stall }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 import gunbc.parse_population_baseline_roster {
@@ -162,18 +163,25 @@ test fn parse_population_cardinality_refuses_mistyped_real_row_holds() -> Bool {
 // uppercase token "CAPABILITY", which the carrier never emits (0 occurrences in both files, lowercase
 // capability = 3 and 8 as the non-vacuous control) -- false on every input. Review 99088 F2: the second form
 // read a ledger LINE string whose only consumer was this substring check -- a string builder with a test as
-// its only consumer is a decoration; the ledger-line function is deleted from the carrier. Review point
-// (warm-fox, Gate 2): a hand-typed POSITIVE literal copied from the capability text ("emitted, declared
-// route") is brittle -- a prose reword of the stall goes red with no defect, and the tempting fix (edit the
-// literal in the witness) silently unjoins the leg from its authority. The leg's truth is now DERIVED FROM
-// THE AUTHORITY: the accessor over the rostered row must equal the accessor over the rostered row (self-join:
-// whatever the authority says is what the leg asserts) and must be NON-EMPTY (stall_trigger_admission refuses
-// an empty trigger, so an emptied capability is the defect this leg catches). The literal survives only as a
-// LABELLED NEGATIVE CONTROL: "planted" belongs to this witness's planted scaffolding and must never appear in
-// a real stall row's capability -- if the reader ever swaps a planted row in for the rostered one, this goes
-// red. Value-sensitivity of the extraction itself is carried by the planted-pair leg below.
-test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
-  parse_population_carrier_reader_beside_grammar_stall_capability() == parse_population_carrier_reader_beside_grammar_stall_capability() && parse_population_carrier_reader_beside_grammar_stall_capability() != "" && !string_contains(s: parse_population_carrier_reader_beside_grammar_stall_capability(), pattern: "planted")
+// its only consumer is a decoration; the ledger-line function is deleted from the carrier, and with it the
+// leg's old name (it named that deleted artefact; the tsv join dag/gunbc/witness/witness_row_cost_basis.tsv
+// carries no parse_population rows -- 0 hits -- so the rename breaks no join). Review point (warm-fox, final
+// head): f() == f() cannot fail in any world; the equality now joins TWO INDEPENDENT ROUTES to the same
+// value: route A is the carrier's extraction parse_population_stall_next_rung_capability over the rostered
+// stall (its own match, imported directly), route B is the carrier's beside-grammar reader, a different
+// expression in a different position that must return the same text. Tampering demonstration (which edit
+// makes this leg fail): (1) edit the carrier's extraction to return a constant (or reach past the trigger's
+// value) -> route A and route B diverge, leg prints DID NOT HOLD; (2) swap a planted stall into the rostered
+// binding -> the labelled negative control "planted" (0 occurrences in the authority file) fires, leg prints
+// DID NOT HOLD. Editing the AUTHORITY's prose cannot redden this leg -- both routes read the same authority,
+// so a reword moves them together (that is the point of deriving from the authority rather than copying a
+// literal). WHAT THIS LEG DOES NOT CARRY, stated honestly: it does not assert the capability's CONTENT --
+// "emitted, declared route" now lives in exactly one place, the authority file
+// dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag, guarded by no leg;
+// the leg carries non-emptiness (stall_trigger_admission refuses an empty trigger) and the no-planted-leak
+// control only. Value-sensitivity of the extraction itself lives in the planted pair below.
+test fn parse_population_stall_trigger_capability_declared_holds() -> Bool {
+  parse_population_stall_next_rung_capability(stall: parse_population_carrier_reader_beside_grammar_stall) == parse_population_carrier_reader_beside_grammar_stall_capability() && parse_population_carrier_reader_beside_grammar_stall_capability() != "" && !string_contains(s: parse_population_carrier_reader_beside_grammar_stall_capability(), pattern: "planted")
 }
 
 // THE EXTRACTION, TESTED THROUGH THE CARRIER'S OWN FUNCTION (review 99025 F1: no local copy -- a witness that
