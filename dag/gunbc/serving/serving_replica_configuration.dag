@@ -85,15 +85,19 @@ type ReplicaConfiguration {
   // What this configuration may be quoted for throughput and cold prefill: an on-row figure, a coordinate
   // reading, or the reading it still needs. Resolution is the profile module's, run-identity keying included.
   figures: ReplicaFigures
-  // HOW MANY CONCURRENT AGENTS THIS CONFIGURATION SERVES, as a standing rather than a number: observed
-  // with the standing of the observation, or unread naming the read that would settle it. There is no
-  // default, because a population defaulted to one is the failure mode this module exists to close
+  // HOW MANY CONCURRENT AGENTS A SERVING PASS ON THIS VERY CONFIGURATION SERVED, as a standing rather than a
+  // number: observed with the standing of the observation, or unread naming the read that would settle it.
+  // There is no default, because a population defaulted to one is the failure mode this module exists to close
   // (gunbc.recurring_failure_mode::a_capacity_default_sized_for_one_workload_shape_inherited_by_another):
   // a capacity sized for one conversation at a time stays legal while the agents inside the slots multiply.
   concurrent_agents: ConcurrentAgentPopulation
-  // THE HIT RATIO THE LAST SERVING PASS ON THIS HOST PRODUCED, carried as counts and their standing, so a
-  // future tuning decision reads a measurement instead of a default. A pass that printed no counters is
-  // RatioUnread carrying its obligation -- never a zero, and never silence
+  // THE HIT RATIO A SERVING PASS ON THIS VERY CONFIGURATION PRODUCED, carried as counts and their standing,
+  // so a future tuning decision reads a measurement instead of a default. THE RATIO IS THE PASS'S FACT, and
+  // a configuration carries one only if a pass ran on THAT configuration: a configuration that has never
+  // been served carries RatioUnread naming whichever pass on its host did print counters, never that pass's
+  // numbers, because a ratio measured on another way of running is not this configuration's measurement.
+  // A pass that ran and printed no counters is RatioEmptyOnPass carrying its obligation; a host no pass ever
+  // reported is RatioUnread -- never a zero, and never silence
   // (gunbc.design_argument::epistemic_humility: a ratio nobody observed is not a ratio).
   prefix_cache_ratio: PrefixCachePassRatio
   // Where THIS configuration comes from as a composition. The bytes, milliseconds and rates it is quoted on
@@ -108,6 +112,15 @@ type ReplicaConfiguration {
 // should THIS host run", and a cache's adequacy is a property of the way of running -- which tiers the
 // configuration keeps, how many engines it runs, and what it is expected to hold warm at once. srv1's pair
 // and srv1's TP=2 share a host and a checkpoint and differ in exactly that.
+//
+// THE OBSERVATION BELONGS TO A PASS, AND A CONFIGURATION CARRIES IT ONLY IF THAT PASS RAN ON IT. The
+// population and the counters are facts about a run, so they are declared ONCE, as the pass's own rows
+// (h11_pass_concurrent_agents, h11_pass_prefix_cache_ratio), and only the configuration that pass actually
+// served carries them. h11's two-engine candidate has never been served -- its own provenance says so -- so
+// it carries the unread verdict naming that pass rather than borrowing its numbers: a configuration nobody
+// ran has no measurement to report, and a count copied onto it from a different configuration would read as
+// a measurement of nothing (gunbc.design_argument::single_authority: one authoritative declaration of each
+// meaning; gunbc.design_argument::epistemic_humility: do not assert as observed what another run observed).
 //
 // THE UNIT IS THE WORKLOAD'S, NOT THE ENGINE'S. serving_host_memory already folds an engine's cache BYTES
 // and slot COUNT into the sessions it can keep warm (serving_warm_sessions_within), and the selector
@@ -186,6 +199,20 @@ data h11_pass_population_standing: CitedFigureStanding = TranscribedUncited {
 data h11_pass_ratio_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "the same relay: that pass reported three hits against fifty misses, and the interval those counters cover is not stated. A lifetime ratio is refused for the same reason extdeps.vllm.metrics::prefix_cache_verdict refuses one -- read the engine's own prefix counters over a named interval before quoting this as a rate" as NonEmptyStr,
 }
+
+// THE PASS, DECLARED ONCE. The four agents and the counters are that PASS's figures, not any configuration's,
+// so they are written here a single time and the configuration the pass ran on refers to them instead of
+// spelling the literals again (gunbc.design_argument::single_authority). A configuration on the same host
+// that the pass did not run carries the unread verdict below instead.
+data h11_pass_concurrent_agents: ConcurrentAgentPopulation = PopulationObserved { agents: 4, standing: h11_pass_population_standing }
+
+data h11_pass_prefix_cache_ratio: PrefixCachePassRatio = RatioObserved { hits: 3, misses: 50, standing: h11_pass_ratio_standing }
+
+// THE UN-RUN CONFIGURATION'S OWN OBLIGATIONS, each naming where the only read on this host lives, so the gap
+// cannot be read as an absence of data nor the pass be mistaken for this configuration's.
+data h11_two_engine_population_unread_obligation: NonEmptyStr = "no pass has ever served h11 on two engines; the only concurrent-agent count this host has is the 2026-11-21 four-engine pass's (h11_pass_concurrent_agents), which is that configuration's observation and not this one's -- serve this configuration and read its concurrent agents before quoting a number for it" as NonEmptyStr
+
+data h11_two_engine_ratio_unread_obligation: NonEmptyStr = "no pass has reported prefix-cache hits and misses for a two-engine run on this host; the only counters ever relayed here are the four-engine pass's (h11_pass_prefix_cache_ratio), and a ratio measured while four engines ran says nothing about a configuration that has never run -- run it and read the engine's prefix counters over a named interval" as NonEmptyStr
 
 // ── THE LADDER PIECES THE CANDIDATES COMPOSE ──────────────────────────────────────────────────────
 //
@@ -376,8 +403,10 @@ data h11_four_engines_configuration: ReplicaConfiguration = ReplicaConfiguration
   expert_artifact: Present { value: host_6ce85c_routed_expert_artifact },
   engine_memory: h11_engine_memory(),
   figures: h11_engine_figures(),
-  concurrent_agents: PopulationObserved { agents: 4, standing: h11_pass_population_standing },
-  prefix_cache_ratio: RatioObserved { hits: 3, misses: 50, standing: h11_pass_ratio_standing },
+  // THE CONFIGURATION THE 2026-11-21 PASS ACTUALLY RAN, so it carries the pass's own declaration rather than
+  // a copy of it.
+  concurrent_agents: h11_pass_concurrent_agents,
+  prefix_cache_ratio: h11_pass_prefix_cache_ratio,
   provenance: "composed from the host's own rows: its roster rows, the ladder rungs they carry, the layout's artifact row, and the readings its figures resolve to" as NonEmptyStr,
 }
 
@@ -395,8 +424,11 @@ data h11_two_engines_configuration: ReplicaConfiguration = ReplicaConfiguration 
   expert_artifact: Present { value: host_6ce85c_routed_expert_artifact },
   engine_memory: h11_engine_memory(),
   figures: h11_engine_figures(),
-  concurrent_agents: PopulationObserved { agents: 4, standing: h11_pass_population_standing },
-  prefix_cache_ratio: RatioObserved { hits: 3, misses: 50, standing: h11_pass_ratio_standing },
+  // NEVER SERVED, SO NOTHING IS OBSERVED HERE: the host's only population read and the host's only counters
+  // belong to the four-engine pass, and this configuration refuses to borrow them. Its capacity in agents is
+  // still stated (four engines' worth of cache halved), which is what makes the refusal worth reading.
+  concurrent_agents: PopulationUnread { obligation: h11_two_engine_population_unread_obligation },
+  prefix_cache_ratio: RatioUnread { obligation: h11_two_engine_ratio_unread_obligation },
   provenance: "never served on two engines; composed from h11's own engine rows with half of them running" as NonEmptyStr,
 }
 

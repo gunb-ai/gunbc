@@ -235,16 +235,54 @@ test fn the_field_joins_where_it_can_and_refuses_where_it_cannot() -> Bool {
     }
 }
 
-// THE POPULATION IS A STANDING ON THE ROW, NEVER A DEFAULT. Exactly the two h11 candidates carry an
-// observed count; the other seven say nobody counted them. A field that defaulted the population to one
-// would be the failure mode written into the model: the capacity would stay right for a workload shape
-// that no longer exists.
+// THE POPULATION IS A STANDING ON EVERY CANDIDATE, NEVER A DEFAULT. Only the h11 configuration the 2026-11-21
+// pass actually ran on carries an observed count; the other eight say nobody counted them. A field that
+// defaulted the population to one would be the failure mode written into the model: the capacity would stay
+// right for a workload shape that no longer exists.
 test fn the_population_is_a_standing_on_every_candidate() -> Bool {
   let unread = filter(replica_configuration_field, c => match c.concurrent_agents {
     PopulationUnread { obligation: _ } => true
     PopulationObserved { agents: _, standing: _ } => false
   })
-  replica_configuration_field.length() == 9 && unread.length() == 7
+  replica_configuration_field.length() == 9 && unread.length() == 8
+}
+
+// AN UN-RUN CONFIGURATION DOES NOT INHERIT ANOTHER PASS'S OBSERVATION. h11's two-engine candidate shares the
+// host and the engine rows of the four-engine pass, and its own provenance says it was never served; so it
+// carries the unread verdict on both sides, each obligation naming the four-engine pass as where the only read
+// on that host lives. Its capacity in agents is still stated -- four warm agents, half of the four-engine
+// configuration's eight -- which is exactly why the refusal matters: the capacity is decidable while the
+// population is not, and the join refuses rather than filling the gap with the other configuration's count.
+test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
+  match h11_two_engines_configuration.concurrent_agents {
+    PopulationUnread { obligation: obligation } =>
+      string_contains(s: obligation as String, pattern: "four-engine" as String)
+    PopulationObserved { agents: _, standing: _ } => false
+  }
+    && match h11_two_engines_configuration.prefix_cache_ratio {
+      RatioUnread { obligation: obligation } =>
+        string_contains(s: obligation as String, pattern: "four-engine" as String)
+      RatioEmptyOnPass { pass: _, obligation: _ } => false
+      RatioObserved { hits: _, misses: _, standing: _ } => false
+    }
+    && match configuration_prefix_cache_capacity(c: h11_two_engines_configuration) {
+      // One obligation, and it is the population's: the capacity side resolves (four warm agents), so the
+      // only thing missing is the count this configuration never produced.
+      CapacityUndetermined { obligations: obligations } =>
+        obligations.length() == 1
+          && filter(obligations, o => string_contains(s: o as String, pattern: "four-engine" as String)).length() == 1
+      CapacityHoldsPopulation { agents: _, warm_agents: _ } => false
+      CapacityExceededByPopulation { agents: _, warm_agents: _ } => false
+    }
+    && match configuration_warm_agent_capacity(c: h11_two_engines_configuration) {
+      Present { value: two } => two == 4
+      Absent => false
+    }
+    // And the pass itself is not lost: the configuration that ran still carries it, once.
+    && match h11_four_engines_configuration.concurrent_agents {
+      PopulationObserved { agents: agents, standing: _ } => agents == 4
+      PopulationUnread { obligation: _ } => false
+    }
 }
 
 // THE HIT RATIO IS A TYPED OBSERVATION ON THE ROW. h11 carries the pass it ran -- three hits against fifty
