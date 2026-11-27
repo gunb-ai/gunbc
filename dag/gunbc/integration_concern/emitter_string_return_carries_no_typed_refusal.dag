@@ -1,28 +1,29 @@
 module gunbc.integration_concern.emitter_string_return_carries_no_typed_refusal
 
-// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
-// there is no list to append to. Ported from main's block in gunbc.integration_concern
-// at merge 19: main 50c45934852.
+// One row of the integration-concern register. The roster derives the row from this file
+// (module gunbc.integration_concern.roster); there is no list to append to.
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import std.optional { Absent }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, emitter_string_return_carries_no_typed_refusal_review }
+import std.types { CommitSha }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, HistoricalDeclaration, Integrated, IntegrationConcern, IntegrationEvidence, RequirementEstablished, RetainedExecutionResult, SuspectedCapabilityGap, emitter_string_return_carries_no_typed_refusal_review }
 
-// THE __GUNBC_INVOKE_EMIT_REFUSED__ REFUSAL FAMILY, STATED IN ONE PLACE. The run-step emitter refuses
-// three ways -- the word wall (gunbc_invoke_word_unsafe_poison), the orchestration rejection
-// (gunbc_invoke_step_orch_refused_poison), and a target whose module derives no storage path
-// (gunbc_run_step_target_unstored_poison) -- and all three collapse their typed refusal into a marker
-// STRING in the rendered bytes, which gunbc.generated_artifact_production workflow_body_generated later finds
-// with a prefix scan. Each refusal locates itself (the word or the sanitized module_path/decl_name
-// follows the marker) and the committed-workflow door is closed while the scan stands, but a refusal
-// rendered into anything the scan does not read travels untyped. The honest terminal shape is one
-// carrier: every *_invoke job body returns a refusal carrier that string concatenation preserves,
-// unwrapped ONCE at gunbc.generated_artifact_emit artifact_generate into ArtifactGenerationRefused --
-// at which point all three poisons and the scan are deleted together. P2a (#16467, review 95421)
-// filed this instead of building it: the retype is a cross-emitter change of ~140 String-returning job
-// bodies, a different change than retyping the roster. The gate scan is the single wall meanwhile, and
-// a new refusal sibling must join the one prefix the scan checks.
+// THE __GUNBC_INVOKE_EMIT_REFUSED__ REFUSAL FAMILY, STATED IN ONE PLACE -- NOW INTEGRATED. The run-step
+// emitter used to refuse three ways -- the word wall (gunbc_invoke_word_unsafe_poison), the orchestration
+// rejection (gunbc_invoke_step_orch_refused_poison), and a target whose module derives no storage path
+// (gunbc_run_step_target_unstored_poison) -- and all three collapsed their typed refusal into a marker
+// STRING in the rendered bytes, which gunbc.tier_o_artifact_emit tier_o_workflow_produced later found with
+// a prefix scan: a refusal rendered into anything the scan did not read travelled untyped, and the scan
+// was the only gate. P2a (#16467, review 95421) filed this as its own change (the retype spans ~140
+// String-returning job bodies), not P2a. This row is now integrated by that change: the invoke family
+// returns a typed refusal carrier (Outcome<String>) that the job-body chain preserves, unwrapped ONCE at
+// gunbc.generated_artifact_emit artifact_generate into a typed, located ArtifactGenerationRefused, and the
+// three poisons together with the tier_o_workflow_produced prefix scan are deleted in the same change
+// (gunbc.design_argument::replacement_migration -- the old authority ends at its root, no fallback). The
+// separate __GUNBC_ORCH_EMIT_REFUSED__ sibling that the deleted scan never matched is recorded as its own
+// row (gunbc.integration_concern.orch_emit_refusal_reaches_committed_bytes_unobserved), not swept under
+// this closure. The retained controls are cited at the revision where the poisons and the scan existed.
 data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = IntegrationConcern {
   identity: "emitter_string_return_carries_no_typed_refusal",
   kind: SuspectedCapabilityGap {
@@ -35,10 +36,10 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
     tail: [
       decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_orch_refused_poison"),
       decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison"),
-      decl_ref(module_path: "gunbc.generated_artifact_production", decl_name: "workflow_body_generated"),
+      decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_workflow_produced"),
     ],
   },
-  question: "when the *_invoke job bodies return a typed refusal carrier unwrapped once at artifact_generate, delete the three poisons and the workflow_body_generated prefix scan together. Until then the family is mitigatable, stated as such: located markers behind one prefix, the scan the only gate, and any render outside the scan's reach unguarded.",
+  question: "close it by making the *_invoke job bodies return a typed refusal carrier (Outcome<String>) unwrapped once at artifact_generate into a typed, located ArtifactGenerationRefused, and deleting the three poisons together with the tier_o_workflow_produced prefix scan. This change did exactly that, so the mitigation it superseded -- located markers behind one prefix, the scan the only gate, and any render outside the scan's reach unguarded -- no longer stands; the refusal is typed at its source by type rather than caught by a byte scan.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "b45535c5d7f184b7ec9ffb687f7c387705f9b247",
@@ -46,12 +47,53 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
         head: CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison") },
         tail: [
           CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_unsafe_poison") },
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.generated_artifact_production", decl_name: "workflow_body_generated") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_workflow_produced") },
         ],
       },
       account: "P2a added the third sibling (the unstored-target poison beside the word wall and orchestration poisons) and the Tier O prefix scan; dashboard review 95421 on gunb-ai/gunbc#16467 at head b45535c5d7f (Verdict: REQUEST_CHANGES) judged marker-string plus string_contains a fail_closed fork for the Absent arm. The family-wide retype was ruled its own change, not P2a; this row is its trigger. Dashboard review 95484 on the same PR (Verdict: REQUEST_CHANGES) refused the per-character sanitizer that had been duplicated beside the alphabet's home; this row's own citations were the proof (they named the copy by home). It is now deleted: the Absent arm renders through gunbc_invoke_sanitize_word, the family's single character map, so the family keeps ONE sanitizer and this concern tracks only the typed threading.",
     },
     tail: [],
   },
-  disposition: Open,
+  disposition: Integrated { evidence: IntegrationEvidence {
+    integrated_at: "bc5d775d47afe6268313ebcad6e691b2a1438028" as CommitSha,
+    superseded: [
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_emit_refused_poison_prefix" },
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_unsafe_poison" },
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_orch_refused_poison" },
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison_prefix" },
+    ],
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_wall_diagnostic"),
+      tail: [
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_command"),
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_entry_or_refusal"),
+        decl_ref(module_path: "gunbc.generated_artifact_emit", decl_name: "artifact_generate"),
+      ],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_deploy_matches_pre_migration_golden_holds"),
+        run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions <all> --hermetic, srv1 systemd-run scope MemoryMax=40G, at head bc5d775d47a (re-run after the gunb_ai_pages retype 98900b2 and the dispatch witness fixes de5b901/93f7d2e)",
+        conclusion: "PASS at head bc5d775: the deploy positive control renders BYTE-IDENTICAL to the pre-migration golden under the typed Outcome<String> carry; the retyped family changes no rendered byte. claim_batch closure typecheck of the whole retyped family reported 0 blocking diagnostics in this run.",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions <all> --hermetic, srv1, at head bc5d775d47a",
+          conclusion: "PASS at head bc5d775: an Absent entry path refuses at the artifact boundary with a located typed ArtifactGenerationRefused, not the deleted __GUNBC_INVOKE_EMIT_REFUSED__ string scan. This is the executed control the byte-scan deletion's typed replacement rests on.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_word_wall_admits_ordinary_entry_holds"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions <all> --hermetic, srv1, at head bc5d775d47a",
+          conclusion: "PASS at head bc5d775: an ordinary entry renders through the retyped family to byte-identical workflow shell.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_word_wall_refuses_metacharacter_entry_holds"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions gunbc_invoke_word_wall_refuses_metacharacter_entry_holds --hermetic, srv1, at head bc5d775d47a; AND the same witness on the origin/main tip tree at 0a408c93 (main's own sentinel witness, main's checker)",
+          conclusion: "RED at head bc5d775 and identical red on main tip 0a408c93, NOT a regression from this change: the step-emitter path (gunbc_run_step_script -> gunbc_run_step_intent -> gunbc_invoke_step_emit_pipeline, orch_emit_pipeline only) does not cross the word wall -- only gunbc_run_command does -- so a hostile metacharacter entry is admitted on BOTH main and this head. Confirmed identical red on the origin/main-tip control. The step-emitter word-wall-coverage gap is tracked by gunbc.integration_concern.step_emitter_word_wall_coverage_gap (its next-rung trigger named there) and is deliberately NOT fixed here; this witness is rewritten to assert the TYPED Rejected with the word-wall REASON so it turns green when that coverage lands.",
+        },
+      ],
+    },
+  } },
 }

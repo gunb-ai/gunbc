@@ -62,7 +62,7 @@ import v2.extdeps.languages.bash_build {
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
 import gunbc.ci.ci_yaml_validate { ci_yml_parses }
 import gunbc.generated_artifact { InstrumentDispatchYamlArtifact, artifact_path }
-import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, ArtifactGenerated }
 
 // ONE OPERATOR-DISPATCHED RUN OF ONE ROSTERED INSTRUMENT, ON THE FLEET, AND NOTHING ELSE.
 //
@@ -830,7 +830,7 @@ fn expected_instrument_dispatch_yml_with(workflow: Workflow) -> InstrumentDispat
 
 fn instrument_dispatch_yaml_artifact_generated() -> ArtifactGenerationOutcome {
   match expected_instrument_dispatch_yml() {
-      InstrumentDispatchWorkflowGenerated { content } => workflow_body_generated(content: content)
+      InstrumentDispatchWorkflowGenerated { content } => ArtifactGenerated { content: content }
       InstrumentDispatchWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
 }

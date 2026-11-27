@@ -37,7 +37,8 @@ import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.auth.branch_dispatch_federation { branch_run_key_variable }
 import gunbc.ci.ci_yaml_validate { ci_yml_parses }
 import gunbc.generated_artifact { BranchRunGrantBrokerWorkflowYamlArtifact, artifact_path }
-import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, ArtifactGenerated }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, sequence_outcome, StageDiagnosticPolicy, ShortCircuit, diagnostics_reason_lexemes }
 
 // THE WORKFLOW THAT ASKS FOR A RUN-SCOPED GRANT ON A BRANCH RUN'S BEHALF (gunbc.auth.branch_run_grant_broker).
 //
@@ -125,11 +126,14 @@ fn branch_run_grant_broker_checkout_step() -> Step {
 
 data branch_run_grant_broker_build_step_name: String = "Build the broker this job runs from the default branch"
 
-fn branch_run_grant_broker_step() -> Step {
-  RunStep {
+fn branch_run_grant_broker_step() -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_branch_run_grant_broker_invoke(),
+    f: fn(zesty_script) {
+      outcome_accepted(value: RunStep {
     name: Present { value: "Dispatch the branch_run_grant run at main for the requested run attempt" },
     id: none,
-    run: gunbc_ci_branch_run_grant_broker_invoke(),
+    run: zesty_script,
     shell: none,
     env: Present { value: [
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
@@ -139,31 +143,33 @@ fn branch_run_grant_broker_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: 5 }
-  }
+      })
+    }
+  )
 }
 
 type BrokerBoundStep {
-  step: Step
+  step: Outcome<Step>
   role: StepCapabilityRole
   step_name: String
 }
 
 fn branch_run_grant_broker_bound_steps() -> List<BrokerBoundStep> {
   [
-    BrokerBoundStep { step: branch_run_grant_broker_checkout_step(), role: capability_neutral, step_name: "Checkout the default branch this broker runs from" },
-    BrokerBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    BrokerBoundStep { step: outcome_accepted(value: branch_run_grant_broker_checkout_step()), role: capability_neutral, step_name: "Checkout the default branch this broker runs from" },
+    BrokerBoundStep { step: outcome_accepted(value: toolchain_home_isolation_step()), role: capability_neutral, step_name: "Isolate toolchain homes" },
     BrokerBoundStep {
-      step: witness_floor_toolchain_step(),
+      step: outcome_accepted(value: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
       step_name: "Install Rust toolchain",
     },
     BrokerBoundStep {
-      step: toolchain_pin_rustup_default_step(),
+      step: outcome_accepted(value: toolchain_pin_rustup_default_step()),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     BrokerBoundStep {
-      step: witness_floor_build_step(step_name: branch_run_grant_broker_build_step_name, build_script: repo_self_build_command(bins: branch_run_grant_broker_required_bins)),
+      step: outcome_accepted(value: witness_floor_build_step(step_name: branch_run_grant_broker_build_step_name, build_script: repo_self_build_command(bins: branch_run_grant_broker_required_bins))),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: branch_run_grant_broker_build_step_name,
     },
@@ -190,13 +196,16 @@ data branch_run_grant_broker_job_permissions: WorkflowPermissions = WorkflowPerm
   pages: none
 }
 
-fn branch_run_grant_broker_job() -> Job {
-  Job {
+fn branch_run_grant_broker_job() -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: list_map(xs: branch_run_grant_broker_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(zesty_steps) {
+      outcome_accepted(value: Job {
     id: branch_run_grant_broker_job_id,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
     environment: none,
-    steps: list_map(xs: branch_run_grant_broker_bound_steps(), f: fn(b) { b.step }),
+    steps: zesty_steps,
     needs: [],
     env: none,
     outputs: none,
@@ -205,10 +214,16 @@ fn branch_run_grant_broker_job() -> Job {
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: branch_run_grant_broker_job_permissions }
-  }
+      })
+    }
+  )
 }
 
-data branch_run_grant_broker_workflow: Workflow = Workflow {
+fn branch_run_grant_broker_workflow_of() -> Outcome<Workflow> {
+  bind_outcome(
+    o: branch_run_grant_broker_job(),
+    f: fn(zesty_job) {
+      outcome_accepted(value: Workflow {
   name: branch_run_grant_broker_workflow_name,
   run_name: none,
   on: [
@@ -221,7 +236,10 @@ data branch_run_grant_broker_workflow: Workflow = Workflow {
   concurrency: none,
   env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
   permissions: none,
-  jobs: [branch_run_grant_broker_job()]
+  jobs: [zesty_job]
+      })
+    }
+  )
 }
 
 type BranchRunGrantBrokerWorkflowGenerationOutcome
@@ -229,7 +247,11 @@ type BranchRunGrantBrokerWorkflowGenerationOutcome
   | BranchRunGrantBrokerWorkflowGenerationRefused { reason: String }
 
 fn expected_branch_run_grant_broker_workflow_yml() -> BranchRunGrantBrokerWorkflowGenerationOutcome {
-  match admit_workflow_checkout_refs(workflow: branch_run_grant_broker_workflow, declared: []) {
+  match branch_run_grant_broker_workflow_of() {
+    Rejected { diagnostics: d } =>
+      BranchRunGrantBrokerWorkflowGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
+    Accepted { value: branch_run_grant_broker_workflow } =>
+      match admit_workflow_checkout_refs(workflow: branch_run_grant_broker_workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       BranchRunGrantBrokerWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet.branch_run_grant_broker_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted => match admit_workflow_toolchain_homes(workflow: branch_run_grant_broker_workflow) {
@@ -246,6 +268,7 @@ fn expected_branch_run_grant_broker_workflow_yml() -> BranchRunGrantBrokerWorkfl
         }
     }
   }
+  }
 }
 
 // THE BROKER STEP'S TARGET AND INVOCATION, declared beside the workflow that runs them (moved out of
@@ -256,7 +279,7 @@ data gunbc_ci_branch_run_grant_broker_target: GunbcRunStepTarget = gunbc_run_ste
   function: "broker",
 )
 
-fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
+fn gunbc_ci_branch_run_grant_broker_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_broker_target,
@@ -266,7 +289,7 @@ fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
 
 fn branch_run_grant_broker_workflow_yaml_artifact_generated() -> ArtifactGenerationOutcome {
   match expected_branch_run_grant_broker_workflow_yml() {
-      BranchRunGrantBrokerWorkflowGenerated { content } => workflow_body_generated(content: content)
+      BranchRunGrantBrokerWorkflowGenerated { content } => ArtifactGenerated { content: content }
       BranchRunGrantBrokerWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
 }

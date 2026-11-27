@@ -55,7 +55,7 @@ import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_for }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 import gunbc.ci.ci_yaml_validate { ci_yml_parses }
 import gunbc.generated_artifact { artifact_path }
-import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated, generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, ArtifactGenerated, generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
 
 // THE HOSTED-RUNNER SHADOW GATE: a NON-required GitHub Actions job on a standard GitHub-hosted
 // runner that joins the tailnet and drives the gunbc remote build for every required-gate row.
@@ -803,7 +803,7 @@ fn shadow_gate_emit_cli() -> ProcessExit {
 
 fn hosted_runner_shadow_gate_yaml_artifact_generated() -> ArtifactGenerationOutcome {
   match expected_hosted_runner_shadow_gate_yml() {
-      ShadowGateWorkflowGenerated { content } => workflow_body_generated(content: content)
+      ShadowGateWorkflowGenerated { content } => ArtifactGenerated { content: content }
       ShadowGateWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
 }

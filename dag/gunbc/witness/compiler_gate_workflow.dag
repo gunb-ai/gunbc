@@ -215,7 +215,7 @@ import gunbc.parse_verdict_publish {
 }
 import gunbc.ci.ci_yaml_validate { ci_yml_parses }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
-import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, ArtifactGenerated }
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
@@ -1502,7 +1502,7 @@ data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, p
 
 fn witness_floor_yaml_artifact_generated() -> ArtifactGenerationOutcome {
   match expected_compiler_gate_yml() {
-      WitnessFloorGenerated { content } => workflow_body_generated(content: content)
+      WitnessFloorGenerated { content } => ArtifactGenerated { content: content }
       WitnessFloorGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
 }

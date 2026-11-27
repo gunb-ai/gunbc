@@ -146,7 +146,11 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "gunbhub-simple-frontend", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 3),
   serves(node: "gunbhub-authoritative-cutover", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 4),
   // gunbc.plans.github_actions_retirement: layer is the edge depth (keen-dove-217, 2026-11-24).
-  serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 0),
+  // work-exec-5-ci-verdict-from-receipt is not bound here, though this plan's text cites it: the work
+  // item names the intention it serves and the intention does not list the work items
+  // (#gunbc.design_argument::plans_are_intentions). Its one binding is the intention whose plan carries it
+  // as work -- gunbc.plans.factory_dogfood, where the work-exec family is bound together -- and this plan
+  // consumes the verdict that item publishes, which is the claim its own section makes.
   serves(node: "github-actions-deleted", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 1),
   // gunbc.plans.claim_execution_consolidation: layer is the edge depth.
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),

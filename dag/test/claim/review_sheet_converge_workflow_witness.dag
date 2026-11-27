@@ -6,8 +6,8 @@ import extdeps.github.actions { Job, Step, RunStep, UsesStep, Workflow, Workflow
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString, YamlBool }
 import extdeps.google.sheets { sheets_token_env }
 import gunbc.fleet.fleet_converge_workflow {
-  fleet_converge_workflow, fleet_converge_review_sheet_converge_job, fleet_converge_review_sheet_writer_token_step,
-  fleet_converge_build_job_if, fleet_converge_dispatch_event_if, fleet_converge_mode_job_id, ReviewSheetConverge,
+  fleet_converge_workflow_of, fleet_converge_review_sheet_converge_job, fleet_converge_review_sheet_writer_token_step,
+  fleet_converge_build_job_if, fleet_converge_dispatch_event_if, ReviewSheetConverge,
   fleet_converge_review_sheet_event_admitted,
   fleet_converge_build_job, fleet_converge_plan_revision_job, fleet_converge_build_job_condition, fleet_converge_plan_revision_job_condition,
   fleet_converge_workflow_mode_wire, MtCollins1Boot, FleetApply, Srv1RootMutation, DesiredInstanceDeploy,
@@ -16,6 +16,7 @@ import extdeps.github.expressions {
   Expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathResolution, GithubPathValue, GithubPathUnmodeled,
   gha_value_is_truthy, serialize_expression,
 }
+import v2.std.diagnostic { outcome_accepted_value }
 
 fn job_if(j: Job) -> String {
   match j.if_condition { Present { value: v } => v  Absent => "" }
@@ -40,22 +41,39 @@ fn admits_only_a_dispatch(j: Job) -> Bool {
 }
 
 fn is_a_pack_producer(j: Job) -> Bool {
-  j.id == fleet_converge_build_job().id || j.id == fleet_converge_plan_revision_job().id
+  let build_is = match outcome_accepted_value(fleet_converge_build_job()) {
+    Present { value: b } => b.id == j.id
+    Absent => false
+  }
+  let plan_is = match outcome_accepted_value(fleet_converge_plan_revision_job()) {
+    Present { value: p } => p.id == j.id
+    Absent => false
+  }
+  build_is || plan_is
 }
 
 test fn no_actuating_job_can_start_on_a_schedule_or_push() -> Bool {
-  let others = filter(fleet_converge_workflow.jobs, j => !is_a_pack_producer(j: j))
-  others.length() > 0 && all(others, j => admits_only_a_dispatch(j: j))
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      { let others = filter(wf.jobs, j => !is_a_pack_producer(j: j))
+      others.length() > 0 && all(others, j => admits_only_a_dispatch(j: j)) }
+  }
 }
 
-// CONTROL: a job with no condition is exactly what the reading refuses.
+// CONTROL: a job with no condition (plan-revision before this change) is exactly what the reading
+// refuses; and build's own condition leads with the dispatch gate.
 test fn a_job_with_no_condition_is_caught() -> Bool {
-  let bare = Job {
-    id: "bare", name: none, runner: fleet_converge_review_sheet_converge_job().runner, environment: none,
-    steps: [], needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none,
-    continue_on_error: none, concurrency: none, permissions: none,
+  match outcome_accepted_value(fleet_converge_review_sheet_converge_job()) {
+    Absent => false
+    Present { value: zj } =>
+      !admits_only_a_dispatch(j: Job {
+        id: "bare", name: none, runner: zj.runner, environment: none,
+        steps: [], needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none,
+        continue_on_error: none, concurrency: none, permissions: none,
+      })
+      && starts_with(s: fleet_converge_build_job_if, prefix: fleet_converge_dispatch_event_if)
   }
-  !admits_only_a_dispatch(j: bare)
 }
 
 // ── THE DAILY RELEASE PACK, EVALUATED (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23) ─────────
@@ -118,10 +136,17 @@ test fn a_dispatch_builds_only_for_a_mode_that_consumes_the_pack() -> Bool {
 // The emitted conditions ARE these values, and the scheduled path to the artifact is plan-revision -> build only:
 // build needs nothing a schedule skips.
 test fn the_emitted_conditions_are_the_evaluated_values_and_build_needs_only_plan_revision() -> Bool {
-  job_if(j: fleet_converge_build_job()) == serialize_expression(expression: fleet_converge_build_job_condition)
-    && job_if(j: fleet_converge_build_job()) == fleet_converge_build_job_if
-    && job_if(j: fleet_converge_plan_revision_job()) == serialize_expression(expression: fleet_converge_plan_revision_job_condition)
-    && join(fleet_converge_build_job().needs, ",") == fleet_converge_plan_revision_job().id
+  match outcome_accepted_value(fleet_converge_build_job()) {
+    Absent => false
+    Present { value: bj } => match outcome_accepted_value(fleet_converge_plan_revision_job()) {
+      Absent => false
+      Present { value: pj } =>
+        job_if(j: bj) == serialize_expression(expression: fleet_converge_build_job_condition)
+          && job_if(j: bj) == fleet_converge_build_job_if
+          && job_if(j: pj) == serialize_expression(expression: fleet_converge_plan_revision_job_condition)
+          && join(bj.needs, ",") == pj.id
+    }
+  }
 }
 
 // THE REVIEW-SHEET CONVERGE IS DISABLED (gunbc.design_ruling::review_sheet_converge_disabled_2026_11_24): its condition,
@@ -129,14 +154,17 @@ test fn the_emitted_conditions_are_the_evaluated_values_and_build_needs_only_pla
 // own dispatch, so the mode stays usable by hand. The emitted job condition is that value's serialization.
 test fn the_review_sheet_converge_starts_only_on_its_own_dispatch() -> Bool {
   let c = fleet_converge_review_sheet_event_admitted()
+  let zj = outcome_accepted_value(fleet_converge_review_sheet_converge_job())
   evaluates(condition: c, github: on_schedule)
     && !admits(condition: c, github: on_schedule)
     && evaluates(condition: c, github: on_push)
     && !admits(condition: c, github: on_push)
     && admits(condition: c, github: on_review_sheet_dispatch)
     && !admits(condition: c, github: on_apply_dispatch)
-    && job_if(j: fleet_converge_review_sheet_converge_job()) == serialize_expression(expression: c)
-    && fleet_converge_review_sheet_converge_job().needs == []
+    && match zj {
+         Present { value: j } => job_if(j: j) == serialize_expression(expression: c) && j.needs == []
+         Absent => false
+       }
 }
 
 fn is_autonomous_other_than_the_schedule(t: WorkflowTrigger) -> Bool {
@@ -166,8 +194,12 @@ fn is_schedule(t: WorkflowTrigger) -> Bool {
 // THE ONLY AUTONOMOUS TRIGGER IS THE DAILY SCHEDULE: the push trigger left with the review-sheet converge, and
 // fleet-converge has no pull-request or merge-group trigger, so it can never post a context on the required path.
 test fn the_daily_schedule_is_the_only_autonomous_trigger() -> Bool {
-  filter(fleet_converge_workflow.on, t => is_schedule(t: t)).length() == 1
-    && !any(fleet_converge_workflow.on, t => is_autonomous_other_than_the_schedule(t: t))
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      filter(wf.on, t => is_schedule(t: t)).length() == 1
+        && !any(wf.on, t => is_autonomous_other_than_the_schedule(t: t))
+  }
 }
 
 // THE TOKEN ROUTE: the delegation step continues on error (so the refusal is the converge's own,
@@ -185,10 +217,13 @@ test fn the_writer_token_is_delegated_and_reaches_only_the_environment() -> Bool
       }
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
-  let runs = filter(fleet_converge_review_sheet_converge_job().steps, s => match s {
-    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-  })
+  let runs = match outcome_accepted_value(fleet_converge_review_sheet_converge_job()) {
+    Present { value: zj } => filter(zj.steps, s => match s {
+      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    })
+    Absent => []
+  }
   let env_carried = any(runs, s => match s {
     RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match e { Present { value: kvs } => with_value(fields: kvs, key: sheets_token_env) == "${{ steps.writer_token.outputs.access_token }}"  Absent => false }
