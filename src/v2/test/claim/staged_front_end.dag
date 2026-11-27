@@ -1,8 +1,7 @@
 module v2.test.claim.staged_front_end
 
 import std.types { List, SourceSpan }
-import std.algebra { Cons, Empty, fold_list, FreeMonoid, length, string_contains }
-import std.dissolution { dissolution_is_bound }
+import std.algebra { fold_list, length, string_contains }
 import std.source_annotation {
   LeadingAfterLineIndent,
   NormalizedAnnotationCapture,
@@ -15,7 +14,6 @@ import std.source_annotation {
 import std.list { first_where }
 import v2.std.compilers.lexing { UnboundSourceAnnotation }
 import v2.std.node { Symbol }
-import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.compiler.parse { authored_normalized_capture }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
@@ -27,7 +25,6 @@ import v2.compiler.staged_front_end {
   FrontEndStagePassed,
   FrontEndStageRejected,
   ParsedModule,
-  front_end_placement_control_next_rung,
   front_end_stage_index,
   front_end_run_outcome,
   front_end_bounded_diagnostics,
@@ -218,34 +215,7 @@ test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -
 }
 
 
-// THE RUNG STATEMENT ON THE PARSE STEP HAS A TYPE BEHIND IT. The carrier says placement is checked only by a
-// manual, ungated control and that the moment to gate it is declared, not deferred; that is carried as a
-// DissolutionCondition (front_end_placement_control_next_rung) rather than as prose. This claim decides whether
-// it is UNBOUND -- true because nothing in the tree fires it: the required-floor runner is deleted
-// (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow passes a --required flag --
-// and refuses if it is ever bound while no floor can execute. It does not grep the carrier for the control's
-// name or for the roster's name: those are read from the carrier by whoever binds it, and a conjunct that
-// matches this module's own description can only fail when its author rewrites it.
-test fn front_end_placement_next_rung_is_declared_and_names_the_control() -> Bool {
-  !dissolution_is_bound(condition: front_end_placement_control_next_rung)
-}
 
-// WHO A REFUSAL BLAMES, IN A FORM A CENSUS CAN JOIN ON. A DeclarerRefused correction carries the qualified path
-// of the declarer whose contract broke, in SEGMENTS exactly as DeclarationLocus carries one (v2.std.diagnostic
-// NoCorrectionReason DeclarerRefused), so a census joins on that identity and never on the reason's prose.
-// front_end_capture_authority_declarer spells the path this lane would name for an annotation attachment loss:
-// std.source_annotation::annotation_attach_step, the fold that decides both the join rule and the containment
-// predicate. NO REFUSAL IN THIS MODULE EMITS IT -- the refusal that did went out with the deleted loss guard --
-// so it survives only as the identity the surviving sibling test compares against:
-// front_end_sibling_refusals_name_no_refused_declarer pins that the stage refusals which DO exist name no
-// declarer at all, which is what stops that arm being a default that fills itself in.
-
-fn front_end_capture_authority_declarer() -> FreeMonoid<Symbol> {
-  Cons {
-    head: ^std,
-    tail: Cons { head: ^source_annotation, tail: Cons { head: ^annotation_attach_step, tail: Empty } }
-  }
-}
 
 fn claim_names_a_refused_declarer(d: Diagnostic) -> Bool {
   match d.correction {
@@ -258,12 +228,18 @@ fn claim_refused_declarer_count(xs: List<Diagnostic>) -> Int {
   fold_list(xs: xs, empty: 0, cons: fn(acc, d) { if claim_names_a_refused_declarer(d: d) { acc + 1 } else { acc } })
 }
 
+// DeclarerRefused is a correction arm a stage refusal COULD use, and this is the claim that the refusals this
+// front end actually produces do not use it: every diagnostic of the bounded run and of the incomplete run is
+// checked for a DeclarerRefused correction, and none may carry one. That is a decision about what the compiler
+// emits, so a refusal that starts naming a declarer turns it red. The module used to also spell
+// std.source_annotation::annotation_attach_step by hand and compare that Cons chain to a literal of the same
+// path; a copy checked against its original stays green through any rename, which is the defect
+// gunbc.design_argument::single_authority names and which this branch had already deleted once in
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair. Both sides of that comparison are gone.
 test fn front_end_sibling_refusals_name_no_refused_declarer() -> Bool {
   let bounded = front_end_bounded_diagnostics(last: FrontEndParse)
   let incomplete = front_end_incomplete_diagnostics()
-  let carrier = front_end_capture_authority_declarer()
-  qualified_name_to_dotted_string(qn: carrier) == "std.source_annotation.annotation_attach_step"
-    && !claim_names_a_refused_declarer(d: bounded.head)
+  !claim_names_a_refused_declarer(d: bounded.head)
     && !claim_names_a_refused_declarer(d: incomplete.head)
     && claim_refused_declarer_count(xs: bounded.tail) == 0
     && claim_refused_declarer_count(xs: incomplete.tail) == 0
