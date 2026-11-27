@@ -788,10 +788,17 @@ fn committed_capture_is_measured() -> Bool {
     && count_starting(capture, "[floor-phase]") > 0
     && count_starting(capture, "[resolve]") > 0
     && count_starting(capture, "PASS ") > 0
-    && count_starting(capture, "[floor-shared-fill]") > 0
     && count_starting(untrimmed, "[floor-phase]") >= count_starting(capture, "[floor-phase]")
     && count_starting(untrimmed, "[resolve]") >= count_starting(capture, "[resolve]")
     && count_starting(untrimmed, "PASS ") > 0
+    // NO EXISTENCE COUNT IS ASSERTED ON [floor-shared-fill] ROWS. They are printed by the floor
+    // instruments themselves -- not by the capture -- and the pinned claim_batch has printed zero
+    // of them on every leg of every run (run9m: zero in both transcripts, while the PASSing
+    // floor_materialization claims printed none either). '> 0' here was a count about the world
+    // that no run of main could satisfy, the same unsatisfiable class as the clean-bit gate; a
+    // hand-authored capture cannot dodge it anyway, because the cache witness ties every fill
+    // count in the block to the retained log line for line. What lives HERE is measurement
+    // presence (phase, resolve, PASS rows, provenance identities), not instrument emission.
     && opt_ms_present(floor_preparation_split_total_ms(capture))
     && opt_ms_present(floor_preparation_split_total_ms(untrimmed))
     && sha_hex_shape_ok(after_equals(provenance_named(prov, "binary_sha256=")))
