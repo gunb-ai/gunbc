@@ -2772,6 +2772,10 @@ test fn the_census_unknown_reason_names_the_census_not_the_transport() -> Bool {
         && !string_contains(s: d, pattern: "user_work_scope")
     _ => false
   })
+    && (match recover_catalog_unknown_leg_reason(stdout: join([w.established_header, "\n"], "")) {
+        RecoverCatalogLegUnknown { detail: d } => string_contains(s: d, pattern: "exited unknown")
+        _ => false
+      })
     && read.success
     && string_contains(s: read.content, pattern: "recover_catalog_unknown_leg_reason(stdout: r.stdout)")
     && !string_contains(s: read.content, pattern: "the census door answered unknown: ")

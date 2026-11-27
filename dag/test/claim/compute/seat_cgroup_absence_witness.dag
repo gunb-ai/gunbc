@@ -1,0 +1,392 @@
+module test.claim.compute.seat_cgroup_absence_witness
+
+// THE ABSENT SEAT CGROUP AS THE GENERIC END PROOF, claimed at the three interfaces it earns.
+// PURE MAPPING: the per-parent standings to the fold's proof, with the controls the review demanded
+// -- a POPULATED cgroup anywhere preserves the charge, and ANY parent that could not be enumerated
+// voids the whole census rather than shrinking it (fail_closed: a located diagnostic, never a
+// release).
+// WET OBSERVER: a fake unified tree planted under a /tmp root each claim owns. The decisive control
+// (review 99011): a seat whose cgroup stands in the HISTORICAL app.slice placement -- where the
+// derived slice path would answer ENOENT -- must PRESERVE, never end: absence is established only by
+// successful enumeration over every documented placement parent, so a listing that never saw the
+// unit cannot free it while its processes run.
+// THE FOLD: unit_lifecycle_decide with the cgroup reading supplied at its boundary -- not-found + no
+// stop record + kernel-gone cgroup ends the seat; populated or unobservable keeps it unknown; a live
+// population outranks the proof; and the proof stays silent when the hook DID record the end and
+// when the manager never answered at all.
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.nat { Nat }
+import std.algebra { string_contains }
+import std.list { first_where }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.compute.seat_cgroup_absence {
+  SeatCgroupParentStanding, SeatCgroupEndProof,
+  ParentUnobservable, ParentNotContainingUnit, ParentHasUnitEventsUnreadable, ParentHasUnitPopulated, ParentHasUnitEmpty,
+  SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable,
+  seat_cgroup_end_proof_from_parents, observe_seat_cgroup, seat_unit_cgroup_prefix, seat_unit_cgroup_dir,
+  seat_user_service_dir, seat_cgroup_candidate_parents, seat_unit_kinds, seat_unit_dir_name,
+}
+import gunbc.compute.unit_bounds {
+  user_work_scope_service_unit_suffix, user_work_scope_scope_unit_suffix,
+}
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import gunbc.compute.attempt_lifecycle {
+  UnitLifecycle, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
+}
+import gunbc.compute.work_provider_local {
+  unit_lifecycle_decide, UnitLifecycleObservations, UnitPropertyReading, UnitPopulation,
+  PopulationOccupied, PopulationEmpty, PopulationUnknown,
+  SeatStopRecord, SeatStopRecordFound, SeatStopRecordNone,
+}
+
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { "" } else { concat(name, " ") }
+}
+
+fn witness_root(kind: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: concat("/tmp/gunbc-seat-cgroup-", concat(kind, ".XXXXXX"))).path
+}
+
+fn uid_of() -> Nat { 1005 }
+
+fn usrd(root: String) -> String {
+  seat_user_service_dir(mount: root as NonEmptyStr, uid: uid_of()) as String
+}
+
+fn plant_usrd(root: String) -> Bool {
+  shell.Mkdir.Parents(path: usrd(root) as FilePath).success
+}
+
+// Plant <root>/user.slice/user-<uid>.slice/user@<uid>.service/<parent>/<unit><kind>/cgroup.events
+fn plant_unit_kind(root: String, parent: String, unit: String, kind: String, body: String) -> Bool {
+  let dir = join([usrd(root), "/", parent, "/", unit, kind], "")
+  let made = shell.Mkdir.Parents(path: dir as FilePath).success
+  let wrote = Filesystem.Write(path: join([dir, "/cgroup.events"], ""), content: body)
+  made && wrote.success
+}
+
+fn plant_unit(root: String, parent: String, unit: String, body: String) -> Bool {
+  plant_unit_kind(
+    root: root, parent: parent, unit: unit,
+    kind: user_work_scope_service_unit_suffix as String, body: body)
+}
+
+// ── THE PURE MAPPING (fixed supplied standings) ───────────────────────────────────────────────
+
+fn an_absent_seat_cgroup_proves_the_end() -> Bool {
+  match seat_cgroup_end_proof_from_parents(root: "/x/user@1005.service", standings: [
+    ParentNotContainingUnit { parent: "/x/user@1005.service/gunbc-user-work.slice" },
+    ParentNotContainingUnit { parent: "/x/user@1005.service/app.slice" },
+  ]) {
+    SeatCgroupEnded { detail: d } => string_contains(s: d, pattern: "nothing the unit launched can still run")
+    _ => false
+  }
+}
+
+fn an_empty_seat_cgroup_proves_the_end() -> Bool {
+  match seat_cgroup_end_proof_from_parents(root: "/x/user@1005.service", standings: [
+    ParentNotContainingUnit { parent: "/x/user@1005.service/gunbc-user-work.slice" },
+    ParentHasUnitEmpty { parent: "/x/user@1005.service/app.slice", detail: "the unit's cgroup reports populated 0: drained, not yet reaped" },
+  ]) {
+    SeatCgroupEnded { detail: d } => string_contains(s: d, pattern: "populated 0")
+    _ => false
+  }
+}
+
+// THE RED CONTROL: a standing, populated cgroup anywhere is PRESERVED -- whichever slice the seat was
+// ever placed in, however convinced the manager is that it lost the unit.
+fn a_populated_seat_cgroup_is_preserved() -> Bool {
+  match seat_cgroup_end_proof_from_parents(root: "/x/user@1005.service", standings: [
+    ParentHasUnitPopulated { parent: "/x/user@1005.service/gunbc-user-work.slice", detail: "processes remain" },
+    ParentNotContainingUnit { parent: "/x/user@1005.service/app.slice" },
+  ]) {
+    SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "still running")
+    _ => false
+  }
+}
+
+// THE VOIDING CONTROL: one unreadable parent voids the census, it does not shrink it -- even beside
+// evidence that would otherwise settle the seat either way.
+fn an_unobservable_standing_never_ends_the_seat() -> Bool {
+  match seat_cgroup_end_proof_from_parents(root: "/x/user@1005.service", standings: [
+    ParentUnobservable { parent: "/x/user@1005.service/app.slice", detail: "EACCES" },
+    ParentNotContainingUnit { parent: "/x/user@1005.service/gunbc-user-work.slice" },
+  ]) {
+    SeatCgroupUnobservable { detail: d } => string_contains(s: d, pattern: "could not be enumerated")
+    _ => false
+  }
+    && match seat_cgroup_end_proof_from_parents(root: "/x/user@1005.service", standings: [
+      ParentHasUnitPopulated { parent: "/x/user@1005.service/gunbc-user-work.slice", detail: "processes remain" },
+      ParentUnobservable { parent: "/x/user@1005.service/app.slice", detail: "EIO" },
+    ]) {
+      SeatCgroupUnobservable { detail: _ } => true
+      _ => false
+    }
+    && match seat_cgroup_end_proof_from_parents(root: "/x/user@1005.service", standings: [
+      ParentNotContainingUnit { parent: "/x/user@1005.service/gunbc-user-work.slice" },
+      ParentHasUnitEventsUnreadable { parent: "/x/user@1005.service/app.slice", detail: "cgroup.events carried no populated key" },
+    ]) {
+      SeatCgroupUnobservable { detail: _ } => true
+      _ => false
+    }
+}
+
+// ── THE OBSERVER OVER PLANTED TREES (wet: real directories and reads, no mocks) ───────────────
+
+fn the_observer_reports_an_absent_unit_absent() -> Bool {
+  let root = witness_root(kind: "absent")
+  plant_usrd(root: root)
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-deadbeef" as NonEmptyStr) {
+        SeatCgroupEnded { detail: d } => string_contains(s: d, pattern: "nothing the unit launched can still run")
+        _ => false
+      }
+}
+
+fn the_observer_reports_a_populated_unit_populated() -> Bool {
+  let root = witness_root(kind: "populated")
+  plant_usrd(root: root)
+    && plant_unit(root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-live", body: "populated 1\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-live" as NonEmptyStr) {
+        SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "still running")
+        _ => false
+      }
+}
+
+fn the_observer_reports_a_drained_unit_empty() -> Bool {
+  let root = witness_root(kind: "empty")
+  plant_usrd(root: root)
+    && plant_unit(root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-drained", body: "populated 0\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-drained" as NonEmptyStr) {
+        SeatCgroupEnded { detail: d } => string_contains(s: d, pattern: "populated 0")
+        _ => false
+      }
+}
+
+// THE REVIEW 99011 CONTROL: a seat launched before the slice binding -- or by any route that skipped
+// it -- lives under the manager's default app.slice placement. The derived slice path there answers
+// ENOENT, and the OLD single-path observer would have called that an end. The census must instead
+// read the listing that DOES name the unit and preserve the charge.
+fn a_seat_in_the_historical_app_slice_is_still_seen() -> Bool {
+  let root = witness_root(kind: "historical")
+  plant_usrd(root: root)
+    && plant_unit(root: root, parent: "app.slice", unit: "gunbc-compute-legacy", body: "populated 1\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-legacy" as NonEmptyStr) {
+        SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "app.slice")
+        _ => false
+      }
+}
+
+// THE REVIEW 99036 CONTROL: the historical floor-demand recipe wrapped with systemd-run --user
+// --scope, so its unit directory carries the .scope suffix. A containment check that only ever
+// looked for ".service" would list the parent successfully, name nothing, report "contained
+// nowhere", and RELEASE A RUNNING SCOPE SEAT. A live scope seat must PRESERVE, in either parent.
+fn a_live_scope_seat_in_the_slice_is_still_running() -> Bool {
+  let root = witness_root(kind: "scope-live")
+  plant_usrd(root: root)
+    && plant_unit_kind(
+        root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-scope-live",
+        kind: user_work_scope_scope_unit_suffix as String, body: "populated 1\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-scope-live" as NonEmptyStr) {
+        SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "still running")
+        _ => false
+      }
+}
+
+fn a_live_scope_seat_in_the_default_app_slice_is_still_running() -> Bool {
+  let root = witness_root(kind: "scope-app")
+  plant_usrd(root: root)
+    && plant_unit_kind(
+        root: root, parent: "app.slice", unit: "gunbc-compute-scope-legacy",
+        kind: user_work_scope_scope_unit_suffix as String, body: "populated 1\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-scope-legacy" as NonEmptyStr) {
+        SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "app.slice")
+        _ => false
+      }
+}
+
+// The drained SCOPE seat must still END: the fix enumerates kinds, it does not widen the proof.
+fn a_drained_scope_seat_is_seen_ended() -> Bool {
+  let root = witness_root(kind: "scope-drained")
+  plant_usrd(root: root)
+    && plant_unit_kind(
+        root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-scope-drained",
+        kind: user_work_scope_scope_unit_suffix as String, body: "populated 0\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-scope-drained" as NonEmptyStr) {
+        SeatCgroupEnded { detail: d } => string_contains(s: d, pattern: "populated 0")
+        _ => false
+      }
+}
+
+// THE WRONG-SPELLING / UNREADABLE-ROOT GUARD: with no user@ directory to enumerate, the unit file is
+// certainly missing too -- and this claim requires the UNOBSERVABLE arm, never the ended one.
+fn a_missing_manager_directory_is_unobservable_not_absent() -> Bool {
+  let root = witness_root(kind: "no-root")
+  match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-any" as NonEmptyStr) {
+    SeatCgroupUnobservable { detail: d } => string_contains(s: d, pattern: "could not be listed")
+    _ => false
+  }
+}
+
+fn garbage_events_are_unreadable_not_ended() -> Bool {
+  let root = witness_root(kind: "garbage")
+  plant_usrd(root: root)
+    && plant_unit(root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-junk", body: "populated maybe\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-junk" as NonEmptyStr) {
+        SeatCgroupUnobservable { detail: d } => string_contains(s: d, pattern: "cgroup.events")
+        _ => false
+      }
+}
+
+// THE DOCUMENTED PLACEMENT SET, pinned: the candidate list is exactly the two parents unit_bounds
+// documents. A silent removal -- dropping app.slice, say -- would re-open the review 99011 hole, and
+// this claim is what turns that into a red witness.
+fn the_placement_set_names_the_documented_parents() -> Bool {
+  join(seat_cgroup_candidate_parents(), "|") == concat(user_work_slice_unit_name as String, concat("|", "app.slice"))
+    && match first_where(seat_unit_kinds(), keep: k => k == user_work_scope_service_unit_suffix as String) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    && match first_where(seat_unit_kinds(), keep: k => k == user_work_scope_scope_unit_suffix as String) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    && seat_unit_dir_name(unit: "gunbc-compute-ab12" as NonEmptyStr, kind: user_work_scope_scope_unit_suffix as String)
+      == "gunbc-compute-ab12.scope"
+}
+
+// THE DERIVATION PINNED TO THE PLACEMENT RULE, one exact string for the declared-slice placement.
+fn the_derivation_matches_the_placement_rule() -> Bool {
+  seat_unit_cgroup_prefix(mount: "/sys/fs/cgroup" as NonEmptyStr, uid: 1005) as String
+    == "/sys/fs/cgroup/user.slice/user-1005.slice/user@1005.service/gunbc-user-work.slice"
+    && seat_unit_cgroup_dir(mount: "/sys/fs/cgroup" as NonEmptyStr, uid: 1005, unit: "gunbc-compute-ab12" as NonEmptyStr) as String
+      == "/sys/fs/cgroup/user.slice/user-1005.slice/user@1005.service/gunbc-user-work.slice/gunbc-compute-ab12"
+}
+
+// ── THE FOLD, with the cgroup reading supplied at its boundary ────────────────────────────────
+
+fn not_found() -> UnitPropertyReading {
+  UnitPropertyReading { queried: true, value: "not-found" }
+}
+
+fn unasked() -> UnitPropertyReading {
+  UnitPropertyReading { queried: false, value: "" }
+}
+
+fn fold_none_record(proof: SeatCgroupEndProof, population: UnitPopulation) -> UnitLifecycle {
+  unit_lifecycle_decide(o: UnitLifecycleObservations {
+    load_state: not_found(),
+    stop_record: SeatStopRecordNone,
+    active_state: unasked(),
+    result: unasked(),
+    population: population,
+    seat_cgroup: proof,
+  })
+}
+
+fn unknown_population() -> UnitPopulation {
+  PopulationUnknown { detail: "no readable events file" }
+}
+
+fn an_absent_unit_with_an_absent_seat_cgroup_is_ended() -> Bool {
+  match fold_none_record(proof: SeatCgroupEnded { detail: "the kernel confirms its cgroup is gone at /x" }, population: unknown_population()) {
+    UnitTerminatedCauseUnknown { detail: d } => string_contains(s: d, pattern: "kernel confirms")
+    _ => false
+  }
+}
+
+fn an_absent_unit_with_a_populated_seat_cgroup_keeps_its_charge() -> Bool {
+  match fold_none_record(proof: SeatCgroupPreserve { detail: "processes remain" }, population: unknown_population()) {
+    UnitLifecycleUnknown { detail: _ } => true
+    _ => false
+  }
+}
+
+fn an_absent_unit_with_an_unobservable_seat_cgroup_keeps_its_charge() -> Bool {
+  match fold_none_record(proof: SeatCgroupUnobservable { detail: "root not listable" }, population: unknown_population()) {
+    UnitLifecycleUnknown { detail: _ } => true
+    _ => false
+  }
+}
+
+fn a_live_population_outranks_the_seat_cgroup_end_proof() -> Bool {
+  // THE ORDERING CONTROL: occupied processes outrank every end proof -- the fold must consult the
+  // population FIRST, so a stale or wrong end proof can never free a live seat.
+  match unit_lifecycle_decide(o: UnitLifecycleObservations {
+    load_state: not_found(),
+    stop_record: SeatStopRecordNone,
+    active_state: unasked(),
+    result: unasked(),
+    population: PopulationOccupied { detail: "populated 1" },
+    seat_cgroup: SeatCgroupEnded { detail: "the kernel confirms its cgroup is gone" },
+  }) {
+    UnitStillRunning { detail: _ } => true
+    _ => false
+  }
+}
+
+fn the_cgroup_proof_stays_silent_when_the_hook_recorded_the_end() -> Bool {
+  // THE FOUND ARM STILL SPEAKS FIRST, and its detail stays the hook's own account -- an ended-seat
+  // proof must not leak into (or override) the reading that was already sufficient.
+  match unit_lifecycle_decide(o: UnitLifecycleObservations {
+    load_state: not_found(),
+    stop_record: SeatStopRecordFound { invocation_id: "i-1", end: "2026-11-26T00:00:00Z" },
+    active_state: unasked(),
+    result: unasked(),
+    population: unknown_population(),
+    seat_cgroup: SeatCgroupEnded { detail: "the kernel confirms its cgroup is gone" },
+  }) {
+    UnitTerminatedCauseUnknown { detail: d } =>
+      string_contains(s: d, pattern: "stop hook recorded") && !string_contains(s: d, pattern: "kernel confirms")
+    _ => false
+  }
+}
+
+fn the_cgroup_proof_stays_silent_when_the_manager_did_not_answer() -> Bool {
+  // THE OTHER GUARD IN THE FOLD: without the manager's not-found reading the cgroup alone is nothing.
+  match unit_lifecycle_decide(o: UnitLifecycleObservations {
+    load_state: unasked(),
+    stop_record: SeatStopRecordNone,
+    active_state: unasked(),
+    result: unasked(),
+    population: unknown_population(),
+    seat_cgroup: SeatCgroupEnded { detail: "the kernel confirms its cgroup is gone" },
+  }) {
+    UnitLifecycleUnknown { detail: d } =>
+      string_contains(s: d, pattern: "could not be queried") && !string_contains(s: d, pattern: "kernel confirms")
+    _ => false
+  }
+}
+
+fn run_seat_cgroup_absence_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "an_absent_seat_cgroup_proves_the_end", held: an_absent_seat_cgroup_proves_the_end()),
+    check_or_name(name: "an_empty_seat_cgroup_proves_the_end", held: an_empty_seat_cgroup_proves_the_end()),
+    check_or_name(name: "a_populated_seat_cgroup_is_preserved", held: a_populated_seat_cgroup_is_preserved()),
+    check_or_name(name: "an_unobservable_standing_never_ends_the_seat", held: an_unobservable_standing_never_ends_the_seat()),
+    check_or_name(name: "the_observer_reports_an_absent_unit_absent", held: the_observer_reports_an_absent_unit_absent()),
+    check_or_name(name: "the_observer_reports_a_populated_unit_populated", held: the_observer_reports_a_populated_unit_populated()),
+    check_or_name(name: "the_observer_reports_a_drained_unit_empty", held: the_observer_reports_a_drained_unit_empty()),
+    check_or_name(name: "a_seat_in_the_historical_app_slice_is_still_seen", held: a_seat_in_the_historical_app_slice_is_still_seen()),
+    check_or_name(name: "a_live_scope_seat_in_the_slice_is_still_running", held: a_live_scope_seat_in_the_slice_is_still_running()),
+    check_or_name(name: "a_live_scope_seat_in_the_default_app_slice_is_still_running", held: a_live_scope_seat_in_the_default_app_slice_is_still_running()),
+    check_or_name(name: "a_drained_scope_seat_is_seen_ended", held: a_drained_scope_seat_is_seen_ended()),
+    check_or_name(name: "a_missing_manager_directory_is_unobservable_not_absent", held: a_missing_manager_directory_is_unobservable_not_absent()),
+    check_or_name(name: "garbage_events_are_unreadable_not_ended", held: garbage_events_are_unreadable_not_ended()),
+    check_or_name(name: "the_placement_set_names_the_documented_parents", held: the_placement_set_names_the_documented_parents()),
+    check_or_name(name: "the_derivation_matches_the_placement_rule", held: the_derivation_matches_the_placement_rule()),
+    check_or_name(name: "an_absent_unit_with_an_absent_seat_cgroup_is_ended", held: an_absent_unit_with_an_absent_seat_cgroup_is_ended()),
+    check_or_name(name: "an_absent_unit_with_a_populated_seat_cgroup_keeps_its_charge", held: an_absent_unit_with_a_populated_seat_cgroup_keeps_its_charge()),
+    check_or_name(name: "an_absent_unit_with_an_unobservable_seat_cgroup_keeps_its_charge", held: an_absent_unit_with_an_unobservable_seat_cgroup_keeps_its_charge()),
+    check_or_name(name: "a_live_population_outranks_the_seat_cgroup_end_proof", held: a_live_population_outranks_the_seat_cgroup_end_proof()),
+    check_or_name(name: "the_cgroup_proof_stays_silent_when_the_hook_recorded_the_end", held: the_cgroup_proof_stays_silent_when_the_hook_recorded_the_end()),
+    check_or_name(name: "the_cgroup_proof_stays_silent_when_the_manager_did_not_answer", held: the_cgroup_proof_stays_silent_when_the_manager_did_not_answer()),
+  ], "")
+  if red == "" {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: join(["seat cgroup end-proof claim red: ", red], "") }
+  }
+}
