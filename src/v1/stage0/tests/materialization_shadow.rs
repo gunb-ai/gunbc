@@ -1,0 +1,505 @@
+//! Production route for the pre-registered fresh-process experiment in
+//! docs/measurements/v1_compiler_materialization. No stored answer is served.
+use serde::Deserialize;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+const QUESTION: &str = "v1.std.core::build_newline_index";
+const PREFIX: &str = "[materialization-shadow] ";
+const STORE_ENV: &str = "GUNBC_MATERIALIZATION_SHADOW_DIR";
+const ENTRY: &str = r#"module shadow.entry
+import shadow.helper { answer }
+type ProcessExit = ExitSuccess | ExitFailure { code: Int, reason: String }
+fn main() -> ProcessExit {
+  if answer() == 1 { ExitSuccess } else { ExitFailure { code: 7, reason: "observed changed helper" } }
+}
+"#;
+
+#[derive(Debug, Deserialize)]
+struct Event {
+    question: String,
+    compiler_image_sha256: String,
+    logical_source: String,
+    input_digest: String,
+    output_digest: String,
+    lookup: String,
+    comparison: String,
+}
+
+struct Reading {
+    code: i32,
+    stdout: Vec<u8>,
+    stderr: String,
+    events: Vec<Event>,
+}
+
+struct Experiment {
+    source_roots: Vec<PathBuf>,
+    repo: PathBuf,
+    dir: PathBuf,
+}
+
+fn create_experiment() -> Experiment {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .unwrap();
+    let target = repo.join("target");
+    fs::create_dir_all(&target).unwrap();
+    let dir = target.join(format!(
+        "materialization-shadow-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&dir).unwrap();
+    fs::create_dir(dir.join("src")).unwrap();
+    fs::write(dir.join("src/entry.dag"), ENTRY).unwrap();
+    fs::write(
+        dir.join("src/unrelated.dag"),
+        "module shadow.unrelated\nfn nobody_calls() -> Bool { true }\n",
+    )
+    .unwrap();
+    let case = Experiment {
+        source_roots: vec![dir.join("src")],
+        repo,
+        dir,
+    };
+    write_helper(&case, 1);
+    case
+}
+
+fn write_helper(case: &Experiment, literal: i32) {
+    fs::write(
+        case.dir.join("src/helper.dag"),
+        format!("module shadow.helper\n// é\nfn answer() -> Int {{ {literal} }}\n"),
+    )
+    .unwrap();
+}
+
+fn run(case: &Experiment, store: Option<&Path>, expected_code: i32) -> Reading {
+    run_image(
+        case,
+        Path::new(env!("CARGO_BIN_EXE_gunbc")),
+        store,
+        expected_code,
+    )
+}
+
+fn run_image(case: &Experiment, image: &Path, store: Option<&Path>, expected_code: i32) -> Reading {
+    let src = case.dir.join("src");
+    let mut cmd = Command::new(image);
+    cmd.current_dir(&case.repo).env_remove(STORE_ENV).arg("run");
+    for root in &case.source_roots {
+        cmd.arg("--source-root").arg(root);
+    }
+    cmd.arg("--entry")
+        .arg(src.join("entry.dag"))
+        .args(["--function", "main"]);
+    if let Some(store) = store {
+        cmd.env(STORE_ENV, store);
+    }
+    let output = cmd.output().expect("execute gunbc run");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let code = output.status.code().expect("gunbc exited by signal");
+    assert_eq!(code, expected_code, "{stderr}");
+    let events = stderr
+        .lines()
+        .filter_map(|l| l.strip_prefix(PREFIX))
+        .map(|s| serde_json::from_str(s).expect("malformed shadow event"))
+        .collect();
+    Reading {
+        code,
+        stderr,
+        stdout: output.stdout,
+        events,
+    }
+}
+
+/// Compare events with the producer's run-owned executable before attributing a command to it.
+fn require_producer_image(reading: &Reading, producer: &Path) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    if reading.events.is_empty() {
+        return Err("no shadow observations".into());
+    }
+    let mut image = fs::File::open(producer).map_err(|error| error.to_string())?;
+    let mut digest = Sha256::new();
+    std::io::copy(&mut image, &mut digest).map_err(|error| error.to_string())?;
+    let expected = hex::encode(digest.finalize());
+    for event in &reading.events {
+        if event.compiler_image_sha256 != expected {
+            return Err(format!(
+                "compiler image mismatch: expected {expected}, observed {}",
+                event.compiler_image_sha256
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn sample<'a>(
+    case: &Experiment,
+    reading: &'a Reading,
+    file: &str,
+    lookup: &str,
+    comparison: &str,
+) -> &'a Event {
+    let source = case.dir.join("src").join(file);
+    let mut events = reading.events.iter().filter(|event| {
+        event.question == QUESTION && case.repo.join(&event.logical_source) == source
+    });
+    let first = events.next().unwrap_or_else(|| {
+        panic!(
+            "no {QUESTION} event for {}: {}",
+            source.display(),
+            reading.stderr
+        )
+    });
+    assert_eq!(
+        (&*first.lookup, &*first.comparison),
+        (lookup, comparison),
+        "{first:?}"
+    );
+    for d in [&first.input_digest, &first.output_digest] {
+        assert!(
+            d.len() == 64
+                && d.bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)),
+            "{first:?}"
+        );
+    }
+    for event in events {
+        assert_eq!(
+            (&event.input_digest, &event.output_digest),
+            (&first.input_digest, &first.output_digest)
+        );
+        let subsequent = if lookup == "miss" {
+            ("hit", "equal")
+        } else {
+            (lookup, comparison)
+        };
+        assert_eq!(
+            (&*event.lookup, &*event.comparison),
+            subsequent,
+            "{event:?}"
+        );
+    }
+    first
+}
+
+#[test]
+fn a_new_provider_under_an_admitted_root_refuses_before_shadow_observation() {
+    let mut case = create_experiment();
+    let second = case.dir.join("zz-second");
+    fs::create_dir(&second).unwrap();
+    case.source_roots.push(second.clone());
+    let store = case.dir.join("store");
+    let baseline = run(&case, Some(&store), 0);
+    let original_hits = |reading: &Reading| {
+        for file in ["entry.dag", "helper.dag"] {
+            let original = sample(&case, &baseline, file, "miss", "absent");
+            let current = sample(&case, reading, file, "hit", "equal");
+            assert_eq!(
+                (&current.input_digest, &current.output_digest),
+                (&original.input_digest, &original.output_digest),
+            );
+        }
+        assert_eq!(reading.stdout, baseline.stdout);
+    };
+    original_hits(&run(&case, Some(&store), 0));
+
+    let helper = case.dir.join("src/helper.dag");
+    let competing = second.join("other.dag");
+    fs::write(
+        &competing,
+        "module shadow.helper\nfn answer() -> Int { 2 }\n",
+    )
+    .unwrap();
+    let expected = format!(
+        "cause: module shadow.helper is declared in both {} and {}",
+        helper.strip_prefix(&case.repo).unwrap().display(),
+        competing.strip_prefix(&case.repo).unwrap().display(),
+    );
+    for selected_store in [&store, &case.dir.join("empty-store")] {
+        let refused = run(&case, Some(selected_store), 1);
+        let causes: Vec<_> = refused
+            .stderr
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with("cause:"))
+            .collect();
+        assert_eq!(causes, [expected.as_str()], "{}", refused.stderr);
+        assert!(refused.stdout.is_empty());
+        assert!(refused.events.is_empty());
+        assert_eq!(
+            require_producer_image(&refused, Path::new(env!("CARGO_BIN_EXE_gunbc"))).unwrap_err(),
+            "no shadow observations"
+        );
+        assert!(!refused.stderr.contains("[materialization-shadow-error]"));
+    }
+
+    fs::remove_file(competing).unwrap();
+    original_hits(&run(&case, Some(&store), 0));
+    fs::remove_dir_all(&case.dir).unwrap();
+}
+
+#[test]
+fn fresh_process_predictions_match_observed_compiler_results() {
+    let case = create_experiment();
+    let store = case.dir.join("store");
+    let baseline = run(&case, Some(&store), 0);
+    require_producer_image(&baseline, Path::new(env!("CARGO_BIN_EXE_gunbc"))).unwrap();
+    let entry = sample(&case, &baseline, "entry.dag", "miss", "absent");
+    let helper = sample(&case, &baseline, "helper.dag", "miss", "absent");
+
+    let same = |run: &Reading, state, relation| {
+        for (file, original) in [("entry.dag", entry), ("helper.dag", helper)] {
+            let seen = sample(&case, run, file, state, relation);
+            assert_eq!(
+                (&seen.input_digest, &seen.output_digest),
+                (&original.input_digest, &original.output_digest)
+            );
+        }
+        assert_eq!(run.stdout, baseline.stdout);
+    };
+    same(&run(&case, Some(&store), 0), "hit", "equal");
+    let unrelated = case.dir.join("src/unrelated.dag");
+    fs::write(
+        &unrelated,
+        "module shadow.unrelated\nfn nobody_calls() -> Bool { false }\n",
+    )
+    .unwrap();
+    let unrelated_run = run(&case, Some(&store), 0);
+    same(&unrelated_run, "hit", "equal");
+    assert!(!unrelated_run
+        .events
+        .iter()
+        .any(|e| e.question == QUESTION && case.repo.join(&e.logical_source) == unrelated));
+
+    write_helper(&case, 2);
+    let edited = run(&case, Some(&store), 7);
+    assert_eq!(
+        sample(&case, &edited, "entry.dag", "hit", "equal").output_digest,
+        entry.output_digest
+    );
+    let changed = sample(&case, &edited, "helper.dag", "miss", "absent");
+    assert_ne!(changed.input_digest, helper.input_digest);
+    assert_ne!(changed.output_digest, helper.output_digest);
+    let uncached = run(&case, None, 7);
+    assert!(uncached.events.is_empty());
+    assert_eq!(
+        (uncached.code, &uncached.stdout),
+        (edited.code, &edited.stdout)
+    );
+    assert!(
+        uncached.stderr.contains("observed changed helper")
+            && edited.stderr.contains("observed changed helper")
+    );
+
+    let invalid_config = run(&case, Some(Path::new("relative-shadow-store")), 1);
+    assert!(invalid_config.events.is_empty());
+    assert!(invalid_config.stderr.contains(&format!(
+        "[materialization-shadow-error] {QUESTION}: GUNBC_MATERIALIZATION_SHADOW_DIR must be absolute"
+    )), "{}", invalid_config.stderr);
+    assert!(!invalid_config.stderr.contains("observed changed helper"));
+
+    write_helper(&case, 1);
+    same(&run(&case, Some(&store), 0), "hit", "equal");
+    same(
+        &run(&case, Some(&case.dir.join("empty-store")), 0),
+        "miss",
+        "absent",
+    );
+
+    // Plant the previously observed changed answer at the baseline key, as if a proposed
+    // key had omitted the literal. Recompute record integrity to exercise semantic disagreement.
+    use sha2::{Digest, Sha256};
+    let record = store.join("newline-index-v1").join(&helper.input_digest);
+    let changed_answer = hex::decode(&changed.output_digest).unwrap();
+    let mut integrity = Sha256::new();
+    integrity.update(b"newline-index-shadow-v1");
+    integrity.update(hex::decode(&helper.input_digest).unwrap());
+    integrity.update(&changed_answer);
+    let mut planted = changed_answer;
+    planted.extend_from_slice(&integrity.finalize());
+    fs::write(&record, &planted).unwrap();
+    let disagreement = run(&case, Some(&store), 1);
+    sample(&case, &disagreement, "entry.dag", "hit", "equal");
+    assert_eq!(
+        sample(&case, &disagreement, "helper.dag", "hit", "different").output_digest,
+        helper.output_digest
+    );
+    assert!(disagreement.stderr.contains(&format!(
+        "[materialization-shadow-error] {QUESTION}: {}: hit/different: stored answer differs from fresh", helper.logical_source
+    )), "{}", disagreement.stderr);
+    assert!(disagreement.stdout.is_empty());
+    assert_eq!(fs::read(&record).unwrap(), planted);
+
+    planted[32] ^= 1;
+    fs::write(&record, &planted).unwrap();
+    let corrupt = run(&case, Some(&store), 1);
+    sample(&case, &corrupt, "entry.dag", "hit", "equal");
+    assert_eq!(
+        sample(&case, &corrupt, "helper.dag", "corrupt", "unavailable").output_digest,
+        helper.output_digest
+    );
+    assert!(corrupt.stderr.contains(&format!(
+        "[materialization-shadow-error] {QUESTION}: {}: corrupt/unavailable: invalid stored record", helper.logical_source
+    )), "{}", corrupt.stderr);
+    assert!(corrupt.stdout.is_empty());
+    assert_eq!(fs::read(&record).unwrap(), planted);
+    let disabled = run(&case, None, 0);
+    assert!(disabled.events.is_empty());
+    assert_eq!(disabled.stdout, baseline.stdout);
+    fs::remove_dir_all(&case.dir).unwrap();
+}
+
+// ELF permits trailing bytes. This control executes two distinct images with identical code and
+// version output. The measured SHA must still distinguish them. An independent prior build can
+// be supplied instead to replay the same stale-producer control across builds.
+#[cfg(target_os = "linux")]
+#[test]
+fn identical_answers_from_a_different_compiler_image_refuse_the_pairing() {
+    use std::io::Write;
+    let case = create_experiment();
+    let producer = Path::new(env!("CARGO_BIN_EXE_gunbc"));
+    let alternate = if let Some(path) = std::env::var_os("GUNBC_SHADOW_STALE_CONTROL_IMAGE") {
+        PathBuf::from(path)
+    } else {
+        let path = case.dir.join("alternate-gunbc");
+        fs::copy(producer, &path).unwrap();
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(b"\0shadow-image-negative-control")
+            .unwrap();
+        path
+    };
+    let store = case.dir.join("store");
+    let fresh = run_image(&case, producer, Some(&store), 0);
+    let stale = run_image(&case, &alternate, Some(&store), 0);
+    require_producer_image(&fresh, producer).unwrap();
+    require_producer_image(&stale, &alternate).unwrap();
+    // Matching answers, command output, and ordinary success cannot stand in for image identity.
+    for file in ["entry.dag", "helper.dag"] {
+        let before = sample(&case, &fresh, file, "miss", "absent");
+        let after = sample(&case, &stale, file, "miss", "absent");
+        assert_eq!(before.output_digest, after.output_digest);
+        assert_ne!(before.input_digest, after.input_digest);
+    }
+    assert_eq!(fresh.stdout, stale.stdout);
+    let reason = require_producer_image(&stale, producer).unwrap_err();
+    assert!(reason.starts_with("compiler image mismatch:"), "{reason}");
+    fs::remove_dir_all(case.dir).unwrap();
+}
+
+/// Independent of the shadow observer: compare fresh, typed compiler answers over a controlled
+/// edit. These observations make no claim about a cache lookup, payload size or elapsed time.
+#[test]
+fn body_edits_change_some_compiler_answers_and_preserve_others() {
+    use std::rc::Rc;
+    use v1_compiler::v1_compiler_compile::{
+        compile_to_resolved, dag_parse_environment, front_end_sources, FrontendResult, SourceFile,
+    };
+    use v1_compiler::v1_compiler_normalize::normalize_graph;
+    use v1_compiler::v1_compiler_tokenize::tokenize_artifact;
+    use v1_compiler::v1_std_core::LeafOwner;
+
+    let source = |name, literal| {
+        Rc::new(SourceFile {
+            path: format!("{name}.dag"),
+            content: format!("module shadow.{name}\nfn answer() -> Int {{ {literal} }}\n"),
+        })
+    };
+    let first = source("helper", 1);
+    let edit = source("helper", 2);
+    let lex = |s: &SourceFile| {
+        tokenize_artifact(s.content.clone(), s.path.clone(), dag_parse_environment())
+    };
+    assert_ne!(lex(&first).tokens, lex(&edit).tokens);
+    let prepare = |s: Rc<SourceFile>| front_end_sources(Rc::new(im::vector![s]));
+    let original = prepare(first.clone());
+    let edited = prepare(edit.clone());
+    assert!(original.graph.is_some() && edited.graph.is_some());
+    assert_eq!(
+        original.newline_indices[0].offsets,
+        edited.newline_indices[0].offsets
+    );
+    assert_ne!(
+        original.newline_indices[0].char_codes,
+        edited.newline_indices[0].char_codes
+    );
+    assert_eq!(original.intern_table.strings, edited.intern_table.strings);
+    assert_eq!(original.intern_table.index, edited.intern_table.index);
+    assert_eq!(
+        original.intern_table.authored_token_ordinals,
+        edited.intern_table.authored_token_ordinals
+    );
+    assert_eq!(original.occurrence_transport, edited.occurrence_transport);
+
+    let prefixed = front_end_sources(Rc::new(im::vector![source("earlier", 3), first.clone()]));
+    assert!(prefixed.graph.is_some());
+    assert_eq!(original.newline_indices[0], prefixed.newline_indices[1]);
+    let helper_occurrences = |front: &FrontendResult| {
+        front
+            .occurrence_transport
+            .index
+            .entries
+            .iter()
+            .map(|entry| &entry.projection)
+            .filter(|p| p.diagnostic_span.file == "helper.dag")
+            .map(|p| {
+                (
+                    p.authored_name.clone(),
+                    p.diagnostic_span.clone(),
+                    p.occurrence.value,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = helper_occurrences(&original);
+    let after = helper_occurrences(&prefixed);
+    assert!(!before.is_empty());
+    assert_eq!(before.len(), after.len());
+    for ((name, span, old_id), (later_name, later_span, new_id)) in before.iter().zip(&after) {
+        assert_eq!((name, span), (later_name, later_span));
+        assert!(
+            old_id < new_id,
+            "expected a shifted allocator for {name} at {span:?}"
+        );
+    }
+    for front in [original, edited] {
+        let indices = front
+            .newline_indices
+            .iter()
+            .map(|index| (index.file.clone(), index.clone()))
+            .collect();
+        let normalized = normalize_graph(front.graph.clone().unwrap(), Rc::new(indices));
+        assert!(
+            normalized.diagnostics.is_empty(),
+            "{:?}",
+            normalized.diagnostics
+        );
+    }
+    let leaf = |sources| {
+        let compiled = compile_to_resolved(Rc::new(sources));
+        let graph = compiled.graph.as_ref().expect("missing resolved graph");
+        graph
+            .item_leaf_owner_modules
+            .get("answer")
+            .expect("missing answer declaration")
+            .clone()
+    };
+    assert!(
+        matches!(leaf(im::vector![first.clone()]).as_ref(), LeafOwner::SingleOwner { module } if module == "shadow.helper")
+    );
+    assert_eq!(leaf(im::vector![first.clone()]), leaf(im::vector![edit]));
+    assert!(matches!(
+        leaf(im::vector![first, source("other", 1)]).as_ref(),
+        LeafOwner::LeafAmbiguous
+    ));
+}

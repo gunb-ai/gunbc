@@ -2,6 +2,7 @@ module test.claim.compute.remote_build_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.retry_law { RetryHintNone }
 import product.host_identity { HostIdentity }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry, BuildGunbcBinaries }
@@ -261,7 +262,7 @@ test fn the_first_candidate_is_tried_first() -> Bool {
 }
 
 test fn a_full_host_sends_the_request_to_the_next() -> Bool {
-  let full = RemoteBuildAttempt { host: w_host(i: 0) as NonEmptyStr, answer: HostCapacityFull { detail: "pool full" } }
+  let full = RemoteBuildAttempt { host: w_host(i: 0) as NonEmptyStr, answer: HostCapacityFull { detail: "pool full", retry: RetryHintNone } }
   match remote_build_next_step(candidates: w_candidates(), attempts: [full]) {
     RemoteBuildTryHost { candidate } => candidate.host as String == w_host(i: 1)
     _ => false

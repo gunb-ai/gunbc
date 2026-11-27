@@ -1,9 +1,14 @@
 module gunbc.compute.remote_build_serve
 
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, EpochSecs, checked_int_to_epoch_secs }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
+import std.measure { Second, second, second_count }
+import std.nat { nat_to_decimal_string }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_leg_wall_deadline, HostBuildLeg }
 import extdeps.shell
 import extdeps.ssh.keys {
   AuthorizedKeyEntry, AuthorizedKeyForcedCommand, authorized_key_forced_command, ForcedCommandOption, RestrictOption, authorized_key_entry_line,
@@ -50,6 +55,7 @@ import gunbc.compute.remote_build {
   RemoteBuildCandidate, remote_build_candidates,
   RemoteBuildClientKey, remote_build_admitted_client_keys,
   remote_build_ending_of_outcome, remote_build_dependency_operation,
+  remote_build_capacity_body, remote_build_capacity_retry_floor,
 }
 
 // ── THE SERVING ENTRY: WHAT THE REMOTE-BUILD KEY'S FORCED COMMAND RUNS ──────────────────────────────
@@ -88,19 +94,132 @@ import gunbc.compute.remote_build {
 // instead let one host answer twice -- the subject at the host home under the host's service root, the
 // principal from an instance row that need not exist -- so srv3 and srv4, serving hosts with no dashboard
 // instance of their own, refused the ledger they were writing.
-fn remote_build_serve_cli(host: String) -> CliWireResponse {
-  match remote_build_candidate_for_host(host: host) {
-    Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the roster has no serving instance for host ", host))
-    Present { value: candidate } =>
-      match remote_build_serve_ledger_owner(host: host) {
-        ServeLedgerOwnerUndeclared { host: h } => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: no capacity home is declared for host ", h))
-        ServeLedgerOwnerDeclared { service_user: owner } =>
-          match remote_build_serve_principal(service_user: owner) {
-            RemoteBuildServePrincipalRefused { reason } =>
-              remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: not serving as this principal: ", reason))
-            RemoteBuildServePrincipalAdmitted => remote_build_serve_on(instance: candidate.instance)
-          }
+// THE HOST-SIDE WALL BOUND, carried from the front door. The ceiling is the leg's wall budget, carried as
+// the std.measure Second the fleet authority mints for HostBuildLeg (projected to a count only in the
+// forced command's word); the accept instant is the door's own host-clock reading at the moment it accepted,
+// carried as std.types EpochSecs -- a host-clock instant is never a bare Int (gunbc.spark.awaited_incarnation,
+// review 76436). Both are host-local (no cross-host skew). The wall carries ONE absolute deadline (accept +
+// ceiling): every unit derives its run bound from THAT deadline, so the wait-before-start bound and the run
+// bound are the SAME budget spent once by construction -- there is no second remaining to drift -- and a
+// request can never hold a seat past the instant its own client stopped waiting.
+type RemoteBuildWall {
+  ceiling: Second
+  accepted_at: EpochSecs
+}
+
+// THE BOUND IS PARSED, NOT ASSUMED. A ceiling or accept instant that does not parse, a non-positive
+// ceiling, or a pre-epoch accept instant is no bound at all: the entry refuses rather than running a
+// request it cannot stop. The typed carriers are minted by their sanctioned checked crossings
+// (checked_int_to_nat for the duration, checked_int_to_epoch_secs for the instant), never by a cast.
+fn remote_build_wall_of_arguments(leg_ceiling: String, accept_instant: String) -> RemoteBuildWall? {
+  match parse_int(s: trim(s: leg_ceiling)) {
+    Absent => none
+    Present { value: ceiling } =>
+      if ceiling <= 0 {
+        none
+      } else {
+        match checked_int_to_nat(n: ceiling) {
+          Absent => none
+          Present { value: ceiling_n } =>
+            match parse_int(s: trim(s: accept_instant)) {
+              Absent => none
+              Present { value: accepted } =>
+                match checked_int_to_epoch_secs(n: accepted) {
+                  Absent => none
+                  Present { value: accepted_at } =>
+                    Present { value: RemoteBuildWall { ceiling: second(count: ceiling_n), accepted_at: accepted_at } }
+                }
+            }
+        }
       }
+  }
+}
+
+// THE ONE ABSOLUTE DEADLINE: the instant the request must finish by, derived once from the accept instant
+// and the ceiling (EpochSecs + a Second projected to a count, the retry-law instant+duration shape). This
+// is the single budget; both units are bounded by it, so "spent once" is structural, not two recomputations.
+fn remote_build_deadline(wall: RemoteBuildWall) -> EpochSecs {
+  wall.accepted_at + (second_count(s: wall.ceiling) as Int)
+}
+
+// THE RUN CEILING FOR A UNIT LAUNCHED NOW, or Absent when the request has already spent its whole leg
+// budget (the caller reads Absent as refuse-to-start). The remaining is the deadline less the launch
+// instant (EpochSecs - EpochSecs lands in Int); a non-positive remaining is Absent before any crossing,
+// and the positive remaining crosses to Nat through std.checked_arithmetic's sanctioned checked_int_to_nat
+// (an `as Nat` cast over an arbitrary Int is refused by the checker, std.coercion refinement_cast_rules).
+fn remote_build_runtime_max_at(wall: RemoteBuildWall, launch_now: EpochSecs) -> Second? {
+  let remaining = remote_build_deadline(wall: wall) - launch_now
+  if remaining <= 0 {
+    none
+  } else {
+    match checked_int_to_nat(n: remaining) {
+      Absent => none
+      Present { value: k } => Present { value: second(count: k) }
+    }
+  }
+}
+
+// THE HOST CLOCK AT A UNIT LAUNCH, or the honest reason it could not be read. A clock the host cannot
+// read is NOT a request that waited past its budget -- it is the host failing to bound the request at
+// all, and it gets its own typed answer (gunbc.design_argument::fail_closed: no plausible cause is
+// fabricated). The instant crosses as the clock's own millis-to-seconds conversion.
+type RemoteBuildLaunchClock
+  = LaunchClockAt { at: EpochSecs }
+  | LaunchClockUnreadable { detail: String }
+
+fn remote_build_launch_clock() -> RemoteBuildLaunchClock {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail } => LaunchClockUnreadable { detail: detail }
+    ClockUnixMillisObserved { millis } => LaunchClockAt { at: epoch_secs_of_millis(millis: millis) }
+  }
+}
+
+// THE CLOCK-UNREADABLE ANSWER. The host could not read its own clock, so it cannot bound the run; it
+// declines with the cannot-serve ending (the request moves to a host that can read its clock), carrying
+// the clock's own detail -- never the wait-bound refusal, which would claim a wait that did not happen
+// and a retry allowance the host never granted.
+fn remote_build_clock_unreadable_refusal(detail: String) -> CliWireResponse {
+  remote_build_serve_answer(
+    ending: ServeHostCannotServe,
+    text: concat("remote-build: the serving host cannot read its clock to bound the request: ", detail),
+  )
+}
+
+// THE REFUSE-TO-START RECEIPT. The wait-bound decline is the room/readiness ending (ServeHostFull), which
+// MOVES the request to the next host -- a host whose queue ran past its own bound has spoken about itself,
+// not about the request, so it is the room-not-work class, never the final ServeRequestRefused that would
+// stop the whole roster. It is a CAPACITY-LIMITED, RETRY-ALLOWED answer: the body carries a retry allowance
+// (the declared minimum back-off, since the door holds no queue estimate) as the first line, which the
+// client reads back as a std.retry_law RetryHint on HostCapacityFull -- the same shape the serving router
+// gives its caller (operator direction 2026-11-26, first step toward gunbc.plans.fabric_serving_router).
+// The bound rides in the detail as the count it was minted in, the way the client's own leg-overrun detail
+// spells its ceiling.
+fn remote_build_wait_bound_refusal(wall: RemoteBuildWall) -> CliWireResponse {
+  remote_build_serve_answer(
+    ending: ServeHostFull,
+    text: remote_build_capacity_body(
+      retry_after: remote_build_capacity_retry_floor,
+      detail: join(["remote-build: the request waited past its ", nat_to_decimal_string(value: second_count(s: wall.ceiling)), "s host leg budget before its unit could start; the seat is released and the request moves on"], ""),
+    ),
+  )
+}
+
+fn remote_build_serve_cli(host: String, leg_ceiling: String, accept_instant: String) -> CliWireResponse {
+  match remote_build_wall_of_arguments(leg_ceiling: leg_ceiling, accept_instant: accept_instant) {
+    Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: "remote-build: the front door handed the request entry no usable leg ceiling and accept instant")
+    Present { value: wall } => match remote_build_candidate_for_host(host: host) {
+      Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the roster has no serving instance for host ", host))
+      Present { value: candidate } =>
+        match remote_build_serve_ledger_owner(host: host) {
+          ServeLedgerOwnerUndeclared { host: h } => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: no capacity home is declared for host ", h))
+          ServeLedgerOwnerDeclared { service_user: owner } =>
+            match remote_build_serve_principal(service_user: owner) {
+              RemoteBuildServePrincipalRefused { reason } =>
+                remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: not serving as this principal: ", reason))
+              RemoteBuildServePrincipalAdmitted => remote_build_serve_on(instance: candidate.instance, wall: wall)
+            }
+        }
+    }
   }
 }
 
@@ -124,7 +243,7 @@ fn remote_build_serve_ledger_owner(host: String) -> RemoteBuildServeLedgerOwner 
   }
 }
 
-fn remote_build_serve_on(instance: HostDashboardInstance) -> CliWireResponse {
+fn remote_build_serve_on(instance: HostDashboardInstance, wall: RemoteBuildWall) -> CliWireResponse {
   match shell.Env.Get(name: remote_build_ssh_command_variable).value {
     Absent => remote_build_serve_answer(ending: ServeRequestRefused, text: "remote-build: no request (SSH_ORIGINAL_COMMAND is unset)")
     Present { value: text } =>
@@ -141,7 +260,7 @@ fn remote_build_serve_on(instance: HostDashboardInstance) -> CliWireResponse {
         match remote_build_decode_request(text: text) {
           RemoteBuildRequestRefused { cause } =>
             remote_build_serve_answer(ending: ServeRequestRefused, text: concat("remote-build: ", remote_build_request_refusal_text(cause: cause)))
-          RemoteBuildWorkDecoded { work } => remote_build_serve_request(instance: instance, work: work)
+          RemoteBuildWorkDecoded { work } => remote_build_serve_request(instance: instance, work: work, wall: wall)
         }
       }
   }
@@ -168,7 +287,7 @@ fn remote_build_fetch_argv(work: RemoteBuildWork) -> List<String> {
   ["fetch", "--no-tags", "--no-write-fetch-head", github_https_clone_url(repo: gunbc_repository) as String, join(["+", name, ":", name], "")]
 }
 
-fn remote_build_serve_request(instance: HostDashboardInstance, work: RemoteBuildWork) -> CliWireResponse {
+fn remote_build_serve_request(instance: HostDashboardInstance, work: RemoteBuildWork, wall: RemoteBuildWall) -> CliWireResponse {
   if gunbc_repository.private {
     remote_build_serve_answer(ending: ServeHostCannotServe, text: "remote-build: the repository row is private, so the anonymous source fetch is not admitted")
   } else {
@@ -186,7 +305,7 @@ fn remote_build_serve_request(instance: HostDashboardInstance, work: RemoteBuild
                 match remote_build_admit_fetched_source(work: work, fetched: fetched) {
                   RemoteBuildSourceMoved { requested, fetched: seen } =>
                     remote_build_serve_answer(ending: ServeRequestRefused, text: join(["remote-build: the source ref moved: requested ", requested as String, ", fetched ", seen as String], ""))
-                  RemoteBuildSourceMatches => remote_build_serve_provide(instance: instance, work: work)
+                  RemoteBuildSourceMatches => remote_build_serve_provide(instance: instance, work: work, wall: wall)
                 }
             }
         }
@@ -194,13 +313,14 @@ fn remote_build_serve_request(instance: HostDashboardInstance, work: RemoteBuild
   }
 }
 
-fn remote_build_provide_on(instance: HostDashboardInstance, work: RemoteBuildWork, op: WorkOperation) -> ProvideResult {
+fn remote_build_provide_on(instance: HostDashboardInstance, work: RemoteBuildWork, op: WorkOperation, runtime_max: Second?) -> ProvideResult {
   compute_provide(
     instance: instance,
     owner: DirectInvocation { why: "remote-build: a request arriving over the remote-build key invoked the provider directly" },
     commit: git_object_id_wire_hex(oid: work.commit) as String,
     op: op,
     target: TargetIsExecutingHost,
+    runtime_max: runtime_max,
   )
 }
 
@@ -215,25 +335,46 @@ fn remote_build_provide_on(instance: HostDashboardInstance, work: RemoteBuildWor
 // is asked of the serve, not of the operation, so the tail that turns a provided attempt into a wire
 // answer is shared by both -- one authority on what a completed serve attests (remote_build_serve_settled),
 // not two copies that can drift.
-fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuildWork) -> CliWireResponse {
+fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuildWork, wall: RemoteBuildWall) -> CliWireResponse {
   match remote_build_dependency_rule(op: work.operation) {
     RemoteBuildCarriesItsOwnSeedBuild =>
-      remote_build_serve_settled(
-        instance: instance,
-        result: remote_build_provide_on(instance: instance, work: work, op: remote_build_work_operation(op: work.operation)),
-      )
-    RemoteBuildBuildsTheSeedFirst => {
-      let build = remote_build_provide_on(instance: instance, work: work, op: remote_build_dependency_operation())
-      match remote_build_ending_of_provide(r: build) {
-        ServeServed =>
-          remote_build_serve_settled(
+      match remote_build_launch_clock() {
+        LaunchClockUnreadable { detail } => remote_build_clock_unreadable_refusal(detail: detail)
+        LaunchClockAt { at: now } => match remote_build_runtime_max_at(wall: wall, launch_now: now) {
+          Absent => remote_build_wait_bound_refusal(wall: wall)
+          Present { value: runtime_max } => remote_build_serve_settled(
             instance: instance,
-            result: remote_build_provide_on(instance: instance, work: work, op: remote_build_work_operation(op: work.operation)),
+            result: remote_build_provide_on(instance: instance, work: work, op: remote_build_work_operation(op: work.operation), runtime_max: Present { value: runtime_max }),
           )
-        // The dependency build did not serve: its ending IS the work's answer, identity aside.
-        _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
+        }
       }
-    }
+    RemoteBuildBuildsTheSeedFirst =>
+      match remote_build_launch_clock() {
+        LaunchClockUnreadable { detail } => remote_build_clock_unreadable_refusal(detail: detail)
+        LaunchClockAt { at: build_now } => match remote_build_runtime_max_at(wall: wall, launch_now: build_now) {
+          Absent => remote_build_wait_bound_refusal(wall: wall)
+          Present { value: build_max } =>
+            let build = remote_build_provide_on(instance: instance, work: work, op: remote_build_dependency_operation(), runtime_max: Present { value: build_max })
+            match remote_build_ending_of_provide(r: build) {
+              ServeServed =>
+                // The operation launches after the build, so its bound is what remains of the SAME deadline
+                // at its own launch instant: the wall carries one deadline, both units are bounded by it, and
+                // the operation is refused rather than started past it. One budget, spent once.
+                match remote_build_launch_clock() {
+                  LaunchClockUnreadable { detail } => remote_build_clock_unreadable_refusal(detail: detail)
+                  LaunchClockAt { at: work_now } => match remote_build_runtime_max_at(wall: wall, launch_now: work_now) {
+                    Absent => remote_build_wait_bound_refusal(wall: wall)
+                    Present { value: work_max } => remote_build_serve_settled(
+                      instance: instance,
+                      result: remote_build_provide_on(instance: instance, work: work, op: remote_build_work_operation(op: work.operation), runtime_max: Present { value: work_max }),
+                    )
+                  }
+                }
+              // The dependency build did not serve: its ending IS the work's answer, identity aside.
+              _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
+            }
+        }
+      }
   }
 }
 
@@ -392,10 +533,15 @@ fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
 // 2026-11-15, by the first live probe). The directory and the words are rendered by that module's one
 // quoting rule, never spliced as shell text here (review 95657).
 fn remote_build_forced_command_words(candidate: RemoteBuildCandidate) -> List<NonEmptyStr> {
+  // THE HOST-DECLARED CEILING RIDES IN THE FORCED COMMAND, taken from the same authority the client arms
+  // its leg with (fleet_leg_wall_deadline, HostBuildLeg). It is rendered here, at converge time, into the
+  // authorized_keys line -- so an old client cannot bypass it, and changing the ceiling needs a reconverge
+  // to reach the installed line.
   remote_build_serve_front_door_run_words(
     serve_binary: candidate.instance.serve_binary as NonEmptyStr,
     repo_root: candidate.instance.repo_root as NonEmptyStr,
     host: candidate.host as String,
+    leg_ceiling: nat_to_decimal_string(value: second_count(s: fleet_leg_wall_deadline(kind: HostBuildLeg))) as NonEmptyStr,
   )
 }
 
