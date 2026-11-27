@@ -469,7 +469,7 @@ fn verdict_rows_match_the_prefix_scan() -> Bool {
     && opt_int_eq(failures, independent_fail_count(capture))
     && opt_int_gt0(passes)
     && opt_int_eq_sum(passes, failures, Present {
-      value: length(xs: capture) - tagged_row_count(capture) - prose_row_count(capture) })
+      value: length(xs: capture) - tagged_row_count(capture) - prose_row_count(capture) - unobserved_row_count(capture) })
 }
 
 fn independent_pass_count(capture: List<String>) -> Int {
@@ -488,6 +488,21 @@ fn has_pass_prefix(line: String) -> Bool {
 fn has_fail_prefix(line: String) -> Bool {
   let pieces = split(s: line, delimiter: "FAIL ")
   pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+// THE THIRD HOST VERDICT CLASS. `UNOBSERVED <claim> (...)` is printed by the host for a roster claim
+// the leg could not evaluate; it is neither a pass, a fail, a tagged instrument row, nor claim_batch
+// prose. A capture may legitimately carry it, so the completeness arithmetic below must account for
+// it rather than pretend only two verdict classes exist -- silently dropping it would make every
+// identity here fail on any capture with an unobservable claim, which is exactly how a real check
+// gets weakened by a later hand.
+fn has_unobserved_prefix(line: String) -> Bool {
+  let pieces = split(s: line, delimiter: "UNOBSERVED ")
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+fn unobserved_row_count(capture: List<String>) -> Int {
+  fold(capture, init: 0, f: (acc, line) => if has_unobserved_prefix(line) { acc + 1 } else { acc })
 }
 
 // THE LINES CARRYING A TAG the authority's grammar owns, counted here WITHOUT consulting that grammar,

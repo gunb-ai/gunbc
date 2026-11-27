@@ -684,15 +684,14 @@ fn floor_preparation_lines_are_closed(capture: List<String>) -> Bool {
 }
 
 fn floor_preparation_refusal(capture: List<String>) -> Optional<String> {
-  fold(capture, init:  none, f: (acc, line) =>
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        match floor_preparation_classify(line) {
-          RefusedLine { text: _, cause: why } => Present { value: why }
-          _ => none
-        }
-    })
+  // THE FOLD IS THE SINGLE SOURCE OF REFUSAL TRUTH. A classify-only scan misses the table-gated
+  // refusals (`[floor-phase]` rows whose token is outside the closed table refuse in the STEP, not in
+  // the classifier), so a reader asking "why does this capture have no split?" must consult the fold
+  // itself, which is what produced the absence.
+  match fold(capture, init:  floor_preparation_empty_fold(), f: (acc, line) => floor_preparation_step(acc, line)).split {
+    Refused { text: _, cause: why } => Present { value: why }
+    _ => none
+  }
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -729,42 +728,58 @@ fn floor_preparation_module_keys(capture: List<String>) -> List<String> {
 
 // THE COST ROW FOR ONE MODULE, folded with the entry currently in force. A per-claim row is charged to
 // a module ONLY while that module's entry is in force, so a fold that ignored the threading would
-// charge every claim to every module and the attribution witness would go red on the spot.
-fn floor_preparation_module_cost(target_path: String, capture: List<String>) -> FloorPreparationModuleCost {
-  let target = floor_preparation_module_of_path(target_path)
-  fold(
-    capture, init: FloorPreparationModuleCost { module: target, preparation_ms: floor_preparation_ms_zero(), claim_ms: floor_preparation_ms_zero(), lines: 0 },
-    f: (acc, line) => floor_preparation_module_step(acc: acc, in_force: floor_preparation_module_of_path(target_path), line: line)
-  )
+// charge every claim to every module and the attribution witness would go red on the spot. The
+// in-force entry is THREADED through the fold state -- passing the target as a constant made the
+// threading vacuous and billed every module the whole claim population.
+type FloorPreparationModuleThread {
+  cost: FloorPreparationModuleCost,
+  current: Optional<String>,
 }
 
-fn floor_preparation_module_step(acc: FloorPreparationModuleCost, in_force: String, line: String) -> FloorPreparationModuleCost {
+fn floor_preparation_module_cost(target_path: String, capture: List<String>) -> FloorPreparationModuleCost {
+  let target = floor_preparation_module_of_path(target_path)
+  match fold(capture, init:  FloorPreparationModuleThread {
+      cost: FloorPreparationModuleCost { module: target, preparation_ms: floor_preparation_ms_zero(), claim_ms: floor_preparation_ms_zero(), lines: 0 },
+      current: none,
+    }, f: (acc, line) => floor_preparation_module_thread_step(acc: acc, target: target, line: line)) {
+    FloorPreparationModuleThread { cost: cost, current: _ } => cost
+  }
+}
+
+fn floor_preparation_module_thread_step(acc: FloorPreparationModuleThread, target: String, line: String) -> FloorPreparationModuleThread {
   match floor_preparation_classify(line) {
     EntryResolveLine { entry: entry, ms: n } =>
-      if floor_preparation_module_of_path(entry) != acc.module {
-        acc
+      if floor_preparation_module_of_path(entry) != target {
+        FloorPreparationModuleThread { cost: acc.cost, current: Present { value: entry } }
       } else {
-        FloorPreparationModuleCost { module: acc.module, preparation_ms: floor_preparation_ms_add(acc.preparation_ms, n), claim_ms: acc.claim_ms, lines: acc.lines + 1 }
+        FloorPreparationModuleThread {
+          cost: FloorPreparationModuleCost { module: acc.cost.module, preparation_ms: floor_preparation_ms_add(acc.cost.preparation_ms, n), claim_ms: acc.cost.claim_ms, lines: acc.cost.lines + 1 },
+          current: Present { value: entry },
+        }
       }
     ClaimLine { tag: tag, claim: _, fields: fields } =>
-      if in_force != acc.module {
-        acc
-      } else if tag == floor_preparation_witness_tag {
-        match floor_preparation_ms_unit_field(fields, "cpu") {
-          Amount { ms: n } => FloorPreparationModuleCost { module: acc.module, preparation_ms: acc.preparation_ms, claim_ms: floor_preparation_ms_add(acc.claim_ms, n), lines: acc.lines + 1 }
-          _ => acc
-        }
-      } else if tag == floor_preparation_reach_probe_tag {
-        acc
-      } else {
-        match floor_preparation_ms_field(fields, "fill_cpu_ms") {
-          Amount { ms: fill } =>
-            match floor_preparation_ms_field(fields, "marginal_cpu_ms") {
-              Amount { ms: marginal } => FloorPreparationModuleCost { module: acc.module, preparation_ms: floor_preparation_ms_add(acc.preparation_ms, fill), claim_ms: floor_preparation_ms_add(acc.claim_ms, marginal), lines: acc.lines + 1 }
+      match acc.current {
+        Absent => acc
+        Present { value: cur } =>
+          if floor_preparation_module_of_path(cur) != target {
+            acc
+          } else if tag == floor_preparation_witness_tag {
+            match floor_preparation_ms_unit_field(fields, "cpu") {
+              Amount { ms: n } => FloorPreparationModuleThread { cost: FloorPreparationModuleCost { module: acc.cost.module, preparation_ms: acc.cost.preparation_ms, claim_ms: floor_preparation_ms_add(acc.cost.claim_ms, n), lines: acc.cost.lines + 1 }, current: acc.current }
               _ => acc
             }
-          _ => acc
-        }
+          } else if tag == floor_preparation_reach_probe_tag {
+            acc
+          } else {
+            match floor_preparation_ms_field(fields, "fill_cpu_ms") {
+              Amount { ms: fill } =>
+                match floor_preparation_ms_field(fields, "marginal_cpu_ms") {
+                  Amount { ms: marginal } => FloorPreparationModuleThread { cost: FloorPreparationModuleCost { module: acc.cost.module, preparation_ms: floor_preparation_ms_add(acc.cost.preparation_ms, fill), claim_ms: floor_preparation_ms_add(acc.cost.claim_ms, marginal), lines: acc.cost.lines + 1 }, current: acc.current }
+                  _ => acc
+                }
+              _ => acc
+            }
+          }
       }
     _ => acc
   }
