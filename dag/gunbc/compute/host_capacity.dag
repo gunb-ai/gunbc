@@ -45,7 +45,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostCapacityHome, host_capacity_ledger_home, host_capacity_carrier_of,
   compute_build_memory_ceiling_default, host_capacity_home_root,
 }
-import gunbc.runner.runner_slot_desired { host_build_pool_reservation, host_build_pool_is_carved }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation, host_build_pool_is_carved, host_build_pool_is_ruled, host_ruled_build_pool_seat_count }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_max_of }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
 
@@ -522,7 +522,48 @@ fn host_capacity_home_directories_admitted(host: HostIdentity) -> List<OwnedDire
 // (BuildPool) = seat * compute_pool_slots reproduces the carved slot exactly on the carved hosts rather
 // than restating 25 GiB.
 fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
-  capacity_seat_for_reservation(reservation: host_build_pool_reservation(host: host))
+  match build_pool_ruled_seat_count_for_host(host: host) {
+    Present { value: ruled_seats } =>
+      ruled_pool_seat_of(reservation: host_build_pool_reservation(host: host), seats: ruled_seats)
+    Absent => capacity_seat_for_reservation(reservation: host_build_pool_reservation(host: host))
+  }
+}
+
+// THE SEAT COUNT A RULED POOL CONVERTS WITH, for a host the roster has ADMITTED. The ruling's pool
+// and its seat count travel together (gunbc.runner.runner_slot_desired::RuledBuildPoolReservation);
+// the fleet divisor (compute_pool_slots) is for pool shapes the FLEET sized. Gated on the roster so
+// a host carrying a ruled row it cannot yet receive -- ken before step 6 -- keeps answering with the
+// old facts everywhere (seat, slice, appropriation) until the change that admits him flips all three
+// at once. This is what keeps a ruling from re-pricing a machine that has not been enrolled.
+fn build_pool_ruled_seat_count_for_host(host: HostIdentity) -> Nat? {
+  if host_build_pool_is_ruled(host: host) && remote_build_host_is_serving(host: host) {
+    host_ruled_build_pool_seat_count(host: host)
+  } else {
+    Absent
+  }
+}
+
+// THE ONE CONVERSION FROM A RULED POOL TO A SEAT, pure over the two ruled facts. NO SEAT IS EVER
+// INVENTED (gunbc.design_argument::fail_closed: no fabricated default, no escape hatch): a row that
+// declares zero seats gets a ZERO seat -- the ruling's own number propagated, not a made-up one --
+// and a zero seat reserves nothing (host_capacity_pool_slots_for_home multiplies by the same declared
+// count, so the ledger appropriation collapses to zero) and fits no build request, which is the
+// machine's own refusal of the malformed ruling, not a widening into a plausible one.
+//
+// DECLARED FRONTIER (gunbc.design_argument::guarantee_ladder), STATED AS THE NEXT-RUNG TRIGGER
+// (review 98975): the writable-rung gap is that RuledBuildPoolReservation.seats is Nat, not a
+// positive count -- std.integer's PositiveInt is a runtime refinement whose constructor returns
+// Outcome<PositiveInt> (src/v2/std/refinement.dag), which a `data` row cannot unwrap, so a zero seat
+// is writable data defended by (a) this faithful-zero conversion and (b) the witness invariant that
+// every shipped row is positive. TRIGGER: when the language admits a data row constructing a
+// refined count (or a checked literal against one), seats becomes PositiveInt and this fn's zero
+// arm, with the witness clause that prices it, is deleted as unreachable decoration.
+fn ruled_pool_seat_of(reservation: ByteSize, seats: Nat) -> ByteSize {
+  if seats == 0 {
+    byte_size(0)
+  } else {
+    byte_size(byte_size_count(b: reservation) / seats)
+  }
 }
 
 // THE SEAT IS DERIVED FROM THE RESERVATION, not re-decided. Given the carve (one slot), the seat is that
@@ -557,6 +598,14 @@ fn capacity_seat_for_reservation(reservation: ByteSize) -> ByteSize {
 // to user_work_slice_memory_swap_max (0), so this leaf owns only the ceiling.
 fn user_work_slice_memory_max_for_host(host: HostIdentity) -> ByteSize {
   if host_build_pool_is_carved(host: host) {
+    host_build_pool_reservation(host: host)
+  } else if host_build_pool_is_ruled(host: host) && remote_build_host_is_serving(host: host) {
+    // A host whose pool a ruling sizes outright gets a slice that is that pool, once the
+    // roster admits it: ken under the one-22-GiB-seat ruling takes a 22 GiB ceiling -- this
+    // SUPERSEDES the 44 GiB (two unreserved slots) the unrostered branch below answers for
+    // ken today, the figure read by the lane that surveyed him unrostered. Until the roster
+    // admits him the old branch still answers: a pool a host cannot receive (not rostered:
+    // no seat, no serve) must not price the slice it gets only once it can.
     host_build_pool_reservation(host: host)
   } else {
     match user_work_pool_slots() { UserWorkPoolSlotsDerived { slots } => user_work_slice_memory_max_of(slots: slots) }
@@ -713,7 +762,27 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
 // EACH POOL IS PRICED IN ITS OWN CEILING: the build pool in the compute build ceiling, the session pool in the
 // worker-session cap. They are two facts on the instance, so a worker-cap change cannot move the build pool.
 fn host_capacity_pool_appropriation_carrier(home: HostCapacityHome, pool: HostCapacityPool) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling_carrier(home: home, pool: pool)) * host_capacity_pool_slots(pool: pool))
+  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling_carrier(home: home, pool: pool)) * host_capacity_pool_slots_for_home(home: home, pool: pool))
+}
+
+// THE MULTIPLIER THE APPROPRIATION USES. The bare host_capacity_pool_slots answers the FLEET shapes
+// (the build pool divides by compute_pool_slots; the session pool spells its own slots); a host whose
+// build pool a ruling sized gets the ruling's seat count, so a one-seat pool reserves ONE seat -- ken's
+// 22 GiB ledger reserves 22 GiB, not the 44 GiB a fleet divisor would double into. Off the ruled path
+// every number is unchanged: the session pool still spells its slots, every unruly host still divides
+// by the fleet constant.
+fn host_capacity_pool_slots_for_home(home: HostCapacityHome, pool: HostCapacityPool) -> Nat {
+  match pool {
+    ComputeBuildPool =>
+      match build_pool_ruled_seat_count_for_host(host: home.host_identity as HostIdentity) {
+        // The DECLARED count passes through unchanged -- zero included, so a malformed 0-seat row
+        // reserves nothing (ruled_pool_seat_of's zero seat x 0 seats), refusing the host's builds
+        // rather than inventing capacity (review 98975 / fail_closed).
+        Present { value: ruled_seats } => ruled_seats
+        Absent => host_capacity_pool_slots(pool: pool)
+      }
+    AgentSessionPool { slots: slots } => host_capacity_pool_slots(pool: pool)
+  }
 }
 
 fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {

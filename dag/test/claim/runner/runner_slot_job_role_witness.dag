@@ -5,6 +5,7 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Absent, Present }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
@@ -280,21 +281,30 @@ fn runs_on_text(spec: RunnerSpec) -> String {
 
 test fn witness_only_the_administrator_edge_job_selects_the_deploy_slot() -> Bool {
   let host_pinned = runs_on_text(spec: fleet_converge_host_pinned_runner_spec())
-  let install = runs_on_text(spec: fleet_converge_microvm_controller_install_job().runner)
-  host_pinned != ""
-    && !string_contains(s: host_pinned, pattern: deploy_slot_runner_group_name as String)
-    && runs_on_text(spec: fleet_converge_dashboard_deploy_job().runner) == host_pinned
-    && string_contains(s: install, pattern: "github.event.inputs.host == 'srv1'")
-    && string_contains(s: install, pattern: concat("\"", concat(deploy_slot_runner_group_name as String, "\"")))
-    && string_contains(s: install, pattern: "|| fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))")
+  match outcome_accepted_value(fleet_converge_microvm_controller_install_job()) {
+    Present { value: ji } => match outcome_accepted_value(fleet_converge_dashboard_deploy_job()) {
+      Present { value: jd } =>
+        let install = runs_on_text(spec: ji.runner)
+        host_pinned != ""
+          && !string_contains(s: host_pinned, pattern: deploy_slot_runner_group_name as String)
+          && runs_on_text(spec: jd.runner) == host_pinned
+          && string_contains(s: install, pattern: "github.event.inputs.host == 'srv1'")
+          && string_contains(s: install, pattern: concat("\"", concat(deploy_slot_runner_group_name as String, "\"")))
+          && string_contains(s: install, pattern: "|| fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))")
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 // THE ADMISSION STEP CAN MINT THE TOKEN ITS TENANCY READ NEEDS. The step runs the roster reader's
 // mint, down-scoped to organization_self_hosted_runners read, and that mint reads the app key with the
 // job's workload-identity token, so the step's environment must carry it. The RED is a step with no
 // environment: the mint would read an empty bearer and the admission would refuse every run.
-fn admission_step_run_and_wif_env(st: Step) -> Bool {
-  match st {
+fn admission_step_run_and_wif_env(st: Outcome<Step>) -> Bool {
+  match outcome_accepted_value(st) {
+    Absent => false
+    Present { value: accepted } => match accepted {
     RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       string_contains(s: r, pattern: "\"organization_self_hosted_runners\": \"read\"")
         && string_contains(s: r, pattern: "export GUNBC_ORG_ADMIN_TOKEN")
@@ -305,6 +315,7 @@ fn admission_step_run_and_wif_env(st: Step) -> Bool {
           Absent => false
         }
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
   }
 }
 
@@ -342,27 +353,31 @@ fn job_step_if(st: Step) -> String {
 // failure: a status function (always, failure, cancelled) in a later step's condition would run it past
 // a refused admission, so any such condition fails the claim.
 test fn witness_the_fleet_key_is_loaded_only_after_the_tenancy_admission() -> Bool {
-  let j = fleet_converge_microvm_controller_install_job()
-  let reached = fold(j.steps, init: 0, f: fn(at, st) {
-    let id = job_step_id(st: st)
-    if at < 0 { at }
-    else if id == "wif_auth" { if at == 0 { 1 } else { at } }
-    else if id == "microvm_controller_install_admission" { if at == 1 { 2 } else { 0 - 1 } }
-    else if id == "srv1_root_mutation_approval" { if at == 2 { 3 } else { 0 - 1 } }
-    else if string_contains(s: job_step_name(st: st), pattern: "Materialize fleet key in-run") { if at == 3 { 4 } else { 0 - 1 } }
-    else if id == "microvm_controller_install" { if at == 4 { 5 } else { 0 - 1 } }
-    else { at }
-  })
-  let after_admission = fold(j.steps, init: [], f: fn(acc, st) {
-    if count(acc) > 0 || job_step_id(st: st) == "microvm_controller_install_admission" { concat(acc, [st]) } else { acc }
-  })
-  let key_and_install = filter(after_admission, st =>
-    job_step_id(st: st) == "microvm_controller_install" || string_contains(s: job_step_name(st: st), pattern: "Materialize fleet key in-run"))
-  reached == 5
-    && count(key_and_install) == 2
-    && !any(key_and_install, st => string_contains(s: job_step_if(st: st), pattern: "always()")
-      || string_contains(s: job_step_if(st: st), pattern: "failure()")
-      || string_contains(s: job_step_if(st: st), pattern: "cancelled()"))
+  match outcome_accepted_value(fleet_converge_microvm_controller_install_job()) {
+    Absent => false
+    Present { value: j } => {
+      let reached = fold(j.steps, init: 0, f: fn(at, st) {
+        let id = job_step_id(st: st)
+        if at < 0 { at }
+        else if id == "wif_auth" { if at == 0 { 1 } else { at } }
+        else if id == "microvm_controller_install_admission" { if at == 1 { 2 } else { 0 - 1 } }
+        else if id == "srv1_root_mutation_approval" { if at == 2 { 3 } else { 0 - 1 } }
+        else if string_contains(s: job_step_name(st: st), pattern: "Materialize fleet key in-run") { if at == 3 { 4 } else { 0 - 1 } }
+        else if id == "microvm_controller_install" { if at == 4 { 5 } else { 0 - 1 } }
+        else { at }
+      })
+      let after_admission = fold(j.steps, init: [], f: fn(acc, st) {
+        if count(acc) > 0 || job_step_id(st: st) == "microvm_controller_install_admission" { concat(acc, [st]) } else { acc }
+      })
+      let key_and_install = filter(after_admission, st =>
+        job_step_id(st: st) == "microvm_controller_install" || string_contains(s: job_step_name(st: st), pattern: "Materialize fleet key in-run"))
+      reached == 5
+        && count(key_and_install) == 2
+        && !any(key_and_install, st => string_contains(s: job_step_if(st: st), pattern: "always()")
+          || string_contains(s: job_step_if(st: st), pattern: "failure()")
+          || string_contains(s: job_step_if(st: st), pattern: "cancelled()"))
+    }
+  }
 }
 
 fn id_of(x: RunnerGroupEnsureReceipt) -> Int {

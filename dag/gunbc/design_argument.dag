@@ -528,6 +528,48 @@ data conformance_domains: List<ConformanceDomain> = [
       tail: [],
     },
   },
+  ConformanceDomain {
+    key: "conformance-invocation",
+    label: "Invocation",
+    question: "When a command, workflow step or target producer requests evaluation of a declared .dag function, does it identify the callable in the caller's source context and bind supplied arguments to the declaration's parameters through the existing authorities? If it uses a different representation, does it say why? Could its spelling independently select a different declaration or silently rebind an argument?",
+    tells: [
+      "a repository-owned binding that authors an entry path and a function independently, where the two can disagree",
+      "a command or target producer that resolves a .dag function by its own whole-tree route instead of one demand-scoped resolve per request",
+      "two spellings whose result contracts were merged, so that a failure before any value exists reports as a returned failure, or the reverse",
+      "a second spelling presented as an alias while its bound inputs, authority or observable result differ"
+    ],
+    owns: "How a command, workflow step or target producer requests evaluation of a declared .dag function: identifying the callable in the caller's source context, binding supplied arguments to the declaration's parameters, and declaring how the caller supplies inputs and how a returned value or a failure before any value exists is reported (gunbc.design_ruling::dag_invocation_is_one_conformance_pattern, operator 2026-11-26). gunbc run is the caller-specified form; every other spelling is a command binding, and an alias is a transparent reference only.",
+    boundaries: [
+      "The declaration owns its parameter and return contract; the operation or producer owns the effects and evidence it promises.",
+      "Faithful execution and receipt readback once a request is admitted belong to materialization / realization.",
+      "A producer whose contract is evidence from a built process (native serve, native claim) is not a binding of this pattern; interpreted reads inside it are.",
+      "Entry-path derivation applies to repository-owned bindings; direct run under caller-supplied roots may name an entry the repository layout gives no path.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Callable identity and arguments",
+        purpose: "the declaration a request names, its derived entry path, and the CLI argument boundary",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "gunbc.ci.ci_run_step_target", decl_name: "GunbcRunStepTarget"),
+          tail: [
+            decl_ref(module_path: "gunbc.cli_invoke", decl_name: "NamedArgument"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Repository-owned command bindings",
+          purpose: "build and converge derive their entry from the operation declaration, and the CliWireProgramProducer arm of TargetProducer renders a test target from its declaration",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.cli_dispatch_surface", decl_name: "CliBootstrapDagOperationBinding"),
+            tail: [
+              decl_ref(module_path: "gunbc.target_binding", decl_name: "TargetProducer"),
+            ],
+          },
+        },
+      ],
+    },
+  },
 ]
 
 fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {

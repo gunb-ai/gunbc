@@ -13,6 +13,7 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
+import v2.std.diagnostic { Outcome }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
 }
@@ -84,7 +85,7 @@ data gunbc_ci_r2_conditional_put_race_probe_target: GunbcRunStepTarget = gunbc_r
 // so the token is never interpolated into a command line -- the argv exposure
 // gunbc.credential_argv_exposure measures. The only thing the step supplies is the variable the WIF
 // auth step already exports.
-fn gunbc_ci_r2_mint_preflight_invoke() -> String {
+fn gunbc_ci_r2_mint_preflight_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_mint_preflight_target,
@@ -92,7 +93,7 @@ fn gunbc_ci_r2_mint_preflight_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_bucket_ensure_invoke() -> String {
+fn gunbc_ci_r2_bucket_ensure_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_bucket_ensure_target,
@@ -100,7 +101,7 @@ fn gunbc_ci_r2_bucket_ensure_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_bucket_admin_mint_invoke() -> String {
+fn gunbc_ci_r2_bucket_admin_mint_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_bucket_admin_mint_target,
@@ -108,7 +109,7 @@ fn gunbc_ci_r2_bucket_admin_mint_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_object_write_mint_invoke() -> String {
+fn gunbc_ci_r2_object_write_mint_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_object_write_mint_target,
@@ -116,7 +117,7 @@ fn gunbc_ci_r2_object_write_mint_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> String {
+fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_workspace_object_read_mint_target,
@@ -124,7 +125,7 @@ fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
+fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_workspace_object_write_mint_target,
@@ -132,7 +133,7 @@ fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_cache_object_read_mint_invoke() -> String {
+fn gunbc_ci_r2_cache_object_read_mint_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_cache_object_read_mint_target,
@@ -140,7 +141,7 @@ fn gunbc_ci_r2_cache_object_read_mint_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
+fn gunbc_ci_r2_cache_object_write_mint_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_cache_object_write_mint_target,
@@ -148,7 +149,7 @@ fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
   )
 }
 
-fn gunbc_ci_r2_conditional_put_race_probe_invoke() -> String {
+fn gunbc_ci_r2_conditional_put_race_probe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_r2_conditional_put_race_probe_target,

@@ -31,11 +31,12 @@ import gunbc.serving.serving_replica_profile {
   ReplicaEngineLaunch, ReplicaAcrossDevices, ReplicaModel, ReplicaParallelism, ReplicaFigures, FiguresOnRow,
   ServingReplicaProfile, StrataEngine, StrataModel,
   card_of, replica_engine_launch, replica_admission_named,
-  srv3_strata_profile, srv4_strata_profile, strata_concurrency_price_observations,
+  srv3_strata_profile, srv3_strata_profile_binding_kv_pool, srv4_strata_profile, strata_concurrency_price_observations, strata_gpu_kv_pool,
 }
 import gunbc.serving.serving_capacity_anchor {
   GrantAdmits, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
   ServingShapeRefusalReason, ShapeLeastRateBelowPolicyAtConcurrency, ShapeGrantRefused,
+  TurnsByGpuKvPool,
   engine_warm_swap, serving_conversation_policy,
 }
 import gunbc.serving.serving_host_memory {
@@ -46,7 +47,7 @@ import gunbc.serving.serving_layout {
   ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingReplicaConfig,
   ServingSharedArtifact, srv3_grant, srv3_layout, srv3_routed_expert_artifact,
 }
-import gunbc.serving.router_dev_policy { router_dev_replica_shape, router_dev_srv3_namings }
+import gunbc.serving.router_dev_policy { router_dev_replica_shape, router_dev_srv3_namings, RouterDevReplicaNaming, RouterDevReplicaAnchor, AnchorStrataProfile, UpstreamHttps }
 import gunbc.serving.strata_ada_pair_cell {
   srv3_iq3_s_artifact, srv3_strata_launch_parameters, srv3_strata_flags,
 }
@@ -219,13 +220,17 @@ fn srv3_variant_read_at(concurrency: Nat, aggregate: Nat) -> ServingReplicaProfi
     id: "srv3-strata",
     host: operator_host_srv3,
     engine_kind: StrataEngine,
+    // A hypothetical strata card for the throughput/policy-floor REDs; the pool is NotBinding (as a real Strata
+    // card's is) so these concurrency tests exercise the throughput term, not the KV-pool floor. The binding-pool
+    // end is a separate fixture (srv3_strata_profile_binding_kv_pool) and test.
+    gpu_kv_pool: strata_gpu_kv_pool(),
     model: StrataModel {
       artifact: srv3_iq3_s_artifact,
       artifact_standing: TranscribedUncited { read_obligation: "fixture: digests read on srv3" },
       flags: Present { value: srv3_strata_launch_parameters },
       flags_standing: Present { value: TranscribedUncited { read_obligation: "fixture" } },
     },
-    gpu: map(srv3_grant.devices, d => card_of(d: d)),
+    gpu: map(srv3_grant.devices, d => card_of(d: d, host: operator_host_srv3)),
     parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
     context_window: serving_fleet_context_cap,
     figures: FiguresOnRow {
@@ -307,6 +312,32 @@ test fn a_refused_grant_refuses_both_the_router_row_and_the_engine_launch() -> B
       }
     Absent => false
   }
+}
+
+// THE POOL FLOOR REACHES BOTH ENDS, NOT ONLY THE ROUTER (class B5 count->memory). srv3 IF its GPU KV pool were READ
+// and binding BELOW its 2-turn shape -- the hypothetical fixture srv3_strata_profile_binding_kv_pool (a real Strata
+// card parks idle sessions in host RAM and reports GpuKvPoolNotBinding). The floor -- 150,000 tokens / the 100k
+// policy context = 1 conversation -- must lower the ONE shape both ends read, so the engine's --parallel AND the
+// router row's cap both become 1, never the shape's throughput 2. This is the regression guard against re-applying
+// the pool floor at a router-only renderer: there the router cap would drop to 1 while the engine's --parallel still
+// reserved 2 -- the one-number-two-ends split #17060 closed, recurring one boundary later
+// (gunbc.design_argument::single_authority). turns_bound records the pool won it (TurnsByGpuKvPool), distinguishing
+// the floor from the throughput and grant terms.
+test fn a_binding_gpu_kv_pool_floors_both_ends_to_the_pool() -> Bool {
+  let layout = srv3_layout_granting(2)
+  let n = RouterDevReplicaNaming {
+    group: "strata-pool", name: "srv3-strata", scheme: UpstreamHttps,
+    port: 18443, tls_name: Absent,
+    anchor: AnchorStrataProfile { profile: srv3_strata_profile_binding_kv_pool }, retiring: [],
+  }
+  // The engine end: --parallel floors to the pool (1), not the shape's throughput 2.
+  launch_slots(launch: replica_engine_launch(p: srv3_strata_profile_binding_kv_pool, layout: layout, group: srv3_fixture_group())) == 1
+    // The router end: the naming's shape turns floor to the pool, and turns_bound records the pool won.
+    && match router_dev_replica_shape(n: n, layout: layout) {
+         ServingShapeEstimated { deployment: _, turns: t, held: _, turns_bound: TurnsByGpuKvPool { pool_tokens: _ }, cold_reread: _, standings: _ } => t == 1
+         ServingShapeDerived { deployment: _, turns: t, held: _, turns_bound: TurnsByGpuKvPool { pool_tokens: _ }, cold_reread: _ } => t == 1
+         _ => false
+       }
 }
 
 // The controls above key the layout by the group the PRODUCTION naming row carries -- a rename cannot let

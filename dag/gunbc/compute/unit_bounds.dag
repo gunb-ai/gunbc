@@ -9,9 +9,9 @@ import extdeps.linux.cgroup_v2_memory {
 import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_min }
-import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count }
+import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count, Second, second_count }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import extdeps.systemd { SystemdUnitProperty, InaccessiblePathsProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import extdeps.systemd { SystemdUnitProperty, InaccessiblePathsProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax, RuntimeMaxSecProperty }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -107,7 +107,16 @@ fn worker_root_equivalent_socket_denial_properties() -> List<SystemdRunProperty>
   [NamedUnitSetting { property: InaccessiblePathsProperty, value: join(worker_root_equivalent_socket_paths, separator: " ") as NonEmptyStr }]
 }
 
-fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
+// THE WALL-CLOCK BOUND IS OPTIONAL AND IS THE ONE PLACE IT IS DECIDED. runtime_max is the remaining
+// wall budget of the leg that owns this unit, carried as the Second the ceiling authority minted it in
+// (gunbc.fleet.fleet_known_hosts_anchor fleet_leg_wall_deadline) and projected to a count only here, in
+// the property value. It is none for every unit that is not a bounded remote-build request -- the
+// agent-session unit, the CI unit -- so a grant never silently acquires a wall bound it was not given.
+// When present it becomes RuntimeMaxSec=, the TOTAL-runtime bound (systemd.exec(5)): systemd stops the
+// unit's whole cgroup at that instant. It lands on the granted unit that carries the work, never on the
+// process that prints the answer, so a unit that dies at its bound is still answered with a header by
+// its parent (see gunbc.compute.remote_build remote_build_ending_of_provide).
+fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?, runtime_max: Second? = none) -> List<SystemdRunProperty> {
   concat(
     worker_root_equivalent_socket_denial_properties(),
     concat(
@@ -116,6 +125,7 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
       NamedUnitSetting { property: compute_kill_mode_property, value: compute_kill_mode_value() },
       NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     ],
+    concat(
     match process_bounds {
       Absent => []
       Present { value: b } => [
@@ -123,6 +133,11 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
         NamedUnitSetting { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
       ]
     },
+    match runtime_max {
+      Absent => []
+      Present { value: s } => [NamedUnitSetting { property: RuntimeMaxSecProperty, value: to_string(value: second_count(s: s)) as NonEmptyStr }]
+    },
+    ),
     ),
   )
 }

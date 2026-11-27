@@ -1,4 +1,5 @@
 module gunbc.runner.runner_qualification_dispatch
+import v2.std.diagnostic { outcome_accepted_value, Accepted, Rejected, diagnostics_reason_lexemes }
 
 import std.optional { Absent, Present }
 import std.algebra { length }
@@ -31,7 +32,7 @@ import extdeps.github.workflow_runs {
 }
 import gunbc.repository { gunbc_repository }
 import gunbc.fleet.fleet_converge_workflow {
-  fleet_converge_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
+  fleet_converge_workflow_jobs_of, fleet_converge_assemble_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
   fleet_converge_workflow_mode_wire, QualificationFloor,
   FleetConvergeDispatchSpec, DispatchInputValue, fleet_converge_dispatch_values, fleet_converge_dispatch_names_supplying,
   FleetConvergeDispatchValuesRendered, FleetConvergeDispatchInputRepeated,
@@ -176,8 +177,10 @@ type QualificationSubjectRefusal
   | SubjectFloorRunsOnNotTheAttemptInput { job_id: NonEmptyStr, runs_on: String }
   | SubjectFloorNameNotUnique { name: NonEmptyStr, jobs_with_name: Int }
   | SubjectFloorRevisionGuardNotFirst { job_id: NonEmptyStr }
+  | SubjectFloorRevisionGuardEmissionRefused { job_id: NonEmptyStr, reason: String }
   | SubjectFloorStepRunsPastTheGuard { job_id: NonEmptyStr }
   | SubjectRequiredInputUnsupplied { input: String }
+  | SubjectWorkflowGenerationRefused { reason: String }
 
 type QualificationSubjectStanding
   = QualificationSubjectAdmitted { subject: QualificationDispatchSubject }
@@ -312,7 +315,10 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
             match first(job.steps) {
               Absent => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
               Present { value: s0 } =>
-                if s0 != qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input) {
+                match qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input) {
+                  Rejected { diagnostics: d } => QualificationFloorRefused { refusal: SubjectFloorRevisionGuardEmissionRefused { job_id: floor_job_id, reason: diagnostics_reason_lexemes(diagnostics: d) } }
+                  Accepted { value: guard } =>
+                if s0 != guard {
                   QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: floor_job_id } }
                 } else if job.steps |> any(st => step_runs_after_a_failure(step: st)) {
                   QualificationFloorRefused { refusal: SubjectFloorStepRunsPastTheGuard { job_id: floor_job_id } }
@@ -320,6 +326,7 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
                   QualificationFloorRefused { refusal: SubjectFloorStepRunsPastTheGuard { job_id: floor_job_id } }
                 } else {
                   QualificationFloorAdmitted { floor_job_name: name }
+                }
                 }
             }
           }
@@ -419,14 +426,19 @@ fn qualification_dispatch_subject(
   if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
     QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
   } else {
-    qualification_dispatch_subject_over(
-      dispatch: dispatch,
-      slot: slot,
-      delivery: delivery,
-      workflow: fleet_converge_workflow,
-      floor_job_id: floor_job_id,
-      pin: pin,
-    )
+    match fleet_converge_workflow_jobs_of() {
+      Rejected { diagnostics: d } =>
+        QualificationSubjectRefused { refusal: SubjectWorkflowGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) } }
+      Accepted { value: jobs } =>
+        qualification_dispatch_subject_over(
+          dispatch: dispatch,
+          slot: slot,
+          delivery: delivery,
+          workflow: fleet_converge_assemble_workflow(jobs: jobs),
+          floor_job_id: floor_job_id,
+          pin: pin,
+        )
+    }
   }
 }
 

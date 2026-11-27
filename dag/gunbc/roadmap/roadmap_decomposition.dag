@@ -1645,7 +1645,14 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "one JSON row per work item served at projection.json beside standings.json, in the shape the ticket declares, in-flight leaves read from the derived set and past events read from the log", days: 3),
+      leaf(label: "one JSON row per intention-bound work item served at projection.json beside standings.json, in the shape the ticket declares, in-flight leaves read from the derived set and past events read from the log", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-work-item-projection-unbound-coverage", waits_on: [
+    waits(item: "roadmap-work-item-projection", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "every dispatchable work item gets a projection row; a dispatchable item with no intention binding refuses with a typed error naming the node instead of being silently absent, with floor-parse-formation-wall as the live specimen", days: 2),
     ],
   ]),
   decomposition(node: "roadmap-timeline-page", waits_on: [

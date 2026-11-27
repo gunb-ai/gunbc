@@ -10,7 +10,8 @@ import gunbc.ci.ci_run_step_target {
   gunbc_ci_heal_publication_admit_target,
   gunbc_ci_heal_publication_publish_target,
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 // THE FEDERATION IS LEASED, NOT RE-SPELLED (gunbc.design_argument::conformance): the record of which workload identity provider,
 // which service account and which secret a publisher federates to belongs to this module's neighbour, so
 // the profile row names which federation a publisher uses and never carries those strings itself.
@@ -80,16 +81,16 @@ type DagInvocation {
 
 // THE ONE PROJECTION from a run-step target to this policy's invocation pair. The entry path is
 // DERIVED by the single target-to-path authority beside the target's type
-// (v2.workflow.gunbc_invoke_step_emit gunbc_run_step_target_entry_or_poison, which reads
+// (v2.workflow.gunbc_invoke_step_emit gunbc_run_step_target_entry_or_refusal, which reads
 // gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path -- the derivation through
 // gunbc.source_layout layout_module_storage_path -- and renders the family's poison on Absent) and
 // never hand-written here; a target whose module
 // derives no path yields the documented refusal poison, which the Tier O gate turns into a typed
 // ArtifactGenerationRefused rather than committing a fabricated invocation (gunbc.design_argument::fail_closed).
-fn dag_invocation_of_run_step_target(target: GunbcRunStepTarget) -> DagInvocation {
-  DagInvocation {
-    entry: gunbc_run_step_target_entry_or_poison(target: target) as NonEmptyStr,
-    function: target.declaration.decl_name
+fn dag_invocation_of_run_step_target(target: GunbcRunStepTarget) -> Outcome<DagInvocation> {
+  match gunbc_run_step_target_entry_or_refusal(target: target) {
+    Accepted { value: entry } => outcome_accepted(value: DagInvocation { entry: entry as NonEmptyStr, function: target.declaration.decl_name })
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -122,7 +123,7 @@ type ProjectionDrift {
   // (so an infrastructure change is caught by something other than the next commit); Absent for one whose
   // drift is only ever checked at checkout, where the emitter adds no schedule trigger at all.
   cron: Optional<CronSchedule>
-  check: DagInvocation
+  check: Outcome<DagInvocation>
   seal: Optional<HealSeal>
 }
 
@@ -171,8 +172,8 @@ type HealPublisherPolicy {
   runner: CiRunnerTarget
   timeout: Minute
   trigger_workflow: NonEmptyStr
-  admit_invocation: DagInvocation
-  publish_invocation: DagInvocation
+  admit_invocation: Outcome<DagInvocation>
+  publish_invocation: Outcome<DagInvocation>
   federation: HealPublisherFederation
   pull_requests: PermissionLevel
 }
