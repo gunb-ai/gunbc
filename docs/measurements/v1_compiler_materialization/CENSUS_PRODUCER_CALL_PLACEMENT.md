@@ -109,7 +109,8 @@ position is pinned to the commit named above, and the quoted call is why the pos
 | `src/v1/stage0/src/cli_run/emit_host.rs:1156` | `resolve_entry_graph_shared(&dependency_universe, &entry)` |
 | `src/v1/stage0/src/cli_run/emit_host.rs:1167` | `crate::cli_run::resolve_entry_with_index(&index, &entry)` (the resolved-call-edge arm of `compile_dag_candidate_resolved_call_edges_uncached`) |
 | `src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs:81` | `super::resolve_entry_graph_shared(source_roots, &entry)` |
-| `src/v1/stage0/src/generated_artifact_boundary_host.rs:64`, `:130` | `crate::cli_run::resolve_entry_graph_shared(…)` |
+| `src/v1/stage0/src/generated_artifact_boundary_host.rs:64` (`run_docs_projection_agreement`) | `crate::cli_run::resolve_entry_graph_shared(source_roots, DOCS_PROJECTION_GATE_ENTRY)` |
+| `src/v1/stage0/src/generated_artifact_boundary_host.rs:130` (`generated_artifact_ctx`) | `crate::cli_run::resolve_entry_graph_shared(source_roots, &entry.to_string_lossy())` |
 | `src/v1/stage0/src/cli_run/reach_base_standings.rs:44`, `:332` | `resolve_entry_graph_shared(&roots, &entry.to_string_lossy())` |
 | `src/v1/stage0/src/v1_interpreter.rs:28419` | `crate::cli_run::resolve_entry_graph_shared(&roots, &entry)` |
 | `src/v1/stage0/src/cli_run/http_ingress_host.rs:1165` | `crate::cli_run::resolve_entry_graph(&roots, &entry)` |
