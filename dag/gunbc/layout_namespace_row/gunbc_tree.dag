@@ -337,6 +337,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "test.claim.fabric",
     "test.claim.fleet",
     "test.claim.floor",
+    "test.claim.gpu_market",
     "test.claim.host",
     "test.claim.http",
     "test.claim.huggingface",
