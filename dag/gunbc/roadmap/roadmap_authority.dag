@@ -3446,7 +3446,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Running a claim and landing a planning change take minutes, not hours",
           boundary: "The friction one planning change met on 2026-11-26 (gunbc#17167): six claim files verified by exact label took about 80 minutes, a 2-claim file took 981 seconds, a branch build took 14 minutes, and the help text named selection forms that select nothing. Members are the frictions no node owned. Those already owned stay there: the per-process whole-tree front end with claim-route-loads-by-layout-demand, and claims absent from the required check with required-check-named-witnesses-runs-no-claim-module.",
-          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), test-everything-runs-what-changed (the goal: bazel test //... behavior), one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
+          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), test-everything-runs-what-changed (the goal: bazel test //... behavior), a-claim-module-pays-only-for-its-subject, one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
           red_control: "A member that makes a slow step cheaper to repeat (a cache, a wider pool, a timeout) without removing the repeated work is not payoff, by gunbc.design_argument minimize_redundancy.",
           displaced_cost: "Slow verification is why claims stopped being run regularly: authors and agents batch, wait, or skip, and the wait is where defects accumulate unseen.",
           handback: "Per member: the step's before and after on the same instrument, and the surplus work deleted rather than cached."
@@ -3484,6 +3484,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "gunbc test //... on a one-file change running only the affected claims, with the before and after wall time."
         )),
       parent: in_project(project: "claim-loop-is-tight", contribution: "Running every test is cheap because only the affected ones run."),
+    ),
+    roadmap_node(
+      identity: "rn_WKTZCK5YLXV4WPOMSHAQJT7F4Y",
+      id: "a-claim-module-pays-only-for-its-subject",
+      owner: "debt",
+      carriers: carrier(path: "dag/test/claim/roadmap/roadmap_authority.dag"),
+      line: ticket(t: fields(
+          headline: "A claim module's closure is its claims' subject, not the union of everything one claim reaches",
+          boundary: "Every claim of a module shares one resolved closure, so one claim reaching a hub makes all of them pay. On 2026-11-27 test.claim.roadmap.roadmap_authority took 4,468 s on srv1, 18.7 s of it claim evaluation, over an import closure of 2,499 modules; 13 of its 62 claims reached the generated-artifact emitter, the estimate derivation or a subtree fixture. Across 3,692 short claim modules the median import closure is 135 modules, 523 reach 1,000 or more, and 61 reach about 2,500.",
+          displaced_cost: "A claim about one interface pays for hundreds of unrelated modules on every run, and any edit to any of them marks it affected.",
+          first_slice: "Done in gunbc#17167: the 13 roadmap_authority claims moved to three modules by subject, leaving 539 modules for the other 49. Next, the hubs that most tests reach: gunbc.generated_artifact_emit (artifact_generate dispatches over every emitter in the repository), gunbc.fleet.fleet_converge_workflow (46 test modules, 2,392), gunbc.roadmap.roadmap_belt_actuate (44, 1,377), gunbc.host.host_effect_realize (40, 1,564).",
+          red_control: "A split that duplicates a helper or a dispatch table to shrink a closure is a fork, not this member; a hub is narrowed by moving its dispatch to its consumers' layer, never copied.",
+          out_of_scope: "The per-process whole-tree index (claim-route-loads-by-layout-demand).",
+          handback: "Per hub: the closure before and after, the affected test modules' wall time before and after on the same binary, and verdicts unchanged."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A claim run pays for what its claims are about."),
     ),
     roadmap_node(
       identity: "rn_YCI5MTHYVH4H3TMLMH4Z3746ZU",
