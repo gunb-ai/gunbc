@@ -1,0 +1,101 @@
+module gunbc.rung_drop.p256_verify_eval_step_count_has_no_in_language_reader
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the falsifiability of an interpreted step-cost claim on the members
+// of test.claim.p256_dag_ecdsa_witness -- the rung p256-verify-cost-cut fell when its instrument
+// was deleted and no in-language reader exists to replace it.
+// ============================================================================================
+//
+// WHY A RUNG DROP AND NOT A ROW NOTE. gunbc.design_argument::guarantee_ladder (no silent regression) states that a declared drop
+// carries its restoration trigger as one of its five fields, and the trigger is the only thing
+// that retires the drop; a roadmap row's note has no such field, so a trigger written into a note
+// is prose a later session cannot read as a standing. The precedented shape is a9af6addff179d24207230b0840882c6de05fe4e,
+// which typed the stage0-partition gap the same way: the unreachable half became a RungDrop whose
+// restoration_trigger names the missing capability, and the roadmap row's note cites the drop
+// rather than carrying the trigger. This row is that shape, and the row it belongs to is
+// gunbc.roadmap.roadmap_authority::p256-verify-cost-cut, retired into a dated report row by the
+// same change.
+//
+// WHAT THE READING WAS, AND WHAT WAS LOST WITH IT. One interpreted P-256 verification is priced
+// by its eval steps: the named member the_rfc6979_sample_signature_verifies measured 48,296,785
+// steps before the std.bignat cut and 23,635,717 after it (gunb-ai/gunbc#16960, head
+// 925a59da22445d22671c7d0e74d7eb2e4a2cdaa8). Both figures came from ONE instrument, claim_batch
+// run --hermetic over the single member on a heavy slot, whose [witness] line printed
+// eval_steps= for that member beside its cpu and wall and whose /usr/bin/time block printed
+// VmHWM. A row whose control was a threshold over that line could be REFUSED by executing the
+// run: a cut that did not happen produced a different number, so a false claim of a cut did not
+// survive an executed control. That is rung 2 (gunbc.guarantee_rung): a check over a quantity a
+// run produces, with the invalid state still writable.
+//
+// THE INSTRUMENT IS GONE FROM MAIN AND NOTHING REPLACED THE READING. ad5c67a316f6
+// (gunb-ai/gunbc#16872, the claim entrypoints cutover) deleted src/v1/stage0/src/bin/claim_batch.rs
+// and moved callers onto gunbc test. The maintained route still runs claims and still prints a
+// per-claim cost line (run_claim_measured reports marginal_eval_steps, fill_eval_steps and
+// measured_eval_steps beside cpu), so this drop does NOT claim the number vanished from the
+// repository -- it claims the two things that make a step figure into a control are missing:
+// NOTHING IN THE LANGUAGE READS THE COUNTER, and nothing ADMITS these members on a route that
+// judges steps.
+//   (1) NO IN-LANGUAGE READER. std.measure carries the quantity (type EvalStepCount, with
+//      eval_step_count and eval_step_count_value, and the eval_steps_per_millisecond ratio) and the
+//      host realization keeps the counter (v1_interpreter::evaluator_steps, read by
+//      cli_run/claim_execution.rs to build the receipt), but no declaration a claim module can call
+//      returns a subject's steps. Measured 2026-11-27 in this worktree at origin/main
+//      6052ff4a8e4771cff9ac8109bc685f329039411d, three ways: the quantity's two constructors are
+//      declared only in dag/std/measure.dag -- the type EvalStepCount beside its two functions
+//      eval_step_count and eval_step_count_value (cited by SYMBOL, per gunbc.design_argument::single_authority;
+//      no line positions are given, because they move with every edit to that file and a stale position reads
+//      as evidence when it is only a hint); EVERY call site of
+//      eval_step_count in dag hands it a number someone wrote -- test.claim.floor_eval_step_budget_witness
+//      tier_probe_steps returns the literal 150000, test.claim.floor_cost_distribution_witness
+//      builds its rows from 9000, 4000, 900, 4400 and 163840 -- and not one of them reads a run;
+//      and over src/v1/stage0/src no host builtin is registered under any name containing cost,
+//      measure, steps or profil, so there is no seam a .dag call could reach. So a claim cannot
+//      assert its own cost, and a row cannot state a step threshold as something a claim executes.
+//   (2) NO ADMITTING ROUTE FOR THESE MEMBERS. The floor's per-claim ceiling is 361,500 eval steps
+//      (v2.workflow.required_floor claim_ceiling_eval_step_budget at GrandfatheredTier: the 500 ms
+//      of required_floor_claim_work_envelope_ms at the 723 steps/ms pinned in
+//      v2.workflow.floor_eval_step_calibration, the NewWitnessTier ceiling being 100 ms of the
+//      same rate); the cut member sits at 23,635,717, more than 65 times over it, and the
+//      limb-multiply floor of about 1.57M steps is 4.3x over the budget, so no bignat cut brings a
+//      verification inside it and the priced members are not enrolled. That leaves the figure as a
+//      host-side print a person reads, not a verdict a route renders.
+//
+// WHAT THE DROP COVERS AND WHAT IT DOES NOT. It covers the falsifiability of a step figure for the
+// twelve members enumerated below, and only that. It does NOT lower any floor ceiling, does NOT
+// re-enrol anything, does NOT touch the verdicts (the members still execute and still reach PASS or
+// the expected refusal on the maintained route), does NOT cover the per-claim cost line the
+// maintained route prints, and does NOT make the recorded figures wrong -- they were executed, from
+// one binary, and they are reported verbatim on the row. It also does not cover the CPU or wall
+// side of the same claims: that drop is gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps,
+// a different loss on a different quantity.
+//
+// WHY THE FIGURES ON THE ROW DO NOT CLOSE THIS GAP. #16960's pair is re-runnable only from the
+// carried claim_batch built at tree 91d657a62d72 (sha256
+// a10ce5fba2d7b87de5d6b65d8c6afa7aa8a4218f966771b3b2efe01d87ac77ff -- a file hash of a binary, not a commit, and it resolves in no git object
+// database; it is quoted as the name recorded in gunb-ai/gunbc#16960's prose -- held under
+// /home/briansrls/scratch/keen-pike-826 on srv1), whose source is deleted at main and which no
+// manifest under the shared names directory names -- the manifest line printed beside run24 names a
+// DIFFERENT claim_batch, 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177. Re-running
+// it reproduces a historical instrument, not a maintained one; 4142c238239 withdrew the word
+// released for exactly such a binary on the same grounds. A control that can only be executed
+// against a tree no checkout carries is mitigation, which is rung 1.
+data p256_verify_eval_step_count_has_no_in_language_reader: RungDrop = RungDrop {
+  identity: "p256_verify_eval_step_count_has_no_in_language_reader" as NonEmptyStr,
+
+  subject: "the falsifiability of an interpreted step-cost claim over the twelve members of test.claim.p256_dag_ecdsa_witness: the eval_steps figure a row's control judged came from claim_batch --hermetic, whose source is deleted at main by ad5c67a316f6 (gunb-ai/gunbc#16872), and no declaration in the language returns a subject's step count, so the figures survive as a report and no route re-executes the control. Verdicts, ceilings, the maintained route's own cost line and the recorded values are untouched",
+
+  declared: "2026-11-27",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "test.claim.p256_dag_ecdsa_witness the_rfc6979_sample_signature_verifies (the priced member: 48,296,785 steps before the cut, 23,635,717 after, gunb-ai/gunbc#16960)", tail: ["test.claim.p256_dag_ecdsa_witness the_rfc6979_test_signature_verifies", "test.claim.p256_dag_ecdsa_witness wycheproof_1_the_malleable_signature_verifies", "test.claim.p256_dag_ecdsa_witness wycheproof_60_the_shamir_edge_case_verifies", "test.claim.p256_dag_ecdsa_witness a_signature_for_a_different_message_is_false", "test.claim.p256_dag_ecdsa_witness the_wrong_key_is_false", "test.claim.p256_dag_ecdsa_witness a_point_off_the_curve_is_absent", "test.claim.p256_dag_ecdsa_witness wycheproof_4_n_minus_r_is_false", "test.claim.p256_dag_ecdsa_witness wycheproof_11_r_and_s_zero_are_absent", "test.claim.p256_dag_ecdsa_witness wycheproof_26_r_equal_to_n_is_absent", "test.claim.p256_dag_ecdsa_witness wycheproof_2_r_plus_n_is_absent", "test.claim.p256_dag_ecdsa_witness the_base_point_is_on_the_curve (the one member the required floor carries; named so this population is not read as floor membership)"] } },
+    restoration_trigger: "THE CAPABILITY: an in-language eval_steps reader -- a declaration reachable from a claim module that returns the interpreter's evaluator step count for a named subject, the quantity it returns being std.measure EvalStepCount (eval_step_count and eval_step_count_value already exist; the read does not), realized from the same counter v1_interpreter::evaluator_steps keeps and cli_run/claim_execution.rs already reads for its receipt. SUFFICIENT FOR: one claim on main reads the steps of the named member test.claim.p256_dag_ecdsa_witness the_rfc6979_sample_signature_verifies from inside the claim, a RED refuses a claim whose reading is fabricated or absent, and a before-and-after pair over two trees is then decidable by execution rather than by a host line a reviewer reads -- which is what lets a future step-cost row carry a control again, and what this drop's own retirement is read against. WHAT DOES NOT RETIRE IT, each of them a tempting shortcut: re-running the carried claim_batch a10ce5fb..77ff from /home/briansrls/scratch on srv1, whose source is deleted at main so a repeat re-executes a historical instrument and not a maintained one; raising the floor's 361,500-step budget, which is refused on this class already (the limb-multiply floor of about 1.57M steps is 4.3x over it, so no budget short of admitting the current cost reaches it, and the budget is not this drop's subject); the natively emitted verifier of its own, which removes the interpreter steps entirely and so leaves a step meter with nothing to meter; or quoting #16960's figures, which are the report the row carries and establish nothing about a route that does not exist.",
+  } }
+}
