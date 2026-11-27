@@ -328,11 +328,19 @@ type RuledBuildPoolReservation {
   reservation: ByteSize
   // The seat count THE RULING ITSELF declared for its pool -- Present only when the
   // cited ruling chose one. Absent means the ruling sized the POOL and said nothing
-  // about seats: the fleet divisor (gunbc.compute.host_capacity::compute_pool_slots,
-  // applied by capacity_seat_for_reservation) divides it, exactly as before this table
-  // existed. A fleet number filed under a ruling that never chose it is a second
-  // authority (gunbc.design_argument::single_authority) and an unattributed default
-  // (gunbc.design_argument::declared_intent); review 98983.
+  // about seats; it does NOT mean "use the fleet divisor". A ruled pool with no named
+  // count is divided by the fleet per-build ceiling (gunbc.compute.host_capacity::
+  // ruled_pool_seat_count_from_ceiling -- pool / compute_build_memory_ceiling_default,
+  // floor, never below one), because how many ceiling-sized builds a pool must admit
+  // side by side is a pure consequence of the pool's size and the ceiling a build is
+  // admitted at, not a fleet default the ruling never spoke to. The fleet divisor
+  // (compute_pool_slots, capacity_seat_for_reservation) stays exactly where it always
+  // belonged: UNRULED shapes. A fleet number filed under a ruling that never chose it
+  // is a second authority (gunbc.design_argument::single_authority) and an
+  // unattributed default (gunbc.design_argument::declared_intent); review 98983.
+  // The derivation is the standing rule of plan item
+  // serving-pool-seat-count-follows-the-build-ceiling: it adds no policy, it draws the
+  // one consequence the pool's size and the per-build ceiling already state.
   seats: Nat?
 }
 
@@ -346,11 +354,13 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read (fleet-converge run 45321352046).
     reservation: byte_size(206158430208),
     // The operator's ruling released the 192 GiB into the pool and said NOTHING about
-    // seat count, so none is attributed to it: Absent keeps butch on the fleet divisor
-    // (compute_pool_slots), byte-identical to the seat butch had before this table. The
-    // seats-butch-fits question (192 GiB as seats of the per-build ceiling admits ~8
-    // builds where two 96 GiB seats admit 2) is its own plan item; when that ruling
-    // lands, it declares the count and this field carries it.
+    // seat count, so none is attributed to it. With no named count the pool divides by
+    // the fleet per-build ceiling (gunbc.compute.host_capacity::
+    // ruled_pool_seat_count_from_ceiling): EIGHT 24 GiB seats, eight concurrent
+    // ceiling-capped builds -- the standing rule of plan item
+    // serving-pool-seat-count-follows-the-build-ceiling, which retires the earlier
+    // two-96-GiB-seat shape the fleet divisor produced. If a future ruling names its
+    // own count, it arrives through this field as Present and outranks the derivation.
     seats: Absent,
   },
   RuledBuildPoolReservation {
