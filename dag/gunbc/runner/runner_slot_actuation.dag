@@ -589,7 +589,7 @@ fn slot_drain_plan_under(r: SlotActuationReading, worker: SlotActivityObservatio
 // named, total match over the admission so that any admission added later must answer this question.
 fn slot_drain_running_mask(mask: List<List<String>>, admission: SlotDrainAdmission) -> List<List<String>> {
   match admission {
-    NeverMaskARunningUnit {} => []
+    NeverMaskARunningUnit {} => mask
   }
 }
 
