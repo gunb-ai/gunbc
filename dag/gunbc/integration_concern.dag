@@ -784,6 +784,15 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector_authorities: Dist
   rest: [],
 }
 
+// instrument_backed_absence_claims_have_three_authorities: the three authorities the SuspectedFork row cites.
+data instrument_backed_absence_claims_have_three_authorities_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrument_does_not_own", decl_name: "green_reported_over_a_population_the_instrument_does_not_own"),
+  second: decl_ref(module_path: "gunbc.recurring_failure_mode.a_census_is_cited_wider_than_the_closure_its_instrument_compiles", decl_name: "a_census_is_cited_wider_than_the_closure_its_instrument_compiles"),
+  rest: [
+    decl_ref(module_path: "gunbc.recurring_failure_mode.doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it", decl_name: "doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it"),
+  ],
+}
+
 // keyed_module_reads_walk_the_whole_pool: the two authorities the SuspectedFork row cites.
 data integration_concern_third_party_apt_repo_leaves_unified_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "DockerCeAptRepo"),
