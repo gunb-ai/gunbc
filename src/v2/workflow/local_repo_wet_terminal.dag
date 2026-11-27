@@ -819,6 +819,156 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "unknown_wire_line_is_read_as_the_census_answering" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "unknown_wire_line_is_read_as_the_census_answering",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unknown_wire_line_with_no_detail_still_names_the_census" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unknown_wire_line_with_no_detail_still_names_the_census",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unknown_detail_quoting_the_census_word_stays_whole" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unknown_detail_quoting_the_census_word_stays_whole",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_absent_seat_cgroup_proves_the_end" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "an_absent_seat_cgroup_proves_the_end",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_empty_seat_cgroup_proves_the_end" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "an_empty_seat_cgroup_proves_the_end",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_populated_seat_cgroup_is_preserved" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_populated_seat_cgroup_is_preserved",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_unobservable_standing_never_ends_the_seat" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "an_unobservable_standing_never_ends_the_seat",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_observer_reports_an_absent_unit_absent" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_observer_reports_an_absent_unit_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_observer_reports_a_populated_unit_populated" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_observer_reports_a_populated_unit_populated",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_observer_reports_a_drained_unit_empty" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_observer_reports_a_drained_unit_empty",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_missing_manager_directory_is_unobservable_not_absent" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_missing_manager_directory_is_unobservable_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "garbage_events_are_unreadable_not_ended" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "garbage_events_are_unreadable_not_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_seat_in_the_historical_app_slice_is_still_seen" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_seat_in_the_historical_app_slice_is_still_seen",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_live_scope_seat_in_the_slice_is_still_running" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_live_scope_seat_in_the_slice_is_still_running",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_live_scope_seat_in_the_default_app_slice_is_still_running" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_live_scope_seat_in_the_default_app_slice_is_still_running",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_drained_scope_seat_is_seen_ended" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_drained_scope_seat_is_seen_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_placement_set_names_the_documented_parents" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_placement_set_names_the_documented_parents",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_derivation_matches_the_placement_rule" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_derivation_matches_the_placement_rule",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_absent_unit_with_an_absent_seat_cgroup_is_ended" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "an_absent_unit_with_an_absent_seat_cgroup_is_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_absent_unit_with_a_populated_seat_cgroup_keeps_its_charge" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "an_absent_unit_with_a_populated_seat_cgroup_keeps_its_charge",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_absent_unit_with_an_unobservable_seat_cgroup_keeps_its_charge" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "an_absent_unit_with_an_unobservable_seat_cgroup_keeps_its_charge",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_live_population_outranks_the_seat_cgroup_end_proof" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_live_population_outranks_the_seat_cgroup_end_proof",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_cgroup_proof_stays_silent_when_the_hook_recorded_the_end" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_cgroup_proof_stays_silent_when_the_hook_recorded_the_end",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_cgroup_proof_stays_silent_when_the_manager_did_not_answer" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "the_cgroup_proof_stays_silent_when_the_manager_did_not_answer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attempt_past_its_declared_window_is_censused_as_a_write" },
       entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
       function: "an_attempt_past_its_declared_window_is_censused_as_a_write",

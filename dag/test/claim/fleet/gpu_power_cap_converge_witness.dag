@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_asset_identity { gpu_board_02 }
 import gunbc.fleet.gpu_power_cap_converge {
   GpuCapReading, GpuCapRead, GpuCapUnread, GpuCapProbe, GpuCapTarget, GpuCapPorts, GpuCapRun,
   GpuCapOutcome, GpuCapAlreadyConverged, GpuCapConvergedAfterApply, GpuCapNotConverged,
-  GpuCapLine, gpu_cap_reading_of, reading_holds, converge_gpu_cap_over, gpu_cap_lines_over,
+  GpuCapLine, gpu_cap_reading_of, reading_holds, converge_gpu_cap_over, gpu_cap_priced_lines_over,
 }
 import extdeps.nvidia.system_management_interface { PersistenceEnabled, PersistenceDisabled }
 import std.measure { milliwatt }
@@ -95,8 +95,8 @@ test fn a_failed_write_stops_before_any_later_write_and_an_unreadable_device_wri
 // apply-and-readback path fails this claim.
 test fn the_real_admissions_converge_both_srv1_cards_by_uuid() -> Bool {
   let admissions = gpu_cap_admissions_on(host: operator_host_srv1)
-  let good = gpu_cap_lines_over(admissions: admissions, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
-  let stuck = gpu_cap_lines_over(admissions: admissions, ports: ports_reading(before: held(w: 600), after: held(w: 600), persistence_error: none, limit_error: none))
+  let good = gpu_cap_priced_lines_over(admissions: admissions, candidates: [], ask: Absent, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
+  let stuck = gpu_cap_priced_lines_over(admissions: admissions, candidates: [], ask: Absent, ports: ports_reading(before: held(w: 600), after: held(w: 600), persistence_error: none, limit_error: none))
   good.length() == 2
     && !any(good, l => l.refused)
     && !any(good, l => contains(l.text, "pending"))
@@ -115,7 +115,7 @@ test fn an_unread_board_is_reported_as_pending_and_never_refused() -> Bool {
     cap: watt(count: 300),
     read_obligation: "no device observation exists for this board" as NonEmptyStr,
   }]
-  let lines = gpu_cap_lines_over(admissions: pending_only, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
+  let lines = gpu_cap_priced_lines_over(admissions: pending_only, candidates: [], ask: Absent, ports: ports_reading(before: held(w: 600), after: held(w: 300), persistence_error: none, limit_error: none))
   lines.length() == 1
     && match lines.first() {
       Absent => false

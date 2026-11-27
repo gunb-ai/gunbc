@@ -58,7 +58,7 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
 }
 import gunbc.roadmap.roadmap_event_log { ResultPublished, ResultVerificationFailed, ResultHandedBack }
-import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed }
+import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringObservation, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
   metering_token_total, metering_seat_time_total, ComputeUsage, ComputeNotAttributable,
@@ -544,7 +544,6 @@ fn dogfood_result_returned_reading_of(service: ServiceEvidenceObservation) -> Re
             SnapshotNotOpened => dogfood_result_returned_reading(r: observation)
             SnapshotClosed => dogfood_result_returned_reading(r: observation)
             SnapshotCloseFailed { worktree, exit_code: _, stderr: _ } => ResultReturnedGap { gap: StageRefused { reason: join(["the result was read through a carrier snapshot that failed to close (", worktree as String, "), so its observation is not established clean"], "") } }
-            SnapshotCloseVerificationFailed { worktree, verification: _ } => ResultReturnedGap { gap: StageRefused { reason: join(["the result was read through a carrier snapshot whose close could not be verified (", worktree as String, "), so its observation is not established clean"], "") } }
           }
       }
     ServiceEvidenceAttemptUnlaunched => ResultReturnedGap { gap: StageRefused { reason: "the attempt has no launch record, so no service evidence or result can be bound to it" } }
@@ -985,7 +984,6 @@ fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEv
         ResultReturnedRead { observation, close } =>
           match close {
             SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => Present { value: "the attempt's result was read through a snapshot that failed to close" }
-            SnapshotCloseVerificationFailed { worktree: _, verification: _ } => Present { value: "the attempt's result was read through a snapshot whose close could not be verified" }
             SnapshotNotOpened => dogfood_durable_result_defect(receipt: receipt, observation: observation)
             SnapshotClosed => dogfood_durable_result_defect(receipt: receipt, observation: observation)
           }

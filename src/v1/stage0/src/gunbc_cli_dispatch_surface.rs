@@ -183,7 +183,6 @@ pub struct CliBootstrapReceiptChannel {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliBootstrapDagOperationBinding {
     pub operation: AdmittedBootstrapOperationIdentity,
-    pub entry_path: String,
     pub source_roots: Rc<Vec<String>>,
     pub public_operands: Rc<Vec<Rc<CliBootstrapOperandBinding>>>,
     pub public_options: Rc<Vec<Rc<CliBootstrapOptionBinding>>>,
@@ -349,7 +348,6 @@ pub fn gunbc_fleet_converge_operation_ref() -> Rc<DeclarationRef> {
 pub fn gunbc_fleet_converge_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
     Rc::new(CliBootstrapDagOperationBinding {
         operation: AdmittedBootstrapOperationIdentity::GunbcFleetConvergeOperation {},
-        entry_path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag".to_string(),
         source_roots: Rc::new(vec!["dag".to_string(), "src/v2".to_string()]),
         public_operands: Rc::new(vec![]),
         public_options: Rc::new(vec![
@@ -393,7 +391,6 @@ pub fn gunbc_fleet_converge_operation_binding() -> Rc<CliBootstrapDagOperationBi
 pub fn gunbc_build_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
     Rc::new(CliBootstrapDagOperationBinding {
         operation: AdmittedBootstrapOperationIdentity::GunbcProductBuildBootstrapOperation {},
-        entry_path: "dag/gunbc/devboot/build.dag".to_string(),
         source_roots: Rc::new(vec!["dag".to_string(), "src/v2".to_string()]),
         public_operands: Rc::new(vec![Rc::new(CliBootstrapOperandBinding {
             parameter: "program".to_string(),

@@ -213,7 +213,7 @@ pub fn dispatch<H: CliDispatchHost>(
         }
         (Commands::Build { program }, false) => crate::cli_run::run_bootstrap_dag_operation(
             &["dag".to_string(), "src/v2".to_string()],
-            "dag/gunbc/devboot/build.dag",
+            &crate::cli_run::bootstrap_declaration_entry("gunbc.devboot.build"),
             "gunbc.devboot.build",
             "gunbc_build_cli_entry",
             vec![("program".to_string(), program)],
@@ -237,7 +237,7 @@ pub fn dispatch<H: CliDispatchHost>(
             false,
         ) => crate::cli_run::run_bootstrap_dag_operation(
             &["dag".to_string(), "src/v2".to_string()],
-            "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+            &crate::cli_run::bootstrap_declaration_entry("gunbc.fleet.fleet_converge_plan_cli"),
             "gunbc.fleet.fleet_converge_plan_cli",
             "fleet_converge_operator_cli_entry",
             vec![

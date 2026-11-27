@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_bare_count_is_reported_without_its_counting_unit
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE UNIT-GRAIN CLASS OF COUNT REPORTS: a number is published with no stated counting unit --
+// occurrences versus lines versus files versus records -- so two instruments that legitimately
+// count different units of the same population print two different numbers, and the reader
+// concludes one of them is wrong (or that the population drifted). Both numbers are real; only
+// the unit is missing. The self-reference half (a census that counts the sentence describing it)
+// is NOT this row: that half belongs to gunbc.recurring_failure_mode::observer_inside_its_own_observed_population,
+// named below and carrying its own sighting. This row is the record; it claims no rung beyond
+// what the receipts below state.
+
+data a_bare_count_is_reported_without_its_counting_unit: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_bare_count_is_reported_without_its_counting_unit" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of a count print to carry its counting unit beside its number -- occurrence-count, line-count, and file-count emitted as separate named fields by the census tooling itself, so a bare count that could be either does not exist and two readers cannot disagree about what was counted" } },
+
+  receipts: [
+    "INVALID STATE: a count reported without the unit it counts. The number is correct for SOME unit, the reader assumes a different unit, and the disagreement is then chased as a defect in the tool, the population, or the other reader. Nothing refuses: every instrument prints a true number for its own unit.",
+
+    "SPECIMEN, the measurement that founded the class (eager-koi-371, relayed by Manager B msg_8464877b with the follow-up msg_0790a77c): a census of the MaskWhileRunning symbol printed as the pair 20,12 from one git grep form and 18,10 from another -- occurrence-grain and line-grain answers to one question, each correct for its own unit, reported bare. The relay did not state the measurement commit; the numbers are cited to that relay, not re-measured here.",
+
+    "HEAD-BOUND RE-MEASUREMENT at the base of this row (origin/main c637919fe76, printed by this row's author with the instruments named): git grep -oh MaskWhileRunning | wc -l prints 23 (occurrences); the sum of git grep -c prints 20 (matching lines); git grep -l counts 5 files. The current numbers differ from the founding pair because the corpus moved between the founding head and this head -- which is exactly why every count in this lane is bound to a commit and an instrument, and why a bare count is the invalid state this row records. The divergence is stated, not silently reconciled.",
+
+    "WHY IT IS NOT THE NEIGHBOUR THAT OWNS THE OTHER HALF: gunbc.recurring_failure_mode::observer_inside_its_own_observed_population owns the self-reference half -- a census whose population includes the text describing the census changes its own answer when the row is edited. That half gets its own sighting on that row. And gunbc.recurring_failure_mode::a_count_field_whose_subject_drifted_from_its_producer is a DIFFERENT constructor: there, a field names one population while a different fold materializes another, and the numbers genuinely answer different questions; here, one population is counted honestly in two units and only the unit label is missing. Breaking the unit label cannot see a subject drift, and drifting the subject cannot see a missing unit -- the RED controls distinguish the rows.",
+
+    "THE HARM: review time burned reconciling two correct numbers; a change judged to have grown or shrunk a population when only the reporting grain changed; and the quiet inverse -- a real drift hidden because a unit swap was blamed for the delta. Mitigation today is a prose habit (state the instrument and the unit beside every count, bind the count to a commit); a habit is not a mechanism, which is what MITIGATABLE records.",
+
+    "REVIEW TELL: two numbers for one population with no units stated; a census receipt whose numbers cannot be re-derived because the commit or the instrument is not named; a reviewer asking 'is that matches or lines?' -- the question itself is the class firing.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.recurring_failure_mode.observer_inside_its_own_observed_population", decl_name: "observer_inside_its_own_observed_population"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_count_field_whose_subject_drifted_from_its_producer", decl_name: "a_count_field_whose_subject_drifted_from_its_producer"),
+  ],
+}
