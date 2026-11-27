@@ -843,6 +843,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.remote_build_serve_witness", function: "at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve" },
+      entry: "dag/test/claim/compute/remote_build_serve_witness.dag",
+      function: "at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.remote_build_serve_witness", function: "a_probe_answered_ready_sends_the_request_and_255_is_unreachable" },
+      entry: "dag/test/claim/compute/remote_build_serve_witness.dag",
+      function: "a_probe_answered_ready_sends_the_request_and_255_is_unreachable",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.remote_build_serve_witness", function: "an_unread_probe_exit_is_an_unknown_host_never_a_cannot_serve" },
+      entry: "dag/test/claim/compute/remote_build_serve_witness.dag",
+      function: "an_unread_probe_exit_is_an_unknown_host_never_a_cannot_serve",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_absent_seat_cgroup_proves_the_end" },
       entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
       function: "an_absent_seat_cgroup_proves_the_end",
