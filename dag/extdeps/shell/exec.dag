@@ -336,8 +336,8 @@ fn classify_process_observation(
 // of a live coproduct (ProcessRan at 168 sites in 47 files, ProcessNotSpawned at 170 in 49, ProcessCaptured
 // at 232 in 72: ~400 sites in ~100 files), and v2-bootstrap builds only the two emitted closures, so that
 // rename would be the unverified half of a PR whose subject is a fabricated exit code.
-// TRIGGER: #16847 merged. FOLLOW-UP: PR C, opened right after it and before or alongside the capture-gate
-// PR, introduces SpawnOutcome<T> in this module, re-expresses ProcessRunOutcome as
+// TRIGGER: #16847 merged. FOLLOW-UP: PR C, opened right after it -- this PR already gates the capture
+// entry itself, so there is no separate capture-gate PR to sequence against -- introduces SpawnOutcome<T> in this module, re-expresses ProcessRunOutcome as
 // SpawnOutcome<ProcessObservation> and ProcessCaptureOutcome as SpawnOutcome<ProcessOutcome>, and deletes
 // both bespoke coproducts together with this note and the row below. OWNER: royal-ibex-664.
 // SWEPT BY: bright-ibex-807.

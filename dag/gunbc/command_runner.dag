@@ -276,17 +276,14 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 // THE GIT ROUTE WALL GATE. Before any transport wrapping, classify whether the inner ArgvCommand's
 // program is git (by basename, not exact spelling) and if so, consult the route wall.
 // SCOPE OF THE GUARANTEE, stated at its real rung (gunbc.design_argument::guarantee_ladder): this gate
-// (git_route_wall_admits + refusal surfaces git_route_wall_refusal / git_route_wall_refusal_exit) is
-// compulsory for RECOGNIZED DIRECT-GIT argvs routed through run_shell_command_observe_outcome,
-// run_shell_command and run_shell_command_stdin_local. One entry that reaches a spawn --
-// run_shell_command_capture -- does NOT consult the wall yet; it carries its own
-// declared-unchecked-residual comment naming its reason and what closes it, so the gap is counted and
-// not concealed (gunbc.design_argument::fail_closed). It was never a rule that capture was exempt: the
-// exemption existed only because its one refusal arm was the fabricated exit_code: 0 - 1 sentinel and
-// routing the wall through a fabrication spreads it. That sentinel is gone now -- capture answers with
-// ProcessCaptureOutcome, whose ProcessCaptureNotSpawned arm is the typed not-spawned result the
-// exemption's own text named as its repair -- so nothing but the red controls stands between capture and
-// this gate. A recognized bare mutating
+// (git_route_wall_admits + refusal surfaces git_route_wall_refusal / git_route_wall_refusal_exit /
+// git_route_wall_refusal_capture) is compulsory for RECOGNIZED DIRECT-GIT argvs routed through ALL FOUR
+// entries that reach a spawn: run_shell_command_observe_outcome, run_shell_command,
+// run_shell_command_stdin_local and run_shell_command_capture. No entry that reaches a spawn is exempt:
+// capture stood outside this gate only while its one refusal arm was the fabricated exit_code: 0 - 1
+// sentinel -- routing the wall through a fabrication spreads it -- and with ProcessCaptureOutcome's typed
+// ProcessCaptureNotSpawned the gate closed there as well, under its own capture-grain red controls on the
+// route-wall witness. A recognized bare mutating
 // git argv handed to a gated entry is refused on BOTH arms (local AND SSH): command_runner is the only
 // module turning an ArgvCommand into a local process, and the gate runs before command_over_transport, so a
 // remote `git commit -m x` without in-repo dressing -- which would run in the SSH session's ambient CWD, the
