@@ -45,8 +45,8 @@ import gunbc.demand_engine_restatement_follow_up {
 }
 // THE ARRIVING PRODUCER FOR WALL 1: the same ingest, tokenize and parse authorities the compiler
 // itself runs -- NOT a second parser, and no roster field re-spelled here.
-import v2.compiler.source_root_eval { native_lane_census_ingest, native_test_context_from_ingest }
-import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.source_root_eval { native_lane_census_ingest, native_test_context_from_ingest, NativeTestContext }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.compiler.program_assembly { dag_prepared_lex }
@@ -77,7 +77,7 @@ import v2.std.node {
   Conj,
   node_synthetic
 }
-import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved, closure_declarations_demand }
+import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved, ResolutionContext, closure_declarations_demand }
 import v2.std.node_query { find_named_child }
 import v2.compiler.occurrence_role { read_names, NamesFound, NameReadRefused, NoNameHere }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
@@ -843,6 +843,62 @@ data real_resolver_rows: Outcome<List<DeclPhase1Row>> =
       )
     }
   )
+
+// THE STAGE LADDER (stageK, manager msg_7326c290 ruling 1): the split measured THAT the shared
+// real_resolver_rows data refuses wholesale (all four legs died at eval_steps=3 — the shape of
+// Rejected=>false); the ladder names WHICH stage refuses. One evaluation per stage, threaded
+// (single_authority: each stage reads the ONE data node above it, no re-ingest per claim), and each
+// stage gets its own individually-named claim so the LABEL is the diagnostic (ruling 4): the refusal
+// is observed at its stage boundary rather than reported as a bare Bool several layers away.
+data real_rows_probe_ingest: Outcome<SourceRootIngest> =
+  native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"])
+
+data real_rows_probe_context: Outcome<NativeTestContext> =
+  bind_outcome(
+    o: real_rows_probe_ingest,
+    f: fn(ingest) { native_test_context_from_ingest(ingest: ingest) }
+  )
+
+data real_rows_probe_resolution: Outcome<ResolutionContext> =
+  bind_outcome(
+    o: real_rows_probe_context,
+    f: fn(c) { c.resolution }
+  )
+
+data real_rows_probe_rows: Outcome<List<DeclPhase1Row>> =
+  bind_outcome(
+    o: real_rows_probe_resolution,
+    f: fn(shared) { outcome_accepted(value: closure_declarations_demand(shared: shared).rows) }
+  )
+
+test fn real_rows_probe_ingest_accepted() -> Bool {
+  match real_rows_probe_ingest {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn real_rows_probe_context_accepted() -> Bool {
+  match real_rows_probe_context {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn real_rows_probe_resolution_accepted() -> Bool {
+  match real_rows_probe_resolution {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// NONEMPTYPopulation guard rides the last rung: rows=[] would counterfeit an accepted resolution.
+test fn real_rows_probe_rows_nonempty() -> Bool {
+  match real_rows_probe_rows {
+    Accepted { value: rows, diagnostics: _ } => length(xs: rows) > 0
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 // THE CONJUNCTION KEEPS ITS NAME (the srv1 leg list is keyed on it): all four named legs at once.
 test fn filesystem_effect_census_over_real_resolver_rows_matches_the_contract() -> Bool {
