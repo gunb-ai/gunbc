@@ -4,6 +4,7 @@ import std.types { Bool, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { token_count_value }
+import extdeps.vendor.amd { amd }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.serving.h11_r9700_strata_bench_receipt {
   R9700BenchRun, CapReadByOperator, CapNotRecorded,
@@ -59,8 +60,8 @@ test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
     && match run_named(name: "r9700-20261112") {
       Present { value: r } =>
         match r.power {
-          ProbeAbsentOnVendor { probe: p, vendor: v } =>
-            (p as String) == "nvidia-smi" && (v as String) == "AMD Radeon AI PRO R9700"
+          ProbeAbsentOnVendor { probe: p, host_vendor: v } =>
+            (p as String) == "nvidia-smi" && v == amd
           _ => false
         }
       Absent => false
@@ -68,8 +69,8 @@ test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
     && match run_named(name: "r9700-convcache") {
       Present { value: r } =>
         match r.power {
-          ProbeAbsentOnVendor { probe: p, vendor: v } =>
-            (p as String) == "nvidia-smi" && (v as String) == "AMD Radeon AI PRO R9700"
+          ProbeAbsentOnVendor { probe: p, host_vendor: v } =>
+            (p as String) == "nvidia-smi" && v == amd
           _ => false
         }
       Absent => false

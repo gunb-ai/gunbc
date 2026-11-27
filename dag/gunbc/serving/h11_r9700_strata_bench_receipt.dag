@@ -10,6 +10,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.linux.amdgpu_hwmon {
   AmdgpuHwmonPowerAttribute, Power1Average, AveragePowerDraw, amdgpu_hwmon_power_quantity,
 }
+import extdeps.hardware { Hardware }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.amd { amd }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 
@@ -56,13 +59,15 @@ type R9700PowerSampling {
 
 // THE POWER PROBE'S OUTCOME, typed. An instrument that cannot read reports a refusal, never an empty column
 // (gunbc.design_argument::fail_closed). The fleet is NVIDIA and AMD; a vendor-specific probe on a host of a
-// different vendor is not a failure and not an absence -- it is its own arm naming what did not apply and why
-// (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent: "for a probe, a host where the probe
-// does not apply is its OWN arm, distinct from both a reading and a failure"). A probe that ran but threw is
-// a distinct arm from one that was never applicable, and a reading is distinct from both.
+// different vendor is its own arm: the binary ran (nvidia-smi exists on the host) but can never succeed because
+// the hardware is the wrong vendor -- its crash IS the non-applicability manifesting, not a runtime failure of
+// the right probe (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent: "for a probe, a host
+// where the probe does not apply is its OWN arm, distinct from both a reading and a failure"). A probe that ran
+// and failed transiently or for a hardware reason (the RIGHT probe on the right vendor, but something went wrong)
+// is a distinct arm from one that was never applicable to this vendor.
 type R9700PowerOutcome
   = ReadingPresent { value: R9700PowerSampling }
-  | ProbeAbsentOnVendor { probe: NonEmptyStr, vendor: NonEmptyStr }
+  | ProbeAbsentOnVendor { probe: NonEmptyStr, host_vendor: Vendor<Hardware> }
   | ProbeFailed { probe: NonEmptyStr, cause: NonEmptyStr }
 
 type R9700CapInForce
@@ -110,10 +115,10 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 2048),
     third_turn_aggregate: milli_tokens_per_second(count: 12010),
     cached_tokens_max: token_count(count: 0),
-    // The bench's GPU sampler shells out to nvidia-smi; on this AMD-only host that binary is not the
-    // right probe (strata_bench.err.log records the per-sample crash in every run). The absence is
-    // vendor-applicability, not a failure and not a measurement-of-nothing.
-    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, vendor: "AMD Radeon AI PRO R9700" as NonEmptyStr },
+    // The bench's GPU sampler shells out to nvidia-smi; on this AMD-only host that binary can never
+    // read the R9700 -- it is the wrong probe for this vendor (strata_bench.err.log records the
+    // per-sample crash in every run, which IS the vendor non-applicability manifesting).
+    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, host_vendor: amd },
   },
   // THE CONVERSATION-CACHE RUN WAS WORSE, AND ONE REQUEST FAILED. Agent 3's first turn returned no tokens after
   // 153 s; the third turn delivered 1536 of 2048 tokens. Its engine flags were reverted afterwards and not kept,
@@ -133,8 +138,8 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 1536),
     third_turn_aggregate: milli_tokens_per_second(count: 4770),
     cached_tokens_max: token_count(count: 0),
-    // Same vendor-applicability refusal as the run above: nvidia-smi is the wrong probe on this host.
-    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, vendor: "AMD Radeon AI PRO R9700" as NonEmptyStr },
+    // Same vendor non-applicability: nvidia-smi can never read an AMD R9700.
+    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, host_vendor: amd },
   },
   R9700BenchRun {
     run: "r9700-210w" as NonEmptyStr,
