@@ -1,0 +1,17 @@
+module test.fixture.declared_entry_call_shape.caller_bad
+
+// THE REFUSING ARM OF THE FIXTURE PAIR: `claim_run` is the label the real break used, and
+// `gunbc_run_step_script_for_target` declares no such parameter. Never resolved by anything -- see
+// callee.dag's header for why that is what makes this file legal to keep in the tree.
+
+import std.types { List, String }
+import test.fixture.declared_entry_call_shape.callee { fixture_step }
+
+fn fixture_call_bad() -> String {
+  fixture_step(
+    source_roots: ["dag/"],
+    target: "gunbc.site.gunb_ai_site",
+    receipt_rel: "receipt.json",
+    claim_run: false
+  )
+}

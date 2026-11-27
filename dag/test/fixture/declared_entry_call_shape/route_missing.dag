@@ -1,0 +1,8 @@
+module test.fixture.declared_entry_call_shape.route_missing
+
+// A ROUTE CLAIMING A FILE THAT DOES NOT EXIST -- the second refusal's subject. The path is shaped exactly
+// as a real route's is, so the population rule has to accept it and the existence check has to refuse it.
+
+fn fixture_route_missing() -> String {
+  join(["gunbc run --entry dag/test/fixture/declared_entry_call_shape/no_such_entry_file.dag --function main"], " ")
+}

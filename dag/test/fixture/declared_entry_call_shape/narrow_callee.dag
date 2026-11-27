@@ -1,0 +1,11 @@
+module test.fixture.declared_entry_call_shape.narrow_callee
+
+// THE REVERSE-BREAK FIXTURE: this declaration is the file a PR edits, and it does NOT declare `receipt_rel`.
+// Nothing is wrong inside this file -- that is the whole point of the reverse control. The defect lives in
+// wide_caller.dag, which the PR never touches.
+
+import std.types { List, String }
+
+fn narrow_step(source_roots: List<String>, target: String) -> String {
+  join([target, "narrow"], "")
+}

@@ -1,0 +1,13 @@
+module test.fixture.declared_entry_call_shape.callee
+
+// A FIXTURE DECLARATION, NOT PRODUCTION CODE. It exists so the call-shape instrument has a callee whose
+// declared parameters are known to the witness, and so a mislabelled call can exist in the tree without
+// ever being resolved by anything: no entry names these files and no production module imports them. That
+// is what makes them safe fixtures -- the engine would refuse the mislabelled call in caller_bad.dag if it
+// were ever resolved, and the instrument's job is to say so before that happens.
+
+import std.types { List, String }
+
+fn fixture_step(source_roots: List<String>, target: String, receipt_rel: String) -> String {
+  join([target, receipt_rel], "")
+}

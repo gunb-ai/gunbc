@@ -1,0 +1,12 @@
+module test.fixture.declared_entry_call_shape.wide_caller
+
+// THE UNTOUCHED CALLER OF THE REVERSE CONTROL. It still passes `receipt_rel`, which narrow_callee.dag no
+// longer declares. A scanner limited to changed files passes this PR; the reverse-import pass is what makes
+// it refuse.
+
+import std.types { List, String }
+import test.fixture.declared_entry_call_shape.narrow_callee { narrow_step }
+
+fn narrow_call_stale() -> String {
+  narrow_step(source_roots: ["dag/"], target: "gunbc.site.gunb_ai_site", receipt_rel: "receipt.json")
+}
