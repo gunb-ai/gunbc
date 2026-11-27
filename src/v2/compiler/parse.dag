@@ -358,7 +358,18 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
 // reason, located at the token the expected element was to follow (the last leftover token before
 // the furthest position). An expectation whose anchor is not among the leftover tokens cannot be
 // located on the leftover item, so the generic reason stands, located as before.
-fn parse_g0_tokens_remain_diagnostic_at(tokens: List<Token>, furthest: ParseFurthestFailure) -> Diagnostic {
+//
+// THE LAST TOKEN IS CARRIED IN, NEVER WALKED FOR HERE. The entry order scan
+// (parse_token_start_order_check) held the stream's final token the moment it finished, and what a
+// parse leaves is a suffix of that same stream, so the stream's final token and the last leftover
+// token are the same token. Recovering it here cost a pass to count the leftover tokens and another
+// to index the last one, over a value the parse run was already holding
+// (roadmap v2-parse-final-token-retained).
+fn parse_g0_tokens_remain_diagnostic_at(
+  tokens: List<Token>,
+  furthest: ParseFurthestFailure,
+  final_token: Optional<Token>
+) -> Diagnostic {
   match list_at_optional(xs: tokens, index: 0) {
     Absent => parse_g0_tokens_remain_diagnostic(tokens: tokens)
     Present { value: first } =>
@@ -378,7 +389,10 @@ fn parse_g0_tokens_remain_diagnostic_at(tokens: List<Token>, furthest: ParseFurt
             parse_g0_tokens_remain_diagnostic(tokens: tokens)
           }
         FurthestAtEnd { expectation: expectation } =>
-          match list_at_optional(xs: tokens, index: length(xs: tokens) - 1) {
+          match final_token {
+            // A stream with a token left always has its final token here: the entry order scan saw
+            // every token of the stream. The Absent arm is the empty stream's, which leaves no token
+            // to be leftover, and it locates exactly as before.
             Absent => parse_g0_tokens_remain_diagnostic(tokens: tokens)
             Present { value: last } =>
               match expectation {
@@ -4892,8 +4906,13 @@ fn parse_production_prepared_seeded(
     layout: layout
   ) {
     ProductionRunRefused { diagnostics: d } => Rejected { diagnostics: d }
-    ProductionRunParsed { parsed: parsed, production: production, root: root } =>
-      parse_production_unrefused(parsed: parsed, production: production, root: root)
+    ProductionRunParsed { parsed: parsed, production: production, root: root, final_token: final_token } =>
+      parse_production_unrefused(
+        parsed: parsed,
+        production: production,
+        root: root,
+        final_token: final_token
+      )
   }
 }
 
@@ -4930,7 +4949,7 @@ fn parse_production_prefix_prepared(
     layout: optional_absent()
   ) {
     ProductionRunRefused { diagnostics: d } => Rejected { diagnostics: d }
-    ProductionRunParsed { parsed: parsed, production: production, root: root } =>
+    ProductionRunParsed { parsed: parsed, production: production, root: root, final_token: _ } =>
       parse_production_prefix_unrefused(parsed: parsed, production: production, root: root)
   }
 }
@@ -4947,7 +4966,13 @@ type ParsePrefix {
 // start; two tokens at one start would be one position, and a repeat could stop or continue on the
 // wrong one with no diagnostic. The order is checked once here, at the parse's entry, and a stream
 // that violates it refuses located at the first offending token.
-fn parse_token_start_order_violation(tokens: List<Token>) -> Optional<Token> {
+//
+// THE SCAN RETURNS ITS ACCUMULATOR WHOLE, not the violation field alone. The accumulator's `previous`
+// is the stream's FINAL TOKEN the moment the scan ends, and the end-of-input arm of the
+// tokens-remain diagnostic needs exactly that token (parse_g0_tokens_remain_diagnostic_at), so
+// returning the field alone threw away a value this same parse run later asked for and sent that
+// reader walking the leftover tokens to find it again (roadmap v2-parse-final-token-retained).
+fn parse_token_start_order_check(tokens: List<Token>) -> ParseStartOrderAcc {
   fold_list(
     xs: tokens,
     empty: ParseStartOrderAcc { previous: optional_absent(), violation: optional_absent() },
@@ -4966,9 +4991,10 @@ fn parse_token_start_order_violation(tokens: List<Token>) -> Optional<Token> {
           }
       }
     }
-  ).violation
+  )
 }
 
+// WHAT THE ENTRY ORDER SCAN CARRIES OUT: the first out-of-order token, and the last token it read.
 type ParseStartOrderAcc {
   previous: Optional<Token>
   violation: Optional<Token>
@@ -4978,9 +5004,14 @@ type ParseStartOrderAcc {
 // whole door (parse_production_prepared_seeded) and the prefix door (parse_production_prefix_prepared)
 // both begin here, so the checks that precede a parse and the refusals recorded during it cannot
 // differ between them.
+//
+// THE PARSED BRANCH CARRIES THE STREAM'S FINAL TOKEN, the one the entry order scan (above) already
+// held when it finished walking the stream. It is carried, not recomputed: the whole door's
+// leftover-token diagnostic needs exactly this token at its end-of-input arm, and recovering it there
+// meant walking the leftover tokens a second time (roadmap v2-parse-final-token-retained).
 type ProductionRun
   = ProductionRunRefused { diagnostics: NonEmptyDiagnostics }
-  | ProductionRunParsed { parsed: ParseExprResult, production: GrammarProduction, root: GrammarRoot }
+  | ProductionRunParsed { parsed: ParseExprResult, production: GrammarProduction, root: GrammarRoot, final_token: Optional<Token> }
 
 // THE ENTRY PRODUCTION IS READ OFF THE PREPARED GRAMMAR, never re-derived per parse: its lookup is
 // the analysis's productions_by_name index and its prepared tree (choice plans, FIRST unions) is the
@@ -4997,7 +5028,8 @@ fn parse_production_run(
   seed: OccurrenceIdAllocator,
   layout: Optional<StreamLayout>
 ) -> ProductionRun {
-  match parse_token_start_order_violation(tokens: tokens) {
+  let order = parse_token_start_order_check(tokens: tokens)
+  match order.violation {
     Present { value: tok } =>
       ProductionRunRefused {
         diagnostics: diagnostics_singleton(
@@ -5026,7 +5058,7 @@ fn parse_production_run(
           match parse_expr_result_table(result: parsed).refusal {
             Present { value: refusal } =>
               ProductionRunRefused { diagnostics: diagnostics_singleton(d: refusal) }
-            Absent => ProductionRunParsed { parsed: parsed, production: production, root: root }
+            Absent => ProductionRunParsed { parsed: parsed, production: production, root: root, final_token: order.previous }
           }
         Violates { diagnostic: d } =>
           ProductionRunRefused { diagnostics: diagnostics_singleton(d: d) }
@@ -5041,7 +5073,8 @@ fn parse_production_run(
 fn parse_production_unrefused(
   parsed: ParseExprResult,
   production: GrammarProduction,
-  root: GrammarRoot
+  root: GrammarRoot,
+  final_token: Optional<Token>
 ) -> Outcome<ParseArtifact> {
   match parsed {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
@@ -5053,7 +5086,11 @@ fn parse_production_unrefused(
       } else {
         Rejected {
           diagnostics: diagnostics_singleton(
-            d: parse_g0_tokens_remain_diagnostic_at(tokens: remaining, furthest: final_table.furthest)
+            d: parse_g0_tokens_remain_diagnostic_at(
+              tokens: remaining,
+              furthest: final_table.furthest,
+              final_token: final_token
+            )
           )
         }
       }
