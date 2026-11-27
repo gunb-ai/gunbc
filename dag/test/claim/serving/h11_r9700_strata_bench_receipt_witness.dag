@@ -4,20 +4,19 @@ import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
-  token_count_value, millisecond, milli_tokens_per_second, token_count, watt, celsius, second,
+  token_count_value, millisecond, milli_tokens_per_second, token_count, watt,
 }
 import extdeps.hardware { Hardware }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.amd { amd }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.serving.h11_r9700_strata_bench_receipt {
-  R9700BenchRun, R9700PowerOutcome, R9700PowerSampling, R9700CapInForce,
-  CapReadByOperator, CapNotRecorded,
+  R9700BenchRun,
+  CapReadByOperator,
   ProbeAbsentOnVendor, ProbeFailed, ReadingPresent,
   h11_r9700_bench_host, h11_r9700_bench_runs,
   r9700_run_shows_cap_is_not_a_peak_bound, r9700_run_busy_mean_within_cap,
 }
-import extdeps.linux.amdgpu_hwmon { Power1Average }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -124,19 +123,26 @@ test fn h11_r9700_probe_failed_is_reachable_and_refuses() -> Bool {
       cause: "hwmon power1_average read returned EINVAL on a driver reload" as NonEmptyStr,
     },
   }
-  && match synthetic_run.power {
+  match synthetic_run.power {
     ProbeFailed { probe: p, cause: c } =>
       (p as String) == "pwr_sampler.sh" && (c as String) != ""
     _ => false
   }
-  && !r9700_run_shows_cap_is_not_a_peak_bound(r: synthetic_run)
-  && !r9700_run_busy_mean_within_cap(r: synthetic_run)
+    && !r9700_run_shows_cap_is_not_a_peak_bound(r: synthetic_run)
+    && !r9700_run_busy_mean_within_cap(r: synthetic_run)
 }
 
-// EVERY POWER FIELD IS ONE OF THE THREE NAMED ARMS: the receipt has exactly 4 runs, each power field matches
-// one of ProbeAbsentOnVendor (naming a probe and a vendor), ProbeFailed (naming a probe and a cause), or
-// ReadingPresent (carrying a sampling with a positive sample count). There is no silent-absence arm in the
-// type: a run with an empty power column and no named refusal is not a value R9700PowerOutcome admits, and
-// the compiler's exhaustiveness check enforces that every consumer handles all three named arms. The
-// inexpressibility of the silent-absence case is the absence of a fourth arm: the type has no nullary
-// constructor, no unit-only variant, and this module imports no std.optional for the power field.
+// EVERY POWER FIELD IS ONE OF THE THREE NAMED ARMS: exhaustiveness over the type. For every run in the
+// receipt, the power field matches ProbeAbsentOnVendor (with named probe and vendor), ProbeFailed (with
+// named probe and cause), or ReadingPresent (with a positive sample count). No arm is nullary; there is no
+// silent-absence constructor in the type. The inexpressibility of a silent-absence value is enforced by
+// the compiler's exhaustiveness check, not by a runtime guard -- there is no fourth arm to match.
+test fn h11_r9700_every_power_field_is_one_of_three_named_arms() -> Bool {
+  h11_r9700_bench_runs.all(r =>
+    match r.power {
+      ProbeAbsentOnVendor { probe: p, host_vendor: _ } => (p as String) != ""
+      ProbeFailed { probe: p, cause: c } => (p as String) != "" && (c as String) != ""
+      ReadingPresent { value: s } => s.samples > 0
+    }
+  )
+}
