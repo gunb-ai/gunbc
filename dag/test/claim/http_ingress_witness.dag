@@ -12,7 +12,7 @@ import gunbc.http_ingress {
   HttpIngressAdmission, HttpIngressBound, HttpIngressRefused, HttpIngressBinding, http_ingress_binding,
   HttpIngressFactPlan, HttpIngressFactsPlanned, HttpIngressFactsRefused, http_ingress_fact_plan,
   HttpIngressRequestFact, IngressFactRequestHeaders, http_ingress_fact_name,
-  http_ingress_frame, HttpIngressPreEvaluationRoute, http_ingress_pre_evaluation_routes,
+  http_ingress_frame, HttpIngressPreEvaluationRoute, http_ingress_pre_evaluation_routes, http_ingress_answering_before_evaluation,
   HttpIngressArgument, HttpIngressTextArgument, HttpIngressHeadersArgument, http_ingress_arguments,
   http_ingress_outgoing, http_ingress_wire_head, http_ingress_announcement, http_ingress_handler_identity,
   http_ingress_binding_arguments, http_ingress_native_argv, HttpIngressNativeArgv, HttpIngressNativeArgvRead, HttpIngressNativeArgvRefused,
@@ -212,6 +212,57 @@ test fn livez_is_the_one_pre_evaluation_route_and_names_the_release() -> Bool {
   }
 }
 
+// A BINDING-SUPPLIED ANSWER JOINS THE TABLE AFTER /livez, and the host renders it once at startup with the rest.
+// RED: a table that ignored the binding's supplied routes (the pre-2026-11-26 fixed table) holds one row here.
+fn w_supplied_route(target: String, body: String) -> HttpIngressPreEvaluationRoute {
+  HttpIngressPreEvaluationRoute {
+    method: "GET",
+    target: target,
+    response: ServeWireResponse { status: 200, content_type_label: "application/json; charset=utf-8", body: body, headers: [] },
+  }
+}
+
+fn w_bound_admission() -> HttpIngressAdmission {
+  http_ingress_binding(handler_module: "test.fixture.serve_seam_probe", handler: "serve_seam_probe", listener: "tcp:127.0.0.1:0", release_revision: w_revision, cpu_limit_ms: 30000, wall_limit_ms: 120000)
+}
+
+test fn a_binding_supplied_answer_joins_the_pre_evaluation_table_after_livez() -> Bool {
+  match http_ingress_answering_before_evaluation(admission: w_bound_admission(), routes: [w_supplied_route(target: "/healthz", body: "{}")]) {
+    HttpIngressRefused { reason: _ } => false
+    HttpIngressBound { binding: b } =>
+      match http_ingress_pre_evaluation_routes(b: b, bound_host: "127.0.0.1", bound_port: 8080) {
+        Cons { head: live, tail: Cons { head: h, tail: rest } } =>
+          live.target == "/livez" && h.method == "GET" && h.target == "/healthz" && h.response.body == "{}" && (rest |> count) == 0
+        _ => false
+      }
+  }
+}
+
+// TWO ANSWERS FOR ONE REQUEST LINE REFUSE THE BINDING, whether the second claims /livez or repeats a supplied
+// line; a refused admission passes through unchanged. RED: an admission that kept both rows and let the host's
+// table order pick which one answers.
+test fn a_supplied_answer_that_collides_refuses_the_binding() -> Bool {
+  let livez = w_refusal(admission: http_ingress_answering_before_evaluation(admission: w_bound_admission(), routes: [w_supplied_route(target: "/livez", body: "{}")]))
+  let twice = w_refusal(admission: http_ingress_answering_before_evaluation(admission: w_bound_admission(), routes: [w_supplied_route(target: "/healthz", body: "{}"), w_supplied_route(target: "/healthz", body: "{\"other\": 1}")]))
+  let passed = w_refusal(admission: http_ingress_answering_before_evaluation(admission: HttpIngressRefused { reason: "upstream refusal" }, routes: [w_supplied_route(target: "/healthz", body: "{}")]))
+  livez == "two pre-evaluation answers claim the request line GET /livez"
+    && twice == "two pre-evaluation answers claim the request line GET /healthz"
+    && passed == "upstream refusal"
+}
+
+// THE NATIVE DOOR REFUSES A BINDING WHOSE SUPPLIED ANSWERS IT WOULD DROP. RED: a native start that listened and
+// left /healthz to the handler while the binding said it is answered before evaluation.
+test fn the_native_start_refuses_a_binding_with_supplied_answers() -> Bool {
+  match http_ingress_native_contract(
+    admission: http_ingress_answering_before_evaluation(admission: w_bound_admission(), routes: [w_supplied_route(target: "/healthz", body: "{}")]),
+    program: w_program(handler: "serve_seam_probe"),
+    declared: [w_text(name: "path")],
+  ) {
+    HttpIngressNativeRefused { reason: r } => string_contains(s: r, pattern: "does not realize a binding's pre-evaluation answers") && string_contains(s: r, pattern: "GET /healthz")
+    HttpIngressNativeListen { contract: _, listener: _, binding: _, facts: _ } => false
+  }
+}
+
 // ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
 test fn the_response_head_is_rendered_by_the_fold() -> Bool {
   let o = http_ingress_outgoing(r: ServeWireResponse { status: 302, content_type_label: "text/plain", body: "moved", headers: [] })
@@ -344,6 +395,7 @@ fn w_direct_start(listener: HttpIngressListener) -> String {
         admission: HttpIngressBound { binding: HttpIngressBinding {
           handler: b.handler, listener: listener, release_revision: b.release_revision, head_limit: b.head_limit,
           body_limit: b.body_limit, read_timeout: b.read_timeout, cpu_limit: b.cpu_limit, wall_limit: b.wall_limit,
+          answered_before_evaluation: b.answered_before_evaluation,
         } },
         program: w_program(handler: "serve_seam_probe"), declared: [w_text(name: "path")]) {
         HttpIngressNativeListen { contract: _, listener: l, binding: _, facts: _ } => concat("LISTEN ", http_ingress_listener_text(listener: l))

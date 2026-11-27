@@ -30,7 +30,6 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_bound_result_append,
   roadmap_events_read_all, roadmap_events_read,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, RoadmapEventsRead, EventsRead, EventsReadRefused,
-  CarrierReadAttached,
   RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused,
   CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, carrier_report_with_snapshot_close,
 }
@@ -336,7 +335,7 @@ fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded
     DashboardObserveOnly =>
       ResultReturnPassRun { pass: ResultReturnPassWithheld { reason: join(["dashboard instance ", instance.instance_id as String, " is observe-only, so no result was appended"], "") }, closes: [] }
     DashboardActuating => {
-      let log = roadmap_events_read_all(read: CarrierReadAttached { attached: roadmap_event_carrier_layout_for_instance(instance: instance) })
+      let log = roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
       match log.result {
         AllEventsReadRefused { step, reason } => ResultReturnPassRun { pass: ResultReturnPassRefused { step: join(["events/", step], ""), reason: reason }, closes: [log.close] }
         AllEventsRead { envelopes } =>
