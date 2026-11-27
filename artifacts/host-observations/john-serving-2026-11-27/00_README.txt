@@ -27,7 +27,9 @@ THE SETUP AS IT STOOD ~05:30Z 2026-11-27
   MemoryMax=100G. cfg-john3.json.redacted: gpu [0,1,2], parallel 4, layer split auto (the engine chose
   K=19,22 on this layout: strata3-20261127T040802Z/run.log 'split:' line), Qwen3.8-Flash-Next GSQ-RCO IQ3_S
   (the same pack and GGUF as ken). The key file is ~/strata-pool/api_key on john (0600) and is NOT here; an
-  unauthenticated request answers 401. john has no row in the srv1 router.
+  unauthenticated request answers 401. john had no row in the srv1 router at ~05:30Z; on the operator's
+  later instruction a row was added by hand at 07:25:34Z (cap 2, retain 6, LAN-addressed), recorded as
+  gunbc.serving.router_dev_policy srv1_router_live_rows_added_2026_11_27.
   Fans: BMC fan mode Heavy IO (raw 0x30 0x45 0x01 0x04), chassis zone 1 (FANA/FANB) duty 0x64 (100%),
   CPU zone 0 left to the BMC. chassis-fan-guard.service runs chassis-fan-guard.sh (both here), in band
   over /dev/ipmi0: it re-asserts zone 1 at 0x64 every 10 s and journals each correction. Before it was

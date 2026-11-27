@@ -9,6 +9,11 @@ import extdeps.external_authority { TranscribedUncited, CitedToAuthority, Observ
 import extdeps.nvidia.management_library { NvmlClocksEventHwThermalSlowdown, NvmlClocksEventSwPowerCap }
 import extdeps.bmc.supermicro_oem_fan { supermicro_fan_mode_name }
 import gunbc.fleet.fleet_host_identity { operator_host_ba61f9 }
+import gunbc.serving.router_dev_policy {
+  RowNoRenderProduces, RowMatchesRender, RowDivergesFromRender,
+  srv1_router_live_rows_2026_11_25, srv1_router_live_rows_added_2026_11_27, srv1_router_live_rows,
+  live_rows_are_accounted_for, live_rows_agree_with_the_projection,
+}
 import gunbc.serving.john_strata_bench_receipt {
   JohnCard, BlowerCooler, PassiveHeatsink, CardTelemetry, ReasonSamples,
   ZoneOneLogged, ZoneOneUnlogged, LongContextRun, ConcurrencySweep,
@@ -180,4 +185,32 @@ test fn the_llama_cpp_layout_never_answered_and_every_strata_layout_did() -> Boo
         ColdTurnAnswered { prompt_tokens: _, time_to_first_token: _ } => false
       }
     })
+}
+
+// JOHN IS IN THE LIVE ROUTER AS A ROW NO RENDER PRODUCES, AND THE MODEL SAYS SO. The 2026-11-27 addition is its own
+// dated list (the 2026-11-25 pass's snapshot is untouched and still holds eight rows, none of them john); its one
+// row has an account and an owner, the router projection emits no row named john (run through the projection, not
+// asserted), and the live set as last recorded has nine distinct names.
+test fn john_is_a_live_router_row_no_render_produces() -> Bool {
+  srv1_router_live_rows_added_2026_11_27.length() == 1
+    && srv1_router_live_rows_2026_11_25.length() == 8
+    && !srv1_router_live_rows_2026_11_25.any(r => (r.name as String) == "john")
+    && live_rows_are_accounted_for(rows: srv1_router_live_rows_added_2026_11_27)
+    && live_rows_agree_with_the_projection(rows: srv1_router_live_rows_added_2026_11_27)
+    && srv1_router_live_rows().length() == 9
+    && srv1_router_live_rows().all(r => srv1_router_live_rows().filter(x => (x.name as String) == (r.name as String)).length() == 1)
+    && srv1_router_live_rows_added_2026_11_27.all(r => (r.name as String) == "john" && match r.standing {
+      RowNoRenderProduces { why: _, owner: _ } => true
+      RowMatchesRender => false
+      RowDivergesFromRender { diverging_fields: _, why: _ } => false
+    })
+}
+
+// THE ROUTER'S CAP AND THE ENGINE'S SLOTS ARE TWO HAND NUMBERS, AND THEY DISAGREE: the live row admits 2 turns, the
+// de facto engine reserves 4 batch slots. The claim keeps that disagreement visible rather than letting either
+// number stand in for the other; it goes false if they are reconciled without this row being re-read.
+test fn john_router_cap_is_below_the_engines_slots_and_both_are_recorded() -> Bool {
+  srv1_router_live_rows_added_2026_11_27.any(r => (r.name as String) == "john"
+    && r.live_cap == 2 && r.live_retain == 6
+    && r.live_cap < john_de_facto_serving_setup.engine_slots)
 }

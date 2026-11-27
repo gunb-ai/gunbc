@@ -1749,6 +1749,25 @@ data srv1_router_live_rows_2026_11_25: List<RouterLiveRow> = [
   },
 ]
 
+// ROWS ADDED AFTER THE 2026-11-25 PASS, one dated list per addition, so the pass's own snapshot above stays the
+// record of what that pass read. A later addition is a new dated list, never an edit to a dated one; the folds
+// below run over any such list, and srv1_router_live_rows is the live set as last recorded.
+data srv1_router_live_rows_added_2026_11_27: List<RouterLiveRow> = [
+  RouterLiveRow {
+    name: "john" as NonEmptyStr,
+    live_cap: 2,
+    live_retain: 6,
+    standing: RowNoRenderProduces {
+      why: "john (gunbc.fleet.fleet_host_identity::operator_host_ba61f9, added by #17180) is in no RouterDevHostRoster, so no projection emits its row -- the same account as ken's. Its engine is the operator's de facto setup (gunbc.serving.john_strata_bench_receipt::john_de_facto_serving_setup: one Strata engine over a V100-16, a P100 and a V100-32 on :18081, 4 batch slots, model qwen3.8-flash-next-iq3_s, max_model_len 229376). Its cap, 2, is a hand figure BELOW the engine's 4 slots: two numbers for one fact written by two hands, the shape gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them names -- recorded, not resolved here. Its retain, 6, is the engine's --conversation-cache-slots 6 (cfg-john3.json.redacted in artifacts/host-observations/john-serving-2026-11-27/). DATED FRONTIER, 2026-11-27: the row addresses john on its DHCP LAN address 192.168.1.240 (scheme http, port 18081), not on the tailnet, as srv3-strata and srv4-strata are LAN-addressed, because (a) gunbc.tailscale_fleet_auth_key pins key version 2, which tags a joining node tag:ci, while the srv1 dashboard-to-serving grant (extdeps.tailscale.acl tailscale_serving_port_grants) is for tag:serving; (b) gunbc.tailscale_join_converge draws its population from enrollment intents and john has none; and (c) 192.168.1.240 is also named in this repository as gunbc-fabric-switch (test.claim.spark.fabric_switch_read_witness, a 2026-09-17 capture), so the address needs a DHCP reservation or the tailnet move before this row can be trusted to keep pointing at john." as NonEmptyStr,
+      owner: "the operator-directed hand edit of ~/router/upstreams.json on srv1 at 2026-11-27T07:25:34Z (operator: \"add john to the router as well - both operationally/in the .dag model so its not lost\"), applied by the coordinating session: backup upstreams.json.bak-before-john-add-20261127T072531Z beside the live file; row inserted after ken with tier 1, overflow false and john's own Strata key piped host to host and never printed (not in any repo); openresty -t passed and the router was reloaded; /router/stats owned_slots then listed john at cap 2, active 0" as NonEmptyStr,
+    },
+  },
+]
+
+fn srv1_router_live_rows() -> List<RouterLiveRow> {
+  concat(srv1_router_live_rows_2026_11_25, srv1_router_live_rows_added_2026_11_27)
+}
+
 // The rows the render produces that the host is NOT running. Naming them is the other half of the account:
 // a live set smaller than the projection is not the same fact as a live set with extra rows, and a reader
 // comparing the two lists needs both directions to see that the h11 naming rows and the live engines have
@@ -1827,7 +1846,11 @@ data srv1_router_nginx_hand_edits_2026_11_24_25: List<RouterHandEditRecord> = [
 // Every live row carries an account, and every row that no render produces names who put it there. A row
 // with an empty account is the failure this fold exists to refuse.
 fn every_live_row_is_accounted_for() -> Bool {
-  fold(srv1_router_live_rows_2026_11_25, init: true, f: (ok, r) =>
+  live_rows_are_accounted_for(rows: srv1_router_live_rows_2026_11_25)
+}
+
+fn live_rows_are_accounted_for(rows: List<RouterLiveRow>) -> Bool {
+  fold(rows, init: true, f: (ok, r) =>
     ok && match r.standing {
       RowMatchesRender => true
       RowDivergesFromRender { diverging_fields: fields, why: why } => fields.length() > 0 && (why as String) != ""
@@ -1865,14 +1888,18 @@ fn upstream_retain_count(u: RouterDevUpstream) -> Nat {
 }
 
 fn live_row_named(name: NonEmptyStr) -> RouterLiveRow? {
-  srv1_router_live_rows_2026_11_25.filter(r => r.name == (name as String)).first()
+  srv1_router_live_rows().filter(r => r.name == (name as String)).first()
 }
 
 // A row the account claims the render produces must exist in the render, and a field named as diverging
 // must actually differ. This is the fold that stops an account from being a story: it re-derives the
 // projection and checks each claim against it.
 fn every_diverging_live_row_agrees_with_the_projection() -> Bool {
-  fold(srv1_router_live_rows_2026_11_25, init: true, f: (ok, r) =>
+  live_rows_agree_with_the_projection(rows: srv1_router_live_rows_2026_11_25)
+}
+
+fn live_rows_agree_with_the_projection(rows: List<RouterLiveRow>) -> Bool {
+  fold(rows, init: true, f: (ok, r) =>
     ok && match r.standing {
       RowMatchesRender => match rendered_row_named(name: r.name) {
         Absent => false
