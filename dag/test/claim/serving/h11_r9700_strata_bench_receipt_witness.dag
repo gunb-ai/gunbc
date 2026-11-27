@@ -1,17 +1,23 @@
 module test.claim.serving.h11_r9700_strata_bench_receipt_witness
 
-import std.types { Bool, String }
+import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { token_count_value }
+import std.measure {
+  token_count_value, millisecond, milli_tokens_per_second, token_count, watt, celsius, second,
+}
+import extdeps.hardware { Hardware }
+import extdeps.vendor { Vendor }
 import extdeps.vendor.amd { amd }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.serving.h11_r9700_strata_bench_receipt {
-  R9700BenchRun, CapReadByOperator, CapNotRecorded,
+  R9700BenchRun, R9700PowerOutcome, R9700PowerSampling, R9700CapInForce,
+  CapReadByOperator, CapNotRecorded,
   ProbeAbsentOnVendor, ProbeFailed, ReadingPresent,
   h11_r9700_bench_host, h11_r9700_bench_runs,
   r9700_run_shows_cap_is_not_a_peak_bound, r9700_run_busy_mean_within_cap,
 }
+import extdeps.linux.amdgpu_hwmon { Power1Average }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -50,11 +56,9 @@ test fn h11_r9700_follow_up_turns_reused_no_prefix_and_the_failure_is_kept() -> 
 }
 
 // THE ABSENCE CARRIES ITS CAUSE: no run in this receipt has a silent gap in its power field. Each run without
-// power data names WHY: the vendor-applicability arm for the two runs where the bench's nvidia-smi sampler
-// cannot read an AMD R9700 (the probe is the wrong tool for this vendor), and a reading-present arm for the
-// two runs where pwr_sampler.sh ran beside the bench. A missing column without a named cause is the RED case
-// (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent); this claim witnesses that the
-// type makes the silent-absence route impossible to construct.
+// power data names WHY and WHICH PROBE: the two AMD runs carry ProbeAbsentOnVendor naming nvidia-smi and the
+// vendor entity; the two pwr_sampler runs carry ReadingPresent. A missing column without a named cause is the
+// RED case (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent).
 test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
   h11_r9700_bench_runs.length() == 4
     && match run_named(name: "r9700-20261112") {
@@ -78,7 +82,7 @@ test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
     && match run_named(name: "r9700-210w") {
       Present { value: r } =>
         match r.power {
-          ReadingPresent { value: _ } => true
+          ReadingPresent { value: p } => p.samples > 0
           _ => false
         }
       Absent => false
@@ -86,9 +90,53 @@ test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
     && match run_named(name: "r9700-300w-measured") {
       Present { value: r } =>
         match r.power {
-          ReadingPresent { value: _ } => true
+          ReadingPresent { value: p } => p.samples > 0
           _ => false
         }
       Absent => false
     }
 }
+
+// PROBE_FAILED IS REACHABLE AND REFUSES: a run where the correct probe (pwr_sampler.sh on the right vendor)
+// threw must surface as ProbeFailed naming the probe and cause, and the cap functions must answer false --
+// the instrument reports a refusal, not an empty column. The two existing runs have no ProbeFailed arm because
+// on this AMD host nvidia-smi is the wrong probe (vendor non-applicability, not a runtime failure), and the
+// correct probe (pwr_sampler.sh) succeeded. This arm is exercised here on a synthetic row: the type admits it,
+// the functions refuse it, and the refusal names where it threw.
+test fn h11_r9700_probe_failed_is_reachable_and_refuses() -> Bool {
+  let synthetic_run = R9700BenchRun {
+    run: "synthetic-probe-failed" as NonEmptyStr,
+    rows_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    cap: CapReadByOperator { cap: watt(count: 210) },
+    conversation_cache: false,
+    first_turn_agents_answered: 4,
+    first_turn_ttft_min: millisecond(count: 1000),
+    first_turn_ttft_max: millisecond(count: 2000),
+    first_turn_decode_min: milli_tokens_per_second(count: 50000),
+    first_turn_decode_max: milli_tokens_per_second(count: 60000),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 13000),
+    third_turn_tokens: token_count(count: 2048),
+    third_turn_aggregate: milli_tokens_per_second(count: 12000),
+    cached_tokens_max: token_count(count: 0),
+    power: ProbeFailed {
+      probe: "pwr_sampler.sh" as NonEmptyStr,
+      cause: "hwmon power1_average read returned EINVAL on a driver reload" as NonEmptyStr,
+    },
+  }
+  && match synthetic_run.power {
+    ProbeFailed { probe: p, cause: c } =>
+      (p as String) == "pwr_sampler.sh" && (c as String) != ""
+    _ => false
+  }
+  && !r9700_run_shows_cap_is_not_a_peak_bound(r: synthetic_run)
+  && !r9700_run_busy_mean_within_cap(r: synthetic_run)
+}
+
+// EVERY POWER FIELD IS ONE OF THE THREE NAMED ARMS: the receipt has exactly 4 runs, each power field matches
+// one of ProbeAbsentOnVendor (naming a probe and a vendor), ProbeFailed (naming a probe and a cause), or
+// ReadingPresent (carrying a sampling with a positive sample count). There is no silent-absence arm in the
+// type: a run with an empty power column and no named refusal is not a value R9700PowerOutcome admits, and
+// the compiler's exhaustiveness check enforces that every consumer handles all three named arms. The
+// inexpressibility of the silent-absence case is the absence of a fourth arm: the type has no nullary
+// constructor, no unit-only variant, and this module imports no std.optional for the power field.
