@@ -4,12 +4,13 @@ import std.types { String, Bool, NonEmptyStr, Port, List }
 import std.optional { Absent, Present }
 import std.nat { Nat, Zero, Succ }
 import extdeps.uri { UriScheme, Https }
+import extdeps.external_authority { TranscribedUncited, cited_figure_read_obligation }
 import extdeps.network.ipv4 { render_ipv4_address }
 import std.list { first_where }
-import std.algebra { length, string_contains }
+import std.algebra { fold_list, length, string_contains, zip_eq }
 import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
-import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
+import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv, LilServeLaunch, LilServeLauncherFlag, lil_serve_launcher_flag_emergency_evict_for_prefetch, lil_serve_launcher_flag_argv, lil_serve_launcher_flag_name }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pinned_revision }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
@@ -21,10 +22,16 @@ import std.measure { token_count_value }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
 import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_gb_value }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts,
   srv1_serving_unmodeled_frontier_rows,
+  // the emergency valve on the launcher face (follow-up to class B4)
+  EmergencyEvictPassed,
+  srv1_served_profile_name, srv1_emergency_evict_decision_for, srv1_emergency_evict_decision_is_stated,
+  srv1_emergency_evict_decision_standing, srv1_emergency_evict_launcher_flags,
+  srv1_emergency_evict_launcher_tokens, srv1_emergency_evict_read_obligation,
   srv1_serving_gpu_group, Srv1ServingGpuGroup, Srv1ServingWrapper, Srv1ServingWrapperInstallable, Srv1ServingWrapperRefused, srv1_serving_wrapper_of,
   srv1_serving_group_selection, srv1_serving_wrapper_running_body,
   srv1_serving_wrapper_adoption, Srv1ServingWrapperAdoption, Srv1ServingWrapperAdopted, Srv1ServingWrapperPendingOperatorRelaunch,
@@ -68,8 +75,43 @@ data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
 // read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
 // argv a DERIVATION verified against an OBSERVATION, not a restatement of it. The observation is the
 // 2026-10-31 08:02 relaunch at the pool context cap (gunbc.design_ruling one_serving_context_cap).
+// THE RENDER EQUALS WHAT THE RUNNING CONTAINER SHOWED, element for element — including the key's file
+// read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
+// argv a DERIVATION verified against an OBSERVATION, not a restatement of it.
+//
+// THE CAPTURE IS KEPT AS READ, TIER AND ALL. observed_cmd_tail is the 2026-11-08 relaunch, and its tier slot
+// says 12 because that is what the tier was then; the tier moved to 48 on 2026-11-24 (read from the installed
+// args files) and a capture does not move to keep a test green. So the equality is per-slot, with ONE slot
+// permitted to differ — and it is permitted only when BOTH sides are that slot, with both figures named by
+// the control below, so the exception cannot widen into a licence to differ anywhere.
 test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
-  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
+  zip_eq(a: srv1_serving_launch_argv(api_key_wire: bash_realization_key_read), b: observed_cmd_tail, eq: argv_slot_agrees)
+}
+
+// The one slot the 2026-11-24 window moved, recognised on both sides by the knob it names.
+fn argv_slot_is_the_tier(value: NonEmptyStr) -> Bool {
+  string_contains(s: value as String, pattern: "LMCACHE_L1_GB=")
+}
+
+fn argv_slot_agrees(derived: NonEmptyStr, captured: NonEmptyStr) -> Bool {
+  (derived as String) == (captured as String)
+    || (argv_slot_is_the_tier(value: derived) && argv_slot_is_the_tier(value: captured))
+}
+
+// The exception above is bounded: the capture holds the figure its own window read (12), the render holds the
+// authority today (48), and nothing else in the argv differs. If someone re-bases the capture, or lets the
+// derived row drift from the tier authority, this goes red by name rather than by a missing equality.
+test fn the_tier_slot_is_the_only_difference_and_both_figures_are_named() -> Bool {
+  let derived = srv1_serving_launch_argv(api_key_wire: bash_realization_key_read)
+  let derived_tier = first_where(xs: derived, keep: argv_slot_is_the_tier)
+  let captured_tier = first_where(xs: observed_cmd_tail, keep: argv_slot_is_the_tier)
+  match derived_tier {
+    Absent => false
+    Present { value: d } => match captured_tier {
+      Absent => false
+      Present { value: c } => (d as String) == "LMCACHE_L1_GB=48" && (c as String) == "LMCACHE_L1_GB=12"
+    }
+  }
 }
 
 // ONE CAP, TWO ENGINES: srv1's vLLM launch and srv3's Strata flags both carry the pool cap from its one
@@ -77,7 +119,7 @@ test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
 // it is pinned by its render check (above for vLLM; extdeps.strata.serve_flags for Strata).
 test fn both_pool_engines_carry_the_one_context_cap() -> Bool {
   (match srv1_serving_launch.engine.max_model_len { Present { value: n } => n == serving_fleet_context_cap _ => false })
-    && srv3_strata_flags.max_context == serving_fleet_context_cap
+    && srv3_strata_flags.launch.max_context == serving_fleet_context_cap
     && token_count_value(t: serving_fleet_context_cap) == 229376
 }
 
@@ -108,7 +150,14 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
   srv1_serving_launch.environment
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "12" as NonEmptyStr),
+      // THE ONE SLOT IN THIS LIST THAT IS NOT A LITERAL IS THE L1 TIER, and that is the point of it: the value
+      // comes from gunbc.serving.serving_host_memory::srv1_lmcache_l1_gb_value, the same authority the boot args
+      // are rendered from. It used to be the literal "12" — the figure read off the container on 2026-11-09 —
+      // which provisioning handed to every srv1 container it started while the boot path had already been raised
+      // to 48: the sixth home of one fact, and the one that made a provisioned replica disagree with a restarted
+      // one. The Nov 9 capture still says 12, and it is kept (srv1_serving_command_observed) and asserted against
+      // the render in the control named for it.
+      lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: srv1_lmcache_l1_gb_value()),
       lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "125" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
@@ -218,7 +267,10 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--profile", "qwen38-flash-next",
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
-      "--env", "LMCACHE_L1_GB=12",
+      // the derived tier, not the 2026-11-09 capture's 12 — see the note in
+      // the_environment_tiers_wire_as_the_container_shows_them. Spelled through the same wire function the row
+      // itself uses, so this line is the row's answer and not a second copy of the number.
+      "--env", (lil_serve_environment_wire(e: lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: srv1_lmcache_l1_gb_value())) as String),
       "--env", "LMCACHE_L2_GB=125",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
       "--env", "LMCACHE_L2_WORKERS=16",
@@ -465,4 +517,113 @@ test fn both_enumerated_srv1_cards_resolve_a_two_device_group() -> Bool {
       }
     Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => false   // two admitted cards must resolve
   }
+}
+
+// ── THE EMERGENCY VALVE ON THE LAUNCHER'S OWN FACE ──────────────────────────────────────────────
+//
+// WHY THIS CONTROL EXISTS. `--emergency-evict-for-prefetch` belongs to the launcher, not to the engine: it
+// is one of the tokens lil-serve consumes BEFORE the `--` that separates it from vLLM (the host's 2026-11-24
+// ps output shows the engine tail `-- --enforce-eager --disable-log-requests ...` starting after it).
+// Modelling it as an ENGINE flag would have put a launcher argument in the engine's mouth, where
+// srv1_replica_rendered_boot_path_witness pins `--kv-cache-dtype` at argv index 2 and would never have
+// noticed. So the flag is a row on the launcher's own face, and this control is what keeps it there:
+// PASSING contributes EXACTLY that one token, in place, before the environment; DECLINING contributes
+// nothing — which is why the srv1 token sequence this witness compares against the host's docker inspect
+// (test fn the_rendered_argv_equals_the_container_cmd_tail) did not move when the valve was modelled.
+//
+// THE DISCRIMINATION. Reorder the flag after the environment, or render it twice, and the zip_eq equality
+// or the face test fails. Replace the derived list in `data srv1_serving_launch` with a literal `[]` and
+// `length(srv1_serving_launch.launcher_flags) == 0` still passes — which is exactly why the control also
+// asserts the ANSWER's own shape (length(passed) == 1, length(declined) == 0) and the flag's single
+// spelling through extdeps, rather than only the rendering.
+
+fn is_emergency_valve_token(t: String) -> Bool { t == "--emergency-evict-for-prefetch" }
+
+fn is_lmcache_env_token(t: String) -> Bool { string_contains(s: t, pattern: "LMCACHE_") }
+
+// The tokens lil-serve itself consumes: everything before the first `--env`, because the environment and
+// the engine's own arguments both come after it.
+fn launcher_face_tokens(argv: List<String>) -> List<String> {
+  fold_list(
+    xs: argv,
+    empty: ([] as List<String>),
+    cons: fn(acc, t) { if any(acc, is_lmcache_env_token) { acc } else { concat(acc, [t]) } }
+  )
+}
+
+// srv1's own launch record with ONLY launcher_flags changed, so the two argvs differ by the answer and
+// nothing else (the cfg_shape pattern of srv1_replica_rendered_boot_path_witness, for the same reason).
+fn valve_probe_launch(flags: List<LilServeLauncherFlag>) -> LilServeLaunch {
+  let l = srv1_serving_launch
+  LilServeLaunch {
+    profile: l.profile,
+    hardware: l.hardware,
+    environment: l.environment,
+    launcher_flags: flags,
+    engine: l.engine,
+    ssl_keyfile: l.ssl_keyfile,
+    ssl_certfile: l.ssl_certfile,
+    api_key: l.api_key,
+    listen_port: l.listen_port,
+    standing: l.standing,
+  }
+}
+
+test fn a_passed_valve_is_exactly_one_token_on_the_launcher_face() -> Bool {
+  let passed = srv1_emergency_evict_launcher_flags(
+    d: EmergencyEvictPassed { why: "the host passes it for GLM profiles" as NonEmptyStr }
+  )
+  let declined = srv1_emergency_evict_launcher_flags(
+    d: srv1_emergency_evict_decision_for(profile: srv1_served_profile_name)
+  )
+  let with_valve = lil_serve_launch_argv(launch: valve_probe_launch(flags: passed), api_key_wire: "$POOL_KEY")
+  let without = lil_serve_launch_argv(launch: valve_probe_launch(flags: declined), api_key_wire: "$POOL_KEY")
+  // The spelling has one source: the row in extdeps.vllm.lil_serve, not a string written here.
+  length(passed) == 1
+    && lil_serve_launcher_flag_argv(f: lil_serve_launcher_flag_emergency_evict_for_prefetch) == ["--emergency-evict-for-prefetch"]
+    && all(map(xs: passed, f: f => lil_serve_launcher_flag_argv(f: f)), t => length(t) == 1)
+    // srv1 declines the valve, so the admitted launch carries none: the host's argv stays the authority.
+    && length(declined) == 0
+    && length(srv1_serving_launch.launcher_flags) == 0
+    && !any(without, is_emergency_valve_token)
+    // Passing adds exactly that token, in place, and nothing else about the launch changes.
+    && any(with_valve, is_emergency_valve_token)
+    && zip_eq(a: filter(with_valve, t => !is_emergency_valve_token(t)), b: without, eq: fn(x, y) { x == y })
+    // And it lands on the launcher's face: before the first environment token, so before the engine's argv.
+    && any(launcher_face_tokens(with_valve), is_emergency_valve_token)
+    // A decline is an ANSWER, with a reading attached; an unmodelled profile is not an answer at all.
+    && srv1_emergency_evict_decision_is_stated(d: srv1_emergency_evict_decision_for(profile: srv1_served_profile_name))
+    && !srv1_emergency_evict_decision_is_stated(d: srv1_emergency_evict_decision_for(profile: "glm-5.3-flash" as NonEmptyStr))
+    && match srv1_emergency_evict_decision_standing(d: srv1_emergency_evict_decision_for(profile: srv1_served_profile_name)) {
+      Absent => false
+      Present { value: st } => match cited_figure_read_obligation(standing: st) {
+        Absent => false
+        Present { value: o } => string_contains(s: o, pattern: "launcher.py")
+          && string_contains(s: o, pattern: "GLM")
+      }
+    }
+    && string_contains(s: srv1_emergency_evict_read_obligation as String, pattern: "admitted image")
+}
+
+// THE TWO SURFACES ANSWER TOGETHER, OR ONE OF THEM IS LYING. A container provisioned from the model takes its
+// launcher face from srv1_serving_launch_for_port (gunbc.serving.serving_provision_derivation copies it into
+// every provisioned vLLM container's argv); the boot path takes its face from
+// srv1_emergency_evict_launcher_tokens over the same per-profile answer. Compared, not asserted equal: #17089
+// had to be told twice that a provisioned launch and a boot render can carry different numbers for one config,
+// and a flag that appeared on one surface and not the other is the same bug on the flag face.
+test fn the_provisioned_launch_and_the_boot_answer_carry_the_same_launcher_face() -> Bool {
+  let provisioned = map(
+    xs: srv1_serving_launch_for_port(port: 18001).launcher_flags,
+    f: x => lil_serve_launcher_flag_name(f: x) as String
+  )
+  let boot = map(
+    xs: srv1_emergency_evict_launcher_tokens(d: srv1_emergency_evict_decision_for(profile: srv1_served_profile_name)),
+    f: t => t as String
+  )
+  zip_eq(a: provisioned, b: boot, eq: fn(x, y) { x == y })
+    // …and what they agree on today is that srv1 passes nothing, on BOTH surfaces.
+    && !any(provisioned, is_emergency_valve_token)
+    && !any(boot, is_emergency_valve_token)
+    // The answer that would change both: one token each, never one surface only.
+    && length(srv1_emergency_evict_launcher_tokens(d: EmergencyEvictPassed { why: "the host passes it for GLM profiles" as NonEmptyStr })) == 1
 }

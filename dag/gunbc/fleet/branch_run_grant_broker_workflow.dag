@@ -183,7 +183,8 @@ data branch_run_grant_broker_job_permissions: WorkflowPermissions = WorkflowPerm
   pull_requests: none,
   issues: none,
   actions: Present { value: PermWrite },
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 fn branch_run_grant_broker_job() -> Job {
@@ -256,7 +257,6 @@ fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_broker_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

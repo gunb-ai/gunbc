@@ -289,7 +289,6 @@ fn heal_publisher_phase_script(
           source_roots: profile.roster.source_roots,
           entry: phase.entry as String,
           function: phase.function as String,
-          claim_run: false,
           receipt_rel: none
         )
       )
@@ -485,7 +484,8 @@ fn heal_publisher_job_permissions(pull_requests: PermissionLevel) -> WorkflowPer
     pull_requests: Present { value: pull_requests },
     issues: none,
     actions: Present { value: PermRead },
-    id_token: Present { value: PermWrite }
+    id_token: Present { value: PermWrite },
+    pages: none
   }
 }
 

@@ -1,0 +1,580 @@
+module gunbc.roadmap.roadmap_work_item_projection
+
+import std.types { String, Int, Bool, List }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapNodeStanding, RoadmapStandings, LeafInFlightEntry, LeafInFlightRead, InFlightLeaves, InFlightRefused, RoadmapEventEnvelope, RoadmapEventKind,
+  LeafInFlightRefusal, InFlightClaimGrainUnreadable, InFlightLineUnreadable, InFlightEventOfAnotherItem, InFlightLeafOfAnotherItem, InFlightHistoryUnordered,
+  roadmap_event_kind_word, standing_for_node, roadmap_node_standing_key, event_principal_label,
+  roadmap_acceptance_pr_evidence_url, roadmap_leaf_in_flight_from_envs, roadmap_event_causal_chain, roadmap_event_wire_text,
+}
+import gunbc.roadmap.roadmap_intention_binding { IntentionBinding, roadmap_intention_bindings }
+import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf, date_leaf, date_text }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_for, expand_decomposition }
+import gunbc.roadmap.roadmap_schedule { ScheduleRefusal }
+import gunbc.roadmap.roadmap_schedule_from_now { ItemLog, FromNowScheduled, FromNowRefused, FromNowCause, schedule_from_now }
+import std.nat { Nat }
+import std.integer { nat_to_int }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, json_kv, json_object, json_array, json_string, json_int, json_bool, json_null,
+}
+
+// THE WORK-ITEM PROJECTION (GET /projection.json): one JSON row per roadmap work item, the shape the
+// ctrl session dashboard's Roadmap Timeline view and the gunbc planning page both read. It is a
+// PROJECTION, not a store: every field is read from an authority already on the page at the tick --
+// the standing from the same fold /standings.json reads (roadmap_event_log), the leaf-grain start and
+// finish days and the critical path from the schedule (roadmap_schedule / roadmap_schedule_from_now,
+// the leaf-grain answer), the in-flight leaves from the log's derived set (roadmap_event_log
+// roadmap_leaf_in_flight_set, gunbc#16703), the intention and layer from the binding carrier
+// (roadmap_intention_binding), and the item's past events from the event log AT THIS READ -- events are
+// the log's own rows, never a copy this document keeps (roadmap_event_log is their only home).
+//
+// IT COMPUTES NOTHING THE UPSTREAM ALREADY ANSWERS (ticket note 2026-11-19). The schedule answers the
+// dates and the critical path; the log answers the in-flight set and the events; the binding carrier
+// answers the intention and the layer and refuses a planted binding at load. The integration here is
+// the SERVED DOCUMENT and its release control -- assembling those answers into the one closed wire
+// shape and refusing a row that could not honestly carry it -- never a second timeline calculation.
+//
+// WHY A REFUSAL AND NOT A GAP. The ticket's red control: a served row that omits a declared field of
+// the shape -- a leaf without its critical-path bit, an in-flight entry without its assignee and
+// return_to, an event without its recorded day, a row without read_on and the inputs the read used --
+// IS NOT THE PROJECTION. So the emitter refuses rather than serve a row missing a field: a reader that
+// sees a row knows every declared field is present, and a reader that sees the refusal knows the
+// projection was not honestly computable and reads the located reason. A silent omission would let a
+// Timeline draw a bar with no critical-path colour and call it complete.
+
+data roadmap_work_item_projection_schema: String = "roadmap-work-item-projection/v1"
+
+// One occurrence of a leaf, with the schedule's own answer bound to dates by the calendar (roadmap_schedule_calendar
+// -- ONE calendar answers both grains, per roadmap_item_gantt; abstract day integers never leave the schedule).
+// start_day and finish_day are ISO days (YYYY-MM-DD) read off the dated leaf's start_date/finish_date via the
+// calendar's own date_text -- the same dates the item gantt serves, so a reader runs no second calendar.
+type ProjectionLeaf {
+  path: String
+  start_day: String
+  finish_day: String
+  on_critical_path: Bool
+}
+
+// One leaf the log's derived set says is in flight: the leaf path, the claim's assignee, the claim's
+// return_to -- the three the boundary names. The set is DERIVED from the log (roadmap_leaf_in_flight_set),
+// never a list this document stores; these rows are that set read at the tick, so an entry's assignee
+// and return_to are the claim's own, not a snapshot.
+type ProjectionInFlight {
+  path: String
+  assignee: String
+  return_to: String
+}
+
+// One of the item's past events the boundary lists -- claimed, released, acceptance recorded, retired --
+// with the day the log recorded it at. Read from the log at this read; not stored on the row.
+type ProjectionEvent {
+  kind: String
+  recorded_at: String
+}
+
+// The inputs the read used, SHOWN AS INPUTS (not as facts): how many workers the schedule read with,
+// the day priors it counted with, and the assumed findings counts it filled gaps with. A reader sees
+// these are inputs the projection was computed under, so a bar moving with a re-read is not mistaken
+// for the work moving.
+type ProjectionInputs {
+  worker_count: Int
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the
+  // same inherited grain the scheduler marks on ScheduledLeaf.start_day/finish_day (roadmap_schedule.dag) and
+  // the decomposition marks on WorkPiece.days (roadmap_decomposition.dag); these values ARE those scheduled
+  // working-day spans (finish - start), so this field dissolves with that carrier, never re-tracking the unit.
+  // Working days, never hours; no calendar instant here (roadmap_schedule_calendar binds the grain to dates).
+  day_priors: List<Int>
+  assumed_findings_counts: List<Int>
+}
+
+// One work item's row. `intention` is the binding carrier's DeclarationRef display key; a row that could
+// not resolve its intention is refused before it reaches this record.
+type ProjectionRow {
+  node: String
+  intention: String
+  layer: Int
+  item_state: String
+  leaves: List<ProjectionLeaf>
+  in_flight: List<ProjectionInFlight>
+  latest_event: Optional<String>
+  acceptance_evidence: Optional<String>
+  events: List<ProjectionEvent>
+}
+
+// WHY a row could not be honestly built, located and countable -- never a bare sentence.
+type ProjectionRefusal
+  = UnboundNode { node: String }
+  | StandingUnobserved { node: String }
+  // A node whose decomposition exists but whose schedule REFUSED: a plan is present but cannot be honestly
+  // placed. Serving empty leaves here would draw "nothing planned" for an item mid-plan -- a silent widen.
+  | RowScheduleRefused { node: String, cause: String }
+  // The item's in-flight read refused (history not causally orderable, a grain unreadable, ...): its held
+  // claims cannot be honestly stated. Serving empty in_flight would draw "nobody claimed" -- a silent widen.
+  | InFlightUnordered { node: String, cause: String }
+
+// THE INTENTION-EXISTENCE GUARANTEE IS THE BINDING CARRIER'S, NOT THIS UNIT'S. A work item's row takes its
+// intention and layer from the binding carrier (roadmap_intention_bindings, IntentionBinding { node,
+// intention: DeclarationRef, layer }); whether that cited DeclarationRef names a real Plan is decided ONCE,
+// at load, by the carrier's own cited-declaration sweep (roadmap_intention_binding holds producer_resolves
+// for the same reason a strategy clause holds it) -- a planted binding to an intention that does not exist
+// refuses the seed at load and never reaches a row. This unit therefore does NOT restate which plans exist;
+// a hand-copied list of plans here would be a second source of truth for a fact that belongs to gunbc.plans
+// and the DeclarationRef resolution (the Consumption rule's "a module nothing imports" and single-authority
+// rules forbid it). What this unit CAN check at the read is the runtime gap the fold cannot: an item with NO
+// binding at all cannot carry an intention or a layer, so it refuses as UnboundNode rather than serve a bar
+// wired to nothing.
+
+// A leaf path spelled as the decomposition spells it -- item#stage#piece#member, the one string the
+// schedule, the in-flight set and a reader all agree on (the schedule's own path key, read the same way).
+fn projection_leaf_path_text(p: LeafPath) -> String {
+  join([
+    p.item as String, "#",
+    to_string(nat_to_int(n: p.stage)), "#",
+    to_string(nat_to_int(n: p.piece)), "#",
+    to_string(nat_to_int(n: p.member)),
+  ], "")
+}
+
+// ONE LEAF, dated. The dates come from the calendar's own DatedLeaf (roadmap_schedule_calendar --
+// bound_day_to_date / date_leaf / bind_each_leaf read the schedule's abstract days and bind them to the read
+// date; this only spells the dated answer to the wire via the calendar's date_text, so the projection serves
+// the SAME ISO days the item gantt serves and runs no calendar of its own). on_critical_path is read off the
+// schedule answer's critical path, compared by the leaf's spelled path.
+fn projection_leaf_from_dated(d: DatedLeaf, critical_path: List<LeafPath>) -> ProjectionLeaf {
+  let path = projection_leaf_path_text(p: d.path)
+  ProjectionLeaf {
+    path: path,
+    start_day: date_text(date: d.start_date),
+    finish_day: date_text(date: d.finish_date),
+    on_critical_path: count(filter(critical_path, p => projection_leaf_path_text(p: p) == path)) > 0,
+  }
+}
+
+// THE LEAVES OF ONE ITEM, bound to dates from the schedule answer at the read. The belt reads the schedule
+// (roadmap_schedule / roadmap_schedule_from_now -- the projection never computes it), binds it through the
+// calendar (bind_each_leaf), and hands the dated leaves here; this spells them to the wire. Leaves whose
+// path belongs to the item are kept; the rest are not this item's row.
+fn projection_leaves_for_item(dated: List<DatedLeaf>, critical_path: List<LeafPath>, item: String) -> List<ProjectionLeaf> {
+  map(filter(dated, d => (d.path.item as String) == item), d => projection_leaf_from_dated(d: d, critical_path: critical_path))
+}
+
+// THE DERIVED IN-FLIGHT SET for one item, read at the tick. These entries are the log's own derived rows;
+// this only names them for the wire (path, assignee, return_to) -- it holds nothing of its own.
+fn projection_in_flight_entries(entries: List<LeafInFlightEntry>, item: String) -> List<ProjectionInFlight> {
+  map(
+    filter(entries, e => (e.leaf.item as String) == item),
+    e => ProjectionInFlight {
+      path: projection_leaf_path_text(p: e.leaf),
+      assignee: event_principal_label(p: e.assignee),
+      return_to: event_principal_label(p: e.return_to),
+    })
+}
+
+// WHICH EVENTS THE PROJECTION CARRIES: the boundary's four kinds -- claimed, released, acceptance
+// recorded, retired. Matched on the LOG's OWN VARIANTS, never by comparing a rendered word: renaming a
+// kind or adding one must not silently drop an event from the history the row serves (single_authority: no
+// second place decides what a kind is; fail_closed: make the wrong shape unwritable, not merely caught).
+// roadmap_event_kind_word stays the single authority for the WORD shown in events[].kind -- display only.
+fn projection_kind_is_carried(kind: RoadmapEventKind) -> Bool {
+  match kind {
+    // CARRIED by the boundary's events[]: the four kinds the timeline needs.
+    Claimed { assignee: _, return_to: _ } => true
+    Released => true
+    Retired { reason: _ } => true
+    AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
+    // NOT carried -- each named explicitly so adding a RoadmapEventKind variant is a COMPILE-TIME decision
+    // here, never a wildcard that silently drops the new kind from the served history (no escape hatch).
+    Progress { note: _ } => false
+    Blocked { reason: _ } => false
+    HandedBack { reason: _ } => false
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+    RedTreeRecorded { observation: _ } => false
+    CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
+    CommentEdited { comment: _, body: _ } => false
+    CommentDeleted { comment: _ } => false
+    ResultReturned { attempt: _, claim: _, outcome: _ } => false
+    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
+    // A merge is appended after the acceptance it lands and changes no standing
+    // (gunbc.design_ruling recorder ruling, gunbc#16965); it is not one of the boundary's four kinds.
+    PullRequestMergedEvent { merge: _ } => false
+  }
+}
+
+// THE ITEM'S PAST EVENTS, read from the log at THIS read -- the log's own rows, never a copy the row
+// keeps. Only the boundary's carried kinds appear (matched by variant, above); each carries the day the
+// log recorded it at.
+fn projection_events_of(envs: List<RoadmapEventEnvelope>, item: String) -> List<ProjectionEvent> {
+  map(
+    filter(envs, e => (e.event.node as String) == item && projection_kind_is_carried(kind: e.event.kind)),
+    e => ProjectionEvent {
+      kind: roadmap_event_kind_word(k: e.event.kind),
+      recorded_at: e.event.recorded_at,
+    })
+}
+
+// THE LATEST EVENT of the item, read from the log at this read: the kind word of its most recent event,
+// or ABSENT when the log has carried nothing for it -- never a standing guessed from absence, and never a
+// "none" sentinel that a reader could not tell from a real kind. Absence is Optional; the wire says null.
+fn projection_latest_event_of(envs: List<RoadmapEventEnvelope>, item: String) -> Optional<String> {
+  fold(filter(envs, e => (e.event.node as String) == item), init: Absent,
+    f: fn(_acc, e) { Present { value: roadmap_event_kind_word(k: e.event.kind) } })
+}
+
+// THE ACCEPTANCE EVIDENCE the log carries for the item: the PR evidence URL on its acceptance_recorded
+// row -- the acceptance's own machine fact, read from the log at this read, not a re-spelling. The fold is
+// the ONE place that decides what an acceptance is: it matches the AcceptanceRecordedEvent VARIANT directly
+// (no word comparison, no separate Bool guard a filter could drift from -- a second place deciding the same
+// fact is a fork). Every other kind is named and keeps the accumulator, so adding a kind forces a decision
+// here rather than being silently skipped, and an item with no acceptance stays ABSENT (null), never the
+// empty string: a reader must tell "no acceptance" apart from an empty evidence URL.
+fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: String) -> Optional<String> {
+  fold(
+    filter(envs, e => (e.event.node as String) == item),
+    init: Absent,
+    f: fn(acc, e) {
+      match e.event.kind {
+        AcceptanceRecordedEvent { receipt: _, evidence } => Present { value: roadmap_acceptance_pr_evidence_url(evidence: evidence) }
+        Claimed { assignee: _, return_to: _ } => acc
+        Released => acc
+        Progress { note: _ } => acc
+        Blocked { reason: _ } => acc
+        HandedBack { reason: _ } => acc
+        Retired { reason: _ } => acc
+        ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+        RedTreeRecorded { observation: _ } => acc
+        CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
+        CommentEdited { comment: _, body: _ } => acc
+        CommentDeleted { comment: _ } => acc
+        ResultReturned { attempt: _, claim: _, outcome: _ } => acc
+        AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => acc
+        // The merge event names the head that landed, not the acceptance's evidence; the acceptance row stays the
+        // one place this fold reads evidence from.
+        PullRequestMergedEvent { merge: _ } => acc
+      }
+    })
+}
+
+// One build outcome: the row, or why it could not honestly be built. day_priors is the row's scheduled
+// working-day spans (ScheduledLeaf finish - start); same tracked unit as ProjectionInputs.day_priors.
+type ProjectionRowResult
+  = ProjectionRowBuilt { row: ProjectionRow, day_priors: List<Int> }
+  | ProjectionRowRefused { refusal: ProjectionRefusal }
+
+// BUILD ONE ROW from the answers already on the page, or refuse. item_state is the fold's standing keyed;
+// leaves are the schedule's; in_flight and events are the log's; intention and layer are the binding
+// carrier's. Whether a cited intention names a real Plan is the carrier's LOAD-time check (see the note on
+// ProjectionRefusal); the only binding gap this read can see is an item with NO binding at all, which
+// refuses as UnboundNode rather than serve a bar wired to nothing.
+fn projection_build_row(
+  node: String,
+  bindings: List<IntentionBinding>,
+  standings: RoadmapStandings,
+  leaves: List<ProjectionLeaf>,
+  in_flight: List<ProjectionInFlight>,
+  envs: List<RoadmapEventEnvelope>,
+  day_priors: List<Int>,
+) -> ProjectionRowResult {
+  match filter(bindings, b => (b.node as String) == node).first() {
+    Absent => ProjectionRowRefused { refusal: UnboundNode { node: node } }
+    Present { value: b } =>
+      match standing_for_node(standings: standings, node_id: node) {
+        Absent => ProjectionRowRefused { refusal: StandingUnobserved { node: node } }
+        Present { value: s } => ProjectionRowBuilt { row: ProjectionRow {
+          node: node,
+          intention: declaration_ref_display_key(ref: b.intention),
+          layer: b.layer,
+          item_state: roadmap_node_standing_key(s: s),
+          leaves: leaves,
+          in_flight: in_flight,
+          latest_event: projection_latest_event_of(envs: envs, item: node),
+          acceptance_evidence: projection_acceptance_evidence_of(envs: envs, item: node),
+          events: projection_events_of(envs: envs, item: node),
+        }, day_priors: day_priors }
+      }
+  }
+}
+
+fn projection_refusal_reason(refusal: ProjectionRefusal) -> String {
+  match refusal {
+    UnboundNode { node: n } => join(["no binding for node: ", n], "")
+    StandingUnobserved { node: n } => join(["standing unobserved for node: ", n], "")
+    RowScheduleRefused { node: n, cause: c } => join(["schedule refused for node: ", n, " (", c, ")"], "")
+    InFlightUnordered { node: n, cause: c } => join(["in-flight read refused for node: ", n, " (", c, ")"], "")
+  }
+}
+
+fn projection_refusal_step(refusal: ProjectionRefusal) -> String {
+  match refusal {
+    UnboundNode { node: _ } => "binding"
+    StandingUnobserved { node: _ } => "standing"
+    RowScheduleRefused { node: _, cause: _ } => "schedule"
+    InFlightUnordered { node: _, cause: _ } => "in_flight"
+  }
+}
+
+// THE REAL CAUSE OF A REFUSED IN-FLIGHT READ, named (fail_closed: the failure located, not collapsed to a
+// generic "unordered"). The from_envs entry refuses on a grain it cannot read, a line it cannot parse, an
+// EVENT read from another item's log, a CLAIMED leaf belonging to another item, or a history that is not one
+// causal chain; this spells which one, so the refusal says what actually went wrong.
+fn projection_in_flight_refusal_cause(cause: LeafInFlightRefusal) -> String {
+  match cause {
+    InFlightClaimGrainUnreadable { line: _, field } => join(["claim grain unreadable at ", field], "")
+    InFlightLineUnreadable { line: _, reason } => join(["unreadable log line: ", reason], "")
+    InFlightEventOfAnotherItem { line: _, event_node, asked: _ } => join(["event of another item: ", event_node as String], "")
+    InFlightLeafOfAnotherItem { line: _, leaf_item, asked: _ } => join(["claimed leaf of another item: ", leaf_item as String], "")
+    InFlightHistoryUnordered {} => "history is not a single causal chain"
+  }
+}
+
+// THE FROM-NOW READ'S REFUSAL, mapped to this projection's located refusal -- never swallowed. A from-now
+// read refuses for one of two reasons, and each keeps its own identity: the in-flight set could not be read
+// (the line entry caught a foreign event, a foreign leaf or an unreadable grain -- carried through with its
+// real cause), or the schedule could not place the plan (carried through with its schedule cause).
+fn projection_from_now_refusal(node: String, cause: FromNowCause) -> ProjectionRefusal {
+  match cause {
+    InFlightReadRefused { item: _, cause: c } => InFlightUnordered { node: node, cause: projection_in_flight_refusal_cause(cause: c) }
+    ScheduleRefused { refusal } => RowScheduleRefused { node: node, cause: projection_schedule_refusal_cause(refusal: refusal) }
+  }
+}
+
+// THE CAUSE WORD OF A REFUSED SCHEDULE -- the failure named, not swallowed (fail_closed). The projection
+// refuses on a NotScheduled rather than widen to empty leaves, and this names which arm refused so the
+// located reason carries the upstream cause instead of a generic 'schedule refused'.
+fn projection_schedule_refusal_cause(refusal: ScheduleRefusal) -> String {
+  match refusal {
+    OverRefusedExpansion { cause: _ } => "over_refused_expansion"
+    ConcurrencyCapInvalid { cap: _ } => "concurrency_cap_invalid"
+    NoWorkingDayPrior { paths: _ } => "no_working_day_prior"
+    CyclicOccurrenceGraph => "cyclic_occurrence_graph"
+    UnplacedOccurrences { paths: _ } => "unplaced_occurrences"
+    MemberIndexBeyondExpansion { paths: _ } => "member_index_beyond_expansion"
+    PinnedLeafNotAnOccurrence { paths: _ } => "pinned_leaf_not_an_occurrence"
+    PinnedPlacementInvalid { paths: _ } => "pinned_placement_invalid"
+  }
+}
+
+// THE SERVED DOCUMENT: the whole roadmap as one JSON document, read_on and the inputs the read used at
+// the TOP LEVEL (every row shares the one read), and the rows beneath `rows`. Any row that could not be
+// honestly built refuses the WHOLE document -- a Timeline missing a row would silently draw an incomplete
+// plan, so an honest projection refuses rather than drops. A reader treats a document without `rows` as
+// not-the-projection and reads `refused` for the located reason.
+fn roadmap_work_item_projection_document_json(
+  rows: List<ProjectionRow>,
+  refused: List<ProjectionRefusal>,
+  read_on: String,
+  inputs: ProjectionInputs,
+) -> JsonValue {
+  if count(refused) > 0 {
+    match refused.first() {
+      Present { value: r } => roadmap_work_item_projection_refusal_json(read_on: read_on, step: projection_refusal_step(refusal: r), reason: projection_refusal_reason(refusal: r))
+      Absent => roadmap_work_item_projection_refusal_json(read_on: read_on, step: "unknown", reason: "refusal list unreadable")
+    }
+  } else {
+    json_object(members: [
+      json_kv(key: "schema", value: json_string(s: roadmap_work_item_projection_schema)),
+      json_kv(key: "read_on", value: json_string(s: read_on)),
+      json_kv(key: "inputs", value: json_object(members: [
+        json_kv(key: "worker_count", value: json_int(n: inputs.worker_count)),
+        json_kv(key: "day_priors", value: json_array(elements: map(inputs.day_priors, d => json_int(n: d)))),
+        json_kv(key: "assumed_findings_counts", value: json_array(elements: map(inputs.assumed_findings_counts, c => json_int(n: c)))),
+      ])),
+      json_kv(key: "rows", value: json_array(elements: map(rows, r => projection_row_json(row: r)))),
+    ])
+  }
+}
+
+// PRESENT TEXT or JSON NULL -- the one way this projection renders an Optional<String> on the wire, so an
+// absent field is null (never a "none"/"" sentinel a reader could mistake for a value).
+fn projection_optional_text_to_json(o: Optional<String>) -> JsonValue {
+  match o { Present { value: s } => json_string(s: s) Absent => json_null() }
+}
+
+// EVERY DECLARED FIELD, every row, always. No field is conditional: the boundary's red control is that a
+// row omitting a declared field is not the projection, so the emitter writes all of them -- node,
+// intention, layer, item_state, leaves (each with its critical-path bit), in_flight (each with assignee
+// and return_to), latest_event, acceptance_evidence, events (each with its recorded day).
+fn projection_row_json(row: ProjectionRow) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "node", value: json_string(s: row.node)),
+    json_kv(key: "intention", value: json_string(s: row.intention)),
+    json_kv(key: "layer", value: json_int(n: row.layer)),
+    json_kv(key: "item_state", value: json_string(s: row.item_state)),
+    json_kv(key: "leaves", value: json_array(elements: map(row.leaves, l => json_object(members: [
+      json_kv(key: "path", value: json_string(s: l.path)),
+      json_kv(key: "start_day", value: json_string(s: l.start_day)),
+      json_kv(key: "finish_day", value: json_string(s: l.finish_day)),
+      json_kv(key: "on_critical_path", value: json_bool(b: l.on_critical_path)),
+    ])))),
+    json_kv(key: "in_flight", value: json_array(elements: map(row.in_flight, f => json_object(members: [
+      json_kv(key: "path", value: json_string(s: f.path)),
+      json_kv(key: "assignee", value: json_string(s: f.assignee)),
+      json_kv(key: "return_to", value: json_string(s: f.return_to)),
+    ])))),
+    // Absent is JSON null, NOT a sentinel: a reader tells "no latest event" / "no acceptance" (null) apart
+    // from any real value. Presence is Optional; the wire never writes "none" or "" for absence.
+    json_kv(key: "latest_event", value: projection_optional_text_to_json(o: row.latest_event)),
+    json_kv(key: "acceptance_evidence", value: projection_optional_text_to_json(o: row.acceptance_evidence)),
+    json_kv(key: "events", value: json_array(elements: map(row.events, e => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: e.kind)),
+      json_kv(key: "recorded_at", value: json_string(s: e.recorded_at)),
+    ])))),
+  ])
+}
+
+// THE REFUSAL, located and typed -- the projection says WHY it is not the projection rather than
+// answering with a partial document a reader could mistake for complete.
+fn roadmap_work_item_projection_refusal_json(read_on: String, step: String, reason: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: roadmap_work_item_projection_schema)),
+    json_kv(key: "read_on", value: json_string(s: read_on)),
+    json_kv(key: "refused", value: json_object(members: [
+      json_kv(key: "step", value: json_string(s: step)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])),
+  ])
+}
+
+// THE ONE PER-ITEM READ (ticket reuse note 2026-11-19; manager ruling 2026-11-24). The whole composition
+// for a single work item lives here: the item's decomposition, expanded and scheduled by the schedule that
+// already exists (roadmap_schedule), the answer's leaves bound to ISO days by the ONE calendar
+// (roadmap_schedule_calendar.date_leaf -- the same binding the item gantt uses, so the projection and the
+// gantt never carry two calendars), the item's derived in-flight set read off its OWN envelopes through the
+// log's fold (roadmap_event_log.roadmap_leaf_in_flight_from_envs, never a second derivation), and the row
+// assembled by projection_build_row from the binding (intention, layer), the standing (item_state) and the
+// envelopes (events, latest_event, acceptance_evidence). IT DRIVES THE UPSTREAM ANSWERS AND COMPUTES NO
+// TIMELINE OF ITS OWN. An EMPTY leaf list means one thing only: the node has no decomposition at all -- a
+// fact about an unplanned item. A schedule that REFUSES, or an in-flight history the log cannot order,
+// REFUSES the WHOLE row (ProjectionRowRefused { RowScheduleRefused | InFlightUnordered }) rather than widen to
+// an empty list: a barless row must never stand in for a plan the schedule could not place or hide held
+// claims behind an empty in_flight (fail_closed: a failure arm refuses, it never widens). Likewise
+// in_flight is never silently emptied -- it is the log's derived set, or the row refuses.
+fn roadmap_projection_row_read(
+  node: RoadmapNodeId,
+  read_date: Iso8601CivilDate,
+  workers: BeltCapacity,
+  findings_count: Nat,
+  standings: RoadmapStandings,
+  envs: List<RoadmapEventEnvelope>,
+) -> ProjectionRowResult {
+  let node_id = node as String
+  let item_envs = filter(envs, e => (e.event.node as String) == node_id)
+  // In-flight FIRST, and fail-closed: a refused in-flight read (history not orderable, a grain unreadable,
+  // ...) refuses the WHOLE row -- it is never widened to an empty set, which would draw an item with held
+  // claims as one nobody claimed (fail_closed). Ordering it before the schedule keeps an unordered history
+  // visible even where the schedule would otherwise have answered.
+  match roadmap_leaf_in_flight_from_envs(node: node, envs: item_envs) {
+    // The REAL cause is carried into the refusal (grain unreadable, an event of another item, a leaf of
+    // another item, or a history that is not one chain) -- never collapsed to a generic "unordered".
+    InFlightRefused { cause } => ProjectionRowRefused { refusal: InFlightUnordered { node: node_id, cause: projection_in_flight_refusal_cause(cause: cause) } }
+    InFlightLeaves { leaves: entries, closed: _, pathless_claims: _, absorbed_claims: _ } =>
+      let in_flight = projection_in_flight_entries(entries: entries, item: node_id)
+      // EVENTS, the latest event and the acceptance evidence are read in CAUSAL order, never the order the
+      // files arrived in (manager ruling 2026-11-24): [Released, Claimed] in file order must still report the
+      // release as latest, and two acceptances must yield the causal-latest URL. The in-flight read above
+      // already proved this item's history is a single causal chain, so the chain is present; the absent arm is
+      // a fail-closed guard mirroring that refusal, unreachable once in_flight answered.
+      match roadmap_event_causal_chain(envs: item_envs) {
+        Absent => ProjectionRowRefused { refusal: InFlightUnordered { node: node_id, cause: "not a single causal chain" } }
+        Present { value: ordered } =>
+          match decomposition_for(node: node).first() {
+            // NO decomposition at all: nothing to plan, so the leaf list is honestly empty -- the ONLY case
+            // that serves empty leaves (a fact about an unplanned item, not a hidden refusal).
+            Absent => projection_build_row(
+              node: node_id, bindings: roadmap_intention_bindings, standings: standings,
+              leaves: [] as List<ProjectionLeaf>, in_flight: in_flight, envs: ordered, day_priors: [] as List<Int>)
+            // The schedule is read FROM NOW (roadmap_schedule_from_now): the in-flight leaves -- exactly the
+            // holds the log carries -- are pinned at their claim day with their REMAINING days, and unclaimed
+            // leaves are scheduled around them under the same policy and worker count. A leaf claimed three
+            // working days ago with five days of work finishes at DAY TWO of the read, not at five full days
+            // (roadmap-schedule-from-now's day-two control). The pins' day comes from the item event log (a
+            // realized fact), the whole answer is recomputed at the read date, and no pinning, policy or
+            // calendar is re-invented beside it.
+            Present { value: d } => match schedule_from_now(
+              d: d,
+              e: expand_decomposition(d: d, findings_count: findings_count),
+              workers: workers,
+              read_on: read_date,
+              logs: [ ItemLog { node: node, lines: map(item_envs, e => roadmap_event_wire_text(env: e)) } ],
+            ) {
+              // The from-now read refused -- the in-flight set could not be read (a foreign or grain defect the
+              // line entry catches) or the scheduler could not place the plan. Refuse the row; never widen.
+              FromNowRefused { cause } => ProjectionRowRefused { refusal: projection_from_now_refusal(node: node_id, cause: cause) }
+              FromNowScheduled { answer: a } => projection_build_row(
+                node: node_id, bindings: roadmap_intention_bindings, standings: standings,
+                leaves: projection_leaves_for_item(
+                  dated: map(a.schedule.leaves, l => date_leaf(read_date: read_date, leaf: l)),
+                  critical_path: a.schedule.critical_path,
+                  item: node_id,
+                ),
+                in_flight: in_flight,
+                envs: ordered,
+                // The working-day spans the from-now read priced each leaf at -- a pinned leaf contributes its
+                // REMAINING days, an unclaimed leaf its full prior. The read's ACTUAL day priors, surfaced so
+                // the document shows them as inputs. feature:working-day-prior-carrier -- the scheduled
+                // working-day span, the same bare-Int grain the schedule carries; dissolves with that carrier.
+                day_priors: map(a.schedule.leaves, l => l.finish_day - l.start_day),
+              )
+            }
+          }
+      }
+  }
+}
+
+// THE SERVED PROJECTION FOR A SET OF WORK ITEMS AT ONE READ -- the single call the /projection.json surface
+// makes (manager ruling 2026-11-24: the hot served_observation file holds only this one call plus the
+// ProjectionJson arm, never the composition itself). It maps every node through the one row read above and
+// hands the rows and any refusal to the document builder, which emits refused{step,reason} for the WHOLE
+// document if any single item could not be honestly built -- so a Timeline never draws a partial plan as a
+// complete one. A refusal here is THE PROJECTION'S OWN and reaches only /projection.json; it does not fail
+// the tick or the standings surface, which are built by their own arms. read_on and the inputs the read used
+// (worker_count, the day priors -- each built row's scheduled working-day spans, concatenated, so the reader
+// sees the durations the schedule actually placed with -- and the findings count it assumed) sit at the top
+// level, shown as the inputs they
+// are and not as facts (the boundary). The witness drives it with constructed inputs, the way
+// roadmap_standings_document_test drives the standings fold.
+fn roadmap_projection_document_for_read(
+  nodes: List<RoadmapNodeId>,
+  read_on_date: Iso8601CivilDate,
+  workers: BeltCapacity,
+  findings_count: Nat,
+  standings: RoadmapStandings,
+  envs: List<RoadmapEventEnvelope>,
+) -> JsonValue {
+  let read_on = date_text(date: read_on_date)
+  let results = map(nodes, n => roadmap_projection_row_read(
+    node: n, read_date: read_on_date, workers: workers, findings_count: findings_count, standings: standings, envs: envs))
+  // One linear pass per output (no accumulator copied per step): each built row contributes its row and its
+  // priced day priors; each refusal contributes its refusal. flat_map appends each produced list once, so the
+  // work is linear in items, not quadratic in copied accumulators.
+  let rows = flat_map(results, r => match r {
+    ProjectionRowBuilt { row: row, day_priors: _ } => [row]
+    ProjectionRowRefused { refusal: _ } => [] as List<ProjectionRow>
+  })
+  let refusals = flat_map(results, r => match r {
+    ProjectionRowBuilt { row: _, day_priors: _ } => [] as List<ProjectionRefusal>
+    ProjectionRowRefused { refusal: refusal } => [refusal]
+  })
+  // THE DAY PRIORS THE READ ACTUALLY PRICED WITH: the working-day spans the from-now read placed each built
+  // leaf at (a pinned leaf contributes its REMAINING days), collected across every built item and shown at
+  // the top as the input it is (the boundary). An empty list means exactly what it says -- no scheduled leaf
+  // was priced -- rather than a field that claimed priors it never captured.
+  let day_priors = flat_map(results, r => match r {
+    ProjectionRowBuilt { row: _, day_priors: p } => p
+    ProjectionRowRefused { refusal: _ } => [] as List<Int>
+  })
+  roadmap_work_item_projection_document_json(
+    rows: rows,
+    refused: refusals,
+    read_on: read_on,
+    inputs: ProjectionInputs {
+      worker_count: workers.max_concurrent,
+      day_priors: day_priors,
+      assumed_findings_counts: [nat_to_int(n: findings_count)],
+    },
+  )
+}

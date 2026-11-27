@@ -1,0 +1,124 @@
+module gunbc.compute.remote_build_serve_principal
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
+import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user, fleet_posix_remote_build_supplementary_groups,
+  fleet_posix_compute_ledger_group_name, fleet_posix_compute_ledger_group_gid,
+}
+
+// THE SERVING PRINCIPAL, READ BACK.
+//
+// The account and its group are created by hand (fleet_posix_remote_build_user says why), so the
+// serving entries do not trust that the hand step matched the rows: each reads its own effective uid
+// and groups and judges them with the fleet's ONE principal judgment
+// (gunbc.fleet.fleet_job_principal job_principal_reading, which refuses a root-equivalent or
+// unnameable group). This module is the leaf both serving entries read, so the judgment that decides
+// "is this process allowed to serve" is defined once while the two entries differ only in HOW MUCH
+// they establish before they answer (gunbc.design_argument::single_authority: one definition, two
+// realizations -- and gunbc.design_argument::interface_realization_policy: the dispatch that picks a
+// realization is realization, not a second policy).
+//
+// THE TWO HALVES ARE NOT INTERCHANGEABLE, AND THE SPLIT IS THE POINT.
+//   * the ACCOUNT half -- the uid is the declared account's, every declared supplementary group is
+//     held by name, and the ledger group is held by its declared gid -- reads only this process and
+//     the fleet's declared rows. It is what "a remote-build principal is speaking" means, and the
+//     probe answers only after it.
+//   * the LEDGER half -- /etc/group lists the host's ledger service user as a member of the ledger
+//     group, the other half of the share gunbc.compute.host_capacity compute_capacity_area declares --
+//     asks the roster for the host's ledger owner, which is a ledger fact needed before a
+//     RESERVATION. The request leg's serving entry requires it; the probe does not, and does not claim
+//     it (review of adhoc-de669a4c6-929, clever-raven-401 2026-11-25).
+// A missing membership would otherwise be served and fail late, at the first reservation in the shared
+// ledger (review 95574); the request path still refuses there, at the same boundary that already holds
+// /etc/group. What the narrowed probe does NOT admit therefore arrives as the serving entry's own
+// typed refusal -- ServeHostCannotServe for a host whose ledger standing is undeclared -- which the
+// client already treats as "try the next host", never as an unknown outcome that stops the walk
+// (gunbc.compute.remote_build remote_build_answer_moves_on).
+
+type RemoteBuildServePrincipal
+  = RemoteBuildServePrincipalAdmitted
+  | RemoteBuildServePrincipalRefused { reason: String }
+
+// THE ACCOUNT HALF: this process against the fleet's declared rows, nothing else. Admitted only when
+// every one of the three holds; each refusal names the row it tripped on.
+fn remote_build_serve_principal_account_of(status: String, group_file: String) -> RemoteBuildServePrincipal {
+  match job_principal_reading(status: status, group_file: group_file) {
+    JobPrincipalRefused { reason } => RemoteBuildServePrincipalRefused { reason: reason }
+    JobPrincipalAdmitted { effective_uid, gids, groups } =>
+      if effective_uid != fleet_posix_remote_build_user.uid {
+        RemoteBuildServePrincipalRefused { reason: join(["effective uid ", to_string(value: effective_uid), " is not ", fleet_posix_remote_build_user.name as String, " (uid ", to_string(value: fleet_posix_remote_build_user.uid), ")"], "") }
+      } else {
+        let missing = fleet_posix_remote_build_supplementary_groups |> filter(g => !(groups |> any(n => n as String == g as String)))
+        if count(missing) > 0 {
+          RemoteBuildServePrincipalRefused { reason: concat("the account does not hold its declared group(s): ", join(map(missing, g => g as String), ",")) }
+        } else if !(gids |> any(g => g == fleet_posix_compute_ledger_group_gid)) {
+          RemoteBuildServePrincipalRefused { reason: join([fleet_posix_compute_ledger_group_name as String, " is not gid ", to_string(value: fleet_posix_compute_ledger_group_gid), " here"], "") }
+        } else {
+          RemoteBuildServePrincipalAdmitted
+        }
+      }
+  }
+}
+
+// THE LEDGER HALF, given the host's ledger service user from the roster.
+fn remote_build_ledger_group_lists(group_file: String, service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
+  match etc_group_entry_named(entries: etc_group_entries(text: group_file), name: fleet_posix_compute_ledger_group_name) {
+    Absent => RemoteBuildServePrincipalRefused { reason: concat(fleet_posix_compute_ledger_group_name as String, " is not in /etc/group") }
+    Present { value: e } =>
+      if e.members |> any(m => m as String == service_user as String) {
+        RemoteBuildServePrincipalAdmitted
+      } else {
+        RemoteBuildServePrincipalRefused { reason: join(["the ledger's service user ", service_user as String, " is not a member of ", fleet_posix_compute_ledger_group_name as String], "") }
+      }
+  }
+}
+
+// THE FULL GATE, as the request leg's serving entry admits it: account half, then ledger half.
+fn remote_build_serve_principal_of(status: String, group_file: String, service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
+  match remote_build_serve_principal_account_of(status: status, group_file: group_file) {
+    RemoteBuildServePrincipalRefused { reason } => RemoteBuildServePrincipalRefused { reason: reason }
+    RemoteBuildServePrincipalAdmitted => remote_build_ledger_group_lists(group_file: group_file, service_user: service_user)
+  }
+}
+
+// THE PROBE'S GATE: the account half alone, read from this process. It establishes that a
+// remote-build principal is speaking the contract, and it claims nothing about the ledger.
+fn remote_build_serve_probe_principal() -> RemoteBuildServePrincipal {
+  match remote_build_serve_principal_reads() {
+    RemoteBuildPrincipalReadsRead { status, group_file } =>
+      remote_build_serve_principal_account_of(status: status, group_file: group_file)
+    RemoteBuildPrincipalReadsRefused { cause } => RemoteBuildServePrincipalRefused { reason: cause }
+  }
+}
+
+// THE FULL GATE, reading this process. The request leg's serving entry calls this.
+fn remote_build_serve_principal(service_user: NonEmptyStr) -> RemoteBuildServePrincipal {
+  match remote_build_serve_principal_reads() {
+    RemoteBuildPrincipalReadsRead { status, group_file } =>
+      remote_build_serve_principal_of(status: status, group_file: group_file, service_user: service_user)
+    RemoteBuildPrincipalReadsRefused { cause } => RemoteBuildServePrincipalRefused { reason: cause }
+  }
+}
+
+// THE TWO READS THE JUDGMENT NEEDS, taken once. Only the host's own absent answer is read as absent;
+// an unreadable path refuses with its own cause (extdeps.filesystem.filesystem_io types the failure by
+// the host, and a present-but-broken file is not the absent file).
+type RemoteBuildPrincipalReads
+  = RemoteBuildPrincipalReadsRead { status: String, group_file: String }
+  | RemoteBuildPrincipalReadsRefused { cause: String }
+
+fn remote_build_serve_principal_reads() -> RemoteBuildPrincipalReads {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  let groups = Filesystem.Read(path: "/etc/group")
+  if !status.success {
+    RemoteBuildPrincipalReadsRefused { cause: concat("/proc/self/status is unreadable: ", status.error) }
+  } else if !groups.success {
+    RemoteBuildPrincipalReadsRefused { cause: concat("/etc/group is unreadable: ", groups.error) }
+  } else {
+    RemoteBuildPrincipalReadsRead { status: status.content, group_file: groups.content }
+  }
+}

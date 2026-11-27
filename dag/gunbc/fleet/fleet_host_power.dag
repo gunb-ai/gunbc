@@ -97,6 +97,61 @@ data srv4_power: HostPowerProfile = HostPowerProfile {
 
 data fleet_host_power_roster: List<HostPowerProfile> = [srv1_power, srv2_power, srv3_power, srv4_power]
 
+// A READING THAT COULD NOT PRICE ANYTHING, and the reason it could not. On 2026-11-24 the operator read each
+// Strata host's CPU package power on either side of the power caps going in: srv4 101 W and then 39-42 W, srv3
+// 65 W and then 29-31 W. The load on the host moved between the two readings, so the step belongs to the caps and
+// the quieter machine together and to neither cleanly -- which is precisely why neither figure replaces the
+// profile's inferred draw above. The rows exist so the numbers survive AND so the reason they were not used
+// survives with them: a later session that finds 39 W on srv4 should find this row saying why 39 W is not srv4's
+// figure, not rediscover the confound from scratch. A figure joins the roster only when it is read UNDER a named
+// cap state with the load held; that read supersedes both the inferred figure and the row here.
+type ConfoundedHostPowerReading {
+  host: NonEmptyStr
+  // What the reading was taken from, in the operator's own words: the CPU package power.
+  sensor: NonEmptyStr
+  earlier_watts: Watt
+  later_low_watts: Watt
+  later_high_watts: Watt
+  observed_on: NonEmptyStr
+  // What moved besides the thing being measured. This is the field that makes the reading unusable for pricing,
+  // so it is a field and not a comment.
+  confound: NonEmptyStr
+}
+
+data srv4_confounded_cpu_power_reading_2026_11_24: ConfoundedHostPowerReading = ConfoundedHostPowerReading {
+  host: "srv4",
+  sensor: "hwmon apm_xgene \"CPU power\" (the Altra CPU package power input), read over ssh",
+  earlier_watts: watt(count: 101),
+  later_low_watts: watt(count: 39),
+  later_high_watts: watt(count: 42),
+  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in; the earlier figure was taken with the cores at their 3.0 GHz ceiling and the 39-42 W band with scaling_max_freq at 2000000 kHz -- the ceiling itself is gunbc.fleet.cpu_freq_cap_boot_state's, and what moved between these reads was the load as well as the clock",
+  confound: "the load on the host changed between the two readings, so the 101 W to 39-42 W step is not attributable to the caps alone",
+}
+
+data srv3_confounded_cpu_power_reading_2026_11_24: ConfoundedHostPowerReading = ConfoundedHostPowerReading {
+  host: "srv3",
+  sensor: "hwmon apm_xgene \"CPU power\" (the Altra CPU package power input), read over ssh",
+  earlier_watts: watt(count: 65),
+  later_low_watts: watt(count: 29),
+  later_high_watts: watt(count: 31),
+  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in; the earlier figure was taken with the cores at their 3.0 GHz ceiling and the 29-31 W band with scaling_max_freq at 2000000 kHz -- the ceiling itself is gunbc.fleet.cpu_freq_cap_boot_state's, and what moved between these reads was the load as well as the clock",
+  confound: "the load on the host changed between the two readings, so the 65 W to 29-31 W step is not attributable to the caps alone",
+}
+
+data confounded_host_power_readings: List<ConfoundedHostPowerReading> = [
+  srv4_confounded_cpu_power_reading_2026_11_24, srv3_confounded_cpu_power_reading_2026_11_24,
+]
+
+// Is this host's roster figure still the inference, while a confounded reading of that host exists? The witness
+// asks it of both rows at once: the reading and the provenance are one standing, and a session that upgrades the
+// figure on the strength of these numbers trips it.
+fn host_figure_is_still_inferred(host: NonEmptyStr) -> Bool {
+  match host_power_profile(host: host) {
+    Absent => false
+    Present { value: p } => !power_is_measured(p: p)
+  }
+}
+
 fn power_is_measured(p: HostPowerProfile) -> Bool {
   match p.provenance {
     MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => true

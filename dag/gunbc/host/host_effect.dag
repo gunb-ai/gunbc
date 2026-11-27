@@ -2,7 +2,7 @@ module gunbc.host.host_effect
 
 import gunbc.fleet.fleet_known_hosts_anchor { FleetLegKind, FleetSshExecutionContext, SshTarget }
 import std.types { String, Int, NonEmptyStr, List }
-import std.content_hash { ContentHash, Fnv1a64Structural }
+import std.content_hash { ContentHash }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -85,7 +85,7 @@ type HostEffect =
   | LiveDeployApprovalBrokerDarkInstall { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease, elevated: HostEffectTransport }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
-  | LiveDeployDigestReadback { port: Int, expected_digest: Fnv1a64Structural }
+  | LiveDeployDispatchReadback { port: Int }
   | LiveDeployServeRoute { endpoint: TailscaleServeEndpoint, enabled: Bool }
   | DeployAccessPreflight {}
   | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }

@@ -1,0 +1,82 @@
+{
+  "question": "v1.std.core::build_newline_index",
+  "platform": "Linux x86_64, Cargo 1.93, dev profile, one run-owned target",
+  "method": "The producer captured the reachable Cargo units, materialized inputs, and file digest of its built seed. Each guard accepted only ordinary success with a nonempty shadow trace matching that exact executable. Every case recomputed the newline index.",
+  "predictions": [
+    "A -> B: Only the Rust integration test, its DAG enrollment and its README change. These files are not read by this gunbc build. Predict equal source candidates, different running images from the changed provenance stamp, and a matching producer/image pair for each run.",
+    "B paired with A: Run the genuinely built A binary against B's producer capture. Predict both ordinary commands succeed and produce the same fixture answer, but the observer reports A's image, which refuses pairing; no acceptance record is issued.",
+    "B -> C: Locally change v1.std.core::build_newline_index to map the Unicode snowman U+2603 to U+2604. The fixture contains this character only in a comment. Predict the reached Cargo read of src/v1/stage0/src/v1_std_core.rs changes, the source candidate changes, and the actual returned newline-index digest changes. The selected program still succeeds. Only this one tracked file belongs in the changed input-file list.",
+    "Rebuild B from the same tracked head after building C, at the same checkout and target. Predict the source candidate and returned answer return to B. The producer must match its own actual running image; a distinct valid image with equivalent code would not be admissible under B's original physical-image observation."
+  ],
+  "observations": {
+    "edit_outside_build_reads": {
+      "edited_paths": [
+        "dag/gunbc/materialization_shadow_seed_growth.dag",
+        "docs/measurements/v1_compiler_materialization/README.md",
+        "src/v1/stage0/tests/materialization_shadow.rs"
+      ],
+      "source_candidate_equal": true,
+      "running_images_differ": true
+    },
+    "stale_image_against_other_producer": {
+      "ordinary_exit": 0,
+      "answer_equal": true,
+      "refusal": "compiler image mismatch",
+      "matching_manifest_issued": false
+    },
+    "edit_of_reached_compiler_source": {
+      "changed_candidate_files": [
+        "src/v1/stage0/src/v1_std_core.rs"
+      ],
+      "alteration": "Only in the local control commit, map U+2603 to U+2604 in build_newline_index. The source fixture carries the character in a comment.",
+      "ordinary_exit": 0,
+      "source_candidate_changed": true,
+      "newline_index_changed": true
+    },
+    "rebuild_same_head_after_local_perturbation": {
+      "source_candidate_equal": true,
+      "newline_index_equal": true,
+      "image_equal": true
+    }
+  },
+  "runs": {
+    "before_unrelated_edits": {
+      "commit": "0ebcdd5bb0eaf4e2b3a22cd695903a2d0a42c2e6",
+      "tree": "878a6e98ae118199127d0e626fed273ef7d6b540",
+      "source_candidate_sha256": "ede69462765bee7ae3ff828633594028606742f018b44b169a17da3fe703dcd9",
+      "running_image_sha256": "6d109f49d80e9d55ffdd7deff3ea133176cf88af6e857a1608ea715dbc4a69f6",
+      "answer_sha256": "7f005c41e455aa9d6d629506a57627b3a2ffa66feceb922849ce2991ee721f10",
+      "fixture_logical_path": "target/identity-fixture/entry.dag",
+      "full_manifest_sha256": "bad26338f8b1073ac8a203265153e7cf95c6b0a3c0833541f13defb4771c7a10"
+    },
+    "after_unrelated_edits": {
+      "commit": "bf88984dd1e3bb6867d3bfe8e9569ed6a2aeb400",
+      "tree": "2e275acd7b5548707d02b38134ba2464dbc0988d",
+      "source_candidate_sha256": "ede69462765bee7ae3ff828633594028606742f018b44b169a17da3fe703dcd9",
+      "running_image_sha256": "3bf220243de6eece0ebcd6f317cfb632926e4de32c6748e896bbd98a49bab818",
+      "answer_sha256": "bad384a46dbd36fe51daaf77bbc39c0b261a8b1765bcbe0a45ec64ee92058f41",
+      "fixture_logical_path": "target/identity-fixture/entry.dag",
+      "full_manifest_sha256": "7fbec3143e9b09063b27c5cb5ebc04e08491be09b9a13b136640ac49c7514b31"
+    },
+    "local_compiler_perturbation": {
+      "commit": "814a82d623a743b8b9a8f6cc2903b1082e6b4bda",
+      "tree": "bc30f7b1ff844cc61f3f69dfbe02820c6cc8f6ff",
+      "source_candidate_sha256": "57fc736e568c2b6d73c55386d706749e5f24b20e27a67ce74e4c281cb4c27c13",
+      "running_image_sha256": "7bf2ca8b1bbd56c77fba531680f8ad2c5f40f03d7f19b60c2d0d6980b6c43f0e",
+      "answer_sha256": "5a19528b1ead01d895a0c9e934c35d2ce4c56e9261809d976973d831706821a1",
+      "fixture_logical_path": "target/identity-fixture/entry.dag",
+      "full_manifest_sha256": "7a9ebf0b2085c418279647221736e40b39e28c1c2d52250870cb6ebfb6c9d37c"
+    },
+    "same_head_rebuild": {
+      "commit": "bf88984dd1e3bb6867d3bfe8e9569ed6a2aeb400",
+      "tree": "2e275acd7b5548707d02b38134ba2464dbc0988d",
+      "source_candidate_sha256": "ede69462765bee7ae3ff828633594028606742f018b44b169a17da3fe703dcd9",
+      "running_image_sha256": "3bf220243de6eece0ebcd6f317cfb632926e4de32c6748e896bbd98a49bab818",
+      "answer_sha256": "bad384a46dbd36fe51daaf77bbc39c0b261a8b1765bcbe0a45ec64ee92058f41",
+      "fixture_logical_path": "target/identity-fixture/entry.dag",
+      "full_manifest_sha256": "7fbec3143e9b09063b27c5cb5ebc04e08491be09b9a13b136640ac49c7514b31"
+    }
+  },
+  "fixture_note": "The first matching event used the original single-source fixture. The stale pair, source perturbation, and final rebuild used the same fixture with a snowman in a comment.",
+  "coverage": "This capture is an observed host build candidate. External native toolchain, OS ABI, arbitrary build-script inputs and query-specific runtime inputs remain outside its authority. The compiler continues to key on the actual image."
+}

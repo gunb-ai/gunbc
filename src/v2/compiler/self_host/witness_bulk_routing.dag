@@ -129,10 +129,10 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag",
+    entry: "dag/test/claim/complexity_accumulator_copy_roster_gate_std.dag",
     disposition: EmitIneligible {
       cause: OfflineLocalRecipe,
-      detail: "operator-ruled offline; explicit local claim_batch recipe is the executing consumer"
+      detail: "operator-ruled offline; its explicit local gunbc test recipe (gunbc.offline_local_recipe) is the executing consumer"
     }
   },
   WitnessEntryRoutingRow {

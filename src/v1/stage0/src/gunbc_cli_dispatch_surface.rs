@@ -183,7 +183,6 @@ pub struct CliBootstrapReceiptChannel {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliBootstrapDagOperationBinding {
     pub operation: AdmittedBootstrapOperationIdentity,
-    pub entry_path: String,
     pub source_roots: Rc<Vec<String>>,
     pub public_operands: Rc<Vec<Rc<CliBootstrapOperandBinding>>>,
     pub public_options: Rc<Vec<Rc<CliBootstrapOptionBinding>>>,
@@ -208,6 +207,7 @@ pub enum CliOperandValue {
 #[serde(tag = "_variant")]
 pub enum CliOperandArity {
     CliExactlyOneOperand,
+    CliOneOrMoreOperands,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -348,7 +348,6 @@ pub fn gunbc_fleet_converge_operation_ref() -> Rc<DeclarationRef> {
 pub fn gunbc_fleet_converge_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
     Rc::new(CliBootstrapDagOperationBinding {
         operation: AdmittedBootstrapOperationIdentity::GunbcFleetConvergeOperation {},
-        entry_path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag".to_string(),
         source_roots: Rc::new(vec!["dag".to_string(), "src/v2".to_string()]),
         public_operands: Rc::new(vec![]),
         public_options: Rc::new(vec![
@@ -392,7 +391,6 @@ pub fn gunbc_fleet_converge_operation_binding() -> Rc<CliBootstrapDagOperationBi
 pub fn gunbc_build_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
     Rc::new(CliBootstrapDagOperationBinding {
         operation: AdmittedBootstrapOperationIdentity::GunbcProductBuildBootstrapOperation {},
-        entry_path: "dag/gunbc/devboot/build.dag".to_string(),
         source_roots: Rc::new(vec!["dag".to_string(), "src/v2".to_string()]),
         public_operands: Rc::new(vec![Rc::new(CliBootstrapOperandBinding {
             parameter: "program".to_string(),
@@ -536,7 +534,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
-    doc: Rc::new(vec!["Entry function to execute, repeatable: every named function runs in ONE process over".to_string(), "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes".to_string(), "`main`; a --claim-run executes every `test fn` the entry module declares.".to_string()]),
+    doc: Rc::new(vec!["Entry function to execute, repeatable: every named function runs in ONE process over".to_string(), "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes".to_string(), "`main`. Claims are not executed by this verb: the `gunbc test` route is the one claim entrypoint.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
@@ -546,13 +544,6 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string(), "(not every file under --source-root). Required for scoped TestClaim runs.".to_string()]),
-    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
-}), Rc::new(CliOptionRow {
-    field: "claim_run".to_string(),
-    long: "claim-run".to_string(),
-    value: Rc::new(CliOptionValue::CliToggleValue),
-    arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["TestClaim / witness run: Bool false -> exit 1; requires --entry".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "args".to_string(),
@@ -689,14 +680,53 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     variant: "Test".to_string(),
     doc: Rc::new(vec!["Run a target named by an absolute label or a bazel-style target PATTERN, and".to_string(), "report the standing its own producer answers in. An exact label routes to".to_string(), "its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is".to_string(), "admitted and refused with status 2: it runs only through the native test".to_string(), "route, never the interpreter. A form the pattern grammar does not admit, or".to_string(), "an unbound or unknown target, refuses rather than reporting a pass.".to_string()]),
     operands: Rc::new(vec![Rc::new(CliOperandRow {
-    field: "target".to_string(),
+    field: "operands".to_string(),
     placeholder: "TARGET_PATTERN".to_string(),
     value: CliOperandValue::CliTargetPatternOperand {},
-    arity: CliOperandArity::CliExactlyOneOperand {},
-    doc: Rc::new(vec!["Absolute label of one target, or a pattern denoting a set:".to_string(), "`//gunbc/instruments:heads-reading-differential`,".to_string(), "`//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`.".to_string()]),
+    arity: CliOperandArity::CliOneOrMoreOperands {},
+    doc: Rc::new(vec!["Names of the claims to run: absolute labels (`//dag/test/claim/x:the_claim`),".to_string(), "a package (`//dag/test/claim/x`) or a subtree (`//dag/test/claim/...`).".to_string(), "Several operands run exactly the claims they denote, together in ONE".to_string(), "process; an identity two operands both denote is selected once.".to_string(), "`:all` is not a claim selection here -- it is refused on the claim route.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
-    options: Rc::new(vec![]),
+    options: Rc::new(vec![Rc::new(CliOptionRow {
+    field: "hermetic".to_string(),
+    long: "hermetic".to_string(),
+    value: Rc::new(CliOptionValue::CliToggleValue {}),
+    arity: CliOptionArity::CliRequired {},
+    doc: Rc::new(vec!["Hermetic execution (the default): no clock, entropy, random, wall time,".to_string(), "host tool or ambient state reaches a claim.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "wet".to_string(),
+    long: "wet".to_string(),
+    value: Rc::new(CliOptionValue::CliToggleValue {}),
+    arity: CliOptionArity::CliRequired {},
+    doc: Rc::new(vec!["Wet execution: the claim may read the ambient checkout, git and host state".to_string(), "through the host prelude's own admission. Conflicts with --hermetic.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "record".to_string(),
+    long: "record".to_string(),
+    value: Rc::new(CliOptionValue::CliToggleValue {}),
+    arity: CliOptionArity::CliRequired {},
+    doc: Rc::new(vec!["Record mode: host tool calls run wet and are written to --fixture-store.".to_string(), "Requires --fixture-store.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "fixture_store".to_string(),
+    long: "fixture-store".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliAtMostOne {},
+    doc: Rc::new(vec!["Fixture-store directory for --record and replay; refused outside record mode.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "source_roots".to_string(),
+    long: "source-root".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliRepeated {},
+    doc: Rc::new(vec!["Claim corpus root. Replaces the default pair (dag, src/v2) when given; repeat".to_string(), "once per root the request spans. Claim-route only: a route that cannot".to_string(), "honour the corpus it is asked to read refuses rather than reading the default.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+})]),
     realization: Rc::new(CliArmRealization::CliInvokesBoundTargetProducer),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })])
@@ -863,3 +893,5 @@ pub struct CliScmReadVerbOperand;
 pub struct CliProgramOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliExactlyOneOperand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliOneOrMoreOperands;
