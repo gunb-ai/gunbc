@@ -913,7 +913,7 @@ test fn the_dependency_arm_marks_only_the_in_repo_dependency_of_the_built_binari
     && (length(xs: dep.marked_sources) == 1)
     && !any(dep.marked_sources, p => contains(p, "src/v1/stage0/src/"))
   let top_marks_its_two_bins = any(top.marked_sources, p => p == "src/v1/stage0/src/main.rs")
-    && any(top.marked_sources, p => p == "src/v1/stage0/src/bin/claim_batch.rs")
+    && any(top.marked_sources, p => p == "src/v1/stage0/src/bin/claim_executor.rs")
     && (length(xs: top.marked_sources) == 2)
   dep_marks_the_dependency && top_marks_its_two_bins
     && (top.name != dep.name)
