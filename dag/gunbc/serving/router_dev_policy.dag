@@ -779,32 +779,42 @@ fn router_dev_stats_lines() -> List<String> {
     // (waiter_keeps_its_engine), less the room every compatible row -- OWNED AND RENTED, the pick's own candidate set
     // -- has for a new conversation, which is its free active slots capped by its retention room (admits, the pick's
     // own rule: a row with free slots and its retention full cannot take a new conversation; review of e50999ce). An
-    // uncapped rented row has room for any number. Room is CONSUMED as it is counted (review of 7edc31fb): one owned
-    // slot freed after five waiters were refused places one of them on its retry, not all five, so four are still
-    // demand -- while one slot freed for one waiter is none. A model's own rows take its waiters first, then every
-    // row's remaining room takes the alias's waiters, since every row serves the alias and a model's waiters can use
-    // only its rows. `rows` is each rented row in service with its turns in flight and the conversations bound to it
+    // uncapped rented row has any number of free slots, and its retention still bounds it (review of 4a2bfbe4: it was
+    // given unbounded room, so a new conversation refused at its full retention was no demand). Room is CONSUMED as it
+    // is counted (review of 7edc31fb): one owned slot freed after five waiters were refused places one of them on its
+    // retry, not all five, so four are still demand -- while one slot freed for one waiter is none. The most constrained
+    // waiters are placed first, since that is the order that places the most: a waiter held for its own engine can use
+    // only that row's free slot, and it takes it before anyone (review of 4a2bfbe4: one bound and one flexible waiter
+    // beside one free slot read as no demand, and the flexible retry was refused); a held waiter needs no retention
+    // room, its binding being already counted. Then a model's own rows take its waiters, then every row's remaining
+    // room takes the alias's waiters, since every row serves the alias and a model's waiters can use only its rows. `rows` is each rented row in service with its turns in flight and the conversations bound to it
     // seen within the recent window. The AWS loop rents on these and nothing else, so neither rule is restated outside
     // the router. A rented card serves its own model and the alias, so a reader adds the two entries.
     "rented.unplaceable_by_model = \{}",
     "rented.alias = ROUTER_ALIAS",
     "local held = bound_counts(nil)",
-    "local room = \{}",
+    "local slots, ret = \{}, \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if u.in_service ~= false and not state:get('unavailable:' .. u.name) then",
-    "    if uncapped(u) then room[u.name] = math.huge",
-    "    else room[u.name] = math.max(0, math.min(free_slots(u), u.retain == nil and math.huge or (u.retain - (held[u.name] or 0)))) end",
+    "    slots[u.name] = uncapped(u) and math.huge or math.max(0, free_slots(u))",
+    "    ret[u.name] = u.retain == nil and math.huge or math.max(0, u.retain - (held[u.name] or 0))",
     "  end",
     "end",
     "local waiting = \{}",
     "for _, k in ipairs(state:get_keys(0)) do",
     "  local m, s = k:match('^pending:(.-)|(.+)$')",
-    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) then waiting[m] = (waiting[m] or 0) + 1 end",
+    "  if m and state:get(k) then",
+    "    local b = state:get('session:' .. s)",
+    "    if waiter_keeps_its_engine(m, b) then",
+    "      local r = owner_of[b] or b",
+    "      if slots[r] then slots[r] = math.max(0, slots[r] - 1) end",
+    "    else waiting[m] = (waiting[m] or 0) + 1 end",
+    "  end",
     "end",
     "local function place(m, n, fits)",
     "  local left = n",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
-    "    if left > 0 and room[u.name] and fits(u) then local take = math.min(left, room[u.name]) room[u.name] = room[u.name] - take left = left - take end",
+    "    if left > 0 and slots[u.name] and fits(u) then local take = math.min(left, slots[u.name], ret[u.name]) slots[u.name] = slots[u.name] - take ret[u.name] = ret[u.name] - take left = left - take end",
     "  end",
     "  if left > 0 then rented.unplaceable_by_model[m] = left end",
     "end",

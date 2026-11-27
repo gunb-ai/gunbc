@@ -384,8 +384,15 @@ fn dev_aq_row(name: String, extra: String) -> String {
 }
 
 // An OWNED m-q row with one free active slot and room to retain a new conversation.
-fn dev_oq_row() -> String {
-  "\{\"name\":\"oq\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"koq\",\"model\":\"m-q\",\"cap\":1,\"retain\":4},"
+fn dev_oq_row() -> String { dev_oq_row_cap(cap: "1") }
+
+fn dev_oq_row_cap(cap: String) -> String {
+  "\{\"name\":\"oq\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"koq\",\"model\":\"m-q\",\"cap\":" + cap + ",\"retain\":4},"
+}
+
+// A RENTED m-q row with no active-turn cap that retains one conversation (review of 4a2bfbe4).
+fn dev_aqu_row() -> String {
+  "\{\"name\":\"aqu\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kaqu\",\"model\":\"m-q\",\"overflow\":true,\"retain\":1},"
 }
 
 fn dev_upstreams_json_rented_admission(mark: String, aq: String) -> String {
@@ -1198,6 +1205,34 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let trim_old_names = dev_request(key: "ck-falsifier", session: "t", body: "\{\}", path: "/router/trim-bindings")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
   let after_large = sink(n: "5")
+  // 11. DEMAND AGAINST ACTUAL ADMISSION (review of 4a2bfbe4), after every other read so no earlier case moves. warm-2 is
+  // still waiting, flexible. Mark 4330: oq alone, one free slot, and bound-1 binds there. Mark 4331: oq at cap 0, so
+  // bound-1's retry waits for its own engine. Mark 4332: oq's one slot back -- bound-1's retry takes it, so warm-2 is
+  // still one waiter no row can place.
+  let w17 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-bound-binds.json", content: dev_upstreams_json_rented_admission(mark: "4330", aq: dev_oq_row()))
+  let bound_binds_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-bound-binds.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let bound_binds_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let bound_binds_models = await_models(mark: "4330", n: 20)
+  let bound_first = dev_request(key: "ck-falsifier", session: "bound-1", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let w18 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-bound-waits.json", content: dev_upstreams_json_rented_admission(mark: "4331", aq: dev_oq_row_cap(cap: "0")))
+  let bound_waits_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-bound-waits.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let bound_waits_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let bound_waits_models = await_models(mark: "4331", n: 20)
+  let bound_refused = dev_request(key: "ck-falsifier", session: "bound-1", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let w19 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-bound-slot.json", content: dev_upstreams_json_rented_admission(mark: "4332", aq: dev_oq_row()))
+  let bound_slot_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-bound-slot.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let bound_slot_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let bound_slot_models = await_models(mark: "4332", n: 20)
+  let bound_slot_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 11b. Mark 4333: the uncapped rented aqu (retain 1) beside oq at cap 0. unc-1 binds to aqu; unc-2, new, is refused at
+  // aqu's full retention although aqu has no cap -- so warm-2 and unc-2 are two waiters no row can place.
+  let w20 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-uncapped-retained.json", content: dev_upstreams_json_rented_admission(mark: "4333", aq: dev_oq_row_cap(cap: "0") + dev_aqu_row()))
+  let uncapped_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-uncapped-retained.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let uncapped_reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let uncapped_models = await_models(mark: "4333", n: 20)
+  let unc_1 = dev_request(key: "ck-falsifier", session: "unc-1", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let unc_2 = dev_request(key: "ck-falsifier", session: "unc-2", body: model_body(model: "m-q"), path: "/v1/chat/completions")
+  let uncapped_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   let removed = remove_all()
   [
     case_of(identity: "daemon_red_absent_daemon_reads_unavailable", held: match daemon_control { DaemonUnavailable { stderr: _ } => true DaemonAnswered => false }, observed: match daemon_control { DaemonUnavailable { stderr: _ } => "unavailable" DaemonAnswered => "answered" }),
@@ -1302,6 +1337,11 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // new warm-2 is refused, the router reports the pool not full by active turns, and still counts warm-2 as demand
     // no rented row can place -- which the allocator reads as an ask for a second m-q card.
     case_of(identity: "dev_a_waiter_an_owned_slot_can_take_is_not_rented_demand", held: w16.success && owned_room_copy.exit_code == 0 && owned_room_reloaded.exit_code == 0 && contains(s: owned_room_models, p: "4329") && (rented_unplaceable_for(text: warm_stats, model: "m-q") == 1) && (rented_unplaceable_for(text: owned_room_stats, model: "m-q") == 0) && !rented_asks(text: owned_room_stats, model: "m-q"), observed: one_line(s: owned_room_stats)),
+    // 11 (review of 4a2bfbe4): a waiter held for its own engine takes that engine's free slot before a flexible waiter
+    // can, so one held and one flexible waiter beside one free slot leave the flexible one as demand.
+    case_of(identity: "dev_a_waiter_held_for_its_engine_takes_that_slot_before_a_flexible_one", held: w17.success && w18.success && w19.success && bound_binds_copy.exit_code == 0 && bound_binds_reloaded.exit_code == 0 && bound_waits_copy.exit_code == 0 && bound_waits_reloaded.exit_code == 0 && bound_slot_copy.exit_code == 0 && bound_slot_reloaded.exit_code == 0 && contains(s: bound_binds_models, p: "4330") && contains(s: bound_waits_models, p: "4331") && contains(s: bound_slot_models, p: "4332") && contains(s: bound_first, p: "auth=Bearer koq") && contains(s: bound_first, p: "\n200 exit=0") && contains(s: bound_refused, p: "\n429 exit=0") && (rented_unplaceable_for(text: bound_slot_stats, model: "m-q") == 1) && rented_asks(text: bound_slot_stats, model: "m-q"), observed: concat(one_line(s: bound_refused), one_line(s: bound_slot_stats))),
+    // 11b: an uncapped rented row is bounded by its retention, so a new conversation it refused there is demand.
+    case_of(identity: "dev_an_uncapped_rented_row_at_full_retention_is_demand", held: w20.success && uncapped_copy.exit_code == 0 && uncapped_reloaded.exit_code == 0 && contains(s: uncapped_models, p: "4333") && contains(s: unc_1, p: "auth=Bearer kaqu") && contains(s: unc_1, p: "\n200 exit=0") && contains(s: unc_2, p: "\n429 exit=0") && (rented_unplaceable_for(text: uncapped_stats, model: "m-q") == 2) && rented_asks(text: uncapped_stats, model: "m-q"), observed: concat(one_line(s: unc_2), one_line(s: uncapped_stats))),
     case_of(identity: "dev_a_retention_full_rented_row_is_demand_the_allocator_buys_for", held: w14.success && admission_copy.exit_code == 0 && admission_reloaded.exit_code == 0 && contains(s: admission_models, p: "4327") && contains(s: warm_1, p: "auth=Bearer kaq1") && contains(s: warm_1, p: "\n200 exit=0") && contains(s: warm_2, p: "\n429 exit=0") && contains(s: warm_stats, p: "\"full\":false") && (rented_unplaceable_for(text: warm_stats, model: "m-q") == 1) && rented_asks(text: warm_stats, model: "m-q"), observed: concat(one_line(s: warm_2), one_line(s: warm_stats))),
     // A WITHDRAWN RENTED ROW IS KNOWN, NOT A CONFLICT (review of e50999ce): warm-1's binding names aq1, now out of
     // service; it resumes with its explicit model and is re-placed on aq2, where the unknown-row rule answered 409.
@@ -1408,6 +1448,8 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_rented_demand_reads_into_the_allocator",
     "dev_a_retention_full_rented_row_is_demand_the_allocator_buys_for",
     "dev_a_waiter_an_owned_slot_can_take_is_not_rented_demand",
+    "dev_a_waiter_held_for_its_engine_takes_that_slot_before_a_flexible_one",
+    "dev_an_uncapped_rented_row_at_full_retention_is_demand",
     "dev_a_binding_to_an_out_of_service_rented_row_is_re_placed",
     "dev_refused_turns_are_stranded_demand_cleared_on_success",
     "dev_rented_turns_are_metered_and_the_rented_pool_reported",
