@@ -56,6 +56,10 @@ type SystemdUnitProperty
   | CPUQuotaPerSecUSec
   | MemoryCurrent
   | MemoryPeak
+  // org.freedesktop.systemd1.Slice/Service MemoryEvents: the cgroup memory-event counters as the manager
+  // reports them (memory.events(5): low, high, max, oom, oom_kill) -- space-separated key=value, the
+  // instrument that says whether this cgroup was pushed against its ceiling and how many times it died.
+  | MemoryEventsProperty
   | TasksMax
   | TasksCurrent
   | ControlGroup
@@ -171,6 +175,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     CPUQuotaPerSecUSec => "CPUQuotaPerSecUSec" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
     MemoryPeak => "MemoryPeak" as NonEmptyStr
+    MemoryEventsProperty => "MemoryEvents" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
     ControlGroup => "ControlGroup" as NonEmptyStr
@@ -252,6 +257,7 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     CPUQuotaPerSecUSec => false
     MemoryCurrent => false
     MemoryPeak => false
+    MemoryEventsProperty => false
     TasksMax => false
     TasksCurrent => false
     ControlGroup => false

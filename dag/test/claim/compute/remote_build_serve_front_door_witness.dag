@@ -25,10 +25,17 @@ import gunbc.compute.remote_build_serve_front_door {
   RemoteBuildFrontDoorTurn, FrontDoorAnswer, FrontDoorHandOffToChild,
   remote_build_serve_front_door_turn, remote_build_serve_front_door_probe_answer,
   remote_build_answer_body_is_a_receipt,
+  RemoteBuildDoorAdmission, DoorAdmitted, DoorPoolFull, DoorLedgerUnreadable, DoorSubjectUnresolved,
 }
+import gunbc.compute.remote_build_wire {
+  remote_build_capacity_retry_floor, remote_build_retry_after_word, remote_build_retry_hint_of_body,
+}
+import std.retry_law { RetryHintDelay }
+import std.measure { second_count }
 import gunbc.compute.remote_build {
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, remote_build_probe_from_exit,
   remote_build_probe_answer, HostRefusedRequest, HostCannotServe, remote_build_answer_of_ending,
+  HostCapacityFull, remote_build_answer_moves_on,
 }
 
 // THE FRONT DOOR: what a probe leg costs, what it establishes, and what a request still pays.
@@ -107,6 +114,13 @@ fn remote_build_serve_principal_refused_for_a_group_the_account_does_not_hold() 
   )
 }
 
+// THE LEDGER STANDING THE TURN DECIDES AGAINST. The turn is pure, so every claim below supplies the
+// standing itself; the wet reader (remote_build_serve_front_door_admission) resolves the same standing
+// from the host's own ledger and is witnessed red-side at the gate lane, not here.
+fn w_admission_admitted() -> RemoteBuildDoorAdmission {
+  DoorAdmitted { held: 0, seats: 2 }
+}
+
 fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFrontDoorTurn {
   remote_build_serve_front_door_turn(
     host: w_serving_host(),
@@ -116,6 +130,21 @@ fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFron
     accept_instant: w_accept_instant,
     raw_command: raw,
     principal: principal,
+    admission: w_admission_admitted(),
+  )
+}
+
+// A WORK REQUEST AT THE DOOR, under a supplied ledger standing -- the arm the admission gate guards.
+fn w_request_turn(admission: RemoteBuildDoorAdmission) -> RemoteBuildFrontDoorTurn {
+  remote_build_serve_front_door_turn(
+    host: w_serving_host(),
+    serve_binary: w_bin,
+    repo_root: w_repo,
+    leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
+    raw_command: Present { value: join([remote_build_protocol_word as String, " compile abc build"], "") },
+    principal: w_principal_admitted(),
+    admission: admission,
   )
 }
 
@@ -331,6 +360,89 @@ test fn a_door_rendered_without_a_binary_or_a_checkout_runs_nothing() -> Bool {
        }
     && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
+         _ => false
+       }
+}
+
+// ── THE PRE-HAND-OFF ADMISSION (the gate that replaced the client-side probe) ─────────────────────
+//
+// WHY THESE CLAIMS EXIST. Before this gate the door handed off every request and the SERVING CHILD
+// discovered at acquisition that the pool was full -- after booting a 150-module resolve that could
+// OOM before it ever reached the ledger (srv3's pool-full class, gunbc.live_deploy.serving_child_
+// observations). The gate asks the ledger's own charge scan BEFORE the boot. The red arms below are
+// the two wrong directions: a full pool that still hands off (the OOM this closes), and an unreadable
+// ledger that guesses headroom (gunbc.design_argument::fail_closed -- only the ledger knows whether an
+// empty-looking pool is empty or unreadable).
+
+// PASSING CONTROL: an admitted ledger hands off, exactly as the door did before the gate.
+test fn an_admitted_ledger_hands_off() -> Bool {
+  match w_request_turn(admission: w_admission_admitted()) {
+    FrontDoorHandOffToChild { hand_off: _ } => true
+    _ => false
+  }
+}
+
+// RED: A FULL SEAT POOL REFUSES THE HAND-OFF, in the ONE capacity vocabulary the request path also
+// mints -- the room/readiness ending that MOVES THE WALK ON, the declared retry allowance readable
+// by the client's own reader, and the seat counts named. Never a hand-off, never a request's-fault
+// refusal.
+test fn a_full_seat_pool_refuses_the_hand_off_with_the_capacity_vocabulary() -> Bool {
+  match w_request_turn(admission: DoorPoolFull { held: 2, seats: 2 }) {
+    FrontDoorAnswer { ending: ServeHostFull, detail: detail } =>
+      contains(haystack: detail, needle: remote_build_retry_after_word as String)
+        && contains(haystack: detail, needle: "seat pool is full")
+        && contains(haystack: detail, needle: "2 of 2")
+        // The client reads this answer as capacity-full AND moves on: the walk is not stopped by a
+        // host that is merely full.
+        && match remote_build_answer_of_ending(ending: ServeHostFull, body: detail, stderr: "") {
+             HostCapacityFull { detail: _, retry: RetryHintDelay { delay: delay } } =>
+               second_count(s: delay) == second_count(s: remote_build_capacity_retry_floor)
+               && remote_build_answer_moves_on(a: remote_build_answer_of_ending(ending: ServeHostFull, body: detail, stderr: ""))
+             _ => false
+           }
+        // The allowance round-trips through the ONE body reader, not a second recognizer.
+        && match remote_build_retry_hint_of_body(body: detail) {
+             RetryHintDelay { delay: _ } => true
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// RED: A LEDGER THE DOOR CANNOT READ REFUSES THE HAND-OFF rather than guessing headroom. The ending
+// is the room/readiness class -- the request moves to the next host; a guess here is what booted the
+// pile-up that OOMed.
+test fn an_unreadable_seat_ledger_refuses_the_hand_off() -> Bool {
+  match w_request_turn(admission: DoorLedgerUnreadable { detail: "the seat charge scan could not be read" }) {
+    FrontDoorAnswer { ending: ServeHostCannotServe, detail: detail } =>
+      contains(haystack: detail, needle: "the seat charge scan could not be read")
+        && match remote_build_answer_of_ending(ending: ServeHostCannotServe, body: detail, stderr: "") {
+             HostCannotServe { detail: _ } => remote_build_answer_moves_on(a: remote_build_answer_of_ending(ending: ServeHostCannotServe, body: detail, stderr: ""))
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// RED: AN UNRESOLVABLE CAPACITY SUBJECT (no capacity home for this host) refuses the hand-off for
+// the same reason -- with no subject there is no ledger, and no ledger means no admission.
+test fn an_unresolvable_capacity_subject_refuses_the_hand_off() -> Bool {
+  match w_request_turn(admission: DoorSubjectUnresolved { detail: "host srv-test has no capacity home" }) {
+    FrontDoorAnswer { ending: ServeHostCannotServe, detail: detail } =>
+      contains(haystack: detail, needle: "capacity home")
+    _ => false
+  }
+}
+
+// THE RENDERER TRAP: A CONTRACT-LEGAL READY EXITS NON-ZERO. The exit law gives ServeReady the code 6
+// -- non-zero -- so whatever prints the leg's exit renders it like a failure (the "✗ (exit=6)" line an
+// operator read as a dead host on 2026-11-27 while the walk was healthy). The law, not the rendering,
+// decides: those same bytes and that same code are, to the client's one reading, a ready. If the exit
+// law ever moves ServeReady, this claim is the red that says so.
+test fn a_contract_legal_ready_exits_six_and_the_runner_inking_it_is_rendering_not_judgment() -> Bool {
+  remote_build_serve_exit_code(e: ServeReady) == 6
+    && match w_client_probe_reading(ending: ServeReady) {
+         ProbeReady => true
          _ => false
        }
 }

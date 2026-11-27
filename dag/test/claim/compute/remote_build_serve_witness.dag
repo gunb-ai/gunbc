@@ -14,6 +14,7 @@ import gunbc.compute.work_request {
   ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ToolchainMismatchRefused, DependencyNotSucceeded,
 }
 import gunbc.compute.remote_build_wire {
+  remote_build_capacity_retry_floor,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
   ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code,
   remote_build_serve_header, remote_build_serve_answer,
@@ -23,7 +24,7 @@ import gunbc.compute.remote_build {
   remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild, RemoteRunClaims, RemoteGateSubject,
   RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
   remote_build_answer_from_exit,
-  remote_build_ending_of_outcome, remote_build_answer_moves_on, remote_build_capacity_retry_floor,
+  remote_build_ending_of_outcome, remote_build_answer_moves_on,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
   HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,

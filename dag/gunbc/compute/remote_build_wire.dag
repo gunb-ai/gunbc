@@ -1,6 +1,10 @@
 module gunbc.compute.remote_build_wire
 
 import std.types { String, Int, List, NonEmptyStr }
+import std.measure { Second, second, second_count }
+import std.nat { nat_to_decimal_string }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.retry_law { RetryHint, retry_no_hint, retry_hint_from_delta, retry_hint_unresolved }
 import std.algebra { trim, skip, list_append }
 import std.optional { Present, Absent }
 import std.process { ExitSuccess, ExitFailure }
@@ -258,5 +262,50 @@ fn remote_build_serve_hand_off(serve_binary: NonEmptyStr, repo_root: NonEmptyStr
       // UNWRITABLE IN PROSPECT: remote_build_run_words always puts the binary first. Matching is here
       // because the alternative is a fabricated program.
       RemoteBuildHandOff { program: serve_binary, workdir: repo_root, arguments: bound_arguments }
+  }
+}
+
+// THE CAPACITY-LIMITED ANSWER'S RETRY VOCABULARY, AT THE LEAF. The front door's pre-hand-off
+// admission (gunbc.compute.remote_build_serve_front_door) must mint the SAME capacity-limited body the
+// request path mints, and it may not import the request module -- this module's own header is the
+// authority for why the vocabulary and the answer mint live here, at the leaf both ends read
+// (gunbc.design_argument::demand_before_materialization).
+//
+// THE RETRY ALLOWANCE RIDES IN THE BODY, NOT THE HEADER. The header law (ending word + matching exit
+// code) is what admits an answer at all (remote_build_answer_from_exit); widening it would weaken the
+// one check that separates "this host ran the contract" from "this host did not". So a capacity-limited
+// answer carries its retry allowance as the FIRST line of the body -- "retry_after=<delta-seconds>" --
+// which is already free-form per ending. Absent parses to RetryHintNone: retry is still allowed and the
+// caller's own std.retry_law backoff applies. A present-but-unreadable count is RetryHintUnresolved,
+// because the law refuses rather than treating an unknown bound as no bound (gunbc.design_argument::fail_closed).
+data remote_build_retry_after_word: NonEmptyStr = "retry_after"
+
+// The declared minimum back-off a host names when it refuses to start. Neither the request path's
+// wait-bound refusal nor the front door's pre-hand-off pool-full refusal estimates WHEN a seat will
+// free -- the door reads who HOLDS seats, not who is expected to release one -- so this is the
+// "declared minimum" branch of the operator's rule, not a measured queue wait. It is a LOWER
+// BOUND on the caller's retry, not a permission, and it is deliberately small: a large hint would stall
+// the whole roster's retry law off one loaded host, and the request moves to the next host regardless.
+data remote_build_capacity_retry_floor: Second = second(count: 30)
+
+// Mints a capacity-limited body: the retry allowance first, then the human-readable detail.
+fn remote_build_capacity_body(retry_after: Second, detail: String) -> String {
+  join([remote_build_retry_after_word as String, "=", nat_to_decimal_string(second_count(retry_after)), "\n", detail], "")
+}
+
+// Reads the retry allowance back out of a body, at the one place the client answer is minted.
+fn remote_build_retry_hint_of_body(body: String) -> RetryHint {
+  let first_line = match split(s: body, delimiter: "\n") |> first { Present { value: l } => l  Absent => "" }
+  let parts = split(s: first_line, delimiter: "=")
+  let word = match parts |> first { Present { value: w } => w  Absent => "" }
+  if word != (remote_build_retry_after_word as String) { return retry_no_hint() }
+  let value = match parts |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+  match parse_int(s: value) {
+    Absent => retry_hint_unresolved(cause: "retry_after was not a count" as NonEmptyStr)
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => retry_hint_unresolved(cause: "retry_after was not a non-negative count" as NonEmptyStr)
+        Present { value: k } => retry_hint_from_delta(delay: second(count: k))
+      }
   }
 }

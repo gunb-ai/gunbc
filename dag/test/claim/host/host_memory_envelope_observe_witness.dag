@@ -6,7 +6,7 @@ import extdeps.external_authority {
   ObservedByReceipt,
   TranscribedUncited,
 }
-import extdeps.systemd { MemoryLimitUnbounded }
+import extdeps.systemd { MemoryLimitUnbounded, MemoryLimitBytes, MemoryLimitAbsent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv9 }
 import gunbc.host.host_memory_observation { HostMemAvailableQuiescentRead }
 import gunbc.host.host_memory_envelope_observe {
@@ -23,6 +23,10 @@ import gunbc.host.host_memory_envelope_observe {
   host_memory_envelope_includes_slice,
   host_memory_quiescent_read_for_subject,
   host_memory_quiescent_receipt_text,
+  SystemdMemoryEvents, MemoryEventsObserved, MemoryEventsUnreadable,
+  parse_systemd_memory_events, systemd_memory_events_wire, systemd_cgroup_memory_limit_wire,
+  PeerSliceEventsRead, PeerSliceObserved, PeerSliceUnreadable, peer_show_field,
+  host_memory_envelope_receipt_text,
   is_top_level_slice_unit,
   runner_parent_slice_unit,
   slice_current_bytes,
@@ -45,8 +49,8 @@ data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\n
 
 fn hermetic_slice_pair() -> List<SliceMemoryReading> {
   [
-    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
+    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0), memory_events: MemoryEventsObserved { low: 0, high: 3, max: 1, oom: 0, oom_kill: 0 }),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0), memory_events: MemoryEventsUnreadable { detail: "no readable oom_kill=" }),
   ]
 }
 
@@ -60,7 +64,7 @@ fn hermetic_slice_pair() -> List<SliceMemoryReading> {
 test fn an_unreachable_subject_refuses_and_never_reports_memory() -> Bool {
   match host_memory_quiescent_read_for_subject(hi: operator_host_srv9) {
     HostMemQuiescentReadRefused { host: _, reason: _ } => true
-    HostMemQuiescentReadObserved { read: _ } => false
+    HostMemQuiescentReadObserved { read: _, user_work_slice: _ } => false
   }
 }
 
@@ -74,7 +78,7 @@ test fn the_quiescent_receipt_carries_host_total_and_mem_available() -> Bool {
     host_total: kibibyte_to_byte_size(k: kibibyte(count: 16777216)),
     mem_available: kibibyte_to_byte_size(k: kibibyte(count: 8388608)),
   }
-  let text = host_memory_quiescent_receipt_text(read: read)
+  let text = host_memory_quiescent_receipt_text(read: read, user_work_slice: PeerSliceUnreadable { slice_unit: "gunbc-user-work.slice" as NonEmptyStr, reason: "witness supplies no live slice read" })
   string_contains(s: text, pattern: "host=srv1")
     && string_contains(s: text, pattern: "host_total=")
     && string_contains(s: text, pattern: "mem_available=")
@@ -194,3 +198,118 @@ test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()
     && standing_is_sleek_owl_first(s: obs.standing)
 }
 
+// THE MEMORY.EVENTS INSTRUMENT (the srv3 serving-child OOM class: two proof runs died in the slice
+// with no surviving account because nothing read the counters). These claims hold the read path
+// honest: every counter typed, a refusal that names its missing key rather than a zero, the receipt
+// rendering that distinguishes "zero deaths" from "did not look", and the slice block riding both
+// receipts the observe lane writes.
+
+test fn memory_events_parses_all_five_counters() -> Bool {
+  match parse_systemd_memory_events(raw: "oom=521 oom_kill=40 low=0 high=932657525 max=6007630") {
+    MemoryEventsObserved { low: lo, high: hi, max: mx, oom: om, oom_kill: ok } =>
+      lo == 0 && hi == 932657525 && mx == 6007630 && om == 521 && ok == 40
+    _ => false
+  }
+}
+
+// FAIL-CLOSED: a line missing one counter is Unreadable naming THAT counter -- never a partial
+// reading with a fabricated zero for the gap.
+test fn memory_events_refuses_naming_the_missing_counter() -> Bool {
+  match parse_systemd_memory_events(raw: "low=0 high=7 max=2 oom=1") {
+    MemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "oom_kill=")
+    _ => false
+  }
+    && match parse_systemd_memory_events(raw: "oom_kill=40") {
+      MemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "low=")
+      _ => false
+    }
+    && match parse_systemd_memory_events(raw: "low=x high=7 max=2 oom=1 oom_kill=40") {
+      MemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "low=")
+      _ => false
+    }
+}
+
+// THE RECEIPT DISTINGUISHES A QUIET SLICE FROM A BLIND ONE: zeros render as zeros, a refusal
+// renders as the word unreadable with its cause -- the two blind proof runs would each have left a
+// different receipt, and only one of them can be read as "no evidence".
+test fn the_events_wire_renders_zeros_and_refusals_apart() -> Bool {
+  string_contains(s: systemd_memory_events_wire(events: MemoryEventsObserved { low: 0, high: 0, max: 0, oom: 0, oom_kill: 0 }), pattern: "oom_kill=0")
+    && string_contains(s: systemd_memory_events_wire(events: MemoryEventsUnreadable { detail: "the manager refused the MemoryEvents read" }), pattern: "unreadable(")
+}
+
+// THE ENVELOPE RECEIPT CARRIES THE SLICE BLOCK, not just a count: memory.max and the events per
+// slice -- the figures the job's name always promised and the printed receipt never carried.
+test fn the_envelope_receipt_prints_slice_limits_and_events() -> Bool {
+  let obs = match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+    meminfo_text: envelope_meminfo_complete,
+    active_runner_unit_count: 10,
+    slice_readings: hermetic_slice_pair(),
+    standing: hermetic_envelope_standing(),
+  ) {
+    HostMemoryEnvelopeObserved { observation: o } => o
+    HostMemoryEnvelopeRefused { host: _, reason: _ } => return false
+  }
+  let text = host_memory_envelope_receipt_text(obs: obs)
+  string_contains(s: text, pattern: "slice=system.slice")
+    && string_contains(s: text, pattern: "memory_max=infinity")
+    && string_contains(s: text, pattern: "memory_events=low=0 high=3 max=1 oom=0 oom_kill=0")
+    && string_contains(s: text, pattern: "slice=user.slice")
+    && string_contains(s: text, pattern: "memory_events=unreadable(no readable oom_kill=)")
+}
+
+// THE QUIESCENT RECEIPT CARRIES THE SAME BLOCK, and its unreadable arm says so rather than going
+// silent about the slice entirely.
+test fn the_quiescent_receipt_carries_the_slice_block_both_ways() -> Bool {
+  let read = HostMemAvailableQuiescentRead {
+    host: operator_host_srv1,
+    account: "fleet-automation-peer-executor" as NonEmptyStr,
+    read_at: "2026-11-27T00:00:00Z" as NonEmptyStr,
+    host_total: kibibyte_to_byte_size(k: kibibyte(count: 526252472)),
+    mem_available: kibibyte_to_byte_size(k: kibibyte(count: 452213840)),
+  }
+  let observed = host_memory_quiescent_receipt_text(read: read, user_work_slice: PeerSliceObserved {
+    slice_unit: "gunbc-user-work.slice" as NonEmptyStr,
+    memory_max: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 26214400)) },
+    memory_current: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 264192)) },
+    memory_events: MemoryEventsObserved { low: 0, high: 932657525, max: 6007630, oom: 521, oom_kill: 40 },
+  })
+  let unreadable = host_memory_quiescent_receipt_text(read: read, user_work_slice: PeerSliceUnreadable {
+    slice_unit: "gunbc-user-work.slice" as NonEmptyStr,
+    reason: "systemctl show exited 1",
+  })
+  string_contains(s: observed, pattern: "slice=gunbc-user-work.slice")
+    && string_contains(s: observed, pattern: "memory_max=26843545600")
+    && string_contains(s: observed, pattern: "oom_kill=40")
+    && string_contains(s: unreadable, pattern: "slice=gunbc-user-work.slice")
+    && string_contains(s: unreadable, pattern: "memory_events=unreadable(systemctl show exited 1)")
+}
+
+// THE systemctl-show FIELD READER: a keyed line yields its value, an absent key yields absence --
+// never the neighbouring key's value (the prefix join is exact through the "=" that systemd always
+// prints after the key).
+test fn peer_show_field_reads_the_keyed_line_and_nothing_else() -> Bool {
+  let lines = ["MemoryMax=26843545600", "MemoryCurrent=264192", "MemoryEvents=low=0 oom_kill=40"]
+  match peer_show_field(lines: lines, key: "MemoryMax" as NonEmptyStr) {
+    Present { value: v } => v == "26843545600"
+    _ => false
+  }
+    && match peer_show_field(lines: lines, key: "MemoryCurrent" as NonEmptyStr) {
+      Present { value: v } => v == "264192"
+      _ => false
+    }
+    && match peer_show_field(lines: lines, key: "MemorySwapMax" as NonEmptyStr) {
+      Absent => true
+      _ => false
+    }
+}
+
+// THE LIMIT WIRES render the three standings distinctly -- an unbounded slice, a priced slice, and
+// a limit the manager would not answer -- because a receipt that prints "0" for the third would
+// read as a slice with no memory at all.
+test fn the_limit_wires_render_the_three_standings_apart() -> Bool {
+  systemd_cgroup_memory_limit_wire(limit: MemoryLimitUnbounded) == "infinity"
+    && systemd_cgroup_memory_limit_wire(limit: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 26214400)) }) == "26843545600"
+    && string_contains(s: systemd_cgroup_memory_limit_wire(limit: MemoryLimitAbsent), pattern: "unreadable")
+}

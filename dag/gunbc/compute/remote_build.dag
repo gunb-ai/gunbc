@@ -42,6 +42,8 @@ import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 import gunbc.compute.remote_build_wire {
+  remote_build_retry_after_word, remote_build_capacity_retry_floor, remote_build_capacity_body,
+  remote_build_retry_hint_of_body,
   remote_build_protocol_word, RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully,
   ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
   remote_build_serve_exit_code, remote_build_serve_ending_word,
@@ -1009,43 +1011,6 @@ fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, s
   }
 }
 
-// THE RETRY ALLOWANCE RIDES IN THE BODY, NOT THE HEADER. The header law (ending word + matching exit
-// code) is what admits an answer at all (remote_build_answer_from_exit); widening it would weaken the
-// one check that separates "this host ran the contract" from "this host did not". So a capacity-limited
-// answer carries its retry allowance as the FIRST line of the body -- "retry_after=<delta-seconds>" --
-// which is already free-form per ending. Absent parses to RetryHintNone: retry is still allowed and the
-// caller's own std.retry_law backoff applies. A present-but-unreadable count is RetryHintUnresolved,
-// because the law refuses rather than treating an unknown bound as no bound (gunbc.design_argument::fail_closed).
-data remote_build_retry_after_word: NonEmptyStr = "retry_after"
-
-// The declared minimum back-off a host names when it refuses to start at its wait bound. The front door
-// holds no queue estimate (it never reads the capacity ledger -- that is the request path's closure), so
-// this is the "declared minimum" branch of the operator's rule, not a measured queue wait. It is a LOWER
-// BOUND on the caller's retry, not a permission, and it is deliberately small: a large hint would stall
-// the whole roster's retry law off one loaded host, and the request moves to the next host regardless.
-data remote_build_capacity_retry_floor: Second = second(count: 30)
-
-// Mints a capacity-limited body: the retry allowance first, then the human-readable detail.
-fn remote_build_capacity_body(retry_after: Second, detail: String) -> String {
-  join([remote_build_retry_after_word as String, "=", nat_to_decimal_string(second_count(retry_after)), "\n", detail], "")
-}
-
-// Reads the retry allowance back out of a body, at the one place the client answer is minted.
-fn remote_build_retry_hint_of_body(body: String) -> RetryHint {
-  let first_line = match split(s: body, delimiter: "\n") |> first { Present { value: l } => l  Absent => "" }
-  let parts = split(s: first_line, delimiter: "=")
-  let word = match parts |> first { Present { value: w } => w  Absent => "" }
-  if word != (remote_build_retry_after_word as String) { return retry_no_hint() }
-  let value = match parts |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
-  match parse_int(text: value) {
-    Absent => retry_hint_unresolved(cause: "retry_after was not a count" as NonEmptyStr)
-    Present { value: n } =>
-      match checked_int_to_nat(n: n) {
-        Absent => retry_hint_unresolved(cause: "retry_after was not a non-negative count" as NonEmptyStr)
-        Present { value: k } => retry_hint_from_delta(delay: second(count: k))
-      }
-  }
-}
 
 // WHICH ENDING A PROVIDER OUTCOME IS. Room and the host's own readiness move the request on; anything
 // the work itself produced -- a failure, a cancellation, a mismatch, a unit killed at the ceiling -- is
