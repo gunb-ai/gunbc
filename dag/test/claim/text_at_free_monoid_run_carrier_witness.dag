@@ -1,0 +1,263 @@
+module test.claim.text_at_free_monoid_run_carrier_witness
+
+// WHAT THIS WITNESS HOLDS. A text (String) value is the free monoid over Char: std.coercion
+// declares `String -> FreeMonoid` among the GROUNDED identity carriers (data
+// grounded_primitive_coproduct_identities, operator Ruling 3 2026-07-15: "a String IS a
+// FreeMonoid<Char> - strings over an alphabet are the free monoid"). So text inhabits a
+// FreeMonoid carrier exactly when that carrier runs over Char, and a call that demands a run of
+// anything else must refuse a text argument. Before this rule the pair carried NO verdict at all:
+// measured at main, `list_append(["a"], "bc")` compiled with zero diagnostics-class refusals --
+// only the counted advisory "declared-type inhabitance is UNMODELED at the direct call argument
+// for parameter 'right'" -- and the claim run evaluated it to ["a", "bc"], because the interpreter's
+// concat arm pushes whatever is not a carrier as one item (v1.compiler.interpreter). That is the
+// list_push/list_append mix-up an author writes by hand, paid for by a reviewer.
+//
+// WHY THE GREEN ROWS ARE KEYED ON THE REFUSAL CLASS AND NOT ON "NO DIAGNOSTICS". The census row
+// set is the WHOLE compile's, not the probed fixture's (gunbc.compile_census_probe
+// blocking_class_census doc), and the algebra-spelled FreeMonoid position carries counted
+// advisories of other classes on legitimate calls (std.algebra's own list_push 'item' position is
+// one). A row keyed on gunbc.diagnostic.DeclaredTypeNotInhabited is the one that cannot go green
+// by an unrelated cause: it is the class this refusal belongs to, and the green rows are the
+// calls that rule must NOT fire on.
+//
+// WHY THE WALL READS ONLY THE POSITION IT IS JUDGING. The first attempt at this rule grounded the
+// demanded element from ANY sibling argument, which refused a perfectly valid call: for
+// `fn mixed<T, U>(a: FreeMonoid<T>, b: List<U>)` called `mixed(a: "ab", b: [1])`, the Int from b's
+// U grounded a's position and a verdict was invented for a type variable that call never demanded
+// (review 97406 finding 1; gunbc.design_argument::fail_closed -- every path succeeds or fails with a
+// verdict it can name, and no plausible output is fabricated). The rule as landed reads the element
+// from the position's OWN declared type, so control_two_element_variables below is the row that
+// holds that boundary, and the refusal itself lives in the relation (declared_type_inhabitance)
+// rather than in a second checker at the call seam (the ruling the seam's own comment records:
+// tidy-ant-251, 2026-10-20 -- the call's own solved map, no second solver, one rule at the seam).
+
+import gunbc.compile_census_probe {
+  census_exit,
+  census_verdict,
+  census_sum_verdict,
+  blocking_class_census
+}
+// WHY THE KEY IS READ FROM THE AUTHORITY'S OUTPUT RATHER THAN FROM ITS RENDERER. The renderer of this
+// refusal's subject is `v1.compiler.infer::inhabitance_refusal_position_label`, and a claim CANNOT import
+// it -- that is a layer fact, not an oversight to code around. A claim lives in the WITNESS layer, whose
+// roots are dag + src/v2 (data gunbc.ci.ci_layer_roots::witness_layer_roots), while
+// module v1.compiler.infer is declared under src/v1. Measured at this head with this head's own
+// claim_batch, one binary, one tree: `--source-root dag --source-root src/v2` gives `error: unresolved
+// import: module 'v1.compiler.infer' not found`, 0 rows, exit 1; `--source-root dag --source-root src/v1
+// --source-root src/v2` resolves the entry and evaluates all 17 witnesses, then emits NOT ONE claim row
+// and exits 2 -- three roots is the compile-only lane (the same extra root the compile-clean witness
+// cites for its v1.std.core.Node / v2.std.node.Node collision), not a claims lane. Calling the renderer
+// from here is therefore unavailable at exactly the layer where a claim row can exist.
+//
+// So the witness reads the row the renderer ALREADY PRODUCED: rows of the refusal's class, narrowed to
+// those whose subject_name -- the compiler's own rendered text, never a copy of it held in this file --
+// mentions the parameter its own fixture declares. The only literal this file supplies is that parameter
+// name, which is the fixture's, not the label's. That is the keyed form the census annotation calls
+// exact (class AND subject_name), and it cannot go stale if the label's prose is reworded, because no
+// prose of the label is stored here to go stale. Where a fixture calls POSITIONALLY (the repro calls
+// `list_append(["a"], "bc")`, exactly as the ticket spells it), the name keyed is the one the CALLEE
+// declares at that position -- std.algebra declares `fn list_append<T>(left: FreeMonoid<T>,
+// right: FreeMonoid<T>)`, so the second argument's parameter is 'right' -- which makes such a row a
+// claim about the positional mapping as well as about the refusal, and it is judged by the same
+// compiler that renders the label, not by anything this file asserts.
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
+import std.algebra { string_contains, string_concat_join }
+import std.process { ProcessExit }
+import std.types { Bool }
+
+// The repro, as the ticket states it: a text actual at the second FreeMonoid<T> parameter of
+// std.algebra list_append, whose first argument grounds the element to String.
+data repro_list_append_text_actual: String = "module witness_fm_repro\nimport std.algebra { list_append }\nimport std.list { list_cover }\nimport std.types { String, Bool, List }\nfn eq_str(a: String, b: String) -> Bool { a == b }\nfn probe() -> Bool { list_cover(held: list_append([\"a\"], \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+
+// The same call over two runs of the same element: what the author who writes the repro usually
+// means, and the row that must stay refused-by-nothing. POSITIONAL, like the repro above it, so the
+// three subjects in this family (this one, the repro, and `control_list_push_element` below) differ
+// ONLY at the one actual -- a labelled twin would put a second difference in the experiment (call
+// syntax) and let a refusal be attributed to the spelling rather than to the argument. The row filter
+// still keys on the compiler's own subject text (`'right'`, `'item'`), which comes from the formal's
+// parameter identity and not from how the call was written.
+data control_list_append_two_runs: String = "module witness_fm_two_runs\nimport std.algebra { list_append }\nimport std.types { String, List }\nfn probe() -> List<String> { list_append([\"a\"], [\"b\"]) }\n"
+
+// list_push is the OTHER operation: an element where an element is required. The rule must not
+// touch it; its carrier position is the same FreeMonoid spelling, its element position is a bare
+// type parameter.
+data control_list_push_element: String = "module witness_fm_list_push\nimport std.algebra { list_push }\nimport std.types { String, List }\nfn probe() -> List<String> { list_push([\"a\"], \"b\") }\n"
+
+// The identity std.coercion actually declares: text is a run over Char, so a call whose demanded
+// element IS Char takes text at a run position.
+data control_text_at_char_run: String = "module witness_fm_char_run\nimport std.algebra { list_append }\nimport std.types { String, Char }\nfn probe() -> String { list_append(left: \"ab\", right: \"bc\") }\n"
+
+data control_text_at_declared_char_run: String = "module witness_fm_declared_char_run\nimport std.algebra { FreeMonoid }\nimport std.types { String, Char }\nfn take(xs: FreeMonoid<Char>) -> Int { xs.count() }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+// The same refusal with no generics in sight: a concrete FreeMonoid<String> parameter handed text.
+data control_text_at_string_run: String = "module witness_fm_string_run\nimport std.algebra { FreeMonoid }\nimport std.types { String }\nfn take(xs: FreeMonoid<String>) -> Int { xs.count() }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+// Unchanged refusals, in the class this witness keys on: a non-text scalar at a FreeMonoid carrier,
+// and text at the container-alias (List) spelling.
+data control_text_at_run_of_int: String = "module witness_fm_text_at_run_of_int\nimport std.algebra { FreeMonoid }\nimport std.types { String, Int }\nfn take(xs: FreeMonoid<Int>) -> Int { xs.count() }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+// A non-text scalar at the carrier: refused before this rule and after it, by the arms that
+// compare a kernel scalar actual against a structured declared head.
+data control_int_at_run_carrier: String = "module witness_fm_int_at_run\nimport std.algebra { FreeMonoid }\nimport std.types { Int, String }\nfn take<T>(xs: FreeMonoid<T>) -> Int { 1 }\nfn probe() -> Int { take(xs: 5) }\n"
+
+data control_text_at_list_alias: String = "module witness_fm_list_alias\nimport std.types { String, List }\nfn take(xs: List<String>) -> Int { 1 }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+// Runs of two different elements at one element variable: the container spelling already refuses
+// this; the row is here so the wall's class count is visible on both spellings.
+data control_list_alias_two_run_elements: String = "module witness_fm_alias_two\nimport std.types { String, Int, List }\nfn take<T>(left: List<T>, right: List<T>) -> Int { 1 }\nfn probe() -> Int { take(left: [\"a\"], right: [1]) }\n"
+
+// Two DIFFERENT element variables, one of them a run carrier handed text and the other a List handed
+// a list of Int. This is a valid call (the text is a run over Char; b grounds its own U). A rule
+// that borrowed an element from a sibling would refuse it; the rule here does not, because each
+// position is judged against its own declared type.
+// THE LEAF NAME DECIDES NOTHING (review 97588; gunbc.design_argument::closed_grounded_substrate).
+// A LOCAL declaration spelled Char is not the declared Char the identity names, so text at a run
+// over it is the same error as text at a run of Int -- and the spelling-first version of this rule
+// admitted it. The row that keeps the two apart: the same text at the QUALIFIED declared Char is the
+// identity and stays unrefused.
+// DOES THE CALL ITSELF GROUND THE ELEMENT? The refusal may only read what the position demands, so
+// this row is the one that proves the grounding happens in the call's own unification: an Int at a
+// type parameter that a sibling run of String settles must refuse exactly as it does at the concrete
+// `FreeMonoid<String>` above. On main the generic position says nothing at all.
+data control_int_at_element_settled_by_sibling: String = "module witness_fm_sibling_ground\nimport std.algebra { FreeMonoid }\nimport std.types { String, Int }\nfn two<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> Int { left.count() }\nfn probe() -> Int { two(left: [\"a\"], right: 1) }\n"
+
+// A MODULE-LOCAL ALIAS OF THE CARRIER IS THE CARRIER: identity is settled to the declaration, so the
+// alias spelling cannot be used to slip a text actual past the rule.
+data control_text_at_local_alias_of_carrier: String = "module witness_fm_carrier_alias\nimport std.algebra { FreeMonoid }\nimport std.types { String }\ntype Run<e> = FreeMonoid<e>\nfn take(xs: Run<String>) -> Int { xs.count() }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+data control_text_at_local_char_spelling_run: String = "module witness_fm_local_char\nimport std.algebra { FreeMonoid }\nimport std.types { String }\ntype Char { code: Int }\nfn take(xs: FreeMonoid<Char>) -> Int { xs.count() }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+data control_text_at_qualified_char_run: String = "module witness_fm_qualified_char\nimport std.algebra { FreeMonoid }\nimport std.types { String }\nfn take(xs: FreeMonoid<std.types.Char>) -> Int { xs.count() }\nfn probe() -> Int { take(xs: \"bc\") }\n"
+
+data control_two_element_variables: String = "module witness_fm_two_vars\nimport std.algebra { FreeMonoid }\nimport std.types { String, Int, List }\nfn mixed<T, U>(a: FreeMonoid<T>, b: List<U>) -> Int { 1 }\nfn probe() -> Int { mixed(a: \"ab\", b: [1]) }\n"
+
+// THE ROWS THIS WALL'S REFUSAL CARRIES, narrowed by the parameter the fixture itself declares. The
+// census row set is the WHOLE compile's, including every imported module (see the header of this file
+// and #gunbc.compile_diagnostic_census::CompileDiagnosticCensusRow), so a count scoped to the class alone
+// is the form that annotation calls INEXACT: main already emits DeclaredTypeNotInhabited rows of its own
+// at other parameters of these very fixtures, and a class-only count can read one of those as this rule's
+// verdict. Scoping to subject_name is the exact form -- and the subject_name compared here is the
+// compiler's rendered text, filtered by containment of the parameter name this file declares, so this
+// file stores none of the label's wording. A row whose count is 0 on a licensed twin is part of the key,
+// not decoration: it is what stops main's unrelated refusal from satisfying the row.
+fn wall_rows_at_parameter(source: String, parameter: String) -> CompileDiagnosticCensus {
+  match blocking_class_census(source: source, wanted_class: "DeclaredTypeNotInhabited") {
+    CensusObserved { rows: rows } => CensusObserved { rows: rows |> filter(r => string_contains(s: r.subject_name, pattern: string_concat_join(fields: ["'", parameter, "'"], separator: ""))) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
+test fn text_actual_at_run_of_string_is_refused_naming_the_right_parameter() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: repro_list_append_text_actual, parameter: "right"), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_same_call_over_two_runs_is_not_refused() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_list_append_two_runs, parameter: "right"), holds: fn(n) { n == 0 }))
+}
+
+test fn list_push_takes_an_element_where_an_element_is_required() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_list_push_element, parameter: "item"), holds: fn(n) { n == 0 }))
+}
+
+// Keyed on BOTH parameters the fixture actually names -- list_append declares (left, right), so
+// filtering on an "xs" this call never spells would be green whatever the compiler did. Text over
+// the declared Char is the identity std.types declares, so neither run position may be refused.
+test fn text_at_a_run_over_char_is_the_declared_identity() -> ProcessExit {
+  census_exit(census_sum_verdict(first: wall_rows_at_parameter(source: control_text_at_char_run, parameter: "left"), second: wall_rows_at_parameter(source: control_text_at_char_run, parameter: "right"), holds: fn(n) { n == 0 }))
+}
+
+test fn text_at_a_declared_run_over_char_is_not_refused() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_declared_char_run, parameter: "xs"), holds: fn(n) { n == 0 }))
+}
+
+test fn text_at_a_declared_run_of_string_is_refused_without_generics() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_string_run, parameter: "xs"), holds: fn(n) { n >= 1 }))
+}
+
+// A TEXT AT A RUN-OF-INT, decided by the ruling this node carries and stated in ONE place: the data line
+// below. The declared element is `Int` while the actual is a run of the declared Char, so this is the one
+// fixture whose verdict belongs to the ruling rather than to the wall's arithmetic. Reading a run of Char
+// as a run of code-point Ints CHANGES INTERPRETATION, and gunbc.design_argument::closed_grounded_substrate
+// refuses the implicit coercion that would let it through -- "Bool does not implicitly inhabit Int" -- so
+// the wall asks no brand authority whether Char may widen to the declared element, and REFUSES. The
+// expected count is therefore 1 row at this wall's subject. Were the implicit licensing ever restored --
+// the reading this node removes -- the same row would read 0 and ONLY that data line changes: the
+// comparison reads the constant instead of hard-coding an oracle, so one file serves either reading.
+// The constant is not a knob. The head binary is the arbiter of the count, a mismatch is a finding about
+// the arm to be repaired in the arm, and this comparison is never re-keyed until it passes.
+//
+// What the ruling does NOT touch stays asserted: text at a run over the declared Char is std.coercion's
+// grounded identity (text_at_a_run_over_char_is_the_declared_identity), and a non-text scalar at a carrier
+// -- `take(xs: 5)` -- is refused by the arms above this wall, before it and after. Under main's binary
+// this fixture carries no inhabitance class at all: 0 rows of DeclaredTypeNotInhabited,
+// DeclaredTypeInhabitanceUndecided and DeclaredTypeInhabitanceUnmodeled. That is what makes this row
+// DISCRIMINATING rather than a positive control -- RED on main, GREEN on the head (the s17 map leg carries
+// the rc).
+data expected_rows_at_text_over_a_declared_int_run: Int = 1
+
+test fn text_at_a_declared_run_of_int_is_refused_as_a_change_of_interpretation() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_of_int, parameter: "xs"), holds: fn(n) { n == expected_rows_at_text_over_a_declared_int_run }))
+}
+
+test fn an_int_at_a_run_carrier_is_refused_as_it_already_was() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: control_int_at_run_carrier, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+test fn text_at_the_list_alias_spelling_is_still_refused_once() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_list_alias, parameter: "xs"), holds: fn(n) { n == 1 }))
+}
+
+test fn runs_of_different_elements_at_one_element_variable_are_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: control_list_alias_two_run_elements, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+test fn a_sibling_at_a_different_element_variable_grounds_nothing_at_the_run_carrier() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_two_element_variables, parameter: "a"), holds: fn(n) { n == 0 }))
+}
+
+
+test fn a_local_char_spelling_at_a_run_carrier_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_local_char_spelling_run, parameter: "xs"), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_qualified_char_declaration_at_a_run_carrier_is_the_identity() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_qualified_char_run, parameter: "xs"), holds: fn(n) { n == 0 }))
+}
+
+test fn an_int_at_an_element_the_sibling_run_grounds_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: control_int_at_element_settled_by_sibling, wanted_class: "DeclaredTypeNotInhabited"), holds: fn(n) { n >= 1 }))
+}
+
+test fn text_at_a_module_local_alias_of_the_run_carrier_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_local_alias_of_carrier, parameter: "xs"), holds: fn(n) { n >= 1 }))
+}
+
+// THE STANDARD LIBRARY ASKS FOR THIS PAIR, MEASURED. src/v2/std/text.dag hands a String at a
+// generic run position with nothing to settle its element: `is_empty(xs: s)` (:25, :34, :59, :118),
+// `for_all(xs: s, predicate: fn(c) { ... })` (:191, :195, :200), `list_append(left: acc, right: field)`
+// over two Strings (:165). The first version of this rule refused all eleven sites -- the heal round
+// of PR #16894 reported DeclaredTypeNotInhabited [RefusedTextAtRunOfNonCharElement] at
+// src/v2/std/text.dag:25:16, :28:23, :34:17, :59:9, :116:27, :118:48, :165:49, :165:61, :191:16,
+// :195:15, :200:17, each declared 'Node(FreeMonoid<Primitive()>)' -- an unsolved element read as
+// "some declaration that is not Char". These two rows are the corpus, held as controls: an element
+// this call does not settle is no verdict, and the rule that forgets it refuses the standard library.
+data control_text_at_run_element_unsettled: String = "module witness_fm_unsettle\nimport std.types { String, Bool, List }\nfn is_empty<T>(xs: List<T>) -> Bool { true }\nfn probe() -> Bool { is_empty(xs: \"abc\") }\n"
+
+data control_text_at_run_element_settled_by_a_lambda: String = "module witness_fm_lambda_settle\nimport std.types { String, Bool, List }\nfn for_all<T>(xs: List<T>, predicate: fn(T) -> Bool) -> Bool { true }\nfn probe() -> Bool { for_all(xs: \"abc\", predicate: fn(c) { c == \"a\" }) }\n"
+
+// ABSTAIN, with the reason named: this fixture's element never settles from any declaration -- it
+// could only come from a sibling argument or the author's intent, neither of which is a witness --
+// so the new rule refuses to ground it (unsettled element means Unidentified, never a refusal
+// borrowed from a sibling) and states nothing about whether the call is well typed. The row records
+// what the PRE-EXISTING arm does here, observed as 1 on the main binary at 56d460116d6252f6ec8dfe889ea358c804685861;
+// it is not a claim that this call is ill typed, and it is not re-keyed to agree with the wall.
+test fn text_at_a_run_whose_element_the_call_never_settles_is_no_verdict() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_element_unsettled, parameter: "xs"), holds: fn(n) { n >= 1 }))
+}
+
+// ABSTAIN, with the reason named, as above: a lambda parameter settles the element only through an
+// inference the wall does not read as a declaration, so the rule states nothing here. Observed as 1
+// on the main binary at the same sha: pre-existing behaviour, recorded not adjudicated.
+test fn text_at_a_run_whose_element_a_lambda_settles_is_no_verdict() -> ProcessExit {
+  census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_element_settled_by_a_lambda, parameter: "xs"), holds: fn(n) { n >= 1 }))
+}
