@@ -569,8 +569,14 @@ fn build_pool_ruled_seat_count_for_host(host: HostIdentity) -> Nat? {
 // the memory twice. A ruling that DOES name a count (ken: one seat) bypasses this entirely;
 // its count is the ruling's own word (Present arm above).
 fn ruled_pool_seat_count_from_ceiling(reservation: ByteSize) -> Nat {
-  let seats = byte_size_count(b: reservation) / byte_size_count(b: compute_build_memory_ceiling_default)
-  if seats > 0 { seats } else { 1 }
+  // The quotient is taken on Int (the language's division type) and returned to Nat through the
+  // checked conversion (std.checked_arithmetic, the same idiom as gunbc.fleet.vast_ai_guest's
+  // seat division): both counts are Nat so the quotient is non-negative and the Absent arm is
+  // unreachable -- it floors to the same one-seat minimum the zero arm does, never a wider answer.
+  match checked_int_to_nat(n: byte_size_count(b: reservation) / byte_size_count(b: compute_build_memory_ceiling_default)) {
+    Present { value: seats } => if seats > 0 { seats } else { 1 }
+    Absent => 1
+  }
 }
 
 // THE ONE CONVERSION FROM A RULED POOL TO A SEAT, pure over the two ruled facts. NO SEAT IS EVER
