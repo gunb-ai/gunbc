@@ -157,8 +157,8 @@ fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
   }
 }
 
-// ── the pieces inside one Montgomery multiplication, 1000 calls each on 11 limbs (P-256's field
-// width): a copied accumulator or a quadratic list op shows as one piece costing more than its
+// ── the pieces inside one Montgomery multiplication, 1000 calls each on P-256's field width in limbs (p256_curve.field.width, derived from
+// std.bignat::bignat_limb_width; the step's t and result rows are one limb wider): a copied accumulator or a quadratic list op shows as one piece costing more than its
 // share of montgomery_step. `held` is the piece's arithmetic answer (its limb count).
 fn limb_run(w: Int) -> List<Int> {
   fold(octet_run(n: w, acc: []), init: [], f: (acc, o) => acc |> list_push(16777000 - o))
@@ -169,37 +169,37 @@ fn piece_row(identity: String, held: Bool, t0: Int, t1: Int) -> CostRow {
 }
 
 fn add_scaled_row() -> CostRow {
-  let t = limb_run(w: 11)
-  let x = limb_run(w: 11)
+  let t = limb_run(w: p256_curve.field.width)
+  let x = limb_run(w: p256_curve.field.width)
   let t0 = observed_monotonic_nanos("add-scaled-start")
   let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_add_scaled(t: t, x: x, k: 16777000, carry: 0, acc: [])))
   let t1 = observed_monotonic_nanos("add-scaled-end")
-  piece_row(identity: "bignat_add_scaled_x1000", held: n >= 11000, t0: t0, t1: t1)
+  piece_row(identity: "bignat_add_scaled_x1000", held: n >= 1000 * p256_curve.field.width, t0: t0, t1: t1)
 }
 
 fn pad_row() -> CostRow {
-  let t = limb_run(w: 11)
+  let t = limb_run(w: p256_curve.field.width)
   let t0 = observed_monotonic_nanos("pad-start")
-  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_pad(limbs: t, width: 12)))
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_pad(limbs: t, width: p256_curve.field.width + 1)))
   let t1 = observed_monotonic_nanos("pad-end")
-  piece_row(identity: "bignat_pad_x1000", held: n == 12000, t0: t0, t1: t1)
+  piece_row(identity: "bignat_pad_x1000", held: n == 1000 * (p256_curve.field.width + 1), t0: t0, t1: t1)
 }
 
 fn drop_lowest_row() -> CostRow {
-  let t = limb_run(w: 12)
+  let t = limb_run(w: p256_curve.field.width + 1)
   let t0 = observed_monotonic_nanos("drop-start")
   let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_drop_lowest(limbs: t)))
   let t1 = observed_monotonic_nanos("drop-end")
-  piece_row(identity: "bignat_drop_lowest_x1000", held: n == 11000, t0: t0, t1: t1)
+  piece_row(identity: "bignat_drop_lowest_x1000", held: n == 1000 * p256_curve.field.width, t0: t0, t1: t1)
 }
 
 fn montgomery_step_row() -> CostRow {
-  let t = limb_run(w: 12)
-  let b = limb_run(w: 11)
+  let t = limb_run(w: p256_curve.field.width + 1)
+  let b = limb_run(w: p256_curve.field.width)
   let t0 = observed_monotonic_nanos("step-start")
   let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(montgomery_step(ctx: p256_curve.field, t: t, ai: 12345, b: b)))
   let t1 = observed_monotonic_nanos("step-end")
-  piece_row(identity: "montgomery_step_x1000", held: n == 12000, t0: t0, t1: t1)
+  piece_row(identity: "montgomery_step_x1000", held: n == 1000 * (p256_curve.field.width + 1), t0: t0, t1: t1)
 }
 
 fn native_crypto_cost_rows() -> List<CostRow> {

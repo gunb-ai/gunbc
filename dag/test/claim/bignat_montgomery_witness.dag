@@ -22,7 +22,7 @@ import std.bignat {
 //
 // WHY A ROUND TRIP IS A DISCRIMINATING CLAIM AND NOT A TAUTOLOGY: montgomery_to multiplies by
 // r_squared and montgomery_from multiplies by one, and BOTH run the CIOS reduction. A limb that left
-// [0, 2^24) would propagate a wrong carry through that reduction, so the value would not come back.
+// [0, 2^30) would propagate a wrong carry through that reduction, so the value would not come back.
 //
 // EVERY INPUT IS THREADED THROUGH ITS REFUSAL RATHER THAN UNWRAPPED. bignat_small now answers
 // Optional, and a claim that cannot BUILD its input must FAIL rather than pass -- substituting a
@@ -114,7 +114,7 @@ test fn zero_survives_montgomery_form_and_is_recognised() -> Bool {
 // with a NEGATIVE limb through a public function.
 //
 // THE UPPER EDGE IS ASSERTED AS AN ADMISSION RATHER THAN A REFUSAL, because no Int can exceed three
-// limbs: the largest expressible n is 2^63 - 1, whose top limb is 32767 and so is inside 2^24. That
+// limbs: the largest expressible n is 2^63 - 1, whose top limb is 7 and so is inside 2^30. That
 // is the positive control for the note on bignat_small -- if the top limb ever did escape, this is
 // the input that would show it.
 test fn bignat_small_refuses_a_negative_and_admits_the_largest_int() -> Bool {
