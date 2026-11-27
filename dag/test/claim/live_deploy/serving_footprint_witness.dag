@@ -1,0 +1,136 @@
+module test.claim.live_deploy.serving_footprint_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.live_deploy.slice_bounds {
+  user_work_slot_memory_max, user_work_slice_memory_max_of,
+  user_work_serving_leg_headroom, user_work_request_footprint_of, user_work_slice_fits,
+}
+import gunbc.live_deploy.serving_child_observations {
+  ServingChildHostOverride, serving_child_engine_measurement,
+  serving_child_residency, serving_child_residency_for, serving_child_engine_measurement_is_positive,
+  no_serving_child_host_override_undercuts_the_engine,
+}
+
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { "" } else { concat(name, " ") }
+}
+
+// ── THE PER-REQUEST FOOTPRINT AND THE SLICE-FIT INEQUALITY ───────────────────────────────────
+// Claims for the authority that closed the srv3 OOM class (2026-11-26): slots x footprint + legs
+// <= slice memory.max, with footprint = unit MemoryMax + serving child residency. The shapes below
+// are the model's own numbers for srv1, srv3, butch and ken — the table the program's ruling was
+// built on. Each is pure arithmetic; hermetic per-PR discovery executes them.
+
+data claim_grant_22gib: ByteSize = byte_size(23622320128)
+data claim_child_35gib: ByteSize = byte_size(3758096384)
+data claim_footprint: ByteSize = byte_size(27380416512)
+
+// THE FOOTPRINT IS THE SUM, EXACTLY: 22 GiB grant + 3.5 GiB resident child.
+fn the_footprint_is_the_unit_ceiling_beside_the_resident_child() -> Bool {
+  byte_size_count(b: user_work_request_footprint_of(unit_memory_max: claim_grant_22gib, child_residency: claim_child_35gib))
+    == byte_size_count(b: claim_footprint)
+}
+
+// THE DECLARED LEG HEADROOM POSITIVELY EXCEEDS THE MEASURED DOOR + CENSUS LEGS (2 x 0.38 GiB).
+fn the_leg_headroom_covers_the_measured_legs() -> Bool {
+  byte_size_count(b: user_work_serving_leg_headroom) > 817119641
+}
+
+// THE ENGINE RESIDENCY IS POSITIVE — a zero bound would erase the uncharged resident from every sum.
+fn the_engine_residency_is_positive() -> Bool {
+  serving_child_engine_measurement_is_positive()
+}
+
+// THE STANDING HOST TABLE NEVER UNDERCUTS THE ENGINE'S OWN MEASUREMENT.
+fn the_host_rows_stay_above_the_engine_measurement() -> Bool {
+  no_serving_child_host_override_undercuts_the_engine()
+}
+
+// A HOST WITHOUT ITS OWN ROW IS GOVERNED BY THE ENGINE FIGURE — no host is left unbounded.
+fn an_unmeasured_host_takes_the_engine_residency() -> Bool {
+  byte_size_count(b: serving_child_residency(host: "srv3")) == byte_size_count(b: serving_child_engine_measurement)
+}
+
+// A HOST ROW DECIDES FOR ITS HOST AND RAISES THE BOUND.
+fn a_host_row_speaks_for_its_host() -> Bool {
+  let raised = [ServingChildHostOverride { host: "srv9", bytes: byte_size(4294967296) }]
+  byte_size_count(b: serving_child_residency_for(raised: raised, host: "srv9")) == 4294967296
+    && byte_size_count(b: serving_child_residency_for(raised: raised, host: "srv3")) == byte_size_count(b: serving_child_engine_measurement)
+}
+
+// A HOST ROW CANNOT LOWER THE BOUND UNDER THE ENGINE MEASUREMENT.
+fn a_host_row_cannot_fabricate_headroom() -> Bool {
+  let sunken = [ServingChildHostOverride { host: "srv9", bytes: byte_size(1073741824) }]
+  byte_size_count(b: serving_child_residency_for(raised: sunken, host: "srv9")) == byte_size_count(b: serving_child_engine_measurement)
+}
+
+// SRV1 SHAPE, RED CONTROL: the standing 2-slot slice (44 GiB) admits ONE 22 GiB-grant served
+// request beside its legs and REFUSES a second — the ledger said two; the slice holds one. This is
+// the over-sell the footprint authority exists to catch.
+fn srv1_admits_one_and_refuses_two() -> Bool {
+  user_work_slice_fits(slots: 1, footprint: claim_footprint, slice_max: user_work_slice_memory_max_of(slots: 2))
+    && !user_work_slice_fits(slots: 2, footprint: claim_footprint, slice_max: user_work_slice_memory_max_of(slots: 2))
+}
+
+// SRV3 SHAPE, THE RED CONTROL OF THE NIGHT: under the today's carve (one CI slot, 25 GiB) the
+// slice REFUSES even ONE 22 GiB-grant served request — 22 + 3.5 > 25 once the legs are reserved.
+// Every srv3 request leg that died was this arithmetic, enforced by the kernel instead of the model.
+fn srv3_refuses_a_single_granted_build_under_todays_carve() -> Bool {
+  !user_work_slice_fits(slots: 1, footprint: claim_footprint, slice_max: byte_size(26843545600))
+}
+
+// THE VACUOUS ARM IS VACUOUS, NOT ADMITTING: zero slots fit any slice, and a slice that cannot
+// even hold its legs admits nothing above zero.
+fn zero_slots_always_fit_and_legs_over_ceiling_fails_closed() -> Bool {
+  user_work_slice_fits(slots: 0, footprint: claim_footprint, slice_max: byte_size(26843545600))
+    && user_work_slice_fits(slots: 0, footprint: claim_footprint, slice_max: byte_size(1048576))
+    && !user_work_slice_fits(slots: 1, footprint: claim_footprint, slice_max: byte_size(1048576))
+}
+
+// BUTCH SHAPE: the 192 GiB pool holds SEVEN footprints beside the legs, not eight — the seat count
+// #17181 rules must come from this floor, not from dividing by the unit ceiling alone (which said 8).
+fn butch_192gib_holds_seven_not_eight() -> Bool {
+  user_work_slice_fits(slots: 7, footprint: claim_footprint, slice_max: byte_size(206158430208))
+    && !user_work_slice_fits(slots: 8, footprint: claim_footprint, slice_max: byte_size(206158430208))
+}
+
+// KEN SHAPE: the ruled host's live 56 GiB holds TWO footprints beside the legs. (ken's ruled seat
+// count is one per the operator ruling; this claim pins only that the arithmetic can say so.)
+fn ken_56gib_holds_two_not_three() -> Bool {
+  user_work_slice_fits(slots: 2, footprint: claim_footprint, slice_max: byte_size(60129542144))
+    && !user_work_slice_fits(slots: 3, footprint: claim_footprint, slice_max: byte_size(60129542144))
+}
+
+// THE FOOTPRINT IS NEVER BELOW THE UNIT CEILING ALONE: a caller that sized seats by the grant alone
+// (the old division) is provably sizing below what one request occupies.
+fn the_footprint_exceeds_the_grant_alone() -> Bool {
+  byte_size_count(b: user_work_request_footprint_of(unit_memory_max: user_work_slot_memory_max, child_residency: claim_child_35gib))
+    > byte_size_count(b: user_work_slot_memory_max)
+}
+
+// THE WHOLE WITNESS IN ONE PROCESS EXIT: zero when every claim above held. Hermetic discovery
+// runs each claim per PR; this entry is the manual-receipt route the PR body cites.
+fn run_serving_footprint_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "the_footprint_is_the_unit_ceiling_beside_the_resident_child", held: the_footprint_is_the_unit_ceiling_beside_the_resident_child()),
+    check_or_name(name: "the_leg_headroom_covers_the_measured_legs", held: the_leg_headroom_covers_the_measured_legs()),
+    check_or_name(name: "the_engine_residency_is_positive", held: the_engine_residency_is_positive()),
+    check_or_name(name: "the_host_rows_stay_above_the_engine_measurement", held: the_host_rows_stay_above_the_engine_measurement()),
+    check_or_name(name: "an_unmeasured_host_takes_the_engine_residency", held: an_unmeasured_host_takes_the_engine_residency()),
+    check_or_name(name: "a_host_row_speaks_for_its_host", held: a_host_row_speaks_for_its_host()),
+    check_or_name(name: "a_host_row_cannot_fabricate_headroom", held: a_host_row_cannot_fabricate_headroom()),
+    check_or_name(name: "srv1_admits_one_and_refuses_two", held: srv1_admits_one_and_refuses_two()),
+    check_or_name(name: "srv3_refuses_a_single_granted_build_under_todays_carve", held: srv3_refuses_a_single_granted_build_under_todays_carve()),
+    check_or_name(name: "zero_slots_always_fit_and_legs_over_ceiling_fails_closed", held: zero_slots_always_fit_and_legs_over_ceiling_fails_closed()),
+    check_or_name(name: "butch_192gib_holds_seven_not_eight", held: butch_192gib_holds_seven_not_eight()),
+    check_or_name(name: "ken_56gib_holds_two_not_three", held: ken_56gib_holds_two_not_three()),
+    check_or_name(name: "the_footprint_exceeds_the_grant_alone", held: the_footprint_exceeds_the_grant_alone()),
+  ], "")
+  if red == "" {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: join(["serving footprint claim red: ", red], "") }
+  }
+}
