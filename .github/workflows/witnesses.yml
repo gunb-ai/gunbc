@@ -752,6 +752,44 @@ jobs:
         env:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
         if: steps.fast_lane.outputs.skip == 'true'
+      - name: Declared entry call shape
+        id: declared-entry-call-shape
+        run: |-
+          set -euo pipefail
+          base='${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}'
+          if [ -z "${base}" ]; then
+            echo 'skipped: this event carries no base commit to diff against, so this run changed nothing for the check to judge'
+            exit 0
+          fi
+          dir=$(mktemp -d)
+          changed="${dir}/changed.txt"
+          candidates="${dir}/candidates.txt"
+          git cat-file -e "${base}^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "${base}" >/dev/null 2>&1 || {
+            echo "the event base commit ${base} is not in this checkout and could not be fetched: refusing to guess a scope" 1>&2
+            exit 1
+          }
+          git diff --name-only "${base}...HEAD" -- '*.dag' > "${changed}"
+          if [ ! -s "${changed}" ]; then
+            echo 'skipped: no .dag change in this diff'
+            exit 0
+          fi
+          stems="${dir}/stems.txt"
+          sed -E 's|^dag/||; s|^src/v2/||; s|\.dag$||; s|/|.|g' "${changed}" | sed '/^$/d' > "${stems}"
+          : > "${candidates}"
+          if [ -s "${stems}" ]; then
+            rc=0; git grep -l -F -f "${stems}" -- '*.dag' > "${candidates}.grep" || rc=$?
+            if [ "${rc}" -gt 1 ]; then exit "${rc}"; fi
+            cat "${candidates}.grep" >> "${candidates}"
+          fi
+          sort -u "${changed}" "${candidates}" -o "${candidates}"
+          scope=$(wc -l < "${candidates}" | tr -d ' ')
+          if [ "${scope}" -gt 1200 ]; then
+            echo "scope of ${scope} .dag files is above the ceiling of 1200: this is not this run's diff, and the step refuses to judge it" 1>&2
+            exit 1
+          fi
+          echo "scope: ${scope} .dag files (changed plus reverse importers, diffed against ${base})"
+          ${{ steps.fast_lane.outputs.skip == 'true' && './gunbc-fast-lane-native-cli' || format('{0}/v2-native-cli-gen-one', runner.temp) }} run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/declared_entry_call_shape.dag --function main --arg changed_paths_file=${dir}/changed.txt --arg candidate_importers_file=${dir}/candidates.txt
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
       - name: Restore parse-verdict unit for base ancestor 0
         id: parse_receipts_0
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25

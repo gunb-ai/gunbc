@@ -293,3 +293,100 @@ two refusals, the skip count, and an agreement arm against the oracle on these s
 demonstrated red in the *witnesses* lane (§10) rather than at my keyboard. The refusals are two and stay
 two; the forged-probe files stay untouched, per the manager's ruling that the engine is the authority on
 coproduct heads.
+
+## 13. THE CI STEP (half b) — what runs the instrument, on what, and against which base
+
+The instrument is a scanner with no hands. This section is the hands: `dag/gunbc/witness/declared_entry_call_shape_step.dag`,
+embedded by `gunbc.witness.compiler_gate_workflow` as a bound step of the required job (`capability_neutral`,
+unguarded by the fast-lane reuse condition, since the check judges the pull request's diff on every pull
+request and not only on a built run).
+
+**The base.** `git diff --name-only <base>...HEAD -- '*.dag'`, merge-base semantics, where `<base>` is the
+EVENT's base commit: `github.event.pull_request.base.sha` on a pull_request and `github.event.merge_group.base_sha`
+on a merge_group (the workflow runs on `workflow_dispatch`, `merge_group`, `push` (main), `pull_request` (main),
+`workflow_call` and a `schedule`; of those only the two carry a base). Both rejected spellings are pinned
+absent by a claim, not just avoided: `GITHUB_BASE_REF` is a branch name and moves under the run, and a two-dot
+diff against main counts main's own new commits as the PR's — charging a PR for someone else's break. The base
+is fetched explicitly (`git cat-file -e` then a `git fetch --depth=1` fallback) because the checkout's depth is
+not this step's fact to assume, and an unresolvable base REFUSES; only an empty diff skips.
+
+**Who does the events with no base.** They are excluded by the step's `if:` rather than handed an empty diff.
+A scheduled or dispatched run has no PR, so there is nothing this run changed for a check to judge; refusing it
+would red every schedule for a reason nobody can act on, and green-ing it would be the silent pass this row
+exists to retire. The condition is therefore pinned by a claim, so it cannot quietly widen.
+
+**The skip/refuse split.** STEP skips on an empty diff and prints `skipped: no .dag change in this diff` — a
+step that exits silently on the common path reads as a step that did not run. INSTRUMENT refuses an empty
+scope, and refuses an unreadable file rather than skipping it. The step's skip is a judgement about a diff,
+which the step owns; the instrument's would be about a file it was handed, which it does not.
+
+**The reverse-importer pass, and which direction it may be wrong in.** Candidate importers come from
+`git grep -l -F -f <stems> -- '*.dag'` over tracked files, where a stem is the changed path with its source
+root and extension removed and its separators dotted. Mention is not import, so the index may over-include;
+membership is decided by the instrument, which re-reads every candidate and re-parses its import lines with
+the one parser. Over-inclusion costs seconds. Under-inclusion would be a missed refusal, so the stem match is
+deliberately the widest reading of the name. This pass is the whole reason the check can see the defect it is
+named for: the `claim_run` caller was never edited by anyone.
+
+**A ceiling, and no floor.** Above 1200 `.dag` files in scope the step refuses — a diff that large is not this
+run's diff (a mis-resolved base, a squash-merge ancestor), and judging it would burn an hour of a 90-minute job
+on somebody else's tree. There is deliberately no lower bound: a one-file PR that touches a leaf nothing imports
+is legal, and a check that reds it has bought a false alarm with the safety it sold. The instrument's refusal of
+an empty scope is the only bottom.
+
+**Cost.** Measured on this host, engine built at head: instrument entry `resolve_entry_graph_inclusive ms≈4788–5161`,
+`closure_files=53`, `max_rss_kib≈175772–182708` (~172–178 MiB), ~5.2 s wall; the scan of a 54-file scope is ~24 s
+(~0.35 s/file), so a 200-file diff is ~70 s — inside the job's existing roster timeouts, with no timeout raised
+(`gunbc.design_ruling::ci_job_budgets_closed_to_growth`). For contrast, the same binary on the serve request arm:
+898 files / 143,992 ms / 3,435,568 KiB.
+
+**No envelope input, on purpose.** The required job sets `GUNBC_MEMORY_ENVELOPE_REQUIRED=slot` on its subject
+steps; reading it is the TEST route's job (`v1_compiler.cli_run.target_invocation_host` `test_verb_checked`, the
+same file declaring `MEMORY_ENVELOPE_REQUIRED_ENV`), and this step calls `gunbc run`. Putting the input on a step
+whose verb never reads it writes a line into the shipped YAML asserting a bound nobody took — a receipt for a
+measurement nobody made. The envelope lines the neighbouring walk steps carry are theirs, because their verb is
+`test`. What bounds this step is its scope; what it costs is the measurement above.
+
+**The invocation arrives by parameter, and that is a budget decision.** The first draft imported
+`gunbc.parse_verdict_publish` (for `native_cli_bin()` and `parse_verdict_publish_memory_env()`) and
+`gunbc.instrument_targets` (for the source-root pair) into the step module. The step module is imported by this
+lane, so every claim here resolved them: one claim had not finished resolving after ten minutes and took
+13 min 54 s. Taking `bin` and `source_roots` as parameters — supplied by the job that already owns those facts
+elsewhere — brought the whole 18-claim lane to ~5 minutes in one process, and a claim now pins the module's
+import list to `std.types`, `std.optional`, `extdeps.github.actions` and the `v2.cli.parse_verdict_invocation`
+leaf, with `gunbc.` forbidden in it. A check enrolled under a budget law is not exempt from it, least of all in
+its own test lane. The enrolment claim (that the required job's own bound-step list carries this step) lives in
+`dag/test/claim/compiler_gate_emit_build_lane_witness.dag`, which pays for the workflow hub anyway.
+
+**The string medium and shell text.** `${name}` in a string literal is a reference to a value in scope, and a
+bare `{name}` is read as one too — so a shell script written literally in `.dag` is a program referring to
+variables nobody declared (`undefined variable 'changed'`, `ambiguous reference 'base'`, and `git cat-file -e
+$base^{commit}` refusing to resolve `commit`). `${{ github.* }}` survives because `{` cannot start an identifier.
+The step assembles its variable references through `sh()`/`braces()` and the witness assembles its needles
+through `shn()`, so the emitted shell is ordinary shell and the `.dag` stays a description of it.
+
+**The generated file, and the byte boundary that nearly fooled me.** `.github/workflows/witnesses.yml` is
+generated; the documented regen is `gunbc.instruments.generated_artifact_gate main_wet_one`, whose entry closure
+is every emitter in the registry — measured elsewhere at 3,706 files / 1,391,228 ms / 13,336,092 KiB, which on a
+shared host is the whole-tree build the budget law keeps out of a session. For this change the artifact was
+regenerated through a throwaway entry that reached the one producer the registry names
+(`gunbc.witness.compiler_gate_workflow::expected_compiler_gate_yml`): 1516 pool modules, 10 m 22 s, 6,565,452 KiB.
+That entry is NOT committed — a second regen path beside the registry's authority is the worse fork — and its
+first run proved why the diff, not trust, is the check: it wrote the file WITHOUT the two provenance-header lines,
+because those are prepended by `gunbc.generated_artifact_emit` `artifact_generate` via
+`gunbc.generated_workflow_provenance::generated_workflow_provenance_header`, not by the producer. The diff
+showed two deletions; the entry was corrected; the final diff is 38 insertions and zero deletions. The
+throwaway lives in the session's `/tmp` notes and in this paragraph, and its correctness criterion is stated
+there: any hunk other than the new step means the path is wrong and the artifact goes back to `main_wet_one`.
+
+**The author was caught by the row's own defect class.** While writing the lane, a claim called
+`list_member(xs:, value:)`; the declared parameters are `(xs, x, eq)`. The engine's words were the same shape
+this instrument predicts — `call shape mismatch calling 'list_member': no parameter named 'value' (declared:
+[T, xs, x, eq])` — and it surfaced as an unobserved claim in ~5 minutes rather than as a CI resolve. That is the
+row's argument, demonstrated on its own author.
+
+**Evidence.** See the PR body for the tallies: the 18-claim instrument/step lane, the two new enrolment claims in
+the emit-build lane, and the executed arms of the emitted step body — the committed YAML's script, extracted and
+run under bash with only the two GitHub expressions resolved (event base, job binary), for: an empty diff, an
+event with no base, an unresolvable base, an over-ceiling scope, a real PR-shaped scope, and a committed red whose
+caller nobody edited.

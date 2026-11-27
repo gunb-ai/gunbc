@@ -110,6 +110,7 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness.declared_entry_call_shape_step { declared_entry_call_shape_step, declared_entry_call_shape_step_name }
 import gunbc.witness.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
@@ -208,11 +209,13 @@ import gunbc.read_set_restore {
 }
 import gunbc.parse_verdict_publish {
   materialization_audit_publish_if,
+  native_cli_bin,
   parse_verdict_publish_walk_step_guarded,
   parse_verdict_publish_save_step_guarded,
   parse_verdict_publish_step_name,
   parse_verdict_save_step_name,
 }
+import gunbc.instrument_targets { v2_native_cli_source_roots }
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
@@ -917,6 +920,19 @@ fn compiler_gate_fast_lane_check_bound_steps() -> List<CompilerGateBoundStep> {
       step: fast_lane_reference_check_step(),
       role: capability_neutral,
       step_name: fast_lane_reference_check_step_name,
+    },
+    // THE DECLARED-ENTRY CALL-SHAPE CHECK (gunbc-entries-resolve-checked-in-ci). Unguarded on its own two
+    // events, unlike the two walks above: those are inside the emit step's control run on a full run, while
+    // this one judges the pull request's diff on every pull request, reused run or not. Its scope is the
+    // diff (changed .dag plus their reverse importers), which is what keeps it inside the job budget while
+    // still reaching the caller nobody had to edit -- the shape of the defect this step exists to catch.
+    CompilerGateBoundStep {
+      step: declared_entry_call_shape_step(
+        bin: native_cli_bin(),
+        source_roots: v2_native_cli_source_roots()
+      ),
+      role: capability_neutral,
+      step_name: declared_entry_call_shape_step_name,
     },
   ]
 }

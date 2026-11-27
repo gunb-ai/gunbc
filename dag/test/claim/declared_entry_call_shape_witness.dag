@@ -22,12 +22,29 @@ module test.claim.declared_entry_call_shape_witness
 
 import std.types { String, Bool, List }
 import std.algebra { string_contains }
+import std.list { list_member }
 import gunbc.instruments.declared_entry_call_shape {
   declared_entry_call_shape_findings, declared_entry_call_shape_missing_entry_files,
   declared_entry_call_shape_scope, declared_entry_call_shape_verdict,
   declared_entry_call_shape_failure_reason, declared_entry_call_shape_counts,
   declared_entry_call_shape_module_file, declared_entry_call_shape_import_lines,
 }
+
+import gunbc.witness.declared_entry_call_shape_step {
+  declared_entry_call_shape_step, declared_entry_call_shape_step_name,
+  declared_entry_call_shape_if_condition, declared_entry_call_shape_scope_ceiling,
+  declared_entry_changed_path, declared_entry_candidate_path,
+  declared_entry_call_shape_instrument_entry
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import std.optional { Optional, Present, Absent }
+
+// WHY THE IMPORTS STOP HERE. The claim that the required job CARRIES this step -- the enrolment claim, the
+// one whose absence is the extdeps-gate defect -- is not in this file. It lives in
+// dag/test/claim/compiler_gate_emit_build_lane_witness.dag, which already pays for the workflow module's
+// closure. Pulling that 1498-line hub in here would make every claim in this lane resolve it, and the first
+// measurement of that was a claim that had not finished resolving after ten minutes. A check enrolled under
+// a budget law is not exempt from it, least of all in its own test lane.
 
 data w_dir: String = "dag/test/fixture/declared_entry_call_shape"
 data w_instrument: String = "dag/gunbc/instruments/declared_entry_call_shape"
@@ -48,6 +65,10 @@ fn w_refused(changed: String, candidates: String) -> Bool {
 fn w_reason(changed: String, candidates: String) -> String {
   declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict(
     changed_paths: changed, candidate_paths: candidates))
+}
+
+fn w_str_eq(a: String, b: String) -> Bool {
+  a == b
 }
 
 fn w_has(hay: String, needle: String) -> Bool {
@@ -182,4 +203,149 @@ test fn a_file_that_declares_it_must_not_resolve_is_skipped_and_counted() -> Boo
     && length(xs: declared_entry_call_shape_missing_entry_files(files: [forged])) == 0
     && w_has(hay: declared_entry_call_shape_counts(changed_paths: forged, candidate_paths: ""),
              needle: "1 self-declared no-resolve controls skipped")
+}
+
+// ── THE CI STEP THAT RUNS THE INSTRUMENT ─────────────────────────────────────────────────────────────
+//
+// These claims read dag/gunbc/witness/declared_entry_call_shape_step.dag, the step that decides WHAT the
+// instrument is allowed to see. That file is where the check's budget and its blind spots live, and both
+// have a way of going wrong quietly that a scan-level claim cannot see: a scope computed against a branch
+// name instead of the event's base (so the diff changes under the run), a reverse pass that quietly returns
+// nothing (so the caller nobody edited stops being checked), or a step that is enrolled in the job list
+// under a condition that skips it (the extdeps-gate defect: rostered, green, and never running).
+
+// WHAT THE EMBEDDING JOB PASSES (see the step's header: the binary, the source-root pair and the envelope
+// belong to the job, not to this file). This lane builds the step with the invocation the required job
+// really passes -- the same three values compiler_gate_workflow passes -- so the run text these claims read
+// is the run text CI will print. That the JOB passes them, and not merely that they render, is claimed in
+// dag/test/claim/compiler_gate_emit_build_lane_witness.dag, where the workflow module is already paid for.
+data w_step_bin: String = "target/release/gunbc"
+
+fn w_step_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+fn w_step() -> Step {
+  declared_entry_call_shape_step(bin: w_step_bin, source_roots: w_step_roots())
+}
+
+// A shell reference inside a NEEDLE, assembled for the same reason the step assembles its own: the string
+// medium reads ${name} as a reference to a value in scope, and a witness that quotes a shell script is
+// describing someone else's variables, not naming its own.
+fn shn(name: String) -> String {
+  join(["$", "{", name, "}"], "")
+}
+
+fn w_step_run(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn w_step_field(step: Step, field: String) -> String {
+  match step {
+    RunStep { name: name, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: cond, continue_on_error: coe, timeout_minutes: _ } =>
+      if field == "name" {
+        match name {
+          Present { value: v } => v
+          Absent => ""
+        }
+      } else {
+        if field == "if" {
+          match cond {
+            Present { value: v } => v
+            Absent => ""
+          }
+        } else {
+          if field == "continue_on_error" {
+            match coe {
+              Present { value: _ } => "present"
+              Absent => ""
+            }
+          } else { "" }
+        }
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+// THE STEP IS ENROLLED, ON THE EVENTS THAT CARRY A BASE AND ON NOTHING ELSE. The two diff-carrying events
+// are named; push and schedule are deliberately not policed (they carry no base -- see the step's header),
+// and the alternative to that condition is a step that reports a green on a run with no diff.
+test fn the_step_runs_on_the_events_that_carry_a_base() -> Bool {
+  let step = w_step()
+  w_has(hay: w_step_field(step: step, field: "if"), needle: "github.event_name == 'pull_request'")
+    && w_has(hay: w_step_field(step: step, field: "if"), needle: "github.event_name == 'merge_group'")
+    && w_step_field(step: step, field: "name") == declared_entry_call_shape_step_name
+    && w_step_field(step: step, field: "continue_on_error") == ""
+}
+
+// THE SCOPE COMES FROM THE EVENT'S OWN BASE, AND THE STEP REFUSES WITHOUT ONE. Both rejected spellings are
+// pinned absent: GITHUB_BASE_REF is a branch name that moves under the run, and a diff against main counts
+// main's commits as the PR's. The fetch is present because the checkout's depth is not this step's fact to
+// assume, and the refusal is present because a base that cannot be resolved must not become a green.
+test fn the_step_computes_its_diff_from_the_events_base_and_refuses_without_it() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "base='${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}'")
+    && w_has(hay: run, needle: join(["git diff --name-only \"", shn("base"), "...HEAD\" -- '*.dag'"], ""))
+    && w_has(hay: run, needle: "git fetch")
+    && w_has(hay: run, needle: "refusing to guess a scope")
+    && !w_has(hay: run, needle: "GITHUB_BASE_REF")
+    && !w_has(hay: run, needle: "origin/main")
+}
+
+// THE ONLY SKIP IS AN EMPTY DIFF. The two skip arms print what they skipped -- a step that exits silently on
+// the common path reads as one that did not run -- and every other exit is a refusal.
+test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "skipped: no .dag change in this diff")
+    && w_has(hay: run, needle: "skipped: this event carries no base commit")
+    && w_has(hay: run, needle: join(["if [ ! -s \"", shn("changed"), "\" ]; then"], ""))
+    && w_has(hay: run, needle: "  exit 1")
+}
+
+// THE REVERSE PASS IS THERE, AND IT IS THE WIDEST READING OF THE NAME. This is the arm that catches the
+// historical break: a caller nobody had to edit. The ceiling is a mis-scope detector, and the absence of a
+// lower-bound test is a decision, not an omission -- a floor would red a legitimate one-file PR.
+test fn the_step_widens_to_reverse_importers_and_bounds_its_scope_above_only() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: join(["git grep -l -F -f \"", shn("stems"), "\" -- '*.dag'"], ""))
+    && w_has(hay: run, needle: "s|/|.|g")
+    && w_has(hay: run, needle: "-gt " + declared_entry_call_shape_scope_ceiling)
+    && !w_has(hay: run, needle: "-lt ")
+}
+
+// THE STEP RUNS THE INSTRUMENT IT NAMES, with both scope files and the job's own source-root pair. Read as
+// one string built by one function, so a step that named a different entry than the instrument's own module
+// would be caught here rather than at the moment a PR goes green for the wrong reason.
+test fn the_step_hands_the_instrument_its_scope_files() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "--entry " + declared_entry_call_shape_instrument_entry)
+    && w_has(hay: run, needle: "--function main")
+    && w_has(hay: run, needle: join(["--arg changed_paths_file=", shn("dir"), declared_entry_changed_path], ""))
+    && w_has(hay: run, needle: join(["--arg candidate_importers_file=", shn("dir"), declared_entry_candidate_path], ""))
+    && w_has(hay: run, needle: "--source-root dag --source-root src/v2")
+}
+
+// THE STEP MODULE STAYS SLIM, and the reason is not taste. Its first draft imported the job's binary
+// authority and the source-root pair instead of taking them as parameters, and one claim of this lane took
+// 13 min 54 s to resolve; the same lane without them resolves all seventeen claims in 4 m 57 s. This pin is
+// what keeps that from coming back by accretion: a single `import gunbc.<hub>` in the step module is a red
+// claim here, and the parameter list is where such a fact belongs -- supplied by the job that owns it, so
+// the step can be witnessed without importing the job.
+data w_step_module: String = "dag/gunbc/witness/declared_entry_call_shape_step"
+
+fn w_step_module_imports() -> List<String> {
+  declared_entry_call_shape_import_lines(path: concat(w_step_module, ".dag"))
+}
+
+test fn the_step_module_names_only_the_cli_leaf_and_the_actions_shape() -> Bool {
+  let lines = w_step_module_imports()
+  length(xs: lines) == 4
+    && list_member(xs: lines, x: "import std.types { List, String }", eq: w_str_eq)
+    && list_member(xs: lines, x: "import std.optional { Present }", eq: w_str_eq)
+    && list_member(xs: lines, x: "import extdeps.github.actions { Step, RunStep }", eq: w_str_eq)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.cli.parse_verdict_invocation") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "gunbc.") })) == 0)
 }
