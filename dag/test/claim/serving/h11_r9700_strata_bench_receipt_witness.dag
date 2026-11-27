@@ -7,6 +7,7 @@ import std.measure { token_count_value }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.serving.h11_r9700_strata_bench_receipt {
   R9700BenchRun, CapReadByOperator, CapNotRecorded,
+  ProbeAbsentOnVendor, ProbeFailed, ReadingPresent,
   h11_r9700_bench_host, h11_r9700_bench_runs,
   r9700_run_shows_cap_is_not_a_peak_bound, r9700_run_busy_mean_within_cap,
 }
@@ -43,6 +44,50 @@ test fn h11_r9700_follow_up_turns_reused_no_prefix_and_the_failure_is_kept() -> 
     && h11_r9700_bench_runs.all(r => token_count_value(t: r.cached_tokens_max) == 0)
     && match run_named(name: "r9700-convcache") {
       Present { value: r } => r.conversation_cache && r.first_turn_agents_answered == 3
+      Absent => false
+    }
+}
+
+// THE ABSENCE CARRIES ITS CAUSE: no run in this receipt has a silent gap in its power field. Each run without
+// power data names WHY: the vendor-applicability arm for the two runs where the bench's nvidia-smi sampler
+// cannot read an AMD R9700 (the probe is the wrong tool for this vendor), and a reading-present arm for the
+// two runs where pwr_sampler.sh ran beside the bench. A missing column without a named cause is the RED case
+// (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent); this claim witnesses that the
+// type makes the silent-absence route impossible to construct.
+test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
+  h11_r9700_bench_runs.length() == 4
+    && match run_named(name: "r9700-20261112") {
+      Present { value: r } =>
+        match r.power {
+          ProbeAbsentOnVendor { probe: p, vendor: v } =>
+            (p as String) == "nvidia-smi" && (v as String) == "AMD Radeon AI PRO R9700"
+          _ => false
+        }
+      Absent => false
+    }
+    && match run_named(name: "r9700-convcache") {
+      Present { value: r } =>
+        match r.power {
+          ProbeAbsentOnVendor { probe: p, vendor: v } =>
+            (p as String) == "nvidia-smi" && (v as String) == "AMD Radeon AI PRO R9700"
+          _ => false
+        }
+      Absent => false
+    }
+    && match run_named(name: "r9700-210w") {
+      Present { value: r } =>
+        match r.power {
+          ReadingPresent { .. } => true
+          _ => false
+        }
+      Absent => false
+    }
+    && match run_named(name: "r9700-300w-measured") {
+      Present { value: r } =>
+        match r.power {
+          ReadingPresent { .. } => true
+          _ => false
+        }
       Absent => false
     }
 }
