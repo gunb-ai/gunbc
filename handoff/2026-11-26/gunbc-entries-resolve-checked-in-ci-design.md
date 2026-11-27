@@ -236,3 +236,60 @@ The budget facts (§9) are unaffected by any of this: the closure is 53 modules 
 because none of the precision work pulls in a hub. The rule for whoever continues: every fix must be
 demonstrated by the RED firing and the GREEN arms staying at zero on these six files, and a fix that reduces
 a count without the red firing is not a fix, it is a mute button.
+
+## 12. THE INSTRUMENT PASSES ITS ARMS — the three real causes, and the tallies
+
+`dag/gunbc/instruments/declared_entry_call_shape.dag` is in the tree and is green on every arm. §11's
+"open" item is closed: the residual harvest was never the algorithm, it was three implementation defects,
+each found by reading rather than guessing, and each recorded here because each is the kind that silently
+makes an instrument useless.
+
+1. **`count(split(s: f, delimiter: n))` counts PIECES, not occurrences** — one more than the delimiter
+   appears ("a(b" splits to two pieces and holds one `(`). Every depth counter was inflated by one per
+   fragment, so no argument list ever closed and each call harvested the labels of the calls after it: the
+   723 invented refusals on `remote_build_client.dag`. Fixed with `cs_occurrences(hay:, needle:)`. The
+   Python oracle never had this bug, which is the argument for keeping the oracle at all.
+2. **The v2 corpus is rooted, not nested**: module `v2.workflow.gunbc_invoke_step_emit` is
+   `src/v2/workflow/gunbc_invoke_step_emit.dag`. Treating the leading `v2.` as a directory meant the
+   declaration file for exactly ONE import in `gunb_ai_pages_workflow.dag` could not be found — the import
+   of `gunbc_run_step_script_for_target`, the callee of the historical `claim_run` break this row is named
+   for. The disclosed skip count said `1 named imports skipped unattributed` while the instrument reported
+   a clean pass on the red: the skip count is printed for exactly this reason, and a check that hides its
+   own skips would have shipped blind.
+3. **The parameter list is read with the same walk as an argument list.** The first version carried a
+   "started" flag by testing `acc == ""`, so a declaration written across lines — `fn name(` alone on its
+   line, one parameter per line, `) -> T {` — was never recognised at all and `declared` came back empty,
+   which silently disables every refusal for that callee. Deleting that state machine and reusing
+   `cs_call_body` (paren-matched) is both smaller and correct.
+   Related: the same-file "declaration is not a call site" guard is GONE. The historical break was
+   caller-and-declaration in one file, so a scanner that only follows imports cannot see it; a declaration's
+   own parameter list is now scanned as if it were a call and contributes exactly its declared names, which
+   the label rule accepts, so no special case is needed.
+
+TALLIES, engine at this worktree's head, one `[pre-entry]` block per run.
+
+| arm | expectation | result |
+| --- | --- | --- |
+| green: gunb_ai_pages_workflow.dag | 0 refusals | PASS (0 label, 0 missing, 0 skipped) |
+| green: compute/remote_build_serve.dag | 0 | PASS |
+| green: instruments/declared_entry_call_shape.dag (its own source) | 0 | PASS |
+| green: compute/remote_build_serve_front_door.dag | 0 | PASS |
+| green: witness/hosted_runner_shadow_gate_workflow.dag | 0 | PASS |
+| green: compute/remote_build_client.dag | 0 | PASS |
+| red 1: `claim_run: false` reintroduced at :88 | refuse | REFUSED — `gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit passes claim_run  declared: source_roots, target, receipt_rel` |
+| red 2: caller passes `receipt_rel_removed_by_red_control:` | refuse | REFUSED — same callee, same located form |
+| red 3: a route literal naming a missing .dag | refuse | REFUSED — `--entry names no file: dag/gunbc/site/gunb_ai_pages_bogus_missing.dag` |
+
+COST OF THE CHECK ITSELF, measured: `resolve_entry_graph_inclusive ms=4965`, `closure_files=53`,
+`max_rss_kib=175772` (172 MiB), one whole file scanned in ~6 s wall. The serve request arm on the same
+binary: 898 files / 143,992 ms / 3,435,568 KiB. So the check is ~29× faster and ~20× lighter in RSS than
+#17114's front door, and two orders of magnitude below the resolve it exists to replace — inside the
+`ci_job_budgets_closed_to_growth` direction, which the operator's own words close to growth in both time
+and memory.
+
+STILL BEFORE THE ROW IS DONE: the witness lane (its own `w_import_lines` pin, the closure cap at 53, the
+two refusals, the skip count, and an agreement arm against the oracle on these six files), the CI step in
+`gunbc.witness.compiler_gate_workflow` with a timeout taken from `profile.roster.timeout`, and the
+demonstrated red in the *witnesses* lane (§10) rather than at my keyboard. The refusals are two and stay
+two; the forged-probe files stay untouched, per the manager's ruling that the engine is the authority on
+coproduct heads.
