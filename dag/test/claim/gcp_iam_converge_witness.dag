@@ -5,6 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import std.content_hash { Sha256Digest }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, FederationPermissionDenied, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
@@ -334,10 +335,16 @@ fn step_env_keys(st: Step) -> List<String> {
 // fixed for heal and that the mint-at-use cutover closes here. Both the request and the apply step must be
 // free of the env token.
 test fn iam_converge_is_impersonated_only_after_a_recorded_approval() -> Bool {
-  step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_converge_approved_if
-    && string_contains(s: fleet_converge_gcp_iam_converge_approved_if, pattern: "steps.gcp_iam_request.outputs.approved == 'true'")
-    && !any(step_env_keys(st: fleet_converge_gcp_iam_request_step()), k => k == ("IAM_CONVERGE_ACCESS_TOKEN" as String))
-    && !any(step_env_keys(st: fleet_converge_gcp_iam_apply_step()), k => k == ("IAM_CONVERGE_ACCESS_TOKEN" as String))
+  match outcome_accepted_value(fleet_converge_gcp_iam_apply_step()) {
+    Absent => false
+    Present { value: apply_st } => match outcome_accepted_value(fleet_converge_gcp_iam_request_step()) {
+      Absent => false
+      Present { value: req_st } => step_if(st: apply_st) == fleet_converge_gcp_iam_converge_approved_if
+      && string_contains(s: fleet_converge_gcp_iam_converge_approved_if, pattern: "steps.gcp_iam_request.outputs.approved == 'true'")
+      && !any(step_env_keys(st: req_st), k => k == ("IAM_CONVERGE_ACCESS_TOKEN" as String))
+      && !any(step_env_keys(st: apply_st), k => k == ("IAM_CONVERGE_ACCESS_TOKEN" as String))
+    }
+  }
 }
 
 // ── The rung, as the census reads it ─────────────────────────────────────────────────────────

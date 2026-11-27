@@ -1,5 +1,6 @@
 module gunbc.instrument_targets
 
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.native_serve_probe_plan {
@@ -513,14 +514,6 @@ fn fleet_convergence_verdict_route_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "fleet-convergence-verdict-route" } }
 }
 
-fn fleet_convergence_verdict_route_entry() -> String {
-  "dag/gunbc/instruments/fleet_convergence_verdict_route.dag"
-}
-
-fn fleet_convergence_verdict_route_function() -> String {
-  "fleet_convergence_verdict_route_wire"
-}
-
 // THE VALUE-POSITION BLOCK NEST CONTROL: native tokenize/parse/normalize of the committed
 // docs/measurements/value_position_block_nests/{single,multi}_d14 fixtures, as a NativeClaimDriver
 // program. Seed emit of this entry does not lower those sources (they are files the child reads),
@@ -642,28 +635,17 @@ fn credential_acquisition_systemd_rows_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "credential-acquisition-systemd-rows" } }
 }
 
-fn credential_acquisition_systemd_rows_entry() -> String {
-  "dag/test/claim/dispatch_credential_acquisition_witness.dag"
-}
-
-fn credential_acquisition_systemd_rows_function() -> String {
-  "credential_acquisition_systemd_rows_wire"
-}
-
 fn credential_acquisition_systemd_rows_binding() -> TargetBinding {
-  TargetBinding { target: credential_acquisition_systemd_rows_label() producer: CliWireProgramProducer { entry: credential_acquisition_systemd_rows_entry() function: credential_acquisition_systemd_rows_function() } }
+  TargetBinding {
+    target: credential_acquisition_systemd_rows_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "test.claim.dispatch_credential_acquisition_witness", function: "credential_acquisition_systemd_rows_wire")
+    }
+  }
 }
 
 fn roster_import_sweep_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-controls" } }
-}
-
-fn roster_import_sweep_controls_entry() -> String {
-  "src/v2/workflow/roster_import_sweep.dag"
-}
-
-fn roster_import_sweep_controls_function() -> String {
-  "roster_import_sweep_controls_wire"
 }
 
 // THE REAL ROUTE BEHIND THE CONTROLS' SUPPLIED INPUTS (DESIGN 3, the pairing obligation): the companion derivation, the
@@ -675,11 +657,21 @@ fn roster_import_sweep_real_route_label() -> Label {
 }
 
 fn roster_import_sweep_real_route_binding() -> TargetBinding {
-  TargetBinding { target: roster_import_sweep_real_route_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: "roster_import_sweep_real_route_wire" } }
+  TargetBinding {
+    target: roster_import_sweep_real_route_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "v2.workflow.roster_import_sweep", function: "roster_import_sweep_real_route_wire")
+    }
+  }
 }
 
 fn roster_import_sweep_controls_binding() -> TargetBinding {
-  TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
+  TargetBinding {
+    target: roster_import_sweep_controls_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "v2.workflow.roster_import_sweep", function: "roster_import_sweep_controls_wire")
+    }
+  }
 }
 
 // The rehoming generator's controls (v2.workflow.roster_rehome): identity matching, the import move, qualified uses, the
@@ -689,7 +681,12 @@ fn roster_rehome_controls_label() -> Label {
 }
 
 fn roster_rehome_controls_binding() -> TargetBinding {
-  TargetBinding { target: roster_rehome_controls_label() producer: CliWireProgramProducer { entry: "src/v2/workflow/roster_rehome.dag" function: "rehome_controls_wire" } }
+  TargetBinding {
+    target: roster_rehome_controls_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "v2.workflow.roster_rehome", function: "rehome_controls_wire")
+    }
+  }
 }
 
 fn append_chain_ladder_label() -> Label {
@@ -780,16 +777,13 @@ fn known_red_derivation_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "known-red-derivation" } }
 }
 
-fn known_red_derivation_entry() -> String {
-  "dag/gunbc/instruments/known_red_derivation.dag"
-}
-
-fn known_red_derivation_function() -> String {
-  "known_red_derivation_exit"
-}
-
 fn known_red_derivation_binding() -> TargetBinding {
-  TargetBinding { target: known_red_derivation_label() producer: CliWireProgramProducer { entry: known_red_derivation_entry() function: known_red_derivation_function() } }
+  TargetBinding {
+    target: known_red_derivation_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.known_red_derivation", function: "known_red_derivation_exit")
+    }
+  }
 }
 
 // THE ROSTER-REACH INHABITANCE CLAIM (gunbc.instruments.roster_reach_inhabitance): the one real call-reach walk
@@ -810,59 +804,47 @@ fn witness_deferral_freeze_population_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "witness-deferral-freeze-population" } }
 }
 
-fn witness_deferral_freeze_population_entry() -> String {
-  "dag/gunbc/instruments/witness_deferral_freeze_population.dag"
-}
-
-fn witness_deferral_freeze_population_function() -> String {
-  "witness_deferral_freeze_population_exit"
-}
-
 fn witness_deferral_freeze_population_binding() -> TargetBinding {
-  TargetBinding { target: witness_deferral_freeze_population_label() producer: CliWireProgramProducer { entry: witness_deferral_freeze_population_entry() function: witness_deferral_freeze_population_function() } }
+  TargetBinding {
+    target: witness_deferral_freeze_population_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.witness_deferral_freeze_population", function: "witness_deferral_freeze_population_exit")
+    }
+  }
 }
-fn roster_reach_inhabitance_entry() -> String {
-  "dag/gunbc/instruments/roster_reach_inhabitance.dag"
-}
-
-fn roster_reach_inhabitance_function() -> String {
-  "roster_reach_inhabitance_exit"
-}
-
 fn roster_reach_inhabitance_binding() -> TargetBinding {
-  TargetBinding { target: roster_reach_inhabitance_label() producer: CliWireProgramProducer { entry: roster_reach_inhabitance_entry() function: roster_reach_inhabitance_function() } }
+  TargetBinding {
+    target: roster_reach_inhabitance_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.roster_reach_inhabitance", function: "roster_reach_inhabitance_exit")
+    }
+  }
 }
 
 fn compute_run_unit_cold_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
 }
 
-fn compute_run_unit_cold_entry() -> String {
-  "dag/gunbc/instruments/compute_run_unit_cold.dag"
-}
-
-fn compute_run_unit_cold_function() -> String {
-  "compute_run_unit_cold_exit"
-}
-
 fn compute_run_unit_cold_binding() -> TargetBinding {
-  TargetBinding { target: compute_run_unit_cold_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() } }
+  TargetBinding {
+    target: compute_run_unit_cold_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.compute_run_unit_cold", function: "compute_run_unit_cold_exit")
+    }
+  }
 }
 
 fn compute_wrong_capture_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-wrong-capture" } }
 }
 
-fn compute_wrong_capture_entry() -> String {
-  "dag/gunbc/instruments/compute_wrong_capture.dag"
-}
-
-fn compute_wrong_capture_function() -> String {
-  "compute_wrong_capture_exit"
-}
-
 fn compute_wrong_capture_binding() -> TargetBinding {
-  TargetBinding { target: compute_wrong_capture_label() producer: CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() } }
+  TargetBinding {
+    target: compute_wrong_capture_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.compute_wrong_capture", function: "compute_wrong_capture_exit")
+    }
+  }
 }
 
 // C5: the dependency-only arm of the same instrument. Same entry FILE, a different entry function,
@@ -871,40 +853,39 @@ fn compute_dependency_wrong_capture_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-dependency-wrong-capture" } }
 }
 
-fn compute_dependency_wrong_capture_entry() -> String {
-  "dag/gunbc/instruments/compute_wrong_capture.dag"
-}
-
-fn compute_dependency_wrong_capture_function() -> String {
-  "compute_dependency_wrong_capture_exit"
-}
-
 fn compute_dependency_wrong_capture_binding() -> TargetBinding {
-  TargetBinding { target: compute_dependency_wrong_capture_label() producer: CliWireProgramProducer { entry: compute_dependency_wrong_capture_entry() function: compute_dependency_wrong_capture_function() } }
+  TargetBinding {
+    target: compute_dependency_wrong_capture_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.compute_wrong_capture", function: "compute_dependency_wrong_capture_exit")
+    }
+  }
 }
 
 fn compute_run_unit_sccache_probe_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-run-unit-sccache-probe" } }
 }
 
-fn compute_run_unit_sccache_probe_function() -> String {
-  "compute_run_unit_sccache_probe_exit"
-}
-
 fn compute_run_unit_sccache_probe_binding() -> TargetBinding {
-  TargetBinding { target: compute_run_unit_sccache_probe_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_sccache_probe_function() } }
+  TargetBinding {
+    target: compute_run_unit_sccache_probe_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.compute_run_unit_cold", function: "compute_run_unit_sccache_probe_exit")
+    }
+  }
 }
 
 fn compute_run_unit_cold_same_path_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold-same-path" } }
 }
 
-fn compute_run_unit_cold_same_path_function() -> String {
-  "compute_run_unit_cold_same_path_exit"
-}
-
 fn compute_run_unit_cold_same_path_binding() -> TargetBinding {
-  TargetBinding { target: compute_run_unit_cold_same_path_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_same_path_function() } }
+  TargetBinding {
+    target: compute_run_unit_cold_same_path_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.compute_run_unit_cold", function: "compute_run_unit_cold_same_path_exit")
+    }
+  }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -955,7 +936,12 @@ fn native_emission_controls_binding() -> TargetBinding {
 }
 
 fn fleet_convergence_verdict_route_binding() -> TargetBinding {
-  TargetBinding { target: fleet_convergence_verdict_route_label() producer: CliWireProgramProducer { entry: fleet_convergence_verdict_route_entry() function: fleet_convergence_verdict_route_function() } }
+  TargetBinding {
+    target: fleet_convergence_verdict_route_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.fleet_convergence_verdict_route", function: "fleet_convergence_verdict_route_wire")
+    }
+  }
 }
 
 fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {

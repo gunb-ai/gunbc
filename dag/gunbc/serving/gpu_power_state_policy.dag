@@ -2,11 +2,20 @@ module gunbc.serving.gpu_power_state_policy
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { Watt, watt, watt_count }
+import std.measure {
+  Hertz, Watt, TokensPerSecond, hertz, hertz_count, watt, watt_count, tokens_per_second,
+  tokens_per_second_count,
+}
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_6ce85c, operator_host_e2d4b7 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_11, gpu_board_12, gpu_board_13 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+}
+import gunbc.fleet.fleet_asset_identity {
+  gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_11, gpu_board_12, gpu_board_13,
+}
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
   NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap,
@@ -193,6 +202,25 @@ data ken_t10_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
   said: "two statements agreeing on the number, one relayed and one found on the machine: the operator report relayed by smart-crane-730 on 2026-11-17 ('ken has two GPUs, idle at 43-44 C, with a 100 W power cap applied at boot'), and the header of /usr/local/sbin/t10-power-cap.sh on the unit, which credits the instruction to the operator on 2026-11-15 ('lower their power as low as possible') and implements it as each card's OWN minimum limit -- 100.00 W on all three read functions. The script's authorship is unread: the file does not say who wrote it." as NonEmptyStr,
 }
 
+// srv4 (host-srv4): the Adas' cap, which until 2026-11-24 lived only in a hand-edited unit on the host.
+// The number descends: the operator held both RTX 2000 Ada cards at 40 W from 2026-10-26 for noise and heat,
+// took them to 30 W on 2026-11-24 for power after the surge-protecting strip tripped twice that day, and the
+// same day asked for the clock lock beside it -- "lower the cap but also lower the clock rate so it doesn't
+// just boost -> throttle". The lock is not a cap and gets no Watt here; the mechanism, its bytes and the
+// sweep that chose 210-1500 MHz are gunbc.fleet.gpu_power_cap_boot_state's srv4 row. What this module owns is
+// the DECISION and its standing, and its standing is thin in one specific way: the operator gave a number and
+// a purpose and never a timescale, so the bounds arm stays CappedQuantityUnstated rather than borrowing
+// srv1's sustained-draw ruling (see the note above CappedPowerQuantity). srv3's two cards carry the same
+// family of decision on the host and have NO row here: the cards have never been given a physical asset
+// identity, so there is nothing for a cap intent to name -- register row
+// gunbc.integration_concern::srv3_serving_cards_have_no_identity_to_cap.
+data srv4_rtx_2000_ada_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 30),
+  bounds: CappedQuantityUnstated,
+  decided_on: "2026-11-24" as NonEmptyStr,
+  said: "operator, 2026-11-24, on the sweep: \"lower the cap but also lower the clock rate so it doesn't just boost -> throttle\"; and in the unit the operator wrote that day, the history of the number itself: \"operator 2026-10-26 noise/heat at 40 W; lowered to 30 W 2026-11-24 for power after surge-strip trips; matches srv3\". The 30 W was read back off both cards as nvidia-smi power.limit 30.00 W at the 2026-11-24 22:03-22:05 UTC ssh pass, and the sweep that chose the clock lock ran 150 s per level under live serving traffic (clocksweep.sh): 210-1500 MHz averaged 906 MHz at 27.0 W against 869 MHz unlocked at 29.1 W." as NonEmptyStr,
+}
+
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
@@ -222,8 +250,114 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_11, selection: ken_t10_cap_decision },
   InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_12, selection: ken_t10_cap_decision },
   InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_13, selection: ken_t10_cap_decision },
+  // srv4's pair, admitted through nvidia-smi's power-limit control like every NVIDIA card here. Neither row
+  // admits yet: the 2026-11-07 fleet survey never read the cards' GPU UUIDs, and a cap is addressed by UUID
+  // (admit_gpu_cap_against returns GpuCapDevicePending with that obligation). That is the honest state, not a
+  // failure of this change -- before it the cards had no decision row at all, and the number lived only in a
+  // file on the host.
+  InstalledGpuCapIntent { host: operator_host_srv4, board: gpu_board_05, selection: srv4_rtx_2000_ada_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_srv4, board: gpu_board_06, selection: srv4_rtx_2000_ada_cap_decision },
 ]
 
 fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {
   map(filter(installed_gpu_cap_intents, i => host_identity_eq(a: i.host, b: host)), i => admit_gpu_cap(intent: i))
 }
+
+// WHAT A CAP MEASURED LIKE ONCE IT WAS ON. The rows above decide a wattage; they say nothing about what the
+// decision costs, and a cap decided without its price is a number the operator cannot revise. This is the price
+// as the 2026-11-24 pass read it, with the instrument that produced each figure, held separately from the
+// decision so that a later pricing model (the power-cap pricing class, B6) can consume it without touching what
+// was decided or by whom. It is NOT a pricing model: no cost per token, no comparison across hosts, no claim
+// that these windows are comparable -- each is one window's median under live traffic, and the pass's own note
+// says the load changed between readings.
+type MeasuredCapPrice {
+  // The decision whose price this is.
+  decision: DeclarationRef
+  host: HostIdentity
+  // The configuration the figure was taken under, stated as the two ceilings that matter: the card's power limit
+  // and the host's CPU ceiling. A tok/s figure without both is not reproducible -- srv4 read 26.5 at 30 W /
+  // 2.0 GHz and 24.1 at 30 W / 3.0 GHz, so the CPU ceiling alone changes it.
+  card_power_limit: Watt
+  // The host's CPU ceiling as a measure, not a bare count of some unit: std.measure owns frequency through
+  // Hertz, and the same ceiling travels as Hertz in gunbc.fleet.cpu_freq_cap_boot_state -- so a kHz figure
+  // cannot be parked in a MHz slot by spelling.
+  cpu_ceiling: Hertz
+  // The rate, and what it is a rate of: per conversation, not aggregate.
+  decode_per_conversation: TokensPerSecond
+  // What the card was doing while it produced that rate.
+  card_state: NonEmptyStr
+  // How the figure was produced, in the instrument's own terms.
+  instrument: NonEmptyStr
+  read_on_utc: NonEmptyStr
+}
+
+// The four windows the pass read on srv4's RTX 2000 Ada pair. The ladder is the finding: at 30 W the rate fell
+// from 39.0 to 26.5-24.1, and going back up to 40 W recovered 28.5-34 -- so the drop belongs to the 30 W card
+// cap and not to the 2.0 GHz CPU cap the same pass installed, which is the distinction an operator needs before
+// agreeing to keep either. Rates are the engines' own "done: N tokens in T s (R tok/s)" lines averaged per
+// window; card state is nvidia-smi clocks.sm, utilization and clocks_throttle_reasons read once a second during
+// the same windows. Single windows, not averages over the day: standing
+// gunbc.design_argument::epistemic_humility, and the reason this is a price record rather than a rate the
+// selector may schedule on (gunbc.serving.serving_replica_profile stays the only place a serving rate is quoted
+// as a figure of record).
+data srv4_rtx_2000_ada_measured_prices: List<MeasuredCapPrice> = [
+  MeasuredCapPrice {
+    decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
+    host: operator_host_srv4,
+    card_power_limit: watt(count: 40),
+    cpu_ceiling: hertz(count: 3000000000),
+    decode_per_conversation: tokens_per_second(count: 39),
+    card_state: "the pre-cap baseline, 06:00-09:00 UTC; the pair ran uncapped between the 40 W and 30 W edits" as NonEmptyStr,
+    instrument: "engine journal \"done: N tokens in T s (R tok/s)\" averaged per conversation-window over ssh" as NonEmptyStr,
+    read_on_utc: "2026-11-24T06:00-09:00Z (window)" as NonEmptyStr,
+  },
+  MeasuredCapPrice {
+    decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
+    host: operator_host_srv4,
+    card_power_limit: watt(count: 30),
+    cpu_ceiling: hertz(count: 2000000000),
+    decode_per_conversation: tokens_per_second(count: 27),
+    // 26.5 is the figure the pass printed; the row carries the rounded-up whole tok/s the measure admits, and
+    // the printed figure travels with it below so nothing is lost to the rounding.
+    card_state: "power-cap throttle: SM clock swinging 450-2130 MHz while power.draw sat at the limit" as NonEmptyStr,
+    instrument: "engine journal \"done: N tokens in T s (R tok/s)\" averaged per conversation-window over ssh; printed 26.5 tok/s, carried here as the whole number the measure admits" as NonEmptyStr,
+    read_on_utc: "2026-11-24, after the ~09:34 UTC cap and the ~22:02 CPU re-enable" as NonEmptyStr,
+  },
+  MeasuredCapPrice {
+    decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
+    host: operator_host_srv4,
+    card_power_limit: watt(count: 30),
+    cpu_ceiling: hertz(count: 3000000000),
+    decode_per_conversation: tokens_per_second(count: 24),
+    card_state: "power-cap throttle at 30 W with the CPU uncapped, which is the reading that separates the two caps: removing the CPU ceiling did not recover the rate" as NonEmptyStr,
+    instrument: "engine journal \"done: N tokens in T s (R tok/s)\" averaged per conversation-window over ssh; printed 24.1 tok/s" as NonEmptyStr,
+    read_on_utc: "2026-11-24, between the cap edits" as NonEmptyStr,
+  },
+  MeasuredCapPrice {
+    decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
+    host: operator_host_srv4,
+    card_power_limit: watt(count: 40),
+    cpu_ceiling: hertz(count: 2000000000),
+    // The 28.5-34 band, carried at its low end so a consumer cannot under-price the recovery it is reading.
+    decode_per_conversation: tokens_per_second(count: 29),
+    card_state: "back at 40 W: the recovered band is 28.5-34 tok/s per conversation, and the pass read it as the evidence that the 30 W cap, not the CPU cap, caused the drop" as NonEmptyStr,
+    instrument: "engine journal \"done: N tokens in T s (R tok/s)\" averaged per conversation-window over ssh; printed band 28.5-34" as NonEmptyStr,
+    read_on_utc: "2026-11-24, after the ~19:24 UTC raise (before the ~22:02 return to 30 W)" as NonEmptyStr,
+  },
+]
+
+// The price rows are only evidence if every one of them states the two ceilings it was taken under and the
+// instrument that produced it -- a tok/s figure without its ceilings is not reproducible, and one without its
+// instrument is a transcribed number of unknown origin.
+fn every_measured_cap_price_states_its_configuration() -> Bool {
+  fold(srv4_rtx_2000_ada_measured_prices, init: true, f: (ok, p) =>
+    ok && hertz_count(h: p.cpu_ceiling) > 0
+      && (p.instrument as String) != ""
+      && (p.card_state as String) != ""
+      && (p.read_on_utc as String) != ""
+      && tokens_per_second_count(r: p.decode_per_conversation) > 0)
+}
+
+// THE THROTTLE THE CAP PRODUCED, as the same pass read it on both Adas' hosts. Recorded here because it is the
+// cap's effect, not a separate device fact: what nvidia-smi reports while the cap is in force.
+data srv3_rtx_2000_ada_throttle_reading: NonEmptyStr = "srv3, 2026-11-24 pass, both cards at a 30.00 W limit: GPU0 read SM clock 210 MHz at 100% utilization -- a power-cap throttle, the clock pinned at the bottom of its range while the card was fully busy -- and the pair's range under load was 210-990 MHz. nvidia-smi clocks.sm / utilization / clocks_throttle_reasons over ssh, once a second during the measurement windows; single readings, not averages (gunbc.design_argument::epistemic_humility)."

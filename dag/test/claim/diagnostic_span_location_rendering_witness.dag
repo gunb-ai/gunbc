@@ -4,12 +4,12 @@ module test.claim.diagnostic_span_location_rendering_witness
 //
 // WHY THIS IS A CLAIM AND NOT A RUST TEST. Rust tests do not run on pull requests (rung_drop
 // `rust_unit_tests_off_pull_requests`), so a `.rs` assertion here would be evidence that nothing
-// executes. Every row below is executed by `claim_batch` against the REAL built binary:
+// executes. Every row below is executed by the one claim entrypoint -- `gunbc test` -- against the
+// REAL built binary:
 //
-//   ./target/release/claim_batch --wet \
+//   ./target/release/gunbc test --wet \
 //     --source-root dag --source-root src/v1 --source-root src/v2 \
-//     --entry dag/test/claim/diagnostic_span_location_rendering_witness.dag \
-//     --functions <the row names, comma-separated>
+//     //test/claim/diagnostic_span_location_rendering_witness:<the row names, comma-separated>
 //
 // WHAT IS WRONG, MEASURED. Every number below was printed by the instrument named under it, at
 // origin/main 600f8d6a19c220d4d8415c8ea7083f27c40a4b09, from the SAME fixture bytes this claim
@@ -300,12 +300,15 @@ type WitnessOutcome {
 // command_not_found_exit_cannot_distinguish_eviction_from_misnaming` keeps 127 as Infra -- an exit
 // that cannot say what happened says nothing, so it must not be read as a finding.
 //
-// WHAT A ROW DOES WHEN IT CANNOT OBSERVE. It returns `ProcessExit::ExitFailure` carrying the cause,
-// which `claim_batch` prints on the FAIL row as `FAIL <row> (returned ProcessExit::ExitFailure, code
-// N: <cause>)` (src/v1/stage0/src/bin/claim_batch.rs `report_outcome`). The row still reads FAIL --
-// it did not establish its property, and a row that cannot observe must not be counted green -- but
-// the line NAMES the reason, so 'no findings' can never be filed as a finding again. Code 127 is
-// deliberate: it is the code the classifier above already routes to Infra rather than Structural.
+// WHAT A ROW DOES WHEN IT CANNOT OBSERVE. It returns `ProcessExit::ExitFailure` carrying the cause.
+// The route decodes the code to the row's standing -- code 2 is UNOBSERVED (not attempted), any other
+// code is DID-NOT-HOLD -- and prints the cause in the located line's `detail=` field IN FULL: a probe
+// row carrying a ~480-character cause printed its complete detail uncut, on stdout, no stderr copy.
+// So the row's verdict by code carries the
+// standing and the detail names the reason in full -- it did not establish its property, and a
+// row that cannot observe must not be counted green -- but the line NAMES the reason, so 'no findings'
+// can never be filed as a finding again. Code 127 is deliberate: it is the code the classifier above
+// already routes to Infra rather than Structural.
 // ---------------------------------------------------------------------------------------------
 
 data gunbc_instrument: String = "target/release/gunbc"
@@ -440,11 +443,12 @@ fn gate_refused_as_no_verdict(gate: InstrumentRun, instrument: String) -> Bool {
   }
 }
 
-// THE BOOL -> CARRIER SEAM. A row that ESTABLISHED its property returns ExitSuccess; a row whose
-// property did not hold returns ExitFailure with the subject named, which `claim_batch` prints as
-// `FAIL <row> (returned ProcessExit::ExitFailure, code 1: <subject> did not hold ...)`. The RED rows
-// therefore still read FAIL pre-fix -- what changes is that a FAIL now always says WHETHER the row
-// judged its property and found it absent, or never got to judge it at all.
+// THE BOOL -> CARRIER SEAM. A row that ESTABLISHED its property returns ExitSuccess, which the route
+// decodes to HELD; a row whose property did not hold returns ExitFailure code 1 with the subject named,
+// which the route decodes to DID-NOT-HOLD with the subject in the located line's `detail=` field. The
+// RED rows therefore still read as not-held pre-fix -- what changes is that a not-held row always says
+// WHETHER the row judged its property and found it absent, or never got to judge it at all (code 2,
+// UNOBSERVED).
 fn verdict(est: Bool, instrument: String, subject: String) -> ProcessExit {
   if est {
     ExitSuccess

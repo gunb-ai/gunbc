@@ -17,6 +17,8 @@ import gunbc.cli_invoke {
   SourceRootRooted
 }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes, outcome_accepted_value }
+import std.optional { Present, Absent }
 import gunbc.ci.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci.ci_release_bins {
   ci_floor_required_artifact_names
@@ -75,12 +77,17 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
 // fleet-converge.yml diff carries no whitespace change at any bound step.
 
 test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
-  concat(gunbc_ci_live_deploy_apply_srv1_invoke(), "\n") ==
-    gunbc_ci_deploy_invoke_srv1_pre_migration_golden
+  match outcome_accepted_value(gunbc_ci_live_deploy_apply_srv1_invoke()) {
+    Present { value: s } => concat(s, "\n") == gunbc_ci_deploy_invoke_srv1_pre_migration_golden
+    Absent => false
+  }
 }
 
 test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> Bool {
-  gunbc_ci_live_deploy_apply_srv1_invoke() != gunbc_ci_deploy_invoke_srv1_wrong_entry_golden
+  match outcome_accepted_value(gunbc_ci_live_deploy_apply_srv1_invoke()) {
+    Present { value: s } => s != gunbc_ci_deploy_invoke_srv1_wrong_entry_golden
+    Absent => false
+  }
 }
 
 test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {
@@ -121,46 +128,50 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
 // production handling only, never the evidence).
 
 test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
-  let refused = gunbc_run_step_script(
+  match gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/evil.dag; rm -rf /",
     function: "probe_wet",
-    claim_run: false,
     receipt_rel: none
-  )
-  string_contains(s: refused, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
-    && !string_contains(s: refused, pattern: "rm -rf /")
-    && !string_contains(s: refused, pattern: ";")
-    && !string_contains(s: refused, pattern: "target/release/gunbc\" run")
-    && string_contains(s: refused, pattern: "dag/gunbc/evil.dag__rm_-rf_/")
+  ) {
+    // The word wall now returns a TYPED, located Rejected (no in-band marker string). The discriminating
+    // assertion is on the REASON: it names the fail-closed wall and shows the refused word sanitized
+    // through the emitter alphabet, and it must not leak the raw metacharacter or an emitted command line.
+    Rejected { diagnostics: d } =>
+      let reason = diagnostics_reason_lexemes(diagnostics: d)
+      string_contains(s: reason, pattern: "gunbc invoke word wall refused")
+      && string_contains(s: reason, pattern: "dag/gunbc/evil.dag__rm_-rf_/")
+      && !string_contains(s: reason, pattern: "rm -rf /")
+      && !string_contains(s: reason, pattern: "target/release/gunbc\" run")
+    Accepted { value: _ } => false
+  }
 }
 
 test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool {
-  let admitted = gunbc_run_step_script(
+  match gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
-    claim_run: false,
     receipt_rel: "target/fleet-reach-probe-receipt.txt"
-  )
-  !string_contains(s: admitted, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
-    && string_contains(s: admitted, pattern: "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\"")
-    && string_contains(s: admitted, pattern: "--entry dag/gunbc/host/host_reach_identity_probe.dag --function probe_fleet_reach_wet")
-    && string_contains(s: admitted, pattern: "cat \"$ROOT/target/fleet-reach-probe-receipt.txt\"")
+  ) {
+    Accepted { value: admitted } =>
+      string_contains(s: admitted, pattern: "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\"")
+      && string_contains(s: admitted, pattern: "--entry dag/gunbc/host/host_reach_identity_probe.dag --function probe_fleet_reach_wet")
+      && string_contains(s: admitted, pattern: "cat \"$ROOT/target/fleet-reach-probe-receipt.txt\"")
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
   let argv = gunbc_run_transport_argv(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
-    function: "probe_fleet_reach_wet",
-    claim_run: false
+    function: "probe_fleet_reach_wet"
   )
   let words = gunbc_run_invocation_words(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
-    function: "probe_fleet_reach_wet",
-    claim_run: false
+    function: "probe_fleet_reach_wet"
   )
   argv == invocation_words_bare(words: words)
     && transport_argv_contains_flag(argv: argv, flag: "--entry")
@@ -191,22 +202,34 @@ test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
 // live deploy run before/after the fold.
 
 test fn gunbc_ci_desired_instance_receipt_identity_invoke_has_no_receipt_cat_holds() -> Bool {
-  let script = gunbc_ci_desired_instance_receipt_identity_invoke()
-  string_contains(s: script, pattern: "live_deploy_ci_instance_receipt_identity_from_ci")
-    && !string_contains(s: script, pattern: "cat ")
-    && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  // The invoke family now returns Outcome<String>; fail-closed -- a refused emission cannot vouch for its own content.
+  match outcome_accepted_value(gunbc_ci_desired_instance_receipt_identity_invoke()) {
+    Absent => false
+    Present { value: script } =>
+      string_contains(s: script, pattern: "live_deploy_ci_instance_receipt_identity_from_ci")
+        && !string_contains(s: script, pattern: "cat ")
+        && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  }
 }
 
 test fn gunbc_ci_desired_instance_deploy_invoke_has_no_receipt_cat_holds() -> Bool {
-  let script = gunbc_ci_desired_instance_deploy_invoke()
-  string_contains(s: script, pattern: "live_deploy_apply_desired_wet_from_ci")
-    && !string_contains(s: script, pattern: "cat ")
-    && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  // The invoke family now returns Outcome<String>; fail-closed -- a refused emission cannot vouch for its own content.
+  match outcome_accepted_value(gunbc_ci_desired_instance_deploy_invoke()) {
+    Absent => false
+    Present { value: script } =>
+      string_contains(s: script, pattern: "live_deploy_apply_desired_wet_from_ci")
+        && !string_contains(s: script, pattern: "cat ")
+        && !string_contains(s: script, pattern: "live_deploy_receipt.json")
+  }
 }
 
 test fn gunbc_ci_live_deploy_transaction_invoke_keeps_its_receipt_cat_holds() -> Bool {
-  let script = gunbc_ci_live_deploy_transaction_invoke()
-  string_contains(s: script, pattern: "live_deploy_apply_prod_role_transaction_wet")
-    && string_contains(s: script, pattern: "cat ")
-    && string_contains(s: script, pattern: "live_deploy_receipt.json")
+  // The invoke family now returns Outcome<String>; fail-closed -- a refused emission cannot vouch for its own content.
+  match outcome_accepted_value(gunbc_ci_live_deploy_transaction_invoke()) {
+    Absent => false
+    Present { value: script } =>
+      string_contains(s: script, pattern: "live_deploy_apply_prod_role_transaction_wet")
+        && string_contains(s: script, pattern: "cat ")
+        && string_contains(s: script, pattern: "live_deploy_receipt.json")
+  }
 }

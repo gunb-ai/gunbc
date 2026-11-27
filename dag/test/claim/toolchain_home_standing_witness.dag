@@ -21,7 +21,8 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_workflow }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of }
+import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -241,6 +242,9 @@ test fn every_witnesses_yml_job_carries_a_toolchain_home_standing() -> Bool {
 }
 
 test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool {
-  workflow_is_admitted(workflow: fleet_converge_workflow)
+  match fleet_converge_workflow_of() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: wf } => workflow_is_admitted(workflow: wf)
+  }
 }
 

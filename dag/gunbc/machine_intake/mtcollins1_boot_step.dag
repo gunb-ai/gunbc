@@ -60,6 +60,7 @@ import gunbc.machine_intake.mtcollins1_sol_notice_facts {
 }
 import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 // The mtcollins1 boot step: its targets, the bash_build boot runner with the SOL notice watcher, and
 // the boot admission. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P1) with the
@@ -68,64 +69,73 @@ import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 
 data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_boot_run",
-  function: "mtcollins1_boot_wet",
+  function: "mtcollins1_boot_wet"
 )
 
 // THE MAC-DISCOVERY CYCLE (gunbc.machine_intake.mtcollins1_pxe_mac_discovery), run in the boot job under
 // the same federated credential seam and unit hold as the boot.
 data gunbc_ci_mtcollins1_pxe_mac_discovery_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery",
-  function: "mtcollins1_pxe_mac_discovery_wet",
+  function: "mtcollins1_pxe_mac_discovery_wet"
 )
 
 // THE CONTROLLER COLD RESET (gunbc.machine_intake.mtcollins1_bmc_cold_reset), run in the boot job under the same
 // federated credential seam and unit hold.
 data gunbc_ci_mtcollins1_bmc_cold_reset_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_bmc_cold_reset",
-  function: "mtcollins1_bmc_cold_reset_wet",
+  function: "mtcollins1_bmc_cold_reset_wet"
 )
 
 // THE SOL NOTICE WATCHER, started in the boot step's prelude as a second process beside the boot
 // (gunbc.machine_intake.mtcollins1_sol_notice).
 data gunbc_ci_mtcollins1_sol_notice_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_sol_notice",
-  function: "mtcollins1_sol_notice_wet",
+  function: "mtcollins1_sol_notice_wet"
 )
 
 data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_boot_admission",
-  function: "mtcollins1_boot_admit_executor",
+  function: "mtcollins1_boot_admit_executor"
 )
 
 // THE EDGE RECEIPT STEPS (gunbc.fleet.site_pxe_edge_receipt_download): admit the edge run pointer and hand on its artifact id, then, after the by-id
 // download, mint the downloaded identity and cite the bytes.
 data gunbc_ci_site_pxe_edge_receipt_admit_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.site_pxe_edge_receipt_download",
-  function: "site_pxe_edge_receipt_admit_step",
+  function: "site_pxe_edge_receipt_admit_step"
 )
 
 data gunbc_ci_site_pxe_edge_receipt_cite_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.site_pxe_edge_receipt_download",
-  function: "site_pxe_edge_receipt_cite_step",
+  function: "site_pxe_edge_receipt_cite_step"
 )
 
-fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> String {
+fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_site_pxe_edge_receipt_admit_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
 // The cite step writes its receipt under artifacts/ before the boot step's prelude has created it, so it creates the directory first.
-fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: [
-      bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
-    ], set_e: true), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false), "\n",
-  ], "")
+fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target),
+    f: fn(zesty_c) {
+      bind_outcome(
+        o: gunbc_ci_bash_rendered(stmts: [
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])])
+    ], set_e: true),
+        f: fn(mkdir_text) {
+          outcome_accepted(value:join([
+    mkdir_text, "\n",
+    zesty_c, "\n"
+  ], ""))
+        }
+      )
+    }
+  )
 }
 
 // THE BOOT STEP IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL JOINED AS STRINGS,
@@ -191,26 +201,26 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
   [
     bash_build_assign(name: "rc", value: bash_build_word_exit_status()),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "SOL_WORKFLOW")], spelling: BracketQuoted), then_stmts: [
-      bash_build_or_else(left: bappend(line: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bash_build_word_var(name: "SOL_WORKFLOW")), right: bash_build_command_from_lits(lits: ["true"])),
+      bash_build_or_else(left: bappend(line: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bash_build_word_var(name: "SOL_WORKFLOW")), right: bash_build_command_from_lits(lits: ["true"]))
     ]),
     bash_build_assign(name: "col", value: bash_build_word_lit(text: "absent")),
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-e"), bash_build_word_var(name: "SOL_PID_FILE")], spelling: BracketQuoted), then_stmts: [
       bash_build_if_else_from_stmts(cond: bash_build_and_then(
           left: bash_build_and_then(
             left: bash_build_assign(name: "crec", value: bash_build_word_cmdsubst(body: bash_build_with_redir(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), bash_build_word_var(name: "SOL_PID_FILE")]), redir: ^bash_production_fold_redir_stderr_null))),
-            right: bash_build_assign(name: "crcpt", value: bash_build_word_cmdsubst(body: bash_build_with_redir(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cut"), bash_build_word_lit(text: "-d"), bash_build_word_lit(text: " "), bash_build_word_lit(text: "-f1,2"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_lit(text: mtcollins1_sol_activation_suffix)])]), redir: ^bash_production_fold_redir_stderr_null))),
+            right: bash_build_assign(name: "crcpt", value: bash_build_word_cmdsubst(body: bash_build_with_redir(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cut"), bash_build_word_lit(text: "-d"), bash_build_word_lit(text: " "), bash_build_word_lit(text: "-f1,2"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_lit(text: mtcollins1_sol_activation_suffix)])]), redir: ^bash_production_fold_redir_stderr_null)))
           ),
           right: bash_build_and_then(
             left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "crec")], spelling: BracketQuoted),
-            right: bash_build_test_bracket(words: [bash_build_word_var(name: "crcpt"), bash_build_word_lit(text: "="), bash_build_word_var(name: "crec")], spelling: BracketQuoted),
-          ),
+            right: bash_build_test_bracket(words: [bash_build_word_var(name: "crcpt"), bash_build_word_lit(text: "="), bash_build_word_var(name: "crec")], spelling: BracketQuoted)
+          )
         ), then_stmts: [
           bash_build_or_else(left: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bash_build_word_var(name: "SOL_PID_FILE")), right: bash_build_command_from_lits(lits: ["true"])),
           bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: bash_build_word_var(name: "SOL_PID_FILE")), then_stmts: [bash_build_assign(name: "co", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "co", value: bash_build_word_exit_status())]),
           bash_build_if_else_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_var(name: "co"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "1")], spelling: BracketQuoted), then_stmts: [
-              bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_lit(text: mtcollins1_sol_activation_suffix)])]), then_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "released"))], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "ended-but-record-not-retired"))]),
-            ], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-owned-check-"), bash_build_word_var(name: "co")]))]),
-        ], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "foreign-record-kept"))]),
+              bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "SOL_PID_FILE"), bash_build_word_lit(text: mtcollins1_sol_activation_suffix)])]), then_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "released"))], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "ended-but-record-not-retired"))])
+            ], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-owned-check-"), bash_build_word_var(name: "co")]))])
+        ], else_stmts: [bash_build_assign(name: "col", value: bash_build_word_lit(text: "foreign-record-kept"))])
     ]),
     bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bash_build_word_var(name: "GITHUB_RUN_ID"), bash_build_word_lit(text: "/observer.pid")])), then_stmts: [bash_build_assign(name: "kvm", value: bash_build_word_lit(text: "released"))], else_stmts: [bash_build_assign(name: "kvm", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-release-exit-"), bash_build_word_exit_status()]))]),
     bash_build_assign(name: "obs", value: bash_build_word_lit(text: "unstarted")),
@@ -221,15 +231,15 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
       bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record), then_stmts: [bash_build_assign(name: "wo", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "wo", value: bash_build_word_exit_status())]),
       bash_build_if_else_from_stmts(cond: bash_build_pipe(left: bash_build_command_from_lits(lits: ["jobs", "-rp"]), right: bash_build_command_with_words(words: [bash_build_word_lit(text: "grep"), bash_build_word_lit(text: "-qx"), bash_build_word_var(name: "SOL_NOTICE_WATCH")])), then_stmts: [
           bash_build_assign(name: "obs", value: bash_build_word_lit(text: "unfinished")),
-          bash_build_if_else_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_var(name: "wo"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")], spelling: BracketQuoted), then_stmts: [bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "stopped"))], else_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "unresolved-survived-KILL"))])], else_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-identity-not-confirmed-"), bash_build_word_var(name: "wo")]))]),
+          bash_build_if_else_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_var(name: "wo"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")], spelling: BracketQuoted), then_stmts: [bash_build_if_else_from_stmts(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "stopped"))], else_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_lit(text: "unresolved-survived-KILL"))])], else_stmts: [bash_build_assign(name: "wclean", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "unresolved-identity-not-confirmed-"), bash_build_word_var(name: "wo")]))])
         ], else_stmts: [
-          bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "wait"), bash_build_word_var(name: "SOL_NOTICE_WATCH")]), then_stmts: [bash_build_assign(name: "obs", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "obs", value: bash_build_word_exit_status())]),
-        ]),
+          bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "wait"), bash_build_word_var(name: "SOL_NOTICE_WATCH")]), then_stmts: [bash_build_assign(name: "obs", value: bash_build_word_lit(text: "0"))], else_stmts: [bash_build_assign(name: "obs", value: bash_build_word_exit_status())])
+        ])
     ]),
     bash_build_if_else_from_stmts(cond: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "DEST_FILE")]), then_stmts: [bash_build_assign(name: "clean", value: bash_build_word_lit(text: "ok"))], else_stmts: [bash_build_assign(name: "clean", value: bash_build_word_lit(text: "failed"))]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: bash_build_test_bracket(words: [bash_build_word_var(name: "obs"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "0")], spelling: BracketQuoted), right: bash_build_test_bracket(words: [bash_build_word_var(name: "obs"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "unstarted")], spelling: BracketQuoted)),
-      then_stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "::error::mtcollins1 SOL notice watcher did not succeed ")].concat(failed))]), bash_build_assign(name: "fail", value: bash_build_word_lit(text: "1"))],
+      then_stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "::error::mtcollins1 SOL notice watcher did not succeed ")].concat(failed))]), bash_build_assign(name: "fail", value: bash_build_word_lit(text: "1"))]
     ),
     bash_build_if_from_stmts(cond: bash_build_and_then(left: bash_build_test_bracket(words: [bash_build_word_var(name: "col"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "absent")], spelling: BracketQuoted), right: bash_build_test_bracket(words: [bash_build_word_var(name: "col"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "released")], spelling: BracketQuoted)), then_stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "::error::mtcollins1 SOL collector not released at step exit ")].concat(failed))]), bash_build_assign(name: "fail", value: bash_build_word_lit(text: "1"))]),
     bash_build_if_from_stmts(cond: bash_build_and_then(left: bash_build_test_bracket(words: [bash_build_word_var(name: "wclean"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "none")], spelling: BracketQuoted), right: bash_build_test_bracket(words: [bash_build_word_var(name: "wclean"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "stopped")], spelling: BracketQuoted)), then_stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "::error::mtcollins1 SOL notice watcher cleanup unresolved ")].concat(failed))]), bash_build_assign(name: "fail", value: bash_build_word_lit(text: "1"))]),
@@ -237,9 +247,9 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
     bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [bash_build_word_var(name: "clean"), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "ok")], spelling: BracketQuoted), then_stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed))]), bash_build_assign(name: "fail", value: bash_build_word_lit(text: "1"))]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: bash_build_test_bracket(words: [bash_build_word_var(name: "rc"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")], spelling: BracketQuoted), right: bash_build_test_bracket(words: [bash_build_word_var(name: "fail"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "1")], spelling: BracketQuoted)),
-      then_stmts: [bash_build_assign(name: "rc", value: bash_build_word_lit(text: "1"))],
+      then_stmts: [bash_build_assign(name: "rc", value: bash_build_word_lit(text: "1"))]
     ),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "exit"), bash_build_word_var(name: "rc")]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "exit"), bash_build_word_var(name: "rc")])
   ]
 }
 
@@ -248,7 +258,7 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
 fn gunbc_ci_mtcollins1_bash_head() -> List<Node> {
   [
     bash_build_command_from_lits(lits: ["set", "-uo", "pipefail"]),
-    bash_build_command_from_lits(lits: ["umask", "077"]),
+    bash_build_command_from_lits(lits: ["umask", "077"])
   ]
 }
 
@@ -256,7 +266,7 @@ fn gunbc_ci_mtcollins1_bmc_credential_path_statements() -> List<Node> {
   [
     bash_build_assign(name: "HDR_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/mtcollins1-boot-auth-header")])),
     bash_build_assign(name: "RESP_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/mtcollins1-boot-sm.json")])),
-    bash_build_assign(name: "DEST_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/mtcollins1-bmc-credential")])),
+    bash_build_assign(name: "DEST_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/mtcollins1-bmc-credential")]))
   ]
 }
 
@@ -267,12 +277,12 @@ fn gunbc_ci_mtcollins1_bmc_credential_fetch_statements() -> List<Node> {
       left: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "curl"), bash_build_word_lit(text: "-sSf"), bash_build_word_lit(text: "--connect-timeout"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
         bash_build_word_lit(text: "--max-time"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "RESP_FILE"),
-        bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
+        bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))
       ]),
-      right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "DEST_FILE")),
+      right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "DEST_FILE"))
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "chmod"), bash_build_word_lit(text: "600"), bash_build_word_var(name: "DEST_FILE")]),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(host_reset_bmc_credential_path_env as String, "=")), bash_build_word_var(name: "DEST_FILE")])]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(host_reset_bmc_credential_path_env as String, "=")), bash_build_word_var(name: "DEST_FILE")])])
   ]
 }
 
@@ -288,7 +298,7 @@ fn gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: String) -> List<Node> 
     bash_build_assign(name: "SOL_WORKFLOW", value: bash_build_word_lit(text: "")),
     bash_build_assign(name: "SOL_DELIVERY", value: bash_build_word_lit(text: "")),
     bash_build_assign(name: "SOL_NOTICE_WATCH", value: bash_build_word_lit(text: "")),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: trap_body), bash_build_word_lit(text: "EXIT")]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: trap_body), bash_build_word_lit(text: "EXIT")])
     ])
     .concat(gunbc_ci_mtcollins1_bmc_credential_fetch_statements())
     .concat([
@@ -306,12 +316,12 @@ fn gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: String) -> List<Node> 
     bash_build_with_redir_to_file(inner: bash_build_command_from_lits(lits: [":"]), path: bash_build_word_var(name: "SOL_DELIVERY")),
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "find"), bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [bash_build_word_lit(text: "dirname"), bash_build_word_var(name: "SOL_OUT")])), bash_build_word_lit(text: "-maxdepth"), bash_build_word_lit(text: "1"),
-      bash_build_word_lit(text: "-name"), bash_build_word_concat_from_nodes(parts: [bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [bash_build_word_lit(text: "basename"), bash_build_word_var(name: "SOL_OUT")])), bash_build_word_lit(text: concat(mtcollins1_sol_notice_file_infix, "*"))]), bash_build_word_lit(text: "-delete"),
+      bash_build_word_lit(text: "-name"), bash_build_word_concat_from_nodes(parts: [bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [bash_build_word_lit(text: "basename"), bash_build_word_var(name: "SOL_OUT")])), bash_build_word_lit(text: concat(mtcollins1_sol_notice_file_infix, "*"))]), bash_build_word_lit(text: "-delete")
     ]),
     bash_build_assign(name: "SOL_NOTICE_TOKEN", value: bash_build_word_cmdsubst(body: bash_build_pipe(left: bash_build_command_from_lits(lits: ["od", "-An", "-N8", "-tx8", "/dev/urandom"]), right: bash_build_command_from_lits(lits: ["tr", "-d", " \\n"])))),
     bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "SOL_NOTICE_TOKEN")], spelling: BracketQuoted),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(mtcollins1_sol_notice_token_env as String, "=")), bash_build_word_var(name: "SOL_NOTICE_TOKEN")])]),
-    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"])))),
+    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"]))))
     ])
 }
 
@@ -328,64 +338,91 @@ fn gunbc_ci_mtcollins1_boot_watcher_record_statements() -> List<Node> {
           left: bash_build_and_then(
             left: bash_build_assign(name: "WSTART", value: bash_build_word_cmdsubst(body: bash_build_pipe(
               left: bash_build_command_with_words(words: [bash_build_word_lit(text: "sed"), bash_build_word_lit(text: "s/^.*) //"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "/proc/"), bash_build_word_var(name: "SOL_NOTICE_WATCH"), bash_build_word_lit(text: "/stat")])]),
-              right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f", "20"]),
+              right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f", "20"])
             ))),
-            right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "WSTART")], spelling: BracketQuoted),
+            right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "WSTART")], spelling: BracketQuoted)
           ),
           right: bash_build_and_then(
             left: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s %s\\n"), bash_build_word_var(name: "SOL_NOTICE_WATCH"), bash_build_word_var(name: "WSTART")]), path: staged),
-            right: bash_build_command_with_words(words: [bash_build_word_lit(text: "mv"), bash_build_word_lit(text: "-T"), staged, record]),
-          ),
-        ),
+            right: bash_build_command_with_words(words: [bash_build_word_lit(text: "mv"), bash_build_word_lit(text: "-T"), staged, record])
+          )
+        )
       ])),
       then_stmts: [
         bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "::error::mtcollins1 SOL notice watcher could not be recorded; refusing the boot before any BMC contact")])]),
-        bash_build_exit(code: "1"),
-      ],
-    ),
+        bash_build_exit(code: "1")
+      ]
+    )
   ]
 }
-
 
 // THE [C5 background-hold] LINE, the step's only hand-spelled shell: the watcher's `gunbc run`
 // (rendered by v2.workflow.gunbc_invoke_step_emit gunbc_run_command) started with `&` and its pid
 // captured from $!.
-fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
-  concat(gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_sol_notice_target,
-  claim_run: false), " & SOL_NOTICE_WATCH=$!")
+fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_sol_notice_target),
+    f: fn(watcher_cmd) { outcome_accepted(value:concat(watcher_cmd, " & SOL_NOTICE_WATCH=$!")) }
+  )
 }
 
 // The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
 // boot's wet entry re-runs.
-fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
+fn gunbc_ci_mtcollins1_boot_admit_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_boot_admit_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_mtcollins1_boot_invoke() -> String {
-  join([
-    "# ", dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), "\n",
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
-    gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
-    claim_run: false), "\n",
-  ], "")
+fn gunbc_ci_mtcollins1_boot_invoke() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target),
+    f: fn(zesty_c) {
+      bind_outcome(
+        o: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false),
+        f: fn(tb) {
+          bind_outcome(
+            o: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: tb), set_e: true),
+            f: fn(prelude_text) {
+              bind_outcome(
+                o: gunbc_ci_mtcollins1_boot_watcher_background_line(),
+                f: fn(watcher_line) {
+                  bind_outcome(
+                    o: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false),
+                    f: fn(record_text) {
+                      outcome_accepted(value:join([
+                    "# ", dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), "\n",
+                    prelude_text, "\n",
+                    watcher_line, "\n",
+                    record_text, "\n",
+                    zesty_c, "\n"
+                  ], ""))
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 // The discovery step's credential prelude: ROOT (each GHA run step is a fresh shell and gunbc_run_command reads $ROOT), the shared fetch, with the three credential files removed on exit.
-fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> List<Node> {
-  gunbc_ci_mtcollins1_bash_head()
+fn gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements() -> Outcome<List<Node>> {
+  bind_outcome(
+    o: gunbc_ci_bash_rendered(stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "DEST_FILE")])], set_e: false),
+    f: fn(trap_text) { outcome_accepted(value:gunbc_ci_mtcollins1_bash_head()
     .concat([gunbc_ci_repo_root_statement()])
     .concat(gunbc_ci_mtcollins1_bmc_credential_path_statements())
     .concat([
-      bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: gunbc_ci_bash_rendered(stmts: [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "DEST_FILE")])], set_e: false)), bash_build_word_lit(text: "EXIT")]),
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: trap_text), bash_build_word_lit(text: "EXIT")])
     ])
-    .concat(gunbc_ci_mtcollins1_bmc_credential_fetch_statements())
+    .concat(gunbc_ci_mtcollins1_bmc_credential_fetch_statements())) }
+  )
 }
 
 data mtcollins1_receipted_run_line_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: v2.workflow.gunbc_invoke_step_emit gunbc_run_command returning bash_build Nodes instead of rendered text — the run line below is a string only because that renderer returns text, so the deferred exit capture (` || <step>_RC=$?`) cannot join the Node statements around it; every other statement of this step is a Node")
@@ -405,7 +442,7 @@ fn receipted_run_pre_statements(run: ReceiptedRun) -> List<Node> {
   [
     bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "ROOT"), bash_build_word_lit(text: "/target")])]),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), receipted_run_receipt_file(run: run)]),
-    bash_build_assign(name: run.rc_name, value: bash_build_word_lit(text: "0")),
+    bash_build_assign(name: run.rc_name, value: bash_build_word_lit(text: "0"))
   ]
 }
 
@@ -413,18 +450,43 @@ fn receipted_run_pre_statements(run: ReceiptedRun) -> List<Node> {
 fn receipted_run_tail_statements(run: ReceiptedRun) -> List<Node> {
   [
     bash_build_or_else(left: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), receipted_run_receipt_file(run: run)]), right: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_lit(text: run.absent_line)])),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "exit"), bash_build_word_var(name: run.rc_name)]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "exit"), bash_build_word_var(name: run.rc_name)])
   ]
 }
 
-fn receipted_run_invoke(run: ReceiptedRun) -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
-    gunbc_ci_bash_rendered(stmts: receipted_run_pre_statements(run: run), set_e: false), "\n",
-    "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target, claim_run: false), " || ", run.rc_name, "=$?\n",
-    gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false), "\n",
-  ], "")
+fn receipted_run_invoke(run: ReceiptedRun) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target),
+    f: fn(zesty_c) {
+      bind_outcome(
+        o: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(),
+        f: fn(prelude) {
+          bind_outcome(
+            o: gunbc_ci_bash_rendered(stmts: prelude, set_e: true),
+            f: fn(prelude_text) {
+              bind_outcome(
+                o: gunbc_ci_bash_rendered(stmts: receipted_run_pre_statements(run: run), set_e: false),
+                f: fn(pre_text) {
+                  bind_outcome(
+                    o: gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false),
+                    f: fn(tail_text) {
+                      outcome_accepted(value:join([
+                    prelude_text, "\n",
+                    pre_text, "\n",
+                    "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
+                    zesty_c, " || ", run.rc_name, "=$?\n",
+                    tail_text, "\n"
+                  ], ""))
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 data mtcollins1_pxe_mac_discovery_receipted_run: ReceiptedRun = ReceiptedRun {
@@ -441,10 +503,10 @@ data mtcollins1_bmc_cold_reset_receipted_run: ReceiptedRun = ReceiptedRun {
   rc_name: "RESET_RC",
 }
 
-fn gunbc_ci_mtcollins1_pxe_mac_discovery_invoke() -> String {
+fn gunbc_ci_mtcollins1_pxe_mac_discovery_invoke() -> Outcome<String> {
   receipted_run_invoke(run: mtcollins1_pxe_mac_discovery_receipted_run)
 }
 
-fn gunbc_ci_mtcollins1_bmc_cold_reset_invoke() -> String {
+fn gunbc_ci_mtcollins1_bmc_cold_reset_invoke() -> Outcome<String> {
   receipted_run_invoke(run: mtcollins1_bmc_cold_reset_receipted_run)
 }

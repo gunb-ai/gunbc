@@ -10,6 +10,7 @@ import std.types { String }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_for_target }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target }
+import v2.std.diagnostic { Outcome }
 
 // THE NETWORK-INSTALL RUN LEAVES ONE ARTEFACT, and it is the receipt the workflow uploads: the dispatch,
 // the boot it issued, what the controller read back, what the completion fold said, and whether the edge binding
@@ -34,11 +35,10 @@ data gunbc_ci_managed_host_network_install_target: GunbcRunStepTarget = gunbc_ru
   function: "network_install_ci_wet",
 )
 
-fn gunbc_ci_managed_host_network_install_invoke() -> String {
+fn gunbc_ci_managed_host_network_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_managed_host_network_install_target,
-    claim_run: false,
     receipt_rel: managed_host_network_install_receipt_path
   )
 }

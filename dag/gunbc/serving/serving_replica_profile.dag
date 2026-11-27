@@ -30,22 +30,37 @@
 module gunbc.serving.serving_replica_profile
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div }
 import std.optional { Optional, Present, Absent }
 import std.measure {
-  ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond, Watt,
-  byte_size, byte_size_count, millisecond, money_amount_micro, token_count,
+  ByteSize, Millisecond, MoneyAmountMicro, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
+  PositiveSlotCount, TokenCount, TokensPerSecond, Watt,
+  byte_size, byte_size_count, millisecond, money_amount_micro, positive_slot_count,
+  positive_measure_count, positive_measure_count_from_int, positive_slot_count_value, token_count,
   tokens_per_second, tokens_per_second_count, watt_count,
 }
 import std.algebra { string_contains }
+import std.integer { nat_to_int }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.huggingface.hub { HubRepoId }
-import extdeps.strata.serve_flags { StrataServeFlags }
+import extdeps.strata.serve_flags {
+  StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
+  StrataConversationCache, StrataConversationCacheBudget, StrataConversationCacheOff,
+  StrataConversationCacheUnset, strata_conversation_cache_words,
+  strata_parallel_minimum_slots,
+  // The two standings the read obligation is composed from, and the fleet receipt beside them: the
+  // upstream's own answer stays in extdeps, and what OUR hosts run is `StrataDeployedBuildObservation`
+  // below (gunbc.design_argument::external_upstreams).
+  strata_conversation_cache_unset_standing, strata_conversation_cache_unset_standing_pre_0_2_3,
+}
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.fleet.fleet_host_identity {
   HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4,
 }
+// The one power figure a profile card may hold, derived from the host's cap mechanism roster rather than typed
+// in here: that module owns the cap mechanism, this one only asks it what the host puts on its cards.
+import gunbc.fleet.gpu_power_cap_boot_state { host_wide_gpu_cap_watts }
 import product.host_identity { host_identity_eq }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
@@ -59,6 +74,7 @@ import gunbc.serving.serving_host_memory {
 }
 import gunbc.serving.serving_layout {
   ArtifactHeldEvictable, ArtifactHeldPinned, ServingArtifactHold, ServingArtifactRung, ServingDevice,
+  ServingLayoutResult,
   ServingSharedArtifact, host_6ce85c_a16_buses, host_6ce85c_grant, host_6ce85c_routed_expert_artifact,
   serving_artifact_charged_host_ram, srv3_grant, srv3_layout, srv3_routed_expert_artifact, srv4_grant,
   srv4_layout, srv4_routed_expert_artifact,
@@ -66,11 +82,12 @@ import gunbc.serving.serving_layout {
 import gunbc.serving.serving_warm_admission { ServingWarmAdmission }
 import gunbc.serving.serving_capacity_anchor {
   GrantAdmits, GrantUnmodeled, RungAdds, RungInclusiveOfHotter, ServingCapacityAnchor, ServingCapacityShape,
-  ServingRetentionGrant, ServingRungSharing, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
+  ServingRetentionGrant, ServingRungSharing, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefusalReason,
+  ServingShapeRefused, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
   ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
   WarmSwapRestores,
   engine_warm_swap, serving_capacity_shape, serving_conversation_policy, serving_replica_grant_for,
-  slot_file_warm_swap,
+  slot_file_warm_swap, ServingGpuKvPool, GpuKvPoolNotBinding, GpuKvPoolRead, srv1_gpu_kv_pool, within_gpu_kv_pool,
 }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings }
 import gunbc.serving.flash_next_topology { ServingTopology, topology_dp }
@@ -81,7 +98,7 @@ import gunbc.serving.srv1_serving_launch { LilServeLaunch, srv1_serving_launch }
 import extdeps.vllm.lil_serve {
   LilServeHardware, LilServeHardwareName, LilServeProfile, LilServeProfileName,
 }
-import gunbc.serving.strata_ada_pair_cell { srv3_iq3_s_artifact, srv3_strata_flags }
+import gunbc.serving.strata_ada_pair_cell { srv3_iq3_s_artifact, srv3_strata_launch_parameters }
 import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
 import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact }
 
@@ -121,11 +138,13 @@ type ReplicaModel
       // IQ3_S shards (their anchors say so, from the operator's launches) but the digests were never read
       // on those hosts, and the standing says exactly that rather than letting a borrowed digest read local.
       artifact_standing: CitedFigureStanding
-      // The launch flags as a row, where one exists: srv3's are strata_ada_pair_cell's. srv4's and h11's
-      // launched flags (batch size, experts mmap/locked) are described in their memory rows but no typed
+      // The launch parameters as a row, where one exists: srv3's are strata_ada_pair_cell's. srv4's and h11's
+      // launched parameters (batch size, experts mmap/locked) are described in their memory rows but no typed
       // flag row has been read from their systemd units -- Absent with the obligation on its standing,
-      // never invented argv.
-      flags: Optional<StrataServeFlags>
+      // never invented argv. THERE IS NO BATCH-SLOT FIELD HERE ON PURPOSE: the slots the engine reserves are
+      // the conversations the replica is admitted, one fact with one owner (the capacity shape), asked of it
+      // by replica_engine_launch below; see extdeps.strata.serve_flags.StrataLaunchParameters.
+      flags: Optional<StrataLaunchParameters>
       flags_standing: Optional<CitedFigureStanding>
     }
 
@@ -146,7 +165,10 @@ type ReplicaGpuCard {
   board: DeclarationRef
   // The card's memory AS READ on that host. Absent where unread -- an obligation, never a datasheet.
   vram: Optional<ServingMemoryReading>
-  // The card's power cap as launched (srv1's run row: 300 W each). Absent where unread.
+  // The card's power cap as it runs. srv1's comes from its run row (300 W each); srv3's, srv4's and ken's are
+  // read from the cap mechanism those hosts carry (40 W, 30 W and 100 W at the operator's 2026-11-24 final
+  // pass -- gunbc.fleet.gpu_power_cap_boot_state hand_applied_cap_mechanisms). Absent means NO cap mechanism
+  // has been read on that host, which is not the same as the card running uncapped.
   power_cap: Optional<Watt>
   // The card's UUID as nvidia-smi prints it -- docker's --device word and the CDI selector are built from
   // it, so srv1_serving_replica_layout asks THIS row for it instead of keeping its own copy. Where a host's
@@ -158,13 +180,17 @@ type ReplicaGpuCard {
 }
 
 // A card as its host's serving_layout grant already models it: the device row is the owner of name, board
-// and read vram, so a profile card for srv3/srv4/h11 DERIVES from it -- no figure is retyped.
-fn card_of(d: ServingDevice) -> ReplicaGpuCard {
+// and read vram, so a profile card for srv3/srv4/h11 DERIVES from it -- no figure is retyped. The cap is the
+// one field the device row does NOT carry and the host does: it comes from that host's cap mechanism roster
+// (gunbc.fleet.gpu_power_cap_boot_state host_wide_gpu_cap_watts), so srv3, srv4 and ken report what the
+// operator's hand-applied mechanisms put on every card there, and a host with no mechanism read -- h11 --
+// still reports Absent, which means "no cap mechanism read on that host" and not "this card runs uncapped".
+fn card_of(d: ServingDevice, host: HostIdentity) -> ReplicaGpuCard {
   ReplicaGpuCard {
     name: d.device,
     board: d.board,
     vram: Present { value: d.vram },
-    power_cap: Absent,
+    power_cap: host_wide_gpu_cap_watts(host: host),
     uuid: Absent,
     pci_bus: Absent,
   }
@@ -216,12 +242,29 @@ type ReplicaFigures
 
 // ── THE PROFILE ──────────────────────────────────────────────────────────────────────────────────────
 
+// THE GPU KV POOL BELONGS TO THE CARD, not to the engine label: it is carried on the replica profile as a
+// per-card reading, so a router never derives one card's cap from another's pool. srv1's vLLM profile reads
+// srv1's own topology pool (srv1_gpu_kv_pool); a Strata card parks its sessions in host RAM, so its cap is the
+// retain/RAM session figure and the pool is declared NotBinding with the trigger that would make it bind. A new
+// vLLM card must carry its OWN pool reading here (its topology row) or declare GpuKvPoolUnread -- there is no
+// path that hands it another card's pool (single_authority / fail_closed: no escape hatch, no fabricated default).
+fn strata_gpu_kv_pool() -> ServingGpuKvPool {
+  GpuKvPoolNotBinding {
+    reason: "Bet, not fact: this Strata card's cap is bounded by the retain/RAM session figure rather than the on-GPU KV pool, because Strata parks IDLE sessions in host RAM. Active turns still hold their KV on the GPU, so the bet is wrong -- the pool is the binding term -- if the active turns' on-GPU KV alone fills the pool at the policy context before the RAM session figure is reached; read that card's 'GPU KV cache size' log line and switch it to GpuKvPoolRead to check the bet." as NonEmptyStr,
+    trigger: "A Strata deployment's active-turn KV fills the GPU pool at the policy context, or parked sessions move onto a GPU KV pool -- either makes the pool the binding resource." as NonEmptyStr,
+  }
+}
+
 type ServingReplicaProfile {
   // The row's id: the deployment name its anchor carries and the router prints. Router, anchor and roster
   // agree on a deployment because they read the same row, not because a caller passed a matching string.
   id: NonEmptyStr
   host: HostIdentity
   engine_kind: ServingEngineKind
+  // THE CARD'S GPU KV POOL -- a per-card reading, not derived from the engine label. See strata_gpu_kv_pool /
+  // srv1_gpu_kv_pool. The router reads this field directly to bound a rendered cap; there is no engine-kind ->
+  // another card's pool fallback.
+  gpu_kv_pool: ServingGpuKvPool
   model: ReplicaModel
   gpu: List<ReplicaGpuCard>
   parallelism: ReplicaParallelism
@@ -418,6 +461,43 @@ fn replica_share_width(p: ServingReplicaProfile) -> Nat {
   }
 }
 
+// HOW MANY TURNS THIS REPLICA RUNS AT ONCE, per replica: the concurrency its own reading was taken at,
+// divided by the replicas that share it (srv1's pair shares ONE 8-session run, so each carries 4). This is
+// the concurrent population a PER-REPLICA resource contract is stated against.
+//
+// WHY THIS AND NOT THE LADDER'S `held`: `held` is the number of conversations the warm tiers can resume, so
+// it is itself a function of the cache whose size is being decided. A contract read from it would move when
+// the tier it bounds moves, and the wall would shrink to whatever it is supposed to be checking. The reading's
+// own concurrency is the admitted population and does not depend on the tier.
+//
+// Absent when the row carries no reading: a contract whose population is unknown cannot be evaluated, and
+// the consumer refuses rather than guessing a width (gunbc.design_argument::fail_closed).
+//
+// REVIEW 98546, and the arithmetic is the finding: this quantity is the population in a LOWER bound on a
+// buffer, so the division rounds UP. Natural-number division truncates, and a coordinate whose share width did
+// not divide its concurrency (8 over 3) would have answered 2 where 3 conversations are actually in flight —
+// the floor would drop by a whole conversation snapshot, silently, on the unsafe side of a bound. That is an
+// uncounted degradation and DESIGN refuses it (gunbc.design_argument::fail_closed, "no plausible output is
+// fabricated"); std already carries the ceil without leaving the naturals (std.nat::nat_ceil_div), so the repair
+// is to use it and to make the rounding observable. srv1's own coordinate divides exactly (8 over 2 is 4), so
+// nothing on the host moves; what moves is what a NEW coordinate could get away with.
+fn replica_concurrent_turns(p: ServingReplicaProfile) -> Nat? {
+  match replica_figures_resolved(p) {
+    Absent => Absent
+    Present { value: f } => match f.throughput {
+      ThroughputUnread => Absent
+      ThroughputOperatorReading { at_concurrency: n } => concurrent_turns_shared(sessions: n, share_width: replica_share_width(p: p))
+    }
+  }
+}
+
+// The population's arithmetic on its own, so the rounding rule is testable without inventing a whole profile
+// row. Ceiling, and Absent for a zero share width — a replica that shares itself with nobody has no quotient,
+// and each caller says what that means in its own domain (std.nat::nat_ceil_div).
+fn concurrent_turns_shared(sessions: Nat, share_width: Nat) -> Nat? {
+  nat_ceil_div(a: sessions, b: share_width)
+}
+
 // The anchor this profile answers with: the row's fields, handed to the anchor module's shape machinery.
 // A coordinate with no reading refuses, naming its owner module -- nothing here fabricates a rate.
 fn replica_anchor(p: ServingReplicaProfile) -> ServingCapacityAnchor {
@@ -467,8 +547,28 @@ fn replica_anchor_named(p: ServingReplicaProfile, deployment: String) -> Serving
 // (replica_shape -- the bare "shape from the row" wrapper -- is GONE with the per-host shape leaves it fed; every
 // reader now names its own deployment via replica_shape_named, root_generalization ruling 2026-11-11.)
 
+// THE SHAPE OF A REPLICA, FLOORED BY ITS CARD'S GPU KV POOL -- APPLIED HERE AND NOWHERE ELSE.
+// The capacity shape's turns ARE the replica's admitted concurrency: the number the router row caps the
+// upstream at (router_dev_policy::router_dev_replica_shape) AND the number the Strata engine reserves
+// --parallel slots for (replica_engine_launch). Both consumers reach the shape through the two builders below,
+// so the GPU KV pool floor (pool tokens / policy anchor context) folds in at THIS one seam. It must live here
+// and not in a router-only renderer: the engine's --parallel reads the same shape's turns WITHOUT the router's
+// renderer, so a router-only floor would let the engine reserve slots the card's KV pool cannot hold -- the
+// one-number-two-ends split #17060 closed, recurring one boundary later (gunbc.design_argument::single_authority).
+// within_gpu_kv_pool is the identity when the card's pool is not binding or already holds the shape's turns;
+// it lowers the turns to the floor when the pool is tighter, and REFUSES (a typed ServingShapeRefused, never a
+// fall-back to a seat count) when the pool is unread or holds fewer than one conversation at the policy
+// context (gunbc.design_argument::fail_closed).
+fn replica_shaped(p: ServingReplicaProfile, a: ServingCapacityAnchor) -> ServingCapacityShape {
+  within_gpu_kv_pool(
+    shape: serving_capacity_shape(a: a, p: serving_conversation_policy),
+    pool: p.gpu_kv_pool,
+    context: serving_conversation_policy.anchor_context,
+  )
+}
+
 fn replica_shape_named(p: ServingReplicaProfile, deployment: String) -> ServingCapacityShape {
-  serving_capacity_shape(a: replica_anchor_named(p: p, deployment: deployment), p: serving_conversation_policy)
+  replica_shaped(p: p, a: replica_anchor_named(p: p, deployment: deployment))
 }
 
 // The shape a ROUTER ROW carries: the profile composed with a grant the JOIN supplied (serving_replica_grant_for
@@ -476,8 +576,167 @@ fn replica_shape_named(p: ServingReplicaProfile, deployment: String) -> ServingC
 // profile -- so one AnchorStrataProfile root serves every host and the row's capacity tracks the layout that
 // actually grants it.
 fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetentionGrant, deployment: String) -> ServingCapacityShape {
-  serving_capacity_shape(a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment), p: serving_conversation_policy)
+  replica_shaped(p: p, a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment))
 }
+
+// THE JOINED ADMISSION: the replica's shape at the grant the LAYOUT BEING PROJECTED carries for this
+// deployment's device-group -- never the profile's own quote. THE OPERATOR'S REVIEW OF #17060 (2026-11-25)
+// FOUND THE SPLIT THIS CLOSES: the router row already joined on the projected layout (router_dev_policy::
+// router_dev_replica_shape through serving_replica_grant_for), but replica_engine_launch recomputed the shape
+// from the grant written on the PROFILE row -- so the same 2-turn srv3 profile projected onto a one-conversation
+// layout capped the router at 1 while the engine still reserved --parallel 2: the admitted concurrency decided
+// twice at a seam this PR had left (gunbc.design_argument::single_authority). BOTH CONSUMERS OF THE ADMISSION
+// NUMBER NOW RUN THIS ONE FUNCTION -- the router row's cap (router_dev_replica_shape) and the engine's batch
+// slots (replica_engine_launch) -- and a layout or group the fold does not carry refuses as a grant
+// (serving_replica_grant_for), a refusal that reaches BOTH ends: the router row refuses, the launch refuses.
+fn replica_admission_named(p: ServingReplicaProfile, layout: ServingLayoutResult, deployment: String, group: NonEmptyStr) -> ServingCapacityShape {
+  replica_shape_named_with_grant(p: p, grant: serving_replica_grant_for(layout: layout, deployment: deployment, group: group), deployment: deployment)
+}
+
+// ── THE ENGINE'S BATCH SLOTS ARE THE ADMISSION NUMBER, READ FROM ITS AUTHORITY ─────────────────
+//
+// ONE FACT, ONE OWNER (gunbc.design_argument::single_authority). How many conversations a replica runs at
+// once is decided ONCE, by the capacity shape: the aggregate decode the deployment was measured at, the
+// conversation policy's least rate per stream, and the grant (serving_capacity_anchor). That same number is
+// what the pool router puts in the upstream row as `cap` (gunbc.serving.router_dev_policy::router_dev_shaped
+// reads the shape's turns). The engine's `--parallel` is not a second decision beside it: every slot reserves
+// VRAM whether or not a turn ever lands in it, so an over-written slot count taxes the expert cache for
+// capacity the router will never send, and an under-written one leaves admitted turns queued behind a
+// reservation the policy never asked for. srv3 ran exactly the first case on 2026-11-24 -- 8 slots written
+// beside a router cap of 4 -- at 4,642 experts resident against srv4's 6,867 and ~6.6 tok/s per conversation;
+// the class is filed as gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them.
+//
+// THE REPAIR AND THE RUNG IT ESTABLISHES (gunbc.design_argument::guarantee_ladder, ::fail_closed): a
+// production row carries StrataLaunchParameters, which has NO batch-slot field, and this function is the
+// model's ONLY consumer-side path from a profile row to a launchable record -- the slot count enters as an
+// argument of extdeps.strata.serve_flags::strata_launch_with_parallel and this is where that argument comes
+// from: the replica's JOINED ADMISSION (replica_admission_named -- the projected layout's grant x the shape),
+// the one fact the router row also caps on. That is what is established ON THE MODEL SIDE -- and even that is not structural: the
+// bridge is public and StrataServeFlags remains directly constructible, so nothing here makes the 2026-11-24
+// state unnameable to a caller that bypasses this derivation. And the derivation has no production consumer
+// yet -- the witnesses execute it, nothing in production does -- so on the production path the class sits
+// BELOW THE LADDER (gunbc.design_argument::consumption: a derivation no production route runs prevents
+// nothing on that route). The witnesses (test.claim.serving.replica_engine_admission_witness) keep the
+// model-side derivation honest meanwhile: the 4-way state refuses here and the 2-way operating point derives
+// exactly the 2 slots the hosts now run. The row's trigger_capability names the two rungs up: a production
+// route consuming this function, then the host read-back join. The benchmark cell still writes its own
+// concurrency (there the number is the experiment's independent variable, not an admission).
+//
+// WHAT THE SHAPE'S STANDING DOES TO THE RESERVATION. Turns derived from uncited figures make the slots an
+// estimate too (serving_capacity_anchor's shape_of never promotes one); EngineLaunchEstimated carries every
+// standing the turns rode on, so a reader cannot quote a reservation as derived when it extrapolated.
+type EngineLaunchRefusalReason
+  = LaunchParametersUnread { obligation: NonEmptyStr }
+  | LaunchShapeRefused { reason: ServingShapeRefusalReason }
+  | LaunchTurnsZero
+
+type ReplicaEngineLaunch
+  = EngineLaunchDerived { flags: StrataServeFlags, slots: PositiveSlotCount }
+  | EngineLaunchEstimated { flags: StrataServeFlags, slots: PositiveSlotCount, standings: List<CitedFigureStanding> }
+  | EngineLaunchRefused { deployment: NonEmptyStr, reason: EngineLaunchRefusalReason }
+
+// THE ONLY PATH FROM A PROFILE'S LAUNCH PARAMETERS TO A LAUNCHABLE STRATA RECORD. The slot count is not a
+// parameter of this call -- callers cannot pass one; it is read from the replica's JOINED ADMISSION
+// (replica_admission_named: the grant of the layout being projected, x the shape), the same function the
+// router row's cap reads. The layout and group are the projection's inputs, not decisions: a caller supplies
+// WHICH layout is being projected (the same ServingLayoutResult the router roster projects), never a number.
+fn replica_engine_launch(p: ServingReplicaProfile, layout: ServingLayoutResult, group: NonEmptyStr) -> ReplicaEngineLaunch {
+  match p.model {
+    LilModel { } => EngineLaunchRefused {
+      deployment: p.id,
+      reason: LaunchParametersUnread { obligation: "vLLM replicas do not take Strata serve flags; their admitted concurrency is the shape's turns and their engine queues on it -- no --parallel to derive here" as NonEmptyStr },
+    },
+    StrataModel { artifact: _, artifact_standing: _, flags: Absent, flags_standing: st } => EngineLaunchRefused {
+      deployment: p.id,
+      reason: LaunchParametersUnread { obligation: match st {
+        Present { value: s } => match cited_figure_read_obligation(standing: s) {
+          Present { value: o } => o
+          Absent => "the parameter row's standing names no read obligation; read the live unit's ExecStart before quoting its launch" as NonEmptyStr
+        }
+        Absent => "no launched parameter row exists for this replica; read the live unit's ExecStart before quoting its launch" as NonEmptyStr
+      } },
+    },
+    StrataModel { artifact: _, artifact_standing: _, flags: Present { value: params }, flags_standing: _ } =>
+      match replica_admission_named(p: p, layout: layout, deployment: p.id as String, group: group) {
+        ServingShapeRefused { deployment: _, reason: r } => EngineLaunchRefused { deployment: p.id, reason: LaunchShapeRefused { reason: r } }
+        ServingShapeDerived { deployment: _, turns: t, held: _, bound: _, cold_reread: _ } => match positive_measure_count_from_int(count: t as Int) {
+          PositiveMeasureCountRefused { cause: _ } => EngineLaunchRefused { deployment: p.id, reason: LaunchTurnsZero }
+          PositiveMeasureCountBuilt { count: c } =>
+            let slots = positive_slot_count(count: c)
+            EngineLaunchDerived { flags: strata_launch_with_parallel(parameters: params, parallel: slots), slots: slots }
+        }
+        ServingShapeEstimated { deployment: _, turns: t, held: _, bound: _, cold_reread: _, standings: ss } => match positive_measure_count_from_int(count: t as Int) {
+          PositiveMeasureCountRefused { cause: _ } => EngineLaunchRefused { deployment: p.id, reason: LaunchTurnsZero }
+          PositiveMeasureCountBuilt { count: c } =>
+            let slots = positive_slot_count(count: c)
+            EngineLaunchEstimated { flags: strata_launch_with_parallel(parameters: params, parallel: slots), slots: slots, standings: ss }
+        }
+      },
+  }
+}
+
+// ── THE MEASURED PRICE OF CONCURRENCY (operator's hand tuning, 2026-11-24; ad-hoc reads, not instruments) ──
+//
+// WHY THESE ROWS EXIST. The shape derivation prices concurrency -- turns falls to the most streams that each
+// still get the policy's least rate -- but until 2026-11-24 no measurement of THIS fleet's MoE cards said the
+// price is real. The operator's session read it by hand while fixing srv3 and ken: concurrent MoE streams on
+// these cards gain little aggregate throughput (each stream needs DISJOINT experts, so a second stream mostly
+// adds misses) while every stream in flight slows several-fold. The rows below are those readings, carried
+// with their standing and their instrument (gunbc.design_argument::epistemic_humility; DESIGN's "name the
+// instrument") -- they are observations of one ad-hoc afternoon, each with the obligation to re-read them from
+// the engine journals, never deduced facts and never a rate to quote in a decision until re-read.
+// The pair the addendum names: srv3 at 4-way ran 14.5 tok/s PER MACHINE while srv4 at 1-way ran 11.2 --
+// quadrupling streams bought barely one more stream's worth. srv3's experts tell the mechanism: 4,642 experts
+// (8.34 GiB) resident at parallel 8, hit ratio 77%, against 6,307 (11.35 GiB) and 91-95% at parallel 2.
+// This is the evidence that the shape's turns, not a hand-written slot count, is the operating point worth
+// selecting (gunbc.design_argument::selection_precedes_convergence): the 4-way arm sits BELOW the conversation
+// policy's floor and is excluded before any aggregate-optimising comparison runs.
+// `concurrency` is the same quantity the engine reserves slots for and the shape counts as turns, so it
+// rides the same std.measure carrier (PositiveSlotCount) the launch record and the shape use -- the
+// readings and the derivation they evidence are one kind of number, not a bare Nat beside a typed count
+// (gunbc.design_argument::minimize_redundancy).
+// `scope` is the closed scope choice -- one conversation's figure, or the whole machine's -- written as a
+// field, not as two bodies that happen to be identical (gunbc.design_argument::minimize_redundancy).
+type ConcurrencyScope
+  = PerStream
+  | PerMachine
+
+type ConcurrencyObservation {
+  deployment: NonEmptyStr,
+  scope: ConcurrencyScope,
+  concurrency: PositiveSlotCount,
+  tokens_per_second: TokensPerSecond,
+  window: NonEmptyStr,
+  standing: CitedFigureStanding,
+}
+
+// The instrument differs by scope, which is the only thing the two scopes ever differed in.
+fn concurrency_reading(deployment: String, scope: ConcurrencyScope, n: PositiveSlotCount, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
+  ConcurrencyObservation {
+    deployment: deployment as NonEmptyStr,
+    scope: scope,
+    concurrency: n,
+    tokens_per_second: tokens_per_second(count: tok),
+    window: window as NonEmptyStr,
+    standing: TranscribedUncited { read_obligation: ((match scope {
+      PerStream => "instrument: the engine journal's own per-turn line 'done: N tokens in T s (R tok/s)', averaged by the operator's session over the named window (ad-hoc read, 2026-11-24); "
+      PerMachine => "instrument: engine /metrics totals differenced by the operator's ad-hoc /tmp/snap.py and /tmp/delta.py on srv1 (not an instrument; DESIGN 'name the instrument'); "
+    }) + instrument) as NonEmptyStr },
+  }
+}
+
+data strata_concurrency_price_observations: List<ConcurrencyObservation> = [
+  // srv3 before the fix: engine parallel 8 (reserving 8 slots), router cap 4; the fleet was sending 4-way.
+  concurrency_reading("srv3-strata", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 3)), 6, "before 2026-11-24 19:56 UTC (operator set parallel 8 -> 2 and router cap 4 -> 2 at 19:56); ~6.6 tok/s relayed, recorded as the engine prints integers", "srv3 strata-pool engine journal"),
+  // srv3 after: parallel 2, cap 2. The 21:40-21:55 window read 15.1; the ad-hoc range across the evening was 13.6-15.8.
+  concurrency_reading("srv3-strata", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 1)), 15, "21:40-21:55 UTC 2026-11-24 (15.1 tok/s; the wider ad-hoc range 13.6-15.8 sits in the read obligation's source, not restated as a figure)", "srv3 strata-pool engine journal"),
+  // ken (host-e2d4b7, the three-T10 Strata engine): the router row's hand cap 4 alone bound it -- the engine was never modeled -- and each stream fell to 1.0 tok/s there.
+  concurrency_reading("ken", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 3)), 1, "before 2026-11-24 20:09 UTC (operator cut the ken router row's cap 4 -> 2 at 20:09)", "ken engine journal via the router host"),
+  concurrency_reading("ken", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 1)), 25, "after 2026-11-24 20:09 UTC (25.7 tok/s relayed; 24.5 in the 21:15-21:30 window -- the integer this row carries is the relayed figure's floor of the two)", "ken engine journal via the router host"),
+  // The pair the addendum prices with: a machine at 4-way against a machine at 1-way.
+  concurrency_reading("srv3-strata", PerMachine, positive_slot_count(count: positive_measure_count(predecessor: 3)), 14, "2026-11-24, before the 19:56 fix (14.5 tok/s per machine at 4-way, relayed)", "srv3 engine /metrics via srv1 ad-hoc scripts"),
+  concurrency_reading("srv4-strata", PerMachine, positive_slot_count(count: positive_measure_count(predecessor: 0)), 11, "2026-11-24 (11.2 tok/s per machine at 1-way, relayed)", "srv4 engine log (its TLS proxy does not expose /metrics -- see the 2026-11-24 observability note)"),
+]
 
 // srv1's cold prefill: the fork's 128k reading, resolved from the module that owns the readings.
 fn fork_cold_prefill_128k() -> Optional<TokensPerSecond> {
@@ -536,6 +795,7 @@ fn srv1_replica_profile_as(
     id: id as NonEmptyStr,
     host: operator_host_srv1,
     engine_kind: LilVllm,
+    gpu_kv_pool: srv1_gpu_kv_pool(),
     model: LilModel {
       served_model: srv1_serving_startup_reading.served_model_name,
       checkpoint: srv1_topology_run.checkpoint,
@@ -662,13 +922,14 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv3-strata",
   host: operator_host_srv3,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
-    flags: Present { value: srv3_strata_flags },
-    flags_standing: Present { value: borrowed(o: "srv3's flags are the benchmark cell's launched flags (strata_ada_pair_cell srv3_strata_flags); re-read from the live unit") },
+    flags: Present { value: srv3_strata_launch_parameters },
+    flags_standing: Present { value: borrowed(o: "srv3's launched parameters are calm-crab-645's, carried by the benchmark cell's parameter row (strata_ada_pair_cell srv3_strata_launch_parameters); the live cfg.json was hand-edited and its parallel 8 -> 2 on 2026-11-24 -- re-read the live unit before quoting the launch") },
   },
-  gpu: map(srv3_grant.devices, d => card_of(d: d)),
+  gpu: map(srv3_grant.devices, d => card_of(d: d, host: operator_host_srv3)),
   parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
   context_window: serving_fleet_context_cap,
   figures: FiguresOnRow {
@@ -688,6 +949,46 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   monthly_cost_standing: Absent,
 }
 
+// THE BINDING-POOL FIXTURE (test support, alongside srv_strata_profile_unread): srv3's profile with its GPU KV
+// pool READ and binding BELOW its 2-turn shape -- a HYPOTHETICAL, because a real srv3 is a Strata card whose pool
+// reports GpuKvPoolNotBinding (it parks idle sessions in host RAM; see strata_gpu_kv_pool). It exists only to prove
+// the pool floor reaches BOTH ends of the admission -- the router row's cap AND the engine's --parallel -- through
+// the ONE shape replica_shaped folds (replica_engine_admission_witness::a_binding_gpu_kv_pool_floors_both_ends_to_the_pool).
+// It is NOT in srv_replica_profiles and no host roster projects it, so nothing renders it; id stays "srv3-strata" so
+// it joins on srv3_layout's real grant exactly as srv3_strata_profile does. pool 150,000 at the 100k policy context
+// floors to 1 conversation, below srv3's throughput turns of 2 -- so without the fold the engine would reserve 2.
+data srv3_strata_profile_binding_kv_pool: ServingReplicaProfile = ServingReplicaProfile {
+  id: "srv3-strata",
+  host: operator_host_srv3,
+  engine_kind: StrataEngine,
+  gpu_kv_pool: GpuKvPoolRead {
+    tokens: token_count(count: 150000),
+    standing: borrowed(o: "fixture: a hypothetical binding GPU KV pool (150,000 tokens -> floor 1 at the 100k policy context); re-read the engine's GPU KV cache size before giving any real card a binding pool"),
+    provenance: "fixture only: a Strata card whose GPU KV pool was READ and binds below its 2-turn shape" as NonEmptyStr,
+  },
+  model: StrataModel {
+    artifact: srv3_iq3_s_artifact,
+    artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
+    flags: Present { value: srv3_strata_launch_parameters },
+    flags_standing: Present { value: borrowed(o: "srv3's launched parameters, as srv3_strata_profile; re-read the live unit before quoting the launch") },
+  },
+  gpu: map(srv3_grant.devices, d => card_of(d: d, host: operator_host_srv3)),
+  parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
+  context_window: serving_fleet_context_cap,
+  figures: FiguresOnRow {
+    context: token_count(count: 100000),
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 26), at_concurrency: 2, standing: borrowed(o: "srv3 engine.log 'strata batch (pipelined, 2 groups)' 26 tok/s at 2-way, 2026-11-08; same reading as srv3_strata_profile") },
+    cold_prefill: Present { value: tokens_per_second(count: 838) },
+    cold_prefill_standing: borrowed(o: "srv3 engine.log cold turns (0 reused, >20k read) median 838 tok/s over 3,496, 2026-11-08"),
+  },
+  warm_ladder: [engine_warm_swap(e: srv3_strata_engine_memory, cost: srv3_strata_snapshot_cost, restore: millisecond(count: 300), standing: borrowed(o: "srv3 engine.log slot restore times 148-296 ms, 2026-11-08"))],
+  grant: serving_replica_grant_for(layout: srv3_layout, deployment: "srv3-strata", group: "strata-pool" as NonEmptyStr),
+  engine_memory: Present { value: srv3_strata_engine_memory },
+  expert_artifact: Present { value: srv3_routed_expert_artifact },
+  monthly_cost: Absent,
+  monthly_cost_standing: Absent,
+}
+
 // srv4's Strata: the same card pair and model as srv3, launched for one turn at a time (its unit is "one
 // turn, checkpoint capable"). Its own engine log is root-only, so its rates are BORROWED from srv3 and say
 // so; its cache bytes and slots are its serving_host_memory row. THE LADDER, HOTTEST FIRST: the engine's own
@@ -701,13 +1002,14 @@ data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv4-strata",
   host: operator_host_srv4,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "BORROWED: srv4 runs the same IQ3_S shards as srv3 and its digest was read THERE; read srv4's own artifact digests before quoting srv4's model as verified"),
     flags: Absent,
     flags_standing: Present { value: borrowed(o: "srv4's launched flags (--batch 8, experts mmap) are described in its serving_host_memory rows and operator notes; read the live unit's ExecStart before quoting flags") },
   },
-  gpu: map(srv4_grant.devices, d => card_of(d: d)),
+  gpu: map(srv4_grant.devices, d => card_of(d: d, host: operator_host_srv4)),
   parallelism: ReplicaAcrossDevices { devices: srv4_grant.devices.length() },
   context_window: serving_fleet_context_cap,
   figures: FiguresOnRow {
@@ -740,13 +1042,14 @@ data srv_strata_profile_unread: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv-strata-unread",
   host: operator_host_srv4,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "same IQ3_S shards as srv3/srv4; the digest was read on srv3"),
     flags: Absent,
     flags_standing: Absent,
   },
-  gpu: map(srv4_grant.devices, d => card_of(d: d)),
+  gpu: map(srv4_grant.devices, d => card_of(d: d, host: operator_host_srv4)),
   parallelism: ReplicaAcrossDevices { devices: srv4_grant.devices.length() },
   context_window: serving_fleet_context_cap,
   // THE UNREAD FIGURES -- the whole point of this row. replica_anchor_named turns this into a throughput-unread
@@ -786,13 +1089,14 @@ fn h11_strata_profile_with_grant(bus: String, launch_grant: ServingRetentionGran
     id: ("h11-strata-" + bus) as NonEmptyStr,
     host: operator_host_6ce85c,
     engine_kind: StrataEngine,
+    gpu_kv_pool: strata_gpu_kv_pool(),
     model: StrataModel {
       artifact: srv3_iq3_s_artifact,
       artifact_standing: borrowed(o: "BORROWED: h11 runs the same IQ3_S shards as srv3 and the digest was read THERE; read h11's own artifact digests before quoting its model as verified"),
       flags: Absent,
       flags_standing: Present { value: borrowed(o: "h11's launched flags (experts mlocked in RAM, one slot) are described in its serving_host_memory rows; read the live units' ExecStart before quoting flags") },
     },
-    gpu: map(card, d => card_of(d: d)),
+    gpu: map(card, d => card_of(d: d, host: operator_host_6ce85c)),
     parallelism: ReplicaOnOneDevice,
     context_window: serving_fleet_context_cap,
     figures: FiguresOnRow {
@@ -827,6 +1131,518 @@ data serving_replica_roster: List<ServingReplicaProfile> =
   concat([srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile],
          map(host_6ce85c_a16_buses, b => h11_strata_profile(bus: b)))
 
+// ── DOES THE LAUNCH PARK WHAT THE ROW CLAIMS WARM? ─────────────────────────
+//
+// WHY THIS EXISTS. A Strata engine holds in place ONLY the conversation it is running; any other
+// conversation it keeps warm lives in the engine's parked-conversation cache, and the one thing that turns
+// that cache on is the launch's `--conversation-cache-mib/--conversation-cache-slots` pair
+// (extdeps.strata.serve_flags, StrataConversationCache). What the omission costs is h11 on 2026-11-24: two
+// engines, each alternating between two conversations, neither hand-written config carrying the pair, both
+// reading every prompt from token 0. The OBSERVATIONS are not carried here in prose: they are the typed
+// receipt `strata_deployed_build_precedes_the_auto_size` below, with their instrument named in its
+// `provenance`, because they are the operator's ad-hoc reads and not instruments of this repository
+// (gunbc.design_argument::epistemic_humility) and an observation of ours is never a fact of the upstream
+// (gunbc.design_argument::external_upstreams). The row CLAIMED warm conversations
+// its launch had never been told to keep, and nothing could see the disagreement because the launch's argv
+// was not modeled at all -- the earliest boundary of that chain is the extdeps flag model, and its
+// recurring_failure_mode row is `a_required_engine_capability_left_to_the_upstream_default`.
+//
+// THE RULE, and the least-general form that covers it: a replica needs to PARK a conversation only BEYOND
+// the slots it answers at once -- a live conversation needs no cache, which is why the pair is legitimately
+// absent for an engine that serves one conversation and is never asked to hold a second. So the answer is
+// DERIVED from the retention grant the host's layout hands the replica
+// (gunbc.serving.serving_capacity_anchor serving_replica_grant_for) against the engine's own slot count, and
+// it refuses only where the model states NO parked capacity anywhere. The two authorities for parked
+// capacity, and there is no third: the launch's typed flags (extdeps, the argv as read) and the engine's
+// memory row (gunbc.serving.serving_host_memory, the same row gunbc.serving.serving_capacity_anchor
+// engine_warm_swap already reads the warm ladder's bytes and slots from).
+//
+// WHAT THIS DOES NOT CLAIM. A row whose flags have never been read from the unit that runs it answers
+// ParkingNeedsReading and NOT a refusal: srv3's typed flags are the benchmark cell's (its own standing says
+// so) and srv4's and h11's have never been read from their units; inventing an argv to force an answer here
+// is the same invented-fact failure this class is about (gunbc.design_argument::fail_closed). And a READ
+// memory row can still vouch for a cache the host has since dropped -- that is a stale read, the next rung,
+// whose trigger the recurring_failure_mode row names (the launch row reads back the argv it rendered).
+
+// WHAT OUR HOSTS RUN, HELD HERE AND NOT IN THE UPSTREAM MODULE.
+// (gunbc.design_argument::external_upstreams: "observations this repository makes are receipts in the
+// observing layer, never facts of the upstream"; "a missing observation is a downstream coverage
+// obligation, never an `Unobserved` property inside the upstream module".) What Strata documents at its own
+// tags stays in extdeps.strata.serve_flags; WHICH BUILD A FLEET HOST RUNS, and what was seen on it while the
+// pair was missing, is ours. The shape follows gunbc.serving.serving_host_memory::ServingMemoryReading: a
+// figure beside the `provenance` that names the read. Before 2026-11-26 the host, the build and the
+// operator's report sat in the upstream module as a standing (review 99034).
+type StrataDeployedBuildObservation {
+  host: NonEmptyStr
+  build: NonEmptyStr
+  // Whether the build predates the upstream release that auto-sizes an absent budget (Strata 0.2.3, its PR
+  // #3493). Where that is true the absence has to be carried by the launch row: the build will not carry it.
+  precedes_auto_size: Bool
+  provenance: NonEmptyStr
+}
+
+data strata_deployed_build_precedes_the_auto_size: StrataDeployedBuildObservation = StrataDeployedBuildObservation {
+  host: "h11 (H11SSL, 2x R9700)" as NonEmptyStr,
+  build: "Strata 0.1.38, HIP build" as NonEmptyStr,
+  precedes_auto_size: true,
+  provenance: "the operator's 2026-11-24 report: h11-strata@83 and h11-strata@c3 ran from ~/strata-pool/cfg-83.json and cfg-c3.json with NEITHER cache flag, each holding only its live conversation, so every other conversation re-read its prompt cold; both engines were 0% prompt-cache warm in the 21:15 UTC window and 98.4% (h11-83) and 94.0% (h11-03/c3) in the 21:40-21:55 window after --conversation-cache-mib 8192 --conversation-cache-slots 4 was added by hand and the units restarted at 21:35/21:39 UTC, each then reusing 96-99% of each prompt while alternating between two conversations. Those are the operator's session's AD-HOC READS, not an instrument of this repository (gunbc.design_argument::epistemic_humility), and the host-side record of the edits themselves is Part A's, not this row's" as NonEmptyStr,
+}
+
+// WHAT IS OWED BEFORE A PARKING POLICY CAN BE AGREED, composed from the standings this repository declares
+// and the fleet receipt above. It matches its ARGUMENTS, so both arms of both matches are reachable -- review
+// 98992 retired the version that matched a module-level constant, where three of four branches could never
+// run -- and every fleet fact it names arrives through `deployed`, which keeps it on this side of the
+// extdeps line (gunbc.design_argument::external_upstreams).
+fn strata_parking_read_obligation(
+  unset_standing: CitedFigureStanding,
+  pre_release_standing: CitedFigureStanding,
+  deployed: StrataDeployedBuildObservation,
+) -> NonEmptyStr {
+  // Two arms, both reachable, and the second says nothing that a receipt would not also support: the
+  // standing coproduct has a third arm (`ObservedByReceipt`) whose constructor this module may not call
+  // (`extdeps.external_authority::observed_receipt` is `admit_callers`-gated), so writing it as an arm here
+  // would be a branch no input of this module can reach -- the thing a witness could never make go red
+  // (gunbc.design_argument::fail_closed). The wildcard's wording is therefore true of a citation AND of a
+  // receipt: the answer travels with the standing, and nothing is assumed past it.
+  let cited_clause = match unset_standing {
+    TranscribedUncited { read_obligation: o } =>
+      "for the release this module cites, the answer is not cited and the open read is: " + o
+    _ =>
+      "for the release this module cites, the answer it holds travels with the standing and nothing may be assumed beyond it"
+  }
+  let pre_clause = match pre_release_standing {
+    TranscribedUncited { read_obligation: o } =>
+      "and for the releases before the auto-sizing landed -- " + deployed.build + " on " + deployed.host
+        + (if deployed.precedes_auto_size { " is one of them" } else { " is not known to be one of them" })
+        + " -- the open read is: " + o
+    _ =>
+      "and the releases before the auto-sizing landed are answered by what their standing carries, so they need no further reading from this repository"
+  }
+  (("read the launch's argv, and on what grounds its author left the pair out: " + cited_clause + "; "
+    + pre_clause + ". Until that read exists no verdict may be computed from a memory row, which describes"
+    + " the tier the host could offer and not the launch that was started") as NonEmptyStr)
+}
+
+// THE VERDICTS, EVERY FIGURE IN A FIELD.
+// (gunbc.design_argument::source_annotations: "An invariant, receipt, event, ruling, citation, status,
+// count or dissolution condition belongs in a typed carrier.") What a consumer must ACT on -- how many
+// conversations the grant holds, how many are live, how many could only be warm by being parked, what the
+// launch itself stated, whether another row stated a parked figure, and whether the live slot count is an
+// estimate -- are fields. No arm carries a sentence, and no decision is made by parsing one: the prose
+// exists only at the presentation edge, in strata_parking_agreement_sentence below. Until 2026-11-26 these
+// verdicts were filled by string concatenation and the figures lived inside the English (review 99034).
+type ParkingNeedsReadingCause
+  // Nobody has read the launch, so the model does not know whether the pair is in it. `beyond` is Absent
+  // exactly when the live slot count is unread too, and `why` is the row's own account of what has not been
+  // read. THE LAUNCH WAS READ AND NAMED NEITHER FLAG IS NOT HERE: that is
+  // `ParkedConversationsLeftToTheBuild`, which carries these same fields -- the argv has been read, so
+  // nothing about it needs reading, and what is owed is a launch line, not a read. Carrying that case here
+  // too was a second constructor for one meaning, unreachable because the judgement already sent it
+  // elsewhere (review 99122; gunbc.design_argument::single_authority, ::consumption).
+  = LaunchNeverRead {
+      held: Nat,
+      beyond: Optional<Nat>,
+      stated_parked_by_a_row: Optional<Nat>,
+      estimate_is_inflated: Bool,
+      why: NonEmptyStr,
+    }
+  // This replica is not a Strata launch, so the pair this agreement judges does not exist for it.
+  | NotAStrataLaunch { }
+  // The layout admits nothing to this replica (no grant, or a refusal), so there is no held count to reason
+  // from; `why` is that row's own account.
+  | GrantUnstated { why: NonEmptyStr }
+  // The capacity shape refuses the replica or derives zero turns, so its admitted concurrency -- and with it
+  // what could need parking -- has no subject yet.
+  | LiveSlotsUnstated { why: NonEmptyStr }
+
+type StrataParkingAgreement
+  // Nothing to explain: no conversation is held beyond the engine's live slots, or the launch stated a
+  // parked capacity that reaches them. `parked` is the most the model says may be parked at once (0 where
+  // none is needed and none is stated).
+  = ParkedConversationsAgreed { parked: Nat }
+  // Conversations are held beyond the live slots and the launch EXPLICITLY parks none: a policy someone
+  // chose, but chosen against what this row claims to hold warm. `reason` is the author's own grounds.
+  | ParkedConversationsRefusedByTheLaunch {
+      held: Nat,
+      live: Nat,
+      beyond: Nat,
+      reason: NonEmptyStr,
+      estimate_is_inflated: Bool,
+    }
+  // The same shape with the launch saying NOTHING: neither flag is in its read argv, so this build's default
+  // decides whether anything parks. This is the fail-open default -- an omission reading as a policy -- and
+  // the state the h11 configs were in. A memory row's figure may travel with it, as evidence only.
+  | ParkedConversationsLeftToTheBuild {
+      held: Nat,
+      live: Nat,
+      beyond: Nat,
+      stated_parked_by_a_row: Optional<Nat>,
+      estimate_is_inflated: Bool,
+    }
+  // The launch names a budget and slots, and they are NOT enough slots for the conversations the grant
+  // holds beyond the live slots. `parked` is the most the launch says may be parked and `beyond` is how many
+  // need to be, so the shortfall is a number rather than a softened agreement: an undersized cache is the
+  // same failure as a missing one, only quieter. `estimate_is_inflated` says whether the shortfall was
+  // measured off an estimated slot count, which changes what closing it would take.
+  | ParkedConversationsShortOfTheGrant {
+      parked: Nat,
+      beyond: Nat,
+      held: Nat,
+      live: Nat,
+      estimate_is_inflated: Bool,
+    }
+  // Nothing may be agreed and something specific is owed, and the CAUSE names which way the record falls
+  // short. THE TWO SILENCES ARE TYPED APART ACROSS THIS TYPE: "the argv names neither flag" is the LAUNCH's
+  // omission and lands on `ParkedConversationsLeftToTheBuild` -- the argv was read, so nothing about it needs
+  // reading, and what is owed is a line in the launch -- while "nobody looked at the argv" is THIS
+  // REPOSITORY'S and lands here, owed a read. Every cause is fed its discriminating input by
+  // test.claim.serving.strata_conversation_cache_parking_witness.
+  | ParkingNeedsReading { cause: ParkingNeedsReadingCause }
+
+// THE PRESENTATION EDGE: the only place a verdict becomes a sentence, and the only place that prose exists.
+// Every figure it names comes off a field of the verdict it is given.
+fn strata_parking_agreement_sentence(agreement: StrataParkingAgreement) -> String {
+  match agreement {
+    ParkedConversationsAgreed { parked: n } =>
+      "the launch agrees to park up to " + to_string(n) + " conversation(s) beside its live one"
+    ParkedConversationsRefusedByTheLaunch { held: h, live: l, beyond: b, reason: r, estimate_is_inflated: e } =>
+      parking_beyond_live_slots_sentence(held: h, live: l, beyond: b, policy: "the engine parks nothing (--conversation-cache-mib 0), chosen because: " + r)
+        + parking_estimate_note(estimate_is_inflated: e)
+    ParkedConversationsLeftToTheBuild { held: h, live: l, beyond: b, stated_parked_by_a_row: row, estimate_is_inflated: e } =>
+      parking_beyond_live_slots_sentence(
+        held: h, live: l, beyond: b,
+        policy: "neither --conversation-cache-mib nor --conversation-cache-slots is in its argv",
+      ) + parking_row_evidence(stated_parked_by_a_row: row) + " "
+        + strata_parking_fleet_read_obligation() + parking_estimate_note(estimate_is_inflated: e)
+    ParkedConversationsShortOfTheGrant { parked: n, beyond: b, held: h, live: l, estimate_is_inflated: e } =>
+      parking_short_of_grant_sentence(
+        held: h, live: l, beyond: b, parked: n,
+        source: "this launch's own --conversation-cache-slots " + to_string(n),
+      ) + parking_estimate_note(estimate_is_inflated: e)
+    ParkingNeedsReading { cause: LaunchNeverRead { held: h, beyond: b, stated_parked_by_a_row: row, estimate_is_inflated: e, why: w } } =>
+      ("the layout grants this replica " + to_string(h) + " conversations warm")
+        + (match b {
+            Present { value: v } => (", of which " + to_string(v) + " can only be warm by being parked") as String
+            Absent => (", and how many of them can only be warm by being parked is unknown, because the live" +
+              " slot count sits in the same unread launch") as String
+          })
+        + parking_row_evidence(stated_parked_by_a_row: row)
+        + "; this launch has never been read (" + w + "). Read the unit's ExecStart -- "
+        + strata_parking_fleet_read_obligation() + parking_estimate_note(estimate_is_inflated: e)
+    ParkingNeedsReading { cause: NotAStrataLaunch { } } =>
+      "not a Strata launch: this replica's warm state is LMCache's tiers, owned by gunbc.serving.srv1_serving_launch, and the parked-conversation flag pair this agreement judges is Strata's"
+    ParkingNeedsReading { cause: GrantUnstated { why: w } } => w
+    ParkingNeedsReading { cause: LiveSlotsUnstated { why: w } } => w
+  }
+}
+
+// The clause both launch-side findings share, so they state the same fact about what the grant holds and
+// differ only in what the launch said. Called ONLY by the presentation edge above.
+fn parking_beyond_live_slots_sentence(held: Nat, live: Nat, beyond: Nat, policy: String) -> String {
+  (("the layout grants this replica " + to_string(held)) +
+    " conversations warm on an engine running " + to_string(live) +
+    " slots at once, so " + to_string(beyond) +
+    " could only be warm by being parked -- and this launch says: " + policy) as String
+}
+
+// The shortfall's sentence: what the grant holds, how many need parking, the most that may be parked, and
+// WHERE that figure came from. Called ONLY by the presentation edge.
+fn parking_short_of_grant_sentence(held: Nat, live: Nat, beyond: Nat, parked: Nat, source: String) -> String {
+  (("the layout grants this replica " + to_string(held)) +
+    " conversations warm on an engine running " + to_string(live) +
+    " slots at once, so " + to_string(beyond) + " can only be warm by being parked, but the most any row of" +
+    " the model says may be parked is " + to_string(parked) + " -- from " + source) as String
+}
+
+// Another row's parked figure, stated AS EVIDENCE and never as authority -- the sentence the class exists to
+// keep out of a verdict. Called ONLY by the presentation edge.
+fn parking_row_evidence(stated_parked_by_a_row: Optional<Nat>) -> String {
+  match stated_parked_by_a_row {
+    Present { value: n } =>
+      ("; the model's memory row for this engine states " + to_string(n) +
+        " parked slots, which is evidence for what to read, not a policy this launch chose -- a row read on" +
+        " another bus is the weakest authority in the model (see the recurring-failure row it is named in)") as String
+    Absent => "" as String
+  }
+}
+
+// Whether the live slot count this verdict stands on is an estimate, said in one place. Called ONLY by the
+// presentation edge.
+fn parking_estimate_note(estimate_is_inflated: Bool) -> String {
+  if estimate_is_inflated {
+    "; its live slot count is ESTIMATED (this replica's capacity shape is an estimate, not a derivation), so" +
+      " everything this verdict concludes is as good as that estimate"
+  } else {
+    ""
+  }
+}
+
+// The obligation this repository's own fleet owes, composed from the standings it declares and its receipt of
+// what those hosts run. A consumer holding a different build calls strata_parking_read_obligation with its
+// own standings and its own receipt; nothing below matches a constant.
+fn strata_parking_fleet_read_obligation() -> NonEmptyStr {
+  strata_parking_read_obligation(
+    unset_standing: strata_conversation_cache_unset_standing,
+    pre_release_standing: strata_conversation_cache_unset_standing_pre_0_2_3,
+    deployed: strata_deployed_build_precedes_the_auto_size,
+  )
+}
+
+// What SOME ROW of the model states may be parked at once: the launch's typed parameters when they name a
+// budget, else the engine's memory row. This is EVIDENCE, not authority -- the agreement below carries a
+// figure from here inside a verdict as `stated_parked_by_a_row`, never as the reason to agree, because the
+// memory row is a capacity read off a bus, and the h11 misconfiguration stayed invisible exactly while such a
+// row stood in for what the launch itself named (recurring-failure row
+// `a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build`). Absent when neither
+// states it -- an absent figure, never zero, because "no row states it" and "it holds nothing" are different
+// facts. THE PARAMETER ROW, NOT A FLAG STRUCT: `StrataLaunchParameters` is what a profile carries; the live
+// slot count is not in it on purpose and comes from the launch record below.
+fn replica_parked_conversations(
+  parameters: Optional<StrataLaunchParameters>,
+  engine_memory: Optional<ServingEngineMemory>,
+) -> Optional<Nat> {
+  let from_memory = match engine_memory {
+    Absent => Absent
+    Present { value: m } => m.conversation_slots
+  }
+  match parameters {
+    // No parameter row at all: the only figure the model holds is the memory row's, and it is evidence.
+    Absent => from_memory
+    Present { value: p } =>
+      match p.conversation_cache {
+        // An explicit budget speaks for itself; the memory row does not get to overrule a launch.
+        Present { value: StrataConversationCacheBudget { budget: _, slots: k } } =>
+          Present { value: positive_slot_count_value(slots: k) }
+        // An explicit off states NO parked capacity even beside a memory row saying otherwise; the
+        // disagreement is what the refusal below names.
+        Present { value: StrataConversationCacheOff { reason: _ } } => Absent
+        // Read, and silent: the launch states nothing, so the only figure the model holds is the memory
+        // row's -- and it is EVIDENCE, carried into the verdict's `stated_parked_by_a_row` and never the
+        // reason a verdict agrees.
+        Present { value: StrataConversationCacheUnset { detail: _ } } => from_memory
+        // Never read: same -- the row states nothing about the launch, and what a bus was read to hold
+        // travels with the ask so the reader knows what the model has.
+        Absent => from_memory
+      }
+  }
+}
+
+// THE AGREEMENT. Grant first, because it is what the host's layout admits this replica to hold warm; then the
+// LAUNCH RECORD that `replica_engine_launch` derived -- its parameters and the live slot count the capacity
+// shape admitted, from one authority rather than two flag structs; then what the launch NAMED. Only a named
+// budget can be agreed, and it is agreed only when it reaches the conversations the grant holds beyond those
+// slots; an explicit off is a refusal with its reason; silence -- whether the argv named nothing, or was never
+// read at all -- is an ask, and any figure another row states travels inside that ask as evidence. The refusal
+// fires exactly where conversations are held beyond the live slots AND nothing in the model says any of them
+// may be parked.
+
+// Whether the ask can be skipped because NOTHING can need parking: exactly, where the live slots are known, or
+// against the documented floor where they are not -- a grant the floor already covers keeps nothing beyond its
+// own slots whatever the argv says. The bound is used ONLY to conclude that nothing is needed, never to
+// conclude that some capacity stated elsewhere is enough; that substitution is the defect this agreement
+// exists to refuse (gunbc.design_argument::fail_closed).
+fn parking_ask_agreement(
+  held: Nat,
+  beyond: Optional<Nat>,
+  stated_parked_by_a_row: Optional<Nat>,
+  estimate_is_inflated: Bool,
+  why: String,
+) -> StrataParkingAgreement {
+  let nothing_to_park = match beyond {
+    Present { value: b } => b == 0
+    Absent => nat_to_int(n: held) <= strata_parallel_minimum_slots()
+  }
+  if nothing_to_park {
+    ParkedConversationsAgreed { parked: 0 }
+  } else {
+    ParkingNeedsReading {
+      cause: LaunchNeverRead {
+        held: held,
+        beyond: beyond,
+        stated_parked_by_a_row: stated_parked_by_a_row,
+        estimate_is_inflated: estimate_is_inflated,
+        why: why as NonEmptyStr,
+      },
+    }
+  }
+}
+
+// THE JUDGEMENT FOR A LAUNCH THAT HAS A RECORD: the parameters it names and the live slot count its capacity
+// shape admitted, BOTH from `replica_engine_launch` -- the one route from a profile's parameters to a launchable
+// Strata record -- so there is no second flags struct beside the row that runs
+// (gunbc.design_argument::single_authority). `estimated` marks the case where the admitted concurrency itself is
+// an estimate: the verdict then carries it as a field, rather than quoting a derived number that was never
+// derived.
+fn parking_judgement_for_launch(
+  held: Nat,
+  parameters: StrataLaunchParameters,
+  live: Nat,
+  estimated: Bool,
+  engine_memory: Optional<ServingEngineMemory>,
+) -> StrataParkingAgreement {
+  // Beyond the live slots: the conversations that can only be warm by being parked.
+  let beyond = if held > live { held - live } else { 0 }
+  let stated = replica_parked_conversations(
+    parameters: Present { value: parameters },
+    engine_memory: engine_memory,
+  )
+  match parameters.conversation_cache {
+    Present { value: StrataConversationCacheBudget { budget: _, slots: k } } =>
+      let named = positive_slot_count_value(slots: k)
+      if named >= beyond {
+        ParkedConversationsAgreed { parked: named }
+      } else {
+        ParkedConversationsShortOfTheGrant {
+          parked: named,
+          beyond: beyond,
+          held: held,
+          live: live,
+          estimate_is_inflated: estimated,
+        }
+      }
+    Present { value: StrataConversationCacheOff { reason: r } } =>
+      if beyond > 0 {
+        ParkedConversationsRefusedByTheLaunch {
+          held: held,
+          live: live,
+          beyond: beyond,
+          reason: r,
+          estimate_is_inflated: estimated,
+        }
+      } else {
+        ParkedConversationsAgreed { parked: 0 }
+      }
+    // READ IS NOT SILENCE, and the arms say which is which. The argv WAS read and the pair is not in it:
+    // that is not "no opinion somewhere else", it is the build's default deciding a policy the launch had to
+    // state -- the fail-open default this class exists to refuse. No figure from another row turns it into an
+    // agreement: the memory row's slot count travels as `stated_parked_by_a_row`, evidence for what to go and
+    // read, and the standings are read only when the verdict is rendered.
+    Present { value: StrataConversationCacheUnset { detail: _ } } =>
+      if beyond > 0 {
+        ParkedConversationsLeftToTheBuild {
+          held: held,
+          live: live,
+          beyond: beyond,
+          stated_parked_by_a_row: stated,
+          estimate_is_inflated: estimated,
+        }
+      } else {
+        ParkedConversationsAgreed { parked: 0 }
+      }
+    // An argv nobody has read is not a launch that declined to state a policy: the pair may be in it, and
+    // refusing it for something it was never read for would be the invented-fact failure in the other
+    // direction. So this arm asks, with the same evidence-only treatment of any figure another row states.
+    Absent => parking_ask_agreement(
+      held: held,
+      beyond: Present { value: beyond },
+      stated_parked_by_a_row: stated,
+      estimate_is_inflated: estimated,
+      why: "the launch record carries no read transcription of this engine's cache flags",
+    )
+  }
+}
+
+fn strata_launch_parking_agreement(
+  model: ReplicaModel,
+  launch: ReplicaEngineLaunch,
+  grant: ServingRetentionGrant,
+  engine_memory: Optional<ServingEngineMemory>,
+) -> StrataParkingAgreement {
+  // The MODEL is consulted for SCOPE only -- whether this replica is a Strata launch at all. Everything the
+  // verdict says about the launch (its parameters, its parked policy, its live slot count) is read from the
+  // RECORD `replica_engine_launch` derived: the parameters a profile carries hold no slot count on purpose, so
+  // a second flags struct beside the derived record would be a second place to be wrong about one launch
+  // (gunbc.design_argument::single_authority, ::minimize_redundancy).
+  match model {
+    LilModel { } => ParkingNeedsReading { cause: NotAStrataLaunch { } }
+    StrataModel { artifact: _, artifact_standing: _, flags: _, flags_standing: _ } =>
+      match grant {
+        GrantUnmodeled { obligation: o } => ParkingNeedsReading { cause: GrantUnstated { why: o } }
+        GrantRefused { reason: r } => ParkingNeedsReading { cause: GrantUnstated { why: r } }
+        GrantAdmits { conversations: held } =>
+          match launch {
+            // THE LAUNCH HAS NEVER BEEN READ -- neither its parameters nor, with them, the cache pair nor the
+            // live slot count. The answer is the ask, and a capacity stated by another row travels inside it as
+            // evidence -- never as authority to agree. That substitution is the defect this class was filed
+            // for: while a memory row (read on another bus -- see the recurring-failure row
+            // `a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build`) stood in for
+            // the launch's own words, the h11 misconfiguration read as agreed.
+            EngineLaunchRefused { deployment: _, reason: LaunchParametersUnread { obligation: o } } =>
+              parking_ask_agreement(
+                held: held,
+                beyond: Absent,
+                stated_parked_by_a_row: replica_parked_conversations(parameters: Absent, engine_memory: engine_memory),
+                estimate_is_inflated: false,
+                why: o,
+              )
+            // The parameters are read but the ADMITTED concurrency is not derivable, so the live slot count --
+            // and with it what must be parked -- is unknown. Nothing is concluded about the cache here: the
+            // shape is the thing to resolve, and saying so is the located answer.
+            EngineLaunchRefused { deployment: _, reason: LaunchShapeRefused { reason: r } } =>
+              ParkingNeedsReading {
+                cause: LiveSlotsUnstated {
+                  why: ("the replica's capacity shape refuses it (" + r +
+                    "), so its admitted concurrency -- and with it how many of its conversations could only be" +
+                    " warm by being parked -- is unmodeled; resolve the shape before asking what this launch" +
+                    " parks") as NonEmptyStr,
+                },
+              }
+            EngineLaunchRefused { deployment: _, reason: LaunchTurnsZero } =>
+              ParkingNeedsReading {
+                cause: LiveSlotsUnstated {
+                  why: "the replica's capacity shape derives zero conversation turns, so it admits no live slot" +
+                    " and the parked-conversation question has no subject yet; resolve the shape (or the policy" +
+                    " behind its rate floor) before asking what this launch parks" as NonEmptyStr,
+                },
+              }
+            EngineLaunchDerived { flags: fl, slots: s } => parking_judgement_for_launch(
+              held: held,
+              parameters: fl.launch,
+              live: positive_slot_count_value(slots: s),
+              estimated: false,
+              engine_memory: engine_memory,
+            )
+            EngineLaunchEstimated { flags: fl, slots: s, standings: _ } => parking_judgement_for_launch(
+              held: held,
+              parameters: fl.launch,
+              live: positive_slot_count_value(slots: s),
+              estimated: true,
+              engine_memory: engine_memory,
+            )
+          }
+      }
+  }
+}
+
+// THE JOIN A CONSUMER CALLS: the layout that admits, the group the replica sits in, and the replica row --
+// and ONE answer. Reading the replica's own grant row instead (or projecting it from the layout a second
+// time) would be two owners of one number, which is the same defect one seam later; the layout is the
+// authority and the row's own figure is not consulted (gunbc.design_argument::single_authority).
+fn replica_parking_agreement(
+  p: ServingReplicaProfile,
+  layout: ServingLayoutResult,
+  group: NonEmptyStr,
+) -> StrataParkingAgreement {
+  strata_launch_parking_agreement(
+    model: p.model,
+    launch: replica_engine_launch(p: p, layout: layout, group: group),
+    grant: serving_replica_grant_for(layout: layout, deployment: p.id as String, group: group),
+    engine_memory: p.engine_memory,
+  )
+}
+
+// Does this agreement say the launch leaves a required capability to the engine's BUILD? A consumer about
+// to launch, or a witness pinning the misconfiguration, asks this one question: the argv was read, it names
+// neither flag, and conversations are held beyond the live slots.
+fn parking_is_left_to_the_build(a: StrataParkingAgreement) -> Bool {
+  match a {
+    ParkedConversationsLeftToTheBuild {
+      held: _, live: _, beyond: _, stated_parked_by_a_row: _, estimate_is_inflated: _,
+    } => true
+    _ => false
+  }
+}
+
 // ── THE SHAPE WRAPPERS THE ROUTER CALLS (moved with the rows) ──────────────────────────────────────
 //
 // router_dev_policy projects each joined replica onto its capacity shape through these names -- they stood
@@ -834,9 +1650,8 @@ data serving_replica_roster: List<ServingReplicaProfile> =
 // answers with. A joined deployment carries its own name (the join names replicas as they come up), so the
 // wrappers pass that name; every other figure on the shape comes from the row.
 
-fn srv1_vllm_replica_shape(deployment: String) -> ServingCapacityShape {
-  replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: deployment)
-}
+// (srv1_vllm_replica_shape is GONE: it read replica 0's profile for BOTH srv1 rows, so a reading taken on
+// the Workstation board could never reach its own row. The router asks replica_shape_named of each row.)
 
 // The anchors the witness inspects directly (their warm ladders, their grants). A row answers with its
 // anchor; these are those answers, named as they were when they stood in serving_capacity_anchor.
@@ -920,9 +1735,14 @@ fn agreed_match() -> ReplicaRunIdentityMatch {
 // about to be compared against, which would make the check vacuous. srv1's comes from the container's report
 // of what it loaded (gunbc.host.srv1_serving_startup_receipt: the digest it resolves to, the revision and
 // quantization it reported LOADING, the KV dtype it printed) plus the launch contract's profile and hardware
-// names and the cards' cap. A Strata replica's comes from nothing today: srv3/srv4/h11 never had their power
-// caps or P2P wiring read, so it is Absent, and a coordinate-resolved reading for such a host refuses rather
-// than go unchecked.
+// names and the cards' cap. A Strata replica's is Absent, and for TWO different reasons that must not be
+// collapsed: srv3 and srv4 have had their cards' power caps read (the operator's hand-applied mechanisms of
+// 2026-11-24, now carried on each card row through card_of), but nothing else a run identity needs has been
+// read there -- not the artifact digest on that host, not the checkpoint revision, not the P2P wiring -- while
+// on h11 the R9700 carries no cap mechanism at all yet, its clock ceiling waiting on the amdgpu OverDrive bit
+// (gunbc.integration_concern::amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs). Either way a coordinate-resolved reading for such a host
+// refuses rather than go unchecked; the difference matters to whoever goes to read, because it says which fields
+// are still missing on which host.
 fn replica_run_identity(p: ServingReplicaProfile) -> Optional<ReplicaRunIdentity> {
   match p.model {
     LilModel {
@@ -1136,12 +1956,18 @@ fn rung_bytes(rung: ServingArtifactRung) -> Optional<ByteSize> {
 fn rung_mechanism(holds: ServingArtifactHold, realizes: NonEmptyStr) -> NonEmptyStr {
   match holds {
     ArtifactHeldPinned { mechanism: mechanism } => mechanism,
-    ArtifactHeldEvictable { bound_by: bound_by, floor: floor } =>
+    ArtifactHeldEvictable { bound_by: bound_by, floor: floor, occupies: occupies } =>
       match floor {
         // An evictable rung with no floor read is a rung the host may take ALL of: the bound is the mechanism
         // and the floor is what nobody has read, so the text says the bound and the charge reads it unread.
         ServingMemoryUnread { reason: reason } => bound_by,
-        _ => concat(bound_by, " (reclaimable down to its stated floor)" as NonEmptyStr) as NonEmptyStr,
+        _ => match occupies {
+          // The mechanism sentence carries BOTH figures of the hold, because they answer different questions and a
+          // reader who sees only the floor will lend the difference to a neighbour that cannot spend it (the srv4
+          // conversation cache). What survives reclaim and what the shared cap must leave the tier are said together.
+          ServingMemoryUnread { reason: _ } => concat(bound_by, " (reclaimable down to its stated floor; its occupancy under that cap is unread)" as NonEmptyStr) as NonEmptyStr,
+          _ => concat(bound_by, " (reclaimable down to its stated floor; the budget leaves it its stated occupancy under that cap)" as NonEmptyStr) as NonEmptyStr,
+        },
       },
   }
 }

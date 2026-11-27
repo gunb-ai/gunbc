@@ -1,0 +1,241 @@
+module test.claim.fleet.cpu_freq_cap_boot_state_witness
+
+// WITNESSES ON THE CPU FREQUENCY CEILINGS THE OPERATOR APPLIED ON 2026-11-24, now read on four hosts.
+//
+// What could go wrong with this record, and what each test below refuses:
+//   - a standing being written that no read supports: the rows were once CeilingStandingUnsaid on the strength of
+//     two conflicting relays, and the operator's final-state pass of 22:03-22:05 UTC read each host directly --
+//     is-enabled, is-active, and scaling_max_freq on every policy. THIS file holds the line in both directions:
+//     a ceiling may not be called current on a relay, and an applied figure may not be written off on one either;
+//     what moves a row is a read, and the reads that landed are pinned by digest and instrument here;
+//   - the figure standing now being invented in either direction -- the one place in this change where a
+//     plausible number would do more damage than an unread one;
+//   - a ceiling recorded as a "cap" that is not actually below the clock the installed part is catalogued to
+//     sustain, or a read-back that quietly stopped matching the part's core count -- or an outside read wearing
+//     the script's own read-back like a coat;
+//   - a file hash quoted with its middle elided being promoted to a read value, and a RENDER drifting from what
+//     the hosts hashed: the unit is emitted by extdeps.systemd.unit_file and the script is transcribed, and the
+//     digest folds below are what make both claims checkable rather than claimed.
+// The applied figures come from the operator's own hand read on 2026-11-24 (their words are
+// gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24), the digests and current figure
+// from their final-state ssh pass of 22:03-22:05 UTC, and the part's numbers from extdeps.cpu.ampere; nothing in
+// this file was read from a host -- every host value below is a read CARRIED by a row, tested against the bytes
+// this model emits.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { string_contains }
+import std.optional { Absent, Present, optional_is_absent }
+import std.measure { hertz, hertz_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import gunbc.fleet.fleet_host_identity {
+  HostIdentity, operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.fleet.gpu_power_cap_boot_state {
+  CapUnitDigestMarkedOnly, CapUnitDigestRead, declared_path_host_hash_read,
+}
+import gunbc.fleet.cpu_freq_cap_boot_state {
+  CeilingStands, CeilingStandingUnsaid, CeilingSuperseded, CpuFreqCapMechanism, EveryCoreSeenAtCeiling,
+  EveryPolicySeenAtCeilingByOutsideRead, FigureStated, FigureUnread, ReadBackNotReported, SomeCoresMissedAtCeiling,
+  ceiling_sits_below_the_parts_nominal_clock, cpu_freq_cap_script_sha256, cpu_freq_cap_unit_sha256,
+  cpu_freq_cap_files_are_one_file_below, cpu_freq_cap_relay_history, cpu_freq_cap_row_frontier,
+  CpuFreqCapStanding, cpu_freq_cap_mechanisms, cpu_freq_cap_standing_discharge_read, cpu_freq_cap_standing_reports,
+  cpu_freq_cap_applied_on, cpu_freq_ceiling_standing_read,
+  srv1_cpu_freq_cap, srv2_cpu_freq_cap, srv3_cpu_freq_cap, srv4_cpu_freq_cap,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FOUR HOSTS, ONE CEILING, ALL READ HOLDING. The operator applied 2.0 GHz on 2026-11-24 and their final-state
+// pass found it in force: enabled, active, scaling_max_freq 2000000 on all 128 policies, on srv1, srv2, srv3 and
+// srv4 -- the fourth is the point of the count, because the record began with two hosts and grew only as reads
+// landed. Every row is CeilingStands now, so the consumers that were blocked -- gunbc.fleet.fleet_work_energy_cost
+// refusing to attribute srv3's and srv4's draw to their power state on the ceiling gap -- see the gap close
+// because a read closed it, and the discharge fn answers Absent on every row. If anyone re-opens a row to a
+// contest, this reds at the arm, and the two claims below on the unsaid machinery say why that would be about a
+// read that has not landed, not about forgetting a field.
+test fn every_recorded_host_is_read_holding_under_one_ceiling() -> Bool {
+  cpu_freq_cap_mechanisms.length() == 4
+    && cpu_freq_cap_mechanisms.all(m =>
+      hertz_count(h: m.ceiling) == 2000000000
+        && m.persists_across_boot
+        && (cpu_freq_cap_applied_on(m: m) as String) == "2026-11-24"
+        && match m.standing {
+          CeilingStands { applied_on } => (applied_on as String) == "2026-11-24"
+          CeilingStandingUnsaid {
+            applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _,
+          } => false
+          CeilingSuperseded {
+            applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _,
+          } => false
+        }
+        && optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: m))
+        && optional_is_absent(opt: cpu_freq_cap_row_frontier(m: m)))
+    && match srv1_cpu_freq_cap.standing {
+      CeilingStands { applied_on: _ } => true
+      CeilingStandingUnsaid { applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _ } => false
+      CeilingSuperseded { applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _ } => false
+    }
+}
+
+// THE UNSAID ARM STILL REFUSES BOTH DIRECTIONS, tested where it can still be reached: a fixture. The roster no
+// longer needs the arm, and a machine nobody can reach is a machine nobody can trust -- so a row that withholds
+// an answer still has to refuse to answer, carry the relays, and name the one read that closes it. If someone
+// "fixes" the arm by writing a figure into it, these fixtures go red.
+test fn the_unsaid_arm_still_refuses_to_say_and_names_its_discharge() -> Bool {
+  let unsaid_fixture = fixture_mechanism(
+    host: operator_host_srv3,
+    standing: CeilingStandingUnsaid {
+      applied_on: "fixture applied 2026-11-24" as NonEmptyStr,
+      unsaid_because: "fixture, not a reading" as NonEmptyStr,
+      competing_reports: cpu_freq_cap_standing_reports,
+      figure_standing_today: FigureUnread { what_would_discharge_it: cpu_freq_ceiling_standing_read },
+    },
+  )
+  let stated_replacement_fixture = fixture_mechanism(
+    host: operator_host_srv3,
+    standing: CeilingSuperseded {
+      applied_on: "fixture superseded 2026-11-24" as NonEmptyStr,
+      superseded_on: "fixture, not a reading" as NonEmptyStr,
+      superseded_by: "fixture, not a reading" as NonEmptyStr,
+      figure_standing_today: FigureStated { ceiling: hertz(count: 3000000000) },
+      why: "fixture, not a reading" as NonEmptyStr,
+    },
+  )
+  match unsaid_fixture.standing {
+    CeilingStandingUnsaid { applied_on, unsaid_because: _, competing_reports, figure_standing_today } =>
+      (applied_on as String) == "fixture applied 2026-11-24"
+        && competing_reports.length() == 2
+        && match figure_standing_today {
+          FigureUnread { what_would_discharge_it } =>
+            (what_would_discharge_it as String) == (cpu_freq_ceiling_standing_read as String)
+          FigureStated { ceiling: _ } => false
+        }
+    CeilingStands { applied_on: _ } => false
+    CeilingSuperseded {
+      applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _,
+    } => false
+  }
+    && (cpu_freq_cap_applied_on(m: unsaid_fixture) as String) == "fixture applied 2026-11-24"
+    && (cpu_freq_cap_applied_on(m: stated_replacement_fixture) as String) == "fixture superseded 2026-11-24"
+    && !optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: unsaid_fixture))
+    && optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: stated_replacement_fixture))
+}
+
+// THE RELAYS SURVIVE AS HISTORY, AND NEVER BECOME HOST FACTS. The two 2026-11-24 relays -- the operator raising
+// the srv3/srv4 ceiling after heal's build lane timed out with cores held there, and their own words "we slowed
+// the cores on all computers" -- decided the standing while no host had been read; the final-state pass then read
+// the hosts and the rows moved. They stay spelled out for what they are -- relays, with dates and routes -- and
+// two defects stay refused: writing a row for a host no read reached (the reach "all computers" is NOT adopted;
+// the roster is exactly the four hosts read), and letting the raising relay stand as a supersession the read
+// contradicted.
+test fn the_relays_are_history_and_no_host_is_inferred_from_them() -> Bool {
+  cpu_freq_cap_relay_history().length() == 2
+    && cpu_freq_cap_standing_reports.length() == 2
+    && cpu_freq_cap_relay_history().all(r => string_contains(s: r as String, pattern: "2026-11-24"))
+    && cpu_freq_cap_relay_history().any(r => string_contains(s: r as String, pattern: "all computers"))
+    && cpu_freq_cap_relay_history().any(r => string_contains(s: r as String, pattern: "relayed"))
+    && [srv1_cpu_freq_cap.host, srv2_cpu_freq_cap.host, srv3_cpu_freq_cap.host, srv4_cpu_freq_cap.host].length() == 4
+    && cpu_freq_cap_mechanisms.all(m =>
+      match m.standing {
+        CeilingStands { applied_on: _ } => true
+        CeilingStandingUnsaid { applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _ } => false
+        CeilingSuperseded { applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _ } => false
+      })
+}
+
+// THE RENDER IS THE HOST'S FILE AND THE TRANSCRIPTION IS THE HOST'S FILE, on all four hosts, and nothing that is
+// still a marking is allowed to read as a value. The unit digests to what extdeps.systemd.unit_file emits; the
+// script digests to its transcribed lines; every row carries its host's own sha256sum, so the claim "one file,
+// four hosts" rests on four reads rather than one quotation spread thin -- and the fold that says it is pinned
+// too. The fixture keeps the OTHER direction honest: a digest recorded as head-and-tail still carries the one
+// discharge read, and an invented full value still cannot be typed in by making digits up.
+test fn the_bytes_this_model_emits_are_the_bytes_the_hosts_hashed() -> Bool {
+  cpu_freq_cap_files_are_one_file_below()
+    && cpu_freq_cap_unit_sha256() == "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630"
+    && cpu_freq_cap_script_sha256() == "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027"
+    && cpu_freq_cap_mechanisms.all(m =>
+      match m.unit_digest {
+        CapUnitDigestRead { sha256 } => (sha256 as String) == cpu_freq_cap_unit_sha256()
+        CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+      }
+        && match m.script_digest {
+          CapUnitDigestRead { sha256 } => (sha256 as String) == cpu_freq_cap_script_sha256()
+          CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+        }
+        && optional_is_absent(opt: cpu_freq_cap_row_frontier(m: m)))
+    && match fixture_mechanism(
+      host: operator_host_srv1,
+      standing: CeilingStands { applied_on: "fixture stands 2026-11-24" as NonEmptyStr },
+    ).unit_digest {
+      CapUnitDigestMarkedOnly { head, tail, what_would_discharge_it } =>
+        (head as String) == "35b24e44"
+          && (tail as String) == "08630"
+          && (what_would_discharge_it as String) == (declared_path_host_hash_read as String)
+      CapUnitDigestRead { sha256: _ } => false
+    }
+}
+
+// THE APPLIED FIGURE IS A CEILING AGAINST THE PART IN THE HOST, and every read-back counted the cores or policies
+// that part has. Both sides of each comparison come from elsewhere: the figures from the operator's reads, the
+// part's nominal sustained clock and core count from its extdeps.cpu.ampere catalog row. The two read-back arms
+// are held apart deliberately -- srv3's and srv4's are the script grading its own work and failing if a core
+// misses, srv1's and srv2's are the pass ticking policies from outside -- and a row may not claim the stronger
+// form it did not get: the outside arm carries its instrument, and the script arm is where a missing core would
+// have shown as SomeCoresMissedAtCeiling. This is a claim about 2026-11-24, not a promise about tomorrow.
+test fn the_applied_ceiling_sits_below_the_installed_parts_own_catalogued_clock() -> Bool {
+  let nominal = altra_max_m12830_catalog.nominal_sustained_per_thread_hz
+  cpu_freq_cap_mechanisms.all(m =>
+    ceiling_sits_below_the_parts_nominal_clock(m: m, nominal: nominal)
+      && hertz_count(h: nominal) == 3000000000
+      && match m.read_back {
+        EveryCoreSeenAtCeiling { cores_read_back } =>
+          cores_read_back == altra_max_m12830_catalog.cores && cores_read_back == 128
+        EveryPolicySeenAtCeilingByOutsideRead { policies_read, instrument } =>
+          policies_read == altra_max_m12830_catalog.cores
+            && policies_read == 128
+            && string_contains(s: instrument as String, pattern: "scaling_max_freq")
+            && string_contains(s: instrument as String, pattern: "ssh")
+        SomeCoresMissedAtCeiling { cores_read_back: _, cores_expected: _ } => false
+        ReadBackNotReported { why: _ } => false
+      })
+    && match srv3_cpu_freq_cap.read_back {
+      EveryCoreSeenAtCeiling { cores_read_back } => cores_read_back == 128
+      EveryPolicySeenAtCeilingByOutsideRead { policies_read: _, instrument: _ } => false
+      SomeCoresMissedAtCeiling { cores_read_back: _, cores_expected: _ } => false
+      ReadBackNotReported { why: _ } => false
+    }
+    && match srv1_cpu_freq_cap.read_back {
+      EveryPolicySeenAtCeilingByOutsideRead { policies_read: _, instrument: _ } => true
+      EveryCoreSeenAtCeiling { cores_read_back: _ } => false
+      SomeCoresMissedAtCeiling { cores_read_back: _, cores_expected: _ } => false
+      ReadBackNotReported { why: _ } => false
+    }
+}
+
+// A fixture builder: the files, the applied figure and the read-back are the recorded ones, because the tests are
+// about the standing and the digest machinery, not about re-deciding what was applied. The digests here are the
+// MARKING form on purpose -- it is the only way the marking arm stays reachable now that every real row carries
+// a read value.
+fn fixture_mechanism(host: HostIdentity, standing: CpuFreqCapStanding) -> CpuFreqCapMechanism {
+  CpuFreqCapMechanism {
+    host: host,
+    unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    unit_digest: CapUnitDigestMarkedOnly {
+      head: "35b24e44" as NonEmptyStr,
+      tail: "08630" as NonEmptyStr,
+      what_would_discharge_it: declared_path_host_hash_read,
+    },
+    script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    script_digest: CapUnitDigestMarkedOnly {
+      head: "4a940fd5" as NonEmptyStr,
+      tail: "3f027" as NonEmptyStr,
+      what_would_discharge_it: declared_path_host_hash_read,
+    },
+    ceiling: hertz(count: 2000000000),
+    read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
+    persists_across_boot: true,
+    standing: standing,
+    read_on: "fixture, not a reading" as NonEmptyStr,
+  }
+}

@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import v2.std.orchestration { Do, FailFast, Pipeline, PipelineStep }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_emit_pipeline }
 import gunbc.ci.ci_retry { ci_retry_body_run }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -135,12 +136,19 @@ data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
 
 data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite")
 
-fn gunbc_ci_fleet_key_agent_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n")),
-    gunbc_invoke_step_emit_pipeline(
+fn gunbc_ci_fleet_key_agent_script() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(
       p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
-    )
+    ),
+    f: fn(body) {
+      outcome_accepted(
+        value: concat(
+          concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n")),
+          body
+        )
+      )
+    }
   )
 }
 

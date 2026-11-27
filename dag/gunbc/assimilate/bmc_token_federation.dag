@@ -228,7 +228,8 @@ data bmc_token_smoke_workflow: Workflow = {
       pull_requests: none,
       issues: none,
       actions: none,
-      id_token: Present { value: PermWrite }
+      id_token: Present { value: PermWrite },
+      pages: none
     }
   },
   jobs: [bmc_token_smoke_job()]

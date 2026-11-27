@@ -29,6 +29,8 @@ import extdeps.github.action.google_auth { google_auth_manifest_readings, google
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_manifest_readings, setup_rust_toolchain_v1_16_0 }
 import extdeps.tailscale.github_action { tailscale_github_action_manifest_readings, tailscale_github_action_v4_4_0 }
 import extdeps.github.action.rust_cache { rust_cache_manifest_readings }
+import extdeps.github.action.upload_pages_artifact { upload_pages_artifact_manifest_readings, upload_pages_artifact_v5_0_0 }
+import extdeps.github.action.deploy_pages { deploy_pages_manifest_readings, deploy_pages_v5_0_1 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
@@ -73,7 +75,9 @@ data action_manifest_readings: List<ActionManifestReading> = concat(
   concat(github_script_manifest_readings,
   concat(google_auth_manifest_readings,
   concat(setup_rust_toolchain_manifest_readings,
-  concat(rust_cache_manifest_readings, tailscale_github_action_manifest_readings))))))))
+  concat(rust_cache_manifest_readings,
+  concat(tailscale_github_action_manifest_readings,
+  concat(upload_pages_artifact_manifest_readings, deploy_pages_manifest_readings))))))))))
 
 // WHICH RELEASE THIS REPOSITORY USES FOR EACH ACTION. Choosing a release is repository policy, not
 // a fact about the upstream, so the choice lives here and each upstream module only records the
@@ -87,6 +91,8 @@ data google_auth_action: ActionRelease = google_auth_v3_0_0
 data upload_artifact_action: ActionRelease = upload_artifact_v6_0_0
 data download_artifact_action: ActionRelease = download_artifact_v7_0_0
 data tailscale_action: ActionRelease = tailscale_github_action_v4_4_0
+data upload_pages_artifact_action: ActionRelease = upload_pages_artifact_v5_0_0
+data deploy_pages_action: ActionRelease = deploy_pages_v5_0_1
 
 // THE SELECTIONS AS ONE ROSTER, so the realized-file census can require every `uses:` in
 // .github/workflows to BE a selected release, not merely an admitted one. Without that, a
@@ -101,6 +107,8 @@ data repository_action_selections: List<ActionRelease> = [
   upload_artifact_action,
   download_artifact_action,
   tailscale_action,
+  upload_pages_artifact_action,
+  deploy_pages_action,
 ]
 
 data repository_action_selection_texts: Map<String, Bool> = fold(repository_action_selections, init: empty_map(), f: fn(m, r) {
@@ -793,7 +801,7 @@ type RealizedCensusCostStanding {
 
 data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusCostStanding {
   subject: "fleet-converge.yml" as NonEmptyStr,
-  instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor corpus_census_eval_step_allowance (the claim is rostered in corpus_census_roster; the floor run prints its derived budget on a [floor-corpus-census] line)" as NonEmptyStr,
+  instrument: "gunbc test //test/claim/action_use_admission_witness:census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor corpus_census_eval_step_allowance (the claim is rostered in corpus_census_roster; the floor run prints its derived budget on a [floor-corpus-census] line)" as NonEmptyStr,
   remedy: "cut real work, never the population: the per-entry cost of extdeps.languages.yaml.ingest's accepted-path walk, and the census traversal's own cost shape (realized_jobs_reading, realized_distinct_uses), each chosen by measurement rather than by reading -- a claim over a document of one repeated shape with DISTINCT content per repetition (identical repetitions are memoized and read as nearly free), eval_steps from its [witness] line, and the path that shape spends in" as NonEmptyStr,
   refused_remedies: [
     "raising the claim's eval-step budget, including its per-entry rate: v2.workflow.required_floor corpus_census_allowance_policy is floor policy with its own reason, admitted by the 2026-09-23 ruling, and is never refitted to this claim" as NonEmptyStr,

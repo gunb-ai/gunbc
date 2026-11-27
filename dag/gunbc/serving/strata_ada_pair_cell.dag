@@ -8,7 +8,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import extdeps.docker { BindMount }
 import extdeps.strata.serve_flags {
-  StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataBatchGroupsAuto, StrataSplitStages, StrataLayerSplitAt, StrataExpertsPrivate,
+  StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
+  StrataKvQ4_0, StrataKvResidentWindow, StrataBatchGroupsAuto, StrataSplitStages, StrataLayerSplitAt, StrataExpertsPrivate,
 }
 import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact, ServingArtifactFile, ServingTopology }
 import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, EngineImagePending, KitImagePending }
@@ -24,17 +25,54 @@ import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, Eng
 // lands; the engine and kit images are built and pinned after it, and until then this row says so and the
 // instrument answers no observation.
 
-data srv3_strata_flags: StrataServeFlags = StrataServeFlags {
+// The parameters calm-crab-645 used on this pair, WITHOUT the batch slot count: this is the ONE home
+// for srv3's engine launch facts, and it is the row the live replica reads
+// (gunbc.serving.serving_replica_profile::srv3_strata_profile). The slot count is deliberately absent --
+// for a RUNNING replica it is the admitted concurrency, owned by the capacity shape
+// (gunbc.serving.serving_capacity_anchor::serving_capacity_shape) and asked of it by
+// gunbc.serving.serving_replica_profile::replica_engine_launch. Writing it here would be the second
+// number for one fact (gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them).
+data srv3_strata_launch_parameters: StrataLaunchParameters = StrataLaunchParameters {
   kv_format: StrataKvQ4_0,
   kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
   max_context: serving_fleet_context_cap,
-  parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
   batch_groups: Present { value: StrataBatchGroupsAuto },
   pool_workers: Present { value: 6 },
   stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
   experts: StrataExpertsPrivate,
   vram_reserve: none,
+  // NO WORD ABOUT PARKED CONVERSATIONS, and the reason is a fact about this row, not an omission: this
+  // cell has never run. Its engine image does not exist yet (`EngineImagePending` below pins none), so
+  // there is no argv to transcribe -- and inventing `--conversation-cache-mib 65536 --conversation-cache-slots 24`
+  // here would state a launch nobody has launched, while making the two figures a second authority beside
+  // the memory row that read them (gunbc.design_argument::single_authority). srv3's LIVE engine does carry
+  // the pair -- 64 GiB in 24 slots, read 2026-11-08 -- and that reading has ONE home:
+  // gunbc.serving.serving_host_memory srv3_strata_engine_memory, whose figure the agreement carries as
+  // EVIDENCE in the ask it gives this engine (serving_replica_profile::parking_ask_agreement); it is not what
+  // answers the question, because a launch this repository has not read cannot be agreed with a row read off
+  // the machine (gunbc.recurring_failure_mode::
+  // a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build).
+  // ABSENT IS THIS ROW'S OWN COVERAGE STATE, NOT A STRATA FACT: the cell's in-image argv has never been
+  // read -- this plan's engine image is EngineImagePending (no rootless Docker on srv3 yet), so no container
+  // has run these flags -- and a missing observation is a downstream obligation, never an arm of the upstream
+  // module (gunbc.design_argument::external_upstreams). srv3's live strata-pool.service carries the pair (64
+  // GiB in 24 slots, read 2026-11-08) and gunbc.serving.serving_host_memory srv3_strata_engine_memory is the
+  // single authority for that figure, which the agreement carries as EVIDENCE in its ask -- never as the
+  // answer.
+  // NOTE FOR THE NEXT RUNG: when this cell's image is pinned by digest, its in-image argv must NAME the
+  // pair and this field becomes `Present { value: StrataConversationCacheBudget { ... } }` -- the budget the
+  // image carries. A serving launch does not stay absent: strata_launch_conversation_cache_words renders
+  // nothing for it, which is the build deciding again.
+  conversation_cache: Absent,
 }
+
+// THE BENCHMARK CELL'S OWN FLAGS: here, and only here, the slot count is written by hand, because in a
+// benchmark the concurrency IS the thing being measured (gunbc.serving.serving_benchmark_cell_plan); it
+// is not an admission and it bounds nothing. The live replica's launch does not read this row's number.
+data srv3_strata_flags: StrataServeFlags = strata_launch_with_parallel(
+  parameters: srv3_strata_launch_parameters,
+  parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
+)
 
 // The IQ3_S artifact as two GGUF shards under srv3's Strata data root, with the digests calm-crab-645 read
 // on srv3 (2026-10-25). The packs and the MTP files beside them are derived from these shards and the

@@ -18,6 +18,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.diagnostic { Outcome }
 
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.runner.runner_qualification_attempt_run",
@@ -27,11 +28,10 @@ data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = gunbc_run_step_
 // NO SHELL PRELUDE: the sweep stages the gunbai-ci App key itself from Secret Manager under the run's
 // WIF_ACCESS_TOKEN (gunbc.github_effect_perform stage_controller_app_key), so no credential is
 // minted, exported or traced in shell.
-fn gunbc_ci_qualification_attempt_invoke() -> String {
+fn gunbc_ci_qualification_attempt_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_qualification_attempt_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

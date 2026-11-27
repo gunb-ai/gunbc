@@ -59,8 +59,8 @@ import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFa
 import gunbc.host.network_install {
   network_install_requests_for,
 }
-import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
+import gunbc.host_command_binding { LocalCommandHost, LegUnanswered }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_standing_refusal_reason, site_pxe_edge_live_member_dispatch, SitePxeEdgeLiveMemberDispatch, DispatchPublish, DispatchVerifyPublishedDigest, DispatchRefused, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathPresenceUnverified, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
 import gunbc.machine_intake.mtcollins1_census_member_readback { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
@@ -2299,6 +2299,194 @@ test fn only_a_find_no_such_file_is_absence_and_every_other_failure_refuses() ->
   let other_path = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let prefix_collision = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   required && absent && linked && boundary && denied && undispatched && other_path && prefix_collision
+}
+
+// FOX ROUND 3 (at 649e7857): PRESENCE IS NOT A REFUTED REQUIREMENT. The property probe (`-user root -not -perm
+// /022`) is the ONLY thing that can say "not as required". When its reply was LOST -- or it was never handed to the
+// host -- while the existence probe COMPLETED and printed the path, the path is present and its requirements are
+// UNREAD: the lost-reply cause must survive into the standing AND into the placement's final reason, which must
+// name the unread requirement rather than a mismatch that was never checked. RED at 649e7857: the unanswered
+// property leg was dropped on the floor and the pair read PathPresentButNotAsRequired -- reporting a completed
+// property check that never ran, with the cause and the deadline discarded. CONTROL: the same pair with a COMPLETED
+// property read that printed nothing IS a refuted requirement, and keeps the mismatch wording.
+test fn a_lost_property_read_over_an_established_presence_never_refutes_the_requirement() -> Bool {
+  let p = "/srv/tftp/live"
+  let overran = site_pxe_edge_live_path_standing(path: p, as_required: LegUnanswered { cause: "find -user root overran its 30s deadline" }, anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let never_sent = site_pxe_edge_live_path_standing(path: p, as_required: not_dispatched("the fleet SSH boundary refused the property probe"), anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let refuted = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let overran_reason = site_pxe_edge_live_standing_refusal_reason(standing: overran)
+  let refuted_reason = site_pxe_edge_live_standing_refusal_reason(standing: refuted)
+  let lost_is_unverified = match overran { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let lost_keeps_its_cause = string_contains(s: overran_reason, pattern: "find -user root overran its 30s deadline")
+    && string_contains(s: overran_reason, pattern: "required properties could not be verified")
+    && string_contains(s: overran_reason, pattern: "the requirement could not be verified, so nothing was overwritten")
+  let lost_is_not_the_mismatch = !string_contains(s: overran_reason, pattern: "is not a root-owned regular file")
+  let never_sent_is_unverified = match never_sent { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let never_sent_keeps_its_cause = string_contains(s: site_pxe_edge_live_standing_refusal_reason(standing: never_sent), pattern: "the fleet SSH boundary refused the property probe")
+  let completed_still_refutes = match refuted { PathPresentButNotAsRequired => true  _ => false }
+    && string_contains(s: refuted_reason, pattern: "is not a root-owned regular file")
+  lost_is_unverified && lost_keeps_its_cause && lost_is_not_the_mismatch
+    && never_sent_is_unverified && never_sent_keeps_its_cause
+    && completed_still_refutes
+}
+
+// FOX ROUND 4 (at 5b5829eb, Blocker 1): A TYPECHECK CANNOT SEE MATCH-ARM ORDER. At that head the placement's
+// standing match gained a catch-all `other => LivePlacementRefused` arm ABOVE `PathAbsent => publish`, so a
+// CONFIRMED-ABSENT destination was refused ("the path was absent: the publish decides it") and a first publication
+// -- which is the whole point of the digest-addressed path -- became unreachable, while every frontend typecheck stayed
+// green. The decision is now the extracted `site_pxe_edge_live_member_dispatch`, which the placement itself calls
+// and which enumerates every arm; the control drives THAT, so it observes the production dispatch rather than a
+// copy of it. Absence MUST dispatch the publish; a required path must dispatch the digest check; each of the three
+// refusals must refuse with its own wording, and no arm may fall through to another.
+test fn a_confirmed_absent_destination_dispatches_the_publish_and_no_arm_shadows_it() -> Bool {
+  let publishes = match site_pxe_edge_live_member_dispatch(standing: PathAbsent) { DispatchPublish => true  _ => false }
+  let verifies = match site_pxe_edge_live_member_dispatch(standing: PathAsRequired) { DispatchVerifyPublishedDigest => true  _ => false }
+  let mismatch = site_pxe_edge_live_member_dispatch(standing: PathPresentButNotAsRequired)
+  let unread = site_pxe_edge_live_member_dispatch(standing: PathPresenceUnverified { reason: "the property probe was dispatched but got no answer: find overran its 30s deadline" })
+  let unread_failed = site_pxe_edge_live_member_dispatch(standing: PathObservationFailed { reason: "the existence probe failed: exit=1 Permission denied" })
+  let mismatch_refuses = match mismatch { DispatchRefused { reason: r } => string_contains(s: r, pattern: "is not a root-owned regular file")  _ => false }
+  let unread_refuses = match unread { DispatchRefused { reason: r } => string_contains(s: r, pattern: "find overran its 30s deadline") && string_contains(s: r, pattern: "could not be verified") && !string_contains(s: r, pattern: "is not a root-owned regular file")  _ => false }
+  let failed_refuses = match unread_failed { DispatchRefused { reason: r } => string_contains(s: r, pattern: "Permission denied") && string_contains(s: r, pattern: "absence was not established")  _ => false }
+  let absent_never_refuses = match mismatch { DispatchRefused { reason: r } => !string_contains(s: r, pattern: "the path was absent")  _ => false }
+  publishes && verifies && mismatch_refuses && unread_refuses && failed_refuses && absent_never_refuses
+}
+
+// FOX ROUND 4 (at 5b5829eb, Blocker 2): AN ANSWERED PROPERTY-PROBE ERROR IS NOT A REFUTED REQUIREMENT EITHER. The
+// round-3 fix reserved the mismatch for a property check that was not LOST, but still routed an ERRORED property
+// probe (exit 1, "Permission denied") through the existence probe, so a confirmed presence read as
+// PathPresentButNotAsRequired -- the same fabrication by a different door. Only a property find that SUCCEEDED with
+// empty filtered output may refute the requirement. CONTROL: exactly that asymmetric pair, and the exact-path
+// absence case that must stay absence.
+test fn an_answered_property_probe_error_over_an_established_presence_is_not_a_refuted_requirement() -> Bool {
+  let p = "/srv/tftp/live"
+  let errored = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live': Permission denied"), anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let errored_reason = site_pxe_edge_live_standing_refusal_reason(standing: errored)
+  let errored_keeps_the_error = match errored {
+    PathPresenceUnverified { reason: _ } => string_contains(s: errored_reason, pattern: "exit=1")
+      && string_contains(s: errored_reason, pattern: "Permission denied")
+      && string_contains(s: errored_reason, pattern: "the requirement could not be verified, so nothing was overwritten")
+      && !string_contains(s: errored_reason, pattern: "is not a root-owned regular file")
+    _ => false
+  }
+  let errored_is_not_the_mismatch = match errored { PathPresentButNotAsRequired => false  _ => true }
+  // The exact-path absence case is UNCHANGED: find's own "No such file or directory" stays absence.
+  let still_absent = match site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live': No such file or directory"),
+    anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live': No such file or directory"),
+  ) { PathAbsent => true  _ => false }
+  let still_absent_publishes = match site_pxe_edge_live_member_dispatch(standing: PathAbsent) { DispatchPublish => true  _ => false }
+  // A property probe that COMPLETED and printed nothing still refutes the requirement.
+  let completed_refutes = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) {
+    PathPresentButNotAsRequired => true
+    _ => false
+  }
+  errored_keeps_the_error && errored_is_not_the_mismatch && still_absent && still_absent_publishes && completed_refutes
+}
+
+// FOX ROUND 5 (at 153ae43d, the one remaining blocker): EXIT 0 IS NOT A MEASUREMENT. A property find that exited 0
+// but printed something that is NEITHER the path NOR nothing -- "notice\n/srv/tftp/live\n", another path, a warning
+// line -- printed no verdict about THIS path's properties, yet at 153ae43d the `ar_code == 0` branch handed the pair
+// to the existence fold and a confirmed presence came back as PathPresentButNotAsRequired: a refuted requirement
+// nobody measured. A successful property read now splits THREE ways -- exactly the path (satisfied), empty (the only
+// thing that may refute, and only over a confirmed presence), and malformed (PathPresenceUnverified, naming the
+// reply). CONTROL: that exact pair, driven through the production dispatch, asserting the refusal reason an operator
+// reads; plus the two neighbours that must NOT move.
+test fn a_property_probe_that_exited_zero_with_an_unexpected_reply_never_refutes_the_requirement() -> Bool {
+  let p = "/srv/tftp/live"
+  let malformed = site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 0, out: "notice\n/srv/tftp/live\n", err: ""),
+    anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""),
+  )
+  let malformed_is_unverified = match malformed { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let malformed_is_not_the_mismatch = match malformed { PathPresentButNotAsRequired => false  _ => true }
+  // THE PRODUCTION DISPATCH, not a copy: a malformed property reply must REFUSE, and its reason must name the
+  // malformed reply, keep the "could not be verified" wording, and never claim the mismatch.
+  let refused = match site_pxe_edge_live_member_dispatch(standing: malformed) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r, pattern: "unexpected reply")
+        && string_contains(s: r, pattern: "notice")
+        && string_contains(s: r, pattern: "could not be verified")
+        && string_contains(s: r, pattern: "nothing was overwritten")
+        && !string_contains(s: r, pattern: "is not a root-owned regular file")
+    _ => false
+  }
+  // A different-path reply is the same case, and must name what came back.
+  let other_reply = match site_pxe_edge_live_member_dispatch(standing: site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 0, out: "/srv/tftp/other\n", err: ""),
+    anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""),
+  )) {
+    DispatchRefused { reason: r } => string_contains(s: r, pattern: "unexpected reply") && string_contains(s: r, pattern: "/srv/tftp/other")
+    _ => false
+  }
+  // NEIGHBOURS THAT MUST NOT MOVE. (a) An empty successful read over a CONFIRMED presence still refutes. (b) The same
+  // empty read does NOT refute when the existence leg reports the path absent -- it says nothing about absence.
+  let empty_still_refutes = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) {
+    PathPresentButNotAsRequired => true
+    _ => false
+  }
+  let empty_never_refutes_absence = match site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 0, out: "", err: ""),
+    anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live': No such file or directory"),
+  ) { PathAbsent => true  _ => false }
+  // (c) The exact-path reply is still the only satisfied reading.
+  let exact_still_satisfies = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "/srv/tftp/live\n", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) {
+    PathAsRequired => true
+    _ => false
+  }
+  malformed_is_unverified && malformed_is_not_the_mismatch && refused && other_reply
+    && empty_still_refutes && empty_never_refutes_absence && exact_still_satisfies
+}
+
+// FOX ROUND 7 (at 40207278): THE VERDICTS ARE THE RAW BYTES. A whitespace-only reply is not the zero-byte negative,
+// and a space-padded path is not the path. Both must be read as a property read that gave NO verdict -- refused, with
+// the reply rendered escaped so the whitespace that damned it is visible -- never as a refuted requirement or a
+// satisfied one. Driven through the production dispatch, the same path the operator's placement takes.
+test fn a_whitespace_only_property_reply_is_not_the_empty_negative_and_a_padded_path_is_not_the_path() -> Bool {
+  let p = "/srv/tftp/live"
+  let present = ans(code: 0, out: "/srv/tftp/live\n", err: "")
+  // (1) " \t\n" over a CONFIRMED presence: the trimmed classifier called this the empty negative and refuted the
+  // requirement. It must instead be an unverified property read, and its reason must show the whitespace.
+  let whitespace = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: " \t\n", err: ""), anything: present)
+  let whitespace_is_unverified = match whitespace { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let whitespace_is_not_the_mismatch = match whitespace { PathPresentButNotAsRequired => false  _ => true }
+  let whitespace_refused = match site_pxe_edge_live_member_dispatch(standing: whitespace) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r, pattern: "unexpected reply")
+        && string_contains(s: r, pattern: "\\s\\t\\n")
+        && string_contains(s: r, pattern: "could not be verified")
+        && string_contains(s: r, pattern: "nothing was overwritten")
+        && !string_contains(s: r, pattern: "is not a root-owned regular file")
+    _ => false
+  }
+  // (2) A padded path is not the path: the trimmed classifier read it as satisfied.
+  let padded = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: " /srv/tftp/live\n", err: ""), anything: present)
+  let padded_is_not_satisfied = match padded { PathAsRequired => false  _ => true }
+  let padded_refused = match site_pxe_edge_live_member_dispatch(standing: padded) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r, pattern: "unexpected reply") && string_contains(s: r, pattern: "\\s/srv/tftp/live")
+    _ => false
+  }
+  // (3) THE TWO RAW SHAPES THAT ARE VERDICTS, both still accepted: the path with no trailing newline, and the path
+  // with exactly one. (4) The neighbour: a genuine zero-byte read over a confirmed presence still refutes.
+  let bare_path_satisfies = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "/srv/tftp/live", err: ""), anything: present) {
+    PathAsRequired => true
+    _ => false
+  }
+  let one_newline_satisfies = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "/srv/tftp/live\n", err: ""), anything: present) {
+    PathAsRequired => true
+    _ => false
+  }
+  let true_empty_still_refutes = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: present) {
+    PathPresentButNotAsRequired => true
+    _ => false
+  }
+  whitespace_is_unverified && whitespace_is_not_the_mismatch && whitespace_refused
+    && padded_is_not_satisfied && padded_refused
+    && bare_path_satisfies && one_newline_satisfies && true_empty_still_refutes
 }
 
 // Fox fix 4, hermetic: kernel placed, initrd refused (the refusal is the placement's result) => evidence UNREAD => the client's admission is the extraction refusal =>

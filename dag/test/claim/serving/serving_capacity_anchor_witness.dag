@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { tokens_per_second, token_count, permille, millisecond, millisecond_count, byte_size, byte_size_count }
+import std.measure { tokens_per_second, token_count, TokenCount, permille, millisecond, millisecond_count, byte_size, byte_size_count }
 import gunbc.serving.serving_host_memory { ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread, ConversationSnapshotCost, srv4_serving_engine_memory, srv4_strata_parked_budget, serving_reading_bytes_or_zero }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ExternalAuthority }
 import extdeps.uri { uri_https }
@@ -12,14 +12,17 @@ import product.fabric.serving_throughput { ThroughputOperatorReading, Throughput
 import gunbc.serving.serving_capacity_anchor {
   ServingCapacityAnchor, ServingConversationPolicy, ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused,
   ServingHeldBound, HeldByActiveShare, HeldBySwapStore, HeldToTurnsNoWarmSwap, HeldToTurnsSwapTooSlow, HeldToTurnsStoreUnread, HeldByRetentionGrant, HeldBySwapStoreRungRefused, HeldByActiveShareRungRefused,
+  ServingTurnsBound, TurnsByThroughput, TurnsByHeld, TurnsByGpuKvPool,
+  ServingShapeRefusalReason, ShapeThroughputUnread, ShapeGpuKvPoolTooSmall, ShapeGpuKvPoolUnread, within_gpu_kv_pool,
   ServingRetentionGrant, GrantAdmits, GrantUnmodeled, GrantRefused, serving_replica_grant_for,
   ServingWarmSwap, WarmSwapRestores, WarmSwapAbsent, WarmSwapRefused, SwapTierHostRam, SwapTierDisk,
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
   ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
   serving_capacity_shape, serving_conversation_policy,
+  ServingGpuKvPool, GpuKvPoolRead, GpuKvPoolNotBinding, GpuKvPoolUnread,
 }
 import gunbc.serving.serving_replica_profile {
-  srv1_vllm_replica_shape, srv3_strata_profile, srv4_strata_profile, replica_shape_named, srv3_strata_anchor, srv4_strata_anchor,
+  srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile, replica_shape_named, srv3_strata_anchor, srv4_strata_anchor,
 }
 import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
 import gunbc.serving.router_dev_policy {
@@ -141,6 +144,25 @@ fn ca_bound_text(b: ServingHeldBound) -> String {
     HeldBySwapStoreRungRefused { reason: _ } => "store-refused"
     HeldByActiveShareRungRefused { reason: _ } => "share-refused"
     HeldByRetentionGrant => "grant"
+  }
+}
+
+// The TURN-LOWERING term that won: throughput ("throughput"), held ("held"), or the GPU KV pool ("gpu-kv"). Separate
+// from ca_bound_text (which reports the HELD binder) so a pool-bound turn count no longer overwrites -- and hides --
+// the held binder's reason (one field, two meanings; the held binder must survive a floor).
+fn ca_turns_bound_text(b: ServingTurnsBound) -> String {
+  match b {
+    TurnsByThroughput => "throughput"
+    TurnsByHeld => "held"
+    TurnsByGpuKvPool { pool_tokens: _ } => "gpu-kv"
+  }
+}
+
+fn ca_shape_turns_bound_text(s: ServingCapacityShape) -> String {
+  match s {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: _, turns_bound: tb, cold_reread: _ } => ca_turns_bound_text(b: tb)
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: _, turns_bound: tb, cold_reread: _, standings: _ } => ca_turns_bound_text(b: tb)
+    ServingShapeRefused { deployment: _, reason: _ } => "refused"
   }
 }
 
@@ -286,7 +308,8 @@ test fn inputs_that_make_a_figure_meaningless_refuse() -> Bool {
 // slots; srv4 32 GiB / (800 MiB + 10 KiB x 100k) keeps 18, 8 slots; each h11 engine 8 GiB / (750 MiB + 10 KiB x
 // 100k) keeps 4, 6 slots.
 test fn the_shipped_anchors_derive_the_fleet_shape() -> Bool {
-  ca_turns_held(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), turns: 4, held: 16) && ca_bound_is(s: srv1_vllm_replica_shape(deployment: "srv1-vllm"), want: "share")
+  ca_turns_held(s: replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: "srv1-vllm"), turns: 4, held: 16) && ca_bound_is(s: replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: "srv1-vllm"), want: "share")
+    && ca_turns_held(s: replica_shape_named(p: srv1_vllm_replica_1_profile, deployment: "srv1-vllm-1"), turns: 4, held: 16) && ca_bound_is(s: replica_shape_named(p: srv1_vllm_replica_1_profile, deployment: "srv1-vllm-1"), want: "share")
     && ca_turns_held(s: replica_shape_named(p: srv3_strata_profile, deployment: "srv3-strata"), turns: 2, held: 8) && ca_bound_is(s: replica_shape_named(p: srv3_strata_profile, deployment: "srv3-strata"), want: "share")
     && ca_turns_held(s: replica_shape_named(p: srv4_strata_profile, deployment: "srv4-strata"), turns: 1, held: 4) && ca_bound_is(s: replica_shape_named(p: srv4_strata_profile, deployment: "srv4-strata"), want: "share")
 }
@@ -331,6 +354,8 @@ test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
 // THE SHAPE KEEPS ITS INPUTS' STANDING. A cited fixture: every figure cited to an authority.
 fn ca_cited() -> CitedFigureStanding { CitedToAuthority { authority: ExternalAuthority { uri: uri_https(locator: "example.org/fixture" as NonEmptyStr) } } }
 
+// deployment is a Strata card so the GPU KV cap term is a declared pass-through (GpuKvPoolNotBinding):
+// this fixture exercises STANDING, not the pool bound, and must not be entangled with the pool figure.
 fn ca_anchor_standing(throughput: CitedFigureStanding, prefill: CitedFigureStanding, warm: CitedFigureStanding) -> ServingCapacityAnchor {
   ServingCapacityAnchor {
     deployment: "fixture" as NonEmptyStr,
@@ -556,4 +581,130 @@ test fn witness_srv3_anchor_keeps_only_the_engine_rung() -> Bool {
   // srv3's engine is parallel 8 => the derived replica holds 8 active slots => the disk rung is refused and only
   // the engine's RAM tier survives. srv1 keeps its own one-rung ladder under gunbc.serving.srv1_topology_comparison.
   count(srv3_strata_anchor().warm_swap) == 1
+}
+
+
+// ── THE GPU KV POOL AS A SHAPE TERM (the ONE number both consumers read) ─────────────────────────────────
+// The capacity shape's turns ARE a replica's admitted concurrency: the number the router row caps the upstream at
+// AND the number the Strata engine reserves --parallel slots for. within_gpu_kv_pool lowers THOSE turns to the card's
+// GPU KV pool floor (pool tokens at the policy anchor context), applied once at the shared shape builder
+// (serving_replica_profile::replica_shaped) that both consumers call -- so cap == --parallel == floor structurally.
+// The srv1 cap-6 trial was a count cap the pool could not hold: it filled the GPU KV pool to 99% for +2% output with
+// turns 60% slower (operator-observed receipt, ad-hoc engine-log reads). These cases make that a MODELLED outcome,
+// not a runtime surprise: a shape over its pool is lowered to the pool's floor and records that the pool bound it,
+// and an unread or too-small pool REFUSES the shape (never a seat-count fall-back). Helpers read the shape's terms.
+
+// A pool fixture for the fold tests: the srv1 GPU KV pool figure (744,477 tokens, derived from the topology
+// measurement's TP=1 row via srv1_gpu_kv_pool) carried with its standing. The fold is applied to the SHAPE, keyed
+// on the profile's per-card gpu_kv_pool field -- not chosen by the router or by an engine-kind string.
+fn ca_gpu_kv_pool() -> ServingGpuKvPool {
+  GpuKvPoolRead {
+    tokens: token_count(count: 744477),
+    standing: ca_cited(),
+    provenance: "srv1 topology TP=1 row, via srv1_gpu_kv_pool" as NonEmptyStr,
+  }
+}
+
+// DISCRIMINATING (over-its-pool): a shape asking for MORE turns (10) than its on-GPU pool holds at the policy
+// anchor context (744,477 / 100,000 = 7) is lowered to the pool's floor of 7, and the shape records the pool bound
+// it -- the same number the router caps at and the engine reserves --parallel for. A pool a card could overflow is
+// no longer renderable as a free count.
+// (The four former serving_card_cap cases -- over, under, not-binding, unread -- now live in the within_gpu_kv_pool
+// shape tests below, which are the one place the floor is applied; a card configured past its pool is a shape the
+// model will not produce, not a runtime surprise.)
+
+fn ca_shape(n: Nat) -> ServingCapacityShape {
+  ServingShapeDerived { deployment: "fixture-card" as NonEmptyStr, turns: n, held: n, bound: HeldByActiveShare, turns_bound: TurnsByThroughput, cold_reread: millisecond(count: 1) }
+}
+
+// A fixture shape whose HELD is bound by the retention grant (the held binder a floor must not clobber): held < turns,
+// the pool then lowers turns further, so the held binder and the turns binder are DIFFERENT terms by construction.
+fn ca_shape_grant_held(n: Nat, grant_held: Nat) -> ServingCapacityShape {
+  ServingShapeDerived { deployment: "fixture-card" as NonEmptyStr, turns: n, held: grant_held, bound: HeldByRetentionGrant, turns_bound: TurnsByHeld, cold_reread: millisecond(count: 1) }
+}
+
+fn ca_shape_turns(s: ServingCapacityShape) -> Nat {
+  match s {
+    ServingShapeDerived { deployment: _, turns: t, held: _, bound: _, cold_reread: _ } => t
+    ServingShapeEstimated { deployment: _, turns: t, held: _, bound: _, cold_reread: _, standings: _ } => t
+    ServingShapeRefused { deployment: _, reason: _ } => 0
+  }
+}
+
+fn ca_shape_bound_text(s: ServingCapacityShape) -> String {
+  match s {
+    ServingShapeDerived { deployment: _, turns: _, held: _, bound: b, cold_reread: _ } => ca_bound_text(b: b)
+    ServingShapeEstimated { deployment: _, turns: _, held: _, bound: b, cold_reread: _, standings: _ } => ca_bound_text(b: b)
+    ServingShapeRefused { deployment: _, reason: _ } => "refused"
+  }
+}
+
+fn ca_refusal_text(r: ServingShapeRefusalReason) -> String {
+  match r {
+    ShapeGpuKvPoolTooSmall { pool_tokens: _, context: _ } => "too-small"
+    ShapeGpuKvPoolUnread { obligation: _ } => "unread"
+    _ => "other"
+  }
+}
+
+fn ca_shape_refusal(s: ServingCapacityShape) -> String {
+  match s {
+    ServingShapeRefused { deployment: _, reason: r } => ca_refusal_text(r: r)
+    _ => ""
+  }
+}
+
+fn ca_policy_context() -> TokenCount {
+  serving_conversation_policy.anchor_context
+}
+
+// The KV term LOWERS the shape's turns and records itself on turns_bound. A derived shape asking 10 turns on a card
+// whose pool holds floor(744477/100000)=7 at the policy context is floored to 7; turns_bound becomes "gpu-kv" while
+// the HELD binder (this fixture was HeldByActiveShare) stays "share" -- the floor records what bound TURNS, not what
+// bound HELD (requirement 2: a turns binder never overwrites the held binder).
+test fn gpu_kv_pool_term_lowers_turns_and_wins_the_bound() -> Bool {
+  let floored = within_gpu_kv_pool(shape: ca_shape(n: 10), pool: ca_gpu_kv_pool(), context: ca_policy_context())
+  ca_shape_turns(s: floored) == 7 && ca_shape_turns_bound_text(s: floored) == "gpu-kv" && ca_shape_bound_text(s: floored) == "share"
+}
+
+// A GPU-KV floor must NOT clobber a grant-bound HELD (the defect this fixes). A shape held to 5 by the retention
+// grant, asking 10 turns, floored by a pool that holds 7: held stays 5 with binder HeldByRetentionGrant, turns drop
+// to 7 with binder TurnsByGpuKvPool. Two fields, two meanings, neither lost.
+test fn gpu_kv_pool_floor_keeps_the_grant_held_binder() -> Bool {
+  let floored = within_gpu_kv_pool(shape: ca_shape_grant_held(n: 10, grant_held: 5), pool: ca_gpu_kv_pool(), context: ca_policy_context())
+  ca_shape_turns(s: floored) == 7 && ca_shape_turns_bound_text(s: floored) == "gpu-kv" && ca_shape_bound_text(s: floored) == "grant"
+}
+
+// NON-BINDING control: the shape's own turns (4) already sit at/below the pool floor (7), so the throughput term
+// binds and the KV term leaves the shape untouched -- the held binder stays "share" and turns_bound stays
+// "throughput", never relabelled "gpu-kv". This is the mask that hid the router-vs-engine divergence while no real
+// card's pool binds.
+test fn gpu_kv_pool_term_is_non_binding_above_its_floor() -> Bool {
+  let s = within_gpu_kv_pool(shape: ca_shape(n: 4), pool: ca_gpu_kv_pool(), context: ca_policy_context())
+  ca_shape_turns(s: s) == 4 && ca_shape_bound_text(s: s) == "share" && ca_shape_turns_bound_text(s: s) == "throughput"
+}
+
+// KEEP THE RED at the shape boundary (requirement 1): a pool below one conversation at the policy context (50k < 100k
+// -> floor 0) is a ServingShapeRefused with its OWN reason, never a shape carrying 0 turns.
+test fn gpu_kv_pool_below_one_conversation_refuses_the_shape() -> Bool {
+  ca_shape_refusal(s: within_gpu_kv_pool(shape: ca_shape(n: 4), pool: GpuKvPoolRead { tokens: token_count(count: 50000), standing: ca_cited(), provenance: "fixture: pool below one conversation" as NonEmptyStr }, context: ca_policy_context())) == "too-small"
+}
+
+// An unread GPU pool on a card that must be bounded refuses the shape, never a free cap.
+test fn gpu_kv_pool_unread_refuses_the_shape() -> Bool {
+  ca_shape_refusal(s: within_gpu_kv_pool(shape: ca_shape(n: 4), pool: GpuKvPoolUnread { obligation: "read the engine's reported KV pool" as NonEmptyStr }, context: ca_policy_context())) == "unread"
+}
+
+// A Strata card parks idle sessions in host RAM: the pool does not bind, the shape keeps its throughput bound and turns.
+test fn gpu_kv_pool_not_binding_leaves_the_shape_to_its_throughput_bound() -> Bool {
+  let s = within_gpu_kv_pool(shape: ca_shape(n: 9), pool: GpuKvPoolNotBinding { reason: "idle sessions in host RAM" as NonEmptyStr, trigger: "active-turn KV fills the pool" as NonEmptyStr }, context: ca_policy_context())
+  ca_shape_turns(s: s) == 9 && ca_shape_bound_text(s: s) == "share"
+}
+
+// The KV term never un-refuses a shape an earlier term refused (fail_closed: a refusal is terminal).
+test fn gpu_kv_pool_term_leaves_an_already_refused_shape_refused() -> Bool {
+  match within_gpu_kv_pool(shape: ServingShapeRefused { deployment: "fixture-card" as NonEmptyStr, reason: ShapeThroughputUnread }, pool: ca_gpu_kv_pool(), context: ca_policy_context()) {
+    ServingShapeRefused { deployment: _, reason: _ } => true
+    _ => false
+  }
 }

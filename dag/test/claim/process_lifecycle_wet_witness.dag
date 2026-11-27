@@ -3,9 +3,10 @@ module test.claim.process_lifecycle_wet_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import extdeps.posix.process
 import extdeps.posix.signal
+import extdeps.posix.process { signal_target_pid }
 import extdeps.http.client
 import extdeps.tools.sleep
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -123,7 +124,10 @@ test fn kill_confirmed_by_reap_witness() -> Bool {
             last_status: "",
             last_exit_code: 0
           )
-          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let kill_sent = match signal_target_pid(pid: pid) {
+            Present { value: target } => posix.Signal.TerminateProcess(target: target).success
+            Absent => false
+          }
           let reap_code = node_http_await_reaped(pid: pid, attempts_left: 20)
           let cleanup = shell.Remove.RecursiveForce(path: dir.path)
           server_js.success && cleanup.success
@@ -131,7 +135,7 @@ test fn kill_confirmed_by_reap_witness() -> Bool {
               ServeReady => true
               ServeNotReady { attempts_used: _, last_status: _, last_exit_code: _ } => false
             })
-            && kill.success
+            && kill_sent
             && (match reap_code {
               Absent => false
               Present { value: outcome } =>
@@ -182,10 +186,13 @@ test fn readiness_stalled_listener_witness() -> Bool {
                 last_status: "",
                 last_exit_code: 0
               )
-              let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+              let kill_sent = match signal_target_pid(pid: pid) {
+            Present { value: target } => posix.Signal.TerminateProcess(target: target).success
+            Absent => false
+          }
               let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
               let cleanup = shell.Remove.RecursiveForce(path: dir.path)
-              cleanup.success && kill.success
+              cleanup.success && kill_sent
                 && (match readiness {
                   ServeReady => false
                   ServeNotReady { attempts_used: used, last_status: status, last_exit_code: code } =>

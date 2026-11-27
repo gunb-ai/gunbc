@@ -9,6 +9,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.diagnostic { Outcome }
 import gunbc.roadmap.roadmap_launch_deployment_receipt_location {
   gunbc_rlm_launch_deployment_receipt_staging_path
 }
@@ -18,11 +19,10 @@ data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = gunbc_r
   function: "rlm_launch_deployment_receipt_wet",
 )
 
-fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
+fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_rlm_launch_deployment_receipt_target,
-    claim_run: false,
     receipt_rel: gunbc_rlm_launch_deployment_receipt_staging_path()
   )
 }

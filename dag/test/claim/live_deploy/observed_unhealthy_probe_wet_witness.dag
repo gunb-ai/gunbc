@@ -34,9 +34,10 @@ import std.optional { Present, Absent }
 import std.algebra { list_head, list_tail }
 import extdeps.posix.process
 import extdeps.posix.signal
+import extdeps.posix.process { signal_target_pid }
 import extdeps.http.client
 import extdeps.tools.sleep
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.instruments.emit_host_transport { node_http_serve_port_seed, node_http_await_reaped }
@@ -146,12 +147,15 @@ test fn the_real_probe_answers_a_503_as_answered_unhealthy() -> Bool {
             stdout: attempt.body,
             error: if attempt.answered { "" } else { "the listener never answered within the poll budget" }
           )
-          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let kill_sent = match signal_target_pid(pid: pid) {
+            Present { value: target } => posix.Signal.TerminateProcess(target: target).success
+            Absent => false
+          }
           let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
           let cleanup = shell.Remove.RecursiveForce(path: dir.path)
           listener_js.success
             && cleanup.success
-            && kill.success
+            && kill_sent
             && (match reaped {
               Absent => false
               Present { value: outcome } =>
@@ -266,7 +270,10 @@ test fn the_ssh_route_argv_answers_a_503_as_answered_unhealthy_too() -> Bool {
             Absent => Absent
           }
           let wrote = Filesystem.Read(path: probe_out as String)
-          let killed = posix.Signal.TerminateProcess(pid: to_string(listener_pid) as NonEmptyStr)
+          let killed_sent = match signal_target_pid(pid: listener_pid) {
+            Present { value: target } => posix.Signal.TerminateProcess(target: target).success
+            Absent => false
+          }
           let listener_reaped = node_http_await_reaped(pid: listener_pid, attempts_left: 20)
           let cleanup = shell.Remove.RecursiveForce(path: dir.path)
           let curl_gone = match reaped {
@@ -308,7 +315,7 @@ test fn the_ssh_route_argv_answers_a_503_as_answered_unhealthy_too() -> Bool {
           )
           listener_js.success
             && cleanup.success
-            && killed.success
+            && killed_sent
             && warm.answered
             && curl_gone
             && listener_gone

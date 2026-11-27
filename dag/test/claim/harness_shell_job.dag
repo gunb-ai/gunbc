@@ -2,7 +2,7 @@ module test.claim.harness_shell_job
 
 import std.types { Bool, String, List, FilePath, NonEmptyStr, Int, Timestamp }
 import std.measure { Second, second }
-import extdeps.posix.process { ProcessGroupLeader, process_group_leader }
+import extdeps.posix.process { ProcessGroupLeader, process_group_leader, SignalTargetPid, signal_target_pid, signal_target_pid_of_text }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobFinished, harness_job_backstop_standing, JobExitedOutcome,
@@ -194,4 +194,53 @@ test fn an_upper_bound_two_seconds_under_the_backstop_is_an_own_exit() -> Bool {
     JobBackstopUndecided => false
     JobOwnExit => true
   })
+}
+
+// THE SINGLE-PROCESS SIGNAL GETS THE SAME CONSTRUCTION. posix.Signal.TerminateProcess takes an
+// extdeps.posix.process SignalTargetPid, so `kill -TERM -1` (every process the caller may signal), `kill -TERM 0`
+// (the caller's own group) and `kill -TERM 1` (init) have no route to the argv; neither does a decimal beyond
+// pid_t, which a realization narrowing it to 32 bits could wrap negative. The text form admits only the exact
+// decimal, so padding, a sign or a newline is refused rather than normalized into some other pid.
+fn signal_target_is_absent(pid: Int) -> Bool {
+  match signal_target_pid(pid: pid) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn signal_target_text_is_absent(text: String) -> Bool {
+  match signal_target_pid_of_text(text: text) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn signal_target_text(target: SignalTargetPid?) -> String {
+  match target {
+    Present { value: t } => t.pid as String
+    Absent => ""
+  }
+}
+
+test fn a_single_process_signal_has_no_route_from_pid_1_0_a_negative_or_beyond_pid_t() -> Bool {
+  signal_target_is_absent(pid: -1)
+    && signal_target_is_absent(pid: 0)
+    && signal_target_is_absent(pid: 1)
+    && signal_target_is_absent(pid: -5)
+    && signal_target_is_absent(pid: 2147483648)
+    && signal_target_is_absent(pid: 4294967295)
+    && signal_target_text_is_absent(text: "-1")
+    && signal_target_text_is_absent(text: "0")
+    && signal_target_text_is_absent(text: "1")
+    && signal_target_text_is_absent(text: "4294967295")
+    && signal_target_text_is_absent(text: "")
+    && signal_target_text_is_absent(text: "042")
+    && signal_target_text_is_absent(text: "+42")
+    && signal_target_text_is_absent(text: " 42")
+    && signal_target_text_is_absent(text: "42\n")
+    && signal_target_text(target: signal_target_pid(pid: 42)) == "42"
+    && signal_target_text(target: signal_target_pid(pid: 2)) == "2"
+    && signal_target_text(target: signal_target_pid(pid: 2147483647)) == "2147483647"
+    && signal_target_text(target: signal_target_pid_of_text(text: "4242")) == "4242"
+    && leader_is_absent(spawned_pid: 2147483648)
 }

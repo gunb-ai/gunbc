@@ -1,0 +1,470 @@
+module gunbc.fleet.cpu_freq_cap_boot_state
+
+// A CPU FREQUENCY CEILING HELD ON A HOST BY A MECHANISM SOMEONE INSTALLED: the ceiling, the unit and script
+// that hold it, what that pair read back when it finished, and -- the part that carries weight -- whether the
+// ceiling still stands, and what stands in its place if it does not.
+//
+// WHY THIS MODULE EXISTS BEFORE ANY ACTUATOR. The fleet already has a CPU frequency ceiling on two hosts and no
+// type that could say so: gunbc.plans.host_thermal_operating_point lists `ReadCpuOperatingLimits` ("governor
+// and per-core limits, any power cap") as a read it PLANS to model, and nothing until now held the fact a read
+// would fill. So this module declares the shape first and the rows second, and the rows that exist say what was
+// read on 2026-11-24 and nothing more. No actuator, unit template or converge lives here: a ceiling the operator
+// applied by hand is recorded, not reproduced. Adding the mechanism would mean a unit file, sudoers grants and a
+// fleet-converge mode, and each gets modelled when there is a decision to act on, not before.
+//
+// WHAT THIS MODULE DOES NOT OWN.
+//   - the part's own numbers -- core count, nominal sustained per-thread clock, TDP -- are the catalog row in
+//     extdeps.cpu.ampere, joined here rather than restated; a ceiling is only meaningful against them, which is
+//     why `ceiling_sits_below_the_parts_nominal_clock` asks the catalog rather than a typed-in number;
+//   - the watts a host draws is gunbc.fleet.fleet_host_power's, and the readings taken while this cap went in
+//     are named there as confounded (load moved between them), so none of them priced anything;
+//   - the decision to apply a ceiling, or to raise one, is the operator's and is recorded in
+//     gunbc.design_ruling; this module reports the standing a ruling leaves behind, it cannot create one;
+//   - the boot mechanism's file CONTENTS, once unread, are now the operator's quoted bytes carried with their
+//     instrument: the unit is rendered through the systemd grammar at the foot of this module and the script
+//     transcribed, and the digest folds tie both to what each host's own sha256sum printed. What remains unread
+//     is the MODELLED read -- a fleet-converge observe leg hashing a declared path, which
+//     gunbc.fleet.gpu_power_cap_boot_state::declared_path_host_hash_read spells -- and any host beyond these
+//     four.
+//
+// THE STANDING IS THE LOAD-BEARING FIELD. A ceiling standing on a host today, a ceiling the model wants on that
+// host, a ceiling that was applied and has since been CHANGED, and a ceiling that was applied and whose standing
+// nobody can currently answer are four facts. When this module was written the two recorded hosts sat in the
+// fourth: the operator had applied 2.0 GHz on 2026-11-24, and what became of it that day was reported twice over
+// in opposite directions -- a relay that they were raising it, after heal's build lane ran out at its limit with
+// the cores held there, and their own words the same day, "we slowed the cores on all computers". The operator's
+// final-state pass of 22:03-22:05 UTC then read every recorded host directly (is-enabled, is-active, and
+// scaling_max_freq on each of 128 policies), which is precisely the read that arm named as its discharge: all four
+// rows now sit in `CeilingStands`, the two relays are kept as history by `cpu_freq_cap_relay_history`, and the
+// unsaid arm stands ready for the next ceiling nobody has read. `ceiling` names the figure that was APPLIED and
+// `standing` the figure a read found holding -- and a future consumer that pushes desired state must push what
+// `standing` answers, never what was merely applied. A consumer that pushes desired state at a host must not push the
+// applied figure or invent the current one, and no such consumer exists yet: there is no CPU-scaling convergence
+// leg in the fleet, and writing one before the standing is readable would push a clock nobody can name. That leg
+// -- and the read that must precede it -- is named as an unstarted row in
+// gunbc.plans.fleet_hardware_fact_consumption's own roster, which is where this module's frontier is classified
+// rather than left implied. What IS read today is consumed: gunbc.fleet.fleet_work_energy_cost
+// host_draw_power_state_attribution asks `cpu_freq_cap_mechanisms_on` and
+// `cpu_freq_cap_standing_discharge_read` of a host before it lets a power figure price that host's work, so the
+// unsaid standing has a consequence -- the marginal cost of work on srv3 and srv4 carries the gap and the one
+// read that would close it.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import product.host_identity { HostIdentity, host_identity_eq }
+import std.measure { Hertz, hertz, hertz_count }
+import std.content_hash { sha256_hex_of_text }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, After, ServiceType, OneshotMode, RemainAfterExit, ExecStart,
+  Installable, WantedBy, serialize_systemd_unit_file,
+}
+// The cap-unit digest standing is the same question gunbc.fleet.gpu_power_cap_boot_state first modelled for the
+// GPU cap units, so it is spelled once there and imported here -- the type and the discharge read -- rather than
+// minted a second time beside it.
+import gunbc.fleet.gpu_power_cap_boot_state {
+  CapUnitContentDigest, CapUnitDigestMarkedOnly, CapUnitDigestRead, declared_path_host_hash_read,
+}
+
+// What the mechanism's own script reported when it finished. The script writes the ceiling to every core and
+// reads each one back, and it FAILS if any core misses -- so the count it reports is the mechanism grading its
+// own work, and it is a different reading from an outside observer ticking cores over ssh. The outside read is
+// its own arm, not a discount on the script's: srv1's and srv2's figures come from the operator's pass catting
+// scaling_max_freq across the policies, which says what the hosts are under but not that the script graded its
+// own work and passed.
+type CpuCoreFrequencyReadBack
+  = EveryCoreSeenAtCeiling { cores_read_back: Int }
+  | EveryPolicySeenAtCeilingByOutsideRead { policies_read: Int, instrument: NonEmptyStr }
+  | SomeCoresMissedAtCeiling { cores_read_back: Int, cores_expected: Int }
+  | ReadBackNotReported { why: NonEmptyStr }
+
+// WHETHER THE CEILING STILL STANDS. The arms are not a workflow status and not a to-do: they are what the host
+// is under. `CeilingStands` is a ceiling read holding today; `CeilingSuperseded` is a ceiling that was applied
+// and has since been CHANGED -- a claim, so it carries the change's authorship and date on it; and
+// `CeilingStandingUnsaid` is the third thing, which is what the two recorded hosts are: the applied figure is
+// known, and whether anything replaced it is NOT known, because the reports about it conflict and no read has
+// landed. It is not a hedge standing in for one of the other two: a row in this arm refuses both directions,
+// answering no figure and pushing no ceiling, and it carries the competing reports rather than picking one.
+// Collapsing it into `CeilingSuperseded` would write an operator act that no read has shown, and collapsing it
+// into `CeilingStands` would keep pushing a clock the operator may have changed.
+type CpuFreqCapStanding
+  = CeilingStands { applied_on: NonEmptyStr }
+  | CeilingSuperseded {
+      applied_on: NonEmptyStr
+      superseded_on: NonEmptyStr
+      // Whose act replaced it, in their terms rather than this module's inference.
+      superseded_by: NonEmptyStr
+      figure_standing_today: CeilingFigureStanding
+      // Why it went. Held on the row because a ceiling lifted for a build lane and a ceiling lifted for power
+      // are different history, and the second reads as a policy about the hardware otherwise.
+      why: NonEmptyStr
+    }
+  | CeilingStandingUnsaid {
+      applied_on: NonEmptyStr
+      // Why this model declines to say. Not "we forgot to look": what was reported, and why it does not settle
+      // the question.
+      unsaid_because: NonEmptyStr
+      // The reports, each in its own words, kept beside each other rather than merged. A row in this arm with
+      // one report is a row that has already chosen a side.
+      competing_reports: List<NonEmptyStr>
+      figure_standing_today: CeilingFigureStanding
+    }
+
+// WHAT FIGURE THE HOST IS UNDER NOW, as it stands for this model. Named for the question it answers rather than
+// for an act: `CeilingSuperseded` already states the act, and an arm that presupposed a replacement would say
+// too much for `CeilingStandingUnsaid` to carry. `FigureUnread` is the frontier: the row says what would close
+// it and supplies no digits. `FigureStated` is what a host read or an operator statement lands as -- and once
+// one exists, it, not the applied figure, is what the host is under.
+type CeilingFigureStanding
+  = FigureStated { ceiling: Hertz }
+  | FigureUnread { what_would_discharge_it: NonEmptyStr }
+
+// A frequency ceiling held on a host by an installed mechanism. The unit runs the script; both paths are the
+// operator's, and both digests are as-reported markings until a host hash read lands.
+type CpuFreqCapMechanism {
+  host: HostIdentity
+  unit_path: NonEmptyStr
+  unit_digest: CapUnitContentDigest
+  script_path: NonEmptyStr
+  script_digest: CapUnitContentDigest
+  // The ceiling the mechanism writes to each core. cpufreq's scaling_max_freq counts kilohertz; this carries
+  // hertz, the unit the catalog's nominal clock uses, so the two compare without a scale silently changing.
+  // This is the figure that was APPLIED -- what stands today is `standing`'s to answer.
+  ceiling: Hertz
+  read_back: CpuCoreFrequencyReadBack
+  // Reboot-persistence as the operator stated it -- an enabled boot unit. NOT a `systemctl is-enabled` read;
+  // nothing here reports what systemd says about the unit.
+  persists_across_boot: Bool
+  standing: CpuFreqCapStanding
+  read_on: NonEmptyStr
+}
+
+// THE READ THAT WOULD TELL THIS MODEL WHAT THE HOSTS ARE UNDER NOW. Spelled once here and carried by both rows,
+// because the two rows are blocked on the same missing read: no observe mode this repository models reads a CPU
+// frequency limit on a host, and the only figure ever reported -- 128 of 128 cores at 2000000 kHz -- came from
+// the mechanism's own script read by the operator by hand. It is the same read that would settle either
+// direction, which is why the two questions -- was it raised, or does it stand -- share one discharge.
+data cpu_freq_ceiling_standing_read: NonEmptyStr = "a read of what ceiling each host is under now -- either a fleet-converge observe leg that reads the CPU scaling limit on the subject host (no such mode exists today, and the first read of this mechanism was the operator's hand read rather than a modeled one), or the operator stating the figure. Until one of those lands the figure standing today is unread, and writing a number here would be inventing a host's clock in whichever direction it was written." as NonEmptyStr
+
+// THE TWO REPORTS ABOUT WHAT HAPPENED TO THAT CEILING, kept beside each other and not merged. Both are relays
+// of the operator on the same day, 2026-11-24; they do not agree, and no read of a host has landed since either.
+// Held once at module level because both hosts carry exactly the same pair of reports -- a per-host copy would
+// be a second place to keep the same two sentences, and the day one of them is corrected the other would stay.
+// THE RELAYS AS HISTORY, since 2026-11-24 22:03-22:05 UTC. While the two hosts sat unread these two sentences
+// were the whole record of what might have happened to the ceiling, and the rows carried them in
+// CeilingStandingUnsaid. The operator's final-state pass then read each host directly -- is-enabled, is-active,
+// and scaling_max_freq on every policy -- and found 2000000 kHz under an enabled, active unit on all four Altres,
+// which is the read cpu_freq_ceiling_standing_read named as the discharge; the rows are now CeilingStands. The
+// relays stay spelled here, and `cpu_freq_cap_relay_history` keeps them reachable, because the raising episode
+// (~19:00, after heal's build lane timed out at its limit; srv3's unit disabled then, re-enabled ~22:02) is
+// history the record should not lose even though it no longer decides the standing -- and gunbc.design_ruling
+// ::operator_cpu_freq_cap_standing_unsaid_2026_11_24 cites this same pair.
+fn cpu_freq_cap_relay_history() -> List<NonEmptyStr> {
+  cpu_freq_cap_standing_reports
+}
+
+data cpu_freq_cap_standing_reports: List<NonEmptyStr> = [
+  "2026-11-24, relayed by manager session clever-raven-401: the operator was raising the srv3/srv4 CPU frequency cap, after heal's build lane timed out at its 60-minute limit six times with the cores held at 2.0 GHz and went green at 42m once the ceiling was raised. Offered as CI evidence for a motive, never as a read of a host.",
+  "2026-11-24, the operator's own words through that same relay: \"we slowed the cores on all computers\" -- a cap spoken of as in force, and reaching further than srv3 and srv4.",
+]
+
+// THE TWO HOSTS THE OPERATOR HELD AT 2.0 GHZ ON 2026-11-24, and what figure stands under them now is UNSAID.
+// The operator installed one unit and one script on each host that day; the applied ceiling is half the
+// M128-30's nominal sustained per-thread clock, and the script's own read-back reported every core of 128 at
+// it. What happened to it the same day is reported two ways that do not agree -- a relay that the operator was
+// raising the srv3/srv4 ceiling, and their own words on the same day, "we slowed the cores on all computers",
+// which is a cap still in force and wider than these two hosts -- and no read of a host has landed here since.
+// So both rows carry `CeilingStandingUnsaid`: the applied figure and its read-back stay on the record at the
+// standing the operator's own act supports, no replacement figure is written, and neither "lifted" nor "kept" is
+// asserted. Both rows carry the same digest markings because the operator quoted one head-and-tail per file for
+// both hosts -- whether the two hosts' copies are byte-identical is itself unread, and a hash read run on each
+// host separately is what would settle that too. The reported reach, "all computers", is also wider than this
+// module: no rows are written for any other host, because nothing has been read there either.
+data srv3_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
+  host: operator_host_srv3,
+  unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+  unit_digest: CapUnitDigestRead {
+    sha256: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+  },
+  script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+  script_digest: CapUnitDigestRead {
+    sha256: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+  },
+  ceiling: hertz(count: 2000000000),
+  read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
+  persists_across_boot: true,
+  standing: CeilingStands { applied_on: "2026-11-24" as NonEmptyStr },
+  read_on: "applied and read by the operator by hand over the admin route on 2026-11-24 (their words: gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24); the digests and the current figure are the operator's final-state ssh pass of 22:03-22:05 UTC -- sha256sum on both paths, systemctl is-enabled/is-active, and scaling_max_freq read on all 128 policies -- which is the read cpu_freq_ceiling_standing_read named as the discharge, landed" as NonEmptyStr,
+}
+
+data srv4_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
+  host: operator_host_srv4,
+  unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+  unit_digest: CapUnitDigestRead {
+    sha256: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+  },
+  script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+  script_digest: CapUnitDigestRead {
+    sha256: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+  },
+  ceiling: hertz(count: 2000000000),
+  read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
+  persists_across_boot: true,
+  standing: CeilingStands { applied_on: "2026-11-24" as NonEmptyStr },
+  read_on: "applied and read by the operator by hand over the admin route on 2026-11-24 (their words: gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24); the digests and the current figure are the operator's final-state ssh pass of 22:03-22:05 UTC -- sha256sum on both paths, systemctl is-enabled/is-active, and scaling_max_freq read on all 128 policies -- which is the read cpu_freq_ceiling_standing_read named as the discharge, landed" as NonEmptyStr,
+}
+
+// THE OTHER TWO ALTRES, read in the same 22:03-22:05 UTC pass. srv1 and srv2 were never in the contest that put
+// srv3 and srv4 under CeilingStandingUnsaid -- the two competing relays both speak of the srv3/srv4 ceiling -- so
+// their rows carry the arm the read supports: CeilingStands, with the figure the pass found on every policy. The
+// two files are byte-identical to srv3's and srv4's (cpu_freq_cap_files_are_one_file_below checks it, and says what
+// that claim rests on); the digests here are each host's OWN sha256sum read, not one quotation spread over four
+// rows -- which is exactly the distinction this module's earlier draft could not make, having only the quoted
+// head and tail. srv2's key refuses ssh for most modes yet the operator's admin route reached it, so its CPU
+// figures got their first host read too, even while gunbc.fleet.fleet_host_power still carries that host inferred.
+data srv1_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
+  host: operator_host_srv1,
+  unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+  unit_digest: CapUnitDigestRead {
+    sha256: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+  },
+  script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+  script_digest: CapUnitDigestRead {
+    sha256: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+  },
+  ceiling: hertz(count: 2000000000),
+  read_back: EveryPolicySeenAtCeilingByOutsideRead {
+    policies_read: 128,
+    instrument: "cat /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq over ssh, 22:03-22:05 UTC pass" as NonEmptyStr,
+  },
+  persists_across_boot: true,
+  standing: CeilingStands { applied_on: "2026-11-24" as NonEmptyStr },
+  read_on: "installed 2026-11-24 and read in the operator's final-state ssh pass of 22:03-22:05 UTC: sha256sum on both paths, systemctl is-enabled/is-active (enabled, active), scaling_max_freq 2000000 on all 128 policies" as NonEmptyStr,
+}
+
+data srv2_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
+  host: operator_host_srv2,
+  unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+  unit_digest: CapUnitDigestRead {
+    sha256: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+  },
+  script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+  script_digest: CapUnitDigestRead {
+    sha256: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+  },
+  ceiling: hertz(count: 2000000000),
+  read_back: EveryPolicySeenAtCeilingByOutsideRead {
+    policies_read: 128,
+    instrument: "cat /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq over ssh, 22:03-22:05 UTC pass" as NonEmptyStr,
+  },
+  persists_across_boot: true,
+  standing: CeilingStands { applied_on: "2026-11-24" as NonEmptyStr },
+  read_on: "installed 2026-11-24 (~22:00 UTC) and read in the operator's final-state ssh pass of 22:03-22:05 UTC: sha256sum on both paths, systemctl is-enabled/is-active (enabled, active), scaling_max_freq 2000000 on all 128 policies" as NonEmptyStr,
+}
+
+data cpu_freq_cap_mechanisms: List<CpuFreqCapMechanism> = [
+  srv1_cpu_freq_cap, srv2_cpu_freq_cap, srv3_cpu_freq_cap, srv4_cpu_freq_cap,
+]
+
+// WHEN THE FIGURE WAS PUT ON THE CORES. Held inside the standing -- every arm carries its own date -- so the
+// answer comes off the value the row already has rather than a fourth field restating it. A consumer that names
+// the gap a ceiling leaves needs the date it was applied to say when the figure stopped being evidence.
+fn cpu_freq_cap_applied_on(m: CpuFreqCapMechanism) -> NonEmptyStr {
+  match m.standing {
+    CeilingStands { applied_on } => applied_on
+    CeilingSuperseded { applied_on, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _ } => applied_on
+    CeilingStandingUnsaid { applied_on, unsaid_because: _, competing_reports: _, figure_standing_today: _ } => applied_on
+  }
+}
+
+fn cpu_freq_cap_mechanisms_on(host: HostIdentity) -> List<CpuFreqCapMechanism> {
+  filter(cpu_freq_cap_mechanisms, m => host_identity_eq(a: m.host, b: host))
+}
+
+// THE OPEN READ A CEILING'S RECORD CARRIES: what would tell this model what the host is under now. Absent when
+// the ceiling was read holding today, or when a figure has already landed. This is the frontier, and it lives in
+// the standing rather than beside it, so a figure cannot be stated in one place while another row still calls
+// the ceiling unread -- and the same read answers whichever way it turns out, which is why one discharge serves
+// both the superseded and the unsaid arm.
+fn cpu_freq_cap_standing_discharge_read(m: CpuFreqCapMechanism) -> NonEmptyStr? {
+  match m.standing {
+    CeilingStands { applied_on: _ } => Absent
+    CeilingSuperseded {
+      applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: figure, why: _,
+    } =>
+      match figure {
+        FigureUnread { what_would_discharge_it } => Present { value: what_would_discharge_it }
+        FigureStated { ceiling: _ } => Absent
+      }
+    CeilingStandingUnsaid {
+      applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: figure,
+    } =>
+      match figure {
+        FigureUnread { what_would_discharge_it } => Present { value: what_would_discharge_it }
+        FigureStated { ceiling: _ } => Absent
+      }
+  }
+}
+
+// A ceiling that STANDS must have been READ holding: its row carries a reading -- the script's own graded
+// read-back or an outside pass that saw every policy -- rather than an assertion wearing the stands arm.
+// Ceilings in the other arms are not asked this question; their debt is `cpu_freq_cap_standing_discharge_read`.
+fn ceiling_backed_by_a_reading(m: CpuFreqCapMechanism) -> Bool {
+  match m.standing {
+    CeilingStands { applied_on: _ } =>
+      match m.read_back {
+        EveryCoreSeenAtCeiling { cores_read_back: _ } => true
+        EveryPolicySeenAtCeilingByOutsideRead { policies_read: _, instrument: _ } => true
+        // A missed core says the ceiling is NOT holding, which is a different claim than standing.
+        SomeCoresMissedAtCeiling { cores_read_back: _, cores_expected: _ } => false
+        ReadBackNotReported { why: _ } => false
+      }
+    CeilingSuperseded { applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _ } => true
+    CeilingStandingUnsaid { applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _ } => true
+  }
+}
+
+// Is the APPLIED figure below the clock the installed part is rated to sustain? Asked of the catalog row rather
+// than of a number typed into a row, so a ceiling that quietly rose to the part's nominal clock would stop being
+// called a cap. This compares what was applied on 2026-11-24; it says nothing about what stands today, which is
+// `cpu_freq_ceiling_standing_on`'s to answer.
+fn ceiling_sits_below_the_parts_nominal_clock(m: CpuFreqCapMechanism, nominal: Hertz) -> Bool {
+  hertz_count(h: m.ceiling) < hertz_count(h: nominal)
+}
+
+// --------------------------------------------------------------------------------
+// THE TWO FILES AS BYTES THIS MODEL EMITS, 2026-11-24. The operator's final-state pass quoted the
+// exact contents of both, so the record no longer stops at quoted heads and tails. The unit is
+// RENDERED -- built through the systemd unit-file authority (extdeps.systemd.unit_file: its
+// directives, its section machinery, its serializer), so the bytes on the hosts and the bytes this
+// row emits have ONE producer, and the digest folds below make the directive order a checked fact
+// rather than a guess. The script is TRANSCRIBED, line for line: extdeps.languages.bash carries a
+// bash grammar, but this file is /bin/sh over a glob with a bracket test, an arithmetic assignment
+// and a braced group -- none of which that grammar has been shown to express -- so the honest claim
+// is "transcribed, and the digest tie is what a dropped line, space or quote would break". The
+// modeled read that would replace the operator's hand run -- a fleet-converge observe leg hashing a
+// declared path -- is still unbuilt, and stays the frontier
+// gunbc.fleet.gpu_power_cap_boot_state::declared_path_host_hash_read spells; what landed is the
+// operator's read of those bytes, carried with its instrument.
+// --------------------------------------------------------------------------------
+
+data cpu_freq_cap_unit: SystemdUnitFile = ServiceUnitFile {
+  unit: [
+    Description { text: "Cap CPU frequency at 2.0 GHz (operator 2026-11-24, power after a surge-strip trip). Hand edit, to be recorded in the repo." as NonEmptyStr },
+    After { target: "systemd-modules-load.service" as NonEmptyStr },
+  ],
+  service: [
+    ServiceType { mode: OneshotMode },
+    RemainAfterExit { active: true },
+    ExecStart { command: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr },
+  ],
+  install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+}
+
+fn cpu_freq_cap_unit_bytes() -> String {
+  serialize_systemd_unit_file(file: cpu_freq_cap_unit)
+}
+
+fn cpu_freq_cap_unit_sha256() -> String {
+  sha256_hex_of_text(text: cpu_freq_cap_unit_bytes())
+}
+
+data cpu_freq_cap_script_lines: List<NonEmptyStr> = [
+  "#!/bin/sh" as NonEmptyStr,
+  "# Cap every cpufreq policy's scaling_max_freq (operator 2026-11-24: Altra at 2.0 GHz for power, after a surge-strip" as NonEmptyStr,
+  "# trip). Fails closed: a missing policy set or a readback mismatch exits 1. Hand edit, to be recorded in the repo." as NonEmptyStr,
+  "set -eu" as NonEmptyStr,
+  "CAP_KHZ=2000000" as NonEmptyStr,
+  "n=0" as NonEmptyStr,
+  "for p in /sys/devices/system/cpu/cpufreq/policy*; do" as NonEmptyStr,
+  "  [ -d \"$p\" ] || continue" as NonEmptyStr,
+  "  echo \"$CAP_KHZ\" > \"$p/scaling_max_freq\"" as NonEmptyStr,
+  "  got=$(cat \"$p/scaling_max_freq\")" as NonEmptyStr,
+  "  [ \"$got\" = \"$CAP_KHZ\" ] || { echo \"readback mismatch on $p: $got\"; exit 1; }" as NonEmptyStr,
+  "  n=$((n + 1))" as NonEmptyStr,
+  "done" as NonEmptyStr,
+  "[ \"$n\" -gt 0 ] || { echo \"no cpufreq policies found\"; exit 1; }" as NonEmptyStr,
+  "echo \"capped $n cpufreq policies at $CAP_KHZ kHz\"" as NonEmptyStr,
+]
+
+fn cpu_freq_cap_script_bytes() -> String {
+  join(map(cpu_freq_cap_script_lines, l => l as String), "\n") + "\n"
+}
+
+fn cpu_freq_cap_script_sha256() -> String {
+  sha256_hex_of_text(text: cpu_freq_cap_script_bytes())
+}
+
+fn cpu_freq_cap_unit_digest_of(m: CpuFreqCapMechanism) -> String? {
+  match m.unit_digest {
+    CapUnitDigestRead { sha256 } => Present { value: sha256 as String }
+    CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => Absent
+  }
+}
+
+fn cpu_freq_cap_script_digest_of(m: CpuFreqCapMechanism) -> String? {
+  match m.script_digest {
+    CapUnitDigestRead { sha256 } => Present { value: sha256 as String }
+    CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => Absent
+  }
+}
+
+// THE RENDER IS THE HOST'S FILE. Every row's unit digest is the digest this grammar emits, byte for
+// byte: an edit to a directive here, or a drift between a row and what the hosts hashed, goes red.
+fn cpu_freq_cap_unit_render_matches_every_host_read() -> Bool {
+  cpu_freq_cap_mechanisms.all(m =>
+    match cpu_freq_cap_unit_digest_of(m: m) {
+      Absent => false
+      Present { value: read } => read == cpu_freq_cap_unit_sha256()
+    })
+}
+
+// THE TRANSCRIPTION IS THE HOST'S FILE, to the same standard: a line dropped, a space lost, a quote
+// mistyped -- any of them moves the digest and reds this.
+fn cpu_freq_cap_script_transcription_matches_every_host_read() -> Bool {
+  cpu_freq_cap_mechanisms.all(m =>
+    match cpu_freq_cap_script_digest_of(m: m) {
+      Absent => false
+      Present { value: read } => read == cpu_freq_cap_script_sha256()
+    })
+}
+
+// ONE FILE, FOUR HOSTS. The earlier record could not say this -- one quoted head-and-tail covered
+// both srv3 and srv4, and whether the copies were identical was itself unread. Now each host's own
+// sha256sum is on its row and all four match the single render and transcription above, so the
+// ceiling is one mechanism replicated four times rather than four mechanisms that happen to agree.
+// What this does NOT say: that no OTHER host carries the files -- the operator's own words ("we
+// slowed the cores on all computers") reach past these four, and no read of any other host has
+// landed. The roster enumerates what was read, and the frontier for the rest is the same modeled
+// observe leg the digests' discharge names.
+fn cpu_freq_cap_files_are_one_file_below() -> Bool {
+  cpu_freq_cap_mechanisms.all(m =>
+    match cpu_freq_cap_unit_digest_of(m: m) {
+      Absent => false
+      Present { value: u } => u == cpu_freq_cap_unit_sha256()
+    }
+      && match cpu_freq_cap_script_digest_of(m: m) {
+        Absent => false
+        Present { value: s } => s == cpu_freq_cap_script_sha256()
+      })
+    && cpu_freq_cap_mechanisms.length() == 4
+}
+
+// WHAT STILL OWES A READ. The digests are read values now, so the cap-unit marking machinery has
+// nothing left to carry here; the frontier that remains is the modeled observe leg itself -- a
+// fleet-converge hashing these declared paths rather than a human quoting them -- and the reach of
+// the ceiling beyond these four hosts. Both are named, not implied: this fn answers "what is still
+// owed on this row" for the consumer that classifies frontiers, and Absent on every row says only
+// that the DIGEST question is closed.
+fn cpu_freq_cap_row_frontier(m: CpuFreqCapMechanism) -> NonEmptyStr? {
+  match cpu_freq_cap_unit_digest_of(m: m) {
+    Absent => Present { value: declared_path_host_hash_read }
+    Present { value: _ } =>
+      match cpu_freq_cap_script_digest_of(m: m) {
+        Absent => Present { value: declared_path_host_hash_read }
+        Present { value: _ } => Absent
+      }
+  }
+}
