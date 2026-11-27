@@ -40,6 +40,7 @@ import std.measure {
   tokens_per_second, tokens_per_second_count, watt_count,
 }
 import std.algebra { string_contains }
+import std.integer { nat_to_int }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.huggingface.hub { HubRepoId }
@@ -1449,7 +1450,7 @@ fn parking_ask_agreement(
 ) -> StrataParkingAgreement {
   let nothing_to_park = match beyond {
     Present { value: b } => b == 0
-    Absent => held <= strata_parallel_minimum_slots
+    Absent => nat_to_int(n: held) <= strata_parallel_minimum_slots()
   }
   if nothing_to_park {
     ParkedConversationsAgreed { parked: 0 }

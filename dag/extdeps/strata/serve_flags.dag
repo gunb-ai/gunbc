@@ -3,10 +3,11 @@ module extdeps.strata.serve_flags
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
-  TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count_value,
+  TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count,
+  positive_slot_count_value,
   Measure, Memory, Mebi, measure_count,
   PositiveMeasureCount, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
-  positive_measure_count_from_int, positive_measure_count_value,
+  positive_measure_count, positive_measure_count_from_int, positive_measure_count_value,
 }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -292,13 +293,23 @@ fn strata_launch_with_parallel(parameters: StrataLaunchParameters, parallel: Pos
 
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
 
-// `--parallel N` (README.md): slots answered at once, ONE by default. This is the flag's documented
-// floor, and it agrees with the type's own floor (`PositiveSlotCount` has no zero). A consumer that has NOT
-// read a launch's argv can still bound how many of its conversations can need parking: at most
-// `held - strata_parallel_minimum_slots` of them. It is carried here, beside the flag it describes, because
-// the number is the flag's -- a consumer that hardcoded a 1 of its own would be choosing a policy the flag
-// owns (gunbc.design_argument::declared_intent).
-data strata_parallel_minimum_slots: Nat = 1
+// `--parallel N` (README.md): slots answered at once, ONE by default. THE FLOOR IS THE CARRIER'S, NOT A
+// LITERAL WRITTEN HERE. What the flag documents as its minimum is exactly the smallest value the slot
+// carrier can hold, so it is DERIVED from that carrier -- the least positive count is the successor of
+// zero, which is what `PositiveSlotCount` is built from -- and read back through the carrier's own reader.
+// Until 2026-11-27 this was `data ... : Nat = 1`, a bare literal beside a comment claiming it "agrees with
+// the type's own floor": two sources for one fact, free to drift apart, with nothing tying them together
+// (review 99153; gunbc.design_argument::single_authority: "a second place that independently decides it is
+// a fork"; ::minimize_redundancy: "a concept is modeled once and every use derived from it").
+// A consumer that has NOT read a launch's argv can still bound how many of its conversations can need
+// parking: at most `held - this` of them. It is carried here, beside the flag it describes, because the
+// bound is the flag's -- a consumer hardcoding a floor of its own would be choosing a policy the flag owns
+// (gunbc.design_argument::declared_intent).
+fn strata_parallel_minimum_slots() -> Int {
+  positive_slot_count_value(
+    slots: positive_slot_count(count: positive_measure_count(predecessor: 0)),
+  )
+}
 
 fn strata_kv_format_word(f: StrataKvFormat) -> String {
   match f {
