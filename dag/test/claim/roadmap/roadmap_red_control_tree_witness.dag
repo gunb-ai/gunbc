@@ -105,16 +105,16 @@ test fn a_receipt_with_both_shas_closes() -> Bool {
     && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: executed(r: "ABC", g: green())))
 }
 
-// The recorder refuses a missing --red-at with its own named diagnostic, before it reads or writes anything.
+// The recorder refuses a missing --arg red_at= with its own named diagnostic, before it reads or writes anything.
 test fn a_missing_red_at_is_refused_at_the_cli_with_its_diagnostic() -> Bool {
-  string_contains(s: cli_reason(red_at: "", green_at: green()), pattern: "--red-at is required")
-    && string_contains(s: cli_reason(red_at: red(), green_at: ""), pattern: "--green-at is required")
-    && string_contains(s: cli_reason(red_at: "nope", green_at: green()), pattern: "--red-at is malformed")
-    && string_contains(s: cli_reason(red_at: red(), green_at: "ABCDEF"), pattern: "--green-at is malformed")
+  string_contains(s: cli_reason(red_at: "", green_at: green()), pattern: "--arg red_at= is required")
+    && string_contains(s: cli_reason(red_at: red(), green_at: ""), pattern: "--arg green_at= is required")
+    && string_contains(s: cli_reason(red_at: "nope", green_at: green()), pattern: "--arg red_at= is malformed")
+    && string_contains(s: cli_reason(red_at: red(), green_at: "ABCDEF"), pattern: "--arg green_at= is malformed")
 }
 
 test fn red_at_equal_to_green_at_is_refused() -> Bool {
-  string_contains(s: cli_reason(red_at: red(), green_at: red()), pattern: "--red-at equals --green-at")
+  string_contains(s: cli_reason(red_at: red(), green_at: red()), pattern: "--arg red_at= equals --arg green_at=")
     && !red_observation_holds(o: RedObservedOnMain { red_at: red(), green_at: red() })
     && red_observation_holds(o: RedObservedOnMain { red_at: red(), green_at: green() })
 }
@@ -168,11 +168,11 @@ test fn an_appended_pair_upgrades_the_unrecorded_receipt() -> Bool {
 // THE PROBE KIND. A probe (a red_at off main) names red_base and the durable ref red-control/<row-id>; the
 // bad shapes are each refused at the recorder with their own diagnostic and are unclosable as data.
 test fn a_probe_without_its_base_or_ref_or_with_a_wrong_ref_is_refused() -> Bool {
-  string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: "", probe_ref: pref()), pattern: "--red-base is required on the probe arm")
-    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: ""), pattern: "--probe-ref is required on the probe arm")
-    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: red(), probe_ref: pref()), pattern: "--red-base equals --red-at")
-    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: "branch/row-1"), pattern: "--probe-ref is malformed")
-    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: "red-control/"), pattern: "--probe-ref is malformed")
+  string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: "", probe_ref: pref()), pattern: "--arg red_base= is required on the probe arm")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: ""), pattern: "--arg probe_ref= is required on the probe arm")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: red(), probe_ref: pref()), pattern: "--arg red_base= equals --arg red_at=")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: "branch/row-1"), pattern: "--arg probe_ref= is malformed")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: "red-control/"), pattern: "--arg probe_ref= is malformed")
     && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: probe_ev(r: red(), b: red(), g: green(), ref: pref())))
     && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: probe_ev(r: red(), b: base(), g: green(), ref: "main")))
 }
@@ -307,12 +307,12 @@ test fn a_half_spelled_observation_is_refused_with_its_own_words() -> Bool {
     && string_contains(s: line_refusal(line_spelling(observation: ",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\",\"probe_ref\":\"red-control/row-1\"")), pattern: "belong to the probe arm")
 }
 
-// THE ARM IS SAID, NEVER GUESSED. The recorder takes --red-kind; the word is from a closed set, and a member
+// THE ARM IS SAID, NEVER GUESSED. The recorder takes --arg red_kind=; the word is from a closed set, and a member
 // of the other arm is refused rather than quietly ignored.
 test fn the_recorder_refuses_an_arm_it_was_not_told_or_a_member_it_did_not_ask_for() -> Bool {
-  string_contains(s: cli_line_reason(line: "", arm: "sideways", r: red(), g: green(), b: "", ref: ""), pattern: "--red-kind is required and must be on_main or probe")
+  string_contains(s: cli_line_reason(line: "", arm: "sideways", r: red(), g: green(), b: "", ref: ""), pattern: "--arg red_kind= is required and must be on_main or probe")
     && string_contains(s: cli_line_reason(line: "", arm: "on_main", r: red(), g: green(), b: base(), ref: ""), pattern: "the on_main arm names none")
     && string_contains(s: cli_line_reason(line: "", arm: "on_main", r: red(), g: green(), b: "", ref: pref()), pattern: "the on_main arm names none")
-    && string_contains(s: cli_line_reason(line: "", arm: "probe", r: red(), g: green(), b: base(), ref: ""), pattern: "--probe-ref is required on the probe arm")
-    && string_contains(s: cli_line_reason(line: "", arm: "probe", r: red(), g: green(), b: "", ref: pref()), pattern: "--red-base is required on the probe arm")
+    && string_contains(s: cli_line_reason(line: "", arm: "probe", r: red(), g: green(), b: base(), ref: ""), pattern: "--arg probe_ref= is required on the probe arm")
+    && string_contains(s: cli_line_reason(line: "", arm: "probe", r: red(), g: green(), b: "", ref: pref()), pattern: "--arg red_base= is required on the probe arm")
 }

@@ -572,7 +572,7 @@ fn roadmap_acceptance_pr_evidence_from_args(url: String, sha: String) -> Accepta
     // acceptance by this very head (roadmap_pull_request_merge_evidence_from_args holds to the same
     // shape via std.types::commit_sha_text_holds), so an acceptance recorded with a short or non-hex
     // head could NEVER have its merge recorded — the join key would name a commit no one can name back.
-    // Refuse it HERE, where the argument is read, exactly as --red-at/--green-at/--red-base are held to
+    // Refuse it HERE, where the argument is read, exactly as --arg red_at=/--arg green_at=/--arg red_base= are held to
     // the same shape; the CLI names the refusal so the operator learns which argument is wrong.
     if !commit_sha_text_holds(head: sha_seen) { Absent }
     else { Present { value: AcceptedOnPullRequestHead {

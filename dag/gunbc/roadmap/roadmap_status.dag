@@ -172,7 +172,7 @@ fn red_probe_ref_holds(ref: String) -> Bool {
 // as "the caller meant this member but left it out" across arms, it is refused or required strictly by the
 // arm that was NAMED.
 // THE ARM, AS A TYPE. The two standings an executed red control can hold are declared once, here. The arm
-// word is a STRING only at the EDGES (the CLI's --red-kind, the serve close form's red_kind field, the
+// word is a STRING only at the EDGES (the CLI's --arg red_kind=, the serve close form's red_kind field, the
 // event-log row's red_kind member); each edge parses it EXACTLY ONCE with red_kind_parse below, and the
 // validator downstream only ever sees a RedKind — never a word it must re-interpret. (gunbc.design_argument::
 // single_authority: the closed set lives in one place.)
