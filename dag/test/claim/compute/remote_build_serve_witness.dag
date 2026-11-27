@@ -2,13 +2,16 @@ module test.claim.compute.remote_build_serve_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import product.host_identity { HostIdentity }
-import std.process { ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { Kibibyte, kibibyte, second, second_count }
 import std.nat { nat_to_decimal_string }
 import std.retry_law { RetryHintDelay }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_null_sha1_object_id }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
+import gunbc.compute.remote_build_client { remote_build_answer_word }
 import gunbc.compute.work_request {
   WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure,
   ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ToolchainMismatchRefused, DependencyNotSucceeded,
@@ -26,8 +29,8 @@ import gunbc.compute.remote_build {
   remote_build_answer_from_exit,
   remote_build_ending_of_outcome, remote_build_answer_moves_on,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
-  HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
-  RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
+  HostUnreachable, HostUnknown, HostRefusedRequest, HostOutcomeUnknown,
+  RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, ProbeUnrecognized, remote_build_probe_from_exit, remote_build_probe_answer,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
   RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session, remote_build_client_key_ci,
@@ -105,7 +108,44 @@ test fn at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve()
 test fn a_probe_answered_ready_sends_the_request_and_255_is_unreachable() -> Bool {
   match remote_build_probe_from_exit(exit_code: remote_build_serve_exit_code(e: ServeReady), stdout: concat(remote_build_serve_header(e: ServeReady), "\nready"), stderr: "") { ProbeReady => true  _ => false }
     && match remote_build_probe_from_exit(exit_code: 255, stdout: "", stderr: "Connection refused") { ProbeUnreachable { detail } => detail == "Connection refused"  _ => false }
-    && match remote_build_probe_from_exit(exit_code: 127, stdout: "", stderr: "gunbc: not found") { ProbeCannotServe { detail: _ } => true  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 127, stdout: "", stderr: "gunbc: not found") { ProbeUnrecognized { exit_code: e, detail: _ } => e == 127  _ => false }
+}
+
+// THE UNREAD EXIT IS A HOST THAT NEVER ANSWERED, NOT A HOST THAT DECLINED. The 2026-11-27 srv3 class:
+// the forced entry's scope wrapper refused at admission and the probe exited 6 with no ending word.
+// The old decoder minted that into HostCannotServe -- a host standing the host never declared, and the
+// walk-side premise for dispatching anyway. An unread exit answers exactly like an unreachable host:
+// moves on, nothing sent, no host standing recorded. Red before the ProbeUnrecognized arm: every exit
+// below 0/1/2 decodes cannot-serve and this claim is red on the first match.
+test fn an_unread_probe_exit_is_an_unknown_host_never_a_cannot_serve() -> Bool {
+  match remote_build_probe_from_exit(exit_code: 6, stdout: "", stderr: "user_work_scope: observed-bound arm did not admit (chain-unbounded)") {
+    ProbeUnrecognized { exit_code: e, detail: _ } => e == 6
+    _ => false
+  }
+    && match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: 6, stdout: "", stderr: "")) {
+      Present { value: a } =>
+        match a {
+          // THE RED CONTROLS: never cannot-serve, never the transport's own "unreachable" (the host WAS
+          // reached); the typed answer carries the unread exit, moves the walk on, and folds its own
+          // receipt word. And the READY answer's code (6) with its header present stays ProbeReady --
+          // remote_build_wire mints ServeReady at exit 6, so an unread 6 and a ready 6 are different
+          // facts with different carriers.
+          HostCannotServe { detail: _ } => false
+          HostUnreachable { detail: _ } => false
+          HostUnknown { exit_code: e, detail: _ } =>
+            e == 6 && remote_build_answer_moves_on(a: a) && remote_build_answer_word(a: a) == "probe-unanswered"
+          _ => false
+        }
+      Absent => false
+    }
+    && match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: 126, stdout: "", stderr: "command not executable")) {
+      Present { value: a } => match a { HostUnknown { exit_code: e, detail: _ } => e == 126  _ => false }
+      Absent => false
+    }
+    && match remote_build_probe_from_exit(exit_code: remote_build_serve_exit_code(e: ServeReady), stdout: concat(remote_build_serve_header(e: ServeReady), "\nready"), stderr: "user_work_scope: observed-bound arm did not admit (chain-unbounded)") {
+      ProbeReady => true
+      _ => false
+    }
 }
 
 // Side-chat review F2: once the request is sent, a transport that cannot say what happened is
@@ -383,6 +423,7 @@ test fn the_real_read_route_reads_a_preplaced_identity_file() -> Bool {
   }
 }
 
+
 // ── THE HOST-SIDE WALL BOUNDS (remote-build-request-host-wall-bounds) ────────────────────────────────
 
 // THE WAIT BOUND: a request that waited past its leg ceiling refuses to START, and one still inside it
@@ -478,5 +519,109 @@ test fn the_wall_bound_is_on_the_granted_unit_not_the_answer_printer() -> Bool {
         && (compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/tmp", process_bounds: Absent, runtime_max: Present { value: second(count: 900) })
             |> any(p => match p { NamedUnitSetting { property: RuntimeMaxSecProperty, value: _ } => true  _ => false }))
     Absent => false
+  }
+}
+
+// THE ROSTER'S OWN IDENTITY JOIN. The door's roster is a call list the module cannot enumerate at
+// runtime, and a hand-kept list beside the thing it lists is the second authority gunbc.design_argument::single_authority
+// refuses, and exactly how review 99270 caught the door vouching for 33 of 34 claims. So completeness
+// is not a count anyone eyeballs: THIS claim reads the module's own source -- the same repo-file read
+// test.claim.heal_publication_boundary_witness does of its production file -- extracts the set of
+// `test fn` declarations and the set of rostered calls, and they must agree name-for-name in both
+// directions. Add a claim without rostering it, roster a name that is not a claim, or rename either
+// side: this claim goes red and the door refuses to exit 0.
+//
+// BOUNDED DEBT, NAMED (the reviewer's alternative, taken as well as the check): the one deletion this
+// join cannot catch from inside is deleting THIS claim together with its roster line -- a module that
+// stops checking says nothing about what it stopped checking. Its trigger is named where the fix lives:
+// when gunbc.workflow.local_repo_wet_terminal local_repo_wet_schedule lands a runner and every claim in
+// this module rides it row-per-row (today: three rows, no runner), the door, the roster and this claim
+// all delete -- the manual receipt goes away and the schedule lane is the only execution route.
+fn door_source_lines() -> List<String> {
+  let src = Filesystem.Read(path: "dag/test/claim/compute/remote_build_serve_witness.dag")
+  if !src.success { return [] }
+  return split(s: src.content, delimiter: "\n")
+}
+
+fn door_test_fn_name(line: String) -> String {
+  let t = trim(line)
+  if !starts_with(s: t, prefix: "test fn ") { return "" }
+  let after = substring(s: t, start: length("test fn "), end: length(t))
+  return match after |> split(s: after, delimiter: "(") |> first { Present { value: v } => v  Absent => "" }
+}
+
+fn door_roster_name(line: String) -> String {
+  let t = trim(line)
+  if !starts_with(s: t, prefix: "check_or_name(name: \"") { return "" }
+  return match t |> split(s: t, delimiter: "\"") |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+}
+
+test fn the_door_roster_lists_every_test_fn_and_nothing_else() -> Bool {
+  let lines = door_source_lines()
+  let fns = filter(map(lines, door_test_fn_name), n => n != "")
+  let rostered = filter(map(lines, door_roster_name), n => n != "")
+  // THE JOIN BOTH WAYS: every declaration called, every call a declaration -- an identity join, not a
+  // count equality (gunbc.design_argument::fail_closed). And it must have parsed SOMETHING: a module
+  // that reads empty proves nothing.
+  length(fns) > 0
+    && !any(fns, n => first_where(rostered, r => r == n) == Absent)
+    && !any(rostered, r => first_where(fns, n => n == r) == Absent)
+}
+
+// THE WITNESS DOOR, the aggregate manual-receipt entry -- the same shape as
+// test.claim.compute.compute_recover_catalog_witness. Three of these claims (the probe-decode set this
+// program added) are ALSO enrolled one-per-row in gunbc.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule; the schedule has no runner today, so the posted receipt from running THIS
+// door is the evidence, exactly as in that precedent. Several claims read tempdirs and identity files
+// that a --claim-run mock table would fake into agreement -- the failure mode that made three false
+// claims read TRUE once -- so this entry runs through --function with no mock responses. The roster
+// below must list EVERY test fn in this module: exit 0 only when every claim holds, and a red claim
+// names itself.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { "" } else { concat(name, " ") }
+}
+
+fn run_remote_build_serve_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "the_door_roster_lists_every_test_fn_and_nothing_else", held: the_door_roster_lists_every_test_fn_and_nothing_else()),
+    check_or_name(name: "a_doubled_space_refuses_as_an_empty_word", held: a_doubled_space_refuses_as_an_empty_word()),
+    check_or_name(name: "every_ending_reads_back_as_its_own_answer", held: every_ending_reads_back_as_its_own_answer()),
+    check_or_name(name: "only_a_full_or_unready_host_moves_the_request_on", held: only_a_full_or_unready_host_moves_the_request_on()),
+    check_or_name(name: "at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve", held: at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve()),
+    check_or_name(name: "a_probe_answered_ready_sends_the_request_and_255_is_unreachable", held: a_probe_answered_ready_sends_the_request_and_255_is_unreachable()),
+    check_or_name(name: "an_unread_probe_exit_is_an_unknown_host_never_a_cannot_serve", held: an_unread_probe_exit_is_an_unknown_host_never_a_cannot_serve()),
+    check_or_name(name: "after_dispatch_a_lost_or_inconsistent_answer_is_unknown_and_does_not_advance", held: after_dispatch_a_lost_or_inconsistent_answer_is_unknown_and_does_not_advance()),
+    check_or_name(name: "a_header_whose_code_disagrees_is_not_an_answer", held: a_header_whose_code_disagrees_is_not_an_answer()),
+    check_or_name(name: "the_exit_codes_are_distinct", held: the_exit_codes_are_distinct()),
+    check_or_name(name: "a_full_pool_and_a_low_host_are_host_full", held: a_full_pool_and_a_low_host_are_host_full()),
+    check_or_name(name: "work_in_flight_is_answered_where_it_runs", held: work_in_flight_is_answered_where_it_runs()),
+    check_or_name(name: "a_toolchain_mismatch_is_the_host_not_the_work", held: a_toolchain_mismatch_is_the_host_not_the_work()),
+    check_or_name(name: "the_builds_own_outcome_decides_and_a_later_dependency_refusal_is_the_host", held: the_builds_own_outcome_decides_and_a_later_dependency_refusal_is_the_host()),
+    check_or_name(name: "the_fetch_names_the_public_origin_and_the_one_ref", held: the_fetch_names_the_public_origin_and_the_one_ref()),
+    check_or_name(name: "the_answer_carries_the_document_and_the_endings_code", held: the_answer_carries_the_document_and_the_endings_code()),
+    check_or_name(name: "the_recorded_key_has_the_relayed_fingerprint", held: the_recorded_key_has_the_relayed_fingerprint()),
+    check_or_name(name: "the_session_key_has_the_relayed_fingerprint", held: the_session_key_has_the_relayed_fingerprint()),
+    check_or_name(name: "the_ci_key_has_the_relayed_fingerprint", held: the_ci_key_has_the_relayed_fingerprint()),
+    check_or_name(name: "every_roster_host_has_a_restricted_forced_entry", held: every_roster_host_has_a_restricted_forced_entry()),
+    check_or_name(name: "an_attached_success_serves_and_an_attached_failure_is_the_answer", held: an_attached_success_serves_and_an_attached_failure_is_the_answer()),
+    check_or_name(name: "the_install_render_prints_one_line_per_host_per_admitted_key", held: the_install_render_prints_one_line_per_host_per_admitted_key()),
+    check_or_name(name: "an_unrenderable_host_has_a_refusal_and_no_installable_line", held: an_unrenderable_host_has_a_refusal_and_no_installable_line()),
+    check_or_name(name: "the_closed_list_renders_only_admitted_keys", held: the_closed_list_renders_only_admitted_keys()),
+    check_or_name(name: "an_absent_identity_leaves_the_receipt_without_a_serve_binary_member", held: an_absent_identity_leaves_the_receipt_without_a_serve_binary_member()),
+    check_or_name(name: "an_observed_identity_folds_revision_and_sha256_into_the_receipt", held: an_observed_identity_folds_revision_and_sha256_into_the_receipt()),
+    check_or_name(name: "a_malformed_identity_file_refuses_rather_than_reading_as_absent", held: a_malformed_identity_file_refuses_rather_than_reading_as_absent()),
+    check_or_name(name: "a_refused_identity_refuses_the_whole_receipt", held: a_refused_identity_refuses_the_whole_receipt()),
+    check_or_name(name: "the_real_read_route_reads_a_preplaced_identity_file", held: the_real_read_route_reads_a_preplaced_identity_file()),
+    check_or_name(name: "a_request_that_waited_past_its_ceiling_refuses_to_start", held: a_request_that_waited_past_its_ceiling_refuses_to_start()),
+    check_or_name(name: "a_remote_build_dependent_request_pre_builds_its_seed", held: a_remote_build_dependent_request_pre_builds_its_seed()),
+    check_or_name(name: "an_unreadable_host_clock_is_a_cannot_serve_answer_not_a_wait_refusal", held: an_unreadable_host_clock_is_a_cannot_serve_answer_not_a_wait_refusal()),
+    check_or_name(name: "a_wait_bound_refusal_is_capacity_limited_and_retry_allowed", held: a_wait_bound_refusal_is_capacity_limited_and_retry_allowed()),
+    check_or_name(name: "the_granted_unit_carries_its_remaining_wall_budget", held: the_granted_unit_carries_its_remaining_wall_budget()),
+    check_or_name(name: "the_wall_bound_is_on_the_granted_unit_not_the_answer_printer", held: the_wall_bound_is_on_the_granted_unit_not_the_answer_printer()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("remote_build_serve_witness claims red: ", red) }
   }
 }
