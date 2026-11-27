@@ -25,14 +25,14 @@ module test.claim.roadmap.roadmap_claim_leaf_append_witness
 //  that already holds the accepted claim, so "unchanged" is measured against a non-empty log, byte for
 //  byte (event ids and wire text), not against an empty one.
 //
-//  RUN (wet, srv1; LIVE route, binary built in the tested checkout):
+//  RUN (wet, srv1; LIVE route, binary built in the tested checkout). ENROLLMENT: not enrolled in any
+//  CI floor lane -- these two rows run only through the manual wet recipe below (status stated as a
+//  comment, not as a String row no fold reads; gunbc.design_argument::consumption, source_annotations).
 //    gunbc test //test/claim/roadmap/roadmap_claim_leaf_append_witness:append_admits_real_decomposition_leaf_end_to_end --wet
 //    gunbc test //test/claim/roadmap/roadmap_claim_leaf_append_witness:append_refuses_planted_nonexistent_leaf_with_log_unchanged --wet
 //  The route's own tally must show SELECTED == DECLARED == 1 for each selector; a selector that selects
 //  nothing is VOID (a non-observation), never a pass.
 // ─────────────────────────────────────────────────────────────────────────────
-
-data witness_note: String = "WET append-admission witness for roadmap-claim-names-leaf: one real decomposition leaf path (0/0/0 of emitter-produces-main-rs) admitted into a committed scratch log, one planted nonexistent path (1/0/0, a FindingsOf family with no declared count) refused AT the guard with the log unchanged by id and wire-text equality. Not enrolled. srv1 recipe: build gunbc in the tested checkout; gunbc test //test/claim/roadmap/roadmap_claim_leaf_append_witness:<fn> --wet."
 
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.optional { Present, Absent }
