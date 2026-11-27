@@ -13,6 +13,7 @@ import extdeps.cloud.aws_cli {
   aws_cli_read_spot_prices, aws_cli_read_instances, aws_cli_read_service_quota, aws_cli_describe_spot_prices,
   aws_cli_read_prefix_census, aws_cli_create_tags, aws_cli_delete_tags, aws_cli_create_string_parameter,
   aws_cli_read_parameter_listing, aws_cli_refusal_is_definite, aws_cli_describe_parameters_under,
+  aws_cli_describe_instances_by_client_token,
 }
 import extdeps.cloud.aws_ec2 { AwsEc2Tag }
 import extdeps.exec.command { argv_words }
@@ -105,6 +106,14 @@ test fn the_mark_tag_writes_name_the_card_and_the_key() -> Bool {
   let clear = join(argv_words(command: aws_cli_delete_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], keys: ["gunbc-flex-idle-since" as NonEmptyStr])), " ")
   set.contains("ec2 create-tags --region us-west-2") && set.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since,Value=1795646284")
     && clear.contains("ec2 delete-tags --region us-west-2") && clear.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since")
+}
+
+// A PURCHASE IS ASKED ABOUT BY ITS TOKEN: one describe-instances filtered on the client token alone, so the answer
+// is what that token launched whatever the card was tagged, in the region the purchase was made in.
+test fn a_purchase_is_read_back_by_its_client_token() -> Bool {
+  let read = join(argv_words(command: aws_cli_describe_instances_by_client_token(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "eu-north-1" as NonEmptyStr, client_token: "gunbc-flex-eu-north-1a-1795646284" as NonEmptyStr)), " ")
+  read.contains("ec2 describe-instances --region eu-north-1") && read.contains("--filters Name=client-token,Values=gunbc-flex-eu-north-1a-1795646284")
+    && !read.contains("tag:")
 }
 
 // A PLACEHOLDER IS CREATED ONCE: a String put with its tags and WITHOUT --overwrite, so a second put of the name

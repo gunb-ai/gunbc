@@ -86,7 +86,7 @@ import gunbc.durable_cas_file_store {
   cas_verify_named_window_head, NamedWindowHeadCurrent, NamedWindowHeadMoved,
 }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, DurableHoldReleaseRefusal, DurableHoldRecoveryRefusal,
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldReleaseRefusal, DurableHoldRecoveryRefusal,
   HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
   DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
   durable_hold_owner_equal,
@@ -96,7 +96,9 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
   file_hold_release_assess_windowed_at, FileHoldWindowedReleasePlanned, FileHoldWindowedReleaseNotEligible, FileHoldWindowedReleaseNamedHeadMoved,
   file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
-  file_hold_recovery_assess_windowed, FileHoldWindowedRecoveryPlanned, FileHoldWindowedRecoveryNotEligible, FileHoldWindowedRecoveryNamedHeadMoved,
+  file_hold_recover_dead_holder_windowed, FileHoldWindowedDeadHolderRecovered, FileHoldWindowedDeadHolderHolderLive,
+  FileHoldWindowedDeadHolderHolderUnobservable, FileHoldWindowedDeadHolderNotEligible, FileHoldWindowedDeadHolderNamedHeadMoved,
+  FileHoldWindowedDeadHolderReleaseLost, FileHoldWindowedDeadHolderReleaseStoreUnavailable, FileHoldWindowedDeadHolderReleaseKeyNotAddressable,
   hold_observation_of_cas,
 }
 import gunbc.process_hold_identity {
@@ -1305,29 +1307,29 @@ fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId,
   let root_path = local_store_binding_path(b: binding)
   match local_store_hold_owner_process(owner: holder) {
     Absent => LocalStoreHoldRefused { refusal: LocalStoreHolderUnobservable { holder: holder, cause: "the holder is not a materialization-store process" as NonEmptyStr } }
-    Present { value: hp } => {
-      let liveness = holder_process_liveness(p: hp.process, pid_namespace: hp.pid_namespace)
-      match liveness {
-        HolderObservedLive { evidence: e } => LocalStoreHoldRefused { refusal: LocalStoreFamilyBusy { holder: holder, evidence: e } }
-        HolderLivenessUnobservable { cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHolderUnobservable { holder: holder, cause: c } }
-        HolderObservedDead { evidence: e } =>
-          if recovered {
-            LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
-          } else {
-            match file_hold_recovery_assess_windowed(root: root_path as NonEmptyStr, slot_key: key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }, released_by: local_store_hold_recovery_ref, window: window) {
-              FileHoldWindowedRecoveryNotEligible { slot_key: _, refusal: r } => LocalStoreHoldRefused { refusal: LocalStoreHoldRecoveryRefused { refusal: r } }
-              FileHoldWindowedRecoveryNamedHeadMoved { slot_key: _, named: n } => LocalStoreHoldRefused { refusal: LocalStoreHoldNamedWindowHeadMoved { named: n } }
-              FileHoldWindowedRecoveryPlanned { plan: pl, dead_holder: _, evidence: _ } =>
-                match file_hold_release_commit(plan: pl) {
-                  FileHoldReleased { slot_key: _, generation: _ } => local_store_acquire_family_hold(binding: binding, family: family, recovered: true)
-                  FileHoldReleaseLost { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
-                  FileHoldReleaseStoreUnavailable { slot_key: _, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldStoreUnavailable { cause: c } }
-                  FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldKeyNotAddressable }
-                }
-            }
-          }
+    Present { value: hp } =>
+      if recovered {
+        // The acquire after a recovery found the family held again: looked at, never recovered twice.
+        match holder_process_liveness(p: hp.process, pid_namespace: hp.pid_namespace) {
+          HolderObservedLive { evidence: e } => LocalStoreHoldRefused { refusal: LocalStoreFamilyBusy { holder: holder, evidence: e } }
+          HolderLivenessUnobservable { cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHolderUnobservable { holder: holder, cause: c } }
+          HolderObservedDead { evidence: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
+        }
+      } else {
+        // THE OBSERVE-PROVE-RELEASE SEQUENCE IS THE STORE'S (gunbc.durable_exclusive_hold_file_store
+        // file_hold_recover_dead_holder_windowed); this root supplies which holders it can look at and what each
+        // outcome means for a family.
+        match file_hold_recover_dead_holder_windowed(root: root_path as NonEmptyStr, slot_key: key, holder: holder, generation: generation, released_by: (d, e) => local_store_hold_recovery_ref, live_owner: h => holder_process_liveness(p: hp.process, pid_namespace: hp.pid_namespace), window: window) {
+          FileHoldWindowedDeadHolderRecovered { dead_holder: _, evidence: _ } => local_store_acquire_family_hold(binding: binding, family: family, recovered: true)
+          FileHoldWindowedDeadHolderHolderLive { holder: _, evidence: e } => LocalStoreHoldRefused { refusal: LocalStoreFamilyBusy { holder: holder, evidence: e } }
+          FileHoldWindowedDeadHolderHolderUnobservable { holder: _, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHolderUnobservable { holder: holder, cause: c } }
+          FileHoldWindowedDeadHolderNotEligible { refusal: r } => LocalStoreHoldRefused { refusal: LocalStoreHoldRecoveryRefused { refusal: r } }
+          FileHoldWindowedDeadHolderNamedHeadMoved { named: n } => LocalStoreHoldRefused { refusal: LocalStoreHoldNamedWindowHeadMoved { named: n } }
+          FileHoldWindowedDeadHolderReleaseLost => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
+          FileHoldWindowedDeadHolderReleaseStoreUnavailable { cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldStoreUnavailable { cause: c } }
+          FileHoldWindowedDeadHolderReleaseKeyNotAddressable => LocalStoreHoldRefused { refusal: LocalStoreHoldKeyNotAddressable }
+        }
       }
-    }
   }
 }
 

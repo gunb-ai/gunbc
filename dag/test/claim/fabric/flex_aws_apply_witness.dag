@@ -79,7 +79,7 @@ fn card_use(id: String, enrolled: Bool, in_flight: Int, seen: Int) -> FlexAwsCar
 // router counts as unplaceable when no rented row admits it -- here, when the rented pool's turns meet its cap (cap
 // 0: no rented row is routed) -- the rows it routes, and our cards' use.
 fn router(waiting: Bool, active: Int, cap: Int, uses: List<FlexAwsCardUse>) -> FlexAwsDemand {
-  FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: if waiting && ((cap == 0) || (active >= cap)) { 1 } else { 0 }, rows: if cap == 0 { [] } else { ["aws-i-0row"] }, cards: uses }, max_cards: 3 }
+  FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: if waiting && ((cap == 0) || (active >= cap)) { 1 } else { 0 }, rows: if cap == 0 { [] } else { ["aws-i-0row"] }, cards: uses, ca_sha256: "" }, max_cards: 3 }
 }
 
 fn idle_for(seconds: Int) -> AwsEc2Instance { tagged(id: "i-0idle", tags: [tag_at(key: flex_aws_mark_idle, unix: now_unix - seconds)]) }
@@ -183,7 +183,7 @@ test fn rentable_waiters_rent_only_when_the_rented_pool_is_full_or_gone() -> Boo
     FlexAwsHold { why: w } => w.contains("wanted=0")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 1, rows: [], cards: [] }, max_cards: 0 }, candidates: cs, owned: [], outstanding: [], quotas: quota24, now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 1, rows: [], cards: [], ca_sha256: "" }, max_cards: 0 }, candidates: cs, owned: [], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
     _ => false
   })
@@ -456,8 +456,8 @@ test fn the_burn_ceiling_bounds_the_summed_hourly_price() -> Bool {
 // tool calls and no turn in flight refuses a ninth; the router counts that waiter as unplaceable, and the decision
 // asks for a second card even though the card's active slots are free (a reading of active turns alone held).
 test fn a_card_whose_retention_is_full_asks_for_a_second() -> Bool {
-  let warm = FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 1, rows: ["aws-i-0warm"], cards: [card_use(id: "i-0warm", enrolled: true, in_flight: 0, seen: 8)] }, max_cards: 3 }
-  let room = FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 0, rows: ["aws-i-0warm"], cards: [card_use(id: "i-0warm", enrolled: true, in_flight: 0, seen: 7)] }, max_cards: 3 }
+  let warm = FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 1, rows: ["aws-i-0warm"], cards: [card_use(id: "i-0warm", enrolled: true, in_flight: 0, seen: 8)], ca_sha256: "" }, max_cards: 3 }
+  let room = FlexAwsDemandRouter { router: FlexAwsRouterReading { unplaceable: 0, rows: ["aws-i-0warm"], cards: [card_use(id: "i-0warm", enrolled: true, in_flight: 0, seen: 7)], ca_sha256: "" }, max_cards: 3 }
   (match flex_aws_decide(policy: policy, demand: warm, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [tagged(id: "i-0warm", tags: [])], outstanding: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false

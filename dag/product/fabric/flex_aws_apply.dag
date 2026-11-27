@@ -6,7 +6,7 @@ import std.list { first_where, distinct_by_key }
 import std.algebra { list_sort_by_key, int_total_order, length }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.measure { Second, second_count, MoneyPerHour, money_per_hour_micros }
-import extdeps.languages.json.emit { JsonValue, JsonString }
+import extdeps.languages.json.emit { JsonValue, JsonString, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.cloud.aws_ec2 {
   AwsEc2Instance, AwsEc2Pending, AwsEc2Running, AwsEc2Terminated, AwsEc2Tag, AwsEc2TagSpecification, AwsEc2TagInstance, AwsEc2TagVolume,
@@ -91,6 +91,26 @@ fn flex_aws_read_notice(body: String) -> FlexAwsNoticeRead {
             _ => FlexAwsNoticeUnreadable { cause: concat("no detail object in ", dt) }
           }
       }
+  }
+}
+
+// A NOTICE WRITTEN BACK IN THE WIRE IT WAS READ FROM: the members of the EventBridge event flex_aws_read_notice reads
+// (detail-type, detail.instance-id, detail.instance-action), so the one reader reads both what the queue delivers and
+// what the loop kept (gunbc.fleet.flex_aws_pass, the held notices it carries across a restart).
+fn flex_aws_action_wire(a: AwsEc2InstanceAction) -> String {
+  match a { AwsEc2ActionTerminate => "terminate"  AwsEc2ActionStop => "stop"  AwsEc2ActionHibernate => "hibernate" }
+}
+
+fn flex_aws_notice_event(n: FlexAwsNotice) -> JsonValue {
+  match n {
+    FlexAwsInterruptionWarning { instance_id: i, action: a } => json_object(members: [
+      json_kv(key: "detail-type", value: json_string(s: aws_ec2_spot_interruption_event_detail_type as String)),
+      json_kv(key: "detail", value: json_object(members: [json_kv(key: "instance-id", value: json_string(s: i as String)), json_kv(key: "instance-action", value: json_string(s: flex_aws_action_wire(a: a)))])),
+    ])
+    FlexAwsRebalanceRecommendation { instance_id: i } => json_object(members: [
+      json_kv(key: "detail-type", value: json_string(s: flex_aws_rebalance_detail_type as String)),
+      json_kv(key: "detail", value: json_object(members: [json_kv(key: "instance-id", value: json_string(s: i as String))])),
+    ])
   }
 }
 

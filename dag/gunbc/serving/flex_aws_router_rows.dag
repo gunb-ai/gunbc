@@ -129,9 +129,11 @@ fn flex_aws_row_retired(row: JsonValue, now_unix: Int) -> JsonValue {
 }
 
 // A row of ours whose card this pass could not see: some region's ownership was unreadable and the card is not
-// among those read.
-fn flex_aws_row_unseen(row: JsonValue, seen: List<String>, blind: Bool) -> Bool {
-  blind && !any(seen, i => i == flex_aws_row_instance_id(row: row))
+// among those read -- unless AWS has sent a notice for that card (`withdrawn`, review of 7edc31fb): AWS is reclaiming it
+// whatever this pass could read of its region, so its row is ours to take out of service, not one to keep unseen.
+fn flex_aws_row_unseen(row: JsonValue, seen: List<String>, blind: Bool, withdrawn: List<String>) -> Bool {
+  let id = flex_aws_row_instance_id(row: row)
+  blind && !any(seen, i => i == id) && !any(withdrawn, w => w == id)
 }
 
 fn flex_aws_row_wanted(row: JsonValue, desired: List<FlexAwsEnrollable>) -> Bool {
@@ -154,12 +156,12 @@ type FlexAwsRowsConverge
 // `blind` (some region's ownership was not), never from a second read of the file (review of e50999ce: two reads
 // let a failed first one empty the keep set). Our other rows become: the desired cards' rows in service; a row
 // leaving service retired; a retired row kept until the binding lifetime since it left; nothing else.
-fn flex_aws_rows_converge(current: String, cards: List<FlexAwsEnrollable>, facts: FlexAwsRowFacts, seen: List<String>, blind: Bool, now_unix: Int, binding_ttl_seconds: Int) -> FlexAwsRowsConverge {
+fn flex_aws_rows_converge(current: String, cards: List<FlexAwsEnrollable>, facts: FlexAwsRowFacts, seen: List<String>, blind: Bool, withdrawn: List<String>, now_unix: Int, binding_ttl_seconds: Int) -> FlexAwsRowsConverge {
   match parse_json_document(s: current) {
     JsonDocumentUnreadable { gap: _ } => FlexAwsRowsRefused { cause: "upstreams.json is not one JSON document" }
     JsonDocumentParsed { value: JsonArray { elements: rows } } => {
-      let theirs = rows |> filter(r => !flex_aws_is_ours(row: r) || flex_aws_row_unseen(row: r, seen: seen, blind: blind))
-      let ours = rows |> filter(r => flex_aws_is_ours(row: r) && !flex_aws_row_unseen(row: r, seen: seen, blind: blind))
+      let theirs = rows |> filter(r => !flex_aws_is_ours(row: r) || flex_aws_row_unseen(row: r, seen: seen, blind: blind, withdrawn: withdrawn))
+      let ours = rows |> filter(r => flex_aws_is_ours(row: r) && !flex_aws_row_unseen(row: r, seen: seen, blind: blind, withdrawn: withdrawn))
       let desired = distinct_by_key(xs: cards, key: c => c.instance_id as String)
       let leaving = ours |> filter(r => !flex_aws_row_wanted(row: r, desired: desired) && flex_aws_row_in_service(row: r))
       let resting = ours |> filter(r => !flex_aws_row_wanted(row: r, desired: desired) && !flex_aws_row_in_service(row: r))
@@ -276,6 +278,8 @@ type FlexAwsRouterReading {
   unplaceable: Int
   rows: List<String>
   cards: List<FlexAwsCardUse>
+  // The SHA-256 (hex) of the CA bundle the running router loaded (gunbc.serving.router_dev_policy, upstream_ca_sha256).
+  ca_sha256: String
 }
 
 type FlexAwsStatsRead
@@ -382,7 +386,14 @@ fn flex_aws_read_router_stats(body: String, instance_ids: List<NonEmptyStr>, mod
             Present { value: rows } => {
               let uses = flat_map(instance_ids, i => match flex_aws_card_use(stats: d, rows: rows, instance_id: i) { Present { value: u } => [u]  Absent => [] })
               if count(uses) != count(instance_ids) { FlexAwsStatsRefused { cause: "a withdrawn card's active counter is not a number" } }
-              else { FlexAwsStatsReadOk { reading: FlexAwsRouterReading { unplaceable: unplaceable, rows: map(rows, r => r.name), cards: uses } } }
+              else {
+                match json_field(obj: d, key: "upstream_ca_sha256") {
+                  FieldRead { value: JsonString { value: h } } =>
+                    if h == "" { FlexAwsStatsRefused { cause: "router stats carry an empty upstream_ca_sha256" } }
+                    else { FlexAwsStatsReadOk { reading: FlexAwsRouterReading { unplaceable: unplaceable, rows: map(rows, r => r.name), cards: uses, ca_sha256: h } } }
+                  _ => FlexAwsStatsRefused { cause: "router stats carry no upstream_ca_sha256 (the router predates the CA readback)" }
+                }
+              }
             }
           }
         }

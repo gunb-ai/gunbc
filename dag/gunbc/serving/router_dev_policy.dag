@@ -182,6 +182,15 @@ fn router_dev_init_lines(state_dir: String, model_alias: String) -> List<String>
     "ROUTER_KEYS = \{}",
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
+    // THE CA BUNDLE THIS RELOAD READ, by digest: nginx reads upstream_ca.pem (proxy_ssl_trusted_certificate) in the same
+    // configuration cycle that re-runs this block, so /router/stats can say which bundle the running router trusts and a
+    // writer can tell a reload that took its bundle from one that did not (gunbc.fleet.flex_aws_pass flex_aws_reload_owed).
+    // Absent when the file is: an empty digest is never reported as the digest of nothing.
+    "ROUTER_CA_SHA256 = nil",
+    "do",
+    "  local ca = slurp(dir .. '/upstream_ca.pem')",
+    "  if ca then local h = require('resty.sha256'):new() h:update(ca) ROUTER_CA_SHA256 = require('resty.string').to_hex(h:final()) end",
+    "end",
     "ROUTER_ALIAS = '" + model_alias + "'",
     // Reasoning-effort dialect per upstream MODEL, rendered from the effort_effects rows on the
     // upstream list. The alias and each engine accept a different set of effort names, and an engine
@@ -763,28 +772,42 @@ fn router_dev_stats_lines() -> List<String> {
     "end",
     "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
     // RENTED DEMAND, decided by this router's own routing rules (operator 2026-11-25: rent a card on surplus
-    // demand the router could place on it). `unplaceable_by_model` counts the waiting conversations that ANOTHER
-    // rented card would serve and no rented row in service can take now: not held for their own engine
-    // (waiter_keeps_its_engine), and admitted by no rented row of their model (admits, the pick's own rule: a row
-    // with free active slots and its retention full cannot take a new conversation; review of e50999ce). `rows` is
-    // each rented row in service with its turns in flight and the conversations bound to it seen within the
-    // recent window. The AWS loop rents on these and nothing else, so neither rule is restated outside the router.
-    // Counted per REQUESTED MODEL, with the alias beside it: a rented card serves its own model and the alias, so a
-    // reader adds the two entries for the card it would rent and nothing else.
+    // demand the router could place on it). `unplaceable_by_model` counts, per REQUESTED model, the waiting
+    // conversations that no row in service has room for now: waiters not held for their own engine
+    // (waiter_keeps_its_engine), less the room every compatible row -- OWNED AND RENTED, the pick's own candidate set
+    // -- has for a new conversation, which is its free active slots capped by its retention room (admits, the pick's
+    // own rule: a row with free slots and its retention full cannot take a new conversation; review of e50999ce). An
+    // uncapped rented row has room for any number. Room is CONSUMED as it is counted (review of 7edc31fb): one owned
+    // slot freed after five waiters were refused places one of them on its retry, not all five, so four are still
+    // demand -- while one slot freed for one waiter is none. A model's own rows take its waiters first, then every
+    // row's remaining room takes the alias's waiters, since every row serves the alias and a model's waiters can use
+    // only its rows. `rows` is each rented row in service with its turns in flight and the conversations bound to it
+    // seen within the recent window. The AWS loop rents on these and nothing else, so neither rule is restated outside
+    // the router. A rented card serves its own model and the alias, so a reader adds the two entries.
     "rented.unplaceable_by_model = \{}",
     "rented.alias = ROUTER_ALIAS",
     "local held = bound_counts(nil)",
-    "local function held_on(name) return held[name] or 0 end",
-    "local function a_rented_row_admits(m)",
-    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
-    "    if u.overflow and u.in_service ~= false and (m == ROUTER_ALIAS or m == u.model) and admits(u, held_on, nil) then return true end",
+    "local room = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.in_service ~= false and not state:get('unavailable:' .. u.name) then",
+    "    if uncapped(u) then room[u.name] = math.huge",
+    "    else room[u.name] = math.max(0, math.min(free_slots(u), u.retain == nil and math.huge or (u.retain - (held[u.name] or 0)))) end",
     "  end",
-    "  return false",
     "end",
+    "local waiting = \{}",
     "for _, k in ipairs(state:get_keys(0)) do",
     "  local m, s = k:match('^pending:(.-)|(.+)$')",
-    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) and not a_rented_row_admits(m) then rented.unplaceable_by_model[m] = (rented.unplaceable_by_model[m] or 0) + 1 end",
+    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) then waiting[m] = (waiting[m] or 0) + 1 end",
     "end",
+    "local function place(m, n, fits)",
+    "  local left = n",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    if left > 0 and room[u.name] and fits(u) then local take = math.min(left, room[u.name]) room[u.name] = room[u.name] - take left = left - take end",
+    "  end",
+    "  if left > 0 then rented.unplaceable_by_model[m] = left end",
+    "end",
+    "for m, n in pairs(waiting) do if m ~= ROUTER_ALIAS then place(m, n, function(u) return u.model == m end) end end",
+    "if waiting[ROUTER_ALIAS] then place(ROUTER_ALIAS, waiting[ROUTER_ALIAS], function(u) return true end) end",
     "rented.rows = \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if u.overflow and u.in_service ~= false then",
@@ -797,6 +820,7 @@ fn router_dev_stats_lines() -> List<String> {
     "  end",
     "end",
     "out.rented = rented",
+    "out.upstream_ca_sha256 = ROUTER_CA_SHA256",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
     "if ngx.var.arg_sessions == '1' then",

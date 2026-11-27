@@ -139,6 +139,14 @@ fn aws_cli_describe_owned_instances(credentials_file: FilePath, region: NonEmpty
     arguments: ["--filters", join(["Name=tag:", tag_key as String, ",Values=", owner as String], "")])
 }
 
+// The instances one RunInstances client token launched, in any state EC2 still lists (describe-instances filter
+// `client-token`: "The idempotency token you provided when you launched the instance", aws-cli 2.42.3 help). It asks
+// exactly whether a purchase made with that token created a card, whatever the card was tagged.
+fn aws_cli_describe_instances_by_client_token(credentials_file: FilePath, region: NonEmptyStr, client_token: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-instances" as NonEmptyStr,
+    arguments: ["--filters", concat("Name=client-token,Values=", client_token as String)])
+}
+
 fn aws_cli_get_service_quota(credentials_file: FilePath, region: NonEmptyStr, service_code: NonEmptyStr, quota_code: NonEmptyStr) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "service-quotas" as NonEmptyStr, operation: "get-service-quota" as NonEmptyStr,
     arguments: ["--service-code", service_code as String, "--quota-code", quota_code as String])
