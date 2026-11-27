@@ -15,6 +15,7 @@
 module test.claim.host.host_remove_on_host_witness
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.optional { Present, Absent }
 import std.algebra { Empty, FreeSemigroup, fold_list, non_empty_append, non_empty_singleton, non_empty_to_list }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
 import extdeps.exec.command { ArgvCommand, argv_words }
@@ -38,6 +39,10 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome,
   RunArgvTransportObserved,
   RunArgvTransportRefused,
+  RunArgvTransportUnanswered,
+  TransportUnansweredWireInconsistent,
+  RemovedByReadback,
+  deploy_retract_remove_failure,
   ShellExecObserved,
 }
 
@@ -728,4 +733,63 @@ test fn a_relative_path_is_never_established_absent_by_the_walk() -> Bool {
     ),
     pattern: "relative path",
   )
+}
+
+// #17119 item 1: a DISPATCHED removal whose reply came back wire-inconsistent, whose INDEPENDENT
+// post-removal read confirms every target path gone, SETTLES to RemovedByReadback -- NOT RemovedConfirmed
+// (which would fabricate an exit the reply never gave) and NOT a "refused before any dispatch" refusal.
+// The live_deploy retract verdict then treats the removal as done (Absent failure). This drives the real
+// production decision host_remove_verdict -> host_remove_unanswered_verdict through to
+// deploy_retract_remove_failure.
+test fn witness_retract_wire_inconsistent_removal_settles_by_readback() -> Bool {
+  let target = RemoveForceRecursive {
+    path: "/var/lib/gunbc/deploy-stages/retract-settle" as NonEmptyStr,
+  }
+  let verdict = host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathPresent],
+    outcome: RunArgvTransportUnanswered {
+      cause: TransportUnansweredWireInconsistent,
+      reason: "framing mismatch on the reply",
+    },
+    post_state: [HostRemovePathAbsent],
+  )
+  let settled = match verdict {
+    Converged { evidence: RemovedByReadback { paths: ps }, applied: _ } =>
+      string_contains(s: join(ps, ","), pattern: "/var/lib/gunbc/deploy-stages/retract-settle")
+    Converged { evidence: _, applied: _ } => false
+    NotConverged { reason: _, applied: _ } => false
+  }
+  match deploy_retract_remove_failure(verdict: verdict) {
+    Absent => settled
+    Present { value: _ } => false
+  }
+}
+
+// #17119 item 1: the SAME wire-inconsistent removal, but the independent post-removal read STILL sees the
+// path. The effect is UNRESOLVED, so the verdict stays NotConverged and names the dispatched leg and the
+// specific wire fault -- it must NOT claim the transport "refused ... before any dispatch", which would
+// report a sent command as never sent (the defect this PR retires). Red-by-mutation: restoring the pre-fix
+// "refused the removal before any dispatch" detail (and the pre-settle NotConverged) makes this false.
+test fn witness_retract_wire_inconsistent_removal_still_present_stays_unknown() -> Bool {
+  let target = RemoveForceRecursive {
+    path: "/var/lib/gunbc/deploy-stages/retract-unknown" as NonEmptyStr,
+  }
+  match host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathPresent],
+    outcome: RunArgvTransportUnanswered {
+      cause: TransportUnansweredWireInconsistent,
+      reason: "framing mismatch on the reply",
+    },
+    post_state: [HostRemovePathPresent],
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "dispatched")
+        && string_contains(s: r, pattern: "inconsistent wire shape")
+        && string_contains(s: r, pattern: "framing mismatch on the reply")
+        && !string_contains(s: r, pattern: "before any dispatch")
+        && !string_contains(s: r, pattern: "refused")
+    Converged { evidence: _, applied: _ } => false
+  }
 }

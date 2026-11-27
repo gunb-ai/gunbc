@@ -2069,6 +2069,7 @@ fn observe_fleet_host_file_content(
               ) {
                 TypedRemoteFileStepArgvRefused => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
                 TypedRemoteFileStepLegRefused { cause: why } => HostFileUnobservable { reason: why as String }
+                TypedRemoteFileStepLegUnanswered { cause: why } => HostFileUnobservable { reason: join(["the comparison leg was dispatched but its reply could not be read; the destination state is unknown: ", why as String], "") }
                 TypedRemoteFileStepRan { result: back } =>
                   fleet_host_file_standing_of_report(
                     report: classify_typed_remote_file_comparison(write: w, compare_exit_code: back.exit_code, compare_stderr: back.stderr),
@@ -2281,6 +2282,11 @@ type DeploySlotAccountStanding
   // Not "Missing" (which reads as not-created / never-sent) -- useradd WAS sent, so the effect is
   // unknown until a later read settles it. (#17119 item 5, follow-up of #16984.)
   | DeploySlotAccountUnanswered { cause: NonEmptyStr }
+  // The INITIAL getent could not establish whether the account exists (the getent leg was unreadable:
+  // overran / wire-inconsistent / an unclassifiable reply). Nothing was dispatched to create it, so this is
+  // NOT Unanswered (which implies a dispatched create) and NOT Missing (which asserts absence). Existence is
+  // unknown; the account is withheld. (#17119 item 5, follow-up of #16984.)
+  | DeploySlotAccountUnread { cause: NonEmptyStr }
 
 type DeploySlotAccountRead
   = DeploySlotAccountReadPresent { uid: Int, passwd_line: NonEmptyStr }
@@ -2317,7 +2323,7 @@ type DeploySlotAccountStep
 fn deploy_slot_account_step(read: DeploySlotAccountRead, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> DeploySlotAccountStep {
   match read {
     DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountSettled { standing: DeploySlotAccountPresent { uid: u, passwd_line: l } }
-    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: concat("the account could not be read, so it is neither confirmed nor created: ", c) as NonEmptyStr } }
+    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountSettled { standing: DeploySlotAccountUnread { cause: concat("the account could not be read, so its existence is not established and nothing was created: ", c) as NonEmptyStr } }
     DeploySlotAccountReadAbsent =>
       match mode {
         FleetHostFilesObserveOnly => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: "absent; observe mode creates nothing" as NonEmptyStr } }
@@ -2340,7 +2346,20 @@ fn deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAcco
   match readback {
     DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
     DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: concat(dispatch_cause, "; the independent getent readback shows the account still absent") as NonEmptyStr }
-    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountUnanswered { cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
+    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountUnanswered { cause: join([dispatch_cause, "; the independent getent readback could not read the account, so its existence is unknown: ", c], "") as NonEmptyStr }
+  }
+}
+
+// THE SETTLE AFTER AN ANSWERED (converged) useradd -- its reply WAS read, so the create was attempted and
+// answered. Presence settles Created; a POSITIVE absent settles Missing; a readback that could not be read
+// leaves the effect UNKNOWN (DeploySlotAccountUnanswered) -- NOT Missing, which would report a dispatched,
+// answered create whose existence is simply unreadable as absent. The useradd's own exit/stderr are carried.
+// Extracted so a witness drives it (single_authority; mirrors the dispatched-create fold). (#17119 item 5.)
+fn deploy_slot_account_standing_after_answered_create(readback: DeploySlotAccountRead, exit_code: Int, stderr: String) -> DeploySlotAccountStanding {
+  match readback {
+    DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
+    DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: join(["useradd exit=", to_string(exit_code), " ", trim(s: stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
+    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountUnanswered { cause: join(["useradd was dispatched and answered (exit ", to_string(exit_code), ") but the readback could not read the account, so its existence is unknown: ", c], "") as NonEmptyStr }
   }
 }
 
@@ -2362,11 +2381,11 @@ fn converge_deploy_slot_account(
         TypedArgvExecWireInconsistent { fault: f } => deploy_slot_account_standing_after_dispatched_create(readback: observe_deploy_slot_account(subject: subject, context: context), dispatch_cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), ")"], ""))
           TypedArgvExecRefused { reason: why } => DeploySlotAccountMissing { cause: concat("useradd leg refused before any leg ran: ", why) as NonEmptyStr }
           TypedArgvExecConverged { result: r } =>
-            match observe_deploy_slot_account(subject: subject, context: context) {
-              DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
-              DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
-              DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountUnanswered { cause: concat("useradd ran but the readback could not read the account: ", c) as NonEmptyStr }
-            }
+            deploy_slot_account_standing_after_answered_create(
+              readback: observe_deploy_slot_account(subject: subject, context: context),
+              exit_code: r.exit_code,
+              stderr: r.stderr,
+            )
         }
     }
   }
@@ -2402,6 +2421,10 @@ type RunnerSpecAccountStanding
   // readback could NOT settle it: the account may or may not exist.  Not "Missing" (not created) --
   // the effect is unknown until a later read settles it.
   | RunnerSpecAccountUnanswered { login: NonEmptyStr, cause: NonEmptyStr }
+  // The INITIAL getent could not establish whether the account exists (the getent leg was unreadable). Nothing
+  // was dispatched to create it, so this is NOT Unanswered and NOT Missing: existence is unknown, withheld.
+  // (#17119 item 5, follow-up of #16984.)
+  | RunnerSpecAccountUnread { login: NonEmptyStr, cause: NonEmptyStr }
 
 type RunnerSpecAccountRead
   = RunnerSpecAccountReadPresent { uid: Int }
@@ -2461,7 +2484,43 @@ fn runner_spec_account_standing_after_dispatched_create(login: NonEmptyStr, read
   match readback {
     RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: login, uid: u }
     RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: login, cause: join([dispatch_cause, "; the independent getent readback shows the account still absent"], "") as NonEmptyStr }
-    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: login, cause: concat("useradd was dispatched but its reply could not be read, and the independent getent readback could not settle it: ", c) as NonEmptyStr }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: login, cause: join([dispatch_cause, "; the independent getent readback could not read the account, so its existence is unknown: ", c], "") as NonEmptyStr }
+  }
+}
+
+type RunnerSpecAccountStep
+  = RunnerSpecAccountSettled { standing: RunnerSpecAccountStanding }
+  | RunnerSpecAccountCreate
+
+// THE DECISION AFTER THE FIRST READ, pure (mirrors deploy_slot_account_step): what the run does next and
+// what it reports when it does nothing. Present -> present; UNREADABLE -> RunnerSpecAccountUnread (existence
+// unknown, NOT Missing -- the getent leg was sent); absent -> create only in apply mode with privilege.
+// (#17119 item 5.)
+fn runner_spec_account_step(login: NonEmptyStr, read: RunnerSpecAccountRead, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> RunnerSpecAccountStep {
+  match read {
+    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountSettled { standing: RunnerSpecAccountPresent { login: login, uid: u } }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountSettled { standing: RunnerSpecAccountUnread { login: login, cause: concat("the account could not be read, so its existence is not established and nothing was created: ", c) as NonEmptyStr } }
+    RunnerSpecAccountReadAbsent =>
+      match mode {
+        FleetHostFilesObserveOnly => RunnerSpecAccountSettled { standing: RunnerSpecAccountMissing { login: login, cause: "absent; observe mode creates nothing" as NonEmptyStr } }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeAvailable => RunnerSpecAccountCreate
+            AdministratorPrivilegeRefused { reason: r } => RunnerSpecAccountSettled { standing: RunnerSpecAccountMissing { login: login, cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+// THE SETTLE AFTER AN ANSWERED useradd whose reply WAS read: the create was attempted and answered. Presence
+// settles Created; a POSITIVE absent settles Missing; a readback that could not be read leaves the effect
+// UNKNOWN (RunnerSpecAccountUnanswered), NEVER Missing -- the create was dispatched and answered, so its
+// existence is unreadable, not absent. The useradd's own exit/stderr are carried. (#17119 item 5.)
+fn runner_spec_account_standing_after_answered_create(login: NonEmptyStr, readback: RunnerSpecAccountRead, exit_code: Int, stderr: String) -> RunnerSpecAccountStanding {
+  match readback {
+    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: login, uid: u }
+    RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: login, cause: join(["useradd exit=", to_string(exit_code), " ", trim(s: stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: login, cause: join(["useradd was dispatched and answered (exit ", to_string(exit_code), ") but the readback could not read the account, so its existence is unknown: ", c], "") as NonEmptyStr }
   }
 }
 
@@ -2474,30 +2533,17 @@ fn converge_runner_spec_account(
 ) -> RunnerSpecAccountStanding
 {
   let read = observe_runner_spec_account(subject: subject, context: context, login: role.login)
-  match read {
-    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountPresent { login: role.login, uid: u }
-    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountMissing { login: role.login, cause: concat("the account could not be read, so it is neither confirmed nor created: ", c) as NonEmptyStr }
-    RunnerSpecAccountReadAbsent =>
-      match mode {
-        FleetHostFilesObserveOnly => RunnerSpecAccountMissing { login: role.login, cause: "absent; observe mode creates nothing" as NonEmptyStr }
-        FleetHostFilesApply =>
-          match privilege {
-            AdministratorPrivilegeRefused { reason: r } => RunnerSpecAccountMissing { login: role.login, cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr }
-            AdministratorPrivilegeAvailable =>
-              match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
-              TypedArgvExecOverran { deadline: d } =>
-                runner_spec_account_standing_after_dispatched_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), dispatch_cause: join(["useradd leg overran (", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d), ")"], ""))
-              TypedArgvExecWireInconsistent { fault: f } =>
-                runner_spec_account_standing_after_dispatched_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), dispatch_cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), ")"], ""))
-                TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused: ", why) as NonEmptyStr }
-                TypedArgvExecConverged { result: r } =>
-                  match observe_runner_spec_account(subject: subject, context: context, login: role.login) {
-                    RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: role.login, uid: u }
-                    RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: role.login, cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
-                    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountMissing { login: role.login, cause: concat("created, but the readback could not read it: ", c) as NonEmptyStr }
-                  }
-              }
-          }
+  match runner_spec_account_step(login: role.login, read: read, mode: mode, privilege: privilege) {
+    RunnerSpecAccountSettled { standing: st } => st
+    RunnerSpecAccountCreate =>
+      match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: role.op), w => w as String) }) {
+      TypedArgvExecOverran { deadline: d } =>
+        runner_spec_account_standing_after_dispatched_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), dispatch_cause: join(["useradd leg overran (", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d), ")"], ""))
+      TypedArgvExecWireInconsistent { fault: f } =>
+        runner_spec_account_standing_after_dispatched_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), dispatch_cause: join(["useradd reply was inconsistent (", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f), ")"], ""))
+        TypedArgvExecRefused { reason: why } => RunnerSpecAccountMissing { login: role.login, cause: concat("useradd leg refused before any leg ran: ", why) as NonEmptyStr }
+        TypedArgvExecConverged { result: r } =>
+          runner_spec_account_standing_after_answered_create(login: role.login, readback: observe_runner_spec_account(subject: subject, context: context, login: role.login), exit_code: r.exit_code, stderr: r.stderr)
       }
   }
 }
@@ -2604,6 +2650,7 @@ fn deploy_slot_account_is_held(standing: DeploySlotAccountStanding) -> Bool {
     DeploySlotAccountCreated { uid: _, passwd_line: _ } => true
     DeploySlotAccountMissing { cause: _ } => false
     DeploySlotAccountUnanswered { cause: _ } => false
+    DeploySlotAccountUnread { cause: _ } => false
     HostHasNoDeploySlot => false
   }
 }
@@ -3554,6 +3601,7 @@ fn deploy_slot_account_line(standing: DeploySlotAccountStanding) -> String {
     DeploySlotAccountCreated { uid: u, passwd_line: l } => join(["deploy-slot-account=created uid=", to_string(u), " passwd=", l as String, "\n"], "")
     DeploySlotAccountMissing { cause: c } => join(["deploy-slot-account=MISSING ", c as String, "\n"], "")
     DeploySlotAccountUnanswered { cause: c } => join(["deploy-slot-account=UNKNOWN(effect unknown) ", c as String, "\n"], "")
+    DeploySlotAccountUnread { cause: c } => join(["deploy-slot-account=UNREAD(existence not established) ", c as String, "\n"], "")
   }
 }
 
@@ -5486,6 +5534,7 @@ fn runner_spec_account_settled(a: RunnerSpecAccountStanding) -> Bool {
     // dispatched, effect unknown: the account creation was sent but its effect could not be settled by
     // the readback -- not settled (the run must not report success on an effect it cannot confirm).
     RunnerSpecAccountUnanswered { login: _, cause: _ } => false
+    RunnerSpecAccountUnread { login: _, cause: _ } => false
   }
 }
 

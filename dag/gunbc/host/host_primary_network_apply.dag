@@ -556,6 +556,7 @@ fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecution
           ) {
             TypedRemoteFileStepArgvRefused => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: "the confirmation argv is not portable")
             TypedRemoteFileStepLegRefused { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: why as String)
+            TypedRemoteFileStepLegUnanswered { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: join(["the confirmation write was dispatched but its reply could not be read; whether netplan received it is unknown: ", why as String], ""))
             TypedRemoteFileStepRan { result: written } =>
               match primary_confirm_write(exit_code: written.exit_code, stderr: written.stderr) {
                 ConfirmWriteFailed { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: why as String)

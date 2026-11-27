@@ -162,6 +162,7 @@ import gunbc.fleet.host_credential_custody_converge {
   ElevatedLeg,
   ElevatedLegRan,
   ElevatedLegRefused,
+  ElevatedLegUnanswered,
   custody_action_wire,
   custody_host,
   custody_placement_refusal_wire,
@@ -636,6 +637,8 @@ fn tailscale_join_elevated_refusal(leg: ElevatedLeg, label: String) -> String? {
       }
     ElevatedLegRefused { reason: reason } =>
       Present { value: concat(concat(label, " not run: "), reason) }
+    ElevatedLegUnanswered { reason: reason } =>
+      Present { value: join([label, " was dispatched but its reply could not be read; its effect is unknown: ", reason], "") }
   }
 }
 

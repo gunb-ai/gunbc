@@ -39,6 +39,10 @@ import extdeps.ssh.session { SshSessionExecResult, ssh_session_exec_outcome }
 import gunbc.spark.grant_privileged_operation {
   privileged_step_outcome_of_exec, privileged_step_unanswered, PrivilegedCommandUnanswered,
 }
+import gunbc.spark.managed_grant_install {
+  spark_retired_dropin_removal_settlement,
+  RetiredDropinRemoved, RetiredDropinRemovalWithheldOnRun, RetiredDropinRemovalFailed,
+}
 
 // A CARRIED name, never a derived one -- the fixture supplies it exactly as an operator would.
 fn enrolled() -> SparkCredentialStanding {
@@ -396,4 +400,34 @@ test fn a_dispatched_unreadable_privileged_step_keeps_the_credential_and_runs_th
   let pre = privileged_step_outcome_of_exec(command: removal, lease: lease_with(standing: enrolled()), exec: FleetPrincipalLegRefused { cause: "the transport refused before any leg ran" as NonEmptyStr })
   let pre_is_not_unanswered = match pre { PrivilegedCommandUnanswered { command: _, cause: _ } => false _ => true }
   is_wire && is_unanswered && not_never_sent && readback_runs && receipt_clean && pre_is_not_unanswered
+}
+
+// THE REMOVAL-SETTLEMENT DISTINGUISHES AN ANSWERED EXIT 0 FROM AN UNANSWERED-AND-UNSETTLED REMOVAL
+// (#17119 item 4, follow-up of #16984). Both go through the SAME privileged_step_outcome_of_exec the removal
+// uses, on a wire-inconsistent vs an answered-success exec, then through the extracted settlement decision.
+// An unanswered removal whose readback does NOT confirm must be withheld with the effect unknown, KEEPING the
+// wire fault (DISPATCHED / effect unknown), and must NEVER say "rm exited 0" (the exit was never observed).
+// An answered exit 0 whose readback does not confirm keeps the "rm exited 0 but..." failure. An unanswered
+// removal whose readback DOES confirm is Removed (the readback settled it). Red-by-mutation: drop the
+// `else if privileged_step_unanswered` branch so an unanswered-and-unsettled removal falls into the
+// "rm exited 0 but..." Failed arm, and this returns false.
+test fn the_removal_settlement_distinguishes_unanswered_from_answered_exit0() -> Bool {
+  let removal = InstallStagedSudoers { staged_path: "/home/runner/staged-sudoers" as NonEmptyStr, dropin_path: "/etc/sudoers.d/gunbc-spark" as NonEmptyStr }
+  let wire_exec = ssh_session_exec_outcome(result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", overran: true, wall_deadline_seconds: Absent })
+  let ok_exec = ssh_session_exec_outcome(result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", overran: false, wall_deadline_seconds: Absent })
+  let removed_wire = privileged_step_outcome_of_exec(command: removal, lease: lease_with(standing: enrolled()), exec: fleet_principal_leg_of_exec(session: FleetSshKeySession, exec: wire_exec))
+  let removed_ok = privileged_step_outcome_of_exec(command: removal, lease: lease_with(standing: enrolled()), exec: fleet_principal_leg_of_exec(session: FleetSshKeySession, exec: ok_exec))
+  let withheld = spark_retired_dropin_removal_settlement(removed: removed_wire, readback_confirms: false)
+  let withheld_ok = match withheld {
+    RetiredDropinRemovalWithheldOnRun { cause: c } =>
+      !string_contains(c as String, "rm exited 0")
+        && string_contains(c as String, "DISPATCHED")
+        && string_contains(c as String, "effect is unknown")
+    _ => false
+  }
+  let failed = spark_retired_dropin_removal_settlement(removed: removed_ok, readback_confirms: false)
+  let failed_ok = match failed { RetiredDropinRemovalFailed { cause: c } => string_contains(c as String, "rm exited 0") _ => false }
+  let settled = spark_retired_dropin_removal_settlement(removed: removed_wire, readback_confirms: true)
+  let settled_ok = match settled { RetiredDropinRemoved => true _ => false }
+  withheld_ok && failed_ok && settled_ok
 }

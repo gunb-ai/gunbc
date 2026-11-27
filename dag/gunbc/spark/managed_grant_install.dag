@@ -152,6 +152,32 @@ fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: Host
   }
 }
 
+// THE REMOVAL-SETTLEMENT DECISION, PURE. Given the privileged removal's outcome and whether the fresh
+// readback confirms the shared file gone with every inspect grant held, decide the standing. An ANSWERED
+// exit 0 whose readback does not confirm keeps the "rm exited 0 but..." failure; an UNANSWERED removal whose
+// readback does not confirm is dispatched-with-unknown-effect -- NOT "rm exited 0" (the exit was never
+// observed) -- withheld, and keeps the wire fault from the outcome (#17119 item 4). Extracted so a witness
+// drives the exact branch production takes (single_authority).
+fn spark_retired_dropin_removal_settlement(removed: PrivilegedStepOutcome, readback_confirms: Bool) -> SparkRetiredDropinStanding {
+  if !privileged_step_succeeded(outcome: removed) && !privileged_step_unanswered(outcome: removed) {
+    RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+  } else if readback_confirms {
+    RetiredDropinRemoved
+  } else if privileged_step_unanswered(outcome: removed) {
+    RetiredDropinRemovalWithheldOnRun {
+      cause: join(
+        [
+          "the removal was dispatched but its reply could not be read and the readback does not confirm the shared file gone with every inspect grant held under its own file, so the effect is unknown: ",
+          privileged_step_outcome_wire(outcome: removed),
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  } else {
+    RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+  }
+}
+
 // THE REMOVAL, on a fresh drop-in reading. The admission is minted only from this run's sealed
 // ConfirmedGrantInstall results (whole canonical sequence, confirmed readback) covering every modeled inspect grant (gunbc.spark.grant_privileged_operation
 // admit_retired_dropin_removal), and the removal effect consumes it; the readback is a fresh third
@@ -181,16 +207,11 @@ fn spark_retired_dropin_converge(
             context: context, admission: admission, administrator: administrator,
             attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
           )
-          if !privileged_step_succeeded(outcome: removed) && !privileged_step_unanswered(outcome: removed) {
-            RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
-          } else if spark_retired_dropin_removal_confirmed(
+          let readback_confirms = spark_retired_dropin_removal_confirmed(
             outcome: spark_grant_probe_outcome(context: context, host: host),
             shape: spark_inspect_dropin_shape_read(context: context, host: host),
-          ) {
-            RetiredDropinRemoved
-          } else {
-            RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
-          }
+          )
+          spark_retired_dropin_removal_settlement(removed: removed, readback_confirms: readback_confirms)
         }
       }
   }

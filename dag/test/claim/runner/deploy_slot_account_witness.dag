@@ -11,6 +11,8 @@ import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountRead, DeploySlotAccountReadPresent, DeploySlotAccountReadAbsent, DeploySlotAccountReadUnreadable,
   DeploySlotAccountStep, DeploySlotAccountSettled, DeploySlotAccountCreate,
   DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
+  DeploySlotAccountUnanswered, DeploySlotAccountUnread, deploy_slot_account_is_held, deploy_slot_account_line,
+  deploy_slot_account_standing_after_dispatched_create, deploy_slot_account_standing_after_answered_create,
   classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
   RunnerSlotTreeStanding, RunnerSlotTreeHeld, RunnerSlotTreeRebuilt, RunnerSlotTreePending, RunnerSlotTreeRefused,
   RunnerSlotTreeStep, RunnerSlotTreeSettled, RunnerSlotTreeDrainThenRebuild, runner_slot_tree_step, runner_slot_tree_rebuild_commands, classify_runner_slot_tree_owned, runner_slot_tree_owned_find_argv,
@@ -459,4 +461,51 @@ test fn a_queued_slot_is_not_held_back_from_actuation() -> Bool {
       Absent => false
       _ => false
     }
+}
+
+// #17119 item 5: an UNREADABLE INITIAL getent is neither confirmed nor created -- it is UNREAD (existence not
+// established), NOT MISSING (which would report the account as absent / never created). Withheld, and the
+// receipt says UNREAD, never MISSING. Red-by-mutation: revert the initial Unreadable arm to
+// DeploySlotAccountMissing and the Unread match fails -> false.
+test fn the_initial_unreadable_getent_is_unread_not_missing() -> Bool {
+  match deploy_slot_account_step(read: DeploySlotAccountReadUnreadable { cause: "the getent leg carried an inconsistent wire shape" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable) {
+    DeploySlotAccountSettled { standing: DeploySlotAccountUnread { cause: c } } =>
+      string_contains(s: c as String, pattern: "wire shape")
+        && !deploy_slot_account_is_held(standing: DeploySlotAccountUnread { cause: c })
+        && string_contains(s: deploy_slot_account_line(standing: DeploySlotAccountUnread { cause: c }), pattern: "UNREAD")
+        && !string_contains(s: deploy_slot_account_line(standing: DeploySlotAccountUnread { cause: c }), pattern: "MISSING")
+    _ => false
+  }
+}
+
+// #17119 item 5: a dispatched-create whose independent readback could not read the account must KEEP the
+// dispatch cause (which names deadline vs wire) alongside the readback cause, and stay UNKNOWN (Unanswered),
+// never Missing. Red-by-mutation: use only the readback cause and drop dispatch_cause and "deadline 30s"
+// disappears -> false.
+test fn the_dispatched_create_unreadable_readback_keeps_the_dispatch_cause() -> Bool {
+  let st = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadUnreadable { cause: "readback reply inconsistent" as NonEmptyStr }, dispatch_cause: "useradd leg overran (deadline 30s)")
+  match st {
+    DeploySlotAccountUnanswered { cause: c } =>
+      string_contains(s: c as String, pattern: "deadline 30s")
+        && string_contains(s: c as String, pattern: "readback reply inconsistent")
+        && !deploy_slot_account_is_held(standing: st)
+    _ => false
+  }
+}
+
+// #17119 item 5: an ANSWERED useradd whose post-write readback could not read the account must be UNKNOWN
+// (Unanswered), never Missing -- the create was dispatched and answered, so its existence is unreadable, not
+// absent. Carries the create's own exit. Red-by-mutation: revert the answered-create Unreadable arm to
+// DeploySlotAccountMissing and the Unanswered match fails -> false.
+test fn the_answered_create_unreadable_readback_is_unanswered_not_missing() -> Bool {
+  let st = deploy_slot_account_standing_after_answered_create(readback: DeploySlotAccountReadUnreadable { cause: "readback reply inconsistent" as NonEmptyStr }, exit_code: 0, stderr: "")
+  match st {
+    DeploySlotAccountUnanswered { cause: c } =>
+      string_contains(s: c as String, pattern: "answered")
+        && string_contains(s: c as String, pattern: "exit 0")
+        && string_contains(s: c as String, pattern: "readback reply inconsistent")
+        && !string_contains(s: c as String, pattern: "still absent")
+        && !deploy_slot_account_is_held(standing: st)
+    _ => false
+  }
 }

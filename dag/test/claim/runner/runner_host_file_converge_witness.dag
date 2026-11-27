@@ -254,6 +254,8 @@ import gunbc.runner.runner_host_file_converge {
 import gunbc.runner.runner_host_file_converge {
   deploy_slot_account_standing_after_dispatched_create,
   runner_spec_account_standing_after_dispatched_create,
+  runner_spec_account_standing_after_answered_create, runner_spec_account_step,
+  RunnerSpecAccountStep, RunnerSpecAccountSettled, RunnerSpecAccountUnread, RunnerSpecAccountReadAbsent,
   DeploySlotAccountReadPresent, DeploySlotAccountReadUnreadable,
   RunnerSpecAccountReadPresent, RunnerSpecAccountReadUnreadable,
   RunnerSpecAccountUnanswered,
@@ -2475,4 +2477,41 @@ fn ds_unknown_never_never_sent_check() -> Bool {
   !string_contains(s: line, pattern: "never")
     && !string_contains(s: line, pattern: "still absent")
     && !string_contains(s: line, pattern: "refused")
+}
+
+// #17119 item 5: an UNREADABLE INITIAL spec getent is UNREAD (existence not established), NOT Missing, and is
+// never counted as settled. Red-by-mutation: revert the initial Unreadable arm to RunnerSpecAccountMissing and
+// the Unread match fails -> false.
+test fn the_spec_initial_unreadable_getent_is_unread_not_missing() -> Bool {
+  match runner_spec_account_step(login: "gunbc-runner" as NonEmptyStr, read: RunnerSpecAccountReadUnreadable { cause: "the getent leg overran its deadline" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable) {
+    RunnerSpecAccountSettled { standing: RunnerSpecAccountUnread { cause: c } } =>
+      string_contains(s: c as String, pattern: "deadline")
+        && !runner_spec_account_settled(a: RunnerSpecAccountUnread { login: "gunbc-runner" as NonEmptyStr, cause: c })
+    _ => false
+  }
+}
+
+// #17119 item 5: after an ANSWERED useradd the post-write getent SETLES: a present readback settles Created
+// (settled); an unreadable readback leaves the effect UNKNOWN (Unanswered), never Missing. Red-by-mutation:
+// revert the answered-create Unreadable arm to RunnerSpecAccountMissing -> the Unanswered match fails -> false.
+test fn the_spec_answered_create_readback_settles_or_stays_unknown() -> Bool {
+  let present = runner_spec_account_standing_after_answered_create(login: "gunbc-runner" as NonEmptyStr, readback: RunnerSpecAccountReadPresent { uid: 998 }, exit_code: 0, stderr: "")
+  let present_ok = match present { RunnerSpecAccountCreated { uid: u } => u == 998 && runner_spec_account_settled(a: present) _ => false }
+  let unknown = runner_spec_account_standing_after_answered_create(login: "gunbc-runner" as NonEmptyStr, readback: RunnerSpecAccountReadUnreadable { cause: "readback reply inconsistent" as NonEmptyStr }, exit_code: 0, stderr: "")
+  let unknown_ok = match unknown { RunnerSpecAccountUnanswered { cause: c } => string_contains(s: c as String, pattern: "answered") && string_contains(s: c as String, pattern: "readback reply inconsistent") && !runner_spec_account_settled(a: unknown) _ => false }
+  present_ok && unknown_ok
+}
+
+// #17119 item 5: a dispatched spec create whose readback could not read the account keeps the dispatch cause
+// (deadline vs wire) alongside the readback cause and stays Unanswered. Red-by-mutation: drop dispatch_cause
+// and "wire" disappears -> false.
+test fn the_spec_dispatched_create_unreadable_readback_keeps_the_dispatch_cause() -> Bool {
+  let st = runner_spec_account_standing_after_dispatched_create(login: "gunbc-runner" as NonEmptyStr, readback: RunnerSpecAccountReadUnreadable { cause: "readback reply inconsistent" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire)")
+  match st {
+    RunnerSpecAccountUnanswered { cause: c } =>
+      string_contains(s: c as String, pattern: "wire")
+        && string_contains(s: c as String, pattern: "readback reply inconsistent")
+        && !runner_spec_account_settled(a: st)
+    _ => false
+  }
 }

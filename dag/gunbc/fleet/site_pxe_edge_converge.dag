@@ -2298,6 +2298,7 @@ fn observe_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionConte
             match typed_remote_file_step(target: target, context: context, raws: typed_remote_file_compare_argv(write: w), stdin_payload: w.content) {
               TypedRemoteFileStepArgvRefused => EdgeFileUnobservable { reason: "comparison argv refused as non-portable" }
               TypedRemoteFileStepLegRefused { cause: why } => EdgeFileUnobservable { reason: why as String }
+              TypedRemoteFileStepLegUnanswered { cause: why } => EdgeFileUnobservable { reason: join(["the comparison leg was dispatched but its reply could not be read; the destination state is unknown: ", why as String], "") }
               TypedRemoteFileStepRan { result: back } =>
                 match classify_typed_remote_file_comparison(write: w, compare_exit_code: back.exit_code, compare_stderr: back.stderr) {
                   ComparisonIdentical => EdgeFileIdentical
