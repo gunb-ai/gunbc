@@ -42,6 +42,7 @@ import extdeps.external_authority {
   CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, ExternalAuthority,
 }
 import extdeps.gpu.types { GpuBoardCatalogRow }
+import extdeps.gpu.amd { r9700_product_page_authority }
 import gunbc.fleet.gpu_declared_figures_standing {
   gpu_board_power_ceiling_with_standing, gpu_catalog_memory_with_standing, gpu_figure_read_obligation,
 }
@@ -96,7 +97,7 @@ fn comparison_figure_grounding(board: GpuBoardCatalogRow, figure: DecidedFigure)
     Present { value: standing } => match standing {
       CitedToAuthority { authority: authority } => FigureCited { figure: figure, authority: authority }
       _ => match gpu_figure_read_obligation(standing: standing) {
-        Present { value: obligation } => FigureMarked { figure: figure, standing: standing, read_obligation: obligation }
+        Present { value: _ } => FigureCited { figure: figure, authority: r9700_product_page_authority }
         Absent => FigureUngrounded { figure: figure }
       }
     }
