@@ -47,8 +47,11 @@ import gunbc.compile_census_probe {
   census_exit,
   census_verdict,
   census_sum_verdict,
-  blocking_class_census
+  blocking_class_census,
+  census_leg_wire,
+  census_legs_wire
 }
+import gunbc.cli_wire { CliWireResponse }
 // WHY THE KEY IS READ FROM THE AUTHORITY'S OUTPUT RATHER THAN FROM ITS RENDERER. The renderer of this
 // refusal's subject is `v1.compiler.infer::inhabitance_refusal_position_label`, and a claim CANNOT import
 // it -- that is a layer fact, not an oversight to code around. A claim lives in the WITNESS layer, whose
@@ -272,4 +275,73 @@ fn text_at_a_run_whose_element_the_call_never_settles_is_no_verdict() -> Process
 // on the main binary at the same sha: pre-existing behaviour, recorded not adjudicated.
 fn text_at_a_run_whose_element_a_lambda_settles_is_no_verdict() -> ProcessExit {
   census_exit(census_verdict(census: wall_rows_at_parameter(source: control_text_at_run_element_settled_by_a_lambda, parameter: "xs"), holds: fn(n) { n >= 1 }))
+}
+
+// THE ENROLLED ADDRESSES FOR THESE LEGS, and the same rule as its sibling
+// #gunbc.instruments.list_append_element_argument_wall::wall_all_legs_wire: a module nothing imports is
+// dangling (gunbc.design_argument::consumption), so each of the node's three carrier controls gets its
+// own `gunbc test` label and the full seventeen-leg population gets one fold. The rows live in
+// #gunbc.instrument_targets as `CliWireProgramProducer` bindings naming this module and these functions;
+// the host evaluates them WET over the witness layer roots named in the header above, and maps the
+// leg's ProcessExit through src/v1/stage0/src/target_invocation_host.rs -- 0 held, 1 a finding, 2 the
+// door did not answer.
+
+fn carrier_leg_identity(name: String) -> String {
+  concat("text-at-free-monoid-run-carrier-witness/", name)
+}
+
+// THE DISCRIMINATING RED of the carrier: a text actual at a `run` whose element is settled and not
+// Char is refused, and the refusal names the parameter. rc 1 without the wall, rc 0 with it.
+// `gunbc test //gunbc/instruments:free-monoid-carrier-text-at-string-run-refused`.
+fn text_at_string_run_refused_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: carrier_leg_identity(name: "text_actual_at_run_of_string_is_refused_naming_the_right_parameter"),
+    verdict: text_actual_at_run_of_string_is_refused_naming_the_right_parameter()
+  )
+}
+
+// POSITIVE CONTROL: the same call over two runs is not refused -- the wall must not fire where the
+// arguments already inhabit the declared carrier.
+// `gunbc test //gunbc/instruments:free-monoid-carrier-two-runs-admitted`.
+fn two_runs_admitted_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: carrier_leg_identity(name: "the_same_call_over_two_runs_is_not_refused"),
+    verdict: the_same_call_over_two_runs_is_not_refused()
+  )
+}
+
+// POSITIVE CONTROL: the mix-up this class exists to catch stays lawful where it is lawful --
+// `list_push` takes an element where an element is required.
+// `gunbc test //gunbc/instruments:free-monoid-carrier-list-push-admitted`.
+fn list_push_admitted_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: carrier_leg_identity(name: "list_push_takes_an_element_where_an_element_is_required"),
+    verdict: list_push_takes_an_element_where_an_element_is_required()
+  )
+}
+
+// THE WHOLE CARRIER IN ONE ADDRESS -- all seventeen legs, each row printed with its own verdict and
+// code, the run's exit the worst of them (#gunbc.compile_census_probe::census_worst_exit). Any leg
+// added to this module later must be added here, which is what keeps "a leg nothing runs" from
+// recurring after review 99292. `gunbc test //gunbc/instruments:free-monoid-carrier-all-legs`.
+fn carrier_all_legs_wire() -> CliWireResponse {
+  census_legs_wire([
+    text_at_string_run_refused_wire(),
+    two_runs_admitted_wire(),
+    list_push_admitted_wire(),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_run_over_char_is_the_declared_identity"), verdict: text_at_a_run_over_char_is_the_declared_identity()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_declared_run_over_char_is_not_refused"), verdict: text_at_a_declared_run_over_char_is_not_refused()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_declared_run_of_string_is_refused_without_generics"), verdict: text_at_a_declared_run_of_string_is_refused_without_generics()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_declared_run_of_int_is_refused_as_a_change_of_interpretation"), verdict: text_at_a_declared_run_of_int_is_refused_as_a_change_of_interpretation()),
+    census_leg_wire(identity: carrier_leg_identity(name: "an_int_at_a_run_carrier_is_refused_as_it_already_was"), verdict: an_int_at_a_run_carrier_is_refused_as_it_already_was()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_the_list_alias_spelling_is_still_refused_once"), verdict: text_at_the_list_alias_spelling_is_still_refused_once()),
+    census_leg_wire(identity: carrier_leg_identity(name: "runs_of_different_elements_at_one_element_variable_are_refused"), verdict: runs_of_different_elements_at_one_element_variable_are_refused()),
+    census_leg_wire(identity: carrier_leg_identity(name: "a_sibling_at_a_different_element_variable_grounds_nothing_at_the_run_carrier"), verdict: a_sibling_at_a_different_element_variable_grounds_nothing_at_the_run_carrier()),
+    census_leg_wire(identity: carrier_leg_identity(name: "a_local_char_spelling_at_a_run_carrier_is_refused"), verdict: a_local_char_spelling_at_a_run_carrier_is_refused()),
+    census_leg_wire(identity: carrier_leg_identity(name: "the_qualified_char_declaration_at_a_run_carrier_is_the_identity"), verdict: the_qualified_char_declaration_at_a_run_carrier_is_the_identity()),
+    census_leg_wire(identity: carrier_leg_identity(name: "an_int_at_an_element_the_sibling_run_grounds_is_refused"), verdict: an_int_at_an_element_the_sibling_run_grounds_is_refused()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_module_local_alias_of_the_run_carrier_is_refused"), verdict: text_at_a_module_local_alias_of_the_run_carrier_is_refused()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_run_whose_element_the_call_never_settles_is_no_verdict"), verdict: text_at_a_run_whose_element_the_call_never_settles_is_no_verdict()),
+    census_leg_wire(identity: carrier_leg_identity(name: "text_at_a_run_whose_element_a_lambda_settles_is_no_verdict"), verdict: text_at_a_run_whose_element_a_lambda_settles_is_no_verdict()),
+  ])
 }

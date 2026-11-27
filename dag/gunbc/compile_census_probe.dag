@@ -3,6 +3,7 @@ module gunbc.compile_census_probe
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitFailure, ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_blocking_rows_of_class, census_blocking_rows_of_class_at_subject, census_total_count }
 
 // THE SINGLE HOME for "compile this source string and ask what it refused". These were declared
@@ -316,4 +317,73 @@ fn retained_callable_route_verdicts(census: CompileDiagnosticCensus, baseline: S
 
 fn retained_callable_route_resolves(source: String, baseline: String, callable: String) -> ProcessExit {
   retained_callable_route_verdicts(census: total_rows_census(source: source), baseline: baseline, callable: callable)
+}
+
+// ONE LEG'S VERDICT AS A CLI-WIRE ANSWER, so a census leg can be ADDRESSED as an instrument target
+// (`gunbc test //gunbc/instruments:<name>`) without every instrument module re-inventing the mapping.
+// THE EXIT IS HANDED THROUGH UNCHANGED, and that is the whole reason this helper is a function rather
+// than an inline `if`: `gunbc.target_invocation` classifies a wire response's ProcessExit into
+// Held / ObservationDidNotHold / Refused at src/v1/stage0/src/target_invocation_host.rs, so rc 0 is a
+// leg that held, rc 1 is an OBSERVATION that disagreed (a finding), and rc 2 stays "the door never
+// answered" -- which the host reports as no-observation, never as a failure. A mapper that folded a
+// door refusal into rc 1 would report a census that could not run as a wall that did not fire, the
+// absorbing answer gunbc.design_argument::fail_closed forbids, and the leg would be route-inert.
+// The printed bytes carry the identity, the verdict, the code and the door's own cause so the
+// host's artifact is self-describing rather than a bare status.
+fn census_leg_wire(identity: String, verdict: ProcessExit) -> CliWireResponse {
+  match verdict {
+    ExitSuccess => CliWirePrintable { bytes: concat(identity, ": HELD\n"), exit: ExitSuccess }
+    ExitFailure { code: code, reason: reason } => CliWirePrintable {
+      bytes: concat(
+        concat(identity, ": DID NOT HOLD rc="),
+        concat(to_string(code), concat(": ", concat(reason, "\n")))
+      ),
+      exit: ExitFailure { code: code, reason: reason }
+    }
+  }
+}
+
+// THE CODE A VERDICT CARRIES, read off the carrier rather than restated beside it -- the same three
+// states #census_leg_wire hands through, and the only place this module turns a ProcessExit into an
+// Int. No default arm: ProcessExit has two arms and a third must fail to compile here.
+fn census_exit_code(verdict: ProcessExit) -> Int {
+  match verdict {
+    ExitSuccess => 0
+    ExitFailure { code: code, reason: _ } => code
+  }
+}
+
+// THE WORST OF TWO LEG VERDICTS, which is a MAXIMUM on the code and not a boolean AND. A fold that
+// returned "any failure" as rc 1 would demote a could-not-run (2) to a finding (1) whenever a batch
+// held one of each -- and rc 1 is the code a reader is allowed to treat as an answered question.
+fn census_worst_exit(left: ProcessExit, right: ProcessExit) -> ProcessExit {
+  if census_exit_code(left) >= census_exit_code(right) { left } else { right }
+}
+
+// A WHOLE INSTRUMENT AS ONE WIRE ANSWER: every leg's rows printed, one exit for the run, chosen by
+// #census_worst_exit so the loudest state wins. `gunbc run` still executes each leg by name for the
+// per-leg exit code an evidence run needs; this is the enrolled address that makes the module a
+// consumer of its own legs rather than a library nothing imports
+// (gunbc.design_argument::consumption, "a module nothing imports" is dangling).
+fn census_legs_wire(legs: List<CliWireResponse>) -> CliWireResponse {
+  let bytes = fold(
+    legs,
+    init: "",
+    f: (acc, wire) =>
+      match wire {
+        CliWirePrintable { bytes: b, exit: _ } => concat(acc, b)
+      }
+  )
+  let exit = fold(
+    legs,
+    init: ExitSuccess,
+    f: (acc, wire) =>
+      census_worst_exit(
+        left: acc,
+        right: match wire {
+          CliWirePrintable { bytes: _, exit: e } => e
+        }
+      )
+  )
+  CliWirePrintable { bytes: bytes, exit: exit }
 }

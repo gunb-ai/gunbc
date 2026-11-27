@@ -15,7 +15,8 @@ import gunbc.compile_diagnostic_census {
   censuses_differ_by_exactly_the_target_key,
   compile_dag_diagnostic_census
 }
-import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, census_ran, census_premise }
+import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, census_ran, census_premise , census_leg_wire, census_legs_wire }
+import gunbc.cli_wire { CliWireResponse }
 
 // THE WALL THIS CLAIM CARRIES. `std.algebra.list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>)`
 // is an APPLIED generic at both positions, and before the repair an element could be handed to a
@@ -290,13 +291,29 @@ fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
     census_ran(census: red),
     census_ran(census: green),
     census_premise(
-      name: "the two observed censuses differ by exactly the one row keyed on the target class and subject",
+      name: "the two observed BLOCKING censuses differ by exactly the one row keyed on the target class and subject",
       holds: match red {
         CensusObserved { rows: red_rows } => match green {
           CensusObserved { rows: green_rows } =>
             censuses_differ_by_exactly_the_target_key(
-              red: red_rows,
-              green: green_rows,
+              // ADVISORY ROWS ARE EXCLUDED HERE, AND BY NAME RATHER THAN BY TASTE -- measured at
+              // 95304b7f00c with this head's own binary (stages3/logs96_armdump.out, the scratch
+              // gunbc.instruments.eh_f2_arm_dump over these two sources): the two arms' FULL
+              // histograms differ at 25 keys, not one. Twenty-four of them are
+              // `EffectSummaryIncompleteAtFunctionValue` rows over std.algebra and std.list that the
+              // ADMITTING arm emits and the refusing arm does not -- once the call is refused the
+              // compilation stops lowering those call sites, so their advisories are never produced;
+              // the twenty-fifth is `TextRepresentationUnidentifiedAtBoundary` at `a call argument`,
+              // present only in the refusing arm at the refused actual. All twenty-five are
+              // blocking = false, and every one of them is a consequence of the refusal rather than
+              // the refusal: a differential that walked them would report this wall as
+              // under-observing the standard library. What the wall's claim is ABOUT is the blocking
+              // population, so the comparison is restricted to
+              // #gunbc.compile_diagnostic_census::census_blocking_rows and keyed on the whole
+              // CensusKey (diagnostic_class, subject_name, blocking) -- the sanctioned keyed form,
+              // not a projection iterated until the leg passed.
+              red: census_blocking_rows(rows: red_rows),
+              green: census_blocking_rows(rows: green_rows),
               target_class: target_class,
               target_subject: target_subject
             )
@@ -305,5 +322,94 @@ fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
         CensusNotRunnable { cause: _ } => false
       }
     )
+  ])
+}
+
+// THE ENROLLED ADDRESS FOR THESE LEGS. A module whose legs no address runs is dangling
+// (gunbc.design_argument::consumption: "a module nothing imports" is a listed tell), and review 99292
+// named exactly that on this file. Each leg therefore has a `gunbc test` label in
+// #gunbc.instrument_targets, bound through a `CliWireProgramProducer` whose run step names THIS module
+// and the wire function below -- the host resolves the entry through gunbc.source_layout (no authored
+// path string to drift), evaluates the function WET over the witness layer roots, prints the bytes and
+// maps the exit through the one classifier at src/v1/stage0/src/target_invocation_host.rs. So the exit
+// a reader sees at `gunbc test //gunbc/instruments:<name>` is the leg's own ProcessExit: 0 held, 1 a
+// finding, 2 the door did not answer. Run by name, not a merge gate, in the manner of
+// gunbc.instruments.fleet_convergence_verdict_route.
+//
+// WHY A WIRE FUNCTION PER LEG AND NOT ONLY ONE FOLD. The node's red control is per-leg ("the repro
+// refuses ... AND the two positive controls still pass"), and a fold answers that question with one
+// exit for the module's six assertions -- a reader could not tell which leg answered. Per-leg labels keep each
+// leg's own exit at the process boundary; the fold below enrolls the whole population in one address,
+// including any leg added later, so a new leg cannot be written and left unaddressed.
+
+fn wall_leg_identity(name: String) -> String {
+  concat("list-append-element-argument-wall/", name)
+}
+
+// THE DISCRIMINATING RED, addressed. rc 1 on a tree without the wall (nothing refuses the fixture),
+// rc 0 with it. `gunbc test //gunbc/instruments:list-append-wall-element-at-list-position`.
+fn element_at_list_position_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "an_element_cannot_take_a_lists_place_at_a_free_monoid_position"),
+    verdict: an_element_cannot_take_a_lists_place_at_a_free_monoid_position()
+  )
+}
+
+// THE NAMING CONTROL: the refusal must name the parameter and carry the reason token.
+// `gunbc test //gunbc/instruments:list-append-wall-refusal-names-parameter`.
+fn refusal_names_parameter_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "the_refusal_names_the_parameter_and_the_reason"),
+    verdict: the_refusal_names_the_parameter_and_the_reason()
+  )
+}
+
+// POSITIVE CONTROL ONE: a list at the same position is admitted.
+// `gunbc test //gunbc/instruments:list-append-wall-list-still-admitted`.
+fn list_still_admitted_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "a_list_still_takes_that_position"),
+    verdict: a_list_still_takes_that_position()
+  )
+}
+
+// POSITIVE CONTROL TWO: an element at a position declared as the element is still admitted -- the wall
+// must not become a ban on elements. `gunbc test //gunbc/instruments:list-append-wall-element-at-element-position`.
+fn element_at_element_position_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "an_element_at_a_position_declared_as_the_element_is_still_admitted"),
+    verdict: an_element_at_a_position_declared_as_the_element_is_still_admitted()
+  )
+}
+
+// THE DOOR'S OWN CONTROL: all three arms observable. `gunbc test //gunbc/instruments:list-append-wall-three-arms-observable`.
+fn three_arms_observable_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "all_three_arms_are_observable_censuses"),
+    verdict: all_three_arms_are_observable_censuses()
+  )
+}
+
+// THE DIFFERENTIAL: the two arms' BLOCKING rows differ by exactly the target row -- an exclusion
+// written down below, with the measured advisory difference it omits, rather than performed.
+// `gunbc test //gunbc/instruments:list-append-wall-arms-differ-by-target-row`.
+fn arms_differ_by_target_row_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "the_two_arms_differ_by_exactly_the_target_row"),
+    verdict: the_two_arms_differ_by_exactly_the_target_row()
+  )
+}
+
+// THE WHOLE WALL IN ONE ADDRESS: every leg's row printed with its own verdict and code, one exit for
+// the run taken by #gunbc.compile_census_probe::census_worst_exit so a could-not-run (2) is never
+// demoted to a finding (1). `gunbc test //gunbc/instruments:list-append-wall-all-legs`.
+fn wall_all_legs_wire() -> CliWireResponse {
+  census_legs_wire([
+    element_at_list_position_wire(),
+    refusal_names_parameter_wire(),
+    list_still_admitted_wire(),
+    element_at_element_position_wire(),
+    three_arms_observable_wire(),
+    arms_differ_by_target_row_wire(),
   ])
 }
