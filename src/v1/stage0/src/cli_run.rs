@@ -18126,6 +18126,15 @@ fn report_pre_entry_phases(
     }
 }
 
+/// Repository-owned command bindings name their declaration. The retained seed projects its
+/// repository path with the same layout lookup used for demand acquisition.
+pub(crate) fn bootstrap_declaration_entry(module: &str) -> String {
+    source_layout_lookup::module_storage_relative(module).unwrap_or_else(|cause| {
+        eprintln!("REFUSED: no repository source path for bootstrap module `{module}`: {cause}");
+        std::process::exit(2);
+    })
+}
+
 /// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
 /// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
 /// this declaration knows only source/declaration identity, named String bindings, an internal
