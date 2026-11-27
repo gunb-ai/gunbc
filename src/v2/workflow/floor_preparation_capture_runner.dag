@@ -235,7 +235,12 @@ fn floor_preparation_untrimmed_bound() -> Second {
 }
 
 fn floor_preparation_graded_bound() -> Second {
-  second(count: 1200)
+  // run9o: the graded leg carried 11 entry groups in ONE claim_batch invocation and was killed
+  // at the bound -- its provenance line printed rc=124 kept_rows=97. A timeout is the transport
+  // ending the process, not gunbc refusing: not a verdict, and it truncates the very evidence the
+  // census and cache witnesses read. The graded leg re-runs every entry that carries a passing
+  // claim, so its population tracks the untrimmed one -- it gets the same order of bound.
+  second(count: 10800)
 }
 
 fn floor_preparation_claims_bound() -> Second {
