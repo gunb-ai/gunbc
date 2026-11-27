@@ -41,10 +41,11 @@ data if_block_after_upper_condition_source: String =
 
 // NAMED NEGATIVE: a record literal in ordinary expression position keeps its formation refusal.
 // The mark is set by parse_if ONLY; expression-position record parsing is untouched by this wall,
-// so a brace group without field spelling in expression position still refuses. Same bytes on
-// both sides; must hold on both (the wall cannot have widened the grammar).
+// so an unterminated record literal in expression position still refuses at PARSE (the census
+// carries parse-stage rows; resolution-only findings never appear as rows -- measured). Same
+// bytes on both sides; must hold on both (the wall cannot have widened the grammar).
 data malformed_record_expression_position_source: String =
-  "module fixture.malformed_record_expression_position\ntype Shape\n  = Rect { label: Int }\nfn probe(p: Shape) -> Int {\n  let y = Rect { label 1 }\n  y\n}\n"
+  "module fixture.malformed_record_expression_position\ntype Shape\n  = Rect { label: Int }\nfn probe(p: Shape) -> Int {\n  let y = Rect { label: 1\n  y\n}\n"
 
 // A LEGITIMATE record literal in if-condition position parses AS THE RECORD LITERAL IT IS: the
 // attempt succeeds (field spelling `label: 1`), no fallback, and the program still compiles clean.
