@@ -346,7 +346,7 @@ fn host_operation_materialize_argv(operation: HostOperation) -> ArgvMaterializat
 // Renders a dispatched-but-unanswerable host operation: the leg WAS SENT, so it is never described
 // as "not run"/"refused"/not-dispatched; the value (or, for a mutating operation, the effect) simply
 // could not be established, and `cause` says why (deadline overrun or inconsistent wire reply).
-export fn host_operation_unanswered_reason(operation: String, cause: String) -> String {
+fn host_operation_unanswered_reason(operation: String, cause: String) -> String {
   concat(concat("the ", operation), concat(" leg was dispatched but its reply could not be read; whether it took effect is unknown (", concat(cause, ")")))
 }
 

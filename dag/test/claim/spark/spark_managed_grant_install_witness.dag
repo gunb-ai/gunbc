@@ -46,11 +46,17 @@ import gunbc.spark.grant_privileged_operation {
 import gunbc.remote_operation {
   remote_operation_argv,
   remote_operation_label,
+  remote_step_standing_wire,
+  RemoteOperationExecution,
+  RemoteArgvExecution,
   RemoteStepStanding,
   RemoteStepUnattempted,
   RemoteStepCompleted,
   RemoteStepFailed,
 }
+import gunbc.typed_argv_exec { TypedArgvExecOverran, TypedArgvExecRefused, TypedArgvExecWireInconsistent }
+import extdeps.ssh.session { OverrunWithoutDeadline }
+import std.measure { second }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
 import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
@@ -628,4 +634,34 @@ test fn a_withheld_retired_dropin_removal_does_not_read_as_converged() -> Bool {
   spark_grant_install_run_succeeded(run: base)
     && !spark_grant_install_run_succeeded(run: withheld)
     && contains(spark_grant_install_run_text(run: withheld), "retired-shared-dropin REMOVAL-WITHHELD would lapse gunbc-docker-inspect-glm-native-tp4")
+}
+
+// THE HALT IS WORDING-HONEST FOR A DISPATCHED-UNKNOWN STEP (#17119 review 99463). A remote step whose
+// leg was SENT but whose reply could not be read (deadline overrun / inconsistent wire) is a RemoteStepFailed
+// that HALTS the sequence (permits_continuation = false, the reviewer-approved fail-closed behavior) -- but
+// its wire label must read "unknown:", never "failed:", because calling a sent leg a definite failure invites
+// a retry that could re-run a change that already took. A genuine pre-dispatch refusal (TypedArgvExecRefused)
+// STILL labels "failed:". RED-BY-MUTATION: making remote_step_standing_wire always emit "failed:" makes the
+// overrun/wire assertions fail -> false.
+test fn a_dispatched_unknown_step_halts_but_is_never_labeled_failed() -> Bool {
+  let overrun_step = RemoteStepFailed {
+    identity: "install-sudoers" as NonEmptyStr,
+    execution: RemoteArgvExecution { outcome: TypedArgvExecOverran { deadline: second(count: 30) } },
+  }
+  let wire_step = RemoteStepFailed {
+    identity: "install-sudoers" as NonEmptyStr,
+    execution: RemoteArgvExecution { outcome: TypedArgvExecWireInconsistent { fault: OverrunWithoutDeadline } },
+  }
+  let refused_step = RemoteStepFailed {
+    identity: "install-sudoers" as NonEmptyStr,
+    execution: RemoteArgvExecution { outcome: TypedArgvExecRefused { reason: "transport declined" } },
+  }
+  let overrun_wire = remote_step_standing_wire(standing: overrun_step)
+  let wire_wire = remote_step_standing_wire(standing: wire_step)
+  let refused_wire = remote_step_standing_wire(standing: refused_step)
+  string_contains(overrun_wire, "unknown:")
+    && !string_contains(overrun_wire, "failed:")
+    && string_contains(wire_wire, "unknown:")
+    && !string_contains(wire_wire, "failed:")
+    && string_contains(refused_wire, "failed:")
 }

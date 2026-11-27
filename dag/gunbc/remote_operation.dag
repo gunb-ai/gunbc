@@ -109,8 +109,33 @@ fn remote_step_standing_identity(standing: RemoteStepStanding) -> NonEmptyStr {
 fn remote_step_standing_wire(standing: RemoteStepStanding) -> String {
   match standing {
     RemoteStepCompleted { identity: id, execution: _ } => join(["completed:", id as String], "")
-    RemoteStepFailed { identity: id, execution: _ } => join(["failed:", id as String], "")
+    RemoteStepFailed { identity: id, execution: x } =>
+      // A leg that was SENT but whose reply could not be read (deadline overrun or inconsistent wire
+      // shape) is not a step that "failed" -- it halted the sequence because its effect is UNKNOWN, and
+      // calling it a definite failure would invite a retry that could re-run a change that already took.
+      // Wording only: it still halts (permits_continuation = false), but the wire says "unknown:".
+      if remote_execution_is_dispatched_unknown(execution: x) {
+        join(["unknown:", id as String], "")
+      } else {
+        join(["failed:", id as String], "")
+      }
     RemoteStepUnattempted { identity: id } => join(["unattempted:", id as String], "")
+  }
+}
+
+// True when an execution's halt is an UNKNOWN EFFECT (the leg was dispatched and its reply could not be
+// read), as opposed to a pre-dispatch refusal or an answered non-success. Used only for wording; the
+// halt decision itself is remote_execution_permits_continuation.
+fn remote_execution_is_dispatched_unknown(execution: RemoteOperationExecution) -> Bool {
+  match execution {
+    RemoteArgvExecution { outcome: o } =>
+      match o {
+        TypedArgvExecOverran { deadline: _ } => true
+        TypedArgvExecWireInconsistent { fault: _ } => true
+        TypedArgvExecRefused { reason: _ } => false
+        TypedArgvExecConverged { result: _ } => false
+      }
+    RemoteFileExecution { outcome: _ } => false
   }
 }
 
