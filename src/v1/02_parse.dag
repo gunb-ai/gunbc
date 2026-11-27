@@ -515,9 +515,9 @@ fn parse_context_record_absorbed(ctx: ParseContext, absorbed: Node, into: NodeOc
   }
 }
 
-// The walk follows the same authored-node ownership relation as occurrence_allocator_after_node:
+// The walk follows the authored-node ownership relation:
 // children, params, uses, properties, body, transport, type_annotation, a resolved `inferred`, and a
-// match pattern's binder or field bindings. A field the allocator walk descends is a field an
+// match pattern's binder or field bindings. A field the walk descends is a field an
 // authored occurrence can sit under, so omitting one here drops the scopes beneath it.
 fn absorbed_subtree_into(acc: Map<OccurrenceId, OccurrenceId>, node: Node, into: OccurrenceId) -> Map<OccurrenceId, OccurrenceId> {
   let with_self = match node.occurrence_identity {
@@ -1635,126 +1635,6 @@ fn occurrence_allocator_after_index(
   )
 }
 
-fn occurrence_allocator_after_identity(
-  alloc: OccurrenceIdAllocator,
-  identity: NodeOccurrenceIdentity
-) -> OccurrenceIdAllocator {
-  match identity {
-    OccurrenceMinted { id: id } =>
-      if alloc.next_id <= id.value {
-        OccurrenceIdAllocator { next_id: id.value + 1 }
-      } else {
-        alloc
-      }
-    OccurrenceProjected { id: id, caused_by: _ } =>
-      if alloc.next_id <= id.value {
-        OccurrenceIdAllocator { next_id: id.value + 1 }
-      } else {
-        alloc
-      }
-    OccurrencePending { caused_by: _ } => alloc
-    OccurrenceSynthetic => alloc
-  }
-}
-
-fn occurrence_allocator_after_node_list(
-  alloc: OccurrenceIdAllocator,
-  nodes: List<Node>
-) -> OccurrenceIdAllocator {
-  fold(nodes, init: alloc, f: (current, node) => occurrence_allocator_after_node(alloc: current, node: node))
-}
-
-fn occurrence_allocator_after_optional_node(
-  alloc: OccurrenceIdAllocator,
-  node: Node?
-) -> OccurrenceIdAllocator {
-  match node {
-    Present { value: value } => occurrence_allocator_after_node(alloc: alloc, node: value)
-    Absent => alloc
-  }
-}
-
-fn occurrence_allocator_after_inferred_node(
-  alloc: OccurrenceIdAllocator,
-  inferred: InferredNode?
-) -> OccurrenceIdAllocator {
-  match inferred {
-    Present { value: Resolved { node: node } } => occurrence_allocator_after_node(alloc: alloc, node: node)
-    Present { value: CompilerError { message: _, span: _ } } => alloc
-    Present { value: TypeVariable { id: _ } } => alloc
-    Present { value: Divergent } => alloc
-    Absent => alloc
-  }
-}
-
-fn occurrence_allocator_after_match_pattern(
-  alloc: OccurrenceIdAllocator,
-  pattern: MatchPattern?
-) -> OccurrenceIdAllocator {
-  match pattern {
-    Present { value: Bind { declaration: declaration } } => occurrence_allocator_after_node(alloc: alloc, node: declaration)
-    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } } => occurrence_allocator_after_node_list(alloc: alloc, nodes: bindings)
-    Present { value: LitPattern { value: _ } } => alloc
-    Present { value: Wildcard } => alloc
-    Absent => alloc
-  }
-}
-
-fn occurrence_allocator_after_node(
-  alloc: OccurrenceIdAllocator,
-  node: Node
-) -> OccurrenceIdAllocator {
-  let current = occurrence_allocator_after_identity(alloc: alloc, identity: node.occurrence_identity)
-  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.children)
-  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.params)
-  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.uses)
-  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.properties)
-  let current = occurrence_allocator_after_optional_node(alloc: current, node: node.body)
-  let current = occurrence_allocator_after_optional_node(alloc: current, node: node.transport)
-  let current = occurrence_allocator_after_optional_node(alloc: current, node: node.type_annotation)
-  let current = occurrence_allocator_after_inferred_node(alloc: current, inferred: node.inferred)
-  occurrence_allocator_after_match_pattern(alloc: current, pattern: node.match_pattern)
-}
-
-fn parse_context_after_node(ctx: ParseContext, node: Node) -> ParseContext {
-  parse_context_with_occurrence_state(
-    ctx: ctx,
-    occurrence_allocator: occurrence_allocator_after_node(
-      alloc: ctx.occurrence_allocator,
-      node: node
-    ),
-    occurrence_index: ctx.occurrence_index,
-    declaration_occurrences: ctx.declaration_occurrences,
-    reference_occurrences: ctx.reference_occurrences
-  )
-}
-
-fn parse_context_after_node_list(ctx: ParseContext, nodes: List<Node>) -> ParseContext {
-  parse_context_with_occurrence_state(
-    ctx: ctx,
-    occurrence_allocator: occurrence_allocator_after_node_list(
-      alloc: ctx.occurrence_allocator,
-      nodes: nodes
-    ),
-    occurrence_index: ctx.occurrence_index,
-    declaration_occurrences: ctx.declaration_occurrences,
-    reference_occurrences: ctx.reference_occurrences
-  )
-}
-
-fn parse_context_after_inferred_node(ctx: ParseContext, inferred: InferredNode?) -> ParseContext {
-  parse_context_with_occurrence_state(
-    ctx: ctx,
-    occurrence_allocator: occurrence_allocator_after_inferred_node(
-      alloc: ctx.occurrence_allocator,
-      inferred: inferred
-    ),
-    occurrence_index: ctx.occurrence_index,
-    declaration_occurrences: ctx.declaration_occurrences,
-    reference_occurrences: ctx.reference_occurrences
-  )
-}
-
 fn stamp_parsed_node_list(
   nodes: List<Node>,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -2572,7 +2452,7 @@ fn parse_imports_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) ->
   if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "import") {
     let r = parse_import(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ImportsResult { imports: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_imports_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.import), acc: list_push(acc, r.import))
+    parse_imports_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.import))
   } else {
     ImportsResult { imports: acc, tokens: tokens, ctx: ctx, err: none }
   }
@@ -2608,7 +2488,7 @@ fn parse_import_statement_extents_acc(
       Present { value: extent } =>
         parse_import_statement_extents_acc(
           tokens: r.tokens,
-          ctx: parse_context_after_node(ctx: r.ctx, node: r.import),
+          ctx: r.ctx,
           acc: list_push(acc, ParsedImportStatement {
             span: extent,
             imported_module: r.import.name
@@ -2655,7 +2535,7 @@ fn parse_items_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> I
   } else {
     let r = parse_item(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ItemsResult { items: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_items_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.item), acc: list_push(acc, r.item))
+    parse_items_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.item))
   }
 }
 
@@ -3122,7 +3002,7 @@ fn parse_predicates_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
   let r = parse_single_predicate(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return PredsResult { predicates: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.predicate)
-  let ctx = parse_context_after_node(ctx: r.ctx, node: r.predicate)
+  let ctx = r.ctx
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     parse_predicates_acc(tokens: skip_newlines(tokens: __ec), ctx: ctx, acc: acc)
@@ -3310,7 +3190,7 @@ fn parse_more_variants_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Nod
     if has_err(err: r.err) { return VariantsResult { variants: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let r2 = parse_variant_fields(tokens: r.tokens, ctx: ctx, vname: r.name, vname_span: r.span)
     if has_err(err: r2.err) { return VariantsResult { variants: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    parse_more_variants_acc(tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.variant), acc: list_push(acc, r2.variant))
+    parse_more_variants_acc(tokens: r2.tokens, ctx: r2.ctx, acc: list_push(acc, r2.variant))
   EatUnchanged { tokens: __eu } =>
     VariantsResult { variants: acc, tokens: tokens, ctx: ctx, err: none }
   }
@@ -3530,7 +3410,7 @@ fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<Node>) -
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_type_angle_arg(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return TypeArgsResult { args: args, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    collect_type_args(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.type_expr), args: list_push(args, r.type_expr))
+    collect_type_args(tokens: r.tokens, ctx: r.ctx, args: list_push(args, r.type_expr))
   EatUnchanged { tokens: __eu } =>
     TypeArgsResult { args: args, tokens: tokens, ctx: ctx, err: none }
   }
@@ -3565,7 +3445,7 @@ fn parse_field_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
       let tokens = r.tokens
       let e = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
-      parse_field_list_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.field), acc: list_push(acc, r.field))
+      parse_field_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field))
     } else {
       FieldsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
     }
@@ -3680,10 +3560,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let type_params = prefix.type_params
   let params = prefix.params
   let inferred = prefix.inferred
-  let ctx = parse_context_after_inferred_node(
-    ctx: parse_context_after_node_list(ctx: prefix.ctx, nodes: concat(type_params, params)),
-    inferred: inferred
-  )
+  let ctx = prefix.ctx
 
   let all_params = concat(type_params, params)
   let named_dummy = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: prefix.uses, body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
@@ -3713,10 +3590,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   if has_err(err: body_result.err) { return ItemResult { item: named_dummy, tokens: body_result.tokens, ctx: body_result.ctx, err: body_result.err } }
   let body = body_result.expr
 
-  let parent_ctx = parse_context_after_node_list(
-    ctx: parse_context_after_node(ctx: body_result.ctx, node: body),
-    nodes: admit_props
-  )
+  let parent_ctx = body_result.ctx
   let minted = mint_parsed_node_identity(ctx: parent_ctx, at: FromToken { start: start_span, to: body_result.tokens })
   let item = Node { ident: Absent, occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: prefix.uses,
@@ -3783,7 +3657,7 @@ fn parse_uses_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) 
   let r = parse_uses_entry(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return UsesResult { uses: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.resource_use)
-  let ctx = parse_context_after_node(ctx: r.ctx, node: r.resource_use)
+  let ctx = r.ctx
 
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -3961,7 +3835,7 @@ fn parse_service_entries(tokens: TokenStream, ctx: ParseContext, config: Service
         if kw_text == "operation" {
           let r = parse_operation_def(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-          parse_service_entries(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.operation), config: config, transport: transport, operations: list_push(operations, r.operation))
+          parse_service_entries(tokens: r.tokens, ctx: r.ctx, config: config, transport: transport, operations: list_push(operations, r.operation))
         } else {
           ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected config, transport, or operation in service block", span: span) } }
         }
@@ -4819,7 +4693,7 @@ fn parse_resource_entries(tokens: TokenStream, ctx: ParseContext, properties: Li
         if kw_text == "capability" {
           let r = parse_capability(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-          parse_resource_entries(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.capability), properties: properties, capabilities: list_push(capabilities, r.capability))
+          parse_resource_entries(tokens: r.tokens, ctx: r.ctx, properties: properties, capabilities: list_push(capabilities, r.capability))
         } else if kw_text == "acquire" {
           let r = expect(tokens: token_stream_advance(stream: tokens, n: 1), expected: ExpectLBrace)
           if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -6056,13 +5930,13 @@ fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: Node, base
   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let first_expr = r.expr
   let tokens = r.tokens
-  let ctx = parse_context_after_node(ctx: r.ctx, node: first_expr)
+  let ctx = r.ctx
 
   if tok_is_dot_dot(tok: token_stream_first(stream: tokens)) {
     let r = parse_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
     if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let end_expr = r.expr
-    let ctx = parse_context_after_node(ctx: r.ctx, node: end_expr)
+    let ctx = r.ctx
     let r = expect(tokens: r.tokens, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
     parsed_expr_result(from: base_from, tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span))
@@ -6159,7 +6033,7 @@ fn parse_match(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_expr_no_brace(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let scrutinee = r.expr
-  let ctx = parse_context_after_node(ctx: r.ctx, node: scrutinee)
+  let ctx = r.ctx
 
   let r = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -6167,7 +6041,7 @@ fn parse_match(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_match_arms(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let arms = r.arms
-  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: arms)
+  let ctx = r.ctx
 
   let r = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -6301,7 +6175,7 @@ fn parse_match_arms_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
     if has_err(err: r.err) { return ArmsResult { arms: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_match_arms_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.arm), acc: list_push(acc, r.arm))
+    parse_match_arms_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.arm))
   }
 }
 
@@ -6600,11 +6474,11 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let condition = r.expr
 
-  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: parse_context_after_node(ctx: r.ctx, node: condition))
+  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let then_branch = r.expr
   let tokens = skip_newlines(tokens: r.tokens)
-  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: [condition, then_branch])
+  let ctx = r.ctx
 
   match eat(tokens: tokens, expected: ExpectKeyword { text: "else" }) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -6612,11 +6486,11 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "if") {
       let r2 = parse_if(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-      parsed_expr_result(from: entry, tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
     } else {
       let r2 = parse_block(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-      parsed_expr_result(from: entry, tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
     }
   EatUnchanged { tokens: __eu } =>
     parsed_expr_result(from: entry, tokens: tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span))
@@ -6774,7 +6648,7 @@ fn parse_field_init_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<N
     if has_err(err: duplicate) { return FieldInitsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: duplicate } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_field_init_list_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.field), acc: list_push(acc, r.field), seen: map_insert(seen, key, r.field.span))
+    parse_field_init_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field), seen: map_insert(seen, key, r.field.span))
   }
 }
 
@@ -6871,7 +6745,7 @@ fn parse_expr_list_until_acc(tokens: TokenStream, ctx: ParseContext, end_expecte
     if has_err(err: r.err) { return ExprsResult { exprs: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_expr_list_until_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
+    parse_expr_list_until_acc(tokens: tokens, ctx: r.ctx, end_expected: end_expected, acc: list_push(acc, r.expr))
   }
 }
 
