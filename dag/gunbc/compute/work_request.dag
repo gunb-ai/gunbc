@@ -167,6 +167,21 @@ fn gunbc_binary_name(b: GunbcBinary) -> NonEmptyStr {
   }
 }
 
+// THE CARGO PACKAGE THAT BUILDS EACH BINARY — the ONE authority for `-p <package>`, read by every site
+// that asks cargo to build a gunbc binary (the worker's build route in gunbc.compute.work_provider_local,
+// and the serving converge's native BuildServeBinary). It lives beside gunbc_binary_name because a binary
+// and the package that owns it are one fact about the same closed set: the `-p`/`--bin` pair a build
+// carries must agree, and two literals that must agree is exactly what drifted when the native build
+// named package "gunbc" (a package that does not exist) while the worker named "v1-compiler", so cargo
+// answered `package ID specification gunbc did not match any packages` (exit 101) on ken's serve build.
+// The package is a property of the binary, keyed on the SAME closed set, so a future binary may live in
+// another package without any call site restating a name.
+fn gunbc_cargo_package(b: GunbcBinary) -> NonEmptyStr {
+  match b {
+    GunbcDriver => "v1-compiler" as NonEmptyStr
+  }
+}
+
 // Where cargo writes one binary under the target root for one profile.
 fn work_binary_declared_path(profile: CargoProfile, b: GunbcBinary) -> String {
   join([cargo_profile_wire(p: profile), "/", gunbc_binary_name(b: b) as String], "")
