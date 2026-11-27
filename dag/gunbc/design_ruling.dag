@@ -1609,6 +1609,16 @@ fn design_rulings() -> List<DesignRuling> {
     runner_capacity_counts_only_when_observed_2026_11_10,
     pxe_witnesses_need_no_required_ci_2026_11_10,
     github_actions_are_wound_down_entirely_2026_11_24,
+    aws_spot_loop_runs_as_a_scoped_principal_2026_11_25,
+    aws_spot_quota_requests_held_2026_11_25,
+    aws_spot_g7e_launches_admitted_capped_2026_11_25,
+    aws_spot_quota_three_cards_requested_2026_11_25,
+    aws_spot_cheapest_single_gpu_blackwell_2026_11_25,
+    aws_spot_lowest_price_globally_2026_11_25,
+    aws_spot_three_card_ceiling_2026_11_25,
+    aws_spot_burn_ceiling_2026_11_25,
+    aws_spot_any_region_quota_requested_2026_11_25,
+    aws_spot_idle_release_and_dead_man_2026_11_25,
     github_stays_the_code_repository_until_gunbhub_2026_11_24,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
@@ -1883,6 +1893,68 @@ data live_router_changes_of_2026_11_23_are_requirements_evidence: DesignRuling =
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
   provenance: "Operator, 2026-11-23, directly in session proud-pike-550. Told that the router changes made by hand that day (efficiency tiers, upward-only session moves, live retain counting, a router-side binding table) contradict gunbc.serving.router_realization router_capability_permission and are recorded nowhere in the repository, and asked whether to keep and record them or roll them back, the operator said, verbatim: \"i would respect todays changes but not anchor on them - all of that solution has to go in the end, but it may bear on future requriements\". DECIDED. The 2026-11-23 router changes stay in place and are recorded as requirements evidence in gunbc.plans.fabric_market section 5: each is a behaviour the market must be able to express, and none is a mechanism to build on. They are debt of the hand-written router, deleted with it at the serving cutover, which owes a read-back of the live configuration and a disposition for each behaviour.",
 }
+data aws_spot_loop_runs_as_a_scoped_principal_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_loop_runs_as_a_scoped_principal_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.flex_aws_iam", decl_name: "flex_aws_loop_policy"),
+  provenance: "Operator, in a Claude Code session on srv2, 2026-11-25, answering which principal the AWS spot loop should run as when the only session was the account root (via `aws login`). Chosen option, verbatim: \"Scoped IAM user (Recommended)\". The option as offered: the IAM policy is written as a modeled document (EC2 launch/terminate limited to the owner tag, describe calls, SSM, SQS), the operator approves it, it is created with the root session, and its key goes into fleet secret custody; no root use after that. RULED: the loop's principal is an IAM user holding exactly gunbc.flex_aws_iam flex_aws_loop_policy.",
+}
+
+data aws_spot_quota_requests_held_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_quota_requests_held_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_row", decl_name: "flex_aws_type_walls"),
+  provenance: "Operator, same session, answering whether to file quota increases when the applied G and VT spot quota was 8 vCPU in us-east-1 and 0 elsewhere, and P spot was 0 everywhere. Chosen option, verbatim: \"Don't file yet\" (offered as: start with the single g7e.2xlarge and decide on quota later). RULED: no quota request is filed by this program until the operator decides otherwise; the quota wall of flex_aws_type_walls stays the bound.",
+}
+
+data aws_spot_g7e_launches_admitted_capped_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_g7e_launches_admitted_capped_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, same session, answering whether real spot instances may be launched while the program iterates in its PR (the 2026-10-23 plan required a separate go-ahead for AWS Apply). Chosen option, verbatim: \"Yes, g7e.2xlarge, capped\" (offered as: launch g7e.2xlarge spot with a hard per-test liability cap, for example 50 USD, plus an AWS Budget backstop, terminating after each test). Context, verbatim from the operator earlier the same session: \"we have 10k in aws credits i need to spend ( to unlock 25k total)\". RULED: g7e.2xlarge spot Apply is admitted during iteration under a per-test cap; a wider size, on-demand, or an uncapped run is not covered.",
+}
+
+data aws_spot_quota_three_cards_requested_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_quota_three_cards_requested_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_row", decl_name: "flex_aws_type_walls"),
+  provenance: "Operator, same session, later the same day, verbatim: \"also for spot we need to request more vcpu - at least enough for 2 or three gpus, lets ask them for three, one is too few\" and \"for spot\". SUPERSEDES aws_spot_quota_requests_held_2026_11_25. ACTED: a Service Quotas increase for L-3819A6DF (All G and VT Spot Instance Requests) in us-east-1 to 24 vCPUs (three g7e.2xlarge) was requested 2026-11-25T05:02Z, status PENDING at filing. The quota wall still reads the APPLIED value, so nothing launches against the request until AWS grants it.",
+}
+
+data aws_spot_cheapest_single_gpu_blackwell_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_cheapest_single_gpu_blackwell_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "flex_aws_admissible"),
+  provenance: "Operator, same session, after seeing g7e.4xlarge spot at $1.35/h against g7e.2xlarge at $2.37/h (on-demand $4.00 vs $3.36), verbatim: \"OK - basically yeah i want the cheapest possible blackwell for now that works for our use case - next we can make a more general purpose one\". RULED: any single-GPU size of the admitted g7e family is admissible and the cheapest per GPU is chosen each pass, within the applied quota and the per-card liability ceiling; multi-GPU sizes stay out until the boot path serves more than one replica per card. WIDENS aws_spot_g7e_launches_admitted_capped_2026_11_25 (which named g7e.2xlarge). Quota consequence recorded, not acted: three g7e.4xlarge need 48 vCPUs; the open 24-vCPU request (aws_spot_quota_three_cards_requested_2026_11_25) blocks a second request until AWS closes it.",
+}
+
+data aws_spot_lowest_price_globally_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_lowest_price_globally_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "FlexAwsApplyPolicy"),
+  provenance: "Operator, same session, verbatim: \"ok basically all i really care about is price - i don't care about latency/region at all - i'm looking for the lowest price globally\". RULED: the loop ranks candidates across every region offering the flex family, by price per GPU, with no latency or region preference; a region is a candidate only where the applied quota and the region's setup (weights bucket, security group, notice queue) exist. ACTED: a scan at 2026-11-25T05:30Z found g7e.2xlarge spot at $0.475/h in us-west-2a and g7e.8xlarge at $0.83/h in eu-north-1a against $1.35-2.48 in us-east-1; G and VT spot quota increases were requested in us-west-2 (24 vCPU) and eu-north-1 (32 vCPU), both PENDING at filing.",
+}
+
+data aws_spot_three_card_ceiling_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_three_card_ceiling_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.fleet.flex_aws_pass", decl_name: "flex_aws_card_ceiling"),
+  provenance: "Operator, same session, asked whether the one-card maximum was AWS's quota, verbatim: \"yeah but is that because of the quota? i think we should have a quota on our side i mean - if that means 3 cards at most than thats fine w/ me\". RULED: the loop carries its own ceiling of three cards at once across all regions, independent of AWS's applied quotas; a run argument may lower it and may not raise it.",
+}
+
+data aws_spot_burn_ceiling_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_burn_ceiling_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "flex_aws_burn_micros"),
+  provenance: "Operator, same session, verbatim: \"i think we should have a $ budget and a count budget too\"; then, offered hourly burn caps, chose \"$5/h (~$3.6k/mo max)\". RULED: the loop refuses any launch that would take the summed current spot price of all live cards above 5 USD per hour, beside the three-card count ceiling (aws_spot_three_card_ceiling_2026_11_25). Burn is enforced, not cumulative spend: burn is read exactly each pass, while billed spend lags (gunbc.rung_drop aws_flex_settlement_unobserved); the 2,000 USD monthly AWS Budget remains the lagging backstop.",
+}
+
+data aws_spot_any_region_quota_requested_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_any_region_quota_requested_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.fleet.flex_aws_pass", decl_name: "flex_aws_scan_regions"),
+  provenance: "Operator, same session: asked whether to set up us-west-2 and eu-north-1 ahead of their quota grants, verbatim \"yes please.\", and then \"i can do non US if they have nthem for GPU as well\". ACTED 2026-11-25: us-west-2 and eu-north-1 provisioned (security group admitting the router host on 18000, notice queue with the interruption and rebalance rules, weights bucket and its /gunbc-flex/weights-bucket parameter, weights and tuning cache copied server-side from us-east-1); G and VT spot quota increases of 24 vCPU requested in the remaining six g7e regions (us-east-2, eu-west-2, eu-central-1, ap-south-1, ap-northeast-1, ap-northeast-2), all PENDING at filing. Each of those regions is set up only once AWS grants its quota.",
+}
 
 data acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event"),
@@ -1900,6 +1972,13 @@ data parse_verdict_walk_moves_to_scheduled_audit_2026_11_24: DesignRuling = Desi
   decided: "2026-11-24",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator decision msg_9c5aaa2b, 2026-11-24, relayed to session silent-crane-515 by session cool-badger-99 (message msg_b52ed573), answering the finding that the required check v2-bootstrap was cancelled at its 60-minute cap on every main run from 2026-11-24T09:00Z (healthy-host runs were also cancelled at ~3618s against a last success of 3509s) and that the step with no bound to its value on a main push was the tail's fresh parse-population walk + receipt save (~512-646s). Three options were put: A wait for the degraded hosts to recover, B a placement refusal for degraded hosts (kept as a staged draft), C eject the main-only walk to a schedule. RULED, the operator's relayed words: \"do C. Open a PR that moves the main-only 'Walk parse-population on default-branch push' step out of the required v2-bootstrap job into a scheduled main audit.\" The relayed terms, also ruled: keep the walk itself and its coverage, on a schedule; pick a cadence that does not add CI load (implemented: once daily at 03:37 UTC, inside the fleet's quiet window, which holds fleet-converge 06:00 UTC and drift-watch 05:17 UTC); change the model and regenerate, never hand-edit a generated workflow; raise no timeout and no budget; record the coverage change and this decision in the PR body. EFFECT: the guarded publish pair (walk + save) leaves the required tail and runs in a new parse-verdict-audit job of the witnesses.yml model, gated by materialization_audit_publish_if = github.event_name == 'schedule' && github.ref == 'refs/heads/main', and the required job no longer runs on the clock. The added daily scheduled run is the CI-time increase gunbc.design_ruling::ci_job_budgets_closed_to_growth reserves to the operator, and this row is that explicit sign-off. WHAT THIS DOES NOT ADMIT: no timeout or memory-budget raise by this change (both jobs emit their timeout unchanged from gunbc.ci.repository_ci_profile, the single source; the row does not re-derive any number); no relaxation of the publish guard; no removal of the walk's coverage -- the full walk still runs daily on the judged head and the freshness bound on published parse-verdict receipts is the cadence, at most 24h; no change to pull-request fast-lane reuse, which keeps walking against the nearest published ancestor. The host-side root cause of the 2026-11-24 regressions -- a ~40 percent loss of CPU service on gunbc-srv3-* and gunbc-srv4-* beginning 2026-11-24T09:00-09:30Z, delivered CPU unchanged -- is neither resolved nor superseded by this row; the degraded-host placement draft (option B) and the operator's host investigation remain open beside it.",
+}
+
+data aws_spot_idle_release_and_dead_man_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_idle_release_and_dead_man_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "FlexAwsApplyPolicy"),
+  provenance: "Operator, same session, after a day of the unattended loop showed most serving gaps came from the four-hour per-card lifetime retiring a card before any replacement existed, and asked \"when there is no demand for a while - will the card wind down gracefully?\". Asked what should bound a card's life in steady state, chose verbatim \"Idle release + dead-man (Recommended)\" (offered as: no fixed lifetime; a card is drained and released when the router has not used it for a while; each card terminates itself if the loop's heartbeat goes stale for 30 minutes; the 5 USD/h burn cap, the 3-card cap and the AWS Budget still apply). Asked the idle window, chose verbatim \"30 minutes (Recommended)\". RULED: the per-test 50 USD liability cap and four-hour lifetime of aws_spot_g7e_launches_admitted_capped_2026_11_25 no longer bound a card; a card is drained (router row withdrawn, in-flight turns finish) and only then terminated, after 30 minutes unused or as surplus; a card out of the router 45 minutes is terminated; every card terminates itself when its region's loop heartbeat is older than 30 minutes.",
 }
 
 // THE OPERATOR NAMED THE REPLACEMENT FOR THE HAND RULES, AND THIS LEDGER OWES IT A ROW. The 2026-11-24/25

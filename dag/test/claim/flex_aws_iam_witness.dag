@@ -1,0 +1,166 @@
+module test.claim.flex_aws_iam_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import extdeps.languages.json.parse { json_text_parseable, parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject }
+import extdeps.access.aws_iam {
+  Deny,
+  PolicyDocument, Statement, ConditionEntry, Allow,
+  aws_iam_policy_document_json, aws_iam_condition_pairs_unique, aws_iam_policy_version,
+}
+import gunbc.flex_aws_iam {
+  flex_aws_loop_policy, flex_aws_card_policy, flex_aws_card_trust_policy,
+  flex_aws_loop_policy_json, flex_aws_card_policy_json, flex_aws_card_trust_policy_json,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn actions_of(d: PolicyDocument) -> List<String> {
+  flat_map(d.statements, s => map(s.actions, a => a as String))
+}
+
+fn statement_with(d: PolicyDocument, sid: String) -> Statement? {
+  first_of(filter(d.statements, s => match s.sid { Present { value: v } => (v as String) == sid  Absent => false }))
+}
+
+fn first_of(xs: List<Statement>) -> Statement? { xs.first() }
+
+fn has_condition(s: Statement, key: String, value: String) -> Bool {
+  any(s.conditions, c => ((c.key as String) == key) && any(c.values, v => (v as String) == value))
+}
+
+// The three documents the provisioning call creates render as JSON that parses back, every statement's
+// (operator, key) pairs are distinct (the one fact the grammar's object cannot carry twice), and the
+// Sid-carrying statements' Sids are distinct.
+test fn the_three_documents_render_as_parseable_json_with_unique_condition_pairs() -> Bool {
+  json_text_parseable(s: flex_aws_loop_policy_json())
+    && json_text_parseable(s: flex_aws_card_policy_json())
+    && json_text_parseable(s: flex_aws_card_trust_policy_json())
+    && all(concat(flex_aws_loop_policy.statements, flex_aws_card_policy.statements), s => aws_iam_condition_pairs_unique(conditions: s.conditions))
+    && (match field(v: parsed(text: flex_aws_loop_policy_json()), key: "Version") { Present { value: JsonString { value: v } } => v == "2012-10-17"  _ => false })
+    && (match field(v: first_statement(text: flex_aws_card_trust_policy_json()), key: "Principal") {
+      Present { value: p } => match field(v: p, key: "Service") { Present { value: JsonArray { elements: es } } => strings(vs: es) == ["ec2.amazonaws.com"]  _ => false }
+      Absent => false
+    })
+}
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonObject { members: [] }
+  }
+}
+
+fn field(v: JsonValue, key: String) -> JsonValue? {
+  match json_field(obj: v, key: key) {
+    FieldRead { value: x } => Present { value: x }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn strings(vs: List<JsonValue>) -> List<String> {
+  flat_map(vs, v => match v { JsonString { value: x } => [x]  _ => [] })
+}
+
+fn statements(text: String) -> List<JsonValue> {
+  match field(v: parsed(text: text), key: "Statement") { Present { value: JsonArray { elements: es } } => es  _ => [] }
+}
+
+fn first_statement(text: String) -> JsonValue {
+  match statements(text: text).first() { Present { value: s } => s  Absent => JsonObject { members: [] } }
+}
+
+fn statement_by_sid(text: String, sid: String) -> JsonValue? {
+  statements(text: text).filter(s => match field(v: s, key: "Sid") { Present { value: JsonString { value: x } } => x == sid  _ => false }).first()
+}
+
+// The loop launches spot cards of the flex pattern carrying the owner tag, and can terminate only tagged
+// instances. It holds no IAM write but PassRole, no S3, and no way to launch on-demand.
+test fn the_loop_launches_only_tagged_spot_cards_and_holds_no_iam_or_s3_write() -> Bool {
+  let actions = actions_of(d: flex_aws_loop_policy)
+  let launch = statement_with(d: flex_aws_loop_policy, sid: "FlexLaunchSpotCard")
+  let terminate = statement_with(d: flex_aws_loop_policy, sid: "FlexTerminateOwn")
+  (match launch {
+    Present { value: s } => has_condition(s: s, key: "ec2:InstanceMarketType", value: "spot")
+      && has_condition(s: s, key: "aws:RequestTag/gunbc-flex-owner", value: "gunbc-flex")
+      && has_condition(s: s, key: "ec2:InstanceType", value: "g7e.*")
+    Absent => false
+  })
+  && (match terminate { Present { value: s } => has_condition(s: s, key: "aws:ResourceTag/gunbc-flex-owner", value: "gunbc-flex")  Absent => false })
+  // The marks: only on our cards, and only the mark keys.
+  && (match statement_with(d: flex_aws_loop_policy, sid: "FlexMarkOwnCards") {
+    Present { value: s } => has_condition(s: s, key: "aws:ResourceTag/gunbc-flex-owner", value: "gunbc-flex")
+      && has_condition(s: s, key: "aws:TagKeys", value: "gunbc-flex-*-since")
+    Absent => false
+  })
+  && !any(actions, a => a.starts_with("s3:"))
+  && !any(actions, a => a.starts_with("iam:") && a != "iam:PassRole")
+}
+
+// RED controls for the renderer: a statement naming one (operator, key) pair twice is detected, and the
+// launch statement's conditions reach the wire grouped by operator, each key carrying its values, read
+// back through the JSON parser rather than by spelling.
+test fn a_duplicated_condition_pair_is_detected_and_the_wire_carries_the_spot_condition() -> Bool {
+  let dup = [
+    ConditionEntry { operator: "StringEquals" as NonEmptyStr, key: "ec2:InstanceMarketType" as NonEmptyStr, values: ["spot" as NonEmptyStr] },
+    ConditionEntry { operator: "StringEquals" as NonEmptyStr, key: "ec2:InstanceMarketType" as NonEmptyStr, values: ["on-demand" as NonEmptyStr] },
+  ]
+  !aws_iam_condition_pairs_unique(conditions: dup)
+    && (match statement_by_sid(text: flex_aws_loop_policy_json(), sid: "FlexLaunchSpotCard") {
+      Present { value: st } => match field(v: st, key: "Condition") {
+        Present { value: c } =>
+          (match field(v: c, key: "StringEquals") {
+            Present { value: eq } =>
+              (match field(v: eq, key: "ec2:InstanceMarketType") { Present { value: JsonArray { elements: es } } => strings(vs: es) == ["spot"]  _ => false })
+                && (match field(v: eq, key: "aws:RequestTag/gunbc-flex-owner") { Present { value: JsonArray { elements: es } } => strings(vs: es) == ["gunbc-flex"]  _ => false })
+            Absent => false
+          })
+          && (match field(v: c, key: "StringLike") {
+            Present { value: like } => match field(v: like, key: "ec2:InstanceType") { Present { value: JsonArray { elements: es } } => strings(vs: es) == ["g7e.*"]  _ => false }
+            Absent => false
+          })
+        Absent => false
+      }
+      Absent => false
+    })
+}
+
+// A CARD'S ROLE REACHES ONLY ITS OWN KEY AND CERTIFICATE (review of fb2594de): the key read and the certificate
+// write are conditioned on the EXISTING parameter's tag being the card's own instance ARN -- never the request's, which
+// would let a card create a not-yet-published card's name -- and no statement lets a card write a tag; every other card's key is DENIED explicitly, so no policy
+// attached later can widen it; no statement allows a read of every flex parameter; and parameter walks are denied.
+test fn a_card_reaches_only_its_own_key_and_certificate() -> Bool {
+  let own = "$\{ec2:SourceInstanceARN}"
+  (match statement_with(d: flex_aws_card_policy, sid: "CardReadOwnKey") { Present { value: s } => has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)  Absent => false })
+    && (match statement_with(d: flex_aws_card_policy, sid: "CardPublishOwnCertificate") {
+      Present { value: s } => has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)
+        && !has_condition(s: s, key: "aws:RequestTag/gunbc-flex-instance", value: own)
+        && all(s.actions, a => (a as String) == "ssm:PutParameter")
+      Absent => false
+    })
+    && !any(flex_aws_card_policy.statements, s => (match s.effect { Deny => false  _ => true }) && any(s.actions, a => ((a as String) == "ssm:AddTagsToResource") || ((a as String) == "ssm:*")))
+    && (match statement_with(d: flex_aws_card_policy, sid: "CardDenyOtherCardsKeys") {
+      Present { value: s } => (match s.effect { Deny => true  _ => false }) && has_condition(s: s, key: "ssm:resourceTag/gunbc-flex-instance", value: own)
+        && any(s.actions, a => (a as String) == "ssm:GetParameters")
+      Absent => false
+    })
+    && (match statement_with(d: flex_aws_card_policy, sid: "CardDenyParameterWalks") { Present { value: s } => match s.effect { Deny => true  _ => false }  Absent => false })
+    && !any(flex_aws_card_policy.statements, s => (match s.effect { Deny => false  _ => true }) && any(s.resources, r => (r as String) == "arn:aws:ssm:*:*:parameter/gunbc-flex/*"))
+}
+
+// A CARD READS NO PARAMETER BY NAME BEYOND ITS GRANTS (review of e50999ce: the attached AmazonSSMManagedInstanceCore
+// allowed ssm:GetParameter and GetParameters on every parameter in the account). Exactly two statements allow a
+// parameter read -- the two shared parameters and the card's own key -- each scoped under the fleet prefix; the
+// Systems Manager agent's grant carries none, and still carries what the agent needs to register.
+test fn a_card_reads_no_parameter_by_name_beyond_its_grants() -> Bool {
+  let reads = flex_aws_card_policy.statements |> filter(s => (match s.effect { Allow => true  _ => false }) && any(s.actions, a => ((a as String) == "ssm:GetParameter") || ((a as String) == "ssm:GetParameters") || ((a as String) == "ssm:*") || ((a as String) == "*")))
+  (count(reads) == 2)
+    && all(reads, s => all(s.resources, r => (r as String).starts_with("arn:aws:ssm:*:*:parameter/gunbc-flex/")))
+    && (match statement_with(d: flex_aws_card_policy, sid: "CardSystemsManagerAgent") {
+      Present { value: s } => !any(s.actions, a => (a as String).starts_with("ssm:GetParameter")) && any(s.actions, a => (a as String) == "ssm:UpdateInstanceInformation") && any(s.actions, a => (a as String) == "ssmmessages:OpenDataChannel")
+      Absent => false
+    })
+}

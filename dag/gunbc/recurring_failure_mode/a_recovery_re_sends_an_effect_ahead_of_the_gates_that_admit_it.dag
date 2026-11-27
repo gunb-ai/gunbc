@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_recovery_re_sends_an_effect_ahead_of_the_gates_that_admit_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_recovery_re_sends_an_effect_ahead_of_the_gates_that_admit_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_recovery_re_sends_an_effect_ahead_of_the_gates_that_admit_it" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a purchase carrier that only the launch decision can mint -- a sole-constructor value naming the admitted candidate, its rate and the inventory and demand it was decided over -- which every RunInstances realization requires as an argument, SUFFICIENT FOR any route that sends RunInstances without a decision of this pass (a recovery, a replay, a retry) to be refused by the checker rather than found by a reviewer",
+    },
+  },
+
+  receipts: [
+    "**a recovery path re-performs a costly effect before the gates that admit that effect have been read, because it was written as finishing an old decision rather than as making a new one.** INVALID STATE: an effect that the admission gates (demand, inventory completeness, a ceiling) would refuse NOW is performed anyway, on the authority of a record that a past decision once wanted it. HARM: money and capacity spent outside every bound the controller states; the same pass then reports the gates as holding (decision=hold), so the receipt contradicts the spend.",
+    "SPECIMEN, gunbc#17108 at 7edc31fb (external review, 2026-11-27): gunbc.fleet.flex_aws_pass recorded a purchase intent before RunInstances, and its reconcile -- step 2 of the pass, before demand was read -- re-sent RunInstances with the intent's client token whenever the intent named no card. A pass killed between recording and sending made the FIRST purchase on restart, with cards=0 or an unreadable region, and then decided hold. The same recovery closed an unresolved purchase on a refusal of the RETRY or on the owned roster omitting the card after fifteen minutes; neither answers whether the ORIGINAL call created a card.",
+    "DISTINGUISHING FACTS: idempotency (the client token) makes a re-send safe against DUPLICATING a purchase that happened, and says nothing about whether the purchase should happen at all; the retry inherited the old decision's admission instead of asking for a new one. And a recovery that answers 'what happened to the original call' by making another call learns about the second call.",
+    "REPAIR: the recovery READS -- describe-instances filtered on the purchase's client token (extdeps.cloud.aws_cli aws_cli_describe_instances_by_client_token) -- and gunbc.fleet.flex_aws_pass FlexAwsIntentStep has no arm that can create a card; an open purchase stays counted until the token's answer settles it. The decided launch is the only RunInstances, made after every gate. Witnessed by test.claim.fleet.flex_aws_pass_witness a_recorded_unsent_purchase_buys_nothing_whatever_is_wanted and an_open_purchase_is_read_back_by_its_token.",
+    "RUNG NOW: mitigatable -- one route sends RunInstances and the decision over an open purchase is witnessed, but nothing stops a later edit from adding a second send. CEILING: structurally guaranteed, once the send requires a carrier only the decision mints.",
+  ],
+
+  evidence: [],
+}

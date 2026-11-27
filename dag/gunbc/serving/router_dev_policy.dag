@@ -184,6 +184,15 @@ fn router_dev_init_lines(state_dir: String, model_alias: String) -> List<String>
     "ROUTER_KEYS = \{}",
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
+    // THE CA BUNDLE THIS RELOAD READ, by digest: nginx reads upstream_ca.pem (proxy_ssl_trusted_certificate) in the same
+    // configuration cycle that re-runs this block, so /router/stats can say which bundle the running router trusts and a
+    // writer can tell a reload that took its bundle from one that did not (gunbc.fleet.flex_aws_pass flex_aws_reload_owed).
+    // Absent when the file is: an empty digest is never reported as the digest of nothing.
+    "ROUTER_CA_SHA256 = nil",
+    "do",
+    "  local ca = slurp(dir .. '/upstream_ca.pem')",
+    "  if ca then local h = require('resty.sha256'):new() h:update(ca) ROUTER_CA_SHA256 = require('resty.string').to_hex(h:final()) end",
+    "end",
     "ROUTER_ALIAS = '" + model_alias + "'",
     // Reasoning-effort dialect per upstream MODEL, rendered from the effort_effects rows on the
     // upstream list. The alias and each engine accept a different set of effort names, and an engine
@@ -244,6 +253,40 @@ fn router_dev_row_lines() -> List<String> {
     "for _, u in ipairs(ROUTER_UPSTREAMS) do owner_of[u.name] = u.name end",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
     "local function active(u) local st = ngx.shared.router_state local n = st:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n = n + (st:get('active:' .. old) or 0) end return n end",
+    // WHETHER A WAITING CONVERSATION IS HELD FOR ITS OWN ENGINE -- the one statement of it, read by the routing
+    // rule (a bound conversation is served by its engine or refused while that engine answers its model, is in
+    // service and is not ejected) and by the stats (every other waiter would take any compatible free slot, a
+    // rented card's included, so the rented-demand count is the waiters for which this is false). A binding to a
+    // retired name belongs to the row that retires it.
+    "local function waiter_keeps_its_engine(model, bound_name)",
+    "  local name = bound_name and (owner_of[bound_name] or bound_name)",
+    "  if not name or name == '' then return false end",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    if u.name == name then return u.in_service ~= false and (model == ROUTER_ALIAS or model == u.model) and not ngx.shared.router_state:get('unavailable:' .. u.name) end",
+    "  end",
+    "  return false",
+    "end",
+    // WHETHER A ROW ADMITS A TURN NOW -- the one statement of it, read by the pick (a session is placed only on a
+    // row that admits it) and by the stats (a waiting conversation is rented demand only when no rented row in
+    // service admits it). A row admits while it is not ejected, has a free active slot (an uncapped rented row
+    // always does), and either retains no limit, is the session's own row, or holds fewer bound sessions than it
+    // retains. Bound sessions are counted by the row that owns the binding, the asking session excluded.
+    "local function uncapped(u) return u.overflow and u.cap == nil end",
+    "local function free_slots(u) return uncapped(u) and 1 or ((u.cap or 0) - active(u)) end",
+    "local function bound_counts(except)",
+    "  local st, counts = ngx.shared.router_state, \{}",
+    "  for _, k in ipairs(st:get_keys(0)) do",
+    "    if k:sub(1, 8) == 'session:' and k:sub(9) ~= except then",
+    "      local row = st:get(k)",
+    "      row = row and (owner_of[row] or row)",
+    "      if row then counts[row] = (counts[row] or 0) + 1 end",
+    "    end",
+    "  end",
+    "  return counts",
+    "end",
+    "local function admits(u, bound_on, holder)",
+    "  return not ngx.shared.router_state:get('unavailable:' .. u.name) and free_slots(u) > 0 and (u.retain == nil or u.name == holder or bound_on(u.name) < u.retain)",
+    "end",
   ]
 }
 
@@ -385,7 +428,6 @@ fn router_dev_access_lines() -> List<String> {
     // moves come only through the relocation operation). A bound session returns to its engine or is refused; it
     // moves only when that engine is unavailable. An uncapped rented row never refuses, so it never reaches the
     // refusal either.
-    "local function uncapped(u) return u.overflow and u.cap == nil end",
     // begin_turn is the ONE place a turn is reserved, and the only place ngx.ctx.counted is set: the log
     // phase releases exactly what was reserved here. A cap is the active-turn ceiling of a row, 0 included (no
     // turns). An uncapped rented row is admitted without a ceiling and still counted, so its active figure
@@ -408,23 +450,13 @@ fn router_dev_access_lines() -> List<String> {
     // 'session:<id>' because a graceful reload keeps a same-named lua_shared_dict, so every live binding
     // survives the cutover. A dedicated bindings dict needs a copy-then-switch migration leg, which belongs
     // to the cutover (owner calm-moth-166), not to this parity change.
-    "local bound_counts = nil",
+    "local bound_table = nil",
     "local function bound_count(name)",
-    "  if not bound_counts then",
-    "    bound_counts = {}",
-    "    for _, k in ipairs(state:get_keys(0)) do",
-    "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
-    "        local row = state:get(k)",
-    "        row = row and (owner_of[row] or row)",
-    "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
-    "      end",
-    "    end",
-    "  end",
-    "  return bound_counts[name] or 0",
+    "  if not bound_table then bound_table = bound_counts(session) end",
+    "  return bound_table[name] or 0",
     "end",
-    "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
-    "if bound and available(bound) then",
+    "if bound and waiter_keeps_its_engine(body.model, stuck) then",
     // A bound session is served by ITS engine or refused, on every owned row and every capped rented row: no
     // path from here reaches the pick loop while the engine is available. Falling through would migrate the
     // very session this rule exists to keep in place (operator 2026-10-28: deliberate moves come only through
@@ -442,10 +474,10 @@ fn router_dev_access_lines() -> List<String> {
     "local pick, priority, spare = nil, nil, -1",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  local c = candidates[u.name]",
-    "  if c and not state:get('unavailable:' .. c.name) and retains(c) then",
+    "  if c and admits(c, bound_count, stuck) then",
     "    local p = c.overflow and 1 or 0",
-    "    local free = uncapped(c) and 1 or ((c.cap or 0) - active(c))",
-    "    if free > 0 and (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
+    "    local free = free_slots(c)",
+    "    if (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
     "  end",
     "end",
     "if not pick then strand() ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
@@ -662,6 +694,10 @@ fn router_dev_trim_lines() -> List<String> {
 }
 
 // GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
+// THE RECENT-USE WINDOW a rented row's conversations are counted over: a row none of whose conversations was
+// seen within it, and with nothing in flight, is unused (the AWS loop's idle clock starts there).
+fn router_dev_recent_use_window() -> Second { second(count: 600) }
+
 fn router_dev_stats_lines() -> List<String> {
   list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
@@ -737,7 +773,66 @@ fn router_dev_stats_lines() -> List<String> {
     "  end",
     "end",
     "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
+    // RENTED DEMAND, decided by this router's own routing rules (operator 2026-11-25: rent a card on surplus
+    // demand the router could place on it). `unplaceable_by_model` counts, per REQUESTED model, the waiting
+    // conversations that no row in service has room for now: waiters not held for their own engine
+    // (waiter_keeps_its_engine), less the room every compatible row -- OWNED AND RENTED, the pick's own candidate set
+    // -- has for a new conversation, which is its free active slots capped by its retention room (admits, the pick's
+    // own rule: a row with free slots and its retention full cannot take a new conversation; review of e50999ce). An
+    // uncapped rented row has any number of free slots, and its retention still bounds it (review of 4a2bfbe4: it was
+    // given unbounded room, so a new conversation refused at its full retention was no demand). Room is CONSUMED as it
+    // is counted (review of 7edc31fb): one owned slot freed after five waiters were refused places one of them on its
+    // retry, not all five, so four are still demand -- while one slot freed for one waiter is none. The most constrained
+    // waiters are placed first, since that is the order that places the most: a waiter held for its own engine can use
+    // only that row's free slot, and it takes it before anyone (review of 4a2bfbe4: one bound and one flexible waiter
+    // beside one free slot read as no demand, and the flexible retry was refused); a held waiter needs no retention
+    // room, its binding being already counted. Then a model's own rows take its waiters, then every row's remaining
+    // room takes the alias's waiters, since every row serves the alias and a model's waiters can use only its rows. `rows` is each rented row in service with its turns in flight and the conversations bound to it
+    // seen within the recent window. The AWS loop rents on these and nothing else, so neither rule is restated outside
+    // the router. A rented card serves its own model and the alias, so a reader adds the two entries.
+    "rented.unplaceable_by_model = \{}",
+    "rented.alias = ROUTER_ALIAS",
+    "local held = bound_counts(nil)",
+    "local slots, ret = \{}, \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.in_service ~= false and not state:get('unavailable:' .. u.name) then",
+    "    slots[u.name] = uncapped(u) and math.huge or math.max(0, free_slots(u))",
+    "    ret[u.name] = u.retain == nil and math.huge or math.max(0, u.retain - (held[u.name] or 0))",
+    "  end",
+    "end",
+    "local waiting = \{}",
+    "for _, k in ipairs(state:get_keys(0)) do",
+    "  local m, s = k:match('^pending:(.-)|(.+)$')",
+    "  if m and state:get(k) then",
+    "    local b = state:get('session:' .. s)",
+    "    if waiter_keeps_its_engine(m, b) then",
+    "      local r = owner_of[b] or b",
+    "      if slots[r] then slots[r] = math.max(0, slots[r] - 1) end",
+    "    else waiting[m] = (waiting[m] or 0) + 1 end",
+    "  end",
+    "end",
+    "local function place(m, n, fits)",
+    "  local left = n",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    if left > 0 and slots[u.name] and fits(u) then local take = math.min(left, slots[u.name], ret[u.name]) slots[u.name] = slots[u.name] - take ret[u.name] = ret[u.name] - take left = left - take end",
+    "  end",
+    "  if left > 0 then rented.unplaceable_by_model[m] = left end",
+    "end",
+    "for m, n in pairs(waiting) do if m ~= ROUTER_ALIAS then place(m, n, function(u) return u.model == m end) end end",
+    "if waiting[ROUTER_ALIAS] then place(ROUTER_ALIAS, waiting[ROUTER_ALIAS], function(u) return true end) end",
+    "rented.rows = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.overflow and u.in_service ~= false then",
+    "    local recent = 0",
+    "    for _, k in ipairs(state:get_keys(0)) do",
+    "      local b = k:sub(1, 8) == 'session:' and state:get(k)",
+    "      if b and (owner_of[b] or b) == u.name and ngx.now() - (state:get('seen:' .. k:sub(9)) or 0) < " + to_string(second_count(s: router_dev_recent_use_window())) + " then recent = recent + 1 end",
+    "    end",
+    "    rented.rows[#rented.rows + 1] = \{name = u.name, active = active(u), seen_recent = recent}",
+    "  end",
+    "end",
     "out.rented = rented",
+    "out.upstream_ca_sha256 = ROUTER_CA_SHA256",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
     "if ngx.var.arg_sessions == '1' then",
@@ -842,7 +937,15 @@ fn router_dev_srv1_site() -> RouterDevSite {
 // The hand-run deploy's render step: writes the proxy's nginx.conf into the host state directory the
 // container mounts, and refuses (exit 1) when the site's tokens are refused or the write fails:
 // gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/serving/router_dev_policy.dag --function router_dev_srv1_write_config
-fn router_dev_srv1_host_config_path() -> String { "/home/briansrls/router/nginx.conf" }
+// The host directory the container mounts at the site's state_dir (router_dev_srv1_site); every host-side
+// path of the srv1 router is under it.
+fn router_dev_srv1_host_state_dir() -> String { "/home/briansrls/router" }
+
+fn router_dev_srv1_host_config_path() -> String { router_dev_srv1_host_state_dir() + "/nginx.conf" }
+
+// The srv1 router container (gunbc-router.service runs `docker start gunbc-router`, read 2026-11-25); a
+// HUP to it reloads nginx.conf and re-runs init_by_lua, which re-reads upstreams.json and the CA bundle.
+fn router_dev_srv1_container_name() -> NonEmptyStr { "gunbc-router" as NonEmptyStr }
 
 fn router_dev_srv1_write_config() -> ProcessExit {
   match router_dev_first_party_refusal(fp: router_dev_first_party()) {
@@ -1475,7 +1578,7 @@ fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
     Absent => match router_dev_first_party_json(fp: router_dev_first_party()) {
       Absent => ExitFailure { code: 1, reason: "refused upstream rows: no first-party projection" }
       Present { value: j } => {
-        let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: j)
+        let w = Filesystem.Write(path: router_dev_srv1_host_state_dir() + "/upstreams.first_party.json", content: j)
         if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
       }
     }
@@ -1489,7 +1592,7 @@ fn router_dev_srv1_write_candidate() -> ProcessExit {
     Absent => match router_dev_config(site: router_dev_srv1_site()) {
     RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
     RouterDevConfigRendered { text: t } => {
-        let w = Filesystem.Write(path: "/home/briansrls/router/nginx.candidate.conf", content: t)
+        let w = Filesystem.Write(path: router_dev_srv1_host_state_dir() + "/nginx.candidate.conf", content: t)
         if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
       }
     }

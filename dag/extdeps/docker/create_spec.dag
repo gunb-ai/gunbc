@@ -2,6 +2,7 @@ module extdeps.docker.create_spec
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.measure { ByteSize, byte_size_count }
+import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
@@ -69,6 +70,13 @@ type DockerCreateSpec {
   restart: DockerRestartPolicy
   mounts: List<DockerMount>
   env: List<DockerEnvAssignment>
+  // `--env-file <path>`: variables the docker CLI reads from a file on the client host, so a value (a
+  // credential) never appears in the argv. docs.docker.com/reference/cli/docker/container/run/#env
+  // Not yet compared with a `docker inspect` readback (Config.Env carries the merged result, not the
+  // file), so a convergence over this spec compares `env` only.
+  env_files: List<FilePath>
+  // `--entrypoint`: replaces the image's ENTRYPOINT (Config.Entrypoint); absent keeps the image's own.
+  entrypoint: NonEmptyStr?
   command: List<String>
 }
 
@@ -149,7 +157,13 @@ fn docker_container_resource_flags(spec: DockerCreateSpec) -> List<String> {
       flat_map(spec.cap_add, c => docker_cap_add_words(c: c)),
       concat(
         flat_map(spec.mounts, m => docker_mount_flag(m: m)),
-        flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+        concat(
+          flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+          concat(
+            flat_map(spec.env_files, f => ["--env-file", f as String]),
+            match spec.entrypoint { Present { value: e } => ["--entrypoint", e as String]  Absent => [] },
+          ),
+        ),
       ),
     ),
   )

@@ -1,0 +1,30 @@
+module gunbc.rung_drop.aws_flex_settlement_unobserved
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// Grain: one rented allocation's spend, as the flex budget wall reads it. On Vast the wall reads money
+// actually charged (gunbc.serving.rented_settlement over a complete charges walk), so over-spend is
+// exposed by observation. The EC2 API has no per-instance charges call, so an AWS allocation's spend is
+// an estimate until billing is observed (gunbc.plans.flex_supplier_generalization D2, decided
+// 2026-10-23 by calm-crab-645: Apply is not blocked on billing).
+
+data aws_flex_settlement_unobserved: RungDrop = RungDrop {
+  identity: "aws_flex_settlement_unobserved" as NonEmptyStr,
+
+  subject: "Whether the flex budget wall reads an AWS EC2 allocation's spend from an observed charge rather than an estimate",
+
+  declared: "2026-10-23",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a modeled AWS billing observation (cost and usage report or Cost Explorer) joined per instance id, read by gunbc.serving.rented_settlement beside the Vast charges walk. The interim bounds the harm: the wall counts max(admitted spot price, MaxPrice) times billed time, per second from running with a one-minute minimum per start (EC2 User Guide, ec2-instance-lifecycle), and an AWS Budgets action denies ec2:RunInstances to the flex principal at the cap (extdeps.cloud.aws_budgets) in case that accounting is wrong.",
+    },
+    population: Enumerated { members: FreeSemigroup { head: "every AWS EC2 allocation the flex loop acquires in Apply mode (product.fabric.flex_aws_row is its supplier row)", tail: ["NONE EXIST at declaration: the AWS row runs in Plan mode only and acquires nothing; the population begins with the first Apply-mode acquisition, which needs a separate operator go-ahead"] } },
+    restoration_trigger: "THE CAPABILITY: the budget wall reads each AWS allocation's billed amount from an observed AWS billing record joined by instance id, so an AWS over-spend is exposed by observation as a Vast one is. WHAT DOES NOT RETIRE THIS ROW: tightening the estimate, or the Budgets backstop firing.",
+  } }
+}

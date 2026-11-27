@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_withdrawal_held_only_in_memory_is_lost_at_restart
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_withdrawal_held_only_in_memory_is_lost_at_restart: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_withdrawal_held_only_in_memory_is_lost_at_restart" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "loop state that is read from and written to durable custody by construction -- a tick that takes the previous tick's durable state and returns the next, with no in-memory-only field -- SUFFICIENT FOR a restart to resume every withdrawal the previous process held",
+    },
+  },
+
+  receipts: [
+    "**a control that keeps a resource withdrawn lives only in the process's memory, and the external signal that would restore it is hidden for a window -- so a restart inside the window forgets the withdrawal and the resource returns to service.** INVALID STATE: a card AWS is reclaiming routed again. HARM: conversations placed on a card that will vanish within two minutes.",
+    "SPECIMEN, gunbc#17108 at 7edc31fb (external review, 2026-11-27): gunbc.fleet.flex_aws_pass held unsettled notices in its loop state; Apply receives queue messages with a sixty-second visibility timeout. A loop restarted inside that minute started with no notice, saw the card unmarked and healthy (its tag write had failed), and enrolled it. The same gap left the acknowledged blind-region residual unrepairable: the converge had no way to name the noticed card whose region it could not read.",
+    "REPAIR: each Apply tick writes its held notices to custody in the queue's own wire (product.fabric.flex_aws_apply flex_aws_notice_event, read back by flex_aws_read_notice); a starting loop reads them first and refuses a file that does not read back; and the router converge withdraws the row of every noticed card, read or unread (gunbc.serving.flex_aws_router_rows flex_aws_row_unseen). Witnessed by test.claim.fleet.flex_aws_pass_witness the_held_notices_read_back_across_a_restart and test.claim.serving.flex_aws_router_rows_witness a_noticed_cards_row_leaves_service_even_where_its_region_is_unread.",
+    "RUNG NOW: mitigatable. CEILING: mechanically preventable while the loop state has a field the durable record does not carry.",
+    "SECOND SPECIMEN, gunbc#17108 at 4a2bfbe4 (external review, 2026-11-27): the repair above wrote the held notices only after the whole pass and its receipt, AFTER the router withdrawal and the tag writes. A process that withdrew the card, failed its tag write and stopped before the custody write left its successor the previous (empty) file and an empty receive, and the successor re-enrolled the warned card. Durable state written after the effect it makes recoverable is memory for the length of the pass. Separately, a region whose purchase quota was unreadable skipped its notice queue, so a card running there was never warned.",
+    "SECOND REPAIR: gunbc.fleet.flex_aws_pass flex_aws_take_notices_at takes every notice a pass acts on and returns them only once the unsettled ones are written to custody; the router withdrawal and the notice marks read the notices only from that result, and a refused write stops the loop after the pass. The queue is read in every region, whatever its quota. Witnessed by REAL EXECUTION at the interruption point -- test.claim.fleet.flex_aws_pass_witness a_notice_taken_is_kept_before_its_card_is_withdrawn (a fresh process with an empty receive still acts on the notice; started from the previous empty file, it acts on nothing) -- and a_warning_is_read_in_a_region_whose_quota_is_unreadable.",
+  ],
+
+  evidence: [],
+}

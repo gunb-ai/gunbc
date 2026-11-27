@@ -1,0 +1,151 @@
+module test.claim.cloud.aws_cli_projection_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal, exact_decimal_equal }
+import std.measure { mebibyte_count, gigabyte_count, hardware_thread_count_value, money_per_hour_micros }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.exec.command { argv_words }
+import extdeps.cloud.aws_ec2 { AwsEc2OptInNotRequired, AwsEc2NotOptedIn, AwsEc2Running, AwsEc2LifecycleSpot }
+import extdeps.cloud.aws_cli {
+  AwsCliReadOk, AwsCliReadRefused, aws_cli_read_regions, aws_cli_read_offerings, aws_cli_read_instance_types,
+  aws_cli_read_spot_prices, aws_cli_read_instances, aws_cli_read_service_quota, aws_cli_describe_spot_prices,
+  aws_cli_read_prefix_census, aws_cli_create_tags, aws_cli_delete_tags, aws_cli_create_string_parameter,
+  aws_cli_read_parameter_listing, aws_cli_refusal_is_definite, aws_cli_describe_parameters_under,
+  aws_cli_describe_instances_by_client_token,
+}
+import extdeps.cloud.aws_ec2 { AwsEc2Tag }
+import extdeps.exec.command { argv_words }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED VALUES AT ONE BOUNDARY: the AWS CLI v2 JSON documents below are written in the shape the CLI
+// prints for each operation (the API members in PascalCase). The account id is a placeholder of zeros.
+// THE PAIRED INHABITANCE CLAIM (DESIGN 3, a witness discriminates at one interface) is owed, not met:
+data aws_cli_projection_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when a Plan-mode flex pass on the custody host, with the flex AWS credential bound, runs each of these six operations through extdeps.cloud.aws_cli and every reader returns AwsCliReadOk on the real output, recorded as that pass receipt.")
+
+test fn the_six_projections_read_their_recorded_shapes() -> Bool {
+  (match aws_cli_read_regions(stdout: "\{\"Regions\":[\{\"Endpoint\":\"ec2.us-east-1.amazonaws.com\",\"RegionName\":\"us-east-1\",\"OptInStatus\":\"opt-in-not-required\"},\{\"Endpoint\":\"ec2.ap-east-1.amazonaws.com\",\"RegionName\":\"ap-east-1\",\"OptInStatus\":\"not-opted-in\"}]}") {
+    AwsCliReadOk { value: rs } => (length(rs) == 2) && match rs.first() { Present { value: r } => ((r.region_name as String) == "us-east-1") && match r.opt_in_status { AwsEc2OptInNotRequired => true  _ => false }  Absent => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_offerings(stdout: "\{\"InstanceTypeOfferings\":[\{\"InstanceType\":\"g7e.2xlarge\",\"LocationType\":\"availability-zone\",\"Location\":\"us-east-1a\"},\{\"InstanceType\":\"g7e.12xlarge\",\"LocationType\":\"availability-zone\",\"Location\":\"us-east-1b\"}]}") { AwsCliReadOk { value: os } => length(os) == 2  AwsCliReadRefused { cause: _ } => false })
+  && (match aws_cli_read_instance_types(stdout: "\{\"InstanceTypes\":[\{\"InstanceType\":\"g7e.12xlarge\",\"VCpuInfo\":\{\"DefaultVCpus\":48},\"MemoryInfo\":\{\"SizeInMiB\":524288},\"GpuInfo\":\{\"Gpus\":[\{\"Name\":\"RTX PRO 6000\",\"Manufacturer\":\"NVIDIA\",\"Count\":2,\"MemoryInfo\":\{\"SizeInMiB\":98304}}],\"TotalGpuMemoryInMiB\":196608},\"InstanceStorageSupported\":true,\"InstanceStorageInfo\":\{\"TotalSizeInGB\":3800,\"Disks\":[\{\"SizeInGB\":3800,\"Count\":1,\"Type\":\"ssd\"}],\"NvmeSupport\":\"required\"},\"SupportedUsageClasses\":[\"on-demand\",\"spot\"]}]}") {
+    AwsCliReadOk { value: ts } => match ts.first() {
+      Present { value: t } => (hardware_thread_count_value(t: t.v_cpu_info.default_vcpus) == 48) && (mebibyte_count(t.memory_info.size_in_mib) == 524288)
+        && (match t.gpu_info { Present { value: gi } => (match gi.gpus.first() { Present { value: g } => g.count == 2  Absent => false }) && (mebibyte_count(gi.total_gpu_memory_in_mib) == 196608)  Absent => false })
+        && (match t.instance_storage_info { Present { value: s } => gigabyte_count(s.total_size_in_gb) == 3800  Absent => false })
+      Absent => false
+    }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"1.234500\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") {
+    AwsCliReadOk { value: ps } => match ps.first() { Present { value: p } => money_per_hour_micros(q: p.spot_price) == 1234500  Absent => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceId\":\"i-0abc\",\"InstanceType\":\"g7e.2xlarge\",\"Placement\":\{\"AvailabilityZone\":\"us-east-1a\"},\"State\":\{\"Code\":16,\"Name\":\"running\"},\"InstanceLifecycle\":\"spot\",\"SpotInstanceRequestId\":\"sir-1\",\"LaunchTime\":\"2026-10-23T08:00:00+00:00\",\"Tags\":[\{\"Key\":\"gunbc-flex-owner\",\"Value\":\"gunbc-flex\"}]}]}]}") {
+    AwsCliReadOk { value: found } => match found.first() {
+      Present { value: i } => ((i.instance_id as String) == "i-0abc") && (match i.state.name { AwsEc2Running => true  _ => false })
+        && (match i.instance_lifecycle { Present { value: AwsEc2LifecycleSpot } => true  _ => false }) && (length(i.tags) == 1)
+      Absent => false
+    }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_service_quota(stdout: "\{\"Quota\":\{\"ServiceCode\":\"ec2\",\"QuotaCode\":\"L-3819A6DF\",\"QuotaName\":\"All G and VT Spot Instance Requests\",\"Value\":64.0,\"Unit\":\"None\",\"Adjustable\":true}}") {
+    AwsCliReadOk { value: q } => exact_decimal_equal(a: q.value, b: ExactDecimal { units: 64, fraction_digits: 0 }) && q.adjustable && match q.usage_metric { Absent => true  Present { value: _ } => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  // The metered shape, as get-service-quota answered for L-3819A6DF in us-east-1 on 2026-11-25 (Value and
+  // ARN aside): the usage metric is read with its four dimensions in the answer's order.
+  && (match aws_cli_read_service_quota(stdout: "\{\"Quota\":\{\"ServiceCode\":\"ec2\",\"QuotaCode\":\"L-3819A6DF\",\"QuotaName\":\"All G and VT Spot Instance Requests\",\"Value\":8.0,\"Unit\":\"None\",\"Adjustable\":true,\"GlobalQuota\":false,\"UsageMetric\":\{\"MetricNamespace\":\"AWS/Usage\",\"MetricName\":\"ResourceCount\",\"MetricDimensions\":\{\"Class\":\"G/Spot\",\"Resource\":\"vCPU\",\"Service\":\"EC2\",\"Type\":\"Resource\"},\"MetricStatisticRecommendation\":\"Maximum\"}}}") {
+    AwsCliReadOk { value: q } => match q.usage_metric {
+      Present { value: m } => ((m.metric_namespace as String) == "AWS/Usage") && (length(m.metric_dimensions) == 4)
+        && (match m.metric_dimensions.first() { Present { value: d } => ((d.name as String) == "Class") && (d.value == "G/Spot")  Absent => false })
+      Absent => false
+    }
+    AwsCliReadRefused { cause: _ } => false
+  })
+}
+
+// REDs, each asserting its reason: an answer the CLI did not finish paging, a price that is not a
+// decimal numeral, and an instance missing its id all refuse rather than read as fewer rows.
+test fn incomplete_or_malformed_answers_refuse_with_their_reason() -> Bool {
+  (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[],\"NextToken\":\"abc\"}") { AwsCliReadRefused { cause: c } => c.contains("NextToken")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"one dollar\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") { AwsCliReadRefused { cause: c } => c.contains("SpotPrice")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"-1.000000\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") { AwsCliReadRefused { cause: c } => c.contains("SpotPrice")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceType\":\"g7e.2xlarge\"}]}]}") { AwsCliReadRefused { cause: c } => c.contains("InstanceId")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_regions(stdout: "not json") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+}
+
+// The argv names the region explicitly and asks for JSON, and carries no credential, only its file path.
+test fn the_cli_argv_pins_the_region_and_carries_no_credential() -> Bool {
+  let words = argv_words(command: aws_cli_describe_spot_prices(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "eu-west-1", types: ["g7e.2xlarge"], product: "Linux/UNIX", now_epoch_seconds: 1792746000))
+  words.contains("--region") && words.contains("eu-west-1") && words.contains("json")
+    && words.contains("AWS_SHARED_CREDENTIALS_FILE=/etc/gunbc-flex/aws-credentials")
+    && !(join(words, " ").contains("AWS_SECRET_ACCESS_KEY="))
+    && !words.contains("--debug")
+}
+
+// THE REGIONAL CENSUS: the CLI's --query answer for the us-east-1 weights prefix as srv1 read it on
+// 2026-11-25 (a bare array, which the object reader refused before this claim existed); an empty prefix;
+// and a reply that is not [count, bytes] refuses.
+test fn the_prefix_census_reads_the_bare_query_array() -> Bool {
+  (match aws_cli_read_prefix_census(stdout: "[\n    37,\n    102262354720\n]\n") {
+    AwsCliReadOk { value: c } => (c.objects == 37) && (c.bytes == 102262354720)
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_prefix_census(stdout: "[0, 0]") { AwsCliReadOk { value: c } => (c.objects == 0) && (c.bytes == 0)  AwsCliReadRefused { cause: _ } => false })
+  && (match aws_cli_read_prefix_census(stdout: "[37]") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_prefix_census(stdout: "\{\"Contents\": []}") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+}
+
+// THE MARK WRITES carry the tag as Key=,Value= and a deletion by key alone.
+test fn the_mark_tag_writes_name_the_card_and_the_key() -> Bool {
+  let set = join(argv_words(command: aws_cli_create_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], tags: [AwsEc2Tag { key: "gunbc-flex-idle-since" as NonEmptyStr, value: "1795646284" }])), " ")
+  let clear = join(argv_words(command: aws_cli_delete_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], keys: ["gunbc-flex-idle-since" as NonEmptyStr])), " ")
+  set.contains("ec2 create-tags --region us-west-2") && set.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since,Value=1795646284")
+    && clear.contains("ec2 delete-tags --region us-west-2") && clear.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since")
+}
+
+// A PURCHASE IS ASKED ABOUT BY ITS TOKEN: one describe-instances filtered on the client token alone, so the answer
+// is what that token launched whatever the card was tagged, in the region the purchase was made in.
+test fn a_purchase_is_read_back_by_its_client_token() -> Bool {
+  let read = join(argv_words(command: aws_cli_describe_instances_by_client_token(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "eu-north-1" as NonEmptyStr, client_token: "gunbc-flex-eu-north-1a-1795646284" as NonEmptyStr)), " ")
+  read.contains("ec2 describe-instances --region eu-north-1") && read.contains("--filters Name=client-token,Values=gunbc-flex-eu-north-1a-1795646284")
+    && !read.contains("tag:")
+}
+
+// A PLACEHOLDER IS CREATED ONCE: a String put with its tags and WITHOUT --overwrite, so a second put of the name
+// answers ParameterAlreadyExists instead of replacing a card's published certificate.
+test fn a_string_parameter_is_created_once_with_its_tags() -> Bool {
+  let put = join(argv_words(command: aws_cli_create_string_parameter(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, name: "/gunbc-flex/card-cert/i-0abc" as NonEmptyStr, value: "pending" as NonEmptyStr, tags: [AwsEc2Tag { key: "gunbc-flex-instance" as NonEmptyStr, value: "arn:aws:ec2:us-west-2:*:instance/i-0abc" }])), " ")
+  put.contains("ssm put-parameter --region us-west-2") && put.contains("--name /gunbc-flex/card-cert/i-0abc --type String --value pending --tags Key=gunbc-flex-instance,Value=arn:aws:ec2:us-west-2:*:instance/i-0abc")
+    && !put.contains("--overwrite")
+}
+
+// THE PARAMETER LISTING (the orphan sweep's read; shape printed by CLI 2.42.3 for describe-parameters with
+// --query Parameters[].[Name,LastModifiedDate], 2026-11-26): each entry's name and its instant as unix seconds, an
+// empty listing as none; an entry that is not [name, instant] refuses, and so does the unqueried document.
+test fn the_parameter_listing_reads_names_and_instants() -> Bool {
+  (match aws_cli_read_parameter_listing(stdout: "[\n    [\n        \"/gunbc-flex/heartbeat\",\n        \"2026-11-25T23:27:39.183000+00:00\"\n    ]\n]\n") {
+    AwsCliReadOk { value: ps } => (count(ps) == 1) && match ps.first() { Present { value: p } => ((p.name as String) == "/gunbc-flex/heartbeat") && (p.last_modified_unix == 1795649259)  Absent => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_parameter_listing(stdout: "[]") { AwsCliReadOk { value: ps } => count(ps) == 0  AwsCliReadRefused { cause: _ } => false })
+  && (match aws_cli_read_parameter_listing(stdout: "[[\"/gunbc-flex/heartbeat\"]]") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_parameter_listing(stdout: "[[\"/gunbc-flex/heartbeat\", \"yesterday\"]]") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_parameter_listing(stdout: "\{\"Parameters\": []}") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && argv_words(command: aws_cli_describe_parameters_under(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-east-1", prefix: "/gunbc-flex/pool-key/")).contains("Key=Name,Option=BeginsWith,Values=/gunbc-flex/pool-key/")
+}
+
+// A REFUSAL BOUGHT NOTHING ONLY WHEN THE SERVICE ANSWERED IT (review of e50999ce): a client-side error code is
+// definite; a server-side code, a timeout or a lost connection leave the purchase's outcome unknown.
+test fn only_an_answered_client_error_is_a_definite_refusal() -> Bool {
+  aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (InsufficientInstanceCapacity) when calling the RunInstances operation (reached max retries: 2): ...")
+    && aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (MaxSpotInstanceCountExceeded) when calling the RunInstances operation: ...")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (InternalError) when calling the RunInstances operation: ...")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (RequestLimitExceeded) when calling the RunInstances operation (reached max retries: 2): Request limit exceeded.")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 255: Read timeout on endpoint URL: \"https://ec2.us-east-1.amazonaws.com/\"")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 255: Could not connect to the endpoint URL")
+}

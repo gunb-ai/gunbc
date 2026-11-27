@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_decision_writes_a_shared_path_another_writer_reused_after_it_read
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_decision_writes_a_shared_path_another_writer_reused_after_it_read: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_decision_writes_a_shared_path_another_writer_reused_after_it_read" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a mutation boundary for the controller's custody files and its cloud writes that requires a held-lease value (the apply hold's acquisition) as an argument, minted only by the hold's acquire, SUFFICIENT FOR every effect a pass performs to be unwritable without the exclusion it relies on",
+    },
+  },
+
+  receipts: [
+    "**two runs of one controller overlap, and each decides on what it read while the other changes it -- so a write lands on whatever now occupies the path, and a decision counts a roster that no longer exists.** INVALID STATE: a stale writer deletes or rewrites a record that a later run created, and a stale decision acts on a count the other run has already changed. HARM: the controller's ceilings are counted twice over half the truth -- a fourth card bought under a three-card ceiling.",
+    "SPECIMEN, gunbc#17108 at 7edc31fb (external review, 2026-11-27): two Apply passes of gunbc.fleet.flex_aws_pass read the same old purchase record; one closed it and opened the next purchase at the same pathname; the other finished its own close by deleting that pathname -- now the new record -- and, on its stale two-card count, opened another purchase. The create-only open protected the open, not a decision taken on a stale read nor a delete of whatever record holds the path.",
+    "DISTINGUISHING FACTS: every individual write was correct for the state its run observed; the defect is that the observation and the write were not one exclusive section, and a pathname is not an identity -- the same path named two purchases in sequence.",
+    "REPAIR: an Apply process holds the custody directory's apply hold (std.durable_exclusive_hold over gunbc.durable_exclusive_hold_file_store, windowed) from before its first read to after its last write, holder = the process, recovered only from a holder observed dead (gunbc.durable_exclusive_hold_file_store file_hold_recover_dead_holder_windowed). Plan writes only its own receipt and header.",
+    "RUNG NOW: mitigatable -- the entry points take the hold, so every Apply run is exclusive, but the effectful helpers do not require it and a new entry could skip it. CEILING: structurally guaranteed once the effects take the held-lease value.",
+  ],
+
+  evidence: [],
+}

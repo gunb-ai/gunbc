@@ -1,0 +1,314 @@
+module test.claim.fleet.flex_aws_pass_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.measure { MoneyPerHour, money_amount_micro, money_per_hour_micros }
+import extdeps.currency.currency { Usd }
+import extdeps.cloud.aws_ec2 { AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Terminated, AwsEc2Running }
+import extdeps.cloud.aws_cli { AwsCliReadOk, AwsCliReadRefused, AwsSsmParameterListed, AwsCliQueuedMessage }
+import extdeps.languages.json.emit { serialize_json }
+import product.fabric.flex_aws_row { FlexAwsCandidate, FlexAwsSpot }
+import std.apply_mode { Apply }
+import product.fabric.flex_aws_apply {
+  FlexAwsLaunch, FlexAwsHold, FlexAwsDrain, FlexAwsDrainIdle, FlexAwsDemandFixed, FlexAwsRegionQuota, flex_aws_decide,
+  FlexAwsInterruptionWarning, FlexAwsRebalanceRecommendation, flex_aws_notice_instance, flex_aws_notice_event, FlexAwsNotice,
+}
+import extdeps.cloud.aws_ec2 { AwsEc2ActionTerminate }
+import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse }
+import gunbc.fleet.flex_aws_pass {
+  flex_aws_reload_owed, flex_aws_inventory_gate, flex_aws_intent_gate,
+  FlexAwsIntent, FlexAwsIntentOpen, FlexAwsIntentUnreadable, FlexAwsIntentNone, flex_aws_intent_json, flex_aws_intent_of,
+  flex_aws_open_intent_at, flex_aws_name_intent_at, flex_aws_heartbeat_due,
+  flex_aws_intent_step, FlexAwsIntentSettled, FlexAwsIntentListedUnowned, FlexAwsIntentUnlisted, FlexAwsIntentBoughtNothing, FlexAwsIntentUnread,
+  FlexAwsIntentNamedUnlisted, FlexAwsIntentNamedLeft,
+  FlexAwsRegionScan, FlexAwsRegionSkipped, FlexAwsQueueRead, flex_aws_scan_messages, flex_aws_scan_candidates, flex_aws_notices,
+  FlexAwsLoopState, flex_aws_take_notices_at, flex_aws_loop_start_at,
+  flex_aws_outstanding_of, flex_aws_admitted_policy,
+  flex_aws_orphans, flex_aws_region_provisioned, flex_aws_weights_revision,
+  FlexAwsRouterRevision, FlexAwsCardCredentials, FlexAwsParamPresent, FlexAwsParamAbsent, FlexAwsParamUnread, flex_aws_param_of, flex_aws_param_absent,
+  flex_aws_probeable, FlexAwsProbeableNow, FlexAwsProbeableNot, flex_aws_deliveries, flex_aws_certificate_placeholder,
+  flex_aws_held_of, flex_aws_held_json, FlexAwsLoopStarted, FlexAwsLoopStartRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED at the pass's pure seams: what the files leave routed and what the running router reports; the purchase
+// record and the roster; a parameter listing. The inhabitance run is the srv1 loop's receipt.
+
+fn reading(rows: List<String>, ca: String) -> FlexAwsRouterReading { FlexAwsRouterReading { unplaceable: 0, rows: rows, cards: [], ca_sha256: ca } }
+
+fn files(routed: List<String>, ca: String) -> FlexAwsRouterRevision { FlexAwsRouterRevision { routed: routed, ca_sha256: ca } }
+
+// THE RUNNING ROUTER AGAINST THE FILES, by every row of ours it routes and by the CA bundle it loaded (reviews of
+// fb2594de, e50999ce and 7edc31fb). The last card was evicted, its row left the files, and the HUP failed: the pass
+// sees no live card at all, yet the router still routes aws-i-0old, so the reload is owed. The files route a new card
+// the router does not: owed. A card republished its certificate, the bundle was rewritten and the HUP failed: the row
+// names agree and only the digest differs -- owed (RED for the name-only comparison). Agreement on both, and a
+// first-party rented row that is not ours, owe nothing.
+test fn a_reload_the_router_has_not_taken_is_owed_on_the_next_pass() -> Bool {
+  flex_aws_reload_owed(revision: files(routed: [], ca: "c1"), reading: reading(rows: ["aws-i-0old"], ca: "c1"))
+    && flex_aws_reload_owed(revision: files(routed: ["aws-i-0new"], ca: "c1"), reading: reading(rows: [], ca: "c1"))
+    && flex_aws_reload_owed(revision: files(routed: ["aws-i-0new"], ca: "c1"), reading: reading(rows: ["aws-i-0new", "aws-i-0old"], ca: "c1"))
+    && flex_aws_reload_owed(revision: files(routed: ["aws-i-0new"], ca: "c2"), reading: reading(rows: ["aws-i-0new"], ca: "c1"))
+    && !flex_aws_reload_owed(revision: files(routed: ["aws-i-0new"], ca: "c1"), reading: reading(rows: ["aws-i-0new"], ca: "c1"))
+    && !flex_aws_reload_owed(revision: files(routed: [], ca: "c1"), reading: reading(rows: ["vast-rented-1"], ca: "c1"))
+}
+
+fn rate(micros: Int) -> MoneyPerHour { MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd } }
+
+fn launch() -> FlexAwsLaunch {
+  FlexAwsLaunch { candidate: FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1b" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: Present { value: 1000000 }, walls: [] }, max_price: rate(micros: 1000000), fallbacks: [] }
+}
+
+// AN UNREADABLE REGION, OR AN UNREADABLE PURCHASE RECORD, BLOCKS EVERY LAUNCH, and only launches: draining a card
+// that was seen still goes ahead.
+test fn an_incomplete_inventory_launches_nothing() -> Bool {
+  (match flex_aws_inventory_gate(decision: launch(), blind: ["eu-west-2"]) { FlexAwsHold { why: w } => w.contains("eu-west-2")  _ => false })
+    && (match flex_aws_inventory_gate(decision: launch(), blind: []) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true  _ => false })
+    && (match flex_aws_inventory_gate(decision: FlexAwsDrain { instance_id: "i-0a" as NonEmptyStr, why: FlexAwsDrainIdle { idle_seconds: 1800 } }, blind: ["eu-west-2"]) { FlexAwsDrain { instance_id: _, why: _ } => true  _ => false })
+    && (match flex_aws_intent_gate(decision: launch(), blocked: "the launch intent is unreadable: x") { FlexAwsHold { why: w } => w.contains("unreadable")  _ => false })
+    && (match flex_aws_intent_gate(decision: launch(), blocked: "") { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true  _ => false })
+}
+
+// 2026-11-25T03:00:00Z
+data now_unix: Int = 1795575600
+
+fn intent(instance_id: String, dispatched: Int) -> FlexAwsIntent {
+  FlexAwsIntent {
+    token: "gunbc-flex-us-east-1b-1795575540" as NonEmptyStr, region: "us-east-1" as NonEmptyStr, zone: "us-east-1b" as NonEmptyStr,
+    instance_type: "g7e.2xlarge" as NonEmptyStr, rate: rate(micros: 2350500), ami: "ami-0123" as NonEmptyStr, subnet: "subnet-0123" as NonEmptyStr,
+    security_group: "sg-0123" as NonEmptyStr, dispatched_unix: dispatched, instance_id: instance_id,
+  }
+}
+
+fn listed(id: String) -> AwsEc2Instance {
+  AwsEc2Instance {
+    instance_id: id as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
+    placement: AwsEc2Placement { availability_zone: "us-east-1b" as NonEmptyStr },
+    state: AwsEc2InstanceState { code: 48, name: AwsEc2Terminated },
+    state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
+    launch_time: "2026-11-25T02:59:00+00:00", public_ip_address: none, tags: [],
+  }
+}
+
+// THE PURCHASE RECORD IS THE REQUEST (review of e50999ce): written and read back it is the same purchase -- token,
+// zone, rate, image, subnet, group -- with the card once named; a record missing a field is unreadable, never read as
+// no purchase.
+test fn the_purchase_record_reads_back_as_the_same_request() -> Bool {
+  (match flex_aws_intent_of(text: flex_aws_intent_json(i: intent(instance_id: "", dispatched: now_unix))) {
+    FlexAwsIntentOpen { intent: i } => ((i.token as String) == "gunbc-flex-us-east-1b-1795575540") && ((i.zone as String) == "us-east-1b") && (money_per_hour_micros(q: i.rate) == 2350500)
+      && ((i.ami as String) == "ami-0123") && ((i.subnet as String) == "subnet-0123") && ((i.security_group as String) == "sg-0123") && (i.dispatched_unix == now_unix) && (i.instance_id == "")
+    _ => false
+  })
+  && (match flex_aws_intent_of(text: flex_aws_intent_json(i: intent(instance_id: "i-0new", dispatched: now_unix))) { FlexAwsIntentOpen { intent: i } => i.instance_id == "i-0new"  _ => false })
+  && (match flex_aws_intent_of(text: "\{\"token\": \"t\", \"region\": \"us-east-1\"}") { FlexAwsIntentUnreadable { cause: _ } => true  _ => false })
+  && (match flex_aws_intent_of(text: "not json") { FlexAwsIntentUnreadable { cause: _ } => true  _ => false })
+}
+
+// WHERE A PURCHASE STANDS IS READ BY ITS TOKEN, NEVER ASKED AGAIN (reviews of 7edc31fb and 4a2bfbe4). Its token lists
+// the card and the roster counts it: settled. Its token lists a card the roster does not list yet: counted, and that
+// card is the one it names. Unnamed, its token listing nothing: counted for fifteen minutes from dispatch (899 s still
+// counted), then closed -- the purchase made no card that runs. NAMED, its token listing nothing: the card exists, so
+// it is counted at fifteen minutes and at 7199 s, settled the moment the roster counts it, and read as gone only at
+// 7200 s, past the hour EC2 lists a card that terminated. A refused read, a token listing two cards, or a token listing
+// a card other than the one named, is never resolved. No step makes a purchase: the type has no arm that could.
+test fn an_open_purchase_is_read_back_by_its_token() -> Bool {
+  (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 60), token: AwsCliReadOk { value: [listed(id: "i-0new")] }, owned_ids: ["i-0new"], now_unix: now_unix) { FlexAwsIntentSettled { instance_id: c } => (c as String) == "i-0new"  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 60), token: AwsCliReadOk { value: [listed(id: "i-0new")] }, owned_ids: ["i-0other"], now_unix: now_unix) { FlexAwsIntentListedUnowned { instance_id: c } => (c as String) == "i-0new"  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 60), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentUnlisted { age_seconds: a } => a == 60  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 899), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentUnlisted { age_seconds: _ } => true  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "i-0new", dispatched: now_unix - 900), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentNamedUnlisted { instance_id: c, age_seconds: a } => ((c as String) == "i-0new") && (a == 900)  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "i-0new", dispatched: now_unix - 7199), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentNamedUnlisted { instance_id: _, age_seconds: _ } => true  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "i-0new", dispatched: now_unix - 7200), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentNamedLeft { instance_id: c, age_seconds: a } => ((c as String) == "i-0new") && (a == 7200)  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "i-0new", dispatched: now_unix - 60), token: AwsCliReadOk { value: [] }, owned_ids: ["i-0new"], now_unix: now_unix) { FlexAwsIntentSettled { instance_id: c } => (c as String) == "i-0new"  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "i-0new", dispatched: now_unix - 60), token: AwsCliReadOk { value: [listed(id: "i-0other")] }, owned_ids: ["i-0other"], now_unix: now_unix) { FlexAwsIntentUnread { cause: c } => c.contains("i-0new")  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 900), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentBoughtNothing { age_seconds: a } => a == 900  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 5000), token: AwsCliReadRefused { cause: "the CLI exited 255: UnauthorizedOperation" }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentUnread { cause: c } => c.contains("UnauthorizedOperation")  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: now_unix - 60), token: AwsCliReadOk { value: [listed(id: "i-0a"), listed(id: "i-0b")] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentUnread { cause: _ } => true  _ => false })
+}
+
+fn candidate() -> FlexAwsCandidate {
+  FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1b" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: Present { value: 1000000 }, walls: [] }
+}
+
+// A RECORDED PURCHASE THAT WAS NEVER SENT BUYS NOTHING (review of 7edc31fb: the pass that recorded it was killed before
+// RunInstances, and the restarted pass re-sent it with cards=0). Its token lists nothing inside the window, so it stays
+// counted; and the decision over it -- the only route to RunInstances -- does not launch, with no card wanted and with
+// three wanted alike. The same field with no open purchase does launch: the hold is the record's doing.
+test fn a_recorded_unsent_purchase_buys_nothing_whatever_is_wanted() -> Bool {
+  let unsent = intent(instance_id: "", dispatched: now_unix - 30)
+  let open = [flex_aws_outstanding_of(i: unsent)]
+  let quotas = [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 32 }]
+  (match flex_aws_intent_step(i: unsent, token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentUnlisted { age_seconds: _ } => true  _ => false })
+    && (match flex_aws_decide(policy: flex_aws_admitted_policy(mode: Apply), demand: FlexAwsDemandFixed { cards: 0 }, candidates: [candidate()], owned: [], outstanding: open, quotas: quotas, now_unix: now_unix) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => false  _ => true })
+    && (match flex_aws_decide(policy: flex_aws_admitted_policy(mode: Apply), demand: FlexAwsDemandFixed { cards: 3 }, candidates: [candidate()], owned: [], outstanding: open, quotas: quotas, now_unix: now_unix) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => false  _ => true })
+    && (match flex_aws_decide(policy: flex_aws_admitted_policy(mode: Apply), demand: FlexAwsDemandFixed { cards: 3 }, candidates: [candidate()], owned: [], outstanding: [], quotas: quotas, now_unix: now_unix) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true  _ => false })
+}
+
+fn creds(cert: String, key: String) -> FlexAwsCardCredentials {
+  FlexAwsCardCredentials {
+    region: "us-east-1" as NonEmptyStr, instance_id: "i-0new" as NonEmptyStr,
+    cert: if cert == "" { FlexAwsParamAbsent } else { FlexAwsParamPresent { value: cert } },
+    key: if key == "" { FlexAwsParamAbsent } else { FlexAwsParamPresent { value: key } },
+  }
+}
+
+data pem: String = "-----BEGIN CERTIFICATE-----\nCCCC\n-----END CERTIFICATE-----\n"
+
+// A PUBLISHED CERTIFICATE NEVER STANDS IN FOR A MISSING KEY (review of 7edc31fb: the certificate landed, the key write
+// failed, and the probe waited on /health for a card that was waiting for its key). The card that has published its
+// certificate and has no key is owed exactly the key and is not probed; once the key reads back, THE SAME CARD is
+// probeable with that certificate and key. A placeholder is not a certificate, a missing placeholder is owed alone, and
+// a read that failed for any other reason than ParameterNotFound creates nothing.
+test fn a_card_with_its_certificate_and_no_key_is_given_the_key_and_then_probed() -> Bool {
+  let stranded = creds(cert: pem, key: "")
+  (match flex_aws_probeable(c: stranded) { FlexAwsProbeableNot { why: w } => w.contains("pool key")  _ => false })
+    && flex_aws_param_absent(p: stranded.key) && !flex_aws_param_absent(p: stranded.cert)
+    && (flex_aws_deliveries(creds: [stranded], apply: false) == ["deliver i-0new owed: pool-key (plan: not written)"])
+    && (match flex_aws_probeable(c: creds(cert: pem, key: "k")) { FlexAwsProbeableNow { pem: p, key: k } => (p == pem) && (k == "k")  _ => false })
+    && (match flex_aws_probeable(c: creds(cert: flex_aws_certificate_placeholder as String, key: "k")) { FlexAwsProbeableNot { why: w } => w.contains("placeholder")  _ => false })
+    && (flex_aws_deliveries(creds: [creds(cert: "", key: "k")], apply: false) == ["deliver i-0new owed: certificate-placeholder (plan: not written)"])
+    && (flex_aws_deliveries(creds: [creds(cert: pem, key: "k")], apply: false) == [])
+    && (match flex_aws_param_of(read: AwsCliReadRefused { cause: "the CLI exited 254: An error occurred (ParameterNotFound) when calling the GetParameter operation" }) { FlexAwsParamAbsent => true  _ => false })
+    && (match flex_aws_param_of(read: AwsCliReadRefused { cause: "the CLI exited 254: An error occurred (AccessDeniedException) when calling the GetParameter operation" }) { FlexAwsParamUnread { cause: _ } => true  _ => false })
+}
+
+// THE HELD NOTICES ARE WRITTEN IN THE WIRE THEY ARRIVED IN (review of 7edc31fb: a restarted loop forgot the notice it
+// held and re-enrolled the warned card while the queue kept the message invisible). Written and read back they are the
+// same notices, in order; an empty list reads back empty; anything that does not read back as notices refuses the start.
+test fn the_held_notices_read_back_across_a_restart() -> Bool {
+  let held = [FlexAwsInterruptionWarning { instance_id: "i-0warned" as NonEmptyStr, action: AwsEc2ActionTerminate }, FlexAwsRebalanceRecommendation { instance_id: "i-0risky" as NonEmptyStr }]
+  (match flex_aws_held_of(text: flex_aws_held_json(held: held)) {
+    FlexAwsLoopStarted { state: st } => (map(st.held, n => flex_aws_notice_instance(n: n) as String) == ["i-0warned", "i-0risky"])
+      && (match st.held.first() { Present { value: FlexAwsInterruptionWarning { instance_id: _, action: AwsEc2ActionTerminate } } => true  _ => false })
+    FlexAwsLoopStartRefused { cause: _ } => false
+  })
+  && (match flex_aws_held_of(text: flex_aws_held_json(held: [])) { FlexAwsLoopStarted { state: st } => count(st.held) == 0  _ => false })
+  && (match flex_aws_held_of(text: "[\{\"detail-type\": \"EC2 Spot Instance Interruption Warning\"}]") { FlexAwsLoopStartRefused { cause: _ } => true  _ => false })
+  && (match flex_aws_held_of(text: "\{}") { FlexAwsLoopStartRefused { cause: _ } => true  _ => false })
+}
+
+fn param(name: String, age: Int) -> AwsSsmParameterListed { AwsSsmParameterListed { name: name as NonEmptyStr, last_modified_unix: now_unix - age } }
+
+// THE ORPHAN SWEEP (review of e50999ce: a key outliving EC2's hour-long listing of its terminated card was never
+// found again). Under the key prefix: a card EC2 lists keeps its key; an unlisted card's key older than an hour is
+// an orphan; a younger one, and the card an open purchase names, are kept; a name under another prefix is not this
+// listing's.
+test fn a_key_whose_card_ec2_no_longer_lists_is_swept() -> Bool {
+  let listing = [
+    param(name: "/gunbc-flex/pool-key/i-0live", age: 9000),
+    param(name: "/gunbc-flex/pool-key/i-0gone", age: 3600),
+    param(name: "/gunbc-flex/pool-key/i-0young", age: 3599),
+    param(name: "/gunbc-flex/pool-key/i-0bought", age: 9000),
+    param(name: "/gunbc-flex/heartbeat", age: 9000),
+  ]
+  map(flex_aws_orphans(listed: listing, prefix: "/gunbc-flex/pool-key/", listed_ids: ["i-0live"], keep: "i-0bought", now_unix: now_unix), n => n as String) == ["/gunbc-flex/pool-key/i-0gone"]
+}
+
+// A REGION IS ADMITTED ON ITS READY MARKER (review of e50999ce): exactly the weights revision admits it; a stale
+// revision, or no marker, does not.
+test fn only_a_region_marked_with_the_weights_revision_offers_candidates() -> Bool {
+  flex_aws_region_provisioned(marker: AwsCliReadOk { value: flex_aws_weights_revision() })
+    && !flex_aws_region_provisioned(marker: AwsCliReadOk { value: "0000000000000000000000000000000000000000" as NonEmptyStr })
+    && !flex_aws_region_provisioned(marker: AwsCliReadRefused { cause: "ParameterNotFound" })
+}
+
+// A PASS THAT COULD NOT READ ITS DEMAND DOES NOT RENEW THE HEARTBEAT (review of 96bcd207): it decides nothing --
+// no idle release, no drain timeout, no never-ready termination -- so a renewed heartbeat let every card bill for as
+// long as the router stayed unreadable; withheld, each card's dead-man bounds it.
+test fn a_pass_that_cannot_read_its_demand_withholds_the_heartbeat() -> Bool {
+  flex_aws_heartbeat_due(demand: AwsCliReadOk { value: FlexAwsDemandFixed { cards: 3 } })
+    && !flex_aws_heartbeat_due(demand: AwsCliReadRefused { cause: "router stats: the CLI exited 7: curl: (7) Failed to connect" })
+}
+
+// REAL EXECUTION of the two intent writes, in a scratch directory: a purchase is opened create-only (a second
+// open over it refuses, so an open purchase is never forgotten), and naming its card replaces the record and
+// reads back. The naming write was once refused on the file the opening write had made.
+test fn an_opened_purchase_is_named_in_place_and_never_opened_twice() -> Bool {
+  let path = concat(shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_flex_intent.XXXXXX").path, "/launch-intent.json")
+  let opened = flex_aws_open_intent_at(path: path, i: intent(instance_id: "", dispatched: 1795575540))
+  let again = flex_aws_open_intent_at(path: path, i: intent(instance_id: "", dispatched: 1795575541))
+  let named = flex_aws_name_intent_at(path: path, i: intent(instance_id: "i-0new", dispatched: 1795575540))
+  let back = Filesystem.Read(path: path)
+  (opened == "") && (again == "another purchase is already recorded") && (named == "")
+    && (match flex_aws_intent_of(text: back.content) { FlexAwsIntentOpen { intent: i } => (i.instance_id == "i-0new") && (i.dispatched_unix == 1795575540)  _ => false })
+}
+
+// A PURCHASE MADE LATE IN A SLOW PASS HOLDS ITS SLOT THROUGH AN EMPTY READ (review of 4a2bfbe4). The tick starts at
+// t0; scans, credential reads and capacity fallbacks take fifteen minutes; RunInstances is dispatched at t0+900 and
+// answers i-0new. On the next pass, at t0+960, the token and the roster both list nothing yet. The named purchase
+// still occupies its slot and blocks another launch (the same field with no open purchase launches). Unnamed, the
+// window runs from dispatch, so the purchase is still counted -- where the same record stamped with the tick's start
+// would already read as having bought nothing, which is the defect the dispatch clock removes.
+test fn a_purchase_made_late_in_a_slow_pass_holds_its_slot_through_an_empty_read() -> Bool {
+  let t0 = now_unix - 960
+  let named = intent(instance_id: "i-0new", dispatched: t0 + 900)
+  let unnamed = intent(instance_id: "", dispatched: t0 + 900)
+  let quotas = [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 32 }]
+  (match flex_aws_intent_step(i: named, token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentNamedUnlisted { instance_id: c, age_seconds: a } => ((c as String) == "i-0new") && (a == 60)  _ => false })
+    && (match flex_aws_decide(policy: flex_aws_admitted_policy(mode: Apply), demand: FlexAwsDemandFixed { cards: 1 }, candidates: [candidate()], owned: [], outstanding: [flex_aws_outstanding_of(i: named)], quotas: quotas, now_unix: now_unix) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => false  _ => true })
+    && (match flex_aws_decide(policy: flex_aws_admitted_policy(mode: Apply), demand: FlexAwsDemandFixed { cards: 1 }, candidates: [candidate()], owned: [], outstanding: [], quotas: quotas, now_unix: now_unix) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true  _ => false })
+    && (match flex_aws_intent_step(i: unnamed, token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentUnlisted { age_seconds: a } => a == 60  _ => false })
+    && (match flex_aws_intent_step(i: intent(instance_id: "", dispatched: t0), token: AwsCliReadOk { value: [] }, owned_ids: [], now_unix: now_unix) { FlexAwsIntentBoughtNothing { age_seconds: a } => a == 960  _ => false })
+}
+
+fn running(id: String) -> AwsEc2Instance {
+  AwsEc2Instance {
+    instance_id: id as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
+    placement: AwsEc2Placement { availability_zone: "us-east-1b" as NonEmptyStr },
+    state: AwsEc2InstanceState { code: 16, name: AwsEc2Running },
+    state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
+    launch_time: "2026-11-25T02:59:00+00:00", public_ip_address: none, tags: [],
+  }
+}
+
+fn warning() -> FlexAwsNotice { FlexAwsInterruptionWarning { instance_id: "i-0warned" as NonEmptyStr, action: AwsEc2ActionTerminate } }
+
+fn ids(ns: List<FlexAwsNotice>) -> List<String> { map(ns, n => flex_aws_notice_instance(n: n) as String) }
+
+fn queued(n: FlexAwsNotice) -> AwsCliQueuedMessage { AwsCliQueuedMessage { receipt_handle: "rh-1" as NonEmptyStr, body: serialize_json(v: flex_aws_notice_event(n: n)) } }
+
+// A WARNING IS READ WHERE NO CARD CAN BE BOUGHT (review of 4a2bfbe4: a region whose quota could not be read skipped its
+// queue, so a card running there stayed in service through its interruption). A region skipped for its quota, with a
+// running card and a queued warning, still yields the warning as a notice; it still offers no candidate.
+test fn a_warning_is_read_in_a_region_whose_quota_is_unreadable() -> Bool {
+  let scan = FlexAwsRegionScan {
+    region: "us-east-1" as NonEmptyStr, owned: AwsCliReadOk { value: [running(id: "i-0warned")] },
+    queue: FlexAwsQueueRead { url: "https://sqs.us-east-1.amazonaws.com/x/gunbc-flex-notices" as NonEmptyStr, messages: [queued(n: warning())] },
+    launchable: FlexAwsRegionSkipped { why: "quota unreadable: the CLI exited 254: ThrottlingException" },
+  }
+  (map(flex_aws_notices(messages: map(flex_aws_scan_messages(s: scan), m => m.message)), n => flex_aws_notice_instance(n: n) as String) == ["i-0warned"])
+    && (count(flex_aws_scan_candidates(s: scan)) == 0)
+}
+
+// REAL EXECUTION AT THE INTERRUPTION POINT (review of 4a2bfbe4). Custody holds the previous pass's empty file. A process
+// takes a warning for a running, unmarked card from its queue; everything it withdraws is read from what
+// flex_aws_take_notices_at returns, so the process is killed right after that call -- before any tag write, router
+// write or receipt. A FRESH process starts from custody and receives nothing (the queue keeps the message invisible):
+// it still acts on the warning and still holds it. The control: a fresh process started from the previous empty file,
+// which is what custody held when the file was written after the pass, acts on nothing.
+test fn a_notice_taken_is_kept_before_its_card_is_withdrawn() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_flex_held.XXXXXX").path
+  let path = concat(dir, "/flex-aws-notices-held.json")
+  let before_path = concat(dir, "/previous-pass.json")
+  let empty = FlexAwsLoopState { held: [], swept_unix: 0 }
+  let previous = Filesystem.Write(path: path, content: flex_aws_held_json(held: []))
+  let previous_copy = Filesystem.Write(path: before_path, content: flex_aws_held_json(held: []))
+  let card = [running(id: "i-0warned")]
+  let taken = flex_aws_take_notices_at(path: path, received: [warning()], state: empty, owned: card, blind: false, apply: true)
+  previous.success && previous_copy.success && (taken.kept == "") && (ids(ns: taken.notices) == ["i-0warned"])
+    && (match flex_aws_loop_start_at(path: path) {
+      FlexAwsLoopStarted { state: st } => {
+        let fresh = flex_aws_take_notices_at(path: path, received: [], state: st, owned: card, blind: false, apply: true)
+        (ids(ns: fresh.notices) == ["i-0warned"]) && (ids(ns: fresh.held) == ["i-0warned"]) && (fresh.kept == "")
+      }
+      FlexAwsLoopStartRefused { cause: _ } => false
+    })
+    && (match flex_aws_loop_start_at(path: before_path) {
+      FlexAwsLoopStarted { state: st } => count(flex_aws_take_notices_at(path: before_path, received: [], state: st, owned: card, blind: false, apply: true).notices) == 0
+      FlexAwsLoopStartRefused { cause: _ } => false
+    })
+}

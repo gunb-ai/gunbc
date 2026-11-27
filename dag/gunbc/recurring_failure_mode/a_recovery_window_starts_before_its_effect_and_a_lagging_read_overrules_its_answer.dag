@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.a_recovery_window_starts_before_its_effect_and_a_lagging_read_overrules_its_answer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_recovery_window_starts_before_its_effect_and_a_lagging_read_overrules_its_answer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_recovery_window_starts_before_its_effect_and_a_lagging_read_overrules_its_answer" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: MechanicallyPreventable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "an effect receipt whose instant is minted by the dispatch of the effect itself and is the only instant a window over that effect can be measured from, SUFFICIENT FOR no recovery window to start at a clock read the effect did not produce",
+    },
+  },
+
+  receipts: [
+    "**a recovery window over an effect of uncertain completion is measured from an instant taken before the effect was sent, and an empty answer from an eventually consistent read is allowed to overrule the effect's own answer -- so the window is consumed before the effect exists, and a result the service already returned is forgotten on the first lagging read.** INVALID STATE: a purchase that returned an instance id read as having bought nothing. HARM: the slot it holds is released, and the allocator buys again past its card ceiling.",
+    "SPECIMEN, gunbc#17108 at 4a2bfbe4 (external review, 2026-11-27): gunbc.fleet.flex_aws_pass stamped the purchase record with the tick's start, and the regional scans, credential reads and capacity fallbacks before RunInstances can take most of the fifteen-minute window. On the next pass an empty client-token listing already qualified as bought-nothing -- even when the record held the instance id RunInstances had returned -- and an owned roster that had not caught up either let a fourth card be bought. EC2's API is eventually consistent, so a short lag is enough.",
+    "REPAIR: the launch has no tick clock in scope; the record's dispatched_unix is read immediately before the record opens and RunInstances is sent (flex_aws_dispatch_clock). A NAMED purchase is never closed by an empty token read inside the window a terminated card stays listed: it is settled when the roster counts the card and otherwise counted until 7200 s after dispatch (FlexAwsIntentNamedUnlisted, FlexAwsIntentNamedLeft); a token listing a card other than the one named is unresolved. Witnessed by test.claim.fleet.flex_aws_pass_witness a_purchase_made_late_in_a_slow_pass_holds_its_slot_through_an_empty_read and an_open_purchase_is_read_back_by_its_token.",
+    "RUNG NOW: mechanically preventable -- witnesses over the step, and the dispatch clock by the launch signature carrying no clock. CEILING: structurally guaranteed once the instant is a field only the dispatch can mint.",
+  ],
+
+  evidence: [],
+}

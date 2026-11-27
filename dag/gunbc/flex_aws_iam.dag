@@ -1,0 +1,344 @@
+module gunbc.flex_aws_iam
+
+import std.types { List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.optional { Present, Absent }
+import extdeps.access.aws_iam {
+  PolicyDocument, Statement, ConditionEntry, Allow, Deny, ServicePrincipal,
+  aws_iam_policy_version, aws_iam_policy_document_json,
+}
+import product.fabric.flex_aws_row { flex_aws_owner_tag_key, flex_aws_owner_tag_value, flex_aws_type_pattern }
+import product.fabric.flex_aws_apply { flex_aws_mark_key_pattern }
+import product.fabric.flex_ec2_boot { flex_ec2_card_instance_tag_key }
+
+// THE TWO AWS PRINCIPALS OF THE FLEX SPOT LOOP AND WHAT EACH MAY DO, as policy documents rather than JSON
+// typed by hand. The deleted plan gunbc.plans.flex_supplier_generalization (section 4, recovered from
+// 970754b25775^) put the policy beside credential custody, not in the upstream facts, and this is that
+// home: gunbc.flex_aws_credential names where the loop's key lives, this module names what it grants.
+//
+// THE LOOP (an IAM user whose key is the custody file): it observes every read the Plan pass makes, it may
+// launch only spot cards of the flex type pattern that carry the owner tag at creation, terminate only
+// instances carrying that tag, manage only launch templates carrying it, pass only the card role, write
+// only the flex parameter prefix, and read only the flex interruption queues. No IAM write, no S3, no
+// on-demand launch: an on-demand card is a separately priced product (DESIGN 4b) and needs its own grant.
+//
+// THE CARD (an instance role through its profile): it reads the pinned weights, the two shared flex parameters
+// and its own key, publishes only its own certificate, and writes only the tuning-cache prefix of the weights
+// bucket. It reads no other parameter at all (review of e50999ce): the Systems Manager agent's grant is carried
+// here without its parameter reads, instead of attaching AmazonSSMManagedInstanceCore.
+//
+// No account id appears: every ARN uses `*` in the account field, which the grammar admits and which the
+// account boundary of the principal itself already scopes (gunbc-private discipline: no account ids in
+// public source).
+
+data flex_aws_loop_user_name: NonEmptyStr = "gunbc-flex-loop" as NonEmptyStr
+data flex_aws_card_role_name: NonEmptyStr = "gunbc-flex-card" as NonEmptyStr
+data flex_aws_parameter_prefix: NonEmptyStr = "/gunbc-flex" as NonEmptyStr
+data flex_aws_queue_name_prefix: NonEmptyStr = "gunbc-flex-" as NonEmptyStr
+data flex_aws_bucket_name_prefix: NonEmptyStr = "gunbc-flex-" as NonEmptyStr
+
+fn flex_aws_ne(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn flex_aws_allow(sid: String, actions: List<String>, resources: List<String>, conditions: List<ConditionEntry>) -> Statement {
+  Statement {
+    sid: Present { value: flex_aws_ne(s: sid) },
+    effect: Allow,
+    principal: none,
+    actions: map(actions, a => flex_aws_ne(s: a)),
+    resources: map(resources, r => flex_aws_ne(s: r)),
+    conditions: conditions,
+  }
+}
+
+fn flex_aws_cond(operator: String, key: String, values: List<String>) -> ConditionEntry {
+  ConditionEntry { operator: flex_aws_ne(s: operator), key: flex_aws_ne(s: key), values: map(values, v => flex_aws_ne(s: v)) }
+}
+
+fn flex_aws_request_owner() -> ConditionEntry {
+  flex_aws_cond(operator: "StringEquals", key: join(["aws:RequestTag/", flex_aws_owner_tag_key as String], ""), values: [flex_aws_owner_tag_value as String])
+}
+
+fn flex_aws_resource_owner() -> ConditionEntry {
+  flex_aws_cond(operator: "StringEquals", key: join(["aws:ResourceTag/", flex_aws_owner_tag_key as String], ""), values: [flex_aws_owner_tag_value as String])
+}
+
+fn flex_aws_parameter_arn() -> String {
+  join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/*"], "")
+}
+
+fn flex_aws_card_role_arn() -> String {
+  join(["arn:aws:iam::*:role/", flex_aws_card_role_name as String], "")
+}
+
+// ---- the loop ---------------------------------------------------------------------------------------
+
+// THE LOOP POLICY IS A CUSTOMER-MANAGED POLICY ATTACHED TO THE USER, NOT AN INLINE ONE: IAM caps an inline
+// user policy at 2,048 characters and a managed policy at 6,144, whitespace excluded (IAM User Guide,
+// reference_iam-quotas). The document below is 2,862 characters compact (measured 2026-11-25, when the
+// inline PutUserPolicy refused LimitExceeded), so only the managed form can hold it.
+
+data flex_aws_loop_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    // Every read the Plan pass and the roster make. Describe* and the quota/pricing reads support no
+    // resource-level scoping, so their resource is `*` (EC2 API reference, actions without resource types).
+    flex_aws_allow(sid: "FlexObserve", actions: [
+      "ec2:DescribeRegions", "ec2:DescribeInstanceTypeOfferings", "ec2:DescribeInstanceTypes",
+      "ec2:DescribeSpotPriceHistory", "ec2:DescribeInstances", "ec2:DescribeImages",
+      "ec2:DescribeLaunchTemplates", "ec2:DescribeLaunchTemplateVersions",
+      "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs",
+      "servicequotas:GetServiceQuota", "servicequotas:ListServiceQuotas",
+      "cloudwatch:GetMetricData", "pricing:GetProducts",
+      // The orphan sweep's listing of card parameter NAMES (gunbc.fleet.flex_aws_pass flex_aws_sweep_orphans):
+      // DescribeParameters returns metadata only and supports no resource-level scoping (SSM authorization reference).
+      "ssm:DescribeParameters",
+    ], resources: ["*"], conditions: []),
+    // THE LAUNCH, instance resource: spot only, the flex type pattern only, the owner tag at creation.
+    flex_aws_allow(sid: "FlexLaunchSpotCard", actions: ["ec2:RunInstances"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [
+      flex_aws_request_owner(),
+      flex_aws_cond(operator: "StringEquals", key: "ec2:InstanceMarketType", values: ["spot"]),
+      flex_aws_cond(operator: "StringLike", key: "ec2:InstanceType", values: [flex_aws_type_pattern as String]),
+    ]),
+    // THE LAUNCH, every other resource RunInstances names. A volume must carry the owner tag at creation.
+    flex_aws_allow(sid: "FlexLaunchVolume", actions: ["ec2:RunInstances"], resources: ["arn:aws:ec2:*:*:volume/*"], conditions: [flex_aws_request_owner()]),
+    flex_aws_allow(sid: "FlexLaunchFrom", actions: ["ec2:RunInstances"], resources: [
+      "arn:aws:ec2:*::image/*", "arn:aws:ec2:*:*:subnet/*", "arn:aws:ec2:*:*:network-interface/*",
+      "arn:aws:ec2:*:*:security-group/*", "arn:aws:ec2:*:*:spot-instances-request/*",
+    ], conditions: []),
+    flex_aws_allow(sid: "FlexLaunchFromTemplate", actions: ["ec2:RunInstances"], resources: ["arn:aws:ec2:*:*:launch-template/*"], conditions: [flex_aws_resource_owner()]),
+    // Tags only as part of the call that creates the tagged resource.
+    flex_aws_allow(sid: "FlexTagOnCreate", actions: ["ec2:CreateTags"], resources: ["*"], conditions: [
+      flex_aws_cond(operator: "StringEquals", key: "ec2:CreateAction", values: ["RunInstances", "CreateLaunchTemplate"]),
+    ]),
+    // A card's own clocks (product.fabric.flex_aws_apply flex_aws_mark_*): set and cleared on our cards only,
+    // and only those keys, so the loop can never strip or rewrite the owner tag that scopes every grant here.
+    flex_aws_allow(sid: "FlexMarkOwnCards", actions: ["ec2:CreateTags", "ec2:DeleteTags"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [
+      flex_aws_resource_owner(),
+      flex_aws_cond(operator: "ForAllValues:StringLike", key: "aws:TagKeys", values: [flex_aws_mark_key_pattern as String]),
+    ]),
+    flex_aws_allow(sid: "FlexTerminateOwn", actions: ["ec2:TerminateInstances"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [flex_aws_resource_owner()]),
+    flex_aws_allow(sid: "FlexTemplateCreate", actions: ["ec2:CreateLaunchTemplate"], resources: ["arn:aws:ec2:*:*:launch-template/*"], conditions: [flex_aws_request_owner()]),
+    flex_aws_allow(sid: "FlexTemplateRevise", actions: ["ec2:CreateLaunchTemplateVersion", "ec2:ModifyLaunchTemplate", "ec2:DeleteLaunchTemplate"], resources: ["arn:aws:ec2:*:*:launch-template/*"], conditions: [flex_aws_resource_owner()]),
+    flex_aws_allow(sid: "FlexPassCardRole", actions: ["iam:PassRole"], resources: [flex_aws_card_role_arn()], conditions: [
+      flex_aws_cond(operator: "StringEquals", key: "iam:PassedToService", values: ["ec2.amazonaws.com"]),
+    ]),
+    // The AMI is read per region from AWS's public parameters (the Deep Learning Base image's latest id).
+    flex_aws_allow(sid: "FlexPublicImageIds", actions: ["ssm:GetParameter"], resources: ["arn:aws:ssm:*::parameter/aws/service/*"], conditions: []),
+    // The per-card POOL_API_KEY is written after RunInstances answers and deleted on enrollment.
+    flex_aws_allow(sid: "FlexParameters", actions: ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:GetParameter", "ssm:AddTagsToResource"], resources: [flex_aws_parameter_arn()], conditions: []),
+    // The interruption and rebalance notices, delivered by EventBridge to the flex queues.
+    flex_aws_allow(sid: "FlexNotices", actions: ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"], resources: [join(["arn:aws:sqs:*:*:", flex_aws_queue_name_prefix as String, "*"], "")], conditions: []),
+  ],
+}
+
+// ---- the card ---------------------------------------------------------------------------------------
+
+data flex_aws_card_trust_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    Statement {
+      sid: none,
+      effect: Allow,
+      principal: Present { value: ServicePrincipal { services: [flex_aws_ne(s: "ec2.amazonaws.com")] } },
+      actions: [flex_aws_ne(s: "sts:AssumeRole")],
+      resources: [],
+      conditions: [],
+    },
+  ],
+}
+
+data flex_aws_card_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    flex_aws_allow(sid: "CardListWeights", actions: ["s3:ListBucket"], resources: [join(["arn:aws:s3:::", flex_aws_bucket_name_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "CardReadWeightsAndCache", actions: ["s3:GetObject"], resources: [join(["arn:aws:s3:::", flex_aws_bucket_name_prefix as String, "*/*"], "")], conditions: []),
+    flex_aws_allow(sid: "CardPublishTuningCache", actions: ["s3:PutObject"], resources: [join(["arn:aws:s3:::", flex_aws_bucket_name_prefix as String, "*/jit/*"], "")], conditions: []),
+    // THE SHARED READS boot needs: the weights bucket's name and the loop's heartbeat (product.fabric.flex_ec2_boot).
+    flex_aws_allow(sid: "CardReadShared", actions: ["ssm:GetParameter"], resources: [flex_aws_named_parameter_arn(name: "/weights-bucket"), flex_aws_named_parameter_arn(name: "/heartbeat")], conditions: []),
+    // ITS OWN KEY ONLY (review of fb2594de: the role read every card's key): a pool key the loop created tagged
+    // with this card's instance ARN, compared against the session's own ec2:SourceInstanceARN.
+    flex_aws_allow(sid: "CardReadOwnKey", actions: ["ssm:GetParameter"], resources: [flex_aws_named_parameter_arn(name: "/pool-key/*")], conditions: [flex_aws_own_card(key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String))]),
+    // ITS OWN CERTIFICATE ONLY, OVER A PLACEHOLDER THE LOOP MADE. The loop creates /card-cert/<id> tagged with the
+    // card's instance ARN when it buys the card (gunbc.fleet.flex_aws_pass flex_aws_deliver_key), so the grant is on
+    // the EXISTING parameter's tag: a card can overwrite only the one parameter carrying its own ARN, and can create
+    // nothing -- a new name has no resource tag to match. (It once granted a create conditioned on the REQUEST's tag,
+    // which let a card claim a not-yet-published card's name tagged with its own ARN: a denial of service.) No tag
+    // write either, so it cannot retag another card's. Verified live 2026-11-26 on a scratch role with this
+    // statement: own placeholder overwrite (and again) allowed; another card's placeholder, a new name tagged,
+    // untagged or with --overwrite, and add-tags-to-resource on another card's, all AccessDenied.
+    flex_aws_allow(sid: "CardPublishOwnCertificate", actions: ["ssm:PutParameter"], resources: [flex_aws_named_parameter_arn(name: "/card-cert/*")], conditions: [flex_aws_own_card(key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String))]),
+    // THE SYSTEMS MANAGER AGENT, so Session Manager and Run Command reach the card without SSH or an inbound port
+    // (how a booting card is inspected, and how the role's grants were probed live). These are the actions of the
+    // AWS-managed AmazonSSMManagedInstanceCore (default version v2, read 2026-11-26) EXCEPT ssm:GetParameter and
+    // ssm:GetParameters, which it grants on every parameter in the account: with the managed policy attached, a
+    // card could read any parameter by name (review of e50999ce). None of these reads a parameter value.
+    flex_aws_allow(sid: "CardSystemsManagerAgent", actions: [
+      "ssm:DescribeAssociation", "ssm:GetDeployablePatchSnapshotForInstance", "ssm:GetDocument", "ssm:DescribeDocument",
+      "ssm:GetManifest", "ssm:ListAssociations", "ssm:ListInstanceAssociations", "ssm:PutInventory", "ssm:PutComplianceItems",
+      "ssm:PutConfigurePackageResult", "ssm:UpdateAssociationStatus", "ssm:UpdateInstanceAssociationStatus", "ssm:UpdateInstanceInformation",
+      "ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel", "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel",
+      "ec2messages:AcknowledgeMessage", "ec2messages:DeleteMessage", "ec2messages:FailMessage", "ec2messages:GetEndpoint",
+      "ec2messages:GetMessages", "ec2messages:SendReply",
+    ], resources: ["*"], conditions: []),
+    // AND NOTHING ELSE OF ANOTHER CARD'S, whatever another policy might grant: kept explicit as a deny, so a
+    // managed policy attached later cannot widen a card into its peers' keys or a walk of the prefix.
+    Statement {
+      sid: Present { value: flex_aws_ne(s: "CardDenyOtherCardsKeys") },
+      effect: Deny,
+      principal: none,
+      actions: map(["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParameterHistory"], a => flex_aws_ne(s: a)),
+      resources: [flex_aws_ne(s: flex_aws_named_parameter_arn(name: "/pool-key/*"))],
+      conditions: [flex_aws_cond(operator: "StringNotEquals", key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String), values: ["$\{ec2:SourceInstanceARN}"])],
+    },
+    Statement {
+      sid: Present { value: flex_aws_ne(s: "CardDenyParameterWalks") },
+      effect: Deny,
+      principal: none,
+      actions: [flex_aws_ne(s: "ssm:GetParametersByPath")],
+      resources: [flex_aws_ne(s: join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "*"], ""))],
+      conditions: [],
+    },
+  ],
+}
+
+fn flex_aws_named_parameter_arn(name: String) -> String {
+  join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, name], "")
+}
+
+// The condition that names THIS card: the tag (on the parameter, or on the request creating it) equals the
+// instance ARN of the session making the request (IAM: any single-valued global condition key is a policy
+// variable; ec2:SourceInstanceARN is the instance an instance-profile session was issued to).
+fn flex_aws_own_card(key: String) -> ConditionEntry {
+  flex_aws_cond(operator: "StringEquals", key: key, values: ["$\{ec2:SourceInstanceARN}"])
+}
+
+// ---- the interruption test --------------------------------------------------------------------------
+
+// THE FAULT INJECTION SERVICE ROLE that sends a REAL spot interruption to a card the loop owns, so the
+// notice-driven drain is exercised end to end (gunbc.plans.aws_spot_serving section 5: an interruption
+// delivered by FIS removes the card's row before termination). AWS FIS action
+// aws:ec2:send-spot-instance-interruptions sends the rebalance recommendation and the two-minute warning,
+// then interrupts the instance (FIS actions reference). It may act only on instances carrying the owner tag.
+data flex_aws_fis_role_name: NonEmptyStr = "gunbc-flex-fis" as NonEmptyStr
+
+data flex_aws_fis_trust_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    Statement {
+      sid: none,
+      effect: Allow,
+      principal: Present { value: ServicePrincipal { services: [flex_aws_ne(s: "fis.amazonaws.com")] } },
+      actions: [flex_aws_ne(s: "sts:AssumeRole")],
+      resources: [],
+      conditions: [],
+    },
+  ],
+}
+
+data flex_aws_fis_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    flex_aws_allow(sid: "FisInterruptOwnCards", actions: ["ec2:SendSpotInstanceInterruptions"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [flex_aws_resource_owner()]),
+    flex_aws_allow(sid: "FisResolveTargets", actions: ["ec2:DescribeInstances"], resources: ["*"], conditions: []),
+  ],
+}
+
+// ---- the provisioner --------------------------------------------------------------------------------
+
+// A REGION'S SETUP IS A SEPARATE PRINCIPAL'S (gunbc.fleet.flex_aws_regions). Making a region launchable takes
+// create rights -- a security group, the notice queue and its rules, the weights bucket and its copy --
+// that the resident loop must not hold: the loop acts every 30 seconds unattended, the provisioner only when
+// the operator runs it. Every grant is scoped to the gunbc-flex names or the owner tag; it holds no IAM,
+// launches nothing and terminates nothing.
+data flex_aws_provisioner_user_name: NonEmptyStr = "gunbc-flex-provisioner" as NonEmptyStr
+data flex_aws_notice_queue: NonEmptyStr = "gunbc-flex-notices" as NonEmptyStr
+data flex_aws_rule_interruption: NonEmptyStr = "gunbc-flex-spot-interruption" as NonEmptyStr
+data flex_aws_rule_rebalance: NonEmptyStr = "gunbc-flex-rebalance" as NonEmptyStr
+data flex_aws_weights_bucket_prefix: NonEmptyStr = "gunbc-flex-weights-" as NonEmptyStr
+
+data flex_aws_provisioner_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    flex_aws_allow(sid: "ProvisionRead", actions: [
+      "ec2:DescribeVpcs", "ec2:DescribeSecurityGroups", "servicequotas:GetServiceQuota", "sts:GetCallerIdentity",
+    ], resources: ["*"], conditions: []),
+    flex_aws_allow(sid: "ProvisionCardGroup", actions: ["ec2:CreateSecurityGroup"], resources: ["arn:aws:ec2:*:*:security-group/*"], conditions: [flex_aws_request_owner()]),
+    flex_aws_allow(sid: "ProvisionCardGroupInVpc", actions: ["ec2:CreateSecurityGroup"], resources: ["arn:aws:ec2:*:*:vpc/*"], conditions: []),
+    flex_aws_allow(sid: "ProvisionTagGroupOnCreate", actions: ["ec2:CreateTags"], resources: ["arn:aws:ec2:*:*:security-group/*"], conditions: [
+      flex_aws_cond(operator: "StringEquals", key: "ec2:CreateAction", values: ["CreateSecurityGroup"]),
+    ]),
+    flex_aws_allow(sid: "ProvisionCardIngress", actions: ["ec2:AuthorizeSecurityGroupIngress"], resources: ["arn:aws:ec2:*:*:security-group/*"], conditions: [flex_aws_resource_owner()]),
+    flex_aws_allow(sid: "ProvisionNoticeQueue", actions: [
+      "sqs:CreateQueue", "sqs:GetQueueUrl", "sqs:GetQueueAttributes", "sqs:SetQueueAttributes", "sqs:TagQueue",
+    ], resources: [join(["arn:aws:sqs:*:*:", flex_aws_queue_name_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionNoticeRules", actions: ["events:PutRule", "events:PutTargets", "events:DescribeRule"], resources: [join(["arn:aws:events:*:*:rule/", flex_aws_queue_name_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionWeightsBucket", actions: [
+      "s3:CreateBucket", "s3:PutBucketPublicAccessBlock", "s3:PutBucketTagging", "s3:ListBucket", "s3:GetBucketLocation",
+    ], resources: [join(["arn:aws:s3:::", flex_aws_weights_bucket_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionWeightsCopy", actions: ["s3:GetObject", "s3:PutObject"], resources: [join(["arn:aws:s3:::", flex_aws_weights_bucket_prefix as String, "*/*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionWeightsParameter", actions: ["ssm:GetParameter", "ssm:PutParameter"], resources: [join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/weights-bucket"], "")], conditions: []),
+    // The region's ready marker (gunbc.fleet.flex_aws_regions flex_aws_converge_marker): written once the region
+    // held, removed when it does not.
+    flex_aws_allow(sid: "ProvisionReadyMarker", actions: ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"], resources: [join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/region-ready"], "")], conditions: []),
+  ],
+}
+
+// THE NOTICE QUEUE'S OWN POLICY: EventBridge may deliver to it, and only from our two rules.
+fn flex_aws_notice_queue_policy(queue_arn: NonEmptyStr, rule_arns: List<NonEmptyStr>) -> PolicyDocument {
+  PolicyDocument {
+    version: aws_iam_policy_version,
+    id: none,
+    statements: [
+      Statement {
+        sid: Present { value: flex_aws_ne(s: "EventBridgeDelivers") },
+        effect: Allow,
+        principal: Present { value: ServicePrincipal { services: [flex_aws_ne(s: "events.amazonaws.com")] } },
+        actions: [flex_aws_ne(s: "sqs:SendMessage")],
+        resources: [queue_arn],
+        conditions: [ConditionEntry { operator: flex_aws_ne(s: "ArnEquals"), key: flex_aws_ne(s: "aws:SourceArn"), values: rule_arns }],
+      },
+    ],
+  }
+}
+
+
+// The JSON each document is created with; the operator's provisioning call reads these and nothing else.
+fn flex_aws_loop_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_loop_policy) }
+fn flex_aws_card_trust_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_card_trust_policy) }
+fn flex_aws_card_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_card_policy) }
+fn flex_aws_fis_trust_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_fis_trust_policy) }
+fn flex_aws_fis_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_fis_policy) }
+fn flex_aws_provisioner_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_provisioner_policy) }
+
+// THE PROVISIONING READ. The operator creates the user, the role and its instance profile once, from these
+// files and nothing else (gunbc run --entry dag/gunbc/flex_aws_iam.dag --function render_policies
+// --arg out_dir=<dir>), so the document applied is the document this module states. Each write refuses
+// loudly; a partial directory is reported, never left to look complete.
+fn render_policies(out_dir: String) -> ProcessExit {
+  let loop_written = Filesystem.Write(path: join([out_dir, "/flex-loop-policy.json"], ""), content: flex_aws_loop_policy_json())
+  let trust = Filesystem.Write(path: join([out_dir, "/flex-card-trust-policy.json"], ""), content: flex_aws_card_trust_policy_json())
+  let card = Filesystem.Write(path: join([out_dir, "/flex-card-policy.json"], ""), content: flex_aws_card_policy_json())
+  let fis_trust = Filesystem.Write(path: join([out_dir, "/flex-fis-trust-policy.json"], ""), content: flex_aws_fis_trust_policy_json())
+  let fis = Filesystem.Write(path: join([out_dir, "/flex-fis-policy.json"], ""), content: flex_aws_fis_policy_json())
+  let provisioner = Filesystem.Write(path: join([out_dir, "/flex-provisioner-policy.json"], ""), content: flex_aws_provisioner_policy_json())
+  if !loop_written.success {
+    exit_failure(reason: concat("THE LOOP POLICY COULD NOT BE WRITTEN: ", loop_written.error))
+  } else if !trust.success {
+    exit_failure(reason: concat("THE CARD TRUST POLICY COULD NOT BE WRITTEN: ", trust.error))
+  } else if !card.success {
+    exit_failure(reason: concat("THE CARD POLICY COULD NOT BE WRITTEN: ", card.error))
+  } else if !fis_trust.success || !fis.success {
+    exit_failure(reason: concat("THE FIS POLICIES COULD NOT BE WRITTEN: ", concat(fis_trust.error, fis.error)))
+  } else if !provisioner.success {
+    exit_failure(reason: concat("THE PROVISIONER POLICY COULD NOT BE WRITTEN: ", provisioner.error))
+  } else {
+    ExitSuccess
+  }
+}

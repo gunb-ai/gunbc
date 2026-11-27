@@ -1,0 +1,59 @@
+module gunbc.plans.aws_spot_serving
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn aws_spot_serving_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal:** stranded router demand is filled by AWS spot Blackwell cards that start serving within minutes of launch, join the srv1 router as rented capacity, and leave it gracefully when AWS warns that it is taking the card back -- one loop, in .dag, extending the flex supplier rows rather than forking them."),
+      p(text: "**What this carrier holds:** the intention, why it is worth doing, the operator's decisions it stands on, and done-when. No phase list, owner, status or done mark: those live on the roadmap nodes under aws-spot-serving."),
+      p(text: "**Read at:** gunbc main 10142523b00d on 2026-11-25, with the AWS account read live the same day (quotas, offerings, spot prices) and the srv1 router's upstreams.json read live."),
+    ]),
+
+    h2(text: "1. Why"),
+    p(text: "The operator holds 10k USD of AWS credit whose spend unlocks a further 15k (25k in total). The srv1 router already strands demand when every owned card is at its cap, and already carries a rented-row arm (overflow rows rank after owned capacity and bill as rented_hourly). The g7e family is the same RTX PRO 6000 card srv1 serves Qwen3.8-Flash-Next on, so the serving recipe and the image carry over unchanged. The displaced cost is turned-away turns at peak and credit that expires unspent."),
+
+    h2(text: "2. What already exists, and is extended rather than forked"),
+    ul(items: [
+      li(text: "The flex supplier generalization of 2026-10-23 (plan deleted in #16107, recoverable at 970754b25775^): one FlexSupplierRow interface, Vast and AWS as rows, RunInstances spot one-time/terminate with MaxPrice equal to the admitted rate, owner-tag IAM, SSM-delivered POOL_API_KEY, local-NVMe weights verified per file, the two-minute notice as hard loss rather than migration, AWS settlement under a declared rung drop. Its decisions stand; this program executes them."),
+      li(text: "extdeps.cloud.aws_ec2 (request and response shapes, the interruption notice shapes), extdeps.cloud.aws_cli (the CLI v2 handler), product.fabric.flex_ec2_boot (the boot pre-step and launch template data), product.fabric.flex_aws_row (the Plan-mode observation and screen), gunbc.flex_aws_iam (the two principals' policies)."),
+      li(text: "The rented carriers of gunbc.serving (rented_allocation through rented_settlement), already supplier-agnostic since #14879."),
+    ]),
+
+    h2(text: "3. The operator's decisions (2026-11-25), recorded in gunbc.design_ruling"),
+    ul(items: [
+      li(text: "The loop runs as a scoped IAM user whose policy is gunbc.flex_aws_iam flex_aws_loop_policy, never as the account root: gunbc.design_ruling::aws_spot_loop_runs_as_a_scoped_principal_2026_11_25."),
+      li(text: "No quota increase is filed yet; the loop works inside the applied G and VT spot quota (8 vCPU in us-east-1 on 2026-11-25, one g7e.2xlarge): gunbc.design_ruling::aws_spot_quota_requests_held_2026_11_25."),
+      li(text: "Real g7e.2xlarge spot launches are admitted while this program iterates, each bounded by a per-test liability cap and terminated after its test: gunbc.design_ruling::aws_spot_g7e_launches_admitted_capped_2026_11_25."),
+    ]),
+
+    h2(text: "4. The chain, and where each link's authority lives"),
+    ul(items: [
+      li(text: "Observe and screen: product.fabric.flex_aws_row, executed for real against the account (the inhabitance frontier of test.claim.cloud.aws_cli_projection_witness dissolves on that run)."),
+      li(text: "Select and launch: product.fabric.selection select_supply over the union of the Vast and AWS rows, then RunInstances through the AWS row; the demand signal is the router's stranded count."),
+      li(text: "Boot fast: instance-store NVMe, weights copied from the region's bucket and verified against extdeps.local_inference_lab.qwen3_8_flash_next qwen3_8_flash_next_pin_roster, tuning cache keyed by its complete preimage, and later a baked AMI carrying the driver and the pulled image so the only cold work is the weight copy."),
+      li(text: "Enroll: the card becomes one rented row of the srv1 router (overflow, rented_hourly, cap and retain from the recipe), written and reloaded only after the card answers /health."),
+      li(text: "Drain on notice: the rebalance recommendation and the two-minute interruption warning reach the loop through EventBridge and SQS; the row leaves service at once and in-flight turns finish or are released. A termination with no notice is counted separately as an unannounced reclaim."),
+      li(text: "Settle: AWS billing observations joined by instance id; until then gunbc.rung_drop aws_flex_settlement_unobserved bounds the conservative liability."),
+    ]),
+
+    h2(text: "5. Done when"),
+    ul(items: [
+      li(text: "A Plan pass against the real account reads every operation through the CLI handler and screens the g7e candidates with no unread wall."),
+      li(text: "A card launched by the loop serves a turn routed through the srv1 router, measured launch-to-first-token, with its row written by the loop."),
+      li(text: "An interruption delivered by AWS Fault Injection Service to that card removes its row before termination and loses no admitted turn silently; the unannounced arm is exercised by a plain terminate."),
+      li(text: "The loop runs unattended under its cap, and a pass that cannot read a fact refuses rather than launching."),
+    ]),
+  ]
+}
+
+data aws_spot_serving_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "aws-spot-serving",
+  title: "AWS spot demand filler: g7e cards that start fast, join the router, and drain on notice",
+  body: aws_spot_serving_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every case of section 5 holds with its recorded live run, and the loop has run unattended on main.") },
+}

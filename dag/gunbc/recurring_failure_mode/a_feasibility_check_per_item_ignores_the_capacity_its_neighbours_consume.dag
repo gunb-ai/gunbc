@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_feasibility_check_per_item_ignores_the_capacity_its_neighbours_consume
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_feasibility_check_per_item_ignores_the_capacity_its_neighbours_consume: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_feasibility_check_per_item_ignores_the_capacity_its_neighbours_consume" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a demand report computed by the same assignment the placement performs -- one fold that places waiters on rows by the pick's rules and reports the remainder -- SUFFICIENT FOR the count a purchaser reads to be the count of waiters placement would actually leave unplaced, for any row set",
+    },
+  },
+
+  receipts: [
+    "**a count of what cannot be placed asks, for each waiting item, whether SOME slot could take it -- so one free slot answers yes for every item, and the count reads zero while all but one will be refused.** INVALID STATE: shared capacity credited to every claimant at once. HARM: demand reads as none whenever any slot is momentarily free, so a controller that rents on demand stops renting exactly when it is most loaded; the inverse error -- counting only some of the capacity -- buys cards a free owned slot would have served.",
+    "SPECIMEN, gunbc#17108 at 7edc31fb (external review, 2026-11-27, run in OpenResty): gunbc.serving.router_dev_policy counted a waiter as rental demand when no RENTED row admitted it, while placement considers every compatible row; a waiter an owned slot freed for was still demand. The obvious repair -- check every compatible row per waiter -- is this class: with five waiters and one freed owned slot it reports none.",
+    "REPAIR: room per row (free active slots capped by retention room; uncapped rented rows unbounded) is CONSUMED as waiters are counted, a model's own rows first, then every row's remaining room for the alias. Run against the rendered router in OpenResty: two waiters and one freed owned slot report one; one free slot with retention full reports two. Enrolled as gunbc.instruments.router_proxy_falsifier dev_a_waiter_an_owned_slot_can_take_is_not_rented_demand.",
+    "RUNG NOW: mitigatable -- a falsifier case that cannot currently run (its native emission is blocked). CEILING: mechanically preventable while the stats and the pick are two Lua blocks; one fold would make them one rule.",
+    "SECOND SPECIMEN, gunbc#17108 at 4a2bfbe4 (external review, 2026-11-27, run in OpenResty): the repair above left two claimants outside the shared fold. A waiter held for its own engine was dropped from the count WITHOUT consuming the free slot its retry takes, so one held and one flexible waiter beside one free slot read as no demand while the flexible retry was refused 429. And an uncapped rented row was given unbounded room although its retention still refuses a new conversation, so a full-retention overflow row read as no demand. The REPAIR receipt above calls uncapped rows unbounded; that was this defect.",
+    "SECOND REPAIR: free slots and retention room are tracked separately per row; the most constrained waiters are placed first -- a held waiter consumes its own row's free slot (its binding is already counted against retention), then a model's own rows, then the alias -- and a new placement consumes both a slot and retention room. Enrolled as gunbc.instruments.router_proxy_falsifier dev_a_waiter_held_for_its_engine_takes_that_slot_before_a_flexible_one and dev_an_uncapped_rented_row_at_full_retention_is_demand.",
+  ],
+
+  evidence: [],
+}

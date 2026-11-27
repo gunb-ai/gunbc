@@ -51,7 +51,7 @@ import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, durable_hold_owner_equal,
-  HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  HolderObservedDead,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
 }
 import gunbc.durable_cas_file_store {
@@ -64,6 +64,9 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
   file_hold_recovery_assess_windowed, FileHoldWindowedRecoveryPlanned, FileHoldWindowedRecoveryNotEligible,
   FileHoldWindowedRecoveryNamedHeadMoved,
+  file_hold_recover_dead_holder_windowed, FileHoldWindowedDeadHolderRecovered, FileHoldWindowedDeadHolderHolderLive,
+  FileHoldWindowedDeadHolderHolderUnobservable, FileHoldWindowedDeadHolderNotEligible, FileHoldWindowedDeadHolderNamedHeadMoved,
+  FileHoldWindowedDeadHolderReleaseLost, FileHoldWindowedDeadHolderReleaseStoreUnavailable, FileHoldWindowedDeadHolderReleaseKeyNotAddressable,
   file_hold_release_assess_windowed_at, FileHoldWindowedReleasePlanned, FileHoldWindowedReleaseNotEligible,
   FileHoldWindowedReleaseNamedHeadMoved,
   file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
@@ -1087,38 +1090,28 @@ fn roster_hold_try(root_dir: String, owner: DurableHoldOwnerRef, window: CasGene
   }
 }
 
-// DIVERGES WITH A STATED REASON (gunbc.design_argument::conformance, gunbc.design_argument::earliest_unjustified_boundary): this occupied flow (live -> busy, unobservable -> refuse, dead ->
-// recover once and retry) is the windowed twin of extdeps.realization.materialization_store_local local_store_hold_occupied.
-// The keep-all form is already one combinator, gunbc.durable_exclusive_hold_file_store file_hold_recover_dead_holder;
-// no windowed combinator exists, and the two windowed consumers map the outcomes into different refusal sets. TRIGGER:
-// a third windowed hold consumer, at which point a windowed file_hold_recover_dead_holder lands in that module and both
-// leaves are deleted onto it.
+// THE OCCUPIED FLOW IS THE STORE'S (gunbc.durable_exclusive_hold_file_store file_hold_recover_dead_holder_windowed, which
+// landed with the third windowed hold consumer, gunbc.fleet.flex_aws_pass, the trigger this leaf named). What stays here
+// is this root's own half: which holders it can look at (a roster-import-sweep process), the reclaim record its freed
+// slot carries, and what each outcome means as a roster refusal.
 // AN OCCUPIED SLOT IS LOOKED AT ONCE. A live holder refuses, naming itself; an unobservable one refuses with the cause
 // (a holder that cannot be shown dead is not reclaimed); a holder observed dead is recovered at the generation the refused
 // acquire saw, and the acquire is tried once more. A slot still held after that is busy: the retry is bounded by construction.
 fn roster_hold_occupied(root_dir: String, owner: DurableHoldOwnerRef, window: CasGenerationWindow, holder: DurableHoldOwnerRef, generation: CasGeneration) -> RosterLockAcquisition {
   match roster_hold_owner_process(owner: holder) {
     Absent => RosterLockBusy { reason: RefusalApplyLockHolderUnobservable, holder: holder, detail: "the holder is not a roster-import-sweep process" as NonEmptyStr }
-    Present { value: hp } => {
-      let liveness = holder_process_liveness(p: hp.process, pid_namespace: hp.pid_namespace)
-      match liveness {
-        HolderObservedLive { evidence: e } => RosterLockBusy { reason: RefusalApplyLockUnavailable, holder: holder, detail: e }
-        HolderLivenessUnobservable { cause: c } => RosterLockBusy { reason: RefusalApplyLockHolderUnobservable, holder: holder, detail: c }
-        HolderObservedDead { evidence: e } =>
-          match file_hold_recovery_assess_windowed(root: root_dir as NonEmptyStr, slot_key: roster_hold_key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: liveness }, released_by: roster_hold_reclaim_ref(dead_holder: holder, evidence: e), window: window) {
-            FileHoldWindowedRecoveryNotEligible { slot_key: _, refusal: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
-            FileHoldWindowedRecoveryNamedHeadMoved { slot_key: _, named: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
-            FileHoldWindowedRecoveryPlanned { plan: pl, dead_holder: d, evidence: ev } =>
-              match file_hold_release_commit(plan: pl) {
-                FileHoldReleased { slot_key: _, generation: _ } =>
-                  roster_hold_try(root_dir: root_dir, owner: owner, window: window, reclaimed: Present { value: RosterHoldReclaim { dead_holder: d, evidence: ev } })
-                FileHoldReleaseLost { slot_key: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
-                FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
-                FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
-              }
-          }
+    Present { value: hp } =>
+      match file_hold_recover_dead_holder_windowed(root: root_dir as NonEmptyStr, slot_key: roster_hold_key, holder: holder, generation: generation, released_by: (d, e) => roster_hold_reclaim_ref(dead_holder: d, evidence: e), live_owner: h => holder_process_liveness(p: hp.process, pid_namespace: hp.pid_namespace), window: window) {
+        FileHoldWindowedDeadHolderRecovered { dead_holder: d, evidence: ev } =>
+          roster_hold_try(root_dir: root_dir, owner: owner, window: window, reclaimed: Present { value: RosterHoldReclaim { dead_holder: d, evidence: ev } })
+        FileHoldWindowedDeadHolderHolderLive { holder: _, evidence: e } => RosterLockBusy { reason: RefusalApplyLockUnavailable, holder: holder, detail: e }
+        FileHoldWindowedDeadHolderHolderUnobservable { holder: _, cause: c } => RosterLockBusy { reason: RefusalApplyLockHolderUnobservable, holder: holder, detail: c }
+        FileHoldWindowedDeadHolderNotEligible { refusal: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+        FileHoldWindowedDeadHolderNamedHeadMoved { named: _ } => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+        FileHoldWindowedDeadHolderReleaseLost => RosterLockRefused { reason: RefusalApplyLockUnavailable }
+        FileHoldWindowedDeadHolderReleaseStoreUnavailable { cause: _ } => RosterLockRefused { reason: RefusalLockWriteFailed }
+        FileHoldWindowedDeadHolderReleaseKeyNotAddressable => RosterLockRefused { reason: RefusalLockWriteFailed }
       }
-    }
   }
 }
 

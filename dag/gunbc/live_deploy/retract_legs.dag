@@ -1,5 +1,6 @@
 module gunbc.live_deploy.retract_legs
 
+import gunbc.live_deploy.flex_aws_loop_unit { flex_aws_loop_unit_name, flex_aws_loop_unit_path, flex_aws_loop_hosted_by }
 import std.types { String, NonEmptyStr, Int }
 import std.optional { Absent, Optional, Present }
 import std.algebra { Cons, Empty, FreeSemigroup, list_append, non_empty_append, non_empty_singleton }
@@ -125,8 +126,15 @@ fn deploy_retract_artifact_plan(art: DeploymentArtifactStep, spec: DeploymentSpe
     // tears it down exactly as it does the tailnet and agent door units.
     ComposeOwned { kind: FabricStorageServeUnit } =>
       RetractPlanReady { legs: retract_unit_teardown(units: [deployment_fabric_storage_unit_name(names: spec.names)], head: art.path, rest: []) }
+    // The AWS spot demand filler rides this deployment's release (gunbc.live_deploy.flex_aws_loop_unit), so it
+    // is torn down with the serve unit: a retracted deployment must not leave a spending loop enabled with
+    // Restart=always (review of fb2594de).
     ComposeOwned { kind: SystemdUnit } =>
-      RetractPlanReady { legs: retract_unit_teardown(units: [spec.service.unit_name], head: art.path, rest: []) }
+      RetractPlanReady { legs: retract_unit_teardown(
+        units: concat([spec.service.unit_name], if flex_aws_loop_hosted_by(spec: spec) { [flex_aws_loop_unit_name] } else { [] }),
+        head: art.path,
+        rest: if flex_aws_loop_hosted_by(spec: spec) { [flex_aws_loop_unit_path()] } else { [] },
+      ) }
     UpsertOwned { kind: BeltEventPathUnit } =>
       RetractPlanReady {
         legs: concat(

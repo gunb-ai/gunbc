@@ -1,0 +1,244 @@
+module test.claim.serving.flex_aws_router_rows_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.algebra { length }
+import gunbc.serving.flex_aws_router_rows {
+  FlexAwsEnrollable, FlexAwsRowFacts, FlexAwsRowsConverged, FlexAwsRowsRefused,
+  flex_aws_rows_converge, flex_aws_ca_converge, flex_aws_pem_blocks,
+  flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused, FlexAwsRouterReading, FlexAwsCardUse, flex_aws_row_instance_ids,
+  FlexAwsRowsConverge,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED: the live file's shape (srv1 upstreams.json field names, read 2026-11-25) with stand-in keys
+// and addresses, and stand-in certificate bodies. The inhabitance run is the srv1 pass that enrolls a
+// real card (gunbc.fleet.flex_aws_pass).
+data first_party: String = "[\{\"name\": \"srv1-vllm\", \"scheme\": \"https\", \"host\": \"127.0.0.1\", \"port\": 18000, \"sni\": \"pool-card\", \"model\": \"Qwen3.8-Flash-Next\", \"cap\": 4, \"overflow\": false, \"key\": \"k1\", \"retain\": 8, \"tier\": 0}, \{\"name\": \"ken\", \"scheme\": \"http\", \"host\": \"100.96.80.109\", \"port\": 18081, \"model\": \"qwen3.8-flash-next-iq3_s\", \"cap\": 2, \"overflow\": false, \"key\": \"k2\", \"retain\": 4, \"tier\": 1}]"
+
+data facts: FlexAwsRowFacts = FlexAwsRowFacts { model: "Qwen3.8-Flash-Next" as NonEmptyStr, max_model_len: 229376, port: 18000, sni: "pool-card" as NonEmptyStr, cap: 4, retain: 8, tier: 0 }
+
+fn card(id: String, ip: String, body: String) -> FlexAwsEnrollable {
+  FlexAwsEnrollable { instance_id: id as NonEmptyStr, public_ip: ip as NonEmptyStr, cert_pem: join(["-----BEGIN CERTIFICATE-----\n", body, "\n-----END CERTIFICATE-----\n"], ""), pool_key: "pk" }
+}
+
+data bundle: String = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n"
+
+// The binding lifetime the pass supplies (gunbc.serving.router_dev_policy router_dev_binding_ttl: six hours).
+data ttl: Int = 21600
+
+fn converge(current: String, cards: List<FlexAwsEnrollable>, now: Int) -> FlexAwsRowsConverge {
+  flex_aws_rows_converge(current: current, cards: cards, facts: facts, seen: map(cards, c => c.instance_id as String), blind: false, withdrawn: [], now_unix: now, binding_ttl_seconds: ttl)
+}
+
+// Adding a card keeps both first-party rows byte-for-byte in value and appends one overflow row; a second
+// converge over its own output changes nothing (idempotent); with the card gone its row is NOT removed but rests
+// out of service, its pool key emptied, and the first-party rows are untouched.
+test fn our_rows_converge_and_first_party_rows_pass_through() -> Bool {
+  match converge(current: first_party, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], now: 1000) {
+    FlexAwsRowsConverged { text: t, added: a, retired: r, expired: _, changed: c, routed: routed } =>
+      c && (a == ["aws-i-0abc"]) && (r == []) && (routed == ["aws-i-0abc"])
+        && t.contains("\"name\": \"srv1-vllm\"") && t.contains("\"name\": \"ken\"") && t.contains("\"key\": \"k2\"")
+        && t.contains("\"name\": \"aws-i-0abc\"") && t.contains("\"host\": \"3.4.5.6\"") && t.contains("\"overflow\": true") && t.contains("\"key\": \"pk\"")
+        && (match converge(current: t, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], now: 1030) {
+          FlexAwsRowsConverged { text: _, added: a2, retired: r2, expired: _, changed: c2, routed: _ } => !c2 && (a2 == []) && (r2 == [])
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+        && (match converge(current: t, cards: [], now: 1060) {
+          FlexAwsRowsConverged { text: t3, added: _, retired: r3, expired: _, changed: c3, routed: routed3 } =>
+            c3 && (r3 == ["aws-i-0abc"]) && (routed3 == []) && t3.contains("\"name\": \"aws-i-0abc\"") && t3.contains("\"in_service\": false")
+              && t3.contains("\"retired_unix\": 1060") && !t3.contains("\"key\": \"pk\"") && t3.contains("\"name\": \"ken\"") && t3.contains("\"key\": \"k2\"")
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+    FlexAwsRowsRefused { cause: _ } => false
+  }
+}
+
+// A WITHDRAWN CARD'S ROW RESTS THROUGH THE BINDING LIFETIME (review of e50999ce: a conversation whose card was
+// reclaimed came back with its explicit model and was refused 409 while its binding named a row the router no
+// longer knew). Retired at 1060, the row is kept unchanged at the last second of the lifetime, dropped at its end;
+// and a card that answers again takes its row back into service.
+test fn a_withdrawn_cards_row_rests_out_of_service_until_its_bindings_expire() -> Bool {
+  match converge(current: first_party, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], now: 1000) {
+    FlexAwsRowsConverged { text: t, added: _, retired: _, expired: _, changed: _, routed: _ } => match converge(current: t, cards: [], now: 1060) {
+      FlexAwsRowsConverged { text: resting, added: _, retired: _, expired: _, changed: _, routed: _ } =>
+        (match converge(current: resting, cards: [], now: 1060 + ttl - 1) {
+          FlexAwsRowsConverged { text: still, added: _, retired: r, expired: e, changed: c, routed: _ } => !c && (r == []) && (e == []) && still.contains("aws-i-0abc")
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+        && (match converge(current: resting, cards: [], now: 1060 + ttl) {
+          FlexAwsRowsConverged { text: gone, added: _, retired: _, expired: e, changed: c, routed: _ } => c && (e == ["aws-i-0abc"]) && !gone.contains("aws-i-0abc") && gone.contains("\"name\": \"ken\"")
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+        && (match converge(current: resting, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], now: 2000) {
+          FlexAwsRowsConverged { text: back, added: a, retired: _, expired: _, changed: c, routed: routed } => c && (a == ["aws-i-0abc"]) && (routed == ["aws-i-0abc"]) && !back.contains("\"in_service\": false") && (occurrences_of_name(text: back) == 1)
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+      FlexAwsRowsRefused { cause: _ } => false
+    }
+    FlexAwsRowsRefused { cause: _ } => false
+  }
+}
+
+fn occurrences_of_name(text: String) -> Int { count(split(s: text, delimiter: "\"name\": \"aws-i-0abc\"")) - 1 }
+
+// A file this module cannot read is refused, never rewritten (rewriting it would drop rows it does not own).
+test fn an_unreadable_or_non_array_upstreams_file_refuses() -> Bool {
+  (match converge(current: "\{\"name\": \"x\"}", cards: [], now: 1) { FlexAwsRowsRefused { cause: c } => c.contains("array")  _ => false })
+    && (match converge(current: "[\{", cards: [], now: 1) { FlexAwsRowsRefused { cause: _ } => true  _ => false })
+}
+
+// The CA bundle: untagged certificates are kept, ours are tagged and replaced wholesale; removing the card
+// removes exactly its certificate.
+test fn our_certificates_converge_and_the_others_are_kept() -> Bool {
+  let with_card = flex_aws_ca_converge(current: bundle, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], keep_ids: []).text
+  let without = flex_aws_ca_converge(current: with_card, cards: [], keep_ids: []).text
+  (length(xs: flex_aws_pem_blocks(text: with_card)) == 3)
+    && with_card.contains("# gunbc-flex i-0abc\n-----BEGIN CERTIFICATE-----\nCCCC")
+    && with_card.contains("AAAA") && with_card.contains("BBBB")
+    && (length(xs: flex_aws_pem_blocks(text: without)) == 2)
+    && !without.contains("CCCC") && without.contains("AAAA") && without.contains("BBBB")
+    && !flex_aws_ca_converge(current: with_card, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], keep_ids: []).changed
+    && flex_aws_ca_converge(current: bundle, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], keep_ids: []).changed
+}
+
+// RED for the 2026-11-25 srv1 run: a bundle and a rows file with nothing of ours, converged with no card,
+// are NOT a change -- whitespace between blocks and the operator's JSON spelling are not facts -- so the
+// pass writes nothing and does not reload the router.
+test fn nothing_of_ours_to_change_is_not_a_change() -> Bool {
+  let spaced = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n"
+  !flex_aws_ca_converge(current: spaced, cards: [], keep_ids: []).changed
+    && (match converge(current: first_party, cards: [], now: 1) {
+      FlexAwsRowsConverged { text: _, added: _, retired: _, expired: _, changed: c, routed: _ } => !c
+      FlexAwsRowsRefused { cause: _ } => false
+    })
+}
+
+// ---- the router's stats ----------------------------------------------------------------------------
+
+// SUPPLIED: /router/stats as the router renders its `rented` object (gunbc.serving.router_dev_policy, the
+// render-to-reading run is the router proxy falsifier's dev_rented_demand_reads_into_the_allocator): one
+// enrolled card with two turns in flight and three recent conversations, and a withdrawn row whose last
+// turn is still running.
+fn stats(unplaceable: String) -> String {
+  join(["\{\"pending\": \{\"total\": 31}, \"rented\": \{\"active\": 2, \"cap\": 4, \"uncapped\": 0, \"full\": false, \"alias\": \"flash-next\", \"unplaceable_by_model\": \{\"flash-next\": ", unplaceable, ", \"qwen3.8-flash-next-iq3_s\": 7}",
+    ", \"rows\": [\{\"name\": \"aws-i-0a\", \"active\": 2, \"seen_recent\": 3}]}",
+    ", \"active:aws-i-0a\": 2, \"active:aws-i-0gone\": 1, \"upstream_ca_sha256\": \"", ca_digest, "\"}"], "")
+}
+
+// The digest of the CA bundle the router reports having loaded (a SHA-256 in hex; any value stands in here).
+data ca_digest: String = "9f2c0d5e4b8a7c6d1e3f2a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d"
+
+fn reading_of(body: String, ids: List<String>) -> FlexAwsRouterReading? {
+  match flex_aws_read_router_stats(body: body, instance_ids: map(ids, i => i as NonEmptyStr), model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsReadOk { reading: r } => Present { value: r }
+    FlexAwsStatsRefused { cause: _ } => none
+  }
+}
+
+// THE ROUTER'S OWN COUNT IS READ AS IT IS: the waiters no rented row in service can admit, for the card's model
+// and the router's alias only (seven waiting for the Strata GGUF model are no demand for this card, nor nine for an
+// unrelated model), and the rented rows it routes, by name; nothing is recomputed here. `full` is not read: the
+// router's admission, retention included, is already in the count.
+test fn the_router_decides_rented_demand_and_the_reader_takes_it() -> Bool {
+  (match reading_of(body: stats(unplaceable: "0"), ids: []) { Present { value: r } => (r.unplaceable == 0) && (r.rows == ["aws-i-0a"])  Absent => false })
+    && (match reading_of(body: stats(unplaceable: "5"), ids: []) { Present { value: r } => r.unplaceable == 5  Absent => false })
+    && (match reading_of(body: "\{\"rented\": \{\"alias\": \"flash-next\", \"unplaceable_by_model\": \{\"Qwen3.8-Flash-Next\": 2, \"flash-next\": 1, \"other-model\": 9}, \"rows\": \{}}, \"upstream_ca_sha256\": \"ab\"}", ids: []) { Present { value: r } => (r.rows == []) && (r.unplaceable == 3)  Absent => false })
+    && (match reading_of(body: stats(unplaceable: "0"), ids: []) { Present { value: r } => r.ca_sha256 == ca_digest  Absent => false })
+}
+
+// EACH CARD'S USE: an enrolled card's turns and recent conversations; a card the router no longer routes
+// whose last turn is still running (a drain in progress); a card the router never counted reads as the
+// router reads it, zero.
+test fn each_card_reads_its_enrollment_turns_and_recent_conversations() -> Bool {
+  match reading_of(body: stats(unplaceable: "0"), ids: ["i-0a", "i-0gone", "i-0new"]) {
+    Absent => false
+    Present { value: r } => {
+      let us = r.cards
+      (count(us) == 3)
+        && match us.first() { Present { value: u } => u.enrolled && (u.in_flight == 2) && (u.seen_recent == 3)  Absent => false }
+        && match us.skip(n: 1).first() { Present { value: u } => !u.enrolled && (u.in_flight == 1) && (u.seen_recent == 0)  Absent => false }
+        && match us.last() { Present { value: u } => !u.enrolled && (u.in_flight == 0) && (u.seen_recent == 0)  Absent => false }
+    }
+  }
+}
+
+// A STATS ANSWER MISSING A FIELD IS REFUSED, never read as no demand or an unused card -- in particular a router
+// that predates admission demand (it emitted waiting_by_model, which counts waiters a free-but-retention-full row
+// would still refuse).
+test fn stats_missing_a_field_are_refused() -> Bool {
+  (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"full\": false, \"alias\": \"flash-next\", \"waiting_by_model\": \{\"flash-next\": 3}, \"rows\": []}}", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: c } => c.contains("unplaceable_by_model")
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: "\{\"pending\": \{\"total\": 3}}", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: c } => c.contains("rented")
+    _ => false
+  })
+  // A router that does not report which CA bundle it loaded cannot acknowledge a certificate change: refused, never
+  // read as having taken it (review of 7edc31fb).
+  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"alias\": \"flash-next\", \"unplaceable_by_model\": \{}, \"rows\": []}}", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: c } => c.contains("upstream_ca_sha256")
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: "not json", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: _ } => true
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"alias\": \"flash-next\", \"unplaceable_by_model\": \{}, \"rows\": [\{\"name\": \"aws-i-0a\", \"active\": 1}]}, \"upstream_ca_sha256\": \"ab\"}", instance_ids: ["i-0a" as NonEmptyStr], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: c } => c.contains("seen_recent")
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"alias\": \"flash-next\", \"unplaceable_by_model\": \{}, \"rows\": []}, \"active:aws-i-0a\": \"two\", \"upstream_ca_sha256\": \"ab\"}", instance_ids: ["i-0a" as NonEmptyStr], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: c } => c.contains("not a number")
+    _ => false
+  })
+}
+
+// A CARD THE PASS COULD NOT SEE KEEPS ITS ROW (reviews of fb2594de and e50999ce), decided from the snapshot being
+// rewritten: with some region blind and only i-0def's region read (i-0def is gone), i-0abc's row passes through
+// untouched while i-0def's leaves service; with no region blind, both leave service.
+test fn an_unseen_cards_row_and_certificate_are_kept() -> Bool {
+  match converge(current: first_party, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "AAAA"), card(id: "i-0def", ip: "3.4.5.7", body: "BBBB")], now: 1000) {
+    FlexAwsRowsConverged { text: two, added: _, retired: _, expired: _, changed: _, routed: _ } =>
+      (match flex_aws_rows_converge(current: two, cards: [], facts: facts, seen: ["i-0def"], blind: true, withdrawn: [], now_unix: 1030, binding_ttl_seconds: ttl) {
+        FlexAwsRowsConverged { text: t, added: _, retired: r, expired: _, changed: c, routed: routed } =>
+          c && (r == ["aws-i-0def"]) && (routed == ["aws-i-0abc"]) && t.contains("\"key\": \"pk\"")
+            && (flex_aws_row_instance_ids(current: t) == ["i-0abc", "i-0def"])
+        _ => false
+      })
+      && (match flex_aws_rows_converge(current: two, cards: [], facts: facts, seen: ["i-0def"], blind: false, withdrawn: [], now_unix: 1030, binding_ttl_seconds: ttl) {
+        FlexAwsRowsConverged { text: _, added: _, retired: r, expired: _, changed: _, routed: routed } => (r == ["aws-i-0abc", "aws-i-0def"]) && (routed == [])
+        _ => false
+      })
+    _ => false
+  }
+  && ca_keeps_the_unseen_certificate()
+}
+
+fn ca_keeps_the_unseen_certificate() -> Bool {
+  let with_two = flex_aws_ca_converge(current: bundle, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC"), card(id: "i-0def", ip: "3.4.5.7", body: "DDDD")], keep_ids: []).text
+  let kept = flex_aws_ca_converge(current: with_two, cards: [], keep_ids: ["i-0abc"]).text
+  kept.contains("CCCC") && !kept.contains("DDDD") && kept.contains("AAAA")
+}
+
+// A NOTICED CARD IN AN UNREADABLE REGION LEAVES SERVICE (review of 7edc31fb). With some region blind and neither card's
+// region read, i-0abc's row is kept untouched as before -- but i-0def, which a held notice names, is taken out of
+// service: AWS is reclaiming it whatever this pass could read. RED for the old converge, which kept both.
+test fn a_noticed_cards_row_leaves_service_even_where_its_region_is_unread() -> Bool {
+  match converge(current: first_party, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "AAAA"), card(id: "i-0def", ip: "3.4.5.7", body: "BBBB")], now: 1000) {
+    FlexAwsRowsConverged { text: two, added: _, retired: _, expired: _, changed: _, routed: _ } =>
+      (match flex_aws_rows_converge(current: two, cards: [], facts: facts, seen: [], blind: true, withdrawn: ["i-0def"], now_unix: 1030, binding_ttl_seconds: ttl) {
+        FlexAwsRowsConverged { text: t, added: _, retired: r, expired: _, changed: c, routed: routed } =>
+          c && (r == ["aws-i-0def"]) && (routed == ["aws-i-0abc"]) && t.contains("\"in_service\": false")
+        _ => false
+      })
+      && (match flex_aws_rows_converge(current: two, cards: [], facts: facts, seen: [], blind: true, withdrawn: [], now_unix: 1030, binding_ttl_seconds: ttl) {
+        FlexAwsRowsConverged { text: _, added: _, retired: r, expired: _, changed: c, routed: routed } => !c && (r == []) && (routed == ["aws-i-0abc", "aws-i-0def"])
+        _ => false
+      })
+    _ => false
+  }
+}
