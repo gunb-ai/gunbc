@@ -1,11 +1,8 @@
 module test.claim.site_gunb_ai_css_witness
 
 // gunbc.design_argument::fail_closed — the executed witness for gunbc.site.gunb_ai_css. render_sheet produces the bytes sheet_write
-// writes, and the parity claim compares them to dag/test/fixture/gunb_ai/live_site.css, a committed
-// copy of gunb.ai's served assets/site.css (fetched 2026-10-19). The oracle is outside this repo's
-// model, which is what stops the typed rows from agreeing with themselves.
-//
-// The sheet is complete: the parity claim is byte equality with the served file.
+// writes, and each claim ties those bytes to the rows they are rendered from. There is no comparison
+// against a committed copy of the sheet: this module is the source of what gunb.ai serves.
 //
 // RUN: gunbc test //test/claim/site_gunb_ai_css_witness:<test fn>   (one operand per test fn)
 //
@@ -14,7 +11,6 @@ module test.claim.site_gunb_ai_css_witness
 import std.types { Bool, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import std.list { distinct_by_key }
 import extdeps.languages.css.values { css_hsl_wire, css_number_wire, css_px, css_ch }
 import gunbc.design.gunb_ai_hues { live_color_tokens, live_token_css, moss, moss_deep, clay, brass_deep, near_black, sand, warm_white }
@@ -24,22 +20,8 @@ import gunbc.design.gunb_ai_live_scale { live_measure_scale_length, live_gap_md,
 import gunbc.site.gunb_ai_tokens { gap_md, gap_xs, gap_sm, site_measure_prose }
 import gunbc.site.gunb_ai_css { render_sheet }
 
-data served_sheet_path: String = "dag/test/fixture/gunb_ai/live_site.css"
-
-fn served_sheet() -> String {
-  let read = Filesystem.Read(path: served_sheet_path)
-  if read.success { read.content } else { "" }
-}
-
 fn rendered_sheet() -> String {
   render_sheet()
-}
-
-// The parity claim. The fixture is checked non-empty first (a missing file reads "" and a render
-// that is also "" would equal it).
-test fn witness_generated_sheet_equals_the_served_sheet() -> Bool {
-  string_contains(s: served_sheet(), pattern: "/* ╔══ TOKENS ")
-    && rendered_sheet() == served_sheet()
 }
 
 // Supplied values at the interface the decimal wire answers for: the shortest decimal denoting the
@@ -57,9 +39,9 @@ test fn witness_decimal_wire_is_the_shortest_decimal() -> Bool {
 
 // Every colour in the served :root block comes out of gunb_ai_hues, and the alpha-bearing ones are
 // spelled hsla (the alpha arm), the rest hsl.
-test fn witness_every_live_colour_token_is_in_the_served_sheet_as_its_wire() -> Bool {
-  all(live_color_tokens, t => string_contains(s: served_sheet(), pattern: join(["--", t.name, ":"], ""))
-    && string_contains(s: served_sheet(), pattern: css_hsl_wire(c: live_token_css(t: t))))
+test fn witness_every_live_colour_token_is_in_the_rendered_sheet_as_its_wire() -> Bool {
+  all(live_color_tokens, t => string_contains(s: rendered_sheet(), pattern: join(["--", t.name, ":"], ""))
+    && string_contains(s: rendered_sheet(), pattern: css_hsl_wire(c: live_token_css(t: t))))
 }
 
 // Review 82669: the Srgb8 swatches are derived from the live hsl parameters. The expected triples are

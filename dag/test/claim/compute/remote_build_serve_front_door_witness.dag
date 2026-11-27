@@ -47,11 +47,13 @@ import gunbc.compute.remote_build {
 // (`gunbc run --source-root dag --source-root src/v2 --entry <file> --function __no_such_function__`,
 // which resolves and refuses before evaluating, so the pre-entry receipt is the whole cost):
 //   dag/gunbc/compute/remote_build_serve.dag                  closure_files=897  resolve 143,398 ms  max_rss 3,421,140 KiB
-//   dag/gunbc/compute/remote_build_serve_front_door.dag        closure_files=150  resolve   9,995 ms  max_rss   372,228 KiB
-// 14.4x the wall, 9.2x the memory, 6.0x the modules. A probe leg now resolves 150 modules instead of
-// 897; a REQUEST leg resolves the door (9.9 s) and then the serving entry, so its own cost is unchanged
+//   dag/gunbc/compute/remote_build_serve_front_door.dag        closure_files=151  resolve   9,755 ms  max_rss   379,164 KiB
+// 14.4x the wall, 9.2x the memory, 6.0x the modules. A probe leg now resolves 151 modules instead of
+// 897; a REQUEST leg resolves the door (9.8 s) and then the serving entry, so its own cost is unchanged
 // in kind -- it still needs the request closure -- and that is the honest reading: this cut is the probe's,
 // and the request leg's remaining resolve is the one the fabric dispatch/seat route converges on.
+// The door now also reads extdeps.clock (the accept instant the wall bounds measure from), which is a
+// one-file leaf: the probe closure moved 150 -> 151, not by a request-path import.
 //
 // WHAT IS NOT ASSERTED AS A NUMBER. No claim here floors or ceilings a module count: a count is not the
 // property (gunbc.integration_concern debt_payoff section 3 -- "a count floor, a widened budget or a
@@ -64,6 +66,9 @@ import gunbc.compute.remote_build {
 
 data w_bin: String = "/opt/gunbc/bin/gunbc"
 data w_repo: String = "/opt/gunbc/gunbc"
+// A fixture wall bound for the door's hand-off: the ceiling and the accept instant the door would carry.
+data w_leg_ceiling: String = "900"
+data w_accept_instant: String = "1700000000"
 data w_group_file: String = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1006:briansrls,gunbc-build\ndocker:x:998:gunbc-build\n"
 // The same host, with the ledger group no longer listing the host's ledger service user. Everything the
 // PROBE checks still holds on it; only the ledger half -- a reservation's fact -- has gone.
@@ -107,6 +112,8 @@ fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFron
     host: w_serving_host(),
     serve_binary: w_bin,
     repo_root: w_repo,
+    leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
     raw_command: raw,
     principal: principal,
   )
@@ -213,6 +220,10 @@ test fn a_work_request_hands_off_to_the_serving_entry_with_the_forced_commands_w
         && any(hand_off.arguments, a => a == concat(w_repo, "/dag/gunbc/compute/remote_build_serve.dag"))
         && any(hand_off.arguments, a => a == "remote_build_serve_cli")
         && any(hand_off.arguments, a => a == concat("host=", w_serving_host()))
+        // THE WALL BOUND RIDES TO THE CHILD: the door hands the host-declared ceiling and its own accept
+        // instant to the request entry, which runs the granted unit under the remaining budget.
+        && any(hand_off.arguments, a => a == concat("leg_ceiling=", w_leg_ceiling))
+        && any(hand_off.arguments, a => a == concat("accept_instant=", w_accept_instant))
         // THE CHILD IS FIXED DATA, NOT SOMETHING THE DOOR WAS TOLD: the door's own words name the front
         // door; the hand-off names the request entry and nothing else.
         && !(any(hand_off.arguments, a => contains(haystack: a, needle: "front_door")))
@@ -241,16 +252,21 @@ test fn the_hand_off_and_the_request_legs_words_are_one_rendering() -> Bool {
     serve_binary: w_bin as NonEmptyStr,
     repo_root: w_repo as NonEmptyStr,
     host: w_serving_host(),
+    leg_ceiling: w_leg_ceiling as NonEmptyStr,
+    accept_instant: w_accept_instant as NonEmptyStr,
   )
   let serve_words = map(remote_build_serve_run_words(serve_binary: w_bin as NonEmptyStr, repo_root: w_repo as NonEmptyStr, host: w_serving_host()), w => w as String)
-  let door_words = map(remote_build_serve_front_door_run_words(serve_binary: w_bin as NonEmptyStr, repo_root: w_repo as NonEmptyStr, host: w_serving_host()), w => w as String)
+  let door_words = map(remote_build_serve_front_door_run_words(serve_binary: w_bin as NonEmptyStr, repo_root: w_repo as NonEmptyStr, host: w_serving_host(), leg_ceiling: w_leg_ceiling as NonEmptyStr), w => w as String)
   hand_off.program as String == w_bin
-    && join(hand_off.arguments, "\n") == join(skip(xs: serve_words, n: 1), "\n")
-    && count(hand_off.arguments) == count(serve_words) - 1
+    // The hand-off runs the request entry with the request leg's OWN words, then appends the host-declared
+    // ceiling and the door's accept instant -- two words the client never sends, so an old client cannot
+    // bypass the bound and the wait is measured from the host's own clock.
+    && join(hand_off.arguments, "\n") == join(concat(skip(xs: serve_words, n: 1), ["--arg", concat("leg_ceiling=", w_leg_ceiling), "--arg", concat("accept_instant=", w_accept_instant)]), "\n")
     && any(door_words, w => w == "remote_build_serve_front_door_cli")
     && !any(door_words, w => w == "remote_build_serve_cli")
     && any(door_words, w => w == concat("serve_binary=", w_bin))
     && any(door_words, w => w == concat("repo_root=", w_repo))
+    && any(door_words, w => w == concat("leg_ceiling=", w_leg_ceiling))
 }
 
 // ── WHAT THE DOOR REFUSES, AND HOW ────────────────────────────────────────────────────────────────
@@ -288,6 +304,8 @@ test fn a_host_off_the_serving_row_is_refused_at_the_door() -> Bool {
     host: "not-a-serving-host",
     serve_binary: w_bin,
     repo_root: w_repo,
+    leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
     raw_command: Present { value: remote_build_probe_text as String },
     principal: w_principal_admitted(),
   ) {
@@ -307,11 +325,11 @@ test fn a_door_rendered_without_a_binary_or_a_checkout_runs_nothing() -> Bool {
     FrontDoorHandOffToChild { hand_off: _ } => true
     _ => false
   }
-    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
          _ => false
        }
-    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
          _ => false
        }
