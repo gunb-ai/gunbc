@@ -330,21 +330,27 @@ fn cs_sites_walk(pieces: List<String>, before: String, acc: List<CallSite>) -> L
   }
 }
 
-// The argument text of the frame that opens immediately before `pieces`, walking forward until the parens
-// balance. Rejoining the consumed pieces with `(` is exact: that is the character the split removed.
+// The argument text of the frame that opens immediately before `pieces`, walking forward until the frame
+// closes. Rejoining the consumed pieces with `(` is exact: that is the character the split removed.
+//
+// THE PARENS THIS WALK COUNTS ARE THE ONES THAT ARE NOT THERE. The code was split on `(`, so no piece ever
+// contains the opening paren that got it: a piece boundary IS an open paren. The first version counted
+// literal `(` inside each piece -- always zero -- so a call whose first argument was itself a call closed at
+// the nested call's own `)`, and the instrument reported `gunbc_run_step_script_for_target(source_roots:,
+// target:)` while the file also passed `receipt_rel` and the red's `claim_run`. That hid the historical
+// break this row is named for. The rule is therefore: each further piece crossed opens one frame, each `)`
+// closes one, and the frame closes INSIDE a piece when that piece carries as many `)` as the frames open.
 fn cs_call_args(pieces: List<String>, depth: Int) -> String {
   match pieces.first() {
     Absent => ""
     Present { value: p } => {
-      let opens = cs_occurrences(hay: p, needle: "(")
       let closes = cs_occurrences(hay: p, needle: ")")
-      let after = depth + opens - closes
-      let joined = cs_upto_nth(pieces: split(s: p, delimiter: ")"), n: depth + opens, acc: "")
-      if after <= 0 {
-        joined
+      let head = cs_upto_nth(pieces: split(s: p, delimiter: ")"), n: depth, acc: "")
+      if closes >= depth {
+        head
       } else {
-        let tail = cs_call_args(pieces: pieces.skip(n: 1), depth: after)
-        if tail == "" { "" } else { join([joined, tail], "(") }
+        let tail = cs_call_args(pieces: pieces.skip(n: 1), depth: depth - closes + 1)
+        if tail == "" { "" } else { join([head, tail], "(") }
       }
     }
   }
