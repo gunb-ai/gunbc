@@ -414,6 +414,25 @@ fn realpath_canonicalize_missing_command(path: String) -> ArgvCommand {
   argv_command(program: realpath_program(), arguments: ["-m", "--", path])
 }
 
+// realpath -m -z CANONICALIZES A NEED-NOT-EXIST PATH AND TERMINATES THE ANSWER WITH NUL, so the
+// bytes survive the transport. WHY A SECOND ROW BESIDE -m: the host's shell.Exec.RunArgv stdout
+// drain applies Rust `str::trim_end()` to the captured bytes BEFORE any `.dag` helper sees them
+// (src/v1/stage0/src/bounded_shell_host_drain.rs; kernel-layer defect, filed separately), and
+// `trim_end` strips trailing Unicode WHITESPACE -- so a newline-terminated capture silently
+// loses a trailing space, although path_resolution(7) admits every byte but `/` and NUL in a
+// name. NUL is not whitespace, so `realpath -m -z` prints the resolved text exactly and ends it
+// with one NUL. VERSIONED: `-z, --zero end each output line with NUL, not newline` is
+// realpath(1) (GNU coreutils; --zero present since coreutils 8.25, host certified at 9.7).
+// An unrecognized-option refusal (older coreutils) exits nonzero, which the capture helper
+// reads as UNOBSERVABLE and refuses -- the same rule as the `--zero` row of
+// `ls_child_names_command` above, and never as an empty or absent answer.
+// CONSUMER: `witness_resolved_path` in test.claim.roadmap.witness_supplied_instance, whose
+// capture requires exactly one trailing NUL (`witness_strip_one_nul_terminator`) and treats any
+// other output shape -- no terminator, doubled terminator, embedded NUL -- as unobservable.
+fn realpath_canonicalize_missing_zero_command(path: String) -> ArgvCommand {
+  argv_command(program: realpath_program(), arguments: ["-m", "-z", "--", path])
+}
+
 fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program(), arguments: [path])
 }

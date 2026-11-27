@@ -202,6 +202,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // Its consumer is that guard, and the claims named by `local_repo_wet_schedule` for the four
     // path-admission legs.
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "realpath_canonicalize_missing_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "realpath_canonicalize_missing_zero_command"),
     decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_extract_command"),
     decl_ref(module_path: "extdeps.tools.node", decl_name: "node_eval_command"),
