@@ -3197,9 +3197,9 @@ test fn the_elevated_listing_answers_membership_and_escalates_failures_to_the_pa
 // a regular file -- the `/.` lookup fails on all three), and an errored or refused grandparent
 // keeps the whole standing unreadable.
 test fn a_failed_subject_lookup_settles_only_against_the_completed_grandparent_listing() -> Bool {
-  match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\n", ""), parent_name: "srv", main_cause: "exit 2: EACCES") {
+  match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\nsrv\n", ""), parent_name: "srv", main_cause: "exit 2: EACCES") {
     ListingUnreadable { cause: c } => string_contains(s: c, pattern: "would not list")
-      && match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\n", ""), parent_name: "srv", main_cause: "exit 2: EACCES") {
+      && match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\nsrv\n", ""), parent_name: "srv", main_cause: "exit 2: EACCES") {
            ListingUnreadable { cause: _ } => match serving_parent_settles(parent_listing: conv_r(0, "bin\nhome\n", ""), parent_name: "gone", main_cause: "exit 2: ENOENT") {
              ListingEntryAbsent => match serving_parent_settles(parent_listing: conv_r(2, "", "cannot access"), parent_name: "srv", main_cause: "exit 2") {
                ListingUnreadable { cause: _ } => match serving_parent_settles(parent_listing: conv_refused("ssh refused"), parent_name: "srv", main_cause: "exit 2") {
