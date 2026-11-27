@@ -56,3 +56,43 @@ After the original helper has been restored, place the digest of the real edited
 On a full fresh front-end call, changing the helper's one-digit integer literal should preserve the complete authored occurrence transport for this fixed-shape edit. Prepending a second file with a named declaration should move the helper's occurrence IDs, even though its bytes, logical path and full newline index stay equal. Compare the same ordered occurrences in the helper by authored spelling and source span. The second prediction challenges using file contents alone as the key for occurrence allocation.
 
 The recorded observations, including the first mismatched diagnostic expectation, are in [RESULTS.md](RESULTS.md).
+
+## Cache-key fixtures for the compiler reuse series (S1 / S4)
+
+These fixtures decide what a compiler-result cache key must bind, for the question
+`v1.symbol.index::build_symbol_index_census` (the census the serving lane reuses). Two key
+derivations are compared:
+
+* **S1 — bytes-only key**: `SHA-256(running compiler image, module path, module source bytes)`.
+  The wrong key under test: it binds only the consumer file, not the declarations its references
+  resolve to.
+* **S4 — corrected key**: the complete key over a **sorted, source-derived** set —
+  the compiler image, the sorted closure roster, and every source the producer read as a
+  `(source file path, module path, source bytes)` triple (sorted by file path then module path).
+  Binding the source file path **jointly** with the module and bytes makes the key sensitive to a
+  source-file rename (which changes the `SymbolIndex`), and prevents a swapped file<->module
+  assignment from colliding. One authority: `v1_compiler::closure_identity::symbol_census_key`
+  (seed library, declared in `dag/gunbc/materialization_shadow_seed_growth.dag`).
+
+Scenario ids used in the harness: **E** the bytes-only red (provider added, consumer bytes fixed →
+intact hit whose answer disagrees); **F** the corrected key notices the provider and agrees on a
+warm repeat; **G** a body-only, reference-preserving edit recomputes to an equal answer; **H** a
+duplicate module is refused before any answer; **R** the rename control (same bytes and module,
+different source file name → the key moves, recomputes, and a warm repeat agrees) — the guard
+against binding only module path + bytes, which serves a stale answer after a rename; plus a
+determinism control (the same tree keyed in two separate processes gives the same key).
+
+**Which binary each scenario runs.** Every scenario re-executes the *test binary* (its
+`current_exe()`) once per step in a fresh OS process; that binary links the real v1 compiler
+library, so `compile_to_resolved` + `build_symbol_index_census` run for real on real `.dag` sources
+in each process. The running-image identity that S4 embeds is therefore the test binary's image —
+which is the right thing to hash here, because every row is compared within one consistent image and
+the experiment never feeds a stored answer back to the compiler. The production serving route that
+would key on the shipped `gunbc` binary image belongs to the serving PR, not to this fixture. The
+observer's `gunbc run` CLI hook and the newline-index question are untouched by this fixture; only
+the shared record format (in `closure_identity`) and the S4 key are exercised here.
+
+Predictions (committed before any run, left unedited) are in
+[cache-key-predictions.md](cache-key-predictions.md); the observations recorded beside them are in
+[cache-key-observed.md](cache-key-observed.md). The harness is
+`src/v1/stage0/tests/materialization_shadow_cache_key.rs`.
