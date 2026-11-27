@@ -34,6 +34,8 @@ data p_ul_src: String = "module p\n\nfn f(n: Int) -> Int {\n  let hidden = n\n  
 data p_up_src: String = "module p\n\nfn f(n: Int, k: Int) -> Int {\n  n\n}\n"
 data p_lp_src: String = "module p\n\nfn apply2(g: fn(Int, Int) -> Int, a: Int, b: Int) -> Int { g(a, b) }\n\nfn f(n: Int) -> Int {\n  apply2(fn(x, y) { x }, n, n)\n}\n"
 data p_lu_src: String = "module p\n\nfn helper(n: Int) -> Int { n }\n\nfn f(n: Int) -> Int {\n  let _ = helper(n)\n  n\n}\n"
+data p_wp_src: String = "module p\n\nfn f(n: Int, _: Int) -> Int {\n  n\n}\n"
+data p_lwp_src: String = "module p\n\nfn apply2(g: fn(Int, Int) -> Int, a: Int, b: Int) -> Int { g(a, b) }\n\nfn f(n: Int) -> Int {\n  apply2(fn(_, y) { y }, n, n)\n}\n"
 
 data prod_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -137,6 +139,8 @@ test fn vd_p_blk_refused_precedes_holds() -> Bool { prod_refused_precedes(p_blk_
 
 // POSITIVE (explicit discard): let _ = total op stays ACCEPTED (row control).
 test fn vd_p_lu_accepted_holds() -> Bool { prod_accepted(p_lu_src) }
+test fn vd_p_wp_accepted_holds() -> Bool { prod_accepted(p_wp_src) }
+test fn vd_p_lwp_accepted_holds() -> Bool { prod_accepted(p_lwp_src) }
 
 fn prod_refused_authored(src: String) -> Bool {
   match prod_assemble(src: src) {

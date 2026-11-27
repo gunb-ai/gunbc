@@ -4263,8 +4263,10 @@ fn resolve_binder_site_read(site: NodeOccurrenceIdentity, bindings: List<Occurre
 // binder that is read. Pattern-field bindings are NOT refused here: the plan carve-out of 2026-11-26
 // sends them to their carrier gunbc.recurring_failure_mode::accepted_source_emits_uncompilable_target,
 // whose workaround at the field arm of resolve_catch_all_binder_read_gate stays that row's. A
-// wildcard binder (the `_` spelling, lowered to the wildcard pattern identity) binds nothing
-// nameable, and an anonymous-slot binder is not authored text: neither is ever refused by this gate.
+// wildcard binder binds nothing nameable -- its pattern form is lowered to the wildcard pattern
+// identity, while a let binder keeps the `_` spelling itself (the fold's lowering covers pattern
+// forms, not a statement let's name), so the gate skips both grains -- and an anonymous-slot binder
+// is not authored text: none of these is ever refused by this gate.
 // USE IS DECIDED BY BINDING IDENTITY, NOT IDENTIFIER TEXT. A read counts for a binder only when the
 // entry it minted binds THAT binder: a let binder answers at its atom occurrence (resolve_binder_site_read,
 // the same question the catch-all gate asks); an fn-parameter binder answers at its indexed path (the
@@ -4286,7 +4288,7 @@ fn resolve_gate_authored_let_binder_read(n: Node, walk: ResolveNodeWalk) -> Reso
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: bindings } =>
       match bind_binder(n: n) {
         Present { value: b } =>
-          if is_wildcard_pattern_identity(sym: b.name) || is_anonymous_param_label(sym: b.name) {
+          if is_wildcard_pattern_identity(sym: b.name) || (b.name == pattern_wildcard_name()) || is_anonymous_param_label(sym: b.name) {
             walk
           } else if resolve_binder_site_read(site: b.atom.occurrence_id, bindings: bindings) {
             walk
