@@ -85,7 +85,7 @@ import gunbc.roadmap.roadmap_event_log {
 // (gunbc.generated_artifact artifact_location), and the witness DERIVES its walk root from those rows; this is
 // the constant the witness uses to recognise which roster rows belong to the fixture at all. A witness that
 // re-spelled the whole path would drift from the roster silently -- so it spells this one prefix and a witness
-// (test.claim.roadmap.roadmap_authority witness_committed_fixture_is_the_rosters_five_rows) demands that every
+// (test.claim.roadmap.roadmap_authority_fixture_witness witness_committed_fixture_is_the_rosters_five_rows) demands that every
 // fixture row's rostered path live under it.
 data roadmap_authority_fixture_worktree_dir: String = "fixtures/roadmap_authority"
 
@@ -108,7 +108,7 @@ fn roadmap_authority_fixture_worktree_root() -> String { roadmap_authority_fixtu
 // OWN criteria law (gunbc.roadmap.roadmap_model roadmap_criteria_digest) applied to the fixture's own
 // ticket fields, so the receipt is valid for the reason the model says receipts are valid, not because a
 // number was guessed. There is no fallback branch and nothing is fabricated: a receipt is built from a
-// scenario row that exists here, and a witness (test.claim.roadmap.roadmap_authority
+// scenario row that exists here, and a witness (test.claim.roadmap.roadmap_authority_fixture_witness
 // witness_fixture_digests_are_declared_or_borrowed) demands the committed bytes carry exactly those
 // digests, and that no fixture node is a real roadmap row at all.
 
