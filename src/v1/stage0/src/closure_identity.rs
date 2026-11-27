@@ -147,9 +147,11 @@ pub fn witness_work_subject_key(closure_subject_digest: &str, function: &str) ->
 // The existing `hash_combine` chain above is FNV-16-hex and is preserved byte-for-byte so the
 // keys already carried by receipts stay stable. A reusable `build_symbol_index_census` answer,
 // however, is addressed in `std.fabric_blob`, which requires a 64-hex lower-case SHA-256. This
-// is the single authority for that key: the fixture and the production serving path call the
-// same declaration, so there is one definition. It is keying, not caching — it never supplies an
-// answer to the compiler.
+// is intended to be the single authority for that key, so the fixture and the production
+// serving path share one definition rather than each deriving a key. Today the only caller is
+// the fixture (`materialization_shadow_cache_key`); the production serving path is a separate,
+// not-yet-landed lane and does not call this yet. It is keying, not caching — it never supplies
+// an answer to the compiler.
 
 const CENSUS_KEY_SCHEMA: &[u8] = b"symbol-census-key-v1";
 const CENSUS_QUESTION: &[u8] = b"v1.symbol.index::build_symbol_index_census";

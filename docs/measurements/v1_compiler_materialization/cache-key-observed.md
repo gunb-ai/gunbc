@@ -54,11 +54,23 @@ Two key facts about the numbers:
 * **Determinism (D1=D2).** The same provider-bearing tree keyed in two separate processes produced
   the identical S4 key `844cc412…`. This is the sorted-set control the reviewer asked for: no
   `HashSet` iteration order leaks into the key.
-* **Body-only edit (G1→G2).** A same-width literal `1`→`2` (references unchanged) moved the S4 key
-  (`8203a0a1…` → `f0d7c7b7…`) but recomputed to an **equal** answer (`89f2a524…`). Prediction matched.
+* **Body-only edit (G1→G2). Prediction S4f FALSIFIED.** The committed prediction expected the
+  corrected S4 key to stay stable under a reference-preserving edit — "references unchanged → key
+  **stable** → **hit, equal**". The observation is different: the same-width literal `1`→`2`
+  **moved** the S4 key (`8203a0a1…` → `f0d7c7b7…`), so the lookup was a **miss / absent** (not a
+  hit) and the answer was recomputed. What *did* hold is the load-bearing part the brief requires:
+  the recomputed answer is **equal** to the baseline (`89f2a524…`). Correction recorded here,
+  beside the unchanged prediction: `symbol_census_key` **over-approximates** its dependency set — it
+  binds every discovered module's full source **bytes**, not the reference/dependency facts the
+  answer depends on. So it is never wrong (it can only miss, never serve a stale answer) but is less
+  reuse-efficient than the prediction assumed: any byte change inside the closure busts the key, even
+  a reference-preserving body edit. The prediction over-claimed key stability; that claim is false.
 * **Duplicate provider (H1/H2).** A second file declaring the same module path was refused
   (`duplicate-module`) **before** any census answer was computed, for both key derivations, with no
   record written. Prediction matched; a duplicate is not the right provider for the red.
 
-No correction to a prediction was needed: every observed hit/miss/disagree matched the committed
-predictions.
+Except for **S4f**, every observed hit/miss/disagree matched the committed predictions. One
+correction is recorded above, beside the prediction rather than in its place: S4f claimed the
+corrected S4 key stays stable under a reference-preserving body edit, but `symbol_census_key` binds
+full source bytes, so the key moved and the lookup was a miss (the recomputed answer was still
+equal). The predictions file is left unedited.
