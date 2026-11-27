@@ -43,8 +43,9 @@ import gunbc.host.host_effect {
 }
 import std.types { NonEmptyStr, String, List }
 import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
-import gunbc.roadmap.roadmap_site_surface_observe { RoadmapSiteSurfaceBundleRendered }
 import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
+import std.algebra { fold_list }
+import gunbc.live_deploy.intent { live_deploy_health_url_for_port }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { measure_fit_count_floor, second_count }
@@ -59,9 +60,6 @@ import extdeps.tools.curl {
 import extdeps.tools.sleep {
   sleep_delay_seconds_flat_scalar_dissolution_trigger,
   sleep_delay_seconds_second_carrier_projection,
-}
-import gunbc.roadmap.roadmap_site_healthz_validate {
-  roadmap_site_healthz_json_string_parses,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural }
@@ -86,7 +84,6 @@ fn witness_candidate_release() -> CandidateRelease {
   CandidateRelease {
     revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
-    expected_dispatch_digest: witness_expected_surface_identity(),
   }
 }
 
@@ -186,7 +183,7 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
     read: HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
-    observation: RoadmapSiteSurfaceBundleRendered { bundle: unused_surface_bundle() },
+    bundle: unused_surface_bundle(),
     expected_revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
@@ -205,7 +202,7 @@ test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Boo
   let bundle = unused_surface_bundle()
   match observe_service_readiness_from_healthz(
     read: HealthzBodyRead { body: unused_process_body_at_admitted_revision() },
-    observation: RoadmapSiteSurfaceBundleRendered { bundle: bundle },
+    bundle: bundle,
     expected_revision: deploy_witness_other_release_revision,
     expected_surface_identity: bundle.bundle_identity,
   ) {
@@ -241,7 +238,7 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   )
   match observe_service_readiness_from_healthz(
     read: read,
-    observation: RoadmapSiteSurfaceBundleRendered { bundle: unused_surface_bundle() },
+    bundle: unused_surface_bundle(),
     expected_revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {

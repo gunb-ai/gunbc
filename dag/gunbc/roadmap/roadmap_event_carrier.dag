@@ -13,13 +13,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
   FilesystemReadSucceeded,
   filesystem_read_outcome,
-  FilesystemEntryPresence,
-  FilesystemEntryAbsent,
-  FilesystemEntryListed,
-  FilesystemEntryPresenceIndeterminate,
-  FilesystemEntrySubjectRefused,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path, filesystem_entry_presence_of_path }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
 import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural, lower_hex_16 }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
@@ -67,29 +62,17 @@ data roadmap_events_branch: NonEmptyStr = "roadmap-events" as NonEmptyStr
 data roadmap_events_remote: String = "origin"
 data roadmap_events_dir_segment: String = "events"
 
-// TWO CARRIER LAYOUTS, NOT ONE LAYOUT WITH A TAG (gunbc.design_argument::fail_closed: "stronger than catching
-// a wrong state is making it unwritable"; gunbc.design_argument::guarantee_ladder: "construction over proof,
-// proof over validation"). The two read paths differ on exactly one axis — WHO OWNS the carrier worktree and
-// whether the named branch is ever ATTACHED — and the srv1 cutover gate failed deterministically on that axis.
-// Encoding it as a flat tag plus a worktree field that only one arm reads is the undeclared-sum shape: it still
-// admits a launcher layout that CARRIES an attached worktree, and the only guard against reading it is a comment
-// and "nobody touches that field." So the worktree is placed where it is used and the layout is the sum.
+// THE CARRIER LAYOUT (the instance/service): a persistent worktree, created by roadmap_event_carrier_ensure,
+// which attaches the shared branch (`git worktree add <worktree> <branch>`) and is REUSED across reads -- that
+// persistence is the service's point, so repeated reads stay cheap, and the anchor is intentional and never
+// closed. Its every function reads layout.worktree directly.
 //
-// The ATTACHED layout (the instance/service, the original behaviour) keeps a persistent worktree, created by
-// roadmap_event_carrier_ensure, which attaches the shared branch (`git worktree add <worktree> <branch>`) and
-// REUSES it across reads — that persistence is the service's point, so repeated reads stay cheap, and the anchor
-// is intentional and never closed. Its every function reads layout.worktree directly; nothing about the running
-// service changed.
-//
-// The SCOPED DETACHED layout (the CI launcher only) has NO worktree field at all: it structurally cannot hold an
-// attached worktree, so no placeholder path or comment is needed to keep a launcher layout from pointing one.
-// Each read owns a scoped DETACHED snapshot rooted in a `mktemp -d` scratch under repo_root, the named branch is
-// NEVER attached, and the snapshot is closed on both success and refusal. That matters: a branch-attached anchor
-// that outlives its read makes the NEXT read refuse deterministically — `git fetch <remote> <branch>:<branch>`
-// answers "refusing to fetch into branch ... checked out at ..." and `git worktree add` answers "already used by
-// worktree" — which is precisely what turned the launcher's SECOND read (the readiness gate, running after the
-// candidate in the same CI job) into a ServiceSurfaceUnobserved. The launcher read owns nothing that outlives a
-// read, so it is repeatable against one checkout with origin unchanged.
+// There used to be a second, SCOPED DETACHED layout for the CI deploy launcher, which read origin's branch
+// into a short-lived detached snapshot under the runner's own principal so the candidate, the readiness gate
+// and the launch receipt could render the served surface over the event log. Since the operator ruling of
+// 2026-11-26 the served surface is a fact of (interpreter, tree) and renders over no carrier
+// (gunbc.roadmap.roadmap_site_surface_observe roadmap_site_tree_surface_bundle), so the launcher reads no log
+// and that layout, its read arm and its scratch lifecycle were deleted with their last consumer.
 type RoadmapEventCarrierLayout {
   repo_root: FilePath
   worktree: FilePath
@@ -98,26 +81,6 @@ type RoadmapEventCarrierLayout {
   remote: String
 }
 
-// The LAUNCHER (CI-deploy-job) layout. NO worktree field: the scoped read owns a short-lived detached snapshot
-// in its own scratch, so there is no long-lived worktree for this type to name, and a wrong one is unwritable.
-type RoadmapEventCarrierScopedLayout {
-  repo_root: FilePath
-  git_program: String
-  directory_program: String
-  realpath_program: String
-  remote: String
-}
-
-// THE READ BOUNDARY. The single carrier read entry point takes this and dispatches once; every fold above it
-// (the projection, the history/retired loads) is shared and never sees a worktree. A launcher reaches it ONLY
-// through the ScopedDetached arm and therefore cannot supply an attached worktree even by construction.
-type RoadmapEventCarrierRead
-  = CarrierReadAttached { attached: RoadmapEventCarrierLayout }
-  | CarrierReadScopedDetached { scoped: RoadmapEventCarrierScopedLayout }
-
-// The outcome of syncing a scoped snapshot INSIDE its own worktree (fetch, then reset --hard FETCH_HEAD there,
-// so the read resolves FETCH_HEAD against its OWN per-worktree value — not the checkout's mutable one).
-type RoadmapScratchSync = ScratchSynced | ScratchSyncFailed { step: String, exit_code: Int, stderr: String }
 
 // Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
 // instance root the worktree hangs under, and the host's git and directory (install) realizations.
@@ -169,46 +132,6 @@ fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, gi
     worktree: dashboard_instance_child(root: instance_root, child: roadmap_events_worktree_child),
     git_program: git_program,
     directory_program: directory_program,
-  }
-}
-
-// THE CANDIDATE-SIDE (CI LAUNCHER) CARRIER LAYOUT — the read repair for the srv1 cutover gate's deterministic
-// ProcessSurfaceMismatch. observe_candidate_release runs in the CI job as the runner principal, but the instance
-// layout the live surface renders through (roadmap_event_carrier_layout_for_instance) names /opt/gunbc, owned by
-// the service principal; the carrier read is NOT read-only (worktree add in repo_root, fetch, reset --hard), so
-// under a foreign principal EVERY git call refuses with "detected dubious ownership" and ghrunner cannot write
-// briansrls's .git. Rendering the expectation over that refused roster minted an identity the service could never
-// meet — the fail-open, now refused by gunbc.live_deploy.candidate. The repair reads the SAME authority the
-// service renders from, under a principal that owns it: the service SYNCs its worktree to the remote on every
-// read (roadmap_event_carrier_sync: fetch <remote> <branch>; reset --hard FETCH_HEAD), so the remote's tip of the
-// roadmap-events branch IS the shared authority — a divergent local head on either host is discarded, never
-// rendered. This layout points the carrier at the runner's OWN checkout (repo_root = the CI checkout) so the git
-// it runs writes only the runner's repository. Note the read is NOT a read-only ref peek: it fetches objects,
-// registers a linked worktree and materializes a temporary tree — it writes objects, worktree registrations and
-// temporary trees into the runner's .git — but never a tracked path, so `git status` and the deploy cleanliness
-// check (which read tracked content) stay clean. Its read (roadmap_events_read_all → the ScopedDetached arm →
-// roadmap_events_read_all_scoped_detached) owns a scoped DETACHED snapshot: the branch is NEVER attached, so the
-// anchor that made the SECOND launcher read refuse (`git fetch ... branch:branch` / `git worktree add` after an
-// unclosed branch-attached anchor) cannot exist. The snapshot's scratch is created at READ time by the read
-// itself — with an explicit shell.Mktemp.Dir().success check — NOT here, so a failed scratch is a typed refusal
-// and never an empty path that would resolve to a stray "/roadmap-events". This layout type has NO worktree
-// field: the scoped read owns its own scratch, so there is no long-lived worktree for the type to name and an
-// attached worktree on a launcher layout is unwritable, not merely unread. remote and branch match the instance
-// layout exactly — the same remote branch the service syncs from. Capability programs are taken from the instance
-// layout because those executables are realized by the runtime image, not the briansrls-owned paths the
-// dubious-ownership refusal was about. No host edit: the runner is the principal here. This function is PURE —
-// it opens no scratch, so building the layout has no effect and a layout built outside a read cannot leak.
-// gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_binding is the sibling family.
-fn roadmap_event_carrier_ci_layout(
-  checkout_root: FilePath,
-  instance_layout: RoadmapEventCarrierLayout,
-) -> RoadmapEventCarrierScopedLayout {
-  RoadmapEventCarrierScopedLayout {
-    remote: instance_layout.remote,
-    repo_root: checkout_root,
-    git_program: instance_layout.git_program,
-    directory_program: instance_layout.directory_program,
-    realpath_program: "realpath",
   }
 }
 
@@ -483,39 +406,14 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
 // a worktree the operation left behind, named with what the removal answered. It is a fact beside
 // the operation's result and never a rewrite of it: an event that was published stays published
 // whether or not its scratch worktree could be removed.
-// THE TWO WAYS A CLOSE FAILS ARE DIFFERENT KINDS OF FAILURE AND MUST NOT SHARE A TAG. A failed
-// REMOVAL COMMAND (`SnapshotCloseFailed`) carries the command's own exit code and stderr: the host
-// answered, the answer was failure, and there is a status to quote. A CLOSE VERIFICATION FAILURE
-// (`SnapshotCloseVerificationFailed`) is not a command that failed -- the removals ran and their exit
-// codes were DISCARDED by design (removing a never-registered worktree must not read as failure, and
-// a scratch that is already gone must not read as failure), so there is NO exit code to carry. What
-// failed is the ESTABLISHMENT of the clean end state. Fabricating `exit_code: 0` for it would print
-// "exit 0" beside a failure that never ran a command -- a lie the type must make unwritable. It
-// carries a typed CAUSE instead, so a consumer can DISTINGUISH "could not establish" from "the host
-// said it could not remove" and choose its own policy on each, and so an unobservable absence never
-// collapses into closed. (Whether a given consumer then stops is its own decision: the read-after-close
-// folds return the read regardless of the close, exactly as they already do for a command-failed close;
-// this variant changes what the standing SAYS, not whether those folds gate on it.)
-// THE REGISTRATION SIDE HAS THE SAME THREE OUTCOMES AS THE DIRECTORY SIDE. Absence is ESTABLISHED from the worktree's
-// ADMIN DIRECTORY -- bound to the add from its `gitdir:` gitfile, a concrete path -- NOT from `worktree list`, which
-// can exit 0 with an INCOMPLETE listing (omitting a registration under an unreadable .git/worktrees). A surviving
-// registration (`CloseVerifyRegistrationPersists`) means the admin directory is still present OR the listing still
-// names it; both are the host ANSWERING that the worktree lives. But if the listing itself did not answer (nonzero
-// exit -- a `.git` lock, or the very ownership refusal this family is about), that is NOT a surviving registration and
-// must not be reported as one: it is `CloseVerifyRegistrationPresenceUnobservable`, carrying the listing's exit and
-// stderr, so a consumer never confuses "git said it could not remove it" with "git never told us." The Bool-merging of
-// these two was the earlier defect; trusting the listing ALONE to establish absence was the second.
-type CarrierCloseVerification
-  = CloseVerifyRegistrationPersists
-  | CloseVerifyRegistrationPresenceUnobservable { reason: String }
-  | CloseVerifyDirectoryPersists
-  | CloseVerifyDirectoryPresenceUnobservable { reason: String }
-
+// A failed REMOVAL COMMAND (`SnapshotCloseFailed`) carries the command's own exit code and stderr: the host
+// answered, the answer was failure, and there is a status to quote. (A second failure kind, a close whose clean
+// end state could not be ESTABLISHED, belonged to the CI launcher's scoped detached read and was deleted with it
+// on 2026-11-26; the attached read's close is the removal command alone.)
 type CarrierSnapshotClose
   = SnapshotNotOpened
   | SnapshotClosed
   | SnapshotCloseFailed { worktree: FilePath, exit_code: Int, stderr: String }
-  | SnapshotCloseVerificationFailed { worktree: FilePath, verification: CarrierCloseVerification }
 
 // EVERY SNAPSHOT-OWNING OPERATION ANSWERS WITH BOTH: its own result, unchanged, and the standing of
 // the snapshot it owned. The caller is the one that has a surface for a leaked worktree, so the
@@ -539,17 +437,6 @@ fn carrier_snapshot_close_failure(close: CarrierSnapshotClose) -> String? {
     SnapshotClosed => none
     SnapshotCloseFailed { worktree, exit_code, stderr } =>
       Present { value: join(["roadmap event snapshot worktree ", worktree as String, " was not removed (exit ", to_string(value: exit_code), "): ", trim(stderr)], "") }
-    SnapshotCloseVerificationFailed { worktree, verification } =>
-      Present { value: join(["roadmap event snapshot worktree ", worktree as String, " close could not be verified clean: ", carrier_close_verification_reason(verification: verification)], "") }
-  }
-}
-
-fn carrier_close_verification_reason(verification: CarrierCloseVerification) -> String {
-  match verification {
-    CloseVerifyRegistrationPersists => "the worktree registration is still present after the removals (the admin directory remains, or the worktree list still names it)"
-    CloseVerifyRegistrationPresenceUnobservable { reason } => join(["the worktree registration's absence is not established: ", reason], "")
-    CloseVerifyDirectoryPersists => "the scratch directory is still present after the removals"
-    CloseVerifyDirectoryPresenceUnobservable { reason } => join(["the scratch directory's absence is not established: ", reason], "")
   }
 }
 
@@ -1002,24 +889,11 @@ fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<Ro
   }
 }
 
-// The single carrier read entry point. WHICH arm of the layout sum arrives decides how the log is opened — one
-// read boundary, one declared variation, not two forks. The service arm (CarrierReadAttached) and the CI launcher
-// arm (CarrierReadScopedDetached) share the projection, the history/retired loads and every pure fold; only the way
-// the snapshot is opened and released differs here. The ScopedDetached arm carries no worktree at all
-// (RoadmapEventCarrierScopedLayout has no such field), so the launcher cannot name a persistent worktree even by
-// construction — the wrong state is unwritable, not merely unread.
-fn roadmap_events_read_all(read: RoadmapEventCarrierRead) -> CarrierClosed<RoadmapAllEventsRead> {
-  match read {
-    CarrierReadAttached { attached } => roadmap_events_read_all_attached(layout: attached)
-    CarrierReadScopedDetached { scoped } => roadmap_events_read_all_scoped_detached(scoped: scoped)
-  }
-}
-
-// The Attached read: the original behaviour, byte-for-byte. Open a persistent branch-attached anchor worktree
-// at layout.worktree via ensure, take a private detached snapshot, read it, close the snapshot. The anchor is
-// intentionally left open so the service reuses it across reads cheaply — sound for a stable service worktree,
-// fatal when the worktree path changes per read (the launcher), which is why the launcher never enters here.
-fn roadmap_events_read_all_attached(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
+// THE SINGLE CARRIER READ ENTRY POINT. Open a persistent branch-attached anchor worktree at layout.worktree via
+// ensure, take a private detached snapshot, read it, close the snapshot. The anchor is intentionally left open so
+// the service reuses it across reads cheaply -- sound for a stable service worktree, fatal for a reader whose
+// worktree path changes per read, which is why no such reader is admitted here.
+fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
   match roadmap_event_private_snapshot(layout: layout) {
     CarrierSnapshotRefused { reason } => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
     CarrierSnapshotReady { layout: private } =>
@@ -1058,307 +932,6 @@ fn roadmap_projection_read_one_snapshot(layout: RoadmapEventCarrierLayout) -> Ca
         events: roadmap_events_read_all_private(layout: private),
       },
       close: roadmap_event_snapshot_close(layout: private),
-    }
-  }
-}
-
-// The ScopedDetached read (CI launcher only). It owns NOTHING that outlives the call and never attaches the named
-// branch, so it is repeatable against one checkout with origin unchanged — the property the SECOND launcher read
-// (the readiness gate, after the candidate in the same CI job) needs and a branch-attached anchor could not give.
-// The order is deliberate: create the DETACHED worktree FIRST (at repo HEAD), THEN fetch and reset --hard FETCH_HEAD
-// INSIDE it. Fetching into repo_root first and then materializing FETCH_HEAD (as an earlier revision did) read the
-// SHARED refs/FETCH_HEAD of the checkout — a concurrent fetch there between the fetch and the materialize hands this
-// snapshot the wrong tree, and a missing events/ then reads back as an EMPTY roster (the reader treats not-found as
-// empty), not a refusal. Materializing inside the worktree makes the read resolve FETCH_HEAD against its OWN
-// per-worktree value, which only this read writes. Every step after the worktree add can leave a REGISTRATION behind
-// (a post-checkout hook fails `worktree add` AFTER git registered it), so every such arm runs the close and reports
-// ITS outcome. "never opened" is claimed ONLY where nothing could have registered AND its absence is established: the
-// mktemp failure (no directory was ever made) and the pre-add identity arm (only after it removes the scratch and
-// observes it gone) -- never for post-add state that may still hold a registration.
-fn roadmap_events_read_all_scoped_detached(scoped: RoadmapEventCarrierScopedLayout) -> CarrierClosed<RoadmapAllEventsRead> {
-  let scratch = shell.Mktemp.Dir()
-  if !scratch.success {
-    // Nothing was created and nothing could have registered: not-opened is established here without further checking.
-    CarrierClosed { result: AllEventsReadRefused { step: "scratch", reason: "cannot create launcher event snapshot scratch" }, close: SnapshotNotOpened }
-  } else {
-    // BIND THE IDENTITY TO THE ADD. git canonicalizes a worktree path when it registers one, so the string
-    // `worktree list` will record is the CANONICAL path, not the mktemp spelling. Establish it NOW, while the
-    // scratch still exists, and register the worktree AT THE CANONICAL PATH; carry that identity (and the original
-    // mktemp allocation) through every arm into the close, which verifies against the carried values and never
-    // re-resolves. If realpath cannot be established we have NOT opened a worktree, but we DO own the scratch
-    // mktemp just created -- so removal is observed, not trusted, before `SnapshotNotOpened` is claimed.
-    match canonical_scratch_identity(scoped: scoped, scratch: scratch.path) {
-      ScratchIdentityUnestablishable { reason } => {
-        // realpath failed, so no worktree was registered -- `SnapshotNotOpened` is right ONLY IF the scratch we
-        // just allocated is established GONE. Remove it, then OBSERVE the end state: a surviving or unobservable
-        // scratch is a typed leak, never a silent `SnapshotNotOpened`. Previously this arm did `let _ = rm` and
-        // claimed NotOpened unconditionally, so a removal that failed (e.g. a leading '-' mis-parsed as an
-        // option) leaked the owned directory unreported. The RESULT stays the identity refusal; only the close
-        // standing is corrected.
-        let _ = shell.Remove.RecursiveForce(path: scratch.path)
-        let close = match roadmap_event_scratch_dir_presence(path: scratch.path) {
-          FilesystemEntryAbsent(_) => SnapshotNotOpened
-          FilesystemEntryListed { directory: _, name: _ } =>
-            SnapshotCloseVerificationFailed { worktree: scratch.path, verification: CloseVerifyDirectoryPersists }
-          FilesystemEntryPresenceIndeterminate { cause } =>
-            SnapshotCloseVerificationFailed { worktree: scratch.path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["scratch ", scratch.path as String, ": ", cause], "") } }
-          FilesystemEntrySubjectRefused { cause } =>
-            SnapshotCloseVerificationFailed { worktree: scratch.path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch was not an admissible listing subject: ", cause], "") } }
-        }
-        CarrierClosed { result: AllEventsReadRefused { step: "identity", reason: reason }, close: close }
-      }
-      ScratchIdentityEstablished { canonical } => match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String,
-        args: ["worktree", "add", "--detach", canonical, "HEAD"]) {
-        CarrierExecFailed { exit_code, stderr } => {
-          // A nonzero add does NOT establish that nothing registered (a post-checkout hook can fail the checkout
-          // AFTER git registered the worktree). Best-effort read the admin-dir handle, then clean registration and
-          // directory and report the close the host actually granted -- never SnapshotNotOpened for state that may exist.
-          let admin = roadmap_event_worktree_admin_dir(scoped: scoped, canonical: canonical)
-          match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path, admin: admin) {
-            close => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: close }
-          }
-        }
-        CarrierExecOk { stdout: _ } => {
-          // Bind the registration identity NOW, from the gitfile the add just wrote, so the close verifies a concrete
-          // admin dir and never trusts `worktree list` alone (which can omit a live registration).
-          let admin = roadmap_event_worktree_admin_dir(scoped: scoped, canonical: canonical)
-          match roadmap_event_scratch_sync(scoped: scoped, path: canonical as FilePath) {
-            ScratchSyncFailed { step, exit_code, stderr } => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path, admin: admin) {
-              close => CarrierClosed { result: AllEventsReadRefused { step: step, reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: close }
-            }
-            ScratchSynced => match roadmap_events_read_dir(dir: join([canonical, "/", roadmap_events_dir_segment], "")) {
-              r => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path, admin: admin) {
-                close => CarrierClosed { result: r, close: close }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-// Sync the scoped snapshot to the remote branch tip, INSIDE its own worktree. Fetch then reset --hard FETCH_HEAD
-// with workdir = the worktree, so FETCH_HEAD is the one THIS read's fetch wrote (per-worktree), immune to a
-// concurrent fetch elsewhere in the checkout. It never maps a branch (`<branch>:<branch>`), so refs/heads/<branch>
-// is never written and the named branch is never attached.
-fn roadmap_event_scratch_sync(scoped: RoadmapEventCarrierScopedLayout, path: FilePath) -> RoadmapScratchSync {
-  match carrier_exec_program(program: scoped.git_program, workdir: path as String, args: ["fetch", "-q", scoped.remote, roadmap_events_branch as String]) {
-    CarrierExecFailed { exit_code, stderr } => ScratchSyncFailed { step: "fetch", exit_code: exit_code, stderr: stderr }
-    CarrierExecOk { stdout: _ } => match carrier_exec_program(program: scoped.git_program, workdir: path as String, args: ["reset", "-q", "--hard", "FETCH_HEAD"]) {
-      CarrierExecFailed { exit_code, stderr } => ScratchSyncFailed { step: "reset", exit_code: exit_code, stderr: stderr }
-      CarrierExecOk { stdout: _ } => ScratchSynced
-    }
-  }
-}
-
-// Close the launcher's scoped snapshot on EVERY arm — success, add-failure, sync-failure or read — never leaving
-// behind the way the Attached anchor does. `worktree remove --force` drops the checkout and its registration
-// (which also runs the removal's own cleanup); `worktree prune` clears any registration whose gitdir git already
-// considers gone; the recursive removal takes the scratch directory. The VERDICT is not the exit code of remove
-// (removing something that was never registered also fails, and reporting that as a close-failure would lie the
-// other way): it is the ESTABLISHED end state. The close is Closed only when the worktree's ADMIN directory -- bound
-// to the add from its `gitdir:` gitfile, so a concrete path -- is ESTABLISHED absent AND both scratch directories are
-// gone. The `worktree list` may only ADD a present or an unobservable (it can exit 0 with an INCOMPLETE listing when
-// .git/worktrees is unreadable), so it never establishes absence on its own. If the registration or a directory
-// persists, or its presence cannot be established, the close is a typed verification failure naming what remains or
-// why it is unobservable. So a cleanup that did not happen is reported as a leak, a nothing-to-remove is reported
-// honestly as closed, and SnapshotNotOpened is never claimed from here.
-fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, canonical: String, original: FilePath, admin: CarrierAdminDir) -> CarrierSnapshotClose {
-  // The identity AND the registration admin dir were bound to the ADD by the caller and are CARRIED here -- the
-  // close never re-resolves realpath nor re-derives the gitdir (doing so after removal, when the scratch is gone,
-  // was the bug). Run EVERY removal -- never chain with &&, which short-circuits and skips the rest -- against the
-  // canonical registration git recorded, and take the original allocation too (under a symlinked scratch it is a
-  // separate, unregistered tree). The removal exit codes are bound, not discarded, but the VERDICT is the ESTABLISHED
-  // END STATE, not the codes: a nonzero removal that still leaves an established-absent end state is the legitimate
-  // nothing-to-remove case, so the codes are advisory (folded into an unobservable-presence reason) and never mint a
-  // false Closed. Registration absence is ESTABLISHED from the ADMIN DIR (a concrete path bound to this add), NOT
-  // from `worktree list`: git can exit 0 with an INCOMPLETE listing when .git/worktrees is unreadable, omitting
-  // registrations it cannot enumerate, so the listing may only ADD "present"/"unobservable" and NEVER establish
-  // absence alone. Absence must hold for the admin dir AND for both directory spellings; anything else is a typed
-  // verification failure, never Closed.
-  let remove_worktree = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "remove", "--force", canonical])
-  let prune = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "prune"])
-  let canonical_path = canonical as FilePath
-  let remove_canonical = shell.Remove.RecursiveForce(path: canonical_path)
-  let remove_original = shell.Remove.RecursiveForce(path: original)
-  let removal_note = if carrier_exec_succeeded(e: remove_worktree) && carrier_exec_succeeded(e: prune) && remove_canonical.success && remove_original.success {
-    "all removals reported clean"
-  } else {
-    "a removal reported a nonzero exit"
-  }
-  match admin {
-    // No handle on the registration: the admin dir could not be read/parsed from the worktree gitfile at the add, so
-    // its absence cannot be established, and the listing alone cannot establish absence. This is never Closed.
-    AdminDirUnestablishable { reason } =>
-      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join(["the worktree admin dir could not be established from the gitfile, so its absence is not established: ", reason, " (", removal_note, ")"], "") } }
-    AdminDirEstablished { dir } => match roadmap_event_scratch_dir_presence(path: dir) {
-      FilesystemEntryListed { directory: _, name: _ } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
-      FilesystemEntryPresenceIndeterminate { cause } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join(["admin dir ", dir as String, ": ", cause, " (", removal_note, ")"], "") } }
-      FilesystemEntrySubjectRefused { cause } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join(["the admin dir was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
-      FilesystemEntryAbsent(_) => match roadmap_event_scratch_registration_presence(scoped: scoped, identity: canonical) {
-        // The admin dir is established ABSENT, but the listing may still CONTRADICT it -- the listing may only ADD a
-        // present or an unobservable, never confirm absence. So a still-listed or unlistable registration overrides.
-        RegistrationListed =>
-          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
-        RegistrationPresenceUnobservable { reason } =>
-          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join([reason, " (", removal_note, ")"], "") } }
-        RegistrationAbsent => roadmap_event_scratch_dirs_close(canonical_path: canonical_path, original: original, removal_note: removal_note)
-      }
-    }
-  }
-}
-
-// The canonical path git will register this worktree under, established in the READ while the scratch exists and
-// BEFORE `worktree add`. realpath resolves every symlink component, so it equals git's own canonicalization; the
-// close verifies the registration and the directory against THIS value and never re-resolves. A realpath failure
-// (missing tool, vanished path, unreadable component) is NOT silent and NOT treated as a canonical value. The
-// output is `<path>\n`: strip ONLY the single framing newline and keep every other byte -- a legal path may end in
-// a space, and trim would corrupt the identity it is compared with.
-type CarrierScratchIdentity
-  = ScratchIdentityEstablished { canonical: String }
-  | ScratchIdentityUnestablishable { reason: String }
-
-fn canonical_scratch_identity(scoped: RoadmapEventCarrierScopedLayout, scratch: FilePath) -> CarrierScratchIdentity {
-  match carrier_exec_program(program: scoped.realpath_program, workdir: "/", args: ["-e", "--", scratch as String]) {
-    CarrierExecOk { stdout } => {
-      let canonical = strip_single_trailing_newline(s: stdout)
-      if canonical == "" {
-        ScratchIdentityUnestablishable { reason: "realpath returned an empty path" }
-      } else {
-        ScratchIdentityEstablished { canonical: canonical }
-      }
-    }
-    CarrierExecFailed { exit_code, stderr } =>
-      ScratchIdentityUnestablishable { reason: join(["realpath exit ", to_string(value: exit_code), ": ", strip_single_trailing_newline(s: stderr)], "") }
-  }
-}
-
-// Strip exactly one trailing newline (the framing byte a line-oriented tool appends); keep every other byte,
-// including spaces, which are legal path bytes. Never trim.
-fn strip_single_trailing_newline(s: String) -> String {
-  let n = string_length(s: s)
-  if n > 0 && ends_with(s: s, suffix: "\n") {
-    substring(s: s, start: 0, end: n - 1)
-  } else {
-    s
-  }
-}
-
-// Is the CANONICAL identity still a registered worktree of the runner repository? `identity` is the path git
-// will have REGISTERED — the CANONICAL (realpath) spelling, established by the caller while the scratch exists.
-// git canonicalizes a worktree path at `add` time, so under a symlinked TMPDIR the mktemp spelling is NOT what
-// `worktree list` names; comparing against the spelling would miss a surviving registration and close falsely.
-// `worktree list --porcelain -z` is the DOCUMENTED STABLE FORM (git-worktree(1) directs callers to it) and it is
-// NUL-terminated: a `worktree <path>` record is a single field ending at NUL, so a path containing a NEWLINE is
-// not split and missed -- which is how a newline-containing path once read as absent and closed the snapshot
-// falsely. This listing is a SECOND check only: a failure to list is reported as an unobservable presence, never
-// silently as absent, and even a clean 0-exit listing can be INCOMPLETE (git omits registrations under an unreadable
-// .git/worktrees) -- so it may only ADD a present or an unobservable and NEVER establishes absence. The admin
-// directory (bound to the add from the gitfile) is the handle absence is established from.
-// Three outcomes, never two. A nonzero `worktree list` is NOT a surviving registration -- it is git never
-// answering -- so it must not collapse into `RegistrationListed` (which would report "git said it is still
-// there" for a listing that never ran). Only an ANSWERED listing that names the carried canonical identity is
-// `RegistrationListed`; an answered listing that omits it is `RegistrationAbsent`; a failed listing is
-// `RegistrationPresenceUnobservable` carrying the exit and stderr.
-type CarrierRegistrationPresence
-  = RegistrationAbsent
-  | RegistrationListed
-  | RegistrationPresenceUnobservable { reason: String }
-
-// The per-worktree ADMIN directory handle, established at the ADD from the worktree's `.git` gitfile
-// (`gitdir: <repo>/.git/worktrees/<id>`). Its ABSENCE is the registration verdict the close trusts: a concrete path
-// bound to this add, so a `worktree list` that exits 0 with an INCOMPLETE listing (when .git/worktrees is unreadable,
-// git omits registrations it cannot enumerate) can never make the close say Closed on a live registration.
-type CarrierAdminDir
-  = AdminDirEstablished { dir: FilePath }
-  | AdminDirUnestablishable { reason: String }
-
-fn roadmap_event_scratch_registration_presence(scoped: RoadmapEventCarrierScopedLayout, identity: String) -> CarrierRegistrationPresence {
-  match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
-    CarrierExecOk { stdout } =>
-      if any(split(s: stdout, delimiter: "\u{0}"), l => l == join(["worktree ", identity], "")) {
-        RegistrationListed
-      } else {
-        RegistrationAbsent
-      }
-    CarrierExecFailed { exit_code, stderr } =>
-      RegistrationPresenceUnobservable { reason: join(["`worktree list --porcelain -z` exited ", to_string(value: exit_code), ": ", strip_single_trailing_newline(s: stderr)], "") }
-  }
-}
-
-// Is the scratch directory gone, present, or UNOBSERVABLE? `Filesystem.List(...).success` cannot hold
-// this: a directory that still EXISTS but is UNREADABLE fails the listing the same way a gone one
-// does, and reading that as absent closes the snapshot on a lie. `filesystem_entry_presence_of_path`
-// folds the parent listing through `filesystem_entry_presence`, so absence is admitted only from a
-// SUCCESSFUL listing that omits the entry, a failed listing is indeterminate (with an ancestor climb),
-// and only ESTABLISHED absence may count towards `SnapshotClosed` in the close above.
-fn roadmap_event_scratch_dir_presence(path: FilePath) -> FilesystemEntryPresence {
-  filesystem_entry_presence_of_path(path: path as String)
-}
-
-// Both directory spellings (the canonical registration tree and the original mktemp allocation) established ABSENT.
-// Absence is ESTABLISHED only from a successful parent listing that omits the entry (filesystem_entry_presence_of_path
-// folds it); a present entry is a directory leak, an indeterminate or refused listing is an unobservable presence.
-// Closed is reachable ONLY through both spellings established absent.
-fn roadmap_event_scratch_dirs_close(canonical_path: FilePath, original: FilePath, removal_note: String) -> CarrierSnapshotClose {
-  match roadmap_event_scratch_dir_presence(path: canonical_path) {
-    FilesystemEntryListed { directory: _, name: _ } =>
-      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPersists }
-    FilesystemEntryPresenceIndeterminate { cause } =>
-      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join([cause, " (", removal_note, ")"], "") } }
-    FilesystemEntrySubjectRefused { cause } =>
-      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch path was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
-    FilesystemEntryAbsent(_) => match roadmap_event_scratch_dir_presence(path: original) {
-      FilesystemEntryAbsent(_) => SnapshotClosed
-      FilesystemEntryListed { directory: _, name: _ } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPersists }
-      FilesystemEntryPresenceIndeterminate { cause } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["original allocation ", original as String, ": ", cause, " (", removal_note, ")"], "") } }
-      FilesystemEntrySubjectRefused { cause } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the original allocation was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
-    }
-  }
-}
-
-// The per-worktree ADMIN directory, the handle the close verifies registration absence against. Read at the ADD from
-// the worktree's `.git` gitfile, whose content git writes as `gitdir: <repo>/.git/worktrees/<id>\n` (an ABSOLUTE path).
-// This is a concrete path BOUND TO THIS ADD, so unlike `worktree list` (which can exit 0 with an INCOMPLETE listing
-// when .git/worktrees is unreadable and silently omit a live registration) its absence can be ESTABLISHED. A missing
-// or unreadable gitfile, or one whose content is not a `gitdir: .../.git/worktrees/<id>` line, is UNESTABLISHABLE --
-// the close then cannot establish registration absence and must report unobservable, never Closed. The pathname bytes
-// are kept: strip only the framing newline, never trim.
-// A RELATIVE gitdir target is REJECTED as unestablishable, NOT resolved. git writes a relative `gitdir:` line ONLY
-// when `worktree.useRelativePaths=true` (introduced in git 2.48). srv1 runs git 2.43.0, which predates that setting,
-// and ghrunner sets it at no level (global/system/repo), so no supported srv1 path emits a relative target. Resolving
-// one would add a path-joining authority we do not want, and resolving it against the reader's cwd would establish
-// absence at the WRONG path and mint a false Closed while the real registration lives. Rejecting is fail-closed: it
-// yields registration unobservability, never Closed.
-fn roadmap_event_worktree_admin_dir(scoped: RoadmapEventCarrierScopedLayout, canonical: String) -> CarrierAdminDir {
-  let gitfile = join([canonical, "/.git"], "") as FilePath
-  let raw = Filesystem.Read(path: gitfile as String)
-  match filesystem_read_outcome(content: raw.content, success: raw.success, error: raw.error) {
-    FilesystemReadRefused { error } =>
-      AdminDirUnestablishable { reason: join(["the worktree gitfile ", gitfile as String, " cannot be read: ", error], "") }
-    FilesystemReadSucceeded { content } => {
-      let line = strip_single_trailing_newline(s: content)
-      if !starts_with(s: line, prefix: "gitdir: ") {
-        AdminDirUnestablishable { reason: join(["the worktree gitfile ", gitfile as String, " is not a `gitdir: <admin>` gitfile"], "") }
-      } else {
-        let admin = substring(s: line, start: 8, end: string_length(s: line))
-        if admin == "" {
-          AdminDirUnestablishable { reason: join(["the gitdir path in ", gitfile as String, " is empty"], "") }
-        } else if !starts_with(s: admin, prefix: "/") {
-          AdminDirUnestablishable { reason: join(["the gitdir path ", admin, " is relative (git writes this form only under worktree.useRelativePaths=true, git >= 2.48; srv1 git is 2.43.0 and ghrunner sets it nowhere). Rejecting rather than resolving it against the reader cwd, which would establish absence at the wrong path and mint a false Closed."], "") }
-        } else if !string_contains(s: admin, pattern: "/.git/worktrees/") {
-          AdminDirUnestablishable { reason: join(["the gitdir path ", admin, " is not a worktree admin directory under .git/worktrees/"], "") }
-        } else {
-          AdminDirEstablished { dir: admin as FilePath }
-        }
-      }
     }
   }
 }
