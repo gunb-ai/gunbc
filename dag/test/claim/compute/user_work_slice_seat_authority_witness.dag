@@ -31,10 +31,12 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3,
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The ceiling for a carved host IS its build-pool reservation, byte for byte, and is positive. Read
-// from the reservation row: when sleek-koi-601's carve moves the row (count 6->7, or seat size), this
-// re-reads -- it never pins a literal width. srv3 and srv4 are today's carved hosts (rostered, no
-// dashboard instance to carry their own ledger), so host_build_pool_reservation is one CI slot for each.
+// The ceiling for a host whose pool is held IS its build-pool reservation, byte for byte, and is
+// positive. Read from the reservation row: srv3 and srv4 are rostered build hosts whose pools the
+// capacity ruling (gunbc.design_ruling::remote_build_capacity_ruling_default_approved_2026_11_27)
+// now RULES (four footprint seats each) rather than carves -- the equality holds through either
+// posture, because both the carve arm and the ruled arm answer the slice with the same
+// host_build_pool_reservation (one ceiling authority per host posture). It never pins a literal width.
 fn ceiling_is_the_reservation(host: HostIdentity) -> Bool {
   byte_size_count(b: user_work_slice_memory_max_for_host(host: host))
     == byte_size_count(b: host_build_pool_reservation(host: host))

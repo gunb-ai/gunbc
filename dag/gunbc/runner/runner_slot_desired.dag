@@ -1,15 +1,18 @@
 module gunbc.runner.runner_slot_desired
 
 import std.types { Bool, Int, String, List }
-import std.measure { ByteSize, byte_size }
+import std.nat { Succ, Zero }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
-import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7 }
-import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, ken_build_pool_one_seat_default_approved_2026_11_26 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7, operator_host_srv3, operator_host_srv4 }
+import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, remote_build_capacity_ruling_default_approved_2026_11_27 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown, compute_build_memory_ceiling_default }
+import gunbc.live_deploy.serving_child_observations { serving_child_residency, user_work_request_footprint_of, user_work_serving_census_headroom }
 
 // THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
 // granted is a leaf fact; gunbc.runner.runner_slot_allocation derives widths, walls and floor-outcome
@@ -307,13 +310,16 @@ fn host_carries_own_ledger(host: HostIdentity) -> Bool {
 //
 // INVARIANTS, PINNED BY test.claim.runner.runner_capacity_plan_witness (they cannot be checked IN this module
 // without importing gunbc.runner.runner_slot_allocation, which imports THIS module -- the check lives where
-// both sides are visible): (a) a host with a ruled build-pool row is also in ruled_zero_ci_widths -- a ruled
-// pool on a host still spending CI width would double-promise the same bytes; (b) it carries no ledger of its
-// own -- such a host's reservation reaches the envelope through
-// gunbc.serving.serving_reservation::host_memory_reserved, and charging it again here would re-open the
-// double-count the host-keyed partition fixed; (c) a ruled row REPLACES the carve for its host (the ruled arm
-// is tried first), so a phantom slot never coexists with the ruled amount. A ruled row is a RULING'S
-// PROJECTION, not a second opinion: it carries the ruling's DeclarationRef the way ruled_zero_ci_widths
+// both sides are visible): (a) a host with a ruled build-pool row either holds no CI slots by ruling (in
+// ruled_zero_ci_widths -- the pool's memory was never CI's) OR its ruled pool is CHARGED into its width
+// envelope (gunbc.runner.runner_slot_allocation's ruled-pool term -- the capacity ruling's srv3/srv4 shape:
+// CI keeps runners AND the pool exists, conserved because the envelope subtracts the pool before admitting
+// width; an uncharged ruled pool on a CI-spending host would double-promise the same bytes); (b) a host whose
+// pool is carved rather than ruled carries no ledger of its own -- such a host's reservation reaches the
+// envelope through gunbc.serving.serving_reservation::host_memory_reserved, and charging it again would
+// re-open the double-count the host-keyed partition fixed; (c) a ruled row REPLACES the carve for its host
+// (the ruled arm is tried first), so a phantom slot never coexists with the ruled amount. A ruled row is a
+// RULING'S PROJECTION, not a second opinion: it carries the ruling's DeclarationRef the way ruled_zero_ci_widths
 // carries its ruling's, and the roster still gates when either form fires -- a pool is never held for a host
 // the dispatch roster has not admitted (gunbc.design_argument::consumption).
 //
@@ -322,26 +328,25 @@ fn host_carries_own_ledger(host: HostIdentity) -> Bool {
 // the machine actually has stays the envelope's fact (gunbc.host.host_memory_observation), and a request is
 // still adjudicated against live MemAvailable (gunbc.compute.host_capacity's backing relation). A ruling that
 // released more than the host can hold would be caught there, not here.
+// HOW A RULING SIZES ITS POOL -- the two ways a ruling speaks, kept as two meanings rather than
+// two nullable fields. RuledPoolNamed: the ruling stated the POOL in bytes (butch's 192 GiB, the
+// operator's own number); the seat count is then the standing derivation's fact (the ruling
+// named no count, so no count is attributed to it -- gunbc.compute.host_capacity::
+// ruled_pool_seat_count_from_footprint, cited from the capacity ruling). RuledSeatsNamed: the
+// ruling stated the SEAT COUNT; the pool is then seats x the per-request footprint + the fixed
+// per-slice census headroom, computed at resolution from the authority rows
+// (ruled_seats_driven_pool below) -- a ruling-named count of builds with no bytes attached, and
+// the bytes are the footprint's fact, not a second opinion. One field, two arms, no row that
+// could state both or neither (the nullable-pair shape invites exactly that; review 98983's
+// lesson applied to the pool side).
+type RuledBuildPoolSize
+  = RuledPoolNamed { bytes: ByteSize }
+  | RuledSeatsNamed { seats: Nat }
+
 type RuledBuildPoolReservation {
   host: HostIdentity
   ruling: DeclarationRef
-  reservation: ByteSize
-  // The seat count THE RULING ITSELF declared for its pool -- Present only when the
-  // cited ruling chose one. Absent means the ruling sized the POOL and said nothing
-  // about seats; it does NOT mean "use the fleet divisor". A ruled pool with no named
-  // count is divided by the fleet per-build ceiling (gunbc.compute.host_capacity::
-  // ruled_pool_seat_count_from_ceiling -- pool / compute_build_memory_ceiling_default,
-  // floor, never below one), because how many ceiling-sized builds a pool must admit
-  // side by side is a pure consequence of the pool's size and the ceiling a build is
-  // admitted at, not a fleet default the ruling never spoke to. The fleet divisor
-  // (compute_pool_slots, capacity_seat_for_reservation) stays exactly where it always
-  // belonged: UNRULED shapes. A fleet number filed under a ruling that never chose it
-  // is a second authority (gunbc.design_argument::single_authority) and an
-  // unattributed default (gunbc.design_argument::declared_intent); review 98983.
-  // The derivation is the standing rule of plan item
-  // serving-pool-seat-count-follows-the-build-ceiling: it adds no policy, it draws the
-  // one consequence the pool's size and the per-build ceiling already state.
-  seats: Nat?
+  size: RuledBuildPoolSize
 }
 
 data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
@@ -352,40 +357,83 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // 2 x 96 GiB of strata-engine memory_max, the rows gunbc#17005 retired together with the srv14
     // ServingHostReservation. The quiescent read behind the release is
     // gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read (fleet-converge run 45321352046).
-    reservation: byte_size(206158430208),
-    // The operator's ruling released the 192 GiB into the pool and said NOTHING about
-    // seat count, so none is attributed to it. With no named count the pool divides by
-    // the fleet per-build ceiling (gunbc.compute.host_capacity::
-    // ruled_pool_seat_count_from_ceiling): EIGHT 24 GiB seats, eight concurrent
-    // ceiling-capped builds -- the standing rule of plan item
-    // serving-pool-seat-count-follows-the-build-ceiling, which retires the earlier
-    // two-96-GiB-seat shape the fleet divisor produced. If a future ruling names its
-    // own count, it arrives through this field as Present and outranks the derivation.
-    seats: Absent,
+    // The operator's ruling sized the POOL and named no count, so none is attributed to it: the
+    // seat count is the standing rule's fact -- floor((pool - census headroom) / per-request
+    // footprint), min one -- cited from gunbc.design_ruling::
+    // remote_build_capacity_ruling_default_approved_2026_11_27 and computed by
+    // gunbc.compute.host_capacity::ruled_pool_seat_count_from_footprint. SIX seats at today's
+    // instrument rows (the capacity ruling's text said seven at a 3.4 GiB residency figure the
+    // instrument raised to 6.0 GiB; the ruling row records the supersession). The pool is the
+    // operator's explicit number and does NOT move: seats derive, the pool yields nothing.
+    size: RuledPoolNamed { bytes: byte_size(206158430208) },
   },
   RuledBuildPoolReservation {
     host: operator_host_e2d4b7,
-    ruling: ken_build_pool_one_seat_default_approved_2026_11_26.reference,
-    // 22 GiB = one seat of the fleet per-build ceiling
-    // (gunbc.roadmap.roadmap_dashboard_instance::compute_build_memory_ceiling_default),
-    // the ruling's option A -- approved BY DEFAULT on operator escalation
-    // msg_5ffaed22-4d67-49a3-ace8-5fa55008c5a2, not by an operator answer. The pool
-    // lives beside the RUNNING ken-strata engine (~69 GiB RSS of 125 GiB at the
-    // 2026-11-26 14:18Z read); one ceiling-sized seat fits the measured 18.2 GiB
-    // build peak, and only one build fits. Fires only once the roster admits ken.
-    // THE CEILING, READ FROM ITS OWN ROW -- not a copy: one seat of
-    // gunbc.roadmap.roadmap_dashboard_instance::compute_build_memory_ceiling_default. If the fleet
-    // ceiling moves, ken's ruled pool moves with it; a literal here would be a second source.
-    reservation: compute_build_memory_ceiling_default,
-    seats: Present { value: 1 },
+    // The capacity ruling re-priced ken's seat (one seat at footprint + census headroom, ~29 GiB
+    // today) and is the authority the row cites for its CURRENT shape; its seat count of ONE
+    // originates in gunbc.design_ruling::ken_build_pool_one_seat_default_approved_2026_11_26
+    // (option A, itself default-approved) and was kept by the capacity ruling ("ken 1@26.2" --
+    // the 26.2 is that text's 3.4-GiB-residency figure, superseded by the rows below).
+    ruling: remote_build_capacity_ruling_default_approved_2026_11_27.reference,
+    // ONE seat. The pool is not written here: it resolves as 1 x footprint + census headroom
+    // from the authority rows (ruled_seats_driven_pool), the seat riding beside its resident
+    // serving child and the synchronous door -- the shape that fits the measured 18.2 GiB build
+    // peak with real room, where the old literal 22 GiB sat UNDER the resident-inclusive need and
+    // was the srv3 OOM defect class in miniature. Fires only once the roster admits ken.
+    size: RuledSeatsNamed { seats: Succ { prev: Zero } },
+  },
+  RuledBuildPoolReservation {
+    host: operator_host_srv3,
+    ruling: remote_build_capacity_ruling_default_approved_2026_11_27.reference,
+    // FOUR seats at the per-request footprint: the pool resolves as 4 x footprint + the fixed
+    // census headroom (~114 GiB at today's rows), the number the capacity ruling counted when
+    // it said srv3 drops two CI runners -- CI (15 x 25 GiB) + pool must fit the host's 502 GiB,
+    // and the ruled pool is CHARGED into the width envelope (gunbc.runner.runner_slot_allocation)
+    // so the arithmetic is conserved, not asserted. srv3's slice held zero safe seats under the
+    // old (slots x unit ceiling) sizing: memory.events oom_kill = 40 on 2026-11-26.
+    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } },
+  },
+  RuledBuildPoolReservation {
+    host: operator_host_srv4,
+    ruling: remote_build_capacity_ruling_default_approved_2026_11_27.reference,
+    // Four seats, same shape and same ruling as srv3 (its sibling CI host; no oom_kill incident
+    // of its own, the same blind sizing).
+    size: RuledSeatsNamed { seats: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } },
   },
 ]
+
+// THE SEAT-DRIVEN POOL, computed at resolution -- no bytes written for these rows anywhere.
+// seats x the PER-REQUEST IN-SLICE FOOTPRINT + the fixed per-slice census headroom. The footprint
+// is the unit ceiling beside its resident serving child and the per-request door
+// (gunbc.live_deploy.serving_child_observations::user_work_request_footprint_of -- the sum that
+// closes the srv3 OOM defect class); the headroom is charged ONCE per slice, not per seat (the
+// census is one bounded gunbc run per host on the converge schedule; the manager's 2026-11-27
+// ruling fixed per-request vs per-host by the actuator shape). Every constant is read from its
+// own row: if the instrument raises the child bound, these pools re-price themselves. The
+// checked crossing (Int product back to Nat) mirrors gunbc.fleet.vast_ai_guest's seat division;
+// the overflow arm is unreachable over these magnitudes and answers the FAITHFUL ZERO -- a pool
+// that cannot be read reserves nothing (fail_closed: no fabricated bytes), witnessed in
+// test.claim.runner.runner_capacity_plan_witness.
+fn ruled_seats_driven_pool(host: HostIdentity, seats: Nat) -> ByteSize {
+  let footprint = user_work_request_footprint_of(
+    unit_memory_max: compute_build_memory_ceiling_default,
+    child_residency: serving_child_residency(host: host),
+  )
+  let bytes = byte_size_count(b: footprint) * seats
+  match checked_int_to_nat(n: bytes) {
+    Present { value: pool_bytes } => measure_add(a: byte_size(count: pool_bytes), b: user_work_serving_census_headroom)
+    Absent => byte_size(0)
+  }
+}
 
 // THE ONE LOOKUP: the ruled amount for a host, if a ruling rules one. Absent is NOT zero -- it says this
 // host's pool follows the carve, a different fact (fail_closed: absence and value do not collapse).
 fn host_ruled_build_pool_reservation(host: HostIdentity) -> ByteSize? {
   match first_where(ruled_build_pool_reservations, r => (r.host as String) == (host as String)) {
-    Present { value: r } => Present { value: r.reservation }
+    Present { value: r } => match r.size {
+      RuledPoolNamed { bytes } => Present { value: bytes }
+      RuledSeatsNamed { seats } => Present { value: ruled_seats_driven_pool(host: r.host, seats: seats) }
+    }
     Absent => Absent
   }
 }
@@ -393,18 +441,21 @@ fn host_ruled_build_pool_reservation(host: HostIdentity) -> ByteSize? {
 // THE SEAT COUNT THE RULING DECLARES, or Absent when the ruling sized the pool without
 // naming a count (butch) or no ruling rules this host's pool -- the latter two split in
 // gunbc.compute.host_capacity::build_pool_ruled_seat_count_for_host: a ruled host without a
-// named count divides by the per-build ceiling (ruled_pool_seat_count_from_ceiling), only an
-// UNRULED shape keeps the fleet default (compute_pool_slots). host_capacity converts a ruled pool with
-// THIS number, never with the fleet default: a ruling that says "one seat of the per-build
-// ceiling" must not be split in two by a number it never chose -- the division that made
-// ken's 22 GiB ruling into two 11 GiB seats, each under his 18.2 GiB measured build peak.
+// named count takes the standing derivation (ruled_pool_seat_count_from_footprint, the rule
+// the capacity ruling itself declares), only an UNRULED shape keeps the fleet default
+// (compute_pool_slots). host_capacity converts a ruled pool with THIS number, never with the
+// fleet default: a ruling that says "one seat" must not be split in two by a number it never
+// chose -- the division that made ken's 22 GiB ruling into two 11 GiB seats, each under his
+// 18.2 GiB measured build peak.
 fn host_ruled_build_pool_seat_count(host: HostIdentity) -> Nat? {
   match first_where(ruled_build_pool_reservations, r => (r.host as String) == (host as String)) {
-    // THE ROW ALREADY CARRIES THE OPTIONAL. seats is a Nat? on the row; this arm hands that layer
-    // through UNWRAPPED -- wrapping it again would build a Nat?? where the declared Nat? answers,
-    // and a double layer reads as "the row said Absent" only because the layer silently collapses,
-    // losing the distinction v2.std.optional_layers exists to preserve (review 99032).
-    Present { value: r } => r.seats
+    // The row states its size in ONE field with TWO meanings (RuledBuildPoolSize): a
+    // ruling-named count answers Present; a ruling-named POOL answers Absent here -- the
+    // ruling said nothing about seats, and the derivation, not a default, answers for it.
+    Present { value: r } => match r.size {
+      RuledSeatsNamed { seats } => Present { value: seats }
+      RuledPoolNamed { bytes: _ } => Absent
+    }
     Absent => Absent
   }
 }
