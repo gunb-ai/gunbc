@@ -4302,6 +4302,13 @@ fn resolve_gate_authored_let_binder_read(n: Node, walk: ResolveNodeWalk) -> Reso
   }
 }
 
+// Scan accumulator: children are consumed left to right carrying their true ordinals, so every child
+// is classified by the slot table at the same ordinal the walker itself would pass.
+type ArrowBodySlotScan {
+  found: Bool
+  ordinal: Int
+}
+
 // WHICH ARROW CHILDREN ARE WALKED AS A BODY: exactly the slot table's ArrowBodyOrNamedSlot answer.
 // THE CLASSIFICATION IS OWNED by v2.compiler.lexical_scope::arrow_slot -- the same decision resolve
 // itself makes when it walks an Arrow (resolve_arrow_node_admitted); repeating the exclusions here
@@ -4310,13 +4317,13 @@ fn resolve_gate_authored_let_binder_read(n: Node, walk: ResolveNodeWalk) -> Reso
 // slot -- a required or abstract declaration -- binds parameters no body could read, and the rule asks
 // only of binders a body could have read: no body slot, no obligation.
 fn arrow_has_modeled_body(n: Node) -> Bool {
-  let walked = fold(n.children, init: (found: false, ordinal: 0), f: fn(acc, e) {
-    (
+  let scan = fold(n.children, init: ArrowBodySlotScan { found: false, ordinal: 0 }, f: fn(acc, e) {
+    ArrowBodySlotScan {
       found: acc.found || arrow_slot(e: e, ordinal: acc.ordinal) == ArrowBodyOrNamedSlot,
       ordinal: acc.ordinal + 1
-    )
+    }
   })
-  walked.found
+  scan.found
 }
 
 // DOES THIS PARAMETER HAVE A RESOLVED USE? The two frames answer from their own entry kinds.
