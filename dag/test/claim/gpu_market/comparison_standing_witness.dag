@@ -47,7 +47,7 @@ import extdeps.storage.types { PcieLink, Gen4 }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.gpu.types { GpuBoardCatalogRow, GpuBoardAdmitted, GpuBoardRefused }
 import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_board_catalog, r9700_figures_standing }
-import extdeps.gpu.nvidia { nvidia_rtx_2000_ada_board_catalog, nvidia_b200_sxm_board_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_2000_ada_board_catalog, nvidia_b200_sxm_board_catalog, nvidia_rtx_5090_board_catalog }
 import gunbc.serving.serving_benchmark_run_receipt { ObservedGpu }
 import gunbc.gpu_market.realization_join {
   realization_check_board,
@@ -63,9 +63,11 @@ import gunbc.gpu_market.comparison_standing {
   FigureCited,
   FigureMarked,
   FigureUngrounded,
+  FigureAbsent,
   comparison_figure_grounding,
   comparison_figure_groundings,
   comparison_refused_groundings,
+  comparison_absent_groundings,
   board_comparison_admission,
   ComparisonAdmitted,
   ComparisonRefused,
@@ -123,6 +125,16 @@ fn is_power(figure: DecidedFigure) -> Bool {
   match figure {
     MemoryCapacity => false
     BoardPowerCeiling => true
+  }
+}
+
+// A row that STATES both deciding figures and grounds neither: figure_citations name neither field and no
+// standing is declared for it. This is the rate-table defect's own shape -- an uncited figure stated by a
+// row, which must not be read as a cited one.
+fn rtx_5090_row() -> GpuBoardCatalogRow? {
+  match nvidia_rtx_5090_board_catalog {
+    GpuBoardAdmitted { row: r } => Present { value: r }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
   }
 }
 
@@ -186,7 +198,7 @@ test fn marked_board_is_refused_before_any_number_is_compared() -> Bool {
             && count(comparison_refused_groundings(grounds: comparison_figure_groundings(board: row))) == 2
             && marked_refusal_is(refusals, BoardPowerCeiling)
             && marked_refusal_is(refusals, MemoryCapacity)
-        ComparisonAdmitted { model: _, grounds: _ } => false
+        ComparisonAdmitted { model: _, grounds: _, absent: _ } => false
       }
     Absent => false
   }
@@ -206,8 +218,9 @@ test fn cited_board_is_admitted_and_owes_no_obligation() -> Bool {
   match rtx_2000_ada_row() {
     Present { value: row } =>
       match board_comparison_admission(board: row) {
-        ComparisonAdmitted { model: m, grounds: grounds } =>
+        ComparisonAdmitted { model: m, grounds: grounds, absent: absent } =>
           m == "RTX 2000 Ada Generation"
+            && count(absent) == 0
             && count(grounds) == 2
             && count(comparison_refused_groundings(grounds: grounds)) == 0
             && cited_grounding_is(grounds, MemoryCapacity)
@@ -252,24 +265,69 @@ test fn cited_board_inside_limits_gets_no_verdict_from_the_fold() -> Bool {
 
 // ── THE ABSENT FIGURE: REFUSED AS UNGROUNDED, NEVER READ AS CITED OR AS ZERO ───────────────────────
 
-test fn absent_board_power_refuses_as_ungrounded_not_as_cited() -> Bool {
-  // The B200 SXM board states its memory and cites it, and declares no board power at all (board_power: none).
-  // Absence is neither a zero nor a pass (gunbc.design_argument::fail_closed), and it is not a citation: the
-  // memory figure must read FigureCited while the absent ceiling reads FigureUngrounded, and the board is
-  // refused on exactly that one figure. Both halves matter: a gate that refused everything it saw, or that
-  // filled the missing ceiling with a default, fails here.
-  match b200_sxm_row() {
+test fn a_present_but_uncited_figure_refuses_entry_and_is_not_read_as_cited() -> Bool {
+  // The rate-table defect at the comparison site (the repaired half of product.node_power_envelope:
+  // "refused empty rows but admitted nonempty uncited rows"). The RTX 5090 board STATES a memory figure and
+  // a board power figure, cites neither, and declares no standing -- so both are FigureUngrounded and the
+  // board is refused on both. A gate that filled an uncited figure in, or read it as cited because the row is
+  // otherwise well-populated, fails here.
+  match rtx_5090_row() {
     Present { value: row } =>
       match board_comparison_admission(board: row) {
         ComparisonRefused { model: m, refusals: refusals } =>
-          m == "NVIDIA B200 SXM"
-            && count(refusals) == 1
-            && cited_grounding_is(grounds: comparison_figure_groundings(board: row), figure: MemoryCapacity)
+          m == "GeForce RTX 5090"
+            && count(refusals) == 2
+            && count(comparison_refused_groundings(grounds: comparison_figure_groundings(board: row))) == 2
+            && match refused_for(refusals: refusals, figure: MemoryCapacity) {
+                Present { value: FigureUngrounded { figure: f } } => is_memory(f)
+                _ => false
+              }
             && match refused_for(refusals: refusals, figure: BoardPowerCeiling) {
                 Present { value: FigureUngrounded { figure: f } } => is_power(f)
                 _ => false
               }
-        ComparisonAdmitted { model: _, grounds: _ } => false
+        ComparisonAdmitted { model: _, grounds: _, absent: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn an_absent_figure_is_carried_visibly_and_never_refused_as_if_it_decided() -> Bool {
+  // The third answer, and the one most easily got wrong in both directions. The B200 SXM board cites its
+  // memory and declares NO board power (board_power: none): the ceiling is FigureAbsent, not FigureUngrounded
+  // and not FigureCited. It is NOT a refusal -- a figure that is not there cannot decide anything, and the
+  // fold's own numeric check answers nothing for it -- but it is NOT invisible either: the admitted arm names
+  // it, and the fold still answers none for an observation inside the cited memory figure. Refusing this board
+  // would be a prohibition broader than the evidence (gunbc.design_argument::epistemic_humility); reading the
+  // absence as a zero, or as a citation, would be the failure the row names (gunbc.design_argument::fail_closed).
+  match b200_sxm_row() {
+    Present { value: row } =>
+      match board_comparison_admission(board: row) {
+        ComparisonAdmitted { model: m, grounds: grounds, absent: absent } =>
+          m == "NVIDIA B200 SXM"
+            && count(absent) == 1
+            && count(comparison_absent_groundings(grounds: grounds)) == 1
+            && cited_grounding_is(grounds: comparison_figure_groundings(board: row), figure: MemoryCapacity)
+            && match refused_for(refusals: absent, figure: BoardPowerCeiling) {
+                Present { value: FigureAbsent { figure: f } } => is_power(f)
+                _ => false
+              }
+        ComparisonRefused { model: _, refusals: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn an_absent_ceiling_still_answers_no_power_verdict_from_the_fold() -> Bool {
+  // The same row through the production fold: the absent ceiling produces no power verdict and no standing
+  // refusal -- the fold has nothing to compare -- while the cited memory figure still decides normally.
+  match b200_sxm_row() {
+    Present { value: row } =>
+      match realization_check_board(gpu: observed_card("NVIDIA B200 SXM", 131072, 700000), board: row) {
+        Absent => true
+        Present { value: ComparisonStandingRefused { model: _, refusals: _ } } => false
+        Present { value: MemoryAboveCatalog { observed: _, catalog: _ } } => false
+        Present { value: PowerCapAboveBoardCeiling { observed: _, ceiling: _ } } => false
       }
     Absent => false
   }

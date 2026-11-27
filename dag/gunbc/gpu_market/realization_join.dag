@@ -88,7 +88,7 @@ fn realization_check_board(gpu: ObservedGpu, board: GpuBoardCatalogRow) -> Reali
   match board_comparison_admission(board: board) {
     ComparisonRefused { model: model, refusals: refusals } =>
       Present { value: ComparisonStandingRefused { model: model, refusals: refusals } }
-    ComparisonAdmitted { model: _, grounds: _ } => realization_figure_checks(gpu: gpu, board: board)
+    ComparisonAdmitted { model: _, grounds: _, absent: _ } => realization_figure_checks(gpu: gpu, board: board)
   }
 }
 
