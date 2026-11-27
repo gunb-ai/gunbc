@@ -35302,30 +35302,6 @@ pub fn build_ancestry_precedence(
 
 pub fn kernel_optional_type_node() -> Rc<Node> {
     {
-        let t_param = Rc::new(Node {
-            ident: std::option::Option::None,
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "T".to_string(),
-            span: kernel_span("T".to_string()),
-            ident_span: Some(kernel_span("T".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-        });
         let present_value_field = Rc::new(Node {
             ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -35335,8 +35311,8 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
-                node: t_param.clone(),
+            inferred: Some(Rc::new(InferredNode::TypeVariable {
+                id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -35408,7 +35384,7 @@ pub fn kernel_optional_type_node() -> Rc<Node> {
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
             connective: Connective::Disj,
-            params: Rc::new(vec![t_param.clone()]),
+            params: Rc::new(vec![]),
             inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -40098,40 +40074,61 @@ pub fn kernel_mint_shape_diagnostics(
     Rc::new({
         let mut __result = Vec::new();
         for row in kernel_mint_declaration_rows().iter().cloned() {
-            __result.extend((*if (row.declaration.module_path.clone() != module_name.clone()) {
-        Rc::new(vec![])
-    } else {
-        if (row.minted_name.clone() != kernel_optional_mint_name()) {
-            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-    declaration_name: row.declaration.decl_name.clone(),
-    cause: v1_rt::concat(v1_rt::concat("the seed mints no kernel type named '".to_string(), row.minted_name.clone()), "'".to_string()),
-    span: module_span.clone(),
-}), module_name.clone())])
-        } else {
-            match crate::v1_compiler_infer_env::declaration_node_of_ref(row.declaration.clone(), env.clone()) {
-    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-    declaration_name: row.declaration.decl_name.clone(),
-    cause: "this module does not declare it".to_string(),
-    span: module_span.clone(),
-}), module_name.clone())]),
-    Some(decl) => match kernel_optional_shape_refusal(decl.clone(), env.clone()) {
-    std::option::Option::None => match kernel_optional_shape_refusal(kernel_optional_type_node(), env.clone()) {
-    std::option::Option::None => Rc::new(vec![]),
-    Some(mint_cause) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-    declaration_name: row.declaration.decl_name.clone(),
-    cause: v1_rt::concat("the kernel mint itself is malformed: ".to_string(), mint_cause.clone()),
-    span: module_span.clone(),
-}), module_name.clone())]),
-},
-    Some(cause) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-    declaration_name: row.declaration.decl_name.clone(),
-    cause: cause.clone(),
-    span: decl.span.clone(),
-}), module_name.clone())]),
-},
-}
-        }
-    }).iter().cloned());
+            __result.extend(
+                (*if (row.declaration.module_path.clone() != module_name.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    if (row.minted_name.clone() != kernel_optional_mint_name()) {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                declaration_name: row.declaration.decl_name.clone(),
+                                cause: v1_rt::concat(
+                                    v1_rt::concat(
+                                        "the seed mints no kernel type named '".to_string(),
+                                        row.minted_name.clone(),
+                                    ),
+                                    "'".to_string(),
+                                ),
+                                span: module_span.clone(),
+                            }),
+                            module_name.clone(),
+                        )])
+                    } else {
+                        match crate::v1_compiler_infer_env::declaration_node_of_ref(
+                            row.declaration.clone(),
+                            env.clone(),
+                        ) {
+                            std::option::Option::None => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                        declaration_name: row.declaration.decl_name.clone(),
+                                        cause: "this module does not declare it".to_string(),
+                                        span: module_span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )])
+                            }
+                            Some(decl) => {
+                                match kernel_optional_shape_refusal(decl.clone(), env.clone()) {
+                                    std::option::Option::None => Rc::new(vec![]),
+                                    Some(cause) => {
+                                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                                declaration_name: row.declaration.decl_name.clone(),
+                                                cause: cause.clone(),
+                                                span: decl.span.clone(),
+                                            }),
+                                            module_name.clone(),
+                                        )])
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
         }
         __result
     })
