@@ -11,12 +11,14 @@ import extdeps.gunbc
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
 import gunbc.compute.remote_build_wire {
-  RemoteBuildServeEnding, ServeReady, ServeRequestRefused, ServeHostCannotServe,
+  RemoteBuildServeEnding, ServeReady, ServeRequestRefused, ServeHostCannotServe, ServeHostFull,
   ServeServed, ServeWorkEndedUnsuccessfully, ServeWorkInFlight,
   remote_build_protocol_word, remote_build_leg_is_probe, remote_build_serve_answer,
   remote_build_ending_of_answer,
   RemoteBuildHandOff, remote_build_serve_hand_off, remote_build_ssh_command_variable,
 }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import std.integer { int_to_decimal_string }
 import gunbc.compute.remote_build_serve_principal {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
   remote_build_serve_probe_principal,
@@ -93,16 +95,18 @@ fn remote_build_serve_front_door_turn(
   host: String,
   serve_binary: String,
   repo_root: String,
+  leg_ceiling: String,
+  accept_instant: String,
   raw_command: String?,
   principal: RemoteBuildServePrincipal,
 ) -> RemoteBuildFrontDoorTurn {
-  if serve_binary == "" || repo_root == "" || host == "" {
+  if serve_binary == "" || repo_root == "" || host == "" || leg_ceiling == "" {
     // The words came from the roster through remote_build_serve_front_door_run_words and arrived
     // emptied. This host cannot serve what it was not told to run; the walk moves on rather than the
-    // door guessing a path (gunbc.design_argument::fail_closed).
+    // door guessing a path or running a request it cannot bound (gunbc.design_argument::fail_closed).
     FrontDoorAnswer {
       ending: ServeHostCannotServe,
-      detail: "remote-build: the front door was rendered without a binary, a checkout or a host",
+      detail: "remote-build: the front door was rendered without a binary, a checkout, a host or a leg ceiling",
     }
   } else if !starts_with(s: serve_binary, prefix: "/") || !starts_with(s: repo_root, prefix: "/") {
     FrontDoorAnswer {
@@ -140,6 +144,8 @@ fn remote_build_serve_front_door_turn(
               serve_binary: serve_binary as NonEmptyStr,
               repo_root: repo_root as NonEmptyStr,
               host: host,
+              leg_ceiling: leg_ceiling as NonEmptyStr,
+              accept_instant: accept_instant as NonEmptyStr,
             ),
           }
         }
@@ -177,16 +183,28 @@ fn remote_build_serve_front_door_probe_answer(host: String, principal: RemoteBui
 // both today -- and the door must not guess them. THE HAND-OFF TARGET IS NOT AN ARGUMENT: which entry
 // and which function the child runs are fixed data in the wire module, so no caller can aim the
 // serving route at an arbitrary module.
-fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_root: String) -> CliWireResponse {
-  match remote_build_serve_front_door_turn(
-    host: host,
-    serve_binary: serve_binary,
-    repo_root: repo_root,
-    raw_command: shell.Env.Get(name: remote_build_ssh_command_variable).value,
-    principal: remote_build_serve_probe_principal(),
-  ) {
-    FrontDoorAnswer { ending, detail } => remote_build_serve_answer(ending: ending, text: detail)
-    FrontDoorHandOffToChild { hand_off } => remote_build_serve_front_door_hand_off(hand_off: hand_off)
+fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_root: String, leg_ceiling: String) -> CliWireResponse {
+  // THE ACCEPT INSTANT IS THE DOOR'S OWN HOST CLOCK, read once at the moment it accepts. It is host-local
+  // (no cross-host skew), and it rides to the request entry so the entry can subtract the wait from the
+  // ceiling at each unit launch. If the door cannot read its clock it cannot bound the request, so it
+  // declines with the room/readiness ending (the request moves to the next host) rather than running
+  // something it has no way to stop (gunbc.design_argument::fail_closed).
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail } =>
+      remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the front door cannot read its clock to bound the request: ", detail))
+    ClockUnixMillisObserved { millis: accepted } =>
+      match remote_build_serve_front_door_turn(
+        host: host,
+        serve_binary: serve_binary,
+        repo_root: repo_root,
+        leg_ceiling: leg_ceiling,
+        accept_instant: int_to_decimal_string(value: epoch_secs_of_millis(millis: accepted)),
+        raw_command: shell.Env.Get(name: remote_build_ssh_command_variable).value,
+        principal: remote_build_serve_probe_principal(),
+      ) {
+        FrontDoorAnswer { ending, detail } => remote_build_serve_answer(ending: ending, text: detail)
+        FrontDoorHandOffToChild { hand_off } => remote_build_serve_front_door_hand_off(hand_off: hand_off)
+      }
   }
 }
 
