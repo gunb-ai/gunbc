@@ -819,6 +819,12 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
+      probe: floor_cardinality_seam_green_probe,
+      class: floor_cardinality_seam_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
       probe: floor_cardinality_seam_call_arg_control_probe,
       class: floor_cardinality_seam_class,
       path: v1_compile_rust_path_id,
