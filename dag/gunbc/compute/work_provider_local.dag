@@ -80,7 +80,7 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
   compute_pre_launch_ceiling_seconds,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance }
+
 import gunbc.compute.seat_cgroup_absence { SeatCgroupEndProof, SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable, observe_seat_cgroup_end_proof }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }

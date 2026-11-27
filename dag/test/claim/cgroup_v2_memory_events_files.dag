@@ -1,10 +1,14 @@
 module test.claim.cgroup_v2_memory_events_files
 
-import std.types { Bool }
+import std.types { Bool, String }
+import std.optional { Present, Absent }
 import extdeps.linux.cgroup_v2_memory {
   MemoryEvents, MemoryEventsLocal, CumulativeCounter,
   cgroup_memory_interface_file_name, cgroup_memory_metric_kind,
+  CgroupMemoryEventsReading, CgroupMemoryEventsObserved, CgroupMemoryEventsUnreadable,
+  parse_cgroup_memory_events, cgroup_memory_events_wire, cgroup_memory_events_field,
 }
+import std.types { String }
 
 // THE TWO EVENTS FILES, AT THEIR OWN INTERFACE. cgroup-v2 gives them the same entries and moves only
 // the hierarchy: memory.events is hierarchical, memory.events.local is not ("Note that all fields in
@@ -34,3 +38,50 @@ test fn the_local_events_file_is_not_the_hierarchical_one() -> Bool {
 // only place the five names are exercised. A field-level check needs a reader of an events body,
 // which the corpus does not have yet -- the authority module says the same thing where the record
 // sits.
+
+// ── THE READER THE GAP NOTE WAITED FOR ─────────────────────────────────────────────────────────────
+//
+// The note above said a field-level check needed a reader of an events body, and the corpus did not
+// have one. It does now -- parse_cgroup_memory_events -- and its executing consumer is the front
+// door's hand-off diagnostic (gunbc.compute.remote_build_serve_front_door
+// remote_build_serve_front_door_slice_diagnostic), which reads the slice's own memory.events through
+// the cgroup interface file. These claims are that reader discriminating, not a round-trip.
+
+// THE KERNEL FILE'S GRAMMAR: one line per field, "<name> <count>". A complete body answers by value.
+test fn a_complete_events_body_reads_all_five_counters() -> Bool {
+  match parse_cgroup_memory_events(body: "low 0\nhigh 932657525\nmax 6007630\noom 521\noom_kill 40\n") {
+    CgroupMemoryEventsObserved { counters: c } =>
+      c.low == 0 && c.high == 932657525 && c.max == 6007630 && c.oom == 521 && c.oom_kill == 40
+    CgroupMemoryEventsUnreadable { detail: _ } => false
+  }
+}
+
+// A BODY MISSING ONE FIELD REFUSES, NAMING IT. Zeroing a lost counter would witness a non-event the
+// cgroup may have seen (fail-closed).
+test fn an_events_body_missing_one_field_refuses_naming_it() -> Bool {
+  match parse_cgroup_memory_events(body: "low 0\nhigh 3\nmax 1\noom 0\n") {
+    CgroupMemoryEventsUnreadable { detail: d } => contains(haystack: d, needle: "oom_kill")
+    CgroupMemoryEventsObserved { counters: _ } => false
+  }
+    && match parse_cgroup_memory_events(body: "") {
+         CgroupMemoryEventsUnreadable { detail: d } => contains(haystack: d, needle: "low")
+         CgroupMemoryEventsObserved { counters: _ } => false
+       }
+}
+
+// ZEROS ARE DATA, A REFUSAL IS A REFUSAL, AND THE TWO NEVER PRINT ALIKE.
+test fn the_events_wire_prints_zeros_and_refusals_apart() -> Bool {
+  cgroup_memory_events_wire(reading: parse_cgroup_memory_events(body: "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n"))
+    == "low=0 high=0 max=0 oom=0 oom_kill=0"
+    && cgroup_memory_events_wire(reading: parse_cgroup_memory_events(body: "nonsense"))
+      == "unreadable(no readable low=)"
+}
+
+// A FIELD THAT IS THERE BUT NOT A COUNT IS AS UNREADABLE AS ONE MISSING -- a corrupted counter
+// cannot be trusted as zero either.
+test fn an_unparseable_counter_is_a_refusal_not_a_zero() -> Bool {
+  match cgroup_memory_events_field(body: "low notanumber\nhigh 1\nmax 2\noom 3\noom_kill 4\n", key: "low") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

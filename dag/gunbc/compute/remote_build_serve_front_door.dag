@@ -2,6 +2,7 @@ module gunbc.compute.remote_build_serve_front_door
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
+import std.nat { nat_to_decimal_string }
 import std.optional { Present, Absent }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
@@ -16,6 +17,7 @@ import gunbc.compute.remote_build_wire {
   remote_build_protocol_word, remote_build_leg_is_probe, remote_build_serve_answer,
   remote_build_ending_of_answer,
   RemoteBuildHandOff, remote_build_serve_hand_off, remote_build_ssh_command_variable,
+  remote_build_capacity_body, remote_build_capacity_retry_floor,
 }
 import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import std.integer { int_to_decimal_string }
@@ -23,7 +25,7 @@ import gunbc.compute.remote_build_serve_principal {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
   remote_build_serve_probe_principal,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance }
 import gunbc.compute.host_capacity {
   host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
@@ -31,12 +33,13 @@ import gunbc.compute.host_capacity {
   SeatChargeScan, ScanOpen, compute_seat_charge_scans, host_capacity_pool_slots_for_home,
   HostCapacityPool, ComputeBuildPool,
 }
-import gunbc.host.host_effect { LocalShell }
-import gunbc.systemctl_show_read {
-  systemctl_show_property_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank,
-  SystemdPropertyCaptureRefused,
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
+import extdeps.linux.cgroup_v2_memory {
+  MemoryCurrent, MemoryEvents, cgroup_memory_interface_file_name,
+  parse_cgroup_nonnegative_bytes, parse_cgroup_memory_events, cgroup_memory_events_wire,
 }
-import extdeps.systemd { SystemdUnitProperty, MemoryEventsProperty, MemoryCurrent }
+import std.measure { byte_size_count }
 import gunbc.live_deploy.serving_child_observations { serving_child_slice_unit_name }
 
 // THE FRONT DOOR: the entry sshd RUNS, which answers the probe and hands everything else to the
@@ -363,17 +366,27 @@ fn remote_build_answer_body_is_a_receipt(stdout: String) -> Bool {
 
 // THE SLICE'S ACCOUNT, one line, minted only when the child left no answer of its own. Every arm
 // is data: a refusal to read is recorded as a refusal, never as silence and never as a number
-// that was not observed.
+// that was not observed. THE READ IS THE CGROUP'S OWN INTERFACE FILES, read the same plain way the
+// rest of this module reads nothing heavier than a file: the door may not import the systemctl or
+// host-effect machinery, because the PROBE leg runs this same entry and those imports would widen
+// the probe's demand closure past 800 modules again (gunbc.design_argument::demand_before_materialization);
+// the names of these files belong to extdeps.linux.cgroup_v2_memory, never here).
 fn remote_build_serve_front_door_slice_diagnostic(unit: NonEmptyStr) -> String {
-  let current = match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryCurrent) {
-    SystemdPropertyCaptured { value: raw } => raw
-    SystemdPropertyBlank => "(blank)"
-    SystemdPropertyCaptureRefused { reason: reason } => concat("(refused: ", reason, ")")
+  let dir = cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: unit)
+  let current_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryCurrent)) as String)
+  let current = if !current_read.success {
+    concat("(refused: ", current_read.error, ")")
+  } else {
+    match parse_cgroup_nonnegative_bytes(text: current_read.content) {
+      Present { value: b } => nat_to_decimal_string(value: byte_size_count(b: b))
+      Absent => "(unreadable)"
+    }
   }
-  let events = match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryEventsProperty) {
-    SystemdPropertyCaptured { value: raw } => raw
-    SystemdPropertyBlank => "(blank)"
-    SystemdPropertyCaptureRefused { reason: reason } => concat("(refused: ", reason, ")")
+  let events_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryEvents)) as String)
+  let events = if !events_read.success {
+    concat("(refused: ", events_read.error, ")")
+  } else {
+    cgroup_memory_events_wire(reading: parse_cgroup_memory_events(body: events_read.content))
   }
   join(["remote-build door diagnostic: slice ", unit as String, " memory_current=", current, " memory_events=", events], "")
 }

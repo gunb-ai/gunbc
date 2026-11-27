@@ -7,22 +7,11 @@ import product.host_identity { HostIdentity }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry, BuildGunbcBinaries }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.compute.remote_build_serving_identity {
+  remote_build_serving_instance,
+}
 import gunbc.compute.remote_build {
-  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims,
-  RemoteBuildSourceRef, remote_build_source_ref, remote_build_source_ref_name,
-  RemoteBuildRequest, RemoteBuildWork, remote_build_request_work, remote_build_execution_requirements,
-  remote_build_request_text, remote_build_decode_request,
-  RemoteBuildRequestDecode, RemoteBuildWorkDecoded, RemoteBuildRequestRefused,
-  RemoteBuildRequestRefusal, RequestNotThisProtocol, RequestWordNotPortable, RequestTooShort,
-  RequestCommitNotAnObjectId, RequestSourceRefInvalid, RequestOperationUnknown, RequestEntryOutsideCorpus,
-  RequestCompileTakesOneEntry, RequestClaimsNameNoFunction,
-  remote_build_work_operation,
-  RemoteBuildSourceAdmission, RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
-  RemoteBuildHostRow, RemoteBuildHostStanding, RemoteBuildHostAdmitted, RemoteBuildHostWithoutStore, remote_build_host_standing,
-  RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance,
-  RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostCapacityFull, HostUnreachable, HostRefusedRequest,
-  RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable,
-  remote_build_next_step,
+  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteBuildSourceRef, remote_build_source_ref, remote_build_source_ref_name, RemoteBuildRequest, RemoteBuildWork, remote_build_request_work, remote_build_execution_requirements, remote_build_request_text, remote_build_decode_request, RemoteBuildRequestDecode, RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RemoteBuildRequestRefusal, RequestNotThisProtocol, RequestWordNotPortable, RequestTooShort, RequestCommitNotAnObjectId, RequestSourceRefInvalid, RequestOperationUnknown, RequestEntryOutsideCorpus, RequestCompileTakesOneEntry, RequestClaimsNameNoFunction, remote_build_work_operation, RemoteBuildSourceAdmission, RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source, RemoteBuildHostRow, RemoteBuildHostStanding, RemoteBuildHostAdmitted, RemoteBuildHostWithoutStore, remote_build_host_standing, RemoteBuildCandidate, remote_build_candidates, RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostCapacityFull, HostUnreachable, HostRefusedRequest, RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
 }
 
 // HERMETIC CONTROLS for the remote-build contract (gunbc.compute.remote_build). They establish the

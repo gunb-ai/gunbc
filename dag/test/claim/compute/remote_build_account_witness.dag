@@ -34,7 +34,12 @@ import gunbc.compute.host_capacity {
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7, operator_host_srv14 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
-import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
+import gunbc.compute.remote_build_serving_identity {
+  remote_build_serving_instance,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildCandidate, remote_build_candidates,
+}
 import gunbc.compute.remote_build_serve {
   RemoteBuildServeLedgerOwner, ServeLedgerOwnerDeclared, ServeLedgerOwnerUndeclared, remote_build_serve_ledger_owner,
 }

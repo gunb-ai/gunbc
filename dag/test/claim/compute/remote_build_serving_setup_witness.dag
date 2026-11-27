@@ -42,7 +42,7 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_gid, fleet_posix_operator_user,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance }
+
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
 // remote_build_serving_candidate_hosts moved to this module on 2026-11-20, beside the live dispatch gate.
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_host_is_serving_candidate, remote_build_serving_candidate_hosts }

@@ -10,7 +10,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 
 import std.optional { Present, Absent }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, compute_root }
-import gunbc.compute.remote_build { remote_build_serving_instance }
+
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_work_slice_unit_name, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import std.measure { byte_size_count }
