@@ -50,7 +50,7 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.compiler.program_assembly { dag_prepared_lex }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   dag_lex_token_symbol,
@@ -65,7 +65,6 @@ import v2.extdeps.languages.dag {
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
 import std.algebra { Cons, Empty, fold_list, length, list_append, string_contains }
-import std.coercion { unicode_scalar_fold }
 import std.types { Bool, List, NonEmptyStr }
 import v2.std.text { String }
 import v2.std.node {
@@ -263,7 +262,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
           == qualified_name_from_dotted_string(
             dotted: concat(
               qualified_name_to_dotted_string(qn: self_host_read_roster_manifest_site.module),
-              concat(".", unicode_scalar_fold(xs: symbol_lexeme(sym: self_host_read_roster_manifest_site.enclosing_declaration)))
+              concat(".", symbol_lexeme(sym: self_host_read_roster_manifest_site.enclosing_declaration))
             )
           )
       }
@@ -275,7 +274,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
           == qualified_name_from_dotted_string(
             dotted: concat(
               qualified_name_to_dotted_string(qn: self_host_fold_side_bytes_site.module),
-              concat(".", unicode_scalar_fold(xs: symbol_lexeme(sym: self_host_fold_side_bytes_site.enclosing_declaration)))
+              concat(".", symbol_lexeme(sym: self_host_fold_side_bytes_site.enclosing_declaration))
             )
           )
       }
@@ -959,7 +958,7 @@ fn corpus_resolved_authored_type(type_text: String, bindings: List<AliasBindingR
       if acc != type_text {
         acc
       } else {
-        if unicode_scalar_fold(xs: symbol_lexeme(sym: row.binding)) == type_text {
+        if symbol_lexeme(sym: row.binding) == type_text {
           qualified_name_to_dotted_string(qn: row.target)
         } else {
           acc
@@ -1003,9 +1002,16 @@ fn corpus_resolved_authored_type(type_text: String, bindings: List<AliasBindingR
 // never returns an empty list; malformed segments REJECT with the reader's own diagnostic. The
 // negative-control claims below demonstrate each arm, and the blindness guard
 // (every_authorized_restatement_identity_is_found_in_the_corpus) turns a wrong reader shape red.
+// The EMPTY population at its declared grain: the [] literal typed against a declared List return
+// (a collection position), not at a generic outcome_accepted(value:) parameter, where the elaborator
+// sees no collection (gate leg 136cca48e62 diagnostic, filesystem_effect_reach_wall.dag:1008:51).
+fn witness_zero_row_identities() -> List<DemandRestatementRowIdentity> {
+  []
+}
+
 fn witness_uses_rows(decl: Node, module_path: String, bindings: List<AliasBindingRow>) -> Outcome<List<DemandRestatementRowIdentity>> {
   match parse_subtree_find_production_captured(root: decl, emitted: ^dag_surface_uses_clause) {
-    ParseSubtreeAbsent => outcome_accepted(value: [])
+    ParseSubtreeAbsent => outcome_accepted(value: witness_zero_row_identities())
     ParseSubtreeFound { captured: clause_capture } =>
       match parse_subtree_find_production_captured(root: clause_capture, emitted: ^dag_surface_uses_entry) {
         ParseSubtreeAbsent =>
@@ -1059,8 +1065,8 @@ fn witness_uses_rows(decl: Node, module_path: String, bindings: List<AliasBindin
                               outcome_accepted(value: [
                                 DemandRestatementRowIdentity {
                                   module_path: module_path as NonEmptyStr,
-                                  declaration: unicode_scalar_fold(xs: symbol_lexeme(sym: alias_sym)) as NonEmptyStr,
-                                  alias: unicode_scalar_fold(xs: symbol_lexeme(sym: alias_sym)) as NonEmptyStr,
+                                  declaration: symbol_lexeme(sym: alias_sym) as NonEmptyStr,
+                                  alias: symbol_lexeme(sym: alias_sym) as NonEmptyStr,
                                   authored_type: corpus_resolved_authored_type(
                                     type_text: qualified_name_to_dotted_string(qn: qualified_name_from_string_segments(segments: contract_segments)),
                                     bindings: bindings
