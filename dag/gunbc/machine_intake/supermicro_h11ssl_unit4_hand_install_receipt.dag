@@ -1,0 +1,277 @@
+module gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.host_identity { HostIdentity }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootPxe, IpmiBootSelection, uefi_once_boot_selection }
+import gunbc.fleet.provider_acquisition { OperatorPerformed }
+import gunbc.fleet.fleet_host_identity { operator_host_ba61f9, operator_host_srv4 }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit4_bmc_mac }
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure, sha256_artifact }
+import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt { HandInstallRealization, Completed }
+import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation { H11sslBoardPortLabel, Lan1 }
+
+// ── UNIT 4 (john, host-ba61f9): A HAND INSTALL FROM srv4's PXE EDGE, RECORDED ──────────────────────────────────
+//
+// WHAT THIS MODULE IS. The receipt of the hand OS install of the fourth Supermicro H11SSL board in the fleet,
+// performed on 2026-11-26 by one Claude Code session on the operator's instruction. The operator's instruction was
+// to record any hand step against the repository with a planning row, and chose "hand install, recorded" because
+// the modeled install route refuses every new unit today: gunbc.plans.new_server_bringup section 2 (re-read
+// 2026-11-24) records that no unit has been installed by gunbc.host.network_install, and its tabletop names the
+// two contradictions that make the refusal total -- the install subject gate and the resolver read the same
+// managed membership (roadmap node install-subject-owns-secured-controller) and the installer accepts no x86_64
+// chain (roadmap node install-chain-selected-by-content), both under roadmap node site-boot-and-management-edge.
+// So this is a DECLARED DEPARTURE from the lifecycle, not a converged phase, and nothing here claims a route
+// produced it.
+//
+// WHY ANOTHER PER-UNIT RECEIPT MODULE, and what it does NOT re-mint. The two precedents are per-unit modules
+// (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt, a hand install relayed at day grain, and
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation, ken's hand PXE install from this same edge),
+// and their record types are per-unit; this follows them rather than refactoring them. What generalizes is
+// IMPORTED, not redeclared: H11sslReportedFigure (the family's operator/observer-reported figure), unit1's
+// HandInstallRealization with its Completed arm over gunbc.fleet.provider_acquisition AcquisitionRealization (the
+// corpus's one completed-step carrier), unit3's H11sslBoardPortLabel (the two board-labelled ports, the subject of
+// unit3's boot-path quirk), extdeps.bmc.ipmi_boot_selection for the forced boot that was asked for, and the
+// fleet's handles for this machine and for the edge host. What is new is only what the precedents had no field
+// for: the install ATTEMPTS (two, one refused) and the installer's own udev reading of the target disk, which is
+// the evidence for gunbc.recurring_failure_mode::autoinstall_serial_match_rendered_bare_against_udev_id_serial.
+//
+// THE STEP SEQUENCE IS NOT RESTATED HERE. The authority for what was done, in what order and at what instant, is
+// the step log committed beside this module, pinned by sha256 (supermicro_h11ssl_unit4_hand_install_steps_log);
+// rows below carry the facts a later model consumer needs, each citing the log rather than re-listing it.
+//
+// WHAT THIS DOES NOT ADD, and why. No gunbc.fleet.fleet_enrollment row, endpoint, runner, serving, GPU or power
+// row: naming is not enrollment, and admitting a hand-installed unit is the adoption route's job (roadmap node
+// install-adoption-of-installed-units), not a hand-written row's. No row in
+// gunbc.fleet.machine_target_disk_observations: those rows are the evidence an install AUTHORIZATION is admitted
+// against for thirty days (gunbc.fleet.machine_target_disk_observations site_pxe_edge_disk_identity_admission_window),
+// and a reading of a disk that now carries an installed root must not stand as authority to erase it again.
+//
+// CONSUMER (gunbc.design_argument::consumption): test.claim.machine_intake.supermicro_h11ssl_unit4_hand_install_witness
+// reads the record -- the registry row it is keyed by, the port the forced boot reached, the attempt order, the
+// withdrawn edge paths against the edge converge's own ownership predicate, and the udev reading through the real
+// install-target admission and autoinstall renderer. The hardware figures are receipt data whose named later
+// consumers are the inventory rows an adoption writes (gunbc.fleet.fleet_physical_inventory,
+// gunbc.fleet.gpu_device_observation), a declared frontier on that roadmap node.
+
+// THE STEP LOG, the authority for the sequence. The session wrote it as it went, one UTC-stamped line per step; it
+// is the session's transcription, not tool output, which is why the figures that rest only on it stay
+// TranscribedUncited below.
+data supermicro_h11ssl_unit4_hand_install_steps_log: EvidenceRef = sha256_artifact(
+  path: "artifacts/host-observations/john-hand-install-2026-11-26/john-hand-steps.log",
+  hex: "cd83b1cc7d587d3d81fcb9651fc1e1af89d0c70226e6b9f5c007be07936ef64d",
+)
+
+// THE SEED AS FIRST STAGED (22:48:12Z), carrying the BARE serial the model's renderer would render. Per the log only
+// its serial line changed before each install boot; the bytes each boot fetched were withdrawn with the rest.
+data supermicro_h11ssl_unit4_seed_as_staged: EvidenceRef = sha256_artifact(
+  path: "artifacts/host-observations/john-hand-install-2026-11-26/seed-user-data-as-staged-20261126T224812Z.yaml",
+  hex: "0776d6d20956a92f06626001c758d0be7e9a1f1ea932bcd89e19a75896a6296d",
+)
+
+// WHAT THE INSTALLER'S OWN udev REPORTED FOR THE TARGET DISK, read with udevadm in the installer shell after attempt
+// 1 refused (step log, 22:53:58Z). These are the properties Subiquity's matcher reads: subiquity.models.storage's
+// match_serial is `fnmatch.fnmatchcase(_udev_val(disk, "ID_SERIAL"), match["serial"])` and match_model the same over
+// ID_MODEL (canonical/subiquity main, file subiquity/models/storage.py at commit 2d269e1136be, read 2026-11-26). For
+// NVMe, systemd's rules.d/60-persistent-storage.rules.in composes ID_SERIAL as
+// "$env{ID_MODEL}_$env{ID_SERIAL_SHORT}_$env{ID_NSID}" with string_escape=replace (systemd main at 6016a8af8329,
+// read 2026-11-26), which is the value below: the device's own SN is ID_SERIAL_SHORT, not ID_SERIAL. `device` is
+// deduced, not read: the controller is nvme0 (the identification boot's read, quoted in the staged seed's header)
+// and the namespace id is the trailing _1 of ID_SERIAL.
+type InstallerUdevDiskReading {
+  device: NonEmptyStr
+  id_serial: NonEmptyStr
+  id_serial_short: NonEmptyStr
+  id_model: NonEmptyStr
+  id_wwn: NonEmptyStr
+  read_at: Rfc3339Timestamp
+  standing: CitedFigureStanding
+}
+
+// WHAT AN INSTALL BOOT ENDED IN. Two arms because two happened: a refusal before any storage write (Subiquity could
+// not find a disk satisfying the match and stopped), and an install. A third outcome would land with the attempt
+// that produced it.
+type HandInstallAttemptOutcome
+  = InstallerRefusedBeforeStorageWrite { installer_message: NonEmptyStr }
+  | InstallerInstalled { evidence: NonEmptyStr }
+
+// ONE INSTALL BOOT: when it was booted, the storage.layout.match values the seed it fetched carried, and how it
+// ended. The served values are recorded verbatim because they ARE the finding -- the same disk, three spellings of
+// its serial, and only the glob that brackets it matched.
+type HandInstallAttempt {
+  booted_at: Rfc3339Timestamp
+  served_serial_match: NonEmptyStr
+  served_model_match: NonEmptyStr
+  outcome: HandInstallAttemptOutcome
+}
+
+type SupermicroH11sslUnit4HandInstall {
+  fleet_slot: HostIdentity
+  bmc_mac: Eui48Address
+  bmc_ipv4: Ipv4Address
+  // The host port the install ran over: LAN1, eno1 in the installed OS, the one port cabled (carrier=1).
+  install_nic_mac: Eui48Address
+  install_nic_port: H11sslBoardPortLabel
+  // THE FORCED BOOT, AND WHERE IT LANDED. `ipmitool chassis bootdev pxe options=efiboot` is a one-shot UEFI PXE
+  // override; on this unit the PXE attempt went out LAN1, which IS the install port -- unlike unit 3 (ken), where the
+  // same override landed on LAN1 while the install needed LAN2
+  // (gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing).
+  // Same board family, different answer: the boot port is a per-unit fact, as gunbc.plans.new_server_bringup
+  // section 3 states. The landing is DEDUCED from the outcome, not read from a console transcript of the firmware's
+  // PXE client: the only install entry and seed on the edge were keyed to LAN1's MAC (dhcp-host and per-MAC grub
+  // config), LAN2 was uncabled, and the unit booted that entry and seed.
+  forced_boot_asked_for: IpmiBootSelection
+  forced_boot_landed_on: H11sslBoardPortLabel
+  host_lease_ipv4: Ipv4Address
+  realization: HandInstallRealization
+  // THE EDGE: what was staged on srv4 for this unit, and where it went. The paths are srv4's; the edge root is
+  // gunbc.fleet.site_pxe_edge_converge's (site_pxe_edge_served_root).
+  edge_host: HostIdentity
+  edge_staged: List<NonEmptyStr>
+  edge_withdrawn_at: Rfc3339Timestamp
+  edge_withdrawn_paths: List<NonEmptyStr>
+  edge_config_restored: H11sslReportedFigure
+  // THE TWO PASSES. Pass 1 booted the installer read-only to identify the disk and ports; pass 2 is the attempts.
+  identification_pass: H11sslReportedFigure
+  attempts: List<HandInstallAttempt>
+  target_disk: InstallerUdevDiskReading
+  // The board and what was observed on it, each with the read that would ground it.
+  hardware: List<H11sslReportedFigure>
+  // What the session configured on the installed host after the install -- state that exists there now.
+  installed_state: List<H11sslReportedFigure>
+  // Why this was by hand: the plan and the two blocking declarations, cited by symbol.
+  route_refused_by: List<DeclarationRef>
+  steps_log: EvidenceRef
+}
+
+data supermicro_h11ssl_unit4_hand_install: SupermicroH11sslUnit4HandInstall = SupermicroH11sslUnit4HandInstall {
+  fleet_slot: operator_host_ba61f9,
+  bmc_mac: supermicro_h11ssl_unit4_bmc_mac,
+  bmc_ipv4: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 251),
+  install_nic_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 230, octet5: 121, octet6: 114),
+  install_nic_port: Lan1,
+  forced_boot_asked_for: uefi_once_boot_selection(device: IpmiBootPxe),
+  forced_boot_landed_on: Lan1,
+  host_lease_ipv4: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 240),
+  realization: Completed {
+    performed: OperatorPerformed {
+      performed_on: "2026-11-26",
+      relayed: "installed by hand on 2026-11-26 by session 128748d2 on the operator's instruction ('hand install, recorded'); attempt 2 booted 22:53:58Z, the installed system answered ssh at 192.168.1.240 and took the hostname john at 23:06:11Z (step log)",
+    },
+  },
+  edge_host: operator_host_srv4,
+  edge_staged: [
+    "/etc/gunbc-site-pxe-edge.dnsmasq.conf: appended dhcp-host=ac:1f:6b:e6:79:72,set:onboarding-known (backup taken first: /etc/gunbc-site-pxe-edge.dnsmasq.conf.bak-before-john-20261126T224436Z)" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e6:79:72.cfg: the per-MAC grub install entry, one-shot" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-79-72/\{user-data,meta-data}: the NoCloud seed, read-only identification first, then the key-only autoinstall" as NonEmptyStr,
+  ],
+  edge_withdrawn_at: "2026-11-26T23:03:55Z",
+  // WHERE THE STAGED FILES WENT. Moved, not deleted, under the edge's staging/ subtree -- which
+  // gunbc.fleet.site_pxe_edge_converge site_pxe_edge_owned_install_path claims whole, so the next authorized
+  // fleet-converge apply lists these as stale residue and removes them through site_pxe_edge_remove_stale. The
+  // removal is owed to that apply; nobody removes them by hand. The directory name is a spelling, not vocabulary
+  // this repository models (the edge model refuses to model withdrawn-* names, per the ruling carried by
+  // gunbc.integration_concern.h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model).
+  edge_withdrawn_paths: [
+    "/srv/gunbc-site-pxe-edge/staging/withdrawn-john/ac:1f:6b:e6:79:72.cfg" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/staging/withdrawn-john/ac-1f-6b-e6-79-72/user-data" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/staging/withdrawn-john/ac-1f-6b-e6-79-72/meta-data" as NonEmptyStr,
+  ],
+  edge_config_restored: H11sslReportedFigure {
+    value: "the dhcp-host line removed at withdrawal; /etc/gunbc-site-pxe-edge.dnsmasq.conf compared byte-equal to its pre-john backup; gunbc-site-pxe-edge.service restarted" as NonEmptyStr,
+    standing: TranscribedUncited {
+      read_obligation: "a read-only site_pxe_edge observe (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_observe_ci_wet) after this date, expecting no ac:1f:6b:e6:79:72 line in the config and the three paths above in its stale listing; the session's byte comparison is in the step log only" as NonEmptyStr,
+    },
+  },
+  identification_pass: H11sslReportedFigure {
+    value: "pass 1 (booted 22:44:44Z): a READ-ONLY identification seed -- autoinstall interactive-sections '*' so the installer stops before any storage action, with early-commands printing lsblk, the NVMe identity and the NIC list to ttyS1 -- read over SOL; it named one NVMe disk, nvme0, WDC PC SN730 SDBQNTY-512G-1001 serial 20152C807439, and the cabled port. Pass 2 replaced the seed with the key-only autoinstall." as NonEmptyStr,
+    standing: TranscribedUncited {
+      read_obligation: "the SOL transcript of pass 1 is not committed; an in-band `lsblk -o NAME,SIZE,MODEL,SERIAL,TRAN` and `ip -o link` on the installed host would re-read the same identity and port" as NonEmptyStr,
+    },
+  },
+  attempts: [
+    HandInstallAttempt {
+      booted_at: "2026-11-26T22:48:29Z",
+      served_serial_match: "*20152C807439" as NonEmptyStr,
+      served_model_match: "WDC PC SN730 SDBQNTY-512G-1001" as NonEmptyStr,
+      outcome: InstallerRefusedBeforeStorageWrite {
+        installer_message: "Failed to find matching device for {'model': 'WDC PC SN730 SDBQNTY-512G-1001', 'serial': '*20152C807439'}" as NonEmptyStr,
+      },
+    },
+    HandInstallAttempt {
+      booted_at: "2026-11-26T22:53:58Z",
+      served_serial_match: "*20152C807439*" as NonEmptyStr,
+      served_model_match: "WDC PC SN730 SDBQNTY-512G-1001" as NonEmptyStr,
+      outcome: InstallerInstalled {
+        evidence: "the installer completed and the unit rebooted into the installed system, which answered ssh with the fleet key at 192.168.1.240 (step log, 23:06:11Z onward)" as NonEmptyStr,
+      },
+    },
+  ],
+  target_disk: InstallerUdevDiskReading {
+    device: "nvme0n1" as NonEmptyStr,
+    id_serial: "WDC_PC_SN730_SDBQNTY-512G-1001_20152C807439_1" as NonEmptyStr,
+    id_serial_short: "20152C807439" as NonEmptyStr,
+    id_model: "WDC PC SN730 SDBQNTY-512G-1001" as NonEmptyStr,
+    id_wwn: "eui.001b448b460ee596" as NonEmptyStr,
+    read_at: "2026-11-26T22:53:58Z",
+    standing: TranscribedUncited {
+      read_obligation: "`udevadm info --query=property --name=/dev/nvme0n1` on the installed host, committed with its sha256: the installed system's udev composes ID_SERIAL by the same rule the installer's did, so one capture re-reads all four properties" as NonEmptyStr,
+    },
+  },
+  hardware: [
+    H11sslReportedFigure {
+      value: "Supermicro H11SSL-class board, BIOS 2.0a; BMC ASPEED firmware 1.52, Redfish 1.0.1 with Storage refused as OemLicenseNotPassed (DCMS licence)" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`dmidecode -t baseboard -t bios` and `ipmitool mc info` IN BAND on the installed host (no LAN read with a factory credential), committed with sha256; the board serial is unread" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "AMD EPYC 7702P, 64 cores" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`lscpu` or `dmidecode -t processor` in band, committed" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "112 GB visible; POST prints 'Memory PMU Training error at Socket 0 Channel 4 DIMM 0', and 7 of 8 DIMMs train -- one slot's DIMM is not in service" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`dmidecode -t memory` in band (which slot reads empty or untrained), plus the BMC SEL in band before anyone clears it; reseating or replacing the Channel 4 DIMM is the operator's physical action" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "NVMe WDC PC SN730 SDBQNTY-512G-1001, serial 20152C807439, firmware 11170101, 476.9G, EUI eui.001b448b460ee596 -- the install target and the only disk" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`nvme id-ctrl /dev/nvme0` and `lsblk -o NAME,SIZE,MODEL,SERIAL,TRAN` in band, committed" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "host NICs: LAN1 eno1 ac:1f:6b:e6:79:72 cabled (carrier=1, DHCP lease 192.168.1.240); LAN2 eno2 ac:1f:6b:e6:79:73 uncabled" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`ip -o link` with /sys/class/net/*/carrier in band, committed -- the read that pins LAN1 to eno1 by MAC rather than by label" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "two accelerators: Tesla M40 24GB at 0000:81:00.0 (10de:17fd; power limit 180-250 W; slowdown 89 C, shutdown 92 C) and Tesla P100-PCIE-16GB at 0000:c1:00.0 (10de:15f8; 125-250 W; slowdown 82 C, shutdown 85 C)" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "the sysfs vendor/device read per function (domain-prefixed paths) and `nvidia-smi -q -d POWER,TEMPERATURE` in band, committed the way artifacts/host-observations/ken-gpu-read-2026-11-18/ was; the M40 has no extdeps.gpu catalog row today and the P100 binds to extdeps.gpu.nvidia_p100 only after that read" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "chassis fan readings present for FAN2 (CPU zone) and FANA (zone 1) only" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`ipmitool sdr type Fan` in band, committed" as NonEmptyStr },
+    },
+  ],
+  installed_state: [
+    H11sslReportedFigure {
+      value: "hostname john (hostnamectl; /etc/hosts 127.0.1.1 john) -- the name gunbc.hostname_allocation draws for host-ba61f9" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`hostnamectl --static` in band; an adoption run's identity read supersedes it" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "NVIDIA R580 proprietary driver: nvidia-headless-580-server 580.178.04, nvidia-utils-580-server, linux-modules-nvidia-580-server-generic; nouveau blacklisted (modeset=0) with the initramfs rebuilt. The open kernel modules were not used because they do not support Maxwell (M40) or Pascal (P100)" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "`dpkg-query -W 'nvidia-*580*'` and `cat /proc/driver/nvidia/version` in band, committed; no modeled host-software row carries this package set yet" as NonEmptyStr },
+    },
+    H11sslReportedFigure {
+      value: "BMC fan mode Heavy IO and zone 1 duty 0x64 (100%), set over IPMI OEM raw commands; NOT persistent across power-off -- the same unmodeled duty floor gunbc.integration_concern.h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer carries for ken" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "the GetFanMode / GetZoneDuty read of extdeps.bmc.supermicro_oem_fan through gunbc.machine_intake.fan_observe, in band, taken once now and once after a power cycle" as NonEmptyStr },
+    },
+  ],
+  route_refused_by: [
+    decl_ref(module_path: "gunbc.plans.new_server_bringup", decl_name: "new_server_bringup_plan"),
+    decl_ref(module_path: "gunbc.host.install_boot_subject", decl_name: "admit_install_boot_subject"),
+    decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_managed_row"),
+    decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_chain"),
+  ],
+  steps_log: supermicro_h11ssl_unit4_hand_install_steps_log,
+}

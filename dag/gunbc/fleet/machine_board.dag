@@ -12,6 +12,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
   operator_host_srv14, operator_host_srv15,
   operator_host_183527, operator_host_3dde7f, operator_host_6ce85c, operator_host_e2d4b7,
+  operator_host_ba61f9,
 }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv14_baseboard, srv15_baseboard, supermicro_h11ssl_unit3_baseboard }
 
@@ -97,4 +98,9 @@ data machine_board_rows: List<MachineBoardRow> = [
     decl_name: "supermicro_h11ssl_unit3_baseboard",
     catalog: supermicro_h11ssl_catalog,
   ),
+  // H11SSL unit 4 (john, 2026-11-26, hand-installed): identity-stated on the 6ce85c precedent, because no supply
+  // intent row exists for it in gunbc.fleet.fleet_intent and minting one would enroll the unit, which this change
+  // does not do. The board family is the identity row's statement; the baseboard SERIAL is unread (`dmidecode -t
+  // baseboard` in band is owed, named in gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt).
+  identity_stated_board(host: operator_host_ba61f9, decl_name: "operator_host_ba61f9", catalog: supermicro_h11ssl_catalog),
 ]

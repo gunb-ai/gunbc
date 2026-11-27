@@ -1,0 +1,269 @@
+module test.claim.machine_intake.supermicro_h11ssl_unit4_hand_install_witness
+
+// WITNESSES FOR THE UNIT 4 (john) HAND INSTALL RECEIPT. Each claim reads the receipt through a real authority --
+// the hostname allocator, the edge converge's ownership predicate, the install-target admission and the autoinstall
+// renderer -- so it reds when the receipt and the authority it is about stop agreeing, not when a literal changes.
+// The receipt is gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt.
+
+import std.types { Bool, List, NonEmptyStr, String, EpochMs }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { host_identity_eq }
+import extdeps.languages.yaml.types { YamlValue, YamlString }
+import extdeps.os.ubuntu_autoinstall { autoinstall_match_field_serial }
+import extdeps.bmc.ipmi_boot_selection { ipmi_boot_selection_label }
+import gunbc.os_install_emit { autoinstall_match_entries }
+import gunbc.provisioning.install_target_disk {
+  TargetDiskReading,
+  DiskReported,
+  LsblkBlockReport,
+  InstallTargetDiskAdmitted,
+  InstallTargetDiskWithheld,
+  admit_install_target_disk,
+  install_target_disk_pin,
+}
+import gunbc.fleet.machine_target_disk_observations { site_pxe_edge_disk_identity_admission_window }
+import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_owned_install_path }
+import gunbc.fleet.fleet_host_identity { operator_host_ba61f9 }
+import gunbc.hostname_allocation {
+  fleet_machine_registry,
+  operator_hosts,
+  draw_human_name,
+  HumanNameDrawn,
+  HumanNameDrawExhausted,
+  HumanNameDrawRefused,
+  DrawnHumanName,
+  LegacyHostname,
+  human_name_canonical_hostname,
+  canonical_hostname_for_fleet_slot,
+  resolve_host_selector,
+  HostSelectorResolved,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt { hand_install_completed_step }
+import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
+  supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing,
+  IpxeForcedBootObservedOnOtherPort,
+  BootPathUnobserved,
+  h11ssl_board_port_label_text,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt {
+  supermicro_h11ssl_unit4_hand_install,
+  HandInstallAttempt,
+  InstallerRefusedBeforeStorageWrite,
+  InstallerInstalled,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The instant the installer-shell udev read was taken (2026-11-26T22:53:58Z), as epoch milliseconds: the reading
+// below is admitted AT that instant, so the admission's freshness window is not what this witness exercises.
+data unit4_udev_read_instant: EpochMs = 1795733638000
+
+// ── THE NAME ──────────────────────────────────────────────────────────────────────────────────────────────
+
+// 1. THE REGISTRY ROW IS THE ALLOCATOR'S DRAW, NOT A SPELLING. john's row carries ticket 862506853147, and the real
+// allocator, run over every OTHER row of the registry, yields exactly "john"; the name then resolves to this
+// machine's handle and the handle projects back to the name. RED: hand-edit the name, change the ticket, or add a
+// row that already answers to "john" -- each reds a different conjunct.
+test fn the_registry_draws_john_for_unit4_from_its_recorded_ticket() -> Bool {
+  let slot = operator_host_ba61f9
+  let reproduced = match filter(fleet_machine_registry, r => (r.fleet_slot as String) == (slot as String)).first() {
+    Absent => false
+    Present { value: row } => match row.name {
+      LegacyHostname { label: _ } => false
+      DrawnHumanName { name: recorded, draw: d } =>
+        d.entropy == 862506853147
+          && (human_name_canonical_hostname(name: recorded) as String) == "john"
+          && match draw_human_name(draw: d, existing: filter(fleet_machine_registry, o => (o.fleet_slot as String) != (slot as String))) {
+            HumanNameDrawn { name: drawn } => (human_name_canonical_hostname(name: drawn) as String) == "john"
+            HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+            HumanNameDrawRefused { reason: _ } => false
+          }
+    }
+  }
+  let resolves = match resolve_host_selector(selector: "john") {
+    HostSelectorResolved { host } => host_identity_eq(a: host, b: slot)
+    _ => false
+  }
+  let projects = match canonical_hostname_for_fleet_slot(fleet_slot: slot) {
+    Present { value: label } => (label as String) == "john"
+    Absent => false
+  }
+  reproduced && resolves && projects
+}
+
+// 2. THE RECEIPT IS KEYED BY A MACHINE THE ADMITTED ROSTER HOLDS. RED: key the receipt by a handle with no registry
+// row, or let the registry collide so the roster admits nothing.
+test fn the_receipt_is_keyed_by_a_rostered_machine() -> Bool {
+  any(operator_hosts, h => host_identity_eq(a: h, b: supermicro_h11ssl_unit4_hand_install.fleet_slot))
+}
+
+// ── THE PORTS AND THE BOOT ────────────────────────────────────────────────────────────────────────────────
+
+// 3. TWO PORTS, TWO ADDRESSES, kept apart: the install NIC is not the BMC's port, and the host's lease is not the
+// BMC's address. RED: a receipt that conflated them would aim an install at a controller.
+test fn the_install_port_and_lease_are_not_the_bmc_port_and_address() -> Bool {
+  let r = supermicro_h11ssl_unit4_hand_install
+  !(r.install_nic_mac == r.bmc_mac) && !(r.host_lease_ipv4 == r.bmc_ipv4)
+}
+
+// 4. THE SAME OVERRIDE, TWO UNITS, TWO ANSWERS. Unit 4's forced UEFI-once PXE landed on its install port; unit 3's,
+// the same selection as the boot-flags authority renders it, landed on the OTHER port. That is the evidence for the
+// new-server-bringup plan's rule that the boot port is proven per unit, not per board family. RED: record unit 4 as
+// landing elsewhere than it installed from, or let the two receipts ask for different selections.
+test fn the_forced_pxe_reached_the_install_port_on_unit4_and_not_on_unit3() -> Bool {
+  let r = supermicro_h11ssl_unit4_hand_install
+  let unit4_landed_on_install_port =
+    h11ssl_board_port_label_text(label: r.forced_boot_landed_on) == h11ssl_board_port_label_text(label: r.install_nic_port)
+  match supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing {
+    IpxeForcedBootObservedOnOtherPort {
+      selection_the_flag_asked_for: asked,
+      selection_as_the_authority_renders_it: _,
+      board_port_the_pxe_attempt_landed_on: landed,
+      board_port_the_install_needed: needed,
+      port_the_install_needed: _,
+      route_that_reached_the_install_port: _,
+      confounder_row: _,
+      read_obligation: _,
+    } =>
+      unit4_landed_on_install_port
+        && h11ssl_board_port_label_text(label: landed) != h11ssl_board_port_label_text(label: needed)
+        && (ipmi_boot_selection_label(selection: asked) as String) == (ipmi_boot_selection_label(selection: r.forced_boot_asked_for) as String)
+    BootPathUnobserved { read_obligation: _ } => false
+  }
+}
+
+// ── THE ATTEMPTS ──────────────────────────────────────────────────────────────────────────────────────────
+
+fn attempt_installed(a: HandInstallAttempt) -> Bool {
+  match a.outcome {
+    InstallerInstalled { evidence: _ } => true
+    InstallerRefusedBeforeStorageWrite { installer_message: _ } => false
+  }
+}
+
+// 5. ONE INSTALL, AND IT IS THE LAST ATTEMPT. The realization is a completed step, exactly one attempt installed,
+// and it is the final one -- every attempt before it refused before writing storage. RED: record a second install,
+// an install followed by another boot, or a Completed realization with no installing attempt.
+test fn only_the_last_attempt_installed_and_the_install_is_completed() -> Bool {
+  let r = supermicro_h11ssl_unit4_hand_install
+  let completed = match hand_install_completed_step(realization: r.realization) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let installed = filter(r.attempts, a => attempt_installed(a: a))
+  completed
+    && installed.length() == 1
+    && match r.attempts.last() {
+      Present { value: last } => attempt_installed(a: last)
+      Absent => false
+    }
+}
+
+// ── THE EDGE ──────────────────────────────────────────────────────────────────────────────────────────────
+
+// 6. THE WITHDRAWN FILES ARE THE CONVERGE'S TO REMOVE. Every path the hand install withdrew to on srv4 sits inside
+// the set gunbc.fleet.site_pxe_edge_converge's own ownership predicate claims, so the next authorized apply lists
+// and removes them rather than leaving residue nobody owns (the state unit 3's staged entry was found in). The
+// predicate is shown to discriminate: the same files one directory outside staging/ are not owned. RED: withdraw to
+// a path outside the owned families, or narrow the predicate so staging/ is no longer claimed.
+test fn every_withdrawn_edge_path_is_inside_the_set_the_edge_converge_owns() -> Bool {
+  let paths = supermicro_h11ssl_unit4_hand_install.edge_withdrawn_paths
+  paths.length() == 3
+    && all(paths, p => site_pxe_edge_owned_install_path(path: p as String))
+    && !site_pxe_edge_owned_install_path(path: "/srv/gunbc-site-pxe-edge/withdrawn-john/ac:1f:6b:e6:79:72.cfg")
+}
+
+// ── THE SERIAL MATCH (gunbc.recurring_failure_mode::autoinstall_serial_match_rendered_bare_against_udev_id_serial) ──
+
+// Subiquity's matcher is fnmatch.fnmatchcase over udev ID_SERIAL (canonical/subiquity, subiquity.models.storage,
+// match_serial). This evaluates fnmatchcase for exactly the three pattern shapes this receipt's evidence contains --
+// the bare core, "*core" and "*core*" -- where the core carries no metacharacter (the device-identification
+// repertoire forbids them). Any other shape is Absent, never a guess: this is not a general glob engine.
+fn star_shape_matches(subject: String, core: String, pattern: String) -> Optional<Bool> {
+  if pattern == core {
+    Present { value: subject == core }
+  } else if pattern == concat("*", core) {
+    Present { value: ends_with(s: subject, suffix: core) }
+  } else if pattern == concat(concat("*", core), "*") {
+    Present { value: string_contains(s: subject, pattern: core) }
+  } else {
+    Absent
+  }
+}
+
+fn yaml_string_value(v: YamlValue) -> Optional<String> {
+  match v {
+    YamlString { value: s } => Present { value: s }
+    _ => Absent
+  }
+}
+
+// The serial value the model's renderer writes into storage.layout.match for a reading, through the real route: the
+// install-target admission and gunbc.os_install_emit autoinstall_match_entries. Absent when the admission withholds
+// or the renderer writes no serial string -- either is a failure of this route, not a value.
+fn rendered_serial_match(reading: TargetDiskReading) -> Optional<String> {
+  match admit_install_target_disk(reading: reading, decided_at: unit4_udev_read_instant, window: site_pxe_edge_disk_identity_admission_window) {
+    InstallTargetDiskWithheld { host: _, cause: _ } => Absent
+    InstallTargetDiskAdmitted { target: target } =>
+      match filter(autoinstall_match_entries(pin: install_target_disk_pin(disk: target)), e => e.key == (autoinstall_match_field_serial() as String)).first() {
+        Absent => Absent
+        Present { value: entry } => yaml_string_value(v: entry.value)
+      }
+  }
+}
+
+// THE READING THE MODEL WOULD BE HANDED FOR THIS DISK: what lsblk's SERIAL and MODEL columns print for an NVMe disk
+// are udev's ID_SERIAL_SHORT and ID_MODEL, so the supplied reading is built from the receipt's own udev row -- not
+// from a literal -- and pinned to this machine's handle.
+fn unit4_disk_as_the_model_reads_it() -> TargetDiskReading {
+  let r = supermicro_h11ssl_unit4_hand_install
+  DiskReported {
+    host: r.fleet_slot,
+    device: r.target_disk.device,
+    reported_serial: Present { value: r.target_disk.id_serial_short },
+    reported_model: Present { value: r.target_disk.id_model },
+    source: LsblkBlockReport,
+    captured_in: r.steps_log.label,
+    read_at: unit4_udev_read_instant,
+  }
+}
+
+// 7. THE DEFECT, REPRODUCED THROUGH THE REAL ROUTE. The model admits this disk and renders its SN, bare, as the
+// `serial` match; under the installer's matcher that is an equality against ID_SERIAL, and the recorded ID_SERIAL
+// contains the SN without being it -- so the modeled install of this disk would refuse exactly as attempt 1 did.
+// THIS IS THE PROBE gunbc.recurring_failure_mode::autoinstall_serial_match_rendered_bare_against_udev_id_serial
+// NAMES: green while the defect stands; the fix it names flips it to a regression control asserting the rendered
+// value MATCHES. RED today: a renderer that emitted a value the matcher accepts, or an admission that stopped
+// admitting this disk (the route vanishing must not read as the defect being gone).
+test fn the_rendered_bare_serial_cannot_match_the_installers_id_serial() -> Bool {
+  let d = supermicro_h11ssl_unit4_hand_install.target_disk
+  match rendered_serial_match(reading: unit4_disk_as_the_model_reads_it()) {
+    Absent => false
+    Present { value: rendered } =>
+      rendered == (d.id_serial_short as String)
+        && string_contains(s: d.id_serial as String, pattern: rendered)
+        && match star_shape_matches(subject: d.id_serial as String, core: d.id_serial_short as String, pattern: rendered) {
+          Present { value: matched } => !matched
+          Absent => false
+        }
+  }
+}
+
+// 8. THE RECORDED OUTCOMES AGREE WITH THE MATCHER OVER THE RECORDED ID_SERIAL. For every attempt, the served serial
+// pattern matches the recorded ID_SERIAL exactly when that attempt installed, and every served model equals the
+// recorded ID_MODEL -- so the udev row, the attempts and the installer's semantics are mutually consistent. RED:
+// transcribe ID_SERIAL without its namespace suffix (attempt 1's "*SN" would then match, while it refused), or
+// record a served pattern the matcher would reject as the one that installed.
+test fn every_attempt_outcome_is_what_the_matcher_answers_for_the_recorded_id_serial() -> Bool {
+  let r = supermicro_h11ssl_unit4_hand_install
+  let d = r.target_disk
+  r.attempts.length() == 2
+    && all(r.attempts, a =>
+      (a.served_model_match as String) == (d.id_model as String)
+        && match star_shape_matches(subject: d.id_serial as String, core: d.id_serial_short as String, pattern: a.served_serial_match as String) {
+          Present { value: matched } => matched == attempt_installed(a: a)
+          Absent => false
+        })
+}

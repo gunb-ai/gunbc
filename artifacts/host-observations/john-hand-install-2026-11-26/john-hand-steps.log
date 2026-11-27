@@ -1,0 +1,14 @@
+20261126T224436Z srv4 (192.168.1.196, ubuntu, fleet-automation key): backup /etc/gunbc-site-pxe-edge.dnsmasq.conf.bak-before-john-20261126T224436Z; appended dhcp-host=ac:1f:6b:e6:79:72,set:onboarding-known; wrote /srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-79-72/{user-data,meta-data} (READ-ONLY identification seed: interactive '*', early-commands print lsblk/nvme/NIC to ttyS1); wrote /srv/gunbc-site-pxe-edge/tftp/grub/install/ac:1f:6b:e6:79:72.cfg (one-shot identify entry); restarted gunbc-site-pxe-edge.service
+20261126T224444Z BMC .251: ipmitool chassis bootdev pxe options=efiboot (one-shot); power reset
+20261126T224812Z srv4: replaced seed ac-1f-6b-e6-79-72/user-data with key-only autoinstall (mirrors site_pxe_edge_key_only_autoinstall; storage direct, match serial 20152C807439 + model WDC PC SN730 SDBQNTY-512G-1001); meta-data instance-id john-install-20261126T224812Z; grub entry renamed 'gunbc john autoinstall'
+20261126T224828Z srv4: seed serial match changed to glob "*20152C807439" (DIVERGENCE from model renderer: subiquity matches serial against udev ID_SERIAL which for NVMe is <model>_<serial>)
+20261126T224829Z BMC .251: bootdev pxe efiboot one-shot; power reset (install boot)
+20261126T225358Z install attempt 1 REFUSED (no wipe): subiquity "Failed to find matching device for {'model': 'WDC PC SN730 SDBQNTY-512G-1001', 'serial': '*20152C807439'}". udevadm in installer shell: ID_SERIAL=WDC_PC_SN730_SDBQNTY-512G-1001_20152C807439_1, ID_SERIAL_SHORT=20152C807439, ID_MODEL=WDC PC SN730 SDBQNTY-512G-1001, ID_WWN=eui.001b448b460ee596. FINDING: gunbc.os_install_emit autoinstall_match_entries renders the bare serial, which can never match an NVMe ID_SERIAL (model_serial_nsid).
+20261126T225358Z srv4: seed serial match -> "*20152C807439*"; new instance-id; BMC one-shot PXE + reset (install attempt 2)
+20261126T230355Z srv4: WITHDRAWN: moved grub install cfg + seed dir to /srv/gunbc-site-pxe-edge/staging/withdrawn-john/; removed dhcp-host line (conf now byte-equal to pre-john backup); restarted gunbc-site-pxe-edge.service
+20261126T230611Z john (192.168.1.240): hostnamectl set-hostname john; /etc/hosts 127.0.1.1 john
+20261126T230714Z john: apt install nvidia-headless-580-server nvidia-utils-580-server linux-modules-nvidia-580-server-generic ipmitool lm-sensors (proprietary R580; open modules do not support Maxwell/Pascal)
+20261126T230744Z john: /etc/modprobe.d/blacklist-nouveau.conf (blacklist nouveau; modeset=0); update-initramfs -u; reboot
+20261126T230951Z BMC .251: fan mode Heavy IO (raw 0x30 0x45 0x01 0x04); zone 1 duty 0x64 (raw 0x30 0x70 0x66 0x01 0x01 0x64); not persistent across power-off
+20261126T231255Z john: apt python3-venv; ~/thermal/venv with torch (cu126 wheel index) for burn tests
+20261126T231325Z john: ~/thermal/{burnin.py,thermal_run.sh} started (stock 250 W, zone1 100%)
