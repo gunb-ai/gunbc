@@ -68,6 +68,9 @@ import gunbc.gpu_market.comparison_standing {
   comparison_figure_groundings,
   comparison_refused_groundings,
   comparison_absent_groundings,
+  comparison_grounding_is_marked,
+  comparison_grounding_is_cited,
+  comparison_grounding_is_absent,
   board_comparison_admission,
   ComparisonAdmitted,
   ComparisonRefused,
@@ -198,6 +201,10 @@ test fn marked_board_is_refused_before_any_number_is_compared() -> Bool {
             && count(comparison_refused_groundings(grounds: comparison_figure_groundings(board: row))) == 2
             && marked_refusal_is(refusals, BoardPowerCeiling)
             && marked_refusal_is(refusals, MemoryCapacity)
+            // The model's own vocabulary has to agree with the arm structure: comparison_grounding_is_marked
+            // is the predicate a consumer routes on without matching every arm, so if it ever said "marked"
+            // of something the match above would not accept (or the reverse), this claim goes red.
+            && all(refusals, g => comparison_grounding_is_marked(grounding: g))
         ComparisonAdmitted { model: _, grounds: _, absent: _ } => false
       }
     Absent => false
@@ -226,6 +233,8 @@ test fn cited_board_is_admitted_and_owes_no_obligation() -> Bool {
             && cited_grounding_is(grounds, MemoryCapacity)
             && cited_grounding_is(grounds, BoardPowerCeiling)
             && no_grounding_carries_an_obligation(grounds: grounds)
+            // Both deciding figures are cited on the model's own test, not only on the arm match here.
+            && all(grounds, g => comparison_grounding_is_cited(grounding: g))
         ComparisonRefused { model: _, refusals: _ } => false
       }
     Absent => false
@@ -307,6 +316,7 @@ test fn an_absent_figure_is_carried_visibly_and_never_refused_as_if_it_decided()
           m == "NVIDIA B200 SXM"
             && count(absent) == 1
             && count(comparison_absent_groundings(grounds: grounds)) == 1
+            && all(absent, g => comparison_grounding_is_absent(grounding: g))
             && cited_grounding_is(grounds: comparison_figure_groundings(board: row), figure: MemoryCapacity)
             && match refused_for(refusals: absent, figure: BoardPowerCeiling) {
                 Present { value: FigureAbsent { figure: f } } => is_power(f)
