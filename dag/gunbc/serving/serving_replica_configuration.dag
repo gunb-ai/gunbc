@@ -23,7 +23,8 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.algebra { take_prefix }
-import std.measure { Permille, TokenCount, permille }
+import std.measure { Permille, PositiveMeasureCount, PositiveMeasureCountBuild, TokenCount, permille, positive_measure_count, positive_measure_count_from_int, positive_measure_count_nat }
+import std.integer { nat_to_int }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_host_identity {
@@ -166,8 +167,23 @@ type ConcurrentAgentPopulation
 // separate instrument that can print an empty column -- a pass that seated nobody is a measurement of zero,
 // while a pass that seated agents and reported no occupancy has no producer for that figure, which is the
 // unread arm's meaning.
+// THE DENOMINATOR IS POSITIVE BY CONSTRUCTION, and that is the whole point of carrying it. An observed
+// ratio names its denominator as a PositiveMeasureCount, whose ONLY constructor is a successor
+// (std.measure:754-755), so zero has no spelling as a value: an empty hit column cannot be written as an
+// observation, and the only arm that can say "a pass ran and printed nothing" is RatioEmptyOnPass. This
+// closes the door review 99335 named -- RatioObserved { hits: 0, misses: 0 } used to be constructible and
+// the read path papered over it, which left the row's RED case living inside the type.
+//
+// WHY THE WALL IS A CONSTRUCTED TYPE AND NOT A `where` REFINEMENT, recorded because the second guess is
+// the wrong one: the checker's refinement predicate vocabulary is a CLOSED set of spellings -- gt_zero,
+// range, string_non_empty, the lower_hex_*, brand, unicode_scalar, is_text_readable
+// (src/v1/04_infer.dag:2729-2751) -- and none of them speaks the SUM of two fields. And even the numeric
+// ones are a partial wall: a literal violation refuses while a non-literal reference is admitted
+// unchecked (dag/std/page_fold.dag:43-53). So a `where` clause would have been prose with a check on part
+// of the path. PositiveMeasureCount refuses at the type, over every path, and std.measure:816 records the
+// same choice for the same reason: "zero has no constructor rather than a [refusal]".
 type PrefixCachePassRatio
-  = RatioObserved { hits: Nat, misses: Nat, standing: CitedFigureStanding }
+  = RatioObserved { hits: Nat, misses: Nat, denominator: PositiveMeasureCount, standing: CitedFigureStanding }
   | RatioEmptyOnPass { pass: NonEmptyStr, obligation: NonEmptyStr }
   | RatioUnread { obligation: NonEmptyStr }
 
@@ -206,7 +222,15 @@ data h11_pass_ratio_standing: CitedFigureStanding = TranscribedUncited {
 // that the pass did not run carries the unread verdict below instead.
 data h11_pass_concurrent_agents: ConcurrentAgentPopulation = PopulationObserved { agents: 4, standing: h11_pass_population_standing }
 
-data h11_pass_prefix_cache_ratio: PrefixCachePassRatio = RatioObserved { hits: 3, misses: 50, standing: h11_pass_ratio_standing }
+data h11_pass_prefix_cache_ratio: PrefixCachePassRatio = RatioObserved {
+  hits: 3,
+  misses: 50,
+  // 53 = 3 + 50, that pass's own denominator, spelled as the successor of 52 because a successor is the
+  // only constructor PositiveMeasureCount has. The witness asserts denominator == hits + misses on this
+  // row; the arithmetic in this comment is not the authority.
+  denominator: positive_measure_count(predecessor: 52),
+  standing: h11_pass_ratio_standing,
+}
 
 // THE UN-RUN CONFIGURATION'S OWN OBLIGATIONS, each naming where the only read on this host lives, so the gap
 // cannot be read as an absence of data nor the pass be mistaken for this configuration's.
@@ -626,21 +650,29 @@ fn configuration_prefix_cache_capacity(c: ReplicaConfiguration) -> PrefixCacheCa
   }
 }
 
-// THE RATIO THE PASS LEFT, in thousandths, from the counts it carried: hits over hits plus misses. A pass
-// that counted NOTHING has no ratio -- Absent, never zero. Zero hits against a hundred misses is a
-// measurement; an empty column is not one, and reading it as one is the row's RED case.
+// THE DENOMINATOR CONSTRUCTOR, AND THE ONLY PLACE AN EMPTY COLUMN IS DECIDED. This consumes std.measure's
+// authority for positivity rather than re-minting one (dag/std/page_fold.dag:41): from_int refuses a
+// count that is not positive and names the number it saw (std.measure:771-785). So a caller holding two
+// counters cannot obtain a denominator for an empty column at all -- the refusal carries the observed 0,
+// which is the fact worth printing.
+fn prefix_cache_ratio_denominator(hits: Nat, misses: Nat) -> PositiveMeasureCountBuild {
+  positive_measure_count_from_int(count: nat_to_int(n: hits + misses))
+}
+
+// THE RATIO THE PASS LEFT, in thousandths, from the counts it carried: hits over the denominator it
+// carries. A pass that counted NOTHING has no ratio -- Absent, never zero. Zero hits against a hundred
+// misses is a measurement; an empty column is not one, and reading it as one is the row's RED case.
+// There is no zero-divisor path left to guard: the arm's denominator cannot be built at zero, so the
+// divisor exists by construction and positive_measure_count_nat is the read std.measure provides for a
+// Nat divisor (std.measure:798-805).
 fn prefix_cache_ratio_permille(ratio: PrefixCachePassRatio) -> Optional<Permille> {
   match ratio {
     // Neither absence produces a ratio. The arms stay distinguishable to the caller; what they share is
     // only this: no number.
     RatioUnread { obligation: _ } => Absent
     RatioEmptyOnPass { pass: _, obligation: _ } => Absent
-    RatioObserved { hits: hits, misses: misses, standing: _ } =>
-      if hits + misses == 0 {
-        Absent
-      } else {
-        Present { value: permille(count: hits * 1000 / (hits + misses)) }
-      }
+    RatioObserved { hits: hits, misses: _, denominator: denominator, standing: _ } =>
+      Present { value: permille(count: hits * 1000 / positive_measure_count_nat(count: denominator)) }
   }
 }
 

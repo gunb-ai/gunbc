@@ -6,10 +6,12 @@ module test.claim.serving.serving_replica_configuration_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { string_contains }
-import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, permille_count, token_count_value }
+import std.measure {
+  PositiveMeasureCountBuilt, PositiveMeasureCountNonPositive, PositiveMeasureCountRefused, byte_size_count,
+  gibibyte, gibibyte_to_byte_size, permille_count, positive_measure_count_nat, token_count_value,
+}
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_identity }
-import extdeps.external_authority { TranscribedUncited }
 import gunbc.fleet.fleet_host_identity { HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import product.host_identity { host_identity_eq }
 import gunbc.serving.serving_capacity_anchor { ServingWarmSwap, SwapTierDisk, SwapTierHostRam, WarmSwapRestores }
@@ -20,8 +22,8 @@ import gunbc.serving.serving_replica_configuration {
   ReplicaConfiguration, configuration_expert_rungs, configuration_figures_refusal,
   configuration_figures_resolved, configuration_host_charges, configuration_run_identity,
   configuration_prefix_cache_capacity, configuration_warm_agent_capacity,
-  host_configurations, prefix_cache_capacity_against, prefix_cache_ratio_permille,
-  replica_configuration_field,
+  host_configurations, prefix_cache_capacity_against, prefix_cache_ratio_denominator, prefix_cache_ratio_permille,
+  replica_configuration_field, h11_pass_prefix_cache_ratio,
   CapacityExceededByPopulation, CapacityHoldsPopulation, CapacityUndetermined,
   PopulationObserved, PopulationUnread, RatioEmptyOnPass, RatioObserved, RatioUnread,
   srv1_pair_l1_l2_configuration, srv1_pair_l1_only_configuration, srv1_tp2_l1_l2_configuration,
@@ -263,7 +265,7 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
       RatioUnread { obligation: obligation } =>
         string_contains(s: obligation as String, pattern: "four-engine" as String)
       RatioEmptyOnPass { pass: _, obligation: _ } => false
-      RatioObserved { hits: _, misses: _, standing: _ } => false
+      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
     }
     && match configuration_prefix_cache_capacity(c: h11_two_engines_configuration) {
       // One obligation, and it is the population's: the capacity side resolves (four warm agents), so the
@@ -291,7 +293,8 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
 // a measurement and no measurement is not.
 test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
   match h11_four_engines_configuration.prefix_cache_ratio {
-    RatioObserved { hits: hits, misses: misses, standing: _ } => hits == 3 && misses == 50
+    RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
+      hits == 3 && misses == 50 && positive_measure_count_nat(count: denominator) == hits + misses
     // An empty-on-a-pass receipt or no producer at all would contradict what this row carries, and either
     // way the claim does not hold: the arm is named rather than left to a wildcard, because the elaborator
     // refuses a match that hides a variant (the route's own error at this line was exactly that).
@@ -305,12 +308,24 @@ test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
     && match srv3_batch8_ram_only_configuration.prefix_cache_ratio {
       RatioUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "hit" as String)
       RatioEmptyOnPass { pass: _, obligation: _ } => false
-      RatioObserved { hits: _, misses: _, standing: _ } => false
+      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
     }
-    && match prefix_cache_ratio_permille(ratio: RatioObserved {
-      hits: 0,
-      misses: 0,
-      standing: TranscribedUncited { read_obligation: "witness-supplied: a pass that printed no counters" as NonEmptyStr },
+    // THE EMPTY COLUMN IS REFUSED A DENOMINATOR, so it is refused a ratio: the constructor names the 0 it
+    // saw rather than handing back a value the read path would then have to paper over. This is the wall
+    // review 99335 asked for, executed here instead of asserted in a comment.
+    && match prefix_cache_ratio_denominator(hits: 0, misses: 0) {
+      PositiveMeasureCountRefused { cause: PositiveMeasureCountNonPositive { observed: observed } } => observed == 0
+      PositiveMeasureCountBuilt { count: _ } => false
+    }
+    && match prefix_cache_ratio_denominator(hits: 3, misses: 50) {
+      PositiveMeasureCountBuilt { count: count } => positive_measure_count_nat(count: count) == 53
+      PositiveMeasureCountRefused { cause: _ } => false
+    }
+    // And an empty column on a pass that DID run is still refused a number: RatioEmptyOnPass is a verdict,
+    // not a zero.
+    && match prefix_cache_ratio_permille(ratio: RatioEmptyOnPass {
+      pass: "witness-supplied: a completed pass whose hit column came back empty" as NonEmptyStr,
+      obligation: "read the engine's prefix counters over a named interval" as NonEmptyStr,
     }) {
       Absent => true
       Present { value: _ } => false
@@ -358,15 +373,34 @@ test fn an_empty_pass_column_is_not_the_same_verdict_as_no_producer() -> Bool {
     && match empty_column {
       RatioEmptyOnPass { pass: pass_text, obligation: _ } => string_contains(s: pass_text as String, pattern: "empty" as String)
       RatioUnread { obligation: _ } => false
-      RatioObserved { hits: _, misses: _, standing: _ } => false
+      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
     }
     && match no_producer {
       RatioUnread { obligation: _ } => true
       RatioEmptyOnPass { pass: _, obligation: _ } => false
-      RatioObserved { hits: _, misses: _, standing: _ } => false
+      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
     }
     && match srv3_batch8_ram_only_configuration.concurrent_agents {
       PopulationUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "fleet_host_truth_read" as String)
       PopulationObserved { agents: _, standing: _ } => false
+    }
+}
+
+// THE TYPE ITSELF REFUSES THE EMPTY COLUMN. RatioObserved carries its denominator as a PositiveMeasureCount,
+// whose only constructor is a successor (std.measure:754-755), so there is no spelling of a zero
+// denominator to write: the empty pass belongs to RatioEmptyOnPass and nowhere else. What this claim
+// observes is the one row that carries a ratio -- its denominator is the sum of its counters, and that sum
+// is not zero -- beside the constructor's refusal for a pair of zeroes.
+test fn an_empty_column_cannot_be_written_as_an_observed_ratio() -> Bool {
+  match h11_pass_prefix_cache_ratio {
+    RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
+      positive_measure_count_nat(count: denominator) == hits + misses
+        && positive_measure_count_nat(count: denominator) == 53
+    RatioEmptyOnPass { pass: _, obligation: _ } => false
+    RatioUnread { obligation: _ } => false
+  }
+    && match prefix_cache_ratio_denominator(hits: 0, misses: 0) {
+      PositiveMeasureCountRefused { cause: PositiveMeasureCountNonPositive { observed: observed } } => observed == 0
+      PositiveMeasureCountBuilt { count: _ } => false
     }
 }
