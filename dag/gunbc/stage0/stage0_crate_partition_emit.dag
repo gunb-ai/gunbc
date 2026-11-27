@@ -16,6 +16,7 @@ import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedFacadeCrate
 }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { Stage0CratePartitionGeneratedDagArtifact }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
@@ -200,6 +201,7 @@ fn stage0_crate_partition_generated_dag_artifact_generated() -> ArtifactGenerati
 }
 
 data stage0_crate_partition_generated_dag_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: Stage0CratePartitionGeneratedDagArtifact,
   generate: stage0_crate_partition_generated_dag_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

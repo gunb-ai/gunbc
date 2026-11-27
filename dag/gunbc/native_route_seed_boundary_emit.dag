@@ -5,6 +5,7 @@ import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal
 import gunbc.native_route_universe { native_route_default_pattern }
 import std.types { String }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { NativeRouteSeedBoundaryGeneratedRsArtifact }
 
 // THE NATIVE TEST ROUTE'S BOUNDARY, PROJECTED INTO THE SEED SO THE SEED STOPS MIRRORING IT.
 //
@@ -61,6 +62,7 @@ fn native_route_seed_boundary_generated_rs_artifact_generated() -> ArtifactGener
 }
 
 data native_route_seed_boundary_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: NativeRouteSeedBoundaryGeneratedRsArtifact,
   generate: native_route_seed_boundary_generated_rs_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

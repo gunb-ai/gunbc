@@ -9629,6 +9629,7 @@ fn fleet_converge_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcom
 }
 
 data fleet_converge_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: FleetConvergeYamlArtifact,
   generate: fleet_converge_yaml_artifact_generated,
   extra_valid: fleet_converge_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

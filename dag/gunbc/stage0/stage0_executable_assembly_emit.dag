@@ -12,6 +12,7 @@ import std.algebra { fold_list, list_map, length }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact }
 
 // THE BRIDGE, AND WHY THERE HAS TO BE ONE. v2.compiler.self_host.stage0_executable_assembly is
 // the authority for which package assembles the next-pass executable and which partition packages
@@ -136,6 +137,7 @@ fn stage0_executable_assembly_generated_dag_artifact_generated() -> ArtifactGene
 }
 
 data stage0_executable_assembly_generated_dag_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: Stage0ExecutableAssemblyGeneratedDagArtifact,
   generate: stage0_executable_assembly_generated_dag_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,
@@ -149,6 +151,7 @@ fn stage0_linked_partition_crates_artifact_generated() -> ArtifactGenerationOutc
 }
 
 data stage0_linked_partition_crates_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: Stage0LinkedPartitionCratesArtifact,
   generate: stage0_linked_partition_crates_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

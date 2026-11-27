@@ -10,6 +10,7 @@ import gunbc.generated_projection_paths {
   deterministic_generated_projection_merge_rows
 }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { GitattributesArtifact }
 
 type GitattributesGenerationOutcome
   = GitattributesGenerated { content: String }
@@ -132,6 +133,7 @@ fn gitattributes_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data gitattributes_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: GitattributesArtifact,
   generate: gitattributes_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

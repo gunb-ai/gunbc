@@ -47,6 +47,7 @@ import std.layout {
 import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue, json_record_knobs }
 import std.serialize { serial_scalar, serial_field, serialize_fields_doc, serialize_record_doc }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { RunnerDeployArtifact }
 
 data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -286,6 +287,7 @@ fn runner_deploy_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data runner_deploy_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: RunnerDeployArtifact,
   generate: runner_deploy_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

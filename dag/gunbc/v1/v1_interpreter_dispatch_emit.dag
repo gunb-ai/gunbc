@@ -18,6 +18,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_generation_produced }
+import gunbc.generated_artifact { V1InterpreterDispatchGeneratedRsArtifact }
 
 fn to_pascal_segment(segment: String) -> String {
   segment
@@ -421,6 +422,7 @@ fn v1_interpreter_dispatch_generated_rs_artifact_generated() -> ArtifactGenerati
 }
 
 data v1_interpreter_dispatch_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: V1InterpreterDispatchGeneratedRsArtifact,
   generate: v1_interpreter_dispatch_generated_rs_artifact_generated,
   extra_valid: artifact_generation_produced,
   provenance: none,

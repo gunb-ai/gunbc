@@ -3,7 +3,7 @@ module gunbc.generated_artifact_emit
 import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, InstrumentRegistryGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact, RoadmapAuthorityAcceptedScenarioAcceptanceArtifact, RoadmapAuthoritySupersededScenarioAcceptanceArtifact, RoadmapAuthoritySupersededScenarioRevocationArtifact, RoadmapAuthoritySupersededScenarioRetiredArtifact, RoadmapAuthorityAbsentNodeAcceptanceArtifact,
-  artifact_path, artifact_commit_policy, CommitRequired, NotCommitted,
+  artifact_path, artifact_eq, artifact_commit_policy, CommitRequired, NotCommitted,
   GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler
 }
@@ -117,6 +117,16 @@ fn artifact_production(a: GeneratedArtifact) -> GeneratedArtifactProduction {
 
 fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   let production = artifact_production(a: a)
+  if !artifact_eq(a: production.artifact, b: a) {
+    ArtifactGenerationRefused {
+      reason: concat(concat("the production matched to ", artifact_path(a: a)), concat(" generates ", artifact_path(a: production.artifact)))
+    }
+  } else {
+    artifact_generate_from(a: a, production: production)
+  }
+}
+
+fn artifact_generate_from(a: GeneratedArtifact, production: GeneratedArtifactProduction) -> ArtifactGenerationOutcome {
   let generated = production.generate()
   match generated_workflow_provenance_header(provenance: production.provenance) {
     GeneratedWorkflowProvenanceHeaderProduced { content: header } => match generated {

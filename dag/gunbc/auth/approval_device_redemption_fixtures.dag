@@ -29,6 +29,7 @@ import std.logic { Bool }
 import extdeps.languages.json.emit { json_bool }
 import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest, DeviceEnrollmentRevoked, DeviceEnrollmentUnknown }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { ApprovalDeviceVectorsArtifact }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
@@ -432,6 +433,7 @@ fn approval_device_vectors_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data approval_device_vectors_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApprovalDeviceVectorsArtifact,
   generate: approval_device_vectors_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

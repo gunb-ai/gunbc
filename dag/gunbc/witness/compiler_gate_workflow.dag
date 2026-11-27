@@ -1512,6 +1512,7 @@ fn witness_floor_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome
 }
 
 data witness_floor_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: WitnessFloorYamlArtifact,
   generate: witness_floor_yaml_artifact_generated,
   extra_valid: witness_floor_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

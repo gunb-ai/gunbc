@@ -270,6 +270,7 @@ fn drift_watch_workflow_yaml_artifact_extra_valid(_generated: ArtifactGeneration
 }
 
 data drift_watch_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: DriftWatchWorkflowYamlArtifact,
   generate: drift_watch_workflow_yaml_artifact_generated,
   extra_valid: drift_watch_workflow_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

@@ -976,6 +976,7 @@ fn runner_host_sudoers_artifact_generated(host: HostIdentity) -> ArtifactGenerat
 
 fn runner_host_sudoers_artifact_production(host: HostIdentity) -> GeneratedArtifactProduction {
   GeneratedArtifactProduction {
+    artifact: RunnerHostSudoersArtifact { host: host },
     generate: fn() { runner_host_sudoers_artifact_generated(host: host) },
     extra_valid: artifact_generation_produced,
     provenance: none,

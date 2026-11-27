@@ -2,11 +2,8 @@ module test.claim.printed_chassis_artifact_registration_witness
 
 import gunbc.generated_artifact { GeneratedArtifact, CouponCadQueryProgramArtifact, artifact_eq, artifact_path, artifact_commit_policy, CommitPolicy, CommitRequired, NotCommitted, artifact_is_committed }
 import gunbc.generated_artifact_registry { generated_artifact_registry, committed_generated_artifacts }
-import gunbc.generated_artifact_emit {
-  ArtifactGenerationOutcome, ArtifactGenerated, ArtifactGenerationRefused,
-  artifact_generate
-}
-import product.printed_chassis.cadquery_realization {
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerated, ArtifactGenerationRefused }
+import product.printed_chassis.cadquery_realization { coupon_cad_query_program_artifact_production,
   CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused,
   expected_coupon_cadquery_program
 }
@@ -54,7 +51,7 @@ test fn w_the_coupon_program_artifact_is_not_committed() -> Bool {
 
 // THE JOIN: the central dispatch and the handler answer with the SAME bytes.
 test fn w_the_central_dispatch_produces_the_judged_handler_content() -> Bool {
-  match artifact_generate(a: CouponCadQueryProgramArtifact) {
+  match coupon_cad_query_program_artifact_production.generate() {
     ArtifactGenerationRefused { reason: _ } => false
     ArtifactGenerated { content: dispatched } =>
       match expected_coupon_cadquery_program() {
@@ -68,7 +65,7 @@ test fn w_the_central_dispatch_produces_the_judged_handler_content() -> Bool {
 // preamble alone, the equality would still hold and would establish nothing -- an equality between
 // two absent things. The emitted program must carry the plate line and at least one cut.
 test fn w_the_generated_content_is_a_real_program() -> Bool {
-  match artifact_generate(a: CouponCadQueryProgramArtifact) {
+  match coupon_cad_query_program_artifact_production.generate() {
     ArtifactGenerationRefused { reason: _ } => false
     ArtifactGenerated { content: c } =>
       c.contains("import cadquery as cq")

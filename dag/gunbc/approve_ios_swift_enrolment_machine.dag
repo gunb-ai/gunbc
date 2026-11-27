@@ -21,6 +21,7 @@ import v2.extdeps.languages.swift.syntax {
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
 import v2.extdeps.languages.swift.rows { SwiftRowEmissionRefused, SwiftRowEmitted }
+import gunbc.generated_artifact { ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact }
 
 // TWO GENERATED SWIFT FILES FOR THE APP'S ENROLMENT STATE MACHINE (gunbc.approve_ios_enrolment_machine):
 //   apps/approve-ios/Approve/EnrolmentMachine.swift       the transition table, PRINTED BY EVALUATING
@@ -200,6 +201,7 @@ fn approve_ios_enrolment_machine_swift_artifact_generated() -> ArtifactGeneratio
 }
 
 data approve_ios_enrolment_machine_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApproveIosEnrolmentMachineSwiftArtifact,
   generate: approve_ios_enrolment_machine_swift_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,
@@ -213,6 +215,7 @@ fn approve_ios_enrolment_machine_tests_swift_artifact_generated() -> ArtifactGen
 }
 
 data approve_ios_enrolment_machine_tests_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApproveIosEnrolmentMachineTestsSwiftArtifact,
   generate: approve_ios_enrolment_machine_tests_swift_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

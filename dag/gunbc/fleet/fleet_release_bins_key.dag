@@ -63,6 +63,7 @@ import gunbc.ci.ci_failure_class { floor_attempt_command_log_filename, wrap_comm
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, GeneratedWorkflowProvenance, artifact_always_valid }
+import gunbc.generated_artifact { ReleaseBinsConsumerCheckScriptArtifact }
 
 // THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
 // ruling 2026-09-27, route B chosen by eager-owl-205: the fleet-converge build job is the keyed
@@ -2503,6 +2504,7 @@ fn release_bins_consumer_check_script_artifact_generated() -> ArtifactGeneration
 }
 
 data release_bins_consumer_check_script_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ReleaseBinsConsumerCheckScriptArtifact,
   generate: release_bins_consumer_check_script_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

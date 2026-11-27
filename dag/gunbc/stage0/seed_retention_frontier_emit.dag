@@ -8,6 +8,7 @@ import v2.compiler.self_host.seed_retention_frontier {
 import std.algebra { fold_list }
 import v2.std.text { String }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { SeedRetentionFrontierGeneratedRsArtifact }
 
 // THE BRIDGE, AND WHY THERE HAS TO BE ONE. v2.compiler.self_host.seed_retention_frontier is
 // the authority for which stage0 files are seed-retained. required_regen_host is inside the
@@ -47,6 +48,7 @@ fn seed_retention_frontier_generated_rs_artifact_generated() -> ArtifactGenerati
 }
 
 data seed_retention_frontier_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: SeedRetentionFrontierGeneratedRsArtifact,
   generate: seed_retention_frontier_generated_rs_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

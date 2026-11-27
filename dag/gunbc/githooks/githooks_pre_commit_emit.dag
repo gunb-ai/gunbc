@@ -11,6 +11,7 @@ import gunbc.local_tidy_spec {
 import extdeps.git { git_toplevel_shell_subexpr }
 import gunbc.githooks.githooks_repo_local_git_config_emit { emit_repo_local_git_config_converge_shell }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { GithooksPreCommitArtifact }
 
 fn emit_glob_case_arms(globs: List<String>) -> String {
   fold(globs, init: "", f: fn(acc, g) {
@@ -99,6 +100,7 @@ fn githooks_pre_commit_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data githooks_pre_commit_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: GithooksPreCommitArtifact,
   generate: githooks_pre_commit_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

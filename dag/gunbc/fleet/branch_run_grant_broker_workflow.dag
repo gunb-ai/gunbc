@@ -276,6 +276,7 @@ fn branch_run_grant_broker_workflow_yaml_artifact_extra_valid(_generated: Artifa
 }
 
 data branch_run_grant_broker_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: BranchRunGrantBrokerWorkflowYamlArtifact,
   generate: branch_run_grant_broker_workflow_yaml_artifact_generated,
   extra_valid: branch_run_grant_broker_workflow_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

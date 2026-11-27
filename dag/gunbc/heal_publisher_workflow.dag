@@ -873,6 +873,7 @@ fn heal_publisher_workflow_yaml_artifact_extra_valid(_generated: ArtifactGenerat
 }
 
 data heal_publisher_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: HealPublisherWorkflowYamlArtifact,
   generate: heal_publisher_workflow_yaml_artifact_generated,
   extra_valid: heal_publisher_workflow_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

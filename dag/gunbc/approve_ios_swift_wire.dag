@@ -29,6 +29,7 @@ import v2.extdeps.languages.swift.syntax {
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
 import v2.extdeps.languages.swift.rows { SwiftRowEmissionRefused, SwiftRowEmitted }
+import gunbc.generated_artifact { ApproveIosWireSwiftArtifact }
 
 // apps/approve-ios/Approve/Wire.swift AS A SWIFT SYNTAX TREE (v2.extdeps.languages.swift.syntax),
 // emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
@@ -822,6 +823,7 @@ fn approve_ios_wire_swift_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data approve_ios_wire_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApproveIosWireSwiftArtifact,
   generate: approve_ios_wire_swift_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

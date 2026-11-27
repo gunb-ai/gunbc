@@ -6,6 +6,7 @@ import gunbc.cli_run_workspace_root_scaffold {
 }
 import std.types { String }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { ReleaseLocusSeedConstantsGeneratedRsArtifact }
 
 // THE RELEASE LOCUS CONTRACT'S TWO SPELLINGS, PROJECTED INTO THE SEED SO THE SEED STOPS
 // TRANSCRIBING THEM.
@@ -60,6 +61,7 @@ fn release_locus_seed_constants_generated_rs_artifact_generated() -> ArtifactGen
 }
 
 data release_locus_seed_constants_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ReleaseLocusSeedConstantsGeneratedRsArtifact,
   generate: release_locus_seed_constants_generated_rs_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

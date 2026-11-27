@@ -48,6 +48,7 @@ import product.printed_chassis.standoff_gauge {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { CouponCadQueryProgramArtifact }
 // THE HANDLER TAKES ONE ARGUMENT AND IT IS THE CAPABILITY, WHICH IS THE WHOLE DESIGN.
 //
 // realize_admitted's parameter is AdmittedRealizationV0 and nothing else. There is deliberately no
@@ -620,6 +621,7 @@ fn coupon_cad_query_program_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data coupon_cad_query_program_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: CouponCadQueryProgramArtifact,
   generate: coupon_cad_query_program_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

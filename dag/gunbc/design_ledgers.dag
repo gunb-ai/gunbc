@@ -89,6 +89,7 @@ import gunbc.self_host_compile_phase_frontier {
   render_phase_board,
 }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { DesignFailureModesArtifact, DesignRungDropsArtifact }
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
@@ -236,6 +237,7 @@ fn design_failure_modes_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data design_failure_modes_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: DesignFailureModesArtifact,
   generate: design_failure_modes_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,
@@ -246,6 +248,7 @@ fn design_rung_drops_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data design_rung_drops_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: DesignRungDropsArtifact,
   generate: design_rung_drops_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

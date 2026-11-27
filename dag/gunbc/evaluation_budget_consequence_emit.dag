@@ -4,6 +4,7 @@ import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal
 import std.evaluation_budget { evaluation_budget_refusal_code }
 import std.types { NonEmptyStr, String }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { EvaluationBudgetConsequenceGeneratedRsArtifact }
 
 // THE MACHINE IDENTITY OF A BUDGET BREACH, PROJECTED INTO THE SEED.
 //
@@ -58,6 +59,7 @@ fn evaluation_budget_consequence_generated_rs_artifact_generated() -> ArtifactGe
 }
 
 data evaluation_budget_consequence_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: EvaluationBudgetConsequenceGeneratedRsArtifact,
   generate: evaluation_budget_consequence_generated_rs_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

@@ -2,6 +2,7 @@ module extdeps.filesystem.rust_realization
 
 import std.integer { int_to_decimal_string }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { FileTransportRealizationGeneratedRsArtifact }
 
 // THE RUST REALIZATION OF create-new PUBLISH, AS ONE AUTHORITY BOTH CONSUMERS COPY.
 //
@@ -186,6 +187,7 @@ fn file_transport_realization_generated_rs_artifact_generated() -> ArtifactGener
 }
 
 data file_transport_realization_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: FileTransportRealizationGeneratedRsArtifact,
   generate: file_transport_realization_generated_rs_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

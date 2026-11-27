@@ -2,6 +2,7 @@ module gunbc.generated_artifact_production
 
 import std.types { String, List, Bool }
 import std.optional { Present, Absent }
+import gunbc.generated_artifact { GeneratedArtifact }
 
 type ArtifactGenerationOutcome
   = ArtifactGenerated { content: String }
@@ -13,6 +14,7 @@ type GeneratedWorkflowProvenance {
 }
 
 type GeneratedArtifactProduction {
+  artifact: GeneratedArtifact
   generate: fn() -> ArtifactGenerationOutcome
   extra_valid: fn(ArtifactGenerationOutcome) -> Bool
   provenance: GeneratedWorkflowProvenance?

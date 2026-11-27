@@ -343,6 +343,7 @@ fn gunb_ai_pages_workflow_yaml_artifact_extra_valid(_generated: ArtifactGenerati
 }
 
 data gunb_ai_pages_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: GunbAiPagesWorkflowYamlArtifact,
   generate: gunb_ai_pages_workflow_yaml_artifact_generated,
   extra_valid: gunb_ai_pages_workflow_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

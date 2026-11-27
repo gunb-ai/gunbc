@@ -13,6 +13,7 @@ import v2.compiler.self_host.stage0_crate_layout {
 import std.algebra { fold_list }
 import v2.std.text { String }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact }
 
 fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
@@ -101,6 +102,7 @@ fn stage0_crate_layout_generated_dag_artifact_generated() -> ArtifactGenerationO
 }
 
 data stage0_crate_layout_generated_dag_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: Stage0CrateLayoutGeneratedDagArtifact,
   generate: stage0_crate_layout_generated_dag_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,
@@ -111,6 +113,7 @@ fn stage0_crate_layout_generated_rs_artifact_generated() -> ArtifactGenerationOu
 }
 
 data stage0_crate_layout_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: Stage0CrateLayoutGeneratedRsArtifact,
   generate: stage0_crate_layout_generated_rs_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

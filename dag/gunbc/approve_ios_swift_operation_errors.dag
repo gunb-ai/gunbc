@@ -21,6 +21,7 @@ import v2.extdeps.languages.swift.syntax {
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
 import v2.extdeps.languages.swift.rows { SwiftRowEmissionRefused, SwiftRowEmitted }
+import gunbc.generated_artifact { ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact }
 
 // TWO GENERATED SWIFT FILES FOR THE APP'S ERROR LIFETIME (gunbc.approve_ios_operation_errors):
 //   apps/approve-ios/Approve/OperationErrors.swift       the keyed error set. Its `record` arms are
@@ -297,6 +298,7 @@ fn approve_ios_operation_errors_swift_artifact_generated() -> ArtifactGeneration
 }
 
 data approve_ios_operation_errors_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApproveIosOperationErrorsSwiftArtifact,
   generate: approve_ios_operation_errors_swift_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,
@@ -310,6 +312,7 @@ fn approve_ios_operation_errors_tests_swift_artifact_generated() -> ArtifactGene
 }
 
 data approve_ios_operation_errors_tests_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApproveIosOperationErrorsTestsSwiftArtifact,
   generate: approve_ios_operation_errors_tests_swift_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

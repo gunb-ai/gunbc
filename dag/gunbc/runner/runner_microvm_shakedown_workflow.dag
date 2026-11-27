@@ -296,6 +296,7 @@ fn microvm_shakedown_yaml_artifact_extra_valid(_generated: ArtifactGenerationOut
 }
 
 data microvm_shakedown_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: MicrovmShakedownYamlArtifact,
   generate: microvm_shakedown_yaml_artifact_generated,
   extra_valid: microvm_shakedown_yaml_artifact_extra_valid,
   provenance: Present { value: GeneratedWorkflowProvenance {

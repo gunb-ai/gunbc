@@ -50,6 +50,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_schema,
 }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction }
+import gunbc.generated_artifact { RoadmapAuthorityAcceptedScenarioAcceptanceArtifact, RoadmapAuthoritySupersededScenarioAcceptanceArtifact, RoadmapAuthoritySupersededScenarioRevocationArtifact, RoadmapAuthoritySupersededScenarioRetiredArtifact, RoadmapAuthorityAbsentNodeAcceptanceArtifact }
 
 // THE COMMITTED ROADMAP-AUTHORITY EVENT LOG, AS A GENERATED ARTIFACT.
 //
@@ -455,6 +456,7 @@ fn roadmap_authority_accepted_scenario_acceptance_artifact_extra_valid(generated
 }
 
 data roadmap_authority_accepted_scenario_acceptance_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: RoadmapAuthorityAcceptedScenarioAcceptanceArtifact,
   generate: roadmap_authority_accepted_scenario_acceptance_artifact_generated,
   extra_valid: roadmap_authority_accepted_scenario_acceptance_artifact_extra_valid,
   provenance: none,
@@ -472,6 +474,7 @@ fn roadmap_authority_superseded_scenario_acceptance_artifact_extra_valid(generat
 }
 
 data roadmap_authority_superseded_scenario_acceptance_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: RoadmapAuthoritySupersededScenarioAcceptanceArtifact,
   generate: roadmap_authority_superseded_scenario_acceptance_artifact_generated,
   extra_valid: roadmap_authority_superseded_scenario_acceptance_artifact_extra_valid,
   provenance: none,
@@ -489,6 +492,7 @@ fn roadmap_authority_superseded_scenario_revocation_artifact_extra_valid(generat
 }
 
 data roadmap_authority_superseded_scenario_revocation_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: RoadmapAuthoritySupersededScenarioRevocationArtifact,
   generate: roadmap_authority_superseded_scenario_revocation_artifact_generated,
   extra_valid: roadmap_authority_superseded_scenario_revocation_artifact_extra_valid,
   provenance: none,
@@ -506,6 +510,7 @@ fn roadmap_authority_superseded_scenario_retired_artifact_extra_valid(generated:
 }
 
 data roadmap_authority_superseded_scenario_retired_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: RoadmapAuthoritySupersededScenarioRetiredArtifact,
   generate: roadmap_authority_superseded_scenario_retired_artifact_generated,
   extra_valid: roadmap_authority_superseded_scenario_retired_artifact_extra_valid,
   provenance: none,
@@ -523,6 +528,7 @@ fn roadmap_authority_absent_node_acceptance_artifact_extra_valid(generated: Arti
 }
 
 data roadmap_authority_absent_node_acceptance_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: RoadmapAuthorityAbsentNodeAcceptanceArtifact,
   generate: roadmap_authority_absent_node_acceptance_artifact_generated,
   extra_valid: roadmap_authority_absent_node_acceptance_artifact_extra_valid,
   provenance: none,

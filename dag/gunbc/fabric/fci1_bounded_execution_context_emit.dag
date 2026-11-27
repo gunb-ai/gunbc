@@ -15,6 +15,7 @@ import gunbc.fabric.fci1_controls_slice { fci1_controls_slice_unit_text, fci1_co
 import std.measure { byte_size_count }
 import extdeps.systemd { SliceProperty, WorkingDirectoryProperty, RuntimeDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_generation_produced }
+import gunbc.generated_artifact { Fci1BoundedExecutionContextArtifact }
 
 type Fci1BoundedExecutionContextEmission
   = Fci1BoundedExecutionContextEmitted { content: String }
@@ -138,6 +139,7 @@ fn fci1_bounded_execution_context_artifact_generated() -> ArtifactGenerationOutc
 }
 
 data fci1_bounded_execution_context_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: Fci1BoundedExecutionContextArtifact,
   generate: fci1_bounded_execution_context_artifact_generated,
   extra_valid: artifact_generation_produced,
   provenance: none,
