@@ -859,9 +859,9 @@ pub fn parse_context_with_source_extents(
         let __rb_4_0 = ctx.declaration_occurrences.clone();
         let __rb_5_0 = ctx.reference_occurrences.clone();
         let __rb_6_0 = ctx.heads_only.clone();
-        let __rb_6_5 = ctx.no_record_brace.clone();
-        let __rb_7_0 = ctx.env.clone();
-        let __rb_8_0 = source_extents.clone();
+        let __rb_7_0 = ctx.no_record_brace.clone();
+        let __rb_8_0 = ctx.env.clone();
+        let __rb_9_0 = source_extents.clone();
         let mut __rb_h = ctx;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -872,9 +872,9 @@ pub fn parse_context_with_source_extents(
                 __rb_r.declaration_occurrences = __rb_4_0;
                 __rb_r.reference_occurrences = __rb_5_0;
                 __rb_r.heads_only = __rb_6_0;
-                __rb_r.no_record_brace = __rb_6_5;
-                __rb_r.env = __rb_7_0;
-                __rb_r.source_extents = __rb_8_0;
+                __rb_r.no_record_brace = __rb_7_0;
+                __rb_r.env = __rb_8_0;
+                __rb_r.source_extents = __rb_9_0;
             }
             None => {
                 __rb_h = Rc::new(ParseContext {
@@ -885,9 +885,9 @@ pub fn parse_context_with_source_extents(
                     declaration_occurrences: __rb_4_0,
                     reference_occurrences: __rb_5_0,
                     heads_only: __rb_6_0,
-                    no_record_brace: __rb_6_5,
-                    env: __rb_7_0,
-                    source_extents: __rb_8_0,
+                    no_record_brace: __rb_7_0,
+                    env: __rb_8_0,
+                    source_extents: __rb_9_0,
                 });
             }
         }
@@ -896,18 +896,48 @@ pub fn parse_context_with_source_extents(
 }
 
 pub fn parse_context_set_no_record_brace(ctx: Rc<ParseContext>, value: bool) -> Rc<ParseContext> {
-    Rc::new(ParseContext {
-        source_indices: ctx.source_indices.clone(),
-        intern_table: ctx.intern_table.clone(),
-        occurrence_allocator: ctx.occurrence_allocator.clone(),
-        occurrence_index: ctx.occurrence_index.clone(),
-        declaration_occurrences: ctx.declaration_occurrences.clone(),
-        reference_occurrences: ctx.reference_occurrences.clone(),
-        heads_only: ctx.heads_only.clone(),
-        no_record_brace: value,
-        env: ctx.env.clone(),
-        source_extents: ctx.source_extents.clone(),
-    })
+    {
+        let __rb_0_0 = ctx.source_indices.clone();
+        let __rb_1_0 = ctx.intern_table.clone();
+        let __rb_2_0 = ctx.occurrence_allocator.clone();
+        let __rb_3_0 = ctx.occurrence_index.clone();
+        let __rb_4_0 = ctx.declaration_occurrences.clone();
+        let __rb_5_0 = ctx.reference_occurrences.clone();
+        let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_7_0 = value.clone();
+        let __rb_8_0 = ctx.env.clone();
+        let __rb_9_0 = ctx.source_extents.clone();
+        let mut __rb_h = ctx;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.source_indices = __rb_0_0;
+                __rb_r.intern_table = __rb_1_0;
+                __rb_r.occurrence_allocator = __rb_2_0;
+                __rb_r.occurrence_index = __rb_3_0;
+                __rb_r.declaration_occurrences = __rb_4_0;
+                __rb_r.reference_occurrences = __rb_5_0;
+                __rb_r.heads_only = __rb_6_0;
+                __rb_r.no_record_brace = __rb_7_0;
+                __rb_r.env = __rb_8_0;
+                __rb_r.source_extents = __rb_9_0;
+            }
+            None => {
+                __rb_h = Rc::new(ParseContext {
+                    source_indices: __rb_0_0,
+                    intern_table: __rb_1_0,
+                    occurrence_allocator: __rb_2_0,
+                    occurrence_index: __rb_3_0,
+                    declaration_occurrences: __rb_4_0,
+                    reference_occurrences: __rb_5_0,
+                    heads_only: __rb_6_0,
+                    no_record_brace: __rb_7_0,
+                    env: __rb_8_0,
+                    source_extents: __rb_9_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceIndex> {
@@ -952,9 +982,9 @@ pub fn parse_context_with_occurrence_state(
         let __rb_4_0 = declaration_occurrences.clone();
         let __rb_5_0 = reference_occurrences.clone();
         let __rb_6_0 = ctx.heads_only.clone();
-        let __rb_6_5 = ctx.no_record_brace.clone();
-        let __rb_7_0 = ctx.env.clone();
-        let __rb_8_0 = ctx.source_extents.clone();
+        let __rb_7_0 = ctx.no_record_brace.clone();
+        let __rb_8_0 = ctx.env.clone();
+        let __rb_9_0 = ctx.source_extents.clone();
         let mut __rb_h = ctx;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -965,9 +995,9 @@ pub fn parse_context_with_occurrence_state(
                 __rb_r.declaration_occurrences = __rb_4_0;
                 __rb_r.reference_occurrences = __rb_5_0;
                 __rb_r.heads_only = __rb_6_0;
-                __rb_r.no_record_brace = __rb_6_5;
-                __rb_r.env = __rb_7_0;
-                __rb_r.source_extents = __rb_8_0;
+                __rb_r.no_record_brace = __rb_7_0;
+                __rb_r.env = __rb_8_0;
+                __rb_r.source_extents = __rb_9_0;
             }
             None => {
                 __rb_h = Rc::new(ParseContext {
@@ -978,9 +1008,9 @@ pub fn parse_context_with_occurrence_state(
                     declaration_occurrences: __rb_4_0,
                     reference_occurrences: __rb_5_0,
                     heads_only: __rb_6_0,
-                    no_record_brace: __rb_6_5,
-                    env: __rb_7_0,
-                    source_extents: __rb_8_0,
+                    no_record_brace: __rb_7_0,
+                    env: __rb_8_0,
+                    source_extents: __rb_9_0,
                 });
             }
         }
@@ -1000,9 +1030,9 @@ pub fn parse_context_with_intern_table(
         let __rb_4_0 = ctx.declaration_occurrences.clone();
         let __rb_5_0 = ctx.reference_occurrences.clone();
         let __rb_6_0 = ctx.heads_only.clone();
-        let __rb_6_5 = ctx.no_record_brace.clone();
-        let __rb_7_0 = ctx.env.clone();
-        let __rb_8_0 = ctx.source_extents.clone();
+        let __rb_7_0 = ctx.no_record_brace.clone();
+        let __rb_8_0 = ctx.env.clone();
+        let __rb_9_0 = ctx.source_extents.clone();
         let mut __rb_h = ctx;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1013,9 +1043,9 @@ pub fn parse_context_with_intern_table(
                 __rb_r.declaration_occurrences = __rb_4_0;
                 __rb_r.reference_occurrences = __rb_5_0;
                 __rb_r.heads_only = __rb_6_0;
-                __rb_r.no_record_brace = __rb_6_5;
-                __rb_r.env = __rb_7_0;
-                __rb_r.source_extents = __rb_8_0;
+                __rb_r.no_record_brace = __rb_7_0;
+                __rb_r.env = __rb_8_0;
+                __rb_r.source_extents = __rb_9_0;
             }
             None => {
                 __rb_h = Rc::new(ParseContext {
@@ -1026,9 +1056,9 @@ pub fn parse_context_with_intern_table(
                     declaration_occurrences: __rb_4_0,
                     reference_occurrences: __rb_5_0,
                     heads_only: __rb_6_0,
-                    no_record_brace: __rb_6_5,
-                    env: __rb_7_0,
-                    source_extents: __rb_8_0,
+                    no_record_brace: __rb_7_0,
+                    env: __rb_8_0,
+                    source_extents: __rb_9_0,
                 });
             }
         }
@@ -15815,7 +15845,39 @@ pub fn parse_ident_expr(
             if (is_uppercase_start(name.clone())
                 && tok_is_lbrace(token_stream_first(tokens.clone())))
             {
-                if !ctx.no_record_brace {
+                if ctx.no_record_brace.clone() {
+                    {
+                        let rec = parse_record_literal(
+                            tokens.clone(),
+                            parse_context_set_no_record_brace(ctx.clone(), false),
+                            name.clone(),
+                            span.clone(),
+                            entry.clone(),
+                        );
+                        if has_err(rec.err.clone()) {
+                            parsed_expr_result(
+                                entry.clone(),
+                                tokens.clone(),
+                                ctx.clone(),
+                                |identity| {
+                                    crate::v1_std_core::make_named_expr_node(
+                                        identity,
+                                        name.clone(),
+                                        Rc::new(ExprData::ExprVar {
+                                            binding_kind: std::option::Option::None,
+                                        }),
+                                        Rc::new(vec![]),
+                                        std::option::Option::None,
+                                        span.clone(),
+                                        span.clone(),
+                                    )
+                                },
+                            )
+                        } else {
+                            rec
+                        }
+                    }
+                } else {
                     parse_record_literal(
                         tokens.clone(),
                         ctx.clone(),
@@ -15823,36 +15885,6 @@ pub fn parse_ident_expr(
                         span.clone(),
                         entry.clone(),
                     )
-                } else {
-                    let rec = parse_record_literal(
-                        tokens.clone(),
-                        parse_context_set_no_record_brace(ctx.clone(), false),
-                        name.clone(),
-                        span.clone(),
-                        entry.clone(),
-                    );
-                    if has_err(rec.err.clone()) {
-                        parsed_expr_result(
-                            entry.clone(),
-                            tokens.clone(),
-                            ctx.clone(),
-                            |identity| {
-                                crate::v1_std_core::make_named_expr_node(
-                                    identity,
-                                    name.clone(),
-                                    Rc::new(ExprData::ExprVar {
-                                        binding_kind: std::option::Option::None,
-                                    }),
-                                    Rc::new(vec![]),
-                                    std::option::Option::None,
-                                    span.clone(),
-                                    span.clone(),
-                                )
-                            },
-                        )
-                    } else {
-                        rec
-                    }
                 }
             } else {
                 parsed_expr_result(entry.clone(), tokens.clone(), ctx.clone(), |identity| {
@@ -18129,7 +18161,10 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                 err: r.err.clone(),
             });
         }
-        let r = parse_expr_no_brace(r.tokens.clone(), parse_context_set_no_record_brace(ctx.clone(), true));
+        let r = parse_expr_no_brace(
+            r.tokens.clone(),
+            parse_context_set_no_record_brace(ctx.clone(), true),
+        );
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
