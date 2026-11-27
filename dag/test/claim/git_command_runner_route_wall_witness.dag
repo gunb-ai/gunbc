@@ -20,14 +20,18 @@ module test.claim.git_command_runner_route_wall_witness
 // test_refused_bare_mutating_local_add, test_refused_absolute_path_local, test_refused_deep_absolute_path_local,
 // test_refused_bare_mutating_ssh, test_refused_bare_mutating_ssh_absolute, test_refused_bare_mutating_run_shell_command,
 // test_refused_absolute_run_shell_command, test_refused_bare_mutating_run_shell_command_ssh,
-// test_refused_bare_mutating_stdin_local and test_refused_absolute_stdin_local STOP yielding the refusal --
-// they proceed to RunArgv/RunArgvStdin and never carry the wall reason -- and, with no mock response, each gated
-// claim then STOPS UNOBSERVED at its entry's host-effect boundary: RunArgvOutcome for the observe_outcome claims
-// (including test_bare_mutating_git_yields_the_single_not_spawned_arm), RunArgv for the run_shell_command claims,
-// RunArgvStdin for the stdin_local claims. They do not merely 'go false': they never evaluate at all, which is
-// exactly as unprovable as a green vote on a claim that never ran. Reverting the mutation makes them refuse
-// again: this proves the gate is load-bearing on BOTH the
-// ProcessRunOutcome entry AND the two ProcessExit entries. (Run and reverted in-PR; the head has the gate live.)
+// test_refused_bare_mutating_stdin_local and test_refused_absolute_stdin_local, the five capture claims
+// test_refused_bare_mutating_capture_local, test_refused_bare_mutating_capture_local_add,
+// test_refused_absolute_capture_local, test_refused_bare_mutating_capture_ssh and
+// test_refused_absolute_add_capture_ssh STOP yielding the refusal --
+// they proceed to RunArgv/RunArgvStdin/RunArgvCapture and never carry the wall reason -- and, with no mock response,
+// each gated claim then STOPS UNOBSERVED at its entry's host-effect boundary: RunArgvOutcome for the observe_outcome
+// claims (including test_bare_mutating_git_yields_the_single_not_spawned_arm), RunArgv for the run_shell_command
+// claims, RunArgvStdin for the stdin_local claims, RunArgvCapture for the capture claims. They do not merely
+// 'go false': they never evaluate at all, which is exactly as unprovable as a green vote on a claim that never ran.
+// Reverting the mutation makes them refuse again: this proves the gate is load-bearing on ALL FOUR entries --
+// the ProcessRunOutcome entry, the two ProcessExit entries, and the ProcessCaptureOutcome entry.
+// (Run and reverted in-PR; the head has the gate live.)
 //
 // THE COMMIT-BUILDER AND EXIT-ZERO CONTROLS (side-chat blockers 1 and 2).
 // test_admitted_commit_snapshot_builder_passes_gate consumes the shipped git_commit_snapshot_command

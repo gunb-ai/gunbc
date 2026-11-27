@@ -13,7 +13,7 @@
 // witnesses ride): a temp-directory write plus child processes (ls, test) over the created
 // tree only. The shared negative half holds: no network, no ssh, no sudo, no cargo, no git,
 // no remote host.
-module gunbc.test.claim.fleet.fleet_converge_plan_binary_presence_witness
+module test.claim.fleet.fleet_converge_plan_binary_presence_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import std.algebra { join, string_contains }
