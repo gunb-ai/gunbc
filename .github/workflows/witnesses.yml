@@ -783,11 +783,12 @@ jobs:
           fi
           sort -u "${changed}" "${candidates}" -o "${candidates}"
           scope=$(wc -l < "${candidates}" | tr -d ' ')
-          if [ "${scope}" -gt 1200 ]; then
-            echo "scope of ${scope} .dag files is above the ceiling of 1200: this is not this run's diff, and the step refuses to judge it" 1>&2
+          lines=$(xargs -r -a "${candidates}" cat 2>/dev/null | wc -l | tr -d ' ')
+          if [ "${lines}" -gt 250000 ]; then
+            echo "scope of ${scope} .dag files / ${lines} lines is above the budget of 250000 lines: this is not this run's diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body" 1>&2
             exit 1
           fi
-          echo "scope: ${scope} .dag files (changed plus reverse importers, diffed against ${base})"
+          echo "scope: ${scope} .dag files, ${lines} lines (changed plus reverse importers, diffed against ${base}, budget 250000)"
           ${{ steps.fast_lane.outputs.skip == 'true' && './gunbc-fast-lane-native-cli' || format('{0}/v2-native-cli-gen-one', runner.temp) }} run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/declared_entry_call_shape.dag --function main --arg changed_paths_file=${dir}/changed.txt --arg candidate_importers_file=${dir}/candidates.txt
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
       - name: Restore parse-verdict unit for base ancestor 0

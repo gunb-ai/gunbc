@@ -507,12 +507,27 @@ fn cs_label_ok(label: String, declared: List<String>) -> Bool {
 // ── THE TWO REFUSALS ───────────────────────────────────────────────────────────────────────────────────
 
 // THE FIRST: every attributed call whose labels the attributed declaration does not name.
-fn cs_pair_findings(file: String, sites: List<CallSite>, callee: String, name: String,
+// ONE READ PER DECLARATION FILE, NOT ONE PER NAME IMPORTED FROM IT. The first version asked for the
+// declaration's text inside the loop over imported names, so a file importing ten names from one hub read
+// that hub ten times through the effect machine: a 78-file, 53,466-line scope took 164.6 s, most of it
+// re-reading the same dozen files. The pairs still filter the call sites; only the read moves out.
+type CalleeText { path: String, text: String }
+
+// THE BRACE FORM IS NOT SYNTACTIC SUGAR HERE. `CalleeText(path: p, text: ...)` -- the parenthesised form -- is
+// read as a CALL, and the engine refuses it in a function that also performs effects: "effect summary
+// incomplete: call to 'CalleeText' ... has no established callee identity, so its effects cannot be joined".
+// The brace form is a record LITERAL and carries no effect to join. The same file already writes
+// `CallSite { head: ..., labels: ... }` for the same reason.
+fn cs_callee_text_of(path: String) -> CalleeText {
+  CalleeText { path: path, text: cs_read(path: path) }
+}
+
+fn cs_pair_findings(file: String, sites: List<CallSite>, callee_text: String, name: String,
                     label_of_module: String, qualified: Bool) -> List<String> {
-  if callee == "" {
+  if callee_text == "" {
     []
   } else {
-    let declared = cs_declared_names(param_text: cs_fn_params(text: cs_read(path: callee), fn_name: name))
+    let declared = cs_declared_names(param_text: cs_fn_params(text: callee_text, fn_name: name))
     let called = flat_map(filter(sites, site => cs_head_matches(head: site.head, name: name,
                                                                 qualified: qualified)),
                           site => site.labels)
@@ -526,8 +541,23 @@ fn cs_pair_findings(file: String, sites: List<CallSite>, callee: String, name: S
   }
 }
 
+fn cs_callee_text(texts: List<CalleeText>, path: String) -> String {
+  if path == "" {
+    ""
+  } else {
+    match filter(texts, item => cs_eq(a: item.path, b: path)).first() {
+      Present { value: item } => item.text
+      Absent => ""
+    }
+  }
+}
+
 fn cs_findings(file: String) -> List<String> {
-  if cs_declares_no_resolve(path: file) { [] } else { cs_findings_of_read_file(file: file) }
+  cs_findings_judged(file: file, judged: [])
+}
+
+fn cs_findings_judged(file: String, judged: List<String>) -> List<String> {
+  if cs_declares_control(path: file, judged: judged) { [] } else { cs_findings_of_read_file(file: file) }
 }
 
 fn cs_findings_of_read_file(file: String) -> List<String> {
@@ -537,12 +567,17 @@ fn cs_findings_of_read_file(file: String) -> List<String> {
   // took over thirty minutes and was killed at its own timeout. The call sites are a fact about the file; a
   // candidate declaration only filters them.
   let sites = cs_call_sites(text: text)
+  let pairs = distinct_by_key(cs_import_pairs(text: text), q => join([q.module, q.name], "."))
+  let texts = map(distinct_by_key(map(pairs, pair => cs_module_file(module: pair.module)), p => p),
+                  path => cs_callee_text_of(path: path))
   concat(
-    flat_map(distinct_by_key(cs_import_pairs(text: text), q => join([q.module, q.name], ".")),
-             pair => cs_pair_findings(file: file, sites: sites, callee: cs_module_file(module: pair.module),
+    flat_map(pairs,
+             pair => cs_pair_findings(file: file, sites: sites,
+                                      callee_text: cs_callee_text(texts: texts,
+                                                                   path: cs_module_file(module: pair.module)),
                                       name: pair.name, label_of_module: pair.module, qualified: true)),
     flat_map(distinct_by_key(cs_local_fn_names(text: text), q => q),
-             name => cs_pair_findings(file: file, sites: sites, callee: file, name: name,
+             name => cs_pair_findings(file: file, sites: sites, callee_text: text, name: name,
                                       label_of_module: file, qualified: false)))
 }
 
@@ -588,7 +623,11 @@ fn cs_route_lines(text: String) -> List<String> {
 }
 
 fn cs_missing_entry_files(file: String) -> List<String> {
-  if cs_declares_no_resolve(path: file) {
+  cs_missing_entry_files_judged(file: file, judged: [])
+}
+
+fn cs_missing_entry_files_judged(file: String, judged: List<String>) -> List<String> {
+  if cs_declares_control(path: file, judged: judged) {
     []
   } else {
     cs_missing_entry_lines(file: file)
@@ -686,17 +725,43 @@ fn cs_scope_is_empty(paths: String) -> Bool {
 // declaration has to be IN THE FILE -- a module cannot be exempted by its path, its package, or a list
 // somewhere else -- and the count is printed in the verdict line, so an exemption that grows is visible.
 fn cs_declares_no_resolve(path: String) -> Bool {
-  let text = cs_read(path: path)
-  string_contains(s: text, pattern: "MUST NOT RESOLVE")
-    || string_contains(s: text, pattern: "Enrolled RED")
+  cs_declares_control(path: path, judged: [])
+}
+
+// THE SKIP, AND ITS ONE EXCEPTION. A file that declares itself a control -- a probe that exists to be
+// refused, or a fixture a claim exists to refuse -- is not judged, because judging it would make the check
+// refuse the thing that proves the check works; the two executed arms of this row both found that out the
+// hard way, the second one refusing three of the instrument's OWN fixtures on a real PR diff. The exception
+// is a caller that NAMES the file as an expected refusal: a claim is not a scan, and a claim that had to
+// un-mark its own fixture to observe the refusal would be a claim that quietly stopped testing anything.
+// So the exemption travels in the file (visible to anyone reading it, and to a stray scan) and the
+// expectation travels in the caller (visible in the claim), and neither can be reached from a path, a
+// package, or a list elsewhere in the tree.
+fn cs_declares_control(path: String, judged: List<String>) -> Bool {
+  if list_member(xs: judged, x: path, eq: cs_eq) {
+    false
+  } else {
+    let text = cs_read(path: path)
+    string_contains(s: text, pattern: "MUST NOT RESOLVE")
+      || string_contains(s: text, pattern: "Enrolled RED")
+      || string_contains(s: text, pattern: "EXPECTED CALL-SHAPE REFUSAL")
+  }
 }
 
 fn cs_all_findings(scope: List<String>) -> List<String> {
-  flat_map(scope, file => cs_findings(file: file))
+  cs_all_findings_judged(scope: scope, judged: [])
+}
+
+fn cs_all_findings_judged(scope: List<String>, judged: List<String>) -> List<String> {
+  flat_map(scope, file => cs_findings_judged(file: file, judged: judged))
 }
 
 fn cs_all_missing_entries(scope: List<String>) -> List<String> {
-  flat_map(scope, file => cs_missing_entry_files(file: file))
+  cs_all_missing_entries_judged(scope: scope, judged: [])
+}
+
+fn cs_all_missing_entries_judged(scope: List<String>, judged: List<String>) -> List<String> {
+  flat_map(scope, file => cs_missing_entry_files_judged(file: file, judged: judged))
 }
 
 // The disclosed skip count, printed and never hidden: what the instrument did not look at is part of its
@@ -714,14 +779,18 @@ fn cs_counts(changed: List<String>, scope: List<String>) -> String {
         to_string(length(xs: cs_all_findings(scope: scope))), " label refusals, ",
         to_string(length(xs: cs_all_missing_entries(scope: scope))), " missing entry files, ",
         to_string(length(xs: filter(scope, file => cs_declares_no_resolve(path: file)))),
-        " self-declared no-resolve controls skipped"], "")
+        " controls skipped"], "")
 }
 
 fn cs_verdict(changed_paths: String, candidate_paths: String) -> ProcessExit {
+  cs_verdict_judged(changed_paths: changed_paths, candidate_paths: candidate_paths, judged: [])
+}
+
+fn cs_verdict_judged(changed_paths: String, candidate_paths: String, judged: List<String>) -> ProcessExit {
   let changed = cs_changed(paths: changed_paths)
   let scope = cs_scope(changed_paths: changed_paths, candidate_paths: candidate_paths)
-  let missing = cs_all_missing_entries(scope: scope)
-  let findings = cs_all_findings(scope: scope)
+  let missing = cs_all_missing_entries_judged(scope: scope, judged: judged)
+  let findings = cs_all_findings_judged(scope: scope, judged: judged)
   if length(xs: missing) > 0 {
     exit_failure(reason: join([cs_counts(changed: changed, scope: scope), "; ", join(missing, "; ")], ""))
   } else if length(xs: findings) > 0 {
@@ -761,11 +830,25 @@ fn declared_entry_call_shape_failure_receipt(changed_paths_file: String, candida
 // be deleted the first time it is flaky. Paths are repo-relative, as everywhere else here.
 
 fn declared_entry_call_shape_findings(files: List<String>) -> List<String> {
-  flat_map(files, f => cs_findings(file: f))
+  declared_entry_call_shape_findings_judged(files: files, expected_refusal_files: [])
+}
+
+// A CLAIM THAT REQUIRES A REFUSAL SAYS SO, by naming the file. The instrument skips a file that declares
+// itself a control -- otherwise the CI step would refuse the very fixtures that prove it refuses -- and a
+// claim may not let that skip stand in for an observed refusal: here the named file is judged, and the claim
+// still has to find the refusal it promises.
+fn declared_entry_call_shape_findings_judged(files: List<String>,
+                                             expected_refusal_files: List<String>) -> List<String> {
+  flat_map(files, f => cs_findings_judged(file: f, judged: expected_refusal_files))
 }
 
 fn declared_entry_call_shape_missing_entry_files(files: List<String>) -> List<String> {
-  flat_map(files, f => cs_missing_entry_files(file: f))
+  declared_entry_call_shape_missing_entry_files_judged(files: files, expected_refusal_files: [])
+}
+
+fn declared_entry_call_shape_missing_entry_files_judged(files: List<String>,
+                                                        expected_refusal_files: List<String>) -> List<String> {
+  flat_map(files, f => cs_missing_entry_files_judged(file: f, judged: expected_refusal_files))
 }
 
 fn declared_entry_call_shape_scope(changed_paths: String, candidate_paths: String) -> List<String> {
@@ -777,6 +860,14 @@ fn declared_entry_call_shape_scope(changed_paths: String, candidate_paths: Strin
 // the witness test a function nothing executes.
 fn declared_entry_call_shape_verdict(changed_paths: String, candidate_paths: String) -> ProcessExit {
   declared_entry_call_shape_body(changed_paths: changed_paths, candidate_paths: candidate_paths)
+}
+
+// The same production, with the caller's expected refusals named -- see
+// declared_entry_call_shape_findings_judged for why the exemption and the expectation are separate facts.
+fn declared_entry_call_shape_verdict_judged(changed_paths: String, candidate_paths: String,
+                                            expected_refusal_paths: String) -> ProcessExit {
+  cs_verdict_judged(changed_paths: changed_paths, candidate_paths: candidate_paths,
+                    judged: cs_changed(paths: expected_refusal_paths))
 }
 
 // The instrument's own import lines, as read from source: the pin lives in the witness so the instrument

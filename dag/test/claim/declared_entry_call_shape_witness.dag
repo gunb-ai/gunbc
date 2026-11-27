@@ -24,15 +24,17 @@ import std.types { String, Bool, List }
 import std.algebra { string_contains }
 import std.list { list_member }
 import gunbc.instruments.declared_entry_call_shape {
-  declared_entry_call_shape_findings, declared_entry_call_shape_missing_entry_files,
+  declared_entry_call_shape_findings, declared_entry_call_shape_findings_judged,
+  declared_entry_call_shape_missing_entry_files, declared_entry_call_shape_missing_entry_files_judged,
   declared_entry_call_shape_scope, declared_entry_call_shape_verdict,
+  declared_entry_call_shape_verdict_judged,
   declared_entry_call_shape_failure_reason, declared_entry_call_shape_counts,
   declared_entry_call_shape_module_file, declared_entry_call_shape_import_lines,
 }
 
 import gunbc.witness.declared_entry_call_shape_step {
   declared_entry_call_shape_step, declared_entry_call_shape_step_name,
-  declared_entry_call_shape_if_condition, declared_entry_call_shape_scope_ceiling,
+  declared_entry_call_shape_if_condition, declared_entry_call_shape_line_ceiling,
   declared_entry_changed_path, declared_entry_candidate_path,
   declared_entry_call_shape_instrument_entry
 }
@@ -67,6 +69,20 @@ fn w_reason(changed: String, candidates: String) -> String {
     changed_paths: changed, candidate_paths: candidates))
 }
 
+// THE EXPECTED-REFUSAL PAIR OF HELPERS. A fixture that declares itself a control is skipped by the CI scan,
+// so a claim that wants its refusal has to name it; these pass the name through and nothing else changes.
+// The UNJUDGED helpers above stay for the accepting arms, which must not name anything: naming a file as an
+// expected refusal while testing that nothing refuses would be the claim cheating.
+fn w_refused_judged(changed: String, candidates: String, expected: String) -> Bool {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict_judged(
+    changed_paths: changed, candidate_paths: candidates, expected_refusal_paths: expected)) != ""
+}
+
+fn w_reason_judged(changed: String, candidates: String, expected: String) -> String {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict_judged(
+    changed_paths: changed, candidate_paths: candidates, expected_refusal_paths: expected))
+}
+
 fn w_str_eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -81,8 +97,9 @@ fn w_has(hay: String, needle: String) -> Bool {
 // break used, and the accepting arm below is what makes this claim mean something: a scanner that refused
 // everything would pass a "did it refuse" test and fail this pair.
 test fn a_label_the_declaration_does_not_name_is_refused() -> Bool {
-  let findings = declared_entry_call_shape_findings(
-    files: [w_file(name: "callee"), w_file(name: "caller_bad")])
+  let findings = declared_entry_call_shape_findings_judged(
+    files: [w_file(name: "callee"), w_file(name: "caller_bad")],
+    expected_refusal_files: [w_file(name: "caller_bad")])
   length(xs: findings) == 1
     && w_has(hay: w_lines(list: findings), needle: "claim_run")
     && w_has(hay: w_lines(list: findings), needle: "fixture_step")
@@ -98,13 +115,16 @@ test fn a_call_that_names_every_declared_parameter_is_accepted() -> Bool {
 // caller_ok.dag, which names a file that does exist -- so this cannot pass by the population rule rejecting
 // every route shape.
 test fn a_route_naming_no_file_is_refused() -> Bool {
-  let missing = declared_entry_call_shape_missing_entry_files(files: [w_file(name: "route_missing")])
+  let missing = declared_entry_call_shape_missing_entry_files_judged(
+    files: [w_file(name: "route_missing")], expected_refusal_files: [w_file(name: "route_missing")])
   length(xs: missing) == 1
     && w_has(hay: w_lines(list: missing), needle: "no_such_entry_file.dag")
-    && w_has(hay: w_reason(changed: w_file(name: "route_missing"), candidates: ""), needle: "no file")
+    && w_has(hay: w_reason_judged(changed: w_file(name: "route_missing"), candidates: "",
+                                  expected: w_file(name: "route_missing")), needle: "no file")
     // AND IT IS THE MISSING-FILE ARM THAT SPOKE, NOT THE LABEL ARM: the file's own call sites are clean, so
     // a refusal here that also carried label findings would mean the scanner is confused about what it found.
-    && w_has(hay: w_reason(changed: w_file(name: "route_missing"), candidates: ""),
+    && w_has(hay: w_reason_judged(changed: w_file(name: "route_missing"), candidates: "",
+                                  expected: w_file(name: "route_missing")),
              needle: "0 label refusals")
 }
 
@@ -118,8 +138,11 @@ test fn a_route_naming_a_real_file_is_accepted() -> Bool {
 // Scanning changed files alone passes it. The step hands the instrument the changed file plus the files the
 // index says may import it, and the instrument decides for itself who imports what.
 test fn an_untouched_caller_of_a_narrowed_declaration_is_still_checked() -> Bool {
-  w_refused(changed: w_file(name: "narrow_callee"), candidates: w_file(name: "wide_caller"))
-    && w_has(hay: w_reason(changed: w_file(name: "narrow_callee"), candidates: w_file(name: "wide_caller")),
+  w_refused_judged(changed: w_file(name: "narrow_callee"), candidates: w_file(name: "wide_caller"),
+                   expected: w_file(name: "wide_caller"))
+    && w_has(hay: w_reason_judged(changed: w_file(name: "narrow_callee"),
+                                  candidates: w_file(name: "wide_caller"),
+                                  expected: w_file(name: "wide_caller")),
              needle: "receipt_rel")
 }
 
@@ -202,7 +225,23 @@ test fn a_file_that_declares_it_must_not_resolve_is_skipped_and_counted() -> Boo
   length(xs: declared_entry_call_shape_findings(files: [forged])) == 0
     && length(xs: declared_entry_call_shape_missing_entry_files(files: [forged])) == 0
     && w_has(hay: declared_entry_call_shape_counts(changed_paths: forged, candidate_paths: ""),
-             needle: "1 self-declared no-resolve controls skipped")
+             needle: "1 controls skipped")
+}
+
+// THE SKIP AND ITS EXCEPTION, PINNED TOGETHER. Either half failing quietly is the defect, and both halves
+// have already fired once in the real world: before this rule existed, an executed arm of the CI step ran a
+// real PR diff and the instrument refused THREE OF ITS OWN FIXTURES -- a scan that reds the files proving it
+// works gets reverted within a day. The other half is quieter and worse: if naming a file stopped lifting the
+// exemption, a claim would report green without ever having observed the refusal it asserts. So the
+// declaration lives in the file, the expectation lives in the caller, and this claim makes both of them
+// observable.
+test fn a_fixture_declared_a_control_is_skipped_by_a_scan_and_refused_when_named() -> Bool {
+  let marked = w_file(name: "caller_bad")
+  length(xs: declared_entry_call_shape_findings(files: [w_file(name: "callee"), marked])) == 0
+    && w_has(hay: declared_entry_call_shape_counts(changed_paths: marked, candidate_paths: ""),
+             needle: "1 controls skipped")
+    && length(xs: declared_entry_call_shape_findings_judged(
+         files: [w_file(name: "callee"), marked], expected_refusal_files: [marked])) == 1
 }
 
 // ── THE CI STEP THAT RUNS THE INSTRUMENT ─────────────────────────────────────────────────────────────
@@ -312,7 +351,8 @@ test fn the_step_widens_to_reverse_importers_and_bounds_its_scope_above_only() -
   let run = w_step_run(step: w_step())
   w_has(hay: run, needle: join(["git grep -l -F -f \"", shn("stems"), "\" -- '*.dag'"], ""))
     && w_has(hay: run, needle: "s|/|.|g")
-    && w_has(hay: run, needle: "-gt " + declared_entry_call_shape_scope_ceiling)
+    && w_has(hay: run, needle: "-gt " + declared_entry_call_shape_line_ceiling)
+    && w_has(hay: run, needle: "lines=$(xargs -r -a ")
     && !w_has(hay: run, needle: "-lt ")
 }
 

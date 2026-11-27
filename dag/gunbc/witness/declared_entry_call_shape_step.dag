@@ -8,8 +8,9 @@
 // exists at all rather than being a reviewer's habit: the defect this row is named for
 // (gunb_ai_pages_workflow passing claim_run to a step that declares no such parameter, discovered
 // by a 1391-second / 13.3 GiB CI resolve) was a CALLER NOBODY HAD TO EDIT. A check scoped to
-// changed files alone cannot see it. A check scoped to changed files plus their reverse importers
-// sees it in seconds, because the caller is in the scope even though no edit touched it.
+// changed files alone cannot see it. A check scoped to changed files plus their reverse importers sees it
+// while the author is still watching the run (93 s on the largest real diff measured here), because the
+// caller is in the scope even though no edit touched it.
 //
 // THE BASE IS THE EVENT'S OWN BASE SHA, NOT main. `git diff --name-only <base>...HEAD`, merge-base
 // semantics, with <base> read from the event that carries it: github.event.pull_request.base.sha on
@@ -108,10 +109,22 @@ data declared_entry_call_shape_candidate_name: String = "candidates.txt"
 
 data declared_entry_call_shape_stems_name: String = "stems.txt"
 
-// Above this many .dag files in scope the step is not judging this run any more. Spelled as text
-// because it is interpolated into the shell test, and a number in a shell test is text whatever the
-// language calls it here.
-data declared_entry_call_shape_scope_ceiling: String = "1200"
+// THE SCOPE BUDGET, IN THE UNIT THE COST ACTUALLY TRACKS. Measured with the engine built from this
+// checkout: a 78-file scope of 53,466 lines -- the shape of a real PR diff here, 11 changed files plus the
+// 67 the reverse pass over-included -- scans in 93 s wall, of which ~5 s is the instrument resolving its own
+// 53 modules: ~1.65 ms per LINE, ~1.2 s per file. A file count is the wrong ruler, because 600 leaf fixtures
+// cost seconds and 600 workflow hubs cost twenty minutes; the line count is what the scanner's time follows.
+// 250,000 lines is ~7 minutes at that rate, which fits next to the reference check inside the roster's job
+// budget (gunbc.ci.repository_ci_profile.gunbc_roster_gate), and is ~5x the largest scope this row has seen.
+// ABOVE IT THE STEP REFUSES RATHER THAN RUNNING PAST THE JOB TIMEOUT, and the remedy is named rather than
+// implied: a legitimate tree-wide migration -- which the repo's own replacement-migration rule REQUIRES to be
+// one change -- runs this instrument out of band, where its cost is published (~5 s plus ~1.65 ms per line),
+// and the run is cited in the PR body. And there is no FLOOR: a legal PR changes one leaf file nothing
+// imports, and a check that reds that has bought a false alarm with the safety it sold.
+//
+// Spelled as text because it is interpolated into the shell test, and a number in a shell test is text
+// whatever the language calls it here.
+data declared_entry_call_shape_line_ceiling: String = "250000"
 
 // The event's base commit, as the one expression that carries it. `||` is GitHub's fallback: a
 // pull_request event has no merge_group payload and a merge_group event has no pull_request payload,
@@ -244,9 +257,20 @@ fn declared_entry_scope_lines() -> List<String> {
     "fi",
     join(["sort -u \"", sh("changed"), "\" \"", sh("candidates"), "\" -o \"", sh("candidates"), "\""], ""),
     join(["scope=$(wc -l < \"", sh("candidates"), "\" | tr -d ' ')"], ""),
-    join(["if [ \"", sh("scope"), "\" -gt ", declared_entry_call_shape_scope_ceiling, " ]; then"], ""),
+    // The budget unit is lines, so it is measured here, where the file list is. `cat` joins the files and one
+    // `wc -l` counts them, which sidesteps the trailing "total" line `wc` prints only for more than one file --
+    // and it keeps the shell out of the string medium entirely: the first version reached for
+    // `awk '{print $1+0}'`, and the medium read `{print` as the start of a string interpolation and refused to
+    // resolve the module ("a '{' followed by an identifier begins interpolation inside a string literal"). A
+    // step whose cost model needs an awk idiom the model cannot spell is a step whose cost model is wrong.
+    // Missing files (there are none: the list came from git grep over tracked paths) are silenced, because the
+    // instrument refusing a file it cannot read is the authority on unreadable input, not this pipeline.
     join([
-      "  echo \"scope of ", sh("scope"), " .dag files is above the ceiling of ", declared_entry_call_shape_scope_ceiling, ": this is not this run's diff, and the step refuses to judge it\" 1>&2"
+      "lines=$(xargs -r -a \"", sh("candidates"), "\" cat 2>/dev/null | wc -l | tr -d ' ')"
+    ], ""),
+    join(["if [ \"", sh("lines"), "\" -gt ", declared_entry_call_shape_line_ceiling, " ]; then"], ""),
+    join([
+      "  echo \"scope of ", sh("scope"), " .dag files / ", sh("lines"), " lines is above the budget of ", declared_entry_call_shape_line_ceiling, " lines: this is not this run's diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body\" 1>&2"
     ], ""),
     "  exit 1",
     "fi",
@@ -254,7 +278,7 @@ fn declared_entry_scope_lines() -> List<String> {
     // instrument's own counts line will be read against, and the one line that makes a mis-scoped
     // run visible in the log rather than merely green.
     join([
-      "echo \"scope: ", sh("scope"), " .dag files (changed plus reverse importers, diffed against ", sh("base"), ")\""
+      "echo \"scope: ", sh("scope"), " .dag files, ", sh("lines"), " lines (changed plus reverse importers, diffed against ", sh("base"), ", budget ", declared_entry_call_shape_line_ceiling, ")\""
     ], "")
   ]
 }
@@ -277,9 +301,13 @@ fn declared_entry_call_shape_step(
     // test_verb_checked, the same file that declares MEMORY_ENVELOPE_REQUIRED_ENV -- and not by `gunbc run`,
     // which is what this step invokes. Carrying the input would put a line in the shipped YAML asserting a
     // bound the verb never takes, which is a receipt for a measurement nobody made. What bounds this step is
-    // its scope, and what it costs is measured: the instrument resolves 53 modules in about 5 s at a peak of
-    // roughly 176 MiB, and the scan of a 54-file scope runs in about 24 s. See the design note
-    // handoff/2026-11-26/gunbc-entries-resolve-checked-in-ci-design.md.
+    // its scope, and what it costs is measured with the engine built from this checkout: the instrument
+    // resolves 53 modules in ~5 s at a peak of ~179 MiB, and scans a 78-file scope of 53,466 lines -- 11
+    // changed files plus the 67 the reverse pass over-included, the shape of a real PR diff here -- in 93 s
+    // wall. That scan was almost twice as slow until the declaration files were read once per scanned file
+    // instead of
+    // once per name imported from them (164.6 s, most of it re-reading a dozen hubs through the effect
+    // machine). See the design note handoff/2026-11-26/gunbc-entries-resolve-checked-in-ci-design.md.
     env: none,
     working_directory: none,
     if_condition: Present { value: declared_entry_call_shape_if_condition },

@@ -385,8 +385,82 @@ this instrument predicts — `call shape mismatch calling 'list_member': no para
 [T, xs, x, eq])` — and it surfaced as an unobserved claim in ~5 minutes rather than as a CI resolve. That is the
 row's argument, demonstrated on its own author.
 
-**Evidence.** See the PR body for the tallies: the 18-claim instrument/step lane, the two new enrolment claims in
-the emit-build lane, and the executed arms of the emitted step body — the committed YAML's script, extracted and
-run under bash with only the two GitHub expressions resolved (event base, job binary), for: an empty diff, an
-event with no base, an unresolvable base, an over-ceiling scope, a real PR-shaped scope, and a committed red whose
-caller nobody edited.
+**Evidence.** See the PR body for the tallies: the 19-claim instrument/step lane (§14 restates its figure), the
+two new enrolment claims in the emit-build lane, and the executed arms of the emitted step body — the committed
+YAML's script, extracted and run under bash with only the two GitHub expressions resolved (event base, job
+binary), for: an empty diff, an event with no base, an unresolvable base, an over-budget scope, a real
+PR-shaped scope, and a committed red whose caller nobody edited.
+
+## 14. The step, executed — and the defects only execution found
+
+Five arms were run against the emitted body of the COMMITTED YAML (the named step's `run:` block extracted
+from `.github/workflows/witnesses.yml`, with only the two GitHub expressions resolved — the event's base and
+the job's binary — and the rest left to bash), engine built from this checkout:
+
+| arm | input | expected | observed |
+|---|---|---|---|
+| A1 | the base expression resolves empty — the push / schedule / dispatch / workflow_call shape | skip, loudly, rc 0 | `skipped: this event carries no base commit to diff against…`, rc 0 |
+| A2 | base == HEAD, so the `.dag` diff is empty | skip, loudly, rc 0 | `skipped: no .dag change in this diff`, rc 0 |
+| A3 | the event's base is neither in the checkout nor fetchable | REFUSE, rc 1 | `…is not in this checkout and could not be fetched: refusing to guess a scope`, rc 1 |
+| A4 | the scope is above the budget (budget forced below the real figure) | REFUSE, rc 1 | `scope of 78 .dag files / 53638 lines is above the budget of 2 lines: … A tree-wide migration runs this instrument out of band and cites the run in the PR body`, rc 1 |
+| A5 | a real PR-shaped scope, `git diff --name-only <merge-base>...HEAD`: 11 changed, 78 in scope, 53,638 lines | instrument PASS, rc 0 | `scope: 78 .dag files, 53638 lines (…)`, then silence, rc 0, 102 s on a host at load ~20 (93 s before the budget line was added) |
+
+Two of the five found defects in the code rather than in the expectation, and neither is reachable from a
+claim that only asks *did it refuse*.
+
+**(1) The instrument refused its own fixtures.** A5's first run returned `2 label refusals, 1 missing entry
+files`: the three fixture files that exist in order to be refused (`caller_bad`, `wide_caller`,
+`route_missing`), swept in because they are `.dag` files in the diff. A check that reddens any PR touching the
+files which prove it works is reverted within a day, so the skip rule had to widen — but not by exempting a
+path, a package, or a name in a list, which is the shape of exemption that turns a check into a formality. The
+*declaration* widened: a file saying it is a control is not judged (`MUST NOT RESOLVE`, `Enrolled RED`, and the
+new `EXPECTED CALL-SHAPE REFUSAL`, the last one being this instrument's own vocabulary — a fixture is not a
+module that must not resolve, it is a module that must be refused, and conflating the two would have made the
+marker a lie in one direction or the other). What narrowed is the escape: a caller that NAMES a file in
+`expected_refusal_files` judges it anyway. Claims name; CI names nothing. The pair is pinned by
+`a_fixture_declared_a_control_is_skipped_by_a_scan_and_refused_when_named`, whose arms are the scan (0
+findings, count 1) and the named judgment (1 finding). If the skip breaks, the PR adding a fixture reddens; if
+the exception breaks, the claim that would otherwise report green without ever having observed a refusal goes
+DID NOT HOLD.
+
+**(2) The scan was almost twice as expensive as it needed to be, and the ceiling was measured in the wrong unit.**
+A5 took 164.6 s for 78 files. The scan re-read every declaration file once per name imported from it, and
+each read is an effect-machine round trip; reading each declaration once per scanned file (`CalleeText { path,
+text }`, looked up by path) took it to 93 s. The same figure is what killed the original ceiling: at ~1.65 ms
+per LINE the ruler has to be lines, not files, because 600 leaf fixtures and 600 workflow hubs are an order of
+magnitude apart in cost. `declared_entry_call_shape_line_ceiling = "250000"` is ~7 minutes at the measured
+rate, ~5× the largest scope this row has seen, and its refusal names the remedy — run the instrument out of
+band and cite the run in the PR body — rather than leaving a tree-wide migration, which the repo's own
+replacement-migration rule *requires* to be one change, with no way through. There is still no floor.
+
+**Execution also caught the harness, not the code.** The first A5 handed the instrument a scope path built by
+a Python f-string that had been left unmarked, so it received the literal text `{d}/changed.txt`; the
+instrument answered with the empty-scope refusal, which is the correct answer to a scope file it cannot read.
+It is worth recording because that is precisely the error class a claim written against real files cannot
+distinguish from success: a wrong path and an empty diff both look like "nothing to check". It is why the
+witness lane drives the instrument's own API and only the CI step reads lists off disk, and why the empty scope
+refuses instead of passing.
+
+**Two medium traps, recorded once each.** Record construction needs the brace form: `CalleeText(path: p,
+text: …)` parses as a *call*, and a call whose callee identity cannot be established inside an effectful
+function is refused at resolve — "effect summary incomplete … its effects cannot be joined"; `CalleeText {
+path: p, text: … }` is a literal and carries no effect. And the shell idiom `{print $1+0}` inside a `.dag`
+string never reaches the shell: `{` followed by an identifier is string interpolation, so the module would not
+resolve. Both failures were loud at resolve; the second one changed what the step computes, because the
+budget's measurement moved from `awk` to `cat | wc -l`, which is also the cheaper form.
+
+**The lane's figure at this head, with the engine built from this checkout and the freshness gate satisfied:**
+19 claims — 19 held, 0 did not hold, 0 unobserved, in one process, 291 s. The instrument's own entry still
+resolves 53 modules (`resolve_entry_graph_inclusive ms=4982`, `max_rss_kib=184220`), and the two refusals are
+unchanged: adding the control-skip exception added a caller-side fact, not a third thing the instrument
+refuses.
+
+**Binary freshness is a route gate, not a suggestion.** `gunbc test` refused twice with
+`BinaryFreshnessUndecided — /cargo-target/release/gunbc: its dep-info names an input outside this worktree
+(…/quiet-seal-506, …/crisp-pike-295); it was built from another checkout, so nothing here says whether it
+answers for this one`. On a shared `CARGO_TARGET_DIR` another session's rebuild lands under you between
+build and run, and — the asymmetry that matters — `gunbc run` does NOT apply the gate. An instrument
+measurement can therefore come silently from someone else's build while a claim tally cannot. Copying the
+binary aside does not satisfy it either: the gate requires hard-link twins under `deps`, i.e. the artifact
+cargo actually built. Every figure from here is from a build at this head immediately followed by the lane in
+the same shell.
