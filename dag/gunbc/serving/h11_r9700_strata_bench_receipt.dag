@@ -2,7 +2,6 @@ module gunbc.serving.h11_r9700_strata_bench_receipt
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.optional { Present, Absent }
 import std.measure {
   Watt, watt, watt_count, Celsius, celsius, Millisecond, millisecond, Second, second, MilliTokensPerSecond, milli_tokens_per_second,
   TokenCount, token_count,
@@ -55,6 +54,17 @@ type R9700PowerSampling {
   memory_max: Celsius
 }
 
+// THE POWER PROBE'S OUTCOME, typed. An instrument that cannot read reports a refusal, never an empty column
+// (gunbc.design_argument::fail_closed). The fleet is NVIDIA and AMD; a vendor-specific probe on a host of a
+// different vendor is not a failure and not an absence -- it is its own arm naming what did not apply and why
+// (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent: "for a probe, a host where the probe
+// does not apply is its OWN arm, distinct from both a reading and a failure"). A probe that ran but threw is
+// a distinct arm from one that was never applicable, and a reading is distinct from both.
+type R9700PowerOutcome
+  = ReadingPresent { value: R9700PowerSampling }
+  | ProbeAbsentOnVendor { probe: NonEmptyStr, vendor: NonEmptyStr }
+  | ProbeFailed { probe: NonEmptyStr, cause: NonEmptyStr }
+
 type R9700CapInForce
   = CapReadByOperator { cap: Watt }
   | CapNotRecorded
@@ -77,7 +87,9 @@ type R9700BenchRun {
   third_turn_aggregate: MilliTokensPerSecond
   // The largest cached_med on any row: 0 everywhere, so no turn reused a prefix.
   cached_tokens_max: TokenCount
-  power: R9700PowerSampling?
+  // The bench's GPU sampler outcome: present (pwr_sampler.sh ran), or a typed refusal naming why
+  // the reading is absent. A silent absence is unrepresentable (gunbc.design_argument::fail_closed).
+  power: R9700PowerOutcome
 }
 
 data h11_r9700_bench_host: HostIdentity = operator_host_6ce85c
@@ -98,7 +110,10 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 2048),
     third_turn_aggregate: milli_tokens_per_second(count: 12010),
     cached_tokens_max: token_count(count: 0),
-    power: Absent,
+    // The bench's GPU sampler shells out to nvidia-smi; on this AMD-only host that binary is not the
+    // right probe (strata_bench.err.log records the per-sample crash in every run). The absence is
+    // vendor-applicability, not a failure and not a measurement-of-nothing.
+    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, vendor: "AMD Radeon AI PRO R9700" as NonEmptyStr },
   },
   // THE CONVERSATION-CACHE RUN WAS WORSE, AND ONE REQUEST FAILED. Agent 3's first turn returned no tokens after
   // 153 s; the third turn delivered 1536 of 2048 tokens. Its engine flags were reverted afterwards and not kept,
@@ -118,7 +133,8 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 1536),
     third_turn_aggregate: milli_tokens_per_second(count: 4770),
     cached_tokens_max: token_count(count: 0),
-    power: Absent,
+    // Same vendor-applicability refusal as the run above: nvidia-smi is the wrong probe on this host.
+    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, vendor: "AMD Radeon AI PRO R9700" as NonEmptyStr },
   },
   R9700BenchRun {
     run: "r9700-210w" as NonEmptyStr,
@@ -135,8 +151,9 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 2048),
     third_turn_aggregate: milli_tokens_per_second(count: 12270),
     cached_tokens_max: token_count(count: 0),
-    // r9700-210w.power.csv, sha256 b9de3333...
-    power: Present { value: R9700PowerSampling {
+    // r9700-210w.power.csv, sha256 b9de3333... pwr_sampler.sh ran beside the bench, reading the
+    // amdgpu hwmon interface -- the correct probe for this vendor.
+    power: ReadingPresent { value: R9700PowerSampling {
       attribute: Power1Average,
       samples: 224,
       sample_interval: second(count: 2),
@@ -166,8 +183,8 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     cached_tokens_max: token_count(count: 0),
     // r9700-300w-measured.power.csv, sha256 768f4b51... THE JUNCTION, NOT THE MEMORY, IS THE HOTTEST SENSOR:
     // junction 100 C against a 110 C critical, memory 94 C against 108 C. No throttle status was read, so
-    // neither is known to have throttled.
-    power: Present { value: R9700PowerSampling {
+    // neither is known to have throttled. pwr_sampler.sh ran beside the bench.
+    power: ReadingPresent { value: R9700PowerSampling {
       attribute: Power1Average,
       samples: 194,
       sample_interval: second(count: 2),
@@ -187,8 +204,9 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
 // sample is above it. gunbc.serving.gpu_power_state_policy CappedPowerQuantity rests on this reading.
 fn r9700_run_shows_cap_is_not_a_peak_bound(r: R9700BenchRun) -> Bool {
   match r.power {
-    Absent => false
-    Present { value: p } => match r.cap {
+    ProbeAbsentOnVendor { .. } => false
+    ProbeFailed { .. } => false
+    ReadingPresent { value: p } => match r.cap {
       CapNotRecorded => false
       CapReadByOperator { cap: _ } =>
         p.samples_above_cap > 0
@@ -200,8 +218,9 @@ fn r9700_run_shows_cap_is_not_a_peak_bound(r: R9700BenchRun) -> Bool {
 // THE BUSY MEAN STAYS WITHIN THE CAP: what a sustained cap promises, on this one run.
 fn r9700_run_busy_mean_within_cap(r: R9700BenchRun) -> Bool {
   match r.power {
-    Absent => false
-    Present { value: p } => match r.cap {
+    ProbeAbsentOnVendor { .. } => false
+    ProbeFailed { .. } => false
+    ReadingPresent { value: p } => match r.cap {
       CapNotRecorded => false
       CapReadByOperator { cap: c } => watt_count(w: p.busy_power_mean) <= watt_count(w: c)
     }
