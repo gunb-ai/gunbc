@@ -41,7 +41,9 @@ import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
+  recover_catalog_words, recover_catalog_unknown_leg_reason,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_apply_receipt_lines, ConvergeApplyTerminal, ApplySettled, ApplyRefused, ApplyUnhandled, ApplyStillNeedsWrites, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer , serving_door_leg_kind }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
@@ -2878,4 +2880,33 @@ fn candidate_plan_principals_all_grounded(host: HostIdentity) -> Bool {
 test fn every_converge_write_principal_is_grounded_on_every_candidate_host() -> Bool {
   let hosts = remote_build_serving_candidate_hosts()
   hosts.any(h => candidate_plan_principals_all_grounded(host: h) == false) == false
+}
+
+// THE CENSUS UNKNOWN REASON NAMES THE CENSUS, NOT THE TRANSPORT (plan node
+// remote-build-census-unknown-reason-names-the-census-not-the-transport). The leg's exit-2 arm takes
+// its reason from the census's own declared stdout words; stderr -- where the user-work-scope
+// trampoline's pre-wrap diagnostics print on EVERY census leg that must wrap into the capped slice --
+// is structurally invisible to it: recover_catalog_unknown_leg_reason's signature receives only
+// stdout. The second half pins the arm itself: the compose-from-stderr literal is gone from this
+// module's source, and the arm reads through the stdout-only function. Run 45762320308 logged
+// "user_work_scope: observed-bound arm did not admit (chain-unbounded)" -- printed before a SUCCESSFUL
+// wrap, beside a census that had answered in full -- as the census's cause; that conflation is red
+// here.
+test fn the_census_unknown_reason_names_the_census_not_the_transport() -> Bool {
+  let w = recover_catalog_words()
+  let census_words = "2c56092770fe88b27a6fb4c2baf546a5520ab42518314397904d2f0bd744b346#1: the attempt is already terminal:recovered"
+  let read = Filesystem.Read(path: "dag/gunbc/compute/remote_build_serving_converge.dag")
+  (match recover_catalog_unknown_leg_reason(stdout: join([w.unknown_header, " ", census_words, "\n"], "")) {
+    RecoverCatalogLegUnknown { detail: d } =>
+      string_contains(s: d, pattern: "terminal:recovered")
+        && !string_contains(s: d, pattern: "user_work_scope")
+    _ => false
+  })
+    && (match recover_catalog_unknown_leg_reason(stdout: join([w.established_header, "\n"], "")) {
+        RecoverCatalogLegUnknown { detail: d } => string_contains(s: d, pattern: "exited unknown")
+        _ => false
+      })
+    && read.success
+    && string_contains(s: read.content, pattern: "recover_catalog_unknown_leg_reason(stdout: r.stdout)")
+    && !string_contains(s: read.content, pattern: "the census door answered unknown: ")
 }
