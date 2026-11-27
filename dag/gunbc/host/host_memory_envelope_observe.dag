@@ -34,6 +34,10 @@ import extdeps.systemd {
   systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice,
   systemd_slice_ancestor_names, systemd_slice_suffix, systemd_root_slice_name,
 }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryEventsReading, CgroupMemoryEventsUnreadable,
+  parse_cgroup_memory_events_systemd_property, cgroup_memory_events_wire,
+}
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -60,61 +64,6 @@ import gunbc.typed_argv_exec {
 
 data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"
 
-// THE CGROUP'S OWN EVENT COUNTERS (memory.events(5), read through the manager as the MemoryEvents
-// property): how many times this cgroup entered its high tier, hit its max, was asked to OOM, and
-// actually died. This is the instrument the srv3 serving-child OOM class lacked: two proof runs died
-// in the slice with no surviving account, because nothing read the counters while the evidence was
-// fresh. Every counter is typed; an unreadable line is a NAMED refusal, never a zero.
-type SystemdMemoryEvents
-  = MemoryEventsObserved { low: Int, high: Int, max: Int, oom: Int, oom_kill: Int }
-  | MemoryEventsUnreadable { detail: String }
-
-// memory.events arrives as one space-separated line of key=value pairs. Each of the five counters the
-// envelope accounts must be present and readable; the first that is not names itself in the refusal.
-fn systemd_memory_events_field(tokens: List<String>, key: NonEmptyStr) -> Int? {
-  match first_where(xs: tokens, keep: tk => starts_with(s: tk, prefix: concat(key as String, "="))) {
-    Absent => none
-    Present { value: tk } =>
-      parse_int(s: substring(s: tk, start: length(key as String) + 1, end: length(tk)))
-  }
-}
-
-fn parse_systemd_memory_events(raw: String) -> SystemdMemoryEvents {
-  let tokens = filter(split(s: raw, delimiter: " "), tk => length(tk) > 0)
-  match systemd_memory_events_field(tokens: tokens, key: "low" as NonEmptyStr) {
-    Absent => MemoryEventsUnreadable { detail: "no readable low=" }
-    Present { value: low } =>
-      match systemd_memory_events_field(tokens: tokens, key: "high" as NonEmptyStr) {
-        Absent => MemoryEventsUnreadable { detail: "no readable high=" }
-        Present { value: high } =>
-          match systemd_memory_events_field(tokens: tokens, key: "max" as NonEmptyStr) {
-            Absent => MemoryEventsUnreadable { detail: "no readable max=" }
-            Present { value: max } =>
-              match systemd_memory_events_field(tokens: tokens, key: "oom" as NonEmptyStr) {
-                Absent => MemoryEventsUnreadable { detail: "no readable oom=" }
-                Present { value: oom } =>
-                  match systemd_memory_events_field(tokens: tokens, key: "oom_kill" as NonEmptyStr) {
-                    Absent => MemoryEventsUnreadable { detail: "no readable oom_kill=" }
-                    Present { value: oom_kill } =>
-                      MemoryEventsObserved { low: low, high: high, max: max, oom: oom, oom_kill: oom_kill }
-                  }
-              }
-          }
-      }
-  }
-}
-
-// THE RECEIPT RENDERINGS. A refusal renders as its own word with its cause, so the receipt distinguishes
-// "zero deaths" from "did not look" -- the distinction the two blind proof runs could not make.
-fn systemd_memory_events_wire(events: SystemdMemoryEvents) -> String {
-  match events {
-    MemoryEventsObserved { low: low, high: high, max: max, oom: oom, oom_kill: oom_kill } =>
-      join(["low=", to_string(low), " high=", to_string(high), " max=", to_string(max),
-        " oom=", to_string(oom), " oom_kill=", to_string(oom_kill)], "")
-    MemoryEventsUnreadable { detail: detail } => concat("unreadable(", detail, ")")
-  }
-}
-
 fn systemd_cgroup_memory_limit_wire(limit: SystemdCgroupMemoryLimit) -> String {
   match limit {
     MemoryLimitUnbounded => "infinity"
@@ -131,7 +80,7 @@ type SliceMemoryReading {
   memory_swap_max: SystemdCgroupMemoryLimit
   // Fail-SOFT by design: an unreadable events line never drops the slice's other readings (the limits
   // stand on their own reads); it names itself in the receipt instead.
-  memory_events: SystemdMemoryEvents
+  memory_events: CgroupMemoryEventsReading
 }
 
 type HostMemoryEnvelopeObservation {
@@ -268,7 +217,7 @@ fn slice_memory_reading(
   memory_high: SystemdCgroupMemoryLimit,
   memory_max: SystemdCgroupMemoryLimit,
   memory_swap_max: SystemdCgroupMemoryLimit,
-  memory_events: SystemdMemoryEvents,
+  memory_events: CgroupMemoryEventsReading,
 ) -> SliceMemoryReading {
   SliceMemoryReading {
     slice_unit: slice_unit,
@@ -314,8 +263,8 @@ fn slice_memory_reading_from_unit(unit: NonEmptyStr) -> SliceMemoryReading? {
                       memory_swap_max: swap,
                       // Fail-soft: a refused or blank events read names itself; it does not refuse the row.
                       memory_events: match slice_property_raw(unit: unit, property: MemoryEventsProperty) {
-                        Absent => MemoryEventsUnreadable { detail: "the manager refused the MemoryEvents read" }
-                        Present { value: raw } => parse_systemd_memory_events(raw: raw)
+                        Absent => CgroupMemoryEventsUnreadable { detail: "the manager refused the MemoryEvents read" }
+                        Present { value: raw } => parse_cgroup_memory_events_systemd_property(raw: raw)
                       },
                     )
                   }
@@ -427,7 +376,7 @@ fn host_memory_envelope_receipt_text(obs: HostMemoryEnvelopeObservation) -> Stri
       " memory_high=", systemd_cgroup_memory_limit_wire(limit: r.memory_high),
       " memory_max=", systemd_cgroup_memory_limit_wire(limit: r.memory_max),
       " memory_swap_max=", systemd_cgroup_memory_limit_wire(limit: r.memory_swap_max),
-      " memory_events=", systemd_memory_events_wire(events: r.memory_events),
+      " memory_events=", cgroup_memory_events_wire(reading: r.memory_events),
       "\n",
     ], "")), ""),
   ], "")
@@ -517,8 +466,11 @@ type PeerSliceEventsRead
   = PeerSliceObserved {
       slice_unit: NonEmptyStr,
       memory_max: SystemdCgroupMemoryLimit,
-      memory_current: SystemdCgroupMemoryLimit,
-      memory_events: SystemdMemoryEvents
+      // A CURRENT reading, not a limit: usage has no "infinity" -- if the manager ever prints that
+      // for MemoryCurrent it is an unreadable reading, never an accepted standing
+      // (gunbc.design_argument::single_authority; the sibling SliceMemoryReading carries ByteSize).
+      memory_current: ByteSize?,
+      memory_events: CgroupMemoryEventsReading
     }
   | PeerSliceUnreadable { slice_unit: NonEmptyStr, reason: String }
 
@@ -558,12 +510,17 @@ fn host_memory_quiescent_user_work_slice_over_ssh(
             Present { value: raw } => parse_systemd_memory_limit_show(raw: raw)
           },
           memory_current: match peer_show_field(lines: lines, key: "MemoryCurrent" as NonEmptyStr) {
-            Absent => MemoryLimitAbsent
-            Present { value: raw } => parse_systemd_memory_limit_show(raw: raw)
+            Absent => none
+            Present { value: raw } =>
+              match parse_systemd_memory_limit_show(raw: raw) {
+                MemoryLimitBytes { bytes: b } => Present { value: b }
+                MemoryLimitUnbounded => none
+                MemoryLimitAbsent => none
+              }
           },
           memory_events: match peer_show_field(lines: lines, key: "MemoryEvents" as NonEmptyStr) {
-            Absent => MemoryEventsUnreadable { detail: "the manager printed no MemoryEvents line" }
-            Present { value: raw } => parse_systemd_memory_events(raw: raw)
+            Absent => CgroupMemoryEventsUnreadable { detail: "the manager printed no MemoryEvents line" }
+            Present { value: raw } => parse_cgroup_memory_events_systemd_property(raw: raw)
           },
         }
       }
@@ -629,8 +586,8 @@ fn host_memory_quiescent_receipt_text(read: HostMemAvailableQuiescentRead, user_
       join([
         "\nslice=", unit as String,
         " memory_max=", systemd_cgroup_memory_limit_wire(limit: max),
-        " memory_current=", systemd_cgroup_memory_limit_wire(limit: current),
-        " memory_events=", systemd_memory_events_wire(events: events),
+        " memory_current=", match current { Present { value: b } => to_string(byte_size_count(b: b))  Absent => "unreadable(MemoryCurrent)" },
+        " memory_events=", cgroup_memory_events_wire(reading: events),
       ], "")
     PeerSliceUnreadable { slice_unit: unit, reason: why } =>
       join(["\nslice=", unit as String, " memory_events=unreadable(", why, ")"], "")
@@ -720,10 +677,10 @@ data gunbc_srv1_memory_envelope_sleek_owl_397_first: HostMemoryEnvelopeObservati
   swap_free: kibibyte_to_byte_size(k: kibibyte(count: 248930848)),
   active_runner_unit_count: 11,
   slice_readings: [
-    slice_memory_reading(slice_unit: "gunbc.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 87153995776), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent, memory_events: MemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
-    slice_memory_reading(slice_unit: "sessions.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29314482176), memory_high: slice_limit_bytes(n: 120259084288), memory_max: slice_limit_bytes(n: 137438953472), memory_swap_max: MemoryLimitAbsent, memory_events: MemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
-    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 175093350400), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitAbsent, memory_events: MemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
-    slice_memory_reading(slice_unit: "system-actions-runner.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 129190301696), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent, memory_events: MemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
+    slice_memory_reading(slice_unit: "gunbc.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 87153995776), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent, memory_events: CgroupMemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
+    slice_memory_reading(slice_unit: "sessions.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29314482176), memory_high: slice_limit_bytes(n: 120259084288), memory_max: slice_limit_bytes(n: 137438953472), memory_swap_max: MemoryLimitAbsent, memory_events: CgroupMemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 175093350400), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitAbsent, memory_events: CgroupMemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
+    slice_memory_reading(slice_unit: "system-actions-runner.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 129190301696), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent, memory_events: CgroupMemoryEventsUnreadable { detail: "this snapshot predates the MemoryEvents read" }),
   ],
   standing: gunbc_srv1_sleek_owl_397_first_standing,
 }

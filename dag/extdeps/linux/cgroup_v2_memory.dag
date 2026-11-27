@@ -119,13 +119,15 @@ fn parse_cgroup_nonnegative_bytes(text: String) -> ByteSize? {
   }
 }
 
-// THE EVENTS READER THE GAP NOTE AT THE FOOT OF THIS MODULE WAS WAITING FOR: a parser of an events
-// body, so the five names in CgroupMemoryEventCounters get exercised by an executing consumer (the
-// front door's hand-off diagnostic, gunbc.compute.remote_build_serve_front_door) and a witness, not
-// only by a host-side printer. THE GRAMMAR IS THE KERNEL FILE'S: memory.events holds one line per
-// field, "<name> <count>" (kernel admin-guide, cgroup-v2, "memory.events"). EVERY field is required:
-// a body missing one is Unreadable naming the missing field, because zeroing it would turn a lost
-// counter into a witnessed non-event (gunbc.design_argument::fail_closed).
+// THE ONE READER OF THE memory.events COUNTERS, for both of their encodings. The counters reach us
+// two ways: the kernel interface file, one "<name> <count>" line per field (memory.events(5)), and
+// the manager's MemoryEvents unit property, ONE space-separated line of "name=count" tokens -- a
+// projection of that same file (systemd.directives). Both decode HERE, into the one result type over
+// the one five-Nat carrier above, and print through the one wire below; a module that needs the
+// counters asks this module whichever encoding it holds (gunbc.design_argument::single_authority:
+// "a second place that independently decides it is a fork"). EVERY field is required in either
+// encoding: a body missing one is Unreadable naming the missing field, because zeroing it would turn
+// a lost counter into a witnessed non-event (gunbc.design_argument::fail_closed).
 type CgroupMemoryEventsReading
   = CgroupMemoryEventsObserved { counters: CgroupMemoryEventCounters }
   | CgroupMemoryEventsUnreadable { detail: String }
@@ -147,20 +149,36 @@ fn cgroup_memory_events_field(body: String, key: String) -> Nat? {
   }
 }
 
-fn parse_cgroup_memory_events(body: String) -> CgroupMemoryEventsReading {
-  match cgroup_memory_events_field(body: body, key: "low") {
+// One "name=count" token of the manager's property line. A negative count is unreadable, never a
+// counter -- the kernel only ever increments these.
+fn cgroup_memory_events_systemd_field(tokens: List<String>, key: String) -> Nat? {
+  match first_where(xs: tokens, keep: tk => starts_with(s: tk, prefix: concat(key, "="))) {
+    Absent => none
+    Present { value: tk } =>
+      match parse_int(s: substring(s: tk, start: length(key) + 1, end: length(tk))) {
+        Present { value: n } => if n < 0 { none } else { Present { value: nat_magnitude(a: n) } }
+        Absent => none
+      }
+  }
+}
+
+// The five-level chain that refuses by NAMING the first missing field. The per-field reader is passed
+// in, so the kernel-file grammar and the manager-property grammar share one decision about what a
+// complete events reading is.
+fn cgroup_memory_events_from(field: fn(String) -> Nat?) -> CgroupMemoryEventsReading {
+  match field("low") {
     Absent => CgroupMemoryEventsUnreadable { detail: "no readable low=" }
     Present { value: low } =>
-      match cgroup_memory_events_field(body: body, key: "high") {
+      match field("high") {
         Absent => CgroupMemoryEventsUnreadable { detail: "no readable high=" }
         Present { value: high } =>
-          match cgroup_memory_events_field(body: body, key: "max") {
+          match field("max") {
             Absent => CgroupMemoryEventsUnreadable { detail: "no readable max=" }
             Present { value: mx } =>
-              match cgroup_memory_events_field(body: body, key: "oom") {
+              match field("oom") {
                 Absent => CgroupMemoryEventsUnreadable { detail: "no readable oom=" }
                 Present { value: oom } =>
-                  match cgroup_memory_events_field(body: body, key: "oom_kill") {
+                  match field("oom_kill") {
                     Absent => CgroupMemoryEventsUnreadable { detail: "no readable oom_kill=" }
                     Present { value: oom_kill } =>
                       CgroupMemoryEventsObserved { counters: CgroupMemoryEventCounters { low: low, high: high, max: mx, oom: oom, oom_kill: oom_kill } }
@@ -169,6 +187,18 @@ fn parse_cgroup_memory_events(body: String) -> CgroupMemoryEventsReading {
           }
       }
   }
+}
+
+// The kernel interface-file encoding: one "<name> <count>" line per field.
+fn parse_cgroup_memory_events(body: String) -> CgroupMemoryEventsReading {
+  cgroup_memory_events_from(field: k => cgroup_memory_events_field(body: body, key: k))
+}
+
+// The manager's MemoryEvents property encoding: ONE space-separated line of "name=count" tokens
+// (what systemctl show prints). Same reading, same refusals, same counters, same wire.
+fn parse_cgroup_memory_events_systemd_property(raw: String) -> CgroupMemoryEventsReading {
+  let tokens = filter(split(s: raw, delimiter: " "), tk => length(tk) > 0)
+  cgroup_memory_events_from(field: k => cgroup_memory_events_systemd_field(tokens: tokens, key: k))
 }
 
 // The reading's one printed form. Zeros are data ("oom_kill=0" says the cgroup saw no kill); a

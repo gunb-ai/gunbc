@@ -7,6 +7,10 @@ import extdeps.external_authority {
   TranscribedUncited,
 }
 import extdeps.systemd { MemoryLimitUnbounded, MemoryLimitBytes, MemoryLimitAbsent }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryEventCounters, CgroupMemoryEventsObserved, CgroupMemoryEventsUnreadable,
+  parse_cgroup_memory_events_systemd_property, cgroup_memory_events_wire,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv9 }
 import gunbc.host.host_memory_observation { HostMemAvailableQuiescentRead }
 import gunbc.host.host_memory_envelope_observe {
@@ -23,8 +27,7 @@ import gunbc.host.host_memory_envelope_observe {
   host_memory_envelope_includes_slice,
   host_memory_quiescent_read_for_subject,
   host_memory_quiescent_receipt_text,
-  SystemdMemoryEvents, MemoryEventsObserved, MemoryEventsUnreadable,
-  parse_systemd_memory_events, systemd_memory_events_wire, systemd_cgroup_memory_limit_wire,
+  systemd_cgroup_memory_limit_wire,
   PeerSliceEventsRead, PeerSliceObserved, PeerSliceUnreadable, peer_show_field,
   host_memory_envelope_receipt_text,
   is_top_level_slice_unit,
@@ -49,8 +52,8 @@ data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\n
 
 fn hermetic_slice_pair() -> List<SliceMemoryReading> {
   [
-    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0), memory_events: MemoryEventsObserved { low: 0, high: 3, max: 1, oom: 0, oom_kill: 0 }),
-    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0), memory_events: MemoryEventsUnreadable { detail: "no readable oom_kill=" }),
+    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0), memory_events: CgroupMemoryEventsObserved { counters: CgroupMemoryEventCounters { low: 0, high: 3, max: 1, oom: 0, oom_kill: 0 } }),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0), memory_events: CgroupMemoryEventsUnreadable { detail: "no readable oom_kill=" }),
   ]
 }
 
@@ -205,9 +208,9 @@ test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()
 // receipts the observe lane writes.
 
 test fn memory_events_parses_all_five_counters() -> Bool {
-  match parse_systemd_memory_events(raw: "oom=521 oom_kill=40 low=0 high=932657525 max=6007630") {
-    MemoryEventsObserved { low: lo, high: hi, max: mx, oom: om, oom_kill: ok } =>
-      lo == 0 && hi == 932657525 && mx == 6007630 && om == 521 && ok == 40
+  match parse_cgroup_memory_events_systemd_property(raw: "oom=521 oom_kill=40 low=0 high=932657525 max=6007630") {
+    CgroupMemoryEventsObserved { counters: c } =>
+      c.low == 0 && c.high == 932657525 && c.max == 6007630 && c.oom == 521 && c.oom_kill == 40
     _ => false
   }
 }
@@ -215,16 +218,16 @@ test fn memory_events_parses_all_five_counters() -> Bool {
 // FAIL-CLOSED: a line missing one counter is Unreadable naming THAT counter -- never a partial
 // reading with a fabricated zero for the gap.
 test fn memory_events_refuses_naming_the_missing_counter() -> Bool {
-  match parse_systemd_memory_events(raw: "low=0 high=7 max=2 oom=1") {
-    MemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "oom_kill=")
+  match parse_cgroup_memory_events_systemd_property(raw: "low=0 high=7 max=2 oom=1") {
+    CgroupMemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "oom_kill=")
     _ => false
   }
-    && match parse_systemd_memory_events(raw: "oom_kill=40") {
-      MemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "low=")
+    && match parse_cgroup_memory_events_systemd_property(raw: "oom_kill=40") {
+      CgroupMemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "low=")
       _ => false
     }
-    && match parse_systemd_memory_events(raw: "low=x high=7 max=2 oom=1 oom_kill=40") {
-      MemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "low=")
+    && match parse_cgroup_memory_events_systemd_property(raw: "low=x high=7 max=2 oom=1 oom_kill=40") {
+      CgroupMemoryEventsUnreadable { detail: d } => string_contains(s: d, pattern: "low=")
       _ => false
     }
 }
@@ -233,8 +236,8 @@ test fn memory_events_refuses_naming_the_missing_counter() -> Bool {
 // renders as the word unreadable with its cause -- the two blind proof runs would each have left a
 // different receipt, and only one of them can be read as "no evidence".
 test fn the_events_wire_renders_zeros_and_refusals_apart() -> Bool {
-  string_contains(s: systemd_memory_events_wire(events: MemoryEventsObserved { low: 0, high: 0, max: 0, oom: 0, oom_kill: 0 }), pattern: "oom_kill=0")
-    && string_contains(s: systemd_memory_events_wire(events: MemoryEventsUnreadable { detail: "the manager refused the MemoryEvents read" }), pattern: "unreadable(")
+  string_contains(s: cgroup_memory_events_wire(reading: CgroupMemoryEventsObserved { counters: CgroupMemoryEventCounters { low: 0, high: 0, max: 0, oom: 0, oom_kill: 0 } }), pattern: "oom_kill=0")
+    && string_contains(s: cgroup_memory_events_wire(reading: CgroupMemoryEventsUnreadable { detail: "the manager refused the MemoryEvents read" }), pattern: "unreadable(")
 }
 
 // THE ENVELOPE RECEIPT CARRIES THE SLICE BLOCK, not just a count: memory.max and the events per
@@ -272,8 +275,8 @@ test fn the_quiescent_receipt_carries_the_slice_block_both_ways() -> Bool {
   let observed = host_memory_quiescent_receipt_text(read: read, user_work_slice: PeerSliceObserved {
     slice_unit: "gunbc-user-work.slice" as NonEmptyStr,
     memory_max: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 26214400)) },
-    memory_current: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 264192)) },
-    memory_events: MemoryEventsObserved { low: 0, high: 932657525, max: 6007630, oom: 521, oom_kill: 40 },
+    memory_current: Present { value: kibibyte_to_byte_size(k: kibibyte(count: 264192)) },
+    memory_events: CgroupMemoryEventsObserved { counters: CgroupMemoryEventCounters { low: 0, high: 932657525, max: 6007630, oom: 521, oom_kill: 40 } },
   })
   let unreadable = host_memory_quiescent_receipt_text(read: read, user_work_slice: PeerSliceUnreadable {
     slice_unit: "gunbc-user-work.slice" as NonEmptyStr,

@@ -340,7 +340,7 @@ fn remote_build_serve_front_door_hand_off(hand_off: RemoteBuildHandOff) -> CliWi
   let diagnostic = if code == 0 || !headerless {
     ""
   } else {
-    concat(remote_build_serve_front_door_slice_diagnostic(unit: serving_child_slice_unit_name), "\\n")
+    concat(remote_build_serve_front_door_slice_diagnostic(unit: serving_child_slice_unit_name), "\n")
   }
   let bytes = if receipts || child.stderr == "" {
     concat(diagnostic, child.stdout)
