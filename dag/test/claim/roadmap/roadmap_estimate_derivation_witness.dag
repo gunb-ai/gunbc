@@ -576,3 +576,17 @@ test fn a_declared_population_item_still_prices_members_times_days() -> Bool {
     Refused { refusals: _ } => false
   }
 }
+
+// ---- neat-seal-10 red-first witness (roadmap-unprobed-findings-are-unsized) ----
+// red_control: an item whose pieces include a FindingsOf family answers Unsized, NOT Derived at 1x days.
+// Uses only symbols imported AND already-called in this module (node_by_slug, declared_roadmap_nodes,
+// node_source, roadmap_estimate_entries, Unsized). At main (post-fix) the findings item is Unsized -> HELD.
+test fn red_control_findings_item_is_unsized() -> Bool {
+  match node_by_slug(nodes: declared_roadmap_nodes(), slug: "names-bind-to-the-unique-declaration") {
+    Absent => false
+    Present { value: n } => match node_source(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries, n: n) {
+      Unsized { why: _ } => true
+      _ => false
+    }
+  }
+}
