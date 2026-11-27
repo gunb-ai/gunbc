@@ -49,7 +49,7 @@ import gunbc.target_binding {
   BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
-  BinaryInput, InputNotNewer, InputNewer, InputMissing, InputOutsideWorktree,
+  BinaryInput, InputNotNewer, InputNewer, InputMissing, InputDiffersFromThisCheckout,
   BinaryInputObservation, InputsObserved, DepInfoUnreadable,
   BinaryFreshness, BinaryFresh, BinaryStale, BinaryFreshnessUndecided,
   assess_binary_freshness,
@@ -124,6 +124,7 @@ import gunbc.discovery_census {
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
+import std.measure { millisecond }
 
 // EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
 // so. Without the declaration the floor's fail-closed default reads the module as live-tree
@@ -913,7 +914,7 @@ test fn the_dependency_arm_marks_only_the_in_repo_dependency_of_the_built_binari
     && (length(xs: dep.marked_sources) == 1)
     && !any(dep.marked_sources, p => contains(p, "src/v1/stage0/src/"))
   let top_marks_its_two_bins = any(top.marked_sources, p => p == "src/v1/stage0/src/main.rs")
-    && any(top.marked_sources, p => p == "src/v1/stage0/src/bin/claim_batch.rs")
+    && any(top.marked_sources, p => p == "src/v1/stage0/src/bin/claim_executor.rs")
     && (length(xs: top.marked_sources) == 2)
   dep_marks_the_dependency && top_marks_its_two_bins
     && (top.name != dep.name)
@@ -1235,9 +1236,16 @@ test fn the_first_changed_input_is_named_as_stale() -> Bool {
   }
 }
 
-test fn an_input_from_another_worktree_outranks_staleness() -> Bool {
-  match assess_binary_freshness(observed: observed(inputs: [InputNewer { path: "b.rs" }, InputOutsideWorktree { path: "/w/other/a.rs" }])) {
-    BinaryFreshnessUndecided { binary: _, reason: _ } => true
+test fn an_input_that_differs_from_this_checkout_is_named_as_stale() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputDiffersFromThisCheckout { path: "/w/here/b.rs" }, InputNewer { path: "c.rs" }])) {
+    BinaryStale { binary: _, input: p, why: w } => p == "/w/here/b.rs" && string_contains(s: w, pattern: "another checkout")
+    _ => false
+  }
+}
+
+test fn identical_inputs_from_another_checkout_are_fresh() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "/w/other/a.rs" }, InputNotNewer { path: "/w/other/b.rs" }])) {
+    BinaryFresh { binary: _, inputs: n } => n == 2
     _ => false
   }
 }

@@ -736,18 +736,20 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
 // without its bytes changing refuses too, as cargo would rebuild. A content-exact check needs a
 // digest recorded AFTER the compile that writes dep-info, which no in-tree build hook can do.
 //
-// An input outside this worktree is the shared-target hazard: `/cargo-target` serves a binary
-// another worktree built, and its dep-info names that worktree's files. Nothing here can say
-// whether those files match ours, so that is undecided, not fresh.
+// A binary built in another checkout names that checkout's files. Each such input is judged by
+// the rule above at the path the binary read, which says its bytes are the bytes compiled, and
+// then by byte equality with this checkout's file at the same path; an input that differs or is
+// absent here is stale. So identical sources answer for every checkout, and any difference
+// refuses.
 //
-// The host classifies each input (the effectful mtime and path reads); this function decides
+// The host classifies each input (the effectful mtime, path and byte reads); this function decides
 // the precedence: undecided beats stale beats fresh, so an unjudgeable input is never masked by a
 // staleness verdict and a stale input never by a fresh one.
 type BinaryInput
   = InputNotNewer { path: String }
   | InputNewer { path: String }
   | InputMissing { path: String }
-  | InputOutsideWorktree { path: String }
+  | InputDiffersFromThisCheckout { path: String }
 
 type BinaryInputObservation
   = InputsObserved { binary: String, inputs: List<BinaryInput> }
@@ -758,33 +760,18 @@ type BinaryFreshness
   | BinaryStale { binary: String, input: String, why: String }
   | BinaryFreshnessUndecided { binary: String, reason: String }
 
-// One input's step. An undecided verdict absorbs every later input; a stale one absorbs every
-// later input except an outside one, which outranks it.
+// One input's step. An undecided or stale verdict absorbs every later input.
 fn binary_freshness_step(acc: BinaryFreshness, input: BinaryInput) -> BinaryFreshness {
   match acc {
     BinaryFreshnessUndecided { binary: _, reason: _ } => acc
-    BinaryStale { binary: b, input: _, why: _ } =>
-      match input {
-        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
-        InputNewer { path: _ } => acc
-        InputMissing { path: _ } => acc
-        InputNotNewer { path: _ } => acc
-      }
+    BinaryStale { binary: _, input: _, why: _ } => acc
     BinaryFresh { binary: b, inputs: n } =>
       match input {
-        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        InputDiffersFromThisCheckout { path: p } => BinaryStale { binary: b, input: p, why: "differs from the file the binary was built from in another checkout" }
         InputNewer { path: p } => BinaryStale { binary: b, input: p, why: "changed after the binary was built" }
         InputMissing { path: p } => BinaryStale { binary: b, input: p, why: "no longer exists" }
         InputNotNewer { path: _ } => BinaryFresh { binary: b, inputs: n + 1 }
       }
-  }
-}
-
-fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
-  BinaryFreshnessUndecided {
-    binary: binary,
-    reason: concat(concat("its dep-info names an input outside this worktree (", path),
-      "); it was built from another checkout, so nothing here says whether it answers for this one")
   }
 }
 

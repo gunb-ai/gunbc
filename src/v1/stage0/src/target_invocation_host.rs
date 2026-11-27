@@ -2621,7 +2621,7 @@ pub enum BinaryInput {
     NotNewer(String),
     Newer(String),
     Missing(String),
-    OutsideWorktree(String),
+    DiffersFromThisCheckout(String),
 }
 
 /// `gunbc.target_invocation` `BinaryInputObservation`, mirrored.
@@ -2655,25 +2655,18 @@ pub enum BinaryFreshness {
     },
 }
 
-fn binary_built_elsewhere(binary: &str, path: &str) -> BinaryFreshness {
-    BinaryFreshness::Undecided {
-        binary: binary.to_string(),
-        reason: format!(
-            "its dep-info names an input outside this worktree ({path}); it was built from another checkout, so nothing here says whether it answers for this one"
-        ),
-    }
-}
-
 /// `gunbc.target_invocation` `binary_freshness_step`, mirrored arm for arm.
 fn binary_freshness_step(acc: BinaryFreshness, input: &BinaryInput) -> BinaryFreshness {
     match acc {
         BinaryFreshness::Undecided { .. } => acc,
-        BinaryFreshness::Stale { ref binary, .. } => match input {
-            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(binary, p),
-            _ => acc,
-        },
+        BinaryFreshness::Stale { .. } => acc,
         BinaryFreshness::Fresh { binary, inputs } => match input {
-            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(&binary, p),
+            BinaryInput::DiffersFromThisCheckout(p) => BinaryFreshness::Stale {
+                binary,
+                input: p.clone(),
+                why: "differs from the file the binary was built from in another checkout"
+                    .to_string(),
+            },
             BinaryInput::Newer(p) => BinaryFreshness::Stale {
                 binary,
                 input: p.clone(),
@@ -2763,9 +2756,9 @@ pub fn dep_info_inputs(dep_info: &str) -> Result<Vec<String>, String> {
 }
 
 /// THE CRATE THE BINARY WAS BUILT FROM is the directory of the first `Cargo.toml` its dep-info
-/// lists; the checkout is that manifest's `src/v1/stage0` ancestor. Comparing that ONE root
-/// against ours is the "built elsewhere" test -- not a list of excluded prefixes. Registry and
-/// sysroot inputs are outside every checkout and are judged by mtime like any other input.
+/// lists; the checkout is that manifest's `src/v1/stage0` ancestor. When that root is not ours,
+/// each input under it is also compared byte for byte with ours at the same relative path. Registry
+/// and sysroot inputs are outside every checkout and are judged by mtime like any other input.
 ///
 /// Git paths are skipped, with a reason: build.rs watches `HEAD`, `index`, `packed-refs` and the
 /// branch ref only to re-stamp `GUNBC_BUILD_IDENTITY`, the version string. `packed-refs` moves on
@@ -2788,10 +2781,9 @@ pub fn classify_binary_inputs(
             "its dep-info names no src/v1/stage0/Cargo.toml, so the checkout it was built from is unknown"
                 .to_string()
         })?;
+    let built_elsewhere = std::path::Path::new(&build_root) != workspace;
+    let root_prefix = format!("{build_root}/");
     let mut out = Vec::new();
-    if std::path::Path::new(&build_root) != workspace {
-        out.push(BinaryInput::OutsideWorktree(build_root.clone()));
-    }
     for input in inputs {
         if input.contains("/.git/") {
             continue;
@@ -2806,9 +2798,111 @@ pub fn classify_binary_inputs(
             Ok(modified) if modified > built_at => BinaryInput::Newer(input.clone()),
             Ok(_) => BinaryInput::NotNewer(input.clone()),
         };
+        let classified = match (&classified, input.strip_prefix(&root_prefix)) {
+            (BinaryInput::NotNewer(_), Some(relative)) if built_elsewhere => {
+                input_against_this_checkout(input, &workspace.join(relative))?.unwrap_or(classified)
+            }
+            _ => classified,
+        };
         out.push(classified);
     }
     Ok(out)
+}
+
+fn input_against_this_checkout(
+    built_from: &str,
+    here: &std::path::Path,
+) -> Result<Option<BinaryInput>, String> {
+    let built = input_content(std::path::Path::new(built_from))?
+        .ok_or_else(|| format!("dep-info input {built_from} vanished while it was read"))?;
+    let differing = match (&built, input_content(here)?) {
+        (built, Some(content)) if content == *built => return Ok(None),
+        (InputContent::Tree(theirs), Some(InputContent::Tree(ours))) => {
+            first_differing_path(theirs, &ours)
+                .map(|relative| here.join(relative))
+                .unwrap_or_else(|| here.to_path_buf())
+        }
+        _ => here.to_path_buf(),
+    };
+    Ok(Some(BinaryInput::DiffersFromThisCheckout(
+        differing.display().to_string(),
+    )))
+}
+
+fn first_differing_path(
+    theirs: &[(std::path::PathBuf, Vec<u8>)],
+    ours: &[(std::path::PathBuf, Vec<u8>)],
+) -> Option<std::path::PathBuf> {
+    use std::cmp::Ordering;
+    let (mut i, mut j) = (0, 0);
+    loop {
+        match (theirs.get(i), ours.get(j)) {
+            (None, None) => return None,
+            (Some((path, _)), None) | (None, Some((path, _))) => return Some(path.clone()),
+            (Some((a, a_bytes)), Some((b, b_bytes))) => match a.cmp(b) {
+                Ordering::Less => return Some(a.clone()),
+                Ordering::Greater => return Some(b.clone()),
+                Ordering::Equal if a_bytes != b_bytes => return Some(a.clone()),
+                Ordering::Equal => {
+                    i += 1;
+                    j += 1;
+                }
+            },
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum InputContent {
+    File(Vec<u8>),
+    Tree(Vec<(std::path::PathBuf, Vec<u8>)>),
+}
+
+fn input_content(path: &std::path::Path) -> Result<Option<InputContent>, String> {
+    let unreadable = |e: std::io::Error| format!("cannot read {}: {e}", path.display());
+    match std::fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(unreadable(e)),
+        Ok(meta) if meta.is_dir() => {
+            let mut files = Vec::new();
+            tree_files(path, std::path::Path::new(""), &mut files)?;
+            files.sort();
+            let mut tree = Vec::with_capacity(files.len());
+            for relative in files {
+                let full = path.join(&relative);
+                let bytes = std::fs::read(&full)
+                    .map_err(|e| format!("cannot read {}: {e}", full.display()))?;
+                tree.push((relative, bytes));
+            }
+            Ok(Some(InputContent::Tree(tree)))
+        }
+        Ok(_) => std::fs::read(path)
+            .map(|bytes| Some(InputContent::File(bytes)))
+            .map_err(unreadable),
+    }
+}
+
+fn tree_files(
+    root: &std::path::Path,
+    relative: &std::path::Path,
+    out: &mut Vec<std::path::PathBuf>,
+) -> Result<(), String> {
+    let dir = root.join(relative);
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+        let child = relative.join(entry.file_name());
+        let kind = entry
+            .file_type()
+            .map_err(|e| format!("cannot stat {}: {e}", root.join(&child).display()))?;
+        if kind.is_dir() {
+            tree_files(root, &child, out)?;
+        } else {
+            out.push(child);
+        }
+    }
+    Ok(())
 }
 
 /// THE ANCHOR IS WHEN COMPILATION STARTED, NOT WHEN THE BINARY WAS LINKED. An input edited after
@@ -5039,13 +5133,17 @@ mod binary_freshness_tests {
             BinaryFreshness::Stale { input, .. } => assert_eq!(input, "b"),
             other => panic!("{other:?}"),
         }
-        assert!(matches!(
-            assess_binary_freshness(&obs(vec![
-                BinaryInput::Newer("b".into()),
-                BinaryInput::OutsideWorktree("/w/other".into()),
-            ])),
-            BinaryFreshness::Undecided { .. }
-        ));
+        match assess_binary_freshness(&obs(vec![
+            BinaryInput::NotNewer("a".into()),
+            BinaryInput::DiffersFromThisCheckout("/w/here/b".into()),
+            BinaryInput::Newer("c".into()),
+        ])) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(input, "/w/here/b");
+                assert!(why.contains("another checkout"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
         assert!(matches!(
             assess_binary_freshness(&BinaryInputObservation::DepInfoUnreadable {
                 binary: "bin".into(),
@@ -5091,10 +5189,9 @@ mod binary_freshness_tests {
             ws.join("gone.rs").display().to_string()
         )));
         let elsewhere = classify_binary_inputs(&inputs, &dir.join("other"), built_at).unwrap();
-        assert_eq!(
-            elsewhere[0],
-            BinaryInput::OutsideWorktree(ws.display().to_string())
-        );
+        assert!(elsewhere.contains(&BinaryInput::DiffersFromThisCheckout(
+            dir.join("other/old file.rs").display().to_string()
+        )));
         // NO MANIFEST, NO VERDICT: dep-info without the crate's Cargo.toml refuses rather than
         // judging the other inputs by mtime alone (review 74282's silent-Fresh case).
         let no_manifest = dep_info_inputs(&format!(
@@ -5103,6 +5200,80 @@ mod binary_freshness_tests {
         ))
         .unwrap();
         assert!(classify_binary_inputs(&no_manifest, &dir.join("other"), built_at).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_binary_built_in_another_checkout_is_judged_by_content() {
+        let dir = std::env::temp_dir().join(format!("freshness-content-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let checkout = |name: &str, lib: &str| {
+            let root = dir.join(name);
+            std::fs::create_dir_all(root.join("src/v1/stage0/src")).unwrap();
+            std::fs::write(root.join("src/v1/stage0/Cargo.toml"), "[package]").unwrap();
+            std::fs::write(root.join("src/v1/stage0/src/lib.rs"), lib).unwrap();
+            root
+        };
+        let built = checkout("built", "fn a() {}");
+        let registry = dir.join("registry/dep.rs");
+        std::fs::create_dir_all(registry.parent().unwrap()).unwrap();
+        std::fs::write(&registry, "dep").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let built_at = std::time::SystemTime::now();
+        let same = checkout("same", "fn a() {}");
+        let edited = checkout("edited", "fn a() { edited() }");
+        let inputs = vec![
+            built.join("src/v1/stage0/Cargo.toml").display().to_string(),
+            built.join("src/v1/stage0/src").display().to_string(),
+            built.join("src/v1/stage0/src/lib.rs").display().to_string(),
+            registry.display().to_string(),
+        ];
+        let verdict = |workspace: &std::path::Path| {
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "bin".into(),
+                inputs: classify_binary_inputs(&inputs, workspace, built_at).unwrap(),
+            })
+        };
+        assert!(matches!(
+            verdict(&same),
+            BinaryFreshness::Fresh { inputs: 4, .. }
+        ));
+        match verdict(&edited) {
+            BinaryFreshness::Stale { input, .. } => {
+                assert_eq!(
+                    input,
+                    edited.join("src/v1/stage0/src/lib.rs").display().to_string()
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+        let added = checkout("added", "fn a() {}");
+        std::fs::write(added.join("src/v1/stage0/src/extra.rs"), "").unwrap();
+        match verdict(&added) {
+            BinaryFreshness::Stale { input, .. } => {
+                assert_eq!(
+                    input,
+                    added.join("src/v1/stage0/src/extra.rs").display().to_string()
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            verdict(&dir.join("absent")),
+            BinaryFreshness::Stale { .. }
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(built.join("src/v1/stage0/src/lib.rs"), "fn a() {}").unwrap();
+        match verdict(&same) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(
+                    input,
+                    built.join("src/v1/stage0/src/lib.rs").display().to_string()
+                );
+                assert!(why.contains("changed after"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
