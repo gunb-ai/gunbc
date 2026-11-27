@@ -35,9 +35,8 @@ import v1.std.core { build_newline_index, empty_intern_table }
 // v1 seed by emitted files. A test module emits none. Direct execution is evidence they
 // HOLD; it is not evidence CI runs them.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
-//     --entry src/v1/tests/claim/parse_allocator_postcondition_test.dag \
-//     --function <test fn>
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 \
+//     //v1/tests/claim/parse_allocator_postcondition_test:<test fn>
 
 data postcondition_fixture_file: String = "zqxalloc_fixture.dag"
 

@@ -1,0 +1,55 @@
+module extdeps.github.action.upload_pages_artifact
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release { ActionRelease, ActionManifestReading, CompositeAction }
+import extdeps.github.action.upload_artifact { upload_artifact_v7_0_0 }
+
+// actions/upload-pages-artifact: packages a directory as the tar artifact GitHub Pages deploys from.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/upload-pages-artifact"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.upload_pages_artifact",
+      decl_name: "upload_pages_artifact_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data upload_pages_artifact_v5_0_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "upload-pages-artifact", tag: "v5.0.0", commit: "fc324d3547104276b827a68afc52ff2a11cc49c9", subdirectory: none
+}
+
+// Read from action.yml at fc324d3547104276b827a68afc52ff2a11cc49c9, 2026-11-24: `using: composite`,
+// whose one nested action is actions/upload-artifact at bbbca2ddaa5d8feaa63e36b76fdaad77386f024f (v7.0.0).
+data upload_pages_artifact_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: upload_pages_artifact_v5_0_0,
+    declared: CompositeAction { nested: [upload_artifact_v7_0_0] },
+  },
+]
+
+// THE INPUT A STEP PASSES (`with:`), read from the same action.yml. Only `path` is modeled: the directory
+// whose contents become the site root. `name` is left at its upstream default `github-pages`, which is the
+// artifact name actions/deploy-pages reads by default, so neither side names it. retention-days and
+// include-hidden-files are declared upstream and left at their defaults.
+type UploadPagesArtifactInputs {
+  path: String
+}
+
+fn upload_pages_artifact_with(inputs: UploadPagesArtifactInputs) -> List<YamlKeyValue> {
+  [kv(key: "path", value: yaml_string(s: inputs.path))]
+}

@@ -60,10 +60,9 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, roadmap_events_read,
-  CarrierReadAttached,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, EventsRead, EventsReadRefused,
   EventAppended, EventAlreadyPresent, EventAppendRefused, CarrierClosed, CarrierSnapshotClose,
-  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
+  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AcceptNode, issue_command_apply }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -280,7 +279,6 @@ fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsR
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
-    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -290,15 +288,15 @@ fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsR
 fn roadmap_operator_acceptance_history_load(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
   // The read opens a temporary snapshot worktree; this is a read-only load whose callers are pure readers, and
   // it is closed the way the serve display path closes the same read (roadmap_serve::serve_all_events_after_
-  // snapshot_close) — by the reader that took it. It reaches the log through the ATTACHED arm of the single read
-  // entry point; the fold over what it read is SHARED with the launcher's scoped read (the _of_read below), so a
-  // log nobody opened refuses identically on both paths — one fold, not two (gunbc.design_argument::root_generalization).
-  roadmap_operator_acceptance_history_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })))
+  // snapshot_close) — by the reader that took it. The fold over what it read is SHARED with the plan projection
+  // (the _of_read below), so a log nobody opened refuses identically on both paths — one fold, not two
+  // (gunbc.design_argument::root_generalization).
+  roadmap_operator_acceptance_history_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)))
 }
 
 // THE SHARED ACCEPTANCE-HISTORY FOLD, over an ALREADY-READ log feed. The service record path (above) and the
-// launcher scoped path (roadmap_plan_projection_over_scoped) read through roadmap_events_read_all and hand the
-// result HERE, so the fold — and the located refusal a read-nobody-opened must produce — exists once. An empty
+// plan projection (gunbc.roadmap.roadmap_runtime_plan roadmap_plan_projection_of_read) read through
+// roadmap_events_read_all and hand the result HERE, so the fold — and the located refusal a read-nobody-opened must produce — exists once. An empty
 // history read off a log nobody opened is the fail-open this change closes; here it is LoadRefused, never empty.
 fn roadmap_operator_acceptance_history_of_read(read: RoadmapAllEventsRead) -> RoadmapAcceptanceEventHistoryLoad {
   match read {
@@ -486,7 +484,7 @@ fn roadmap_operator_close(
           Present { value: refusal } => CloseRefused { reason: refusal }
           Absent => {
             let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
+            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
               AllEventsReadRefused { step, reason } => CloseRefused {
                 reason: CloseHistoryUnreadable { reason: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr } }
               AllEventsRead { envelopes } =>
@@ -767,7 +765,7 @@ fn roadmap_operator_close_append(
             },
             recorded_at: roadmap_operator_render_civil_date(date: roadmap_operator_date_from_epoch_secs(secs: inputs.at)))
           match applied.result {
-            EventAppended { id } => CloseWritten { event_id: id }
+            EventAppended { id, published_as: _ } => CloseWritten { event_id: id }
             EventAlreadyPresent { id } => CloseAlreadyRecorded { event_id: id }
             EventAppendRefused { id: _, step, reason } => CloseRefused {
               reason: CloseChainWriteRefused { step: step as NonEmptyStr, reason: reason as NonEmptyStr } }
@@ -919,7 +917,7 @@ fn roadmap_acceptance_migration_verify_instance(
   instance: HostDashboardInstance, expected_manifest: String, retired_roster: String
 ) -> RoadmapAcceptanceMigrationOutcome {
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
     AllEventsReadRefused { step, reason } =>
       MigrationRefused { cause: LogReadRefused { step: step, reason: reason } }
     AllEventsRead { envelopes } =>

@@ -123,17 +123,16 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
 
 // WHY A DRAIN IS NOT YET SETTLED, AS A TYPE (review 80610): a job is running (the activity read found a
 // Runner.Worker), or a stop is already in progress (ActiveState=deactivating, which is not read as a
-// job and needs no activity read). Neither is a refusal; both are retried by the next pass.
+// job and needs no activity read). Neither is a refusal; both are retried by the next pass. Both are
+// LEFT UNMASKED: the two arms these carry -- masked-and-waiting, the report the MaskWhileRunning drain
+// answered -- were deleted with the arm that could produce them (roadmap node
+// fleet-no-route-masks-a-running-unit), because no route may mask a unit that is still running.
 type SlotDrainPendingCause
-  = DrainPendingJobRunning
-  | DrainPendingStopInProgress
-  | DrainPendingJobRunningLeftUnmasked
+  = DrainPendingJobRunningLeftUnmasked
   | DrainPendingStopInProgressLeftUnmasked
 
 fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
   match c {
-    DrainPendingJobRunning => "a job is running (Runner.Worker in the unit's cgroup); the unit is masked and left running until the job ends"
-    DrainPendingStopInProgress => "a stop is already in progress (ActiveState=deactivating); the unit is masked and the stop is not re-issued"
     DrainPendingJobRunningLeftUnmasked => "a job is running (Runner.Worker in the unit's cgroup); the unit is left untouched and unmasked, and a later pass drains it once it is idle"
     DrainPendingStopInProgressLeftUnmasked => "a stop is already in progress (ActiveState=deactivating); the unit is left unmasked until it is inactive"
   }
@@ -527,18 +526,27 @@ fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainP
 }
 
 
-// A DRAINED SLOT IS MASKED AND STOPPED. UNDER MaskWhileRunning the mask comes first, and that is NOT
-// safe at any time, which this comment used to claim: `systemctl mask` reloads the manager, and a unit
-// whose file is masked loads none of its drop-ins, so a unit still RUNNING when it is masked loses its
-// resource-control drop-ins (the template caps on srv1, the per-slot system.control set-property caps on
-// srv4) and its Slice= at that reload. Its live job then runs outside system-actions\x2drunner.slice with
-// no memory.max on its path, and the memory envelope refuses (fleet-converge run 41861708547 on srv4,
-// 2026-11-04: twelve busy slots masked by the slot-tree fold, required v2-bootstrap red on main until the
-// units were unmasked and restarted). NeverMaskARunningUnit (below) is the admission that does not. Stopping is admitted only when the unit is not executing a job --
-// a Runner.Worker present means a job is in flight, so the slot is left masked and running and the
-// effect reports DrainPending; the ephemeral runner exits when its job ends, the mask keeps it down,
-// and the next pass reads it stopped. An unreadable process listing refuses rather than guessing idle.
-// A deactivating unit is a stop already in progress: it is masked and waited for, never re-stopped.
+// A DRAINED SLOT IS MASKED AND STOPPED, AND THE MASK NEVER COMES FIRST. `systemctl mask` reloads the
+// manager, and a unit whose file is masked loads none of its drop-ins, so a unit still RUNNING when it
+// is masked loses its resource-control drop-ins (the template caps on srv1, the per-slot system.control
+// set-property caps on srv4) and its Slice= at that reload. Its live job then runs outside
+// system-actions\x2drunner.slice with no memory.max on its path, and the memory envelope refuses
+// (fleet-converge run 41861708547 on srv4, 2026-11-04: twelve busy slots masked by the slot-tree fold,
+// required v2-bootstrap red on main until the units were unmasked and restarted). So the ONE admission
+// this module can construct is NEVER MASK A RUNNING UNIT (below), the shape
+// gunbc.design_argument::fail_closed requires of a route that cannot prove the unit is stopped: an idle
+// unit is STOPPED and then masked, so it is inactive when the mask's reload lands; a busy or stopping one
+// gets no leg at all and is pending for a later pass. The MaskWhileRunning arm that built the invalid
+// state above is DELETED here (roadmap node fleet-no-route-masks-a-running-unit, class
+// gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload), which #16519
+// had already closed for the cap bracket's own masking pass; no UNAUTHORIZED production route constructs
+// mask-of-running -- the authorized retirement mask, issued only inside a
+// gunbc.runner.runner_slot_retirement::InterruptionAuthorization scope, is the intended exception and is not this
+// admission's subject.
+// Stopping is admitted only when the unit is not executing a job -- a Runner.Worker present means a job is
+// in flight, so the slot is left RUNNING AND UNMASKED and the effect reports DrainPending for a later pass.
+// An unreadable process listing refuses rather than guessing idle. A deactivating unit is a stop already in
+// progress: it is waited for, never re-stopped and never masked.
 //
 // RESIDUAL RISK, STATED: between reading the listing idle and the stop, the listener can accept a job.
 // The window is one SSH round trip, and closing it needs the runner itself to refuse new work
@@ -551,21 +559,19 @@ type SlotDrainPlan
   | DrainWaitForStop { mask: List<List<String>> }
   | DrainRefused { reason: String }
 
-// HOW A DRAIN CLOSES ADMISSION, AS A CHOICE THE CALLER MAKES BY NAME.
-//   MaskWhileRunning: mask first, at any state. Admission closes immediately, including on a busy unit,
-//     which is what the cap bracket's drain-and-wait relies on; it carries the exposure stated above,
-//     recorded as an open integration concern on the bracket rather than changed under it here.
+// HOW A DRAIN CLOSES ADMISSION, AS A CHOICE THE CALLER MAKES BY NAME -- AND THE ONLY CHOICE THERE IS.
 //   NeverMaskARunningUnit: a running unit is never masked. An idle one is STOPPED and then masked, so it
 //     is inactive when the mask's reload lands; a busy or stopping one gets no leg at all and is pending
 //     for a later pass. Admission is not closed while it runs, so it may take the next job; that costs a
-//     later pass, never an envelope. The slot-tree rebuild uses this.
+//     later pass, never an envelope. The slot-tree rebuild, the fabric/retiree drain leg and the
+//     DrainAndMaskRunnerSlot realization all grant exactly this.
+// The arm this type used to carry -- MaskWhileRunning, which masked first at any state -- was deleted with
+// roadmap node fleet-no-route-masks-a-running-unit: no route needs to mask a unit that is still running
+// (gunbc.design_argument::fail_closed), and a caller may not name what it cannot build. The parameter and
+// the total match over it are kept on purpose: an admission is still a decision a drain call states by
+// name, and a future arm would have to say what it does with a running unit rather than inherit one.
 type SlotDrainAdmission
-  = MaskWhileRunning
-  | NeverMaskARunningUnit
-
-fn slot_drain_plan(r: SlotActuationReading, worker: SlotActivityObservation) -> SlotDrainPlan {
-  slot_drain_plan_under(r: r, worker: worker, admission: MaskWhileRunning)
-}
+  = NeverMaskARunningUnit {}
 
 fn slot_drain_plan_under(r: SlotActuationReading, worker: SlotActivityObservation, admission: SlotDrainAdmission) -> SlotDrainPlan {
   let mask = if slot_is_masked(r: r) { [] } else { [systemctl_mask_argv(unit: r.unit)] }
@@ -578,12 +584,12 @@ fn slot_drain_plan_under(r: SlotActuationReading, worker: SlotActivityObservatio
   }
 }
 
-// THE MASK A RUNNING UNIT MAY RECEIVE UNDER THE ADMISSION: all of it under MaskWhileRunning, none under
-// NeverMaskARunningUnit.
+// THE MASK A RUNNING UNIT MAY RECEIVE UNDER THE ADMISSION: none. A unit that is executing a job, or is
+// mid-stop, is left with no leg at all -- the mask waits for the pass that reads it stopped. Kept as a
+// named, total match over the admission so that any admission added later must answer this question.
 fn slot_drain_running_mask(mask: List<List<String>>, admission: SlotDrainAdmission) -> List<List<String>> {
   match admission {
-    MaskWhileRunning => mask
-    NeverMaskARunningUnit => []
+    NeverMaskARunningUnit {} => []
   }
 }
 
@@ -602,10 +608,7 @@ fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservat
   match worker {
     SlotActivityUnobserved { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c as String) }
     SlotHasLiveWorker => DrainWaitForJob { mask: slot_drain_running_mask(mask: mask, admission: admission) }
-    SlotIdle => match admission {
-      MaskWhileRunning => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
-      NeverMaskARunningUnit => DrainSteps { steps: concat([systemctl_stop_argv(unit: r.unit)], mask) }
-    }
+    SlotIdle => DrainSteps { steps: concat([systemctl_stop_argv(unit: r.unit)], mask) }
   }
 }
 
@@ -915,11 +918,6 @@ fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext
 }
 
 
-fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
-{
-  drain_runner_slot_under_over(target: target, context: context, unit: unit, admission: MaskWhileRunning)
-}
-
 fn drain_runner_slot_under_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, admission: SlotDrainAdmission) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
@@ -933,12 +931,12 @@ fn drain_runner_slot_under_over(target: SshTarget, context: FleetSshExecutionCon
         DrainWaitForJob { mask: m } =>
           match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingJobRunning NeverMaskARunningUnit => DrainPendingJobRunningLeftUnmasked } }
+            Absent => SlotDrainPending { unit: unit, cause: match admission { NeverMaskARunningUnit {} => DrainPendingJobRunningLeftUnmasked } }
           }
         DrainWaitForStop { mask: m } =>
           match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingStopInProgress NeverMaskARunningUnit => DrainPendingStopInProgressLeftUnmasked } }
+            Absent => SlotDrainPending { unit: unit, cause: match admission { NeverMaskARunningUnit {} => DrainPendingStopInProgressLeftUnmasked } }
           }
         DrainSteps { steps: ss } =>
           match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {

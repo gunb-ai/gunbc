@@ -1,0 +1,91 @@
+module test.claim.target_invocation_exact_claim_admission_witness
+
+// The controls for gunbc.target_invocation admit_resolvable_exact_targets, in a module of their own:
+// test.claim.target_invocation_witness does not resolve at main (an effect-summary diagnostic on its
+// `millisecond` call), so claims added there are reported unobserved and judge nothing.
+
+import extdeps.bazel.label { Label, PackagePath, render_label }
+import extdeps.bazel.target_pattern { SubtreeTargets }
+import gunbc.target_invocation {
+  TestOperandSelection, TestOperandsSelected, admit_test_operands, admit_resolvable_exact_targets,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+
+// Every fixture here is authored in the source.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn native_universe() -> extdeps.bazel.target_pattern.TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
+}
+
+fn claim_universe() -> extdeps.bazel.target_pattern.TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["test" as NonEmptyStr, "claim" as NonEmptyStr] } }
+}
+
+
+// AN EXACT CLAIM OUTSIDE //test/claim/... IS ADMITTED BY RESOLUTION, NOT REFUSED AS UNKNOWN.
+//
+// The specimen is the launch-canary oracle, which the roadmap execution contract names exactly and which lives under
+// dag/test/manual on purpose. The predicates are supplied so each claim discriminates on ONE question: the first
+// resolves only the canary's module, so the same operand list goes red if the step ignores resolution; the second keeps
+// a typo exact; the third keeps a bound instrument label exact although a module of its path is said to resolve.
+fn canary_label_text() -> String {
+  "//test/manual/roadmap_launch_canary_oracle:roadmap_launch_canary_oracle_completed"
+}
+
+// 99 is the "not a selection" reading: no operand list here has 99 members, so it can never satisfy a count below.
+fn exact_count(selection: TestOperandSelection) -> Int {
+  match selection {
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } => length(e)
+    _ => 99
+  }
+}
+
+fn claim_count(selection: TestOperandSelection) -> Int {
+  match selection {
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } => length(c)
+    _ => 99
+  }
+}
+
+test fn an_unbound_exact_label_whose_module_resolves_is_a_claim() -> Bool {
+  let admitted = admit_test_operands(
+    operands: [canary_label_text(), "//test/manual/roadmap_launch_canary_oracle_typo:x"],
+    native_universe: native_universe(),
+    claim_universe: claim_universe()
+  )
+  let routed = admit_resolvable_exact_targets(
+    selection: admitted,
+    registry_binds: l => false,
+    module_resolves: l => render_label(l: l) == canary_label_text()
+  )
+  exact_count(selection: admitted) == 2 && claim_count(selection: admitted) == 0 && exact_count(selection: routed) == 1 && claim_count(selection: routed) == 1
+}
+
+test fn an_unbound_exact_label_whose_module_does_not_resolve_stays_unknown() -> Bool {
+  let routed = admit_resolvable_exact_targets(
+    selection: admit_test_operands(
+      operands: [canary_label_text()],
+      native_universe: native_universe(),
+      claim_universe: claim_universe()
+    ),
+    registry_binds: l => false,
+    module_resolves: l => false
+  )
+  exact_count(selection: routed) == 1 && claim_count(selection: routed) == 0
+}
+
+test fn a_registry_bound_label_keeps_its_producer_even_when_a_module_resolves() -> Bool {
+  let routed = admit_resolvable_exact_targets(
+    selection: admit_test_operands(
+      operands: ["//gunbc/instruments:self-host"],
+      native_universe: native_universe(),
+      claim_universe: claim_universe()
+    ),
+    registry_binds: l => true,
+    module_resolves: l => true
+  )
+  exact_count(selection: routed) == 1 && claim_count(selection: routed) == 0
+}

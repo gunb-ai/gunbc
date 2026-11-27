@@ -1,0 +1,104 @@
+{
+  "before": {
+    "candidate_sha256": "27633bc905e1110aeb97430bd39d1bd14a81bfdc887535a69aff27cd8705ccbd",
+    "manifest_sha256": "d3141daed7ba6a71676e7ac46b5bd0b0c5d7a7092ac27501dc77fe908e5b56f9",
+    "source_commit": "b3fd186365cde49ae6b76ba44c483344f8afa88a",
+    "source_tree": "3d8ccf8924ba271dc4bcbb5f89449945bed63a80",
+    "image_sha256": "38c7a13ce1ca61e6b0691e5360ef451993059d630d7b8ee4534adc9686c1dc78",
+    "source_and_build_file_count": 4170,
+    "cargo_units": 150,
+    "toolchain_file_count": 40,
+    "linked_files": 114,
+    "fresh_run": {
+      "image_sha256": "38c7a13ce1ca61e6b0691e5360ef451993059d630d7b8ee4534adc9686c1dc78",
+      "revision": "gunbc b3fd186365cde49ae6b76ba44c483344f8afa88a",
+      "source_sha256": "e906ea1992938eb2bd290779b8206d12f782f779010fe28fd1cb3401973d6182",
+      "logical_source": "target/v1-provenance-control/entry.dag",
+      "sampled": [
+        {
+          "bytes": 1214,
+          "comparison": "absent",
+          "input_digest": "879753be4a92a3a02acfe5611739264ac6481cb757ba983f62e323ce8e3155ca",
+          "logical_source": "target/v1-provenance-control/entry.dag",
+          "lookup": "miss",
+          "lookup_ns": 59505,
+          "output_digest": "9cb13c9da08bbbfdcc9047bf14dd0407df9f6b5a3a18c5eed277e50d686dab01",
+          "producer_ns": null,
+          "question": "v1.std.core::build_newline_index"
+        }
+      ],
+      "exit": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_ns": 1711000630
+    }
+  },
+  "after": {
+    "candidate_sha256": "27633bc905e1110aeb97430bd39d1bd14a81bfdc887535a69aff27cd8705ccbd",
+    "manifest_sha256": "99dfdc2555d0640b121f62a238b80df90b78eb83423856f6848c268e9c58911f",
+    "source_commit": "f13d59b351743e258530eca2cf413bd781aba3b9",
+    "source_tree": "3d8ccf8924ba271dc4bcbb5f89449945bed63a80",
+    "image_sha256": "50741597695b39778b34981ca40aef841d8da33718b43855f876fc181ae57169",
+    "source_and_build_file_count": 4170,
+    "cargo_units": 150,
+    "toolchain_file_count": 40,
+    "linked_files": 114,
+    "fresh_run": {
+      "image_sha256": "50741597695b39778b34981ca40aef841d8da33718b43855f876fc181ae57169",
+      "revision": "gunbc f13d59b351743e258530eca2cf413bd781aba3b9",
+      "source_sha256": "e906ea1992938eb2bd290779b8206d12f782f779010fe28fd1cb3401973d6182",
+      "logical_source": "target/v1-provenance-control/entry.dag",
+      "sampled": [
+        {
+          "bytes": 1214,
+          "comparison": "absent",
+          "input_digest": "ad7fdf6ec3108f154574d5d438a7944de242eafe7a0d31297a6e6d29b6f6bba9",
+          "logical_source": "target/v1-provenance-control/entry.dag",
+          "lookup": "miss",
+          "lookup_ns": 763878,
+          "output_digest": "9cb13c9da08bbbfdcc9047bf14dd0407df9f6b5a3a18c5eed277e50d686dab01",
+          "producer_ns": null,
+          "question": "v1.std.core::build_newline_index"
+        }
+      ],
+      "exit": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "wall_ns": 1794654372
+    }
+  },
+  "predicted": {
+    "case": "only Git commit provenance changes; same source tree, checkout path, profile, toolchain and Cargo inputs",
+    "timing": "prediction frozen before second provenance build",
+    "predicted": {
+      "full_tree": "same",
+      "clean_builds": true,
+      "embedded_revisions": "different",
+      "executable_sha256": "different",
+      "candidate_source_and_build_inputs": "same",
+      "cold_on_new_image_using_original_shadow_store": true,
+      "logical_source_and_question": "same",
+      "fresh_newline_index_output_digest": "same",
+      "public_result": "same"
+    },
+    "scope": "shadow-only comparison of one real compiler executable after a provenance-only build; no serving across epochs; no speed claim"
+  },
+  "input_comparison": {
+    "candidate_equal": true,
+    "changed_candidate_axes": [],
+    "changed_inputs": [],
+    "changed_observed_axes": [
+      "binary_sha256",
+      "linked_products",
+      "provenance_only",
+      "source_head"
+    ],
+    "image_equal": false
+  },
+  "behavior_comparison": {
+    "preconditions_same_observed_logical_source_and_bytes": true,
+    "image_differs": true,
+    "embedded_revision_differs": true,
+    "successful_public_result_matches": true,
+    "same_question_subject_digests": true,
+    "original_exact_image_shadow_key_misses_after_rebuild": true
+  }
+}

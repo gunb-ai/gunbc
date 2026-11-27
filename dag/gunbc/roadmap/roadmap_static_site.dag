@@ -13,7 +13,7 @@ import extdeps.http.server {
 }
 import std.markup { Fragment }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe { roadmap_site_tree_surface_bundle }
 import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
   roadmap_site_dispatch_url_path,
@@ -164,18 +164,23 @@ fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue
   json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
-// SERVE-SIDE RENDERERS. These emit the process's OWN /healthz bytes (the /healthz document and the release-
-// stamped variant the live route serves). They render what the process serves, under the process's own
-// principal — the authority, not an expectation compared across a boundary — so they render directly. The
-// trigger that moves them onto the typed observation is exactly the day one of them mints an identity a
-// DIFFERENT process compares against. (gunbc.recurring_failure_mode
-// readback_expectation_rendered_over_a_refused_read_under_the_wrong_principal.)
+// THE SURFACE PROJECTION OF THE /healthz DOCUMENT, over the tree's surface bundle (gunbc.roadmap.
+// roadmap_site_surface_observe roadmap_site_tree_surface_bundle). It reads no carrier: the surface identity is a
+// fact of (interpreter, tree), so the deploying tree computes this value and the serving process publishes the
+// same one.
 fn roadmap_site_healthz_body() -> String {
-  materialize_live_roadmap_site_surface_bundle().healthz_body
+  roadmap_site_tree_surface_bundle().healthz_body
 }
 
+// THE SERVED /healthz DOCUMENT: the tree's surface members plus the release identity. It takes NO PLAN. It used to
+// render over the served instance's plan thunk (gunbc#17128), which made every probe snapshot, fold and render the
+// instance's event log -- more than the 30 s serve budget on the srv1 lab, so the lab standings refresh, which
+// probes /healthz with a 5 s timeout, froze (incident 2026-11-26). Every comparison of this document's surface
+// renders the same carrier-free bundle (gunbc.live_deploy.candidate, gunbc.live_deploy.readiness, the belt pair
+// gate in gunbc.roadmap.roadmap_belt_tick_cli, gunbc.roadmap.roadmap_launch_deployment_cli), so there is no second
+// instant at which the two sides could read different event sets.
 fn roadmap_site_healthz_body_for_release(release_revision: CommitSha) -> String {
-  let bundle = materialize_live_roadmap_site_surface_bundle()
+  let bundle = roadmap_site_tree_surface_bundle()
   healthz_body_with_release_identity(
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,

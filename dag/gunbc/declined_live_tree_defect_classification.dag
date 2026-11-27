@@ -183,7 +183,7 @@ data lens_module_gate_rows: List<ClassifiedRow> = [
 // THE FOUR REMAINING GROUP-A ROWS, each a distinct real subject.
 data group_a_remaining_rows: List<ClassifiedRow> = [
   ClassifiedRow {
-    identity: identity(module_path: "v2.lens.mandatory_tag.corpus_scan_witness", function: "corpus_live_clean_tree_wall_holds"),
+    identity: identity(module_path: "test.claim.mandatory_tag_corpus_scan_witness", function: "corpus_live_clean_tree_wall_holds"),
     classification: RealDefect { subject: MissingCitedAuthority },
     measured_evidence: "roster count is healthy (>150 PASS); the clean-tree half fails on exactly two modules, extdeps.cpu_attachment.lotes_azifa072 and extdeps.languages.rust.capabilities, both projecting anchor Absent -- an extdeps module with no external-authority anchor is the gunbc.design_argument::single_authority citation duty unmet",
     disposition: RoutedToOwner { owner: "the authoring lane of each extdeps module: the anchor must be the real upstream locator, which this session cannot invent" }
@@ -207,7 +207,7 @@ data group_a_remaining_rows: List<ClassifiedRow> = [
     disposition: RepairedInThisChange
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.manual.test_migration_debt", function: "retained_rust_kernel_wall_holds_against_live_tree"),
+    identity: identity(module_path: "test.claim.manual_test_migration_debt", function: "retained_rust_kernel_wall_holds_against_live_tree"),
     classification: RealDefect { subject: UndeclaredResidentPopulation },
     measured_evidence: "src/v1/tests/src/anonymous_record_struct_resolution_test.rs is discovered (column-anchored #[test] present), has no floor-witness stem covering it, and has no row in test.retirement.model retained_legacy_rust_test_modules, so every_discovered_module_is_retained() refuses; the file was added by gunbc#9089 on main",
     disposition: RoutedToOwner { owner: "gunbc#9089's lane: either migrate the module to a .dag witness or declare a retention row with a real non-migratable reason, which this session cannot assert on its behalf" }

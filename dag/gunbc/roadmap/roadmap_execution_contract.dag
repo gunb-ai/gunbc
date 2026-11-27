@@ -6,6 +6,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import gunbc.ensure { EnsurePolicy }
+import gunbc.instruments.claim_operand { ClaimOperand, ClaimOperandUnnameable, claim_identity_operand }
 import extdeps.languages.json.emit {
   JsonValue,
   json_kv,
@@ -106,6 +107,15 @@ type ModeledValidationCommand {
   program: FilePath
   args: List<String>
 }
+
+type ValidationOperationCommandResult
+  = ValidationCommandBuilt { command: ModeledValidationCommand }
+  | ValidationCommandCapabilityUnrealized
+  | ValidationCommandSubjectUnnameable {
+      entry: String,
+      function: String,
+      reason: String,
+    }
 
 // A work item names semantic validation operations, never an opaque prompt fragment. Task
 // capabilities derive from those closed variants; the provider prompt and the post-provider
@@ -359,7 +369,11 @@ fn gunbc_claims_execution_contract(
 
 data closing_contract_authoring_entry: FilePath = "dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag" as FilePath
 
-data closing_contract_authoring_function: NonEmptyStr = "closing_contract_authored" as NonEmptyStr
+// THE ENTRY THE VALIDATION SPAWNS IS THE DRIVER'S PROCESS ENTRY, not the Bool predicate. A validation is
+// executed by a host that reads an exit code, and `closing_contract_authoring_exit` gives the verdict the
+// process result the host can consume -- 0 authored, 1 refused, 2 not observed (the same rule as the claim
+// route's termination). The predicate itself stays where its witness uses it.
+data closing_contract_authoring_function: NonEmptyStr = "closing_contract_authoring_exit" as NonEmptyStr
 
 fn closing_contract_authoring_contract(
   target: NonEmptyStr,
@@ -509,7 +523,7 @@ fn validation_operation_command(
   validation: ValidationOperation,
   environment: DispatchHostEnvironment,
   source_roots: ClaimSourceRootLayout,
-) -> ModeledValidationCommand? {
+) -> ValidationOperationCommandResult {
   match validation {
     GunbcClaimValidation { entry, function } =>
       match dispatch_host_realization(
@@ -517,19 +531,23 @@ fn validation_operation_command(
         capability: GunbcClaimRunnerCapability,
       ) {
         Present { value: realization } =>
-          Present { value: ModeledValidationCommand {
-            label: "gunbc-claim" as NonEmptyStr,
-            program: realization.executable,
-            args: concat(
-              concat(["run"], claim_source_root_args(layout: source_roots)),
-              [
-                "--entry", entry as String,
-                "--function", function as String,
-                "--claim-run",
-              ],
-            ),
-          } }
-        Absent => none
+          match claim_identity_operand(
+            entry: entry as String,
+            function: function as String,
+          ) {
+            ClaimOperand { label: claim_label } =>
+              ValidationCommandBuilt { command: ModeledValidationCommand {
+                label: "gunbc-claim" as NonEmptyStr,
+                program: realization.executable,
+                args: concat(
+                  concat(["test"], claim_source_root_args(layout: source_roots)),
+                  [claim_label],
+                ),
+              } }
+            ClaimOperandUnnameable { entry: e, function: f, reason: r } =>
+              ValidationCommandSubjectUnnameable { entry: e, function: f, reason: r }
+          }
+        Absent => ValidationCommandCapabilityUnrealized
       }
     CargoTestValidation { filter } =>
       match dispatch_host_realization(
@@ -537,12 +555,12 @@ fn validation_operation_command(
         capability: CargoCapability,
       ) {
         Present { value: realization } =>
-          Present { value: ModeledValidationCommand {
+          ValidationCommandBuilt { command: ModeledValidationCommand {
             label: "cargo-test" as NonEmptyStr,
             program: realization.executable,
             args: ["test", filter as String],
           } }
-        Absent => none
+        Absent => ValidationCommandCapabilityUnrealized
       }
     CargoFmtValidation =>
       match dispatch_host_realization(
@@ -550,12 +568,12 @@ fn validation_operation_command(
         capability: CargoCapability,
       ) {
         Present { value: realization } =>
-          Present { value: ModeledValidationCommand {
+          ValidationCommandBuilt { command: ModeledValidationCommand {
             label: "cargo-fmt" as NonEmptyStr,
             program: realization.executable,
             args: ["fmt", "--all", "--check"],
           } }
-        Absent => none
+        Absent => ValidationCommandCapabilityUnrealized
       }
     ClosingContractAuthoringValidation { target } =>
       match dispatch_host_realization(
@@ -563,7 +581,7 @@ fn validation_operation_command(
         capability: GunbcClaimRunnerCapability,
       ) {
         Present { value: realization } =>
-          Present { value: ModeledValidationCommand {
+          ValidationCommandBuilt { command: ModeledValidationCommand {
             label: "closing-contract-authoring" as NonEmptyStr,
             program: realization.executable,
             args: concat(
@@ -573,11 +591,10 @@ fn validation_operation_command(
                 "--function", closing_contract_authoring_function as String,
                 "--arg", join(["target=", target as String], ""),
                 "--arg", join(["runner=", realization.executable as String], ""),
-                "--claim-run",
               ],
             ),
           } }
-        Absent => none
+        Absent => ValidationCommandCapabilityUnrealized
       }
   }
 }
@@ -607,10 +624,12 @@ fn execution_contract_validation_summary(
               environment: environment,
               source_roots: source_roots,
             ) {
-              Present { value: command } =>
+              ValidationCommandBuilt { command: command } =>
                 modeled_validation_command_wire(command: command)
-              Absent =>
+              ValidationCommandCapabilityUnrealized =>
                 "validation command has no host capability realization"
+              ValidationCommandSubjectUnnameable { entry: e, function: f, reason: r } =>
+                join(["validation subject unnameable: ", e, ":", f, " (", r, ")"], "")
             },
         ),
         "\n",

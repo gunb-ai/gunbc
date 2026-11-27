@@ -90,7 +90,6 @@ fn gunbc_ci_export_host_reader_converge_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_export_host_reader_converge_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -99,7 +98,6 @@ fn gunbc_ci_boot_medium_reader_probe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_boot_medium_reader_probe_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -108,7 +106,6 @@ fn gunbc_ci_host_primary_network_observe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_primary_network_observe_target,
-    claim_run: false,
     receipt_rel: host_primary_network_receipt_path
   )
 }
@@ -117,7 +114,6 @@ fn gunbc_ci_host_primary_network_converge_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_primary_network_converge_target,
-    claim_run: false,
     receipt_rel: host_primary_network_receipt_path
   )
 }
@@ -126,7 +122,6 @@ fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_memory_envelope_observe_target,
-    claim_run: false,
     receipt_rel: host_memory_envelope_receipt_path
   )
 }
@@ -135,7 +130,6 @@ fn gunbc_ci_host_budget_preflight_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_budget_preflight_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -144,7 +138,6 @@ fn gunbc_ci_host_reset_return_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_reset_return_target,
-    claim_run: false,
     receipt_rel: host_reset_return_receipt_path as String
   )
 }
@@ -153,7 +146,6 @@ fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_reset_dispatch_admission_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

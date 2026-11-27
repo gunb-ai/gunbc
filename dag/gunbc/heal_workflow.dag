@@ -351,7 +351,8 @@ data heal_workflow_job_permissions: WorkflowPermissions = WorkflowPermissions {
   pull_requests: none,
   issues: none,
   actions: none,
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 fn heal_workflow_job(job: HealWorkflowPolicy) -> Job {
@@ -447,7 +448,8 @@ fn heal_workflow_of(job: HealWorkflowPolicy) -> Workflow {
       pull_requests: none,
       issues: none,
       actions: none,
-      id_token: none
+      id_token: none,
+      pages: none
     }
   },
   jobs: [heal_workflow_job(job: job), heal_fork_notice_job(job: job)]
@@ -481,6 +483,7 @@ fn job_permissions_carry_write(permissions: WorkflowPermissions?) -> Bool {
         || permission_is_write(p: p.issues)
         || permission_is_write(p: p.actions)
         || permission_is_write(p: p.id_token)
+        || permission_is_write(p: p.pages)
   }
 }
 
@@ -664,7 +667,6 @@ fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_heal_candidate_stage0_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

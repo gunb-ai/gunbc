@@ -1,0 +1,459 @@
+module test.claim.compute.remote_build_serve_front_door_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { skip }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.cli_wire { CliWirePrintable }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_name, fleet_posix_operator_user,
+}
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_wire {
+  RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
+  ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code,
+  remote_build_serve_header, remote_build_serve_answer,
+  remote_build_probe_text, remote_build_protocol_word, remote_build_leg_is_probe,
+  remote_build_ending_of_answer, remote_build_serve_run_words, remote_build_serve_hand_off,
+  remote_build_serve_front_door_run_words,
+}
+import gunbc.compute.remote_build_serve_principal {
+  RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
+  remote_build_serve_principal_account_of, remote_build_serve_principal_of,
+}
+import gunbc.compute.remote_build_serve_front_door {
+  RemoteBuildFrontDoorTurn, FrontDoorAnswer, FrontDoorHandOffToChild,
+  remote_build_serve_front_door_turn, remote_build_serve_front_door_probe_answer,
+  remote_build_answer_body_is_a_receipt,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildProbe, ProbeReady, ProbeUnreachable, remote_build_probe_from_exit,
+  remote_build_probe_answer, HostRefusedRequest, HostCannotServe, remote_build_answer_of_ending,
+}
+
+// THE FRONT DOOR: what a probe leg costs, what it establishes, and what a request still pays.
+//
+// WHY THIS WITNESS EXISTS. A remote-build leg resolved the WHOLE request entry's import closure before
+// any function ran -- srv1, 2026-11-25 (calm-wren-314): resolve_entry_graph_inclusive 248,554 ms over
+// 895 modules, max_rss 3.8 GiB, for a probe that prints a constant. The cause was placement, not
+// machinery: `gunbc run` already scopes its resolve to the requested ENTRY MODULE
+// (src/v1/stage0/src/main.rs run_verb -> cli_run::resolve_entry_graph_demand_acquired_scoped), and the
+// probe's words and its answer were declared inside the request module, so the probe's demand graph
+// included fetch, the seed build, the provider and the ledger. The fix is an entry, not a cache
+// (gunbc.design_argument::demand_before_materialization: remove the demand; do not cache, floor a count,
+// or hold a process open to amortize what should not be asked for).
+//
+// MEASURED on this repository's head, same machine, same command, differing only in --entry
+// (`gunbc run --source-root dag --source-root src/v2 --entry <file> --function __no_such_function__`,
+// which resolves and refuses before evaluating, so the pre-entry receipt is the whole cost):
+//   dag/gunbc/compute/remote_build_serve.dag                  closure_files=897  resolve 143,398 ms  max_rss 3,421,140 KiB
+//   dag/gunbc/compute/remote_build_serve_front_door.dag        closure_files=151  resolve   9,755 ms  max_rss   379,164 KiB
+// 14.4x the wall, 9.2x the memory, 6.0x the modules. A probe leg now resolves 151 modules instead of
+// 897; a REQUEST leg resolves the door (9.8 s) and then the serving entry, so its own cost is unchanged
+// in kind -- it still needs the request closure -- and that is the honest reading: this cut is the probe's,
+// and the request leg's remaining resolve is the one the fabric dispatch/seat route converges on.
+// The door now also reads extdeps.clock (the accept instant the wall bounds measure from), which is a
+// one-file leaf: the probe closure moved 150 -> 151, not by a request-path import.
+//
+// WHAT IS NOT ASSERTED AS A NUMBER. No claim here floors or ceilings a module count: a count is not the
+// property (gunbc.integration_concern debt_payoff section 3 -- "a count floor, a widened budget or a
+// cache is never payoff"). The claims are about WHAT THE DOOR READS: which imports it may name, which
+// half of the principal judgment answers a probe, which bytes a hand-off may carry, and which entry may
+// mint "ready". The instrument in the closure claim discriminates on its own -- its red arm is the entry
+// this door exists to keep out.
+
+// ── the readings the door decides on ──────────────────────────────────────────────────────────────
+
+data w_bin: String = "/opt/gunbc/bin/gunbc"
+data w_repo: String = "/opt/gunbc/gunbc"
+// A fixture wall bound for the door's hand-off: the ceiling and the accept instant the door would carry.
+data w_leg_ceiling: String = "900"
+data w_accept_instant: String = "1700000000"
+data w_group_file: String = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1006:briansrls,gunbc-build\ndocker:x:998:gunbc-build\n"
+// The same host, with the ledger group no longer listing the host's ledger service user. Everything the
+// PROBE checks still holds on it; only the ledger half -- a reservation's fact -- has gone.
+data w_group_file_without_ledger_member: String = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1006:gunbc-build\ndocker:x:998:gunbc-build\n"
+
+fn w_status(uid: Int, groups: String) -> String {
+  join(["Name:\tgunbc\nUid:\t", to_string(value: uid), "\t", to_string(value: uid), "\t", to_string(value: uid), "\t", to_string(value: uid), "\nGroups:\t", groups, "\n"], "")
+}
+
+fn w_serving_host() -> String {
+  match remote_build_serving_hosts() |> first {
+    Present { value: h } => h as String
+    Absent => ""
+  }
+}
+
+fn w_principal_admitted() -> RemoteBuildServePrincipal {
+  // The declared uid and the declared group ids, read from the fleet's own rows rather than invented here.
+  remote_build_serve_principal_account_of(
+    status: w_status(uid: fleet_posix_remote_build_user.uid, groups: join([to_string(value: fleet_posix_remote_build_user.uid), " ", to_string(value: fleet_posix_compute_ledger_group_gid)], "")),
+    group_file: w_group_file,
+  )
+}
+
+fn w_principal_refused() -> RemoteBuildServePrincipal {
+  remote_build_serve_principal_refused_for_a_group_the_account_does_not_hold()
+}
+
+// REFUSED, for a reason the account half really checks -- the account is missing one of its declared
+// supplementary groups. Fabricating a reason string here would witness the door's mapping only; this
+// asks the one judgment that makes the refusal.
+fn remote_build_serve_principal_refused_for_a_group_the_account_does_not_hold() -> RemoteBuildServePrincipal {
+  remote_build_serve_principal_account_of(
+    status: w_status(uid: fleet_posix_remote_build_user.uid, groups: to_string(value: fleet_posix_remote_build_user.uid)),
+    group_file: w_group_file,
+  )
+}
+
+fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFrontDoorTurn {
+  remote_build_serve_front_door_turn(
+    host: w_serving_host(),
+    serve_binary: w_bin,
+    repo_root: w_repo,
+    leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
+    raw_command: raw,
+    principal: principal,
+  )
+}
+
+// THE CLIENT'S OWN READING OF A PROBE ANSWER, applied to what the door would print for that ending. This
+// is the pairing the route depends on and the one thing a narrowed probe must never break: an ending the
+// client reads as "try the next host", never an absence (which reads as unreachable and costs the walk).
+fn w_client_probe_reading(ending: RemoteBuildServeEnding) -> RemoteBuildProbe {
+  match remote_build_serve_answer(ending: ending, text: "witness") {
+    CliWirePrintable { bytes: bytes, exit: _ } =>
+      remote_build_probe_from_exit(exit_code: remote_build_serve_exit_code(e: ending), stdout: bytes, stderr: "")
+    CliWireUnprintable { cause: _ } => ProbeUnreachable { detail: "the answer could not be printed" }
+  }
+}
+
+// ── THE PROBE, ANSWERED AT THE DOOR ───────────────────────────────────────────────────────────────
+
+// An admitted principal makes the probe answer ready, and the client's reading of those exact bytes and
+// that exact code is "send the request" -- the probe costs what a probe sees and still means what it meant.
+test fn an_admitted_principal_answers_the_probe_ready_and_the_client_sends_the_request() -> Bool {
+  count(remote_build_serving_hosts()) > 0
+    && w_admitted(p: w_principal_admitted())
+    && match w_turn(raw: Present { value: remote_build_probe_text as String }, principal: w_principal_admitted()) {
+         FrontDoorAnswer { ending: ServeReady, detail: _ } => w_client_probe_reading(ending: ServeReady) == ProbeReady
+         _ => false
+       }
+}
+
+// THE MANAGER'S CONDITION, WITNESSED (clever-raven-401, 2026-11-25). A probe the door will not answer --
+// here, a principal whose account does not hold its declared group -- comes back as ServeHostCannotServe,
+// which the client reads as "this host is not serving, ask the next one". It must never arrive as an
+// absence (unreachable), and it must never arrive as HostOutcomeUnknown, which STOPS the walk: a cheap
+// probe miss turning into a dead walk is the failure this narrowing would otherwise have introduced.
+test fn a_refused_principal_moves_the_request_on_and_never_stops_the_walk() -> Bool {
+  match w_turn(raw: Present { value: remote_build_probe_text as String }, principal: w_principal_refused()) {
+    FrontDoorAnswer { ending: ServeHostCannotServe, detail: d } =>
+      detail_names_a_principal(d: d)
+        && match remote_build_probe_answer(p: w_client_probe_reading(ending: ServeHostCannotServe)) {
+             Present { value: HostCannotServe { detail: _ } } => true
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// THE NARROWING ITSELF, ON ONE READING OF ONE FILE. This /etc/group keeps everything the probe checks --
+// the uid, both declared supplementary groups, the ledger group held by its declared gid -- and drops the
+// one fact the probe no longer reads: that the host's ledger service user is a member. The probe's half
+// admits; the request path's gate refuses. And the ending that refusal produces for a REQUEST is the one
+// that moves the walk on, not the one that stops it.
+test fn the_ledger_membership_the_probe_no_longer_checks_still_refuses_the_request() -> Bool {
+  let status = w_status(uid: fleet_posix_remote_build_user.uid, groups: join([to_string(value: fleet_posix_remote_build_user.uid), " ", to_string(value: fleet_posix_compute_ledger_group_gid)], ""))
+  w_admitted(p: remote_build_serve_principal_account_of(status: status, group_file: w_group_file_without_ledger_member))
+    && !w_admitted(p: remote_build_serve_principal_of(
+         status: status,
+         group_file: w_group_file_without_ledger_member,
+         service_user: fleet_posix_operator_user.name,
+       ))
+    // and the request path's refusal is a typed "next host", never an unknown outcome.
+    && match remote_build_answer_of_ending(ending: ServeHostCannotServe, body: "the ledger's service user is not a member", stderr: "") {
+         HostCannotServe { detail: _ } => true
+         _ => false
+       }
+}
+
+// THE OTHER DIRECTION OF THE SAME PAIR, so the arm above is a measurement and not an accident of one
+// file: put the membership back and the request path's gate admits too.
+test fn the_ledger_membership_the_request_path_still_checks_admits_when_it_is_there() -> Bool {
+  let status = w_status(uid: fleet_posix_remote_build_user.uid, groups: join([to_string(value: fleet_posix_remote_build_user.uid), " ", to_string(value: fleet_posix_compute_ledger_group_gid)], ""))
+  w_admitted(p: remote_build_serve_principal_of(status: status, group_file: w_group_file, service_user: fleet_posix_operator_user.name))
+    && !w_admitted(p: remote_build_serve_principal_account_of(status: w_status(uid: fleet_posix_operator_user.uid, groups: "1000 1006"), group_file: w_group_file))
+}
+
+// THE PROBE IS RECOGNIZED BY ITS WHOLE TEXT, and only by it. The client sends these exact words
+// (gunbc.compute.remote_build_client remote_build_try_host splits remote_build_probe_text); anything
+// that is not that text is a request and goes to the serving entry, which is the only place a request's
+// grammar is judged.
+test fn the_probe_is_recognized_by_its_whole_text() -> Bool {
+  remote_build_leg_is_probe(raw: remote_build_probe_text as String)
+    && remote_build_leg_is_probe(raw: concat(remote_build_probe_text as String, "  "))
+    && !remote_build_leg_is_probe(raw: concat(remote_build_probe_text as String, " extra"))
+    && !remote_build_leg_is_probe(raw: "remote-build-v1 probe-and-build")
+    && !remote_build_leg_is_probe(raw: "")
+    && match w_turn(raw: Present { value: "remote-build-v1 probe-and-build" }, principal: w_principal_admitted()) {
+         FrontDoorHandOffToChild { hand_off: _ } => true
+         _ => false
+       }
+}
+
+// ── THE HAND-OFF ────────────────────────────────────────────────────────────────────────────────────
+
+// A request is RUN, not interpreted: the door hands off to the serving entry, with the binary, the
+// checkout and the words the authorized_keys line itself carries. The child is the REQUEST entry -- the
+// ending vocabulary for a request has one author, and it is not this module.
+test fn a_work_request_hands_off_to_the_serving_entry_with_the_forced_commands_words() -> Bool {
+  match w_turn(
+    raw: Present { value: join([remote_build_protocol_word as String, " compile 0123456789abcdef0123456789abcdef01234567 build claims"], "") },
+    principal: w_principal_admitted(),
+  ) {
+    FrontDoorHandOffToChild { hand_off } =>
+      hand_off.program as String == w_bin
+        && hand_off.workdir as String == w_repo
+        && any(hand_off.arguments, a => a == concat(w_repo, "/dag/gunbc/compute/remote_build_serve.dag"))
+        && any(hand_off.arguments, a => a == "remote_build_serve_cli")
+        && any(hand_off.arguments, a => a == concat("host=", w_serving_host()))
+        // THE WALL BOUND RIDES TO THE CHILD: the door hands the host-declared ceiling and its own accept
+        // instant to the request entry, which runs the granted unit under the remaining budget.
+        && any(hand_off.arguments, a => a == concat("leg_ceiling=", w_leg_ceiling))
+        && any(hand_off.arguments, a => a == concat("accept_instant=", w_accept_instant))
+        // THE CHILD IS FIXED DATA, NOT SOMETHING THE DOOR WAS TOLD: the door's own words name the front
+        // door; the hand-off names the request entry and nothing else.
+        && !(any(hand_off.arguments, a => contains(haystack: a, needle: "front_door")))
+    _ => false
+  }
+}
+
+// THE CLIENT CANNOT AIM THE HAND-OFF. The request text is read only to recognize the probe; it never
+// travels to the child, whose request arrives only as the inherited SSH_ORIGINAL_COMMAND sshd set.
+test fn the_hand_off_names_nothing_the_client_could_have_written() -> Bool {
+  let client_words = "0123456789abcdef0123456789abcdef01234567"
+  match w_turn(
+    raw: Present { value: join([remote_build_protocol_word as String, " compile ", client_words, " build"], "") },
+    principal: w_principal_admitted(),
+  ) {
+    FrontDoorHandOffToChild { hand_off } => !(any(hand_off.arguments, a => contains(haystack: a, needle: client_words)))
+    _ => false
+  }
+}
+
+// ONE RENDERING, TWO CONSUMERS: the authorized_keys line and the hand-off come from the same projection
+// of the same argv (gunbc.compute.remote_build_wire remote_build_run_words). If they could drift, a host
+// would answer at one entry and run another.
+test fn the_hand_off_and_the_request_legs_words_are_one_rendering() -> Bool {
+  let hand_off = remote_build_serve_hand_off(
+    serve_binary: w_bin as NonEmptyStr,
+    repo_root: w_repo as NonEmptyStr,
+    host: w_serving_host(),
+    leg_ceiling: w_leg_ceiling as NonEmptyStr,
+    accept_instant: w_accept_instant as NonEmptyStr,
+  )
+  let serve_words = map(remote_build_serve_run_words(serve_binary: w_bin as NonEmptyStr, repo_root: w_repo as NonEmptyStr, host: w_serving_host()), w => w as String)
+  let door_words = map(remote_build_serve_front_door_run_words(serve_binary: w_bin as NonEmptyStr, repo_root: w_repo as NonEmptyStr, host: w_serving_host(), leg_ceiling: w_leg_ceiling as NonEmptyStr), w => w as String)
+  hand_off.program as String == w_bin
+    // The hand-off runs the request entry with the request leg's OWN words, then appends the host-declared
+    // ceiling and the door's accept instant -- two words the client never sends, so an old client cannot
+    // bypass the bound and the wait is measured from the host's own clock.
+    && join(hand_off.arguments, "\n") == join(concat(skip(xs: serve_words, n: 1), ["--arg", concat("leg_ceiling=", w_leg_ceiling), "--arg", concat("accept_instant=", w_accept_instant)]), "\n")
+    && any(door_words, w => w == "remote_build_serve_front_door_cli")
+    && !any(door_words, w => w == "remote_build_serve_cli")
+    && any(door_words, w => w == concat("serve_binary=", w_bin))
+    && any(door_words, w => w == concat("repo_root=", w_repo))
+    && any(door_words, w => w == concat("leg_ceiling=", w_leg_ceiling))
+}
+
+// ── WHAT THE DOOR REFUSES, AND HOW ────────────────────────────────────────────────────────────────
+
+// Words that do not name the contract never reach the build binary, and an absent request is refused
+// rather than answered as nothing. Both refusals carry a header, because the client's reading of an
+// answer with no header is "this host did not run the contract" -- a door that went silent on a bad
+// request would be indistinguishable from a wedged host.
+test fn words_that_do_not_name_the_contract_are_refused_with_a_header() -> Bool {
+  match w_turn(raw: Present { value: "ls -la /opt/gunbc" }, principal: w_principal_admitted()) {
+    FrontDoorAnswer { ending: ServeRequestRefused, detail: _ } =>
+      // THE REFUSAL CARRIES A HEADER THE CLIENT'S OWN READING FINDS, and it round-trips to the ending the
+      // door decided on -- read through the ONE reading production uses, not a second recognizer.
+      match remote_build_ending_of_answer(stdout: w_answer_bytes(ending: ServeRequestRefused)) {
+        Present { value: ServeRequestRefused } => true
+        _ => false
+      }
+        && match remote_build_answer_of_ending(ending: ServeRequestRefused, body: "witness", stderr: "") {
+             HostRefusedRequest { detail: _ } => true
+             _ => false
+           }
+    _ => false
+  }
+    && match w_turn(raw: Absent, principal: w_principal_admitted()) {
+         FrontDoorAnswer { ending: ServeRequestRefused, detail: _ } => true
+         _ => false
+       }
+}
+
+// A HOST THE ROSTER DOES NOT SERVE is refused at the door, from the row the roster itself is built from
+// (gunbc.compute.remote_build_hosts remote_build_serving_hosts) -- before any request entry runs. The
+// ending is the one that moves the walk on.
+test fn a_host_off_the_serving_row_is_refused_at_the_door() -> Bool {
+  match remote_build_serve_front_door_turn(
+    host: "not-a-serving-host",
+    serve_binary: w_bin,
+    repo_root: w_repo,
+    leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
+    raw_command: Present { value: remote_build_probe_text as String },
+    principal: w_principal_admitted(),
+  ) {
+    FrontDoorAnswer { ending: ServeHostCannotServe, detail: d } =>
+      contains(haystack: d, needle: "not-a-serving-host")
+        && match remote_build_probe_answer(p: w_client_probe_reading(ending: ServeHostCannotServe)) {
+             Present { value: HostCannotServe { detail: _ } } => true
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// A HAND-OFF THAT WAS NOT TOLD WHAT TO RUN runs nothing. The door may not guess a path.
+test fn a_door_rendered_without_a_binary_or_a_checkout_runs_nothing() -> Bool {
+  match w_turn(raw: Present { value: join([remote_build_protocol_word as String, " compile abc build"], "") }, principal: w_principal_admitted()) {
+    FrontDoorHandOffToChild { hand_off: _ } => true
+    _ => false
+  }
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
+         FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
+         _ => false
+       }
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
+         FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
+         _ => false
+       }
+}
+
+// ── THE ANSWER'S BYTES ──────────────────────────────────────────────────────────────────────────────
+
+// A RECEIPT GOES OUT BYTE-EXACT; everywhere else the child's stderr is kept, because it is the only
+// account of what happened. This is the one loss the two-process door pays (no stdio-inheriting seam
+// exists in this repository's tool vocabulary), and it is bounded to the case where nothing is decided
+// on the text.
+test fn a_receipt_goes_out_byte_exact_and_a_refusal_keeps_its_stderr() -> Bool {
+  let served = join([remote_build_serve_header(e: ServeServed), "\n{\"ok\":true}"], "")
+  let refused = join([remote_build_serve_header(e: ServeRequestRefused), "\nthe claims are not admitted"], "")
+  let empty = ""
+  !remote_build_answer_body_is_a_receipt(stdout: refused)
+    && remote_build_answer_body_is_a_receipt(stdout: served)
+    && remote_build_answer_body_is_a_receipt(stdout: join([remote_build_serve_header(e: ServeWorkInFlight), "\n{}"], ""))
+    && remote_build_answer_body_is_a_receipt(stdout: join([remote_build_serve_header(e: ServeWorkEndedUnsuccessfully), "\n{}"], ""))
+    && !remote_build_answer_body_is_a_receipt(stdout: empty)
+    // THE SAME READING THE CLIENT READS AN ANSWER WITH, on the same bytes: no header is no ending, and a
+    // receipt header is that ending. (Before this the witness checked a Bool the door did not use; the
+    // review that caught it is the point -- evidence must be about the interface production runs.)
+    && match remote_build_ending_of_answer(stdout: empty) { Absent => true  _ => false }
+    && match remote_build_ending_of_answer(stdout: served) {
+         Present { value: ServeServed } => true
+         _ => false
+       }
+}
+
+// ── THE CLOSURE LEDGER: what the probe entry may read ─────────────────────────────────────────────
+
+// THE COST CLAIM, STRUCTURAL. The probe entry may not import the request path: not the roster, not the
+// provider, not the capacity ledger, not the dashboard instance the instance record lives in, not git,
+// not systemd, not ssh. THE SAME READING OVER THE ENTRY THIS DOOR EXISTS TO KEEP OUT FINDS THEM, which
+// is what makes the green arms measurements rather than vacuous passes (the four-arm shape of
+// test.claim.import_admission_closure_membership_witness: a claim that cannot go red on its own
+// proposition proves nothing).
+test fn the_probe_entry_imports_none_of_the_request_path() -> Bool {
+  let door = w_import_lines(path: "dag/gunbc/compute/remote_build_serve_front_door.dag")
+  let request_entry = w_import_lines(path: "dag/gunbc/compute/remote_build_serve.dag")
+    // THE INSTRUMENT IS READ: an empty reading would satisfy every arm below.
+  if count(door) == 0 || count(request_entry) == 0 { return false }
+  let forbidden = w_forbidden_probe_imports()
+  forbidden |> all(m => !(door |> any(l => contains(haystack: l, needle: m))))
+    && forbidden |> any(m => (request_entry |> any(l => contains(haystack: l, needle: m))))
+      // and the door reads the two leaves it is made of: the wire's answer mint and the principal leaf.
+    && (door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_wire")))
+    && (door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_serve_principal {")))
+      // it is not a second authority for anything: it never imports the serving entry, the roster module
+      // or the client.
+    && !(door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_serve {")))
+    && !(door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build {")))
+    && !(door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_client")))
+}
+
+// "READY" HAS ONE AUTHOR, AND IT IS NOT THE REQUEST ENTRY. The client reads a ready probe as the licence
+// to send work, so the entry that mints it must be the entry whose closure stops at the probe. A host
+// whose authorized_keys still names the request entry is a host that has not converged the door, and it
+// answers ServeHostCannotServe -- which moves the walk on -- rather than pretending to be ready.
+test fn the_request_entry_never_mints_ready() -> Bool {
+  let door = w_source(path: "dag/gunbc/compute/remote_build_serve_front_door.dag")
+  let request_entry = w_source(path: "dag/gunbc/compute/remote_build_serve.dag")
+  contains(haystack: door, needle: "ending: ServeReady")
+    && !contains(haystack: request_entry, needle: "ending: ServeReady")
+    && contains(haystack: request_entry, needle: "remote_build_leg_is_probe")
+    && contains(haystack: request_entry, needle: "the probe is answered by the front door")
+      // one recognizer, in the leaf both ends read.
+    && contains(haystack: w_source(path: "dag/gunbc/compute/remote_build_wire.dag"), needle: "fn remote_build_leg_is_probe")
+}
+
+// ── the readings the claims above decide on ───────────────────────────────────────────────────────
+
+fn w_admitted(p: RemoteBuildServePrincipal) -> Bool {
+  match p {
+    RemoteBuildServePrincipalAdmitted => true
+    RemoteBuildServePrincipalRefused { reason: _ } => false
+  }
+}
+
+fn detail_names_a_principal(d: String) -> Bool {
+  contains(haystack: d, needle: "group")
+}
+
+fn w_answer_bytes(ending: RemoteBuildServeEnding) -> String {
+  match remote_build_serve_answer(ending: ending, text: "witness") {
+    CliWirePrintable { bytes: bytes, exit: _ } => bytes
+    CliWireUnprintable { cause: _ } => ""
+  }
+}
+
+// THE IMPORT LINES ONLY. Comments in these modules NAME the modules they keep out -- this door's own
+// header cites the roster, the provider and the ledger to explain the cut -- so a substring reading of
+// the whole file would judge prose. Import lines are what decides a closure.
+fn w_import_lines(path: String) -> List<String> {
+  w_source_lines(path: path) |> filter(l => starts_with(s: l, prefix: "import "))
+}
+
+fn w_source_lines(path: String) -> List<String> {
+  let read = Filesystem.Read(path: path)
+  if !read.success { return [] }
+  split(s: read.content, delimiter: "\n")
+}
+
+fn w_source(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if !read.success { return "" }
+  read.content
+}
+
+// THE REQUEST PATH, BY NAME. Each of these is a module a probe has no business resolving: the roster and
+// its instance record, the provider and its seat machinery, the capacity ledger, git, systemd, ssh.
+fn w_forbidden_probe_imports() -> List<String> {
+  [
+    "gunbc.compute.work_provider_local",
+    "gunbc.compute.work_provider",
+    "gunbc.compute.work_request",
+    "gunbc.compute.attempt_lifecycle",
+    "gunbc.compute.host_capacity",
+    "gunbc.roadmap.roadmap_dashboard_instance",
+    "extdeps.git",
+    "extdeps.systemd",
+    "extdeps.ssh.",
+    "gunbc.compute.remote_build_serving_setup",
+    "gunbc.fleet.fleet_known_hosts_anchor",
+  ]
+}

@@ -316,7 +316,10 @@ fn dispatch_worker_unit_stream_properties(
   )
   concat(
     concat(
-      compute_grant_unit_properties(granted: granted, working_directory: dispatch_worker_set_working_directory(set: set), process_bounds: Present { value: process_bounds }),
+      // The agent-session unit carries no wall bound: its lifetime is governed by the lease and the
+      // grant, not by a remote-build leg budget, so runtime_max is absent here (the bound is a
+      // remote-build-request fact, decided only on that path).
+      compute_grant_unit_properties(granted: granted, working_directory: dispatch_worker_set_working_directory(set: set), process_bounds: Present { value: process_bounds }, runtime_max: Absent),
       concat(dispatch_model_driven_privilege_confinement_properties(launch_route: launch_route), dispatch_worker_umask_properties(instance: instance)),
     ),
     concat(
