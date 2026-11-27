@@ -22,50 +22,71 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // formal types at the binding site.
 //
 // WHAT THIS DROP DOES NOT COVER. It does not cover the fold-step lambda path, which emits WITH
-// parameter types: emit_rust_fold_method_call calls emit_typed_fold_lambda with resolved fallback_types
-// derived from the fold's accumulator and element types (positive control, measured 2026-11-27 on
-// origin/main: 539 occurrences of |acc: <RealType> across 60 seed files, all compiling with no
-// expected-type context at those sites). It does not cover the instrument's semantic correctness, the
-// subject's DAG declaration, or the claim execution. It does not cover lambda_param_type_strs, which
-// correctly renders inferred types when they ARE resolved; the failure is that emit_typed_let passes
-// vec!["_"] as fallback_types to lambda_param_type_strs, giving inference no type to work with, and
-// when inference yields None the fallback "_" is emitted verbatim as the parameter annotation via
-// apply_type_template2 with the Rust template "{0}: {1}". It does not cover hand-written Rust in the
-// emitted file (seed Rust is outside every worker's authority on this lane).
+// parameter types: v1.compiler.emit_rust::emit_rust_fold_method_call calls
+// v1.compiler.emit_rust::emit_typed_fold_lambda with acc_type_str and elem_type_str resolved from the
+// fold's accumulator and element types, and v1.compiler.emit_rust::emit_typed_fold_lambda hands them to
+// v1.compiler.emit_rust::lambda_param_type_strs as fallback_types with fold_acc_uses_fallback set, so
+// every fold parameter renders with a declared type where inference yields none (positive control,
+// re-measured 2026-11-27 on origin/main: 588 lines across 64 files under src/ carry a typed
+// |acc: <RealType> annotation, including the emitter source itself and the tests that assert the
+// emitted fold closures carry typed parameters, e.g. compiler_tests_rust asserting the emitted route
+// contains "fold(walk_init(), |acc: Rc<Walk>, ...)"). It does not cover the instrument's semantic
+// correctness, the subject's DAG declaration, or the claim execution. It does not cover
+// v1.compiler.emit_rust::lambda_param_type_strs itself, which correctly prefers each parameter node's
+// own RESOLVED type and falls back only when there is none; the failure is upstream of it --
+// v1.compiler.emit_rust::emit_typed_let's ExprLambda arm passes elem_type_str: "_" to
+// v1.compiler.emit_rust::emit_typed_collection_lambda, which wraps that "_" as the sole fallback_types
+// entry it gives lambda_param_type_strs, so a let-bound parameter whose node resolves to nothing
+// renders "_" through apply_type_template2 with spec.annotations.lambda_param_typed. It does not cover
+// hand-written Rust in the emitted file (seed Rust is outside every worker's authority on this lane).
 //
 // WHY PREVIOUS IS MECHANICALLY PREVENTABLE. The emitter's structural path mechanically resolves and
-// writes formal parameter types where wired: emit_typed_fold_lambda receives lambda_acc_type_str and
-// fold_elem_type_str from emit_rust_fold_method_call, constructs fallback_types, and lambda_param_type_strs
-// writes the resolved InferredNode type through apply_type_template2. Positive control: 539 sites on
-// origin/main, executing, compiling, with no expected-type context needed at the emitted closure. The
-// mechanism is present and mechanically prevents untyped parameters wherever it fires. The five
-// let-bound subjects fall off that mechanical path: emit_typed_let passes a hardcoded vec!["_"] as
-// fallback_types instead of resolving from the subject's declared param_node type expressions, so the
-// mechanism that the fold path executes is not wired to their binding site. The rung is the minimum
-// across the class's in-scope paths: where the mechanism is wired it holds MechanicallyPreventable;
-// where it is not (the let-binding path), the population sits below it.
+// writes formal parameter types where it is wired: emit_rust_fold_method_call derives lambda_acc_type_str
+// and fold_elem_type_str from the fold call's resolved types, passes them to emit_typed_fold_lambda, and
+// lambda_param_type_strs writes each parameter through apply_type_template2 with a resolved type or a
+// supplied fallback. Positive control: 588 typed |acc: <RealType> annotation sites on origin/main,
+// executing, compiling, with no expected-type context needed at the emitted closure. The mechanism is
+// present and mechanically prevents untyped parameters wherever it fires. The five let-bound subjects
+// fall off that mechanical path: emit_typed_let's ExprLambda arm hardcodes elem_type_str: "_" instead of
+// resolving from the subject's declared formal parameter types, so the mechanism the fold path executes
+// is not wired to their binding site. The rung is the minimum across the class's in-scope paths: where
+// the mechanism is wired it holds MechanicallyPreventable; where it is not (the let-binding path), the
+// population sits below it.
 //
 // WHY TEMPORARY IS MITIGATABLE. For the five let-bound subjects, the emitter produces bad output
-// unconditionally: the parameter annotation is always "_", never a resolved type. No mechanical check
-// inside the emitter prevents this: emit_typed_let passes vec!["_"] and lambda_param_type_strs emits it
-// verbatim. The E0282 at the emit-compile leg is a downstream consumer (rustc) catching bad emitter
-// output, not the emitter preventing it. The worker's action is observation and reporting: name the
-// hole at the leg where it fires and carry it, not attempt a fix in seed Rust (which is outside every
-// worker's authority on this lane). This matches the precedent crate_row_names_a_module_the_emitter_has_no_reason_to_write:
-// its 13 modules also never had the rung (no authored reference gave the emitter a reason to write
-// their bodies), and the drop carries them at Mitigatable because the available action is reporting,
-// not prevention.
+// unconditionally: the parameter annotation is always "_", never a declared type. No mechanical check
+// inside the emitter prevents this: emit_typed_let supplies the "_" fallback and lambda_param_type_strs
+// renders it verbatim when the parameter node resolves to nothing. The E0282 at the emit-compile leg is
+// a downstream consumer (rustc) catching bad emitter output, not the emitter preventing it. The emitter's
+// own comment beside v1.compiler.emit_rust::emit_typed_fold_lambda records why the repair cannot be a
+// one-word fallback change: "THE FIRST ATTEMPT AT THIS CHANGED THE FALLBACK TYPE STRING AND MEASURED NO
+// EFFECT: lambda_param_type_strs prefers the parameter node's own RESOLVED type and only falls back when
+// there is none ... The override has to sit where the parameter string is chosen, not where the fallback
+// is supplied." So the fix is a wiring decision at the binding site, not a string swap, and until it is
+// taken the worker's action is observation and reporting: name the hole at the leg where it fires and
+// carry it, not attempt a fix in seed Rust (which is outside every worker's authority on this lane).
+// This matches the precedent crate_row_names_a_module_the_emitter_has_no_reason_to_write: its 13 modules
+// also never had the rung (no authored reference gave the emitter a reason to write their bodies), and
+// the drop carries them at Mitigatable because the available action is reporting, not prevention.
 //
-// MEASURED BASIS, all counts printed on origin/main 2026-11-27, no slot spent. The untyped emitted
-// marker |param: _| appears 3 times in seed Rust (v1_compiler_infer.rs:30944, :30981, :31008 — each a
-// fold lambda whose element param fell back to _ because collection_element_type was unresolved; the
-// same fallback mechanism that the let-binding path uses unconditionally). The typed marker
-// |acc: <RealType> appears 539 times across 60 files in src/, confirming the fold path does emit typed
-// parameters correctly. The asymmetry is structural: emit_typed_let hardcodes elem_type_str to
-// "_".to_string(), while emit_rust_fold_method_call derives lambda_acc_type_str and fold_elem_type_str
-// from the fold call's resolved types. tidy-hawk-691's acquisition on srv1 (slot 9,
-// 2026-11-27T14:22:15Z, BOOT c095c0cd, head 435289c1c1129dbb3add4d4d12cc3063b20c84a0) produced
-// 3 E0282 errors and 5 total errors, first at subjects.rs:138:60 at the acc_local_closure scale binding.
+// MEASURED BASIS, all counts re-printed on origin/main 2026-11-27, no slot spent. Untyped fallback
+// census: the element-parameter shape "item: _|" appears 3 times under src/, all in the emitter's own
+// seed source at src/v1/stage0/src/v1_compiler_infer.rs (two in v1_compiler_infer::realization_names,
+// one in v1_compiler_infer::realization_declared_names) -- hand-written seed folds that leave the
+// element parameter to inference, cited here as the same "_" fallback shape the let-bound path is forced
+// into by emit_typed_let, not as emitted output. Typed census: the |acc: <RealType> shape appears on 588
+// lines across 64 files under src/, spanning the emitter source, emitted seed folds, and the tests that
+// assert the fold path's emitted annotations. The asymmetry is structural and sits in the plan, not in
+// seed Rust: in src/v1/05_emit_rust.dag (module v1.compiler.emit_rust), emit_typed_let's ExprLambda arm
+// passes elem_type_str: "_" to emit_typed_collection_lambda -- whose only use of it is
+// fallback_types: [elem_type_str] into lambda_param_type_strs -- while emit_rust_fold_method_call
+// derives lambda_acc_type_str and fold_elem_type_str from the fold call's resolved types and passes
+// them to emit_typed_fold_lambda. Executed evidence of the consequence: tidy-hawk-691's acquisition on
+// srv1 (slot 9, 2026-11-27T14:22:15Z, BOOT c095c0cd, head 435289c1c1129dbb3add4d4d12cc3063b20c84a0)
+// emitted, for the accumulator-observation instrument, a let-bound closure without annotations --
+// "let scale = |x: _| v1_rt::int_add(acc_int_identity(x.clone()), 1);" -- beside a fold-step lambda WITH
+// them -- "fold(0, |acc: i64, x: i64| v1_rt::int_add(acc, scale(x.clone())))" -- and rustc answered with
+// 3 error[E0282] among 5 errors total, first at subjects.rs:138:60, the acc_local_closure scale binding.
 data let_bound_closure_parameters_are_emitted_without_their_declared_types: RungDrop = RungDrop {
   identity: "let_bound_closure_parameters_are_emitted_without_their_declared_types" as NonEmptyStr,
 
@@ -76,8 +97,8 @@ data let_bound_closure_parameters_are_emitted_without_their_declared_types: Rung
   standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: ReplacementStaged { replacement: "the emitter resolves each let-bound closure's declared formal parameter types at the binding site and passes them as fallback_types to lambda_param_type_strs, in place of the hardcoded vec![\"_\"] that emit_typed_let passes today, so the emitted Rust compiles with no expected-type context" },
+    reason: ReplacementStaged { replacement: "the emitter resolves each let-bound closure's declared formal parameter types at the binding site -- v1.compiler.emit_rust::emit_typed_let's ExprLambda arm, in place of passing elem_type_str: \"_\" to v1.compiler.emit_rust::emit_typed_collection_lambda -- and supplies them where v1.compiler.emit_rust::lambda_param_type_strs chooses each parameter string, so the emitted Rust compiles with no expected-type context" },
     population: Enumerated { members: FreeSemigroup { head: "acc_local_closure", tail: ["acc_local_closure_identity_only", "acc_local_closure_materializes_per_step", "acc_local_closure_escaping_closure", "acc_local_closure_copies_context"] } },
-    restoration_trigger: "THE EMITTER ANNOTATES A LET-BOUND CLOSURE'S PARAMETERS FROM THE SUBJECT'S DECLARED FORMAL TYPES AT THE BINDING SITE, so the emitted Rust compiles with no expected-type context. Specifically: emit_typed_let resolves the param_node type expressions from the subject's formal declaration and passes them as the fallback_types Vec to lambda_param_type_strs, replacing the hardcoded vec![\"_\".to_string()] it passes today. Two things do NOT retire this drop: (1) rerunning the same instrument unchanged, which reproduces the same E0282 at the emit-compile leg; and (2) hand-writing Rust parameter annotations in the emitted file, which is seed Rust and is outside every worker's authority on this lane. A default or timed-out closure of any ask is not a ruling. No operator words exist for this row; none were sought.",
+    restoration_trigger: "THE EMITTER ANNOTATES A LET-BOUND CLOSURE'S PARAMETERS FROM THE SUBJECT'S DECLARED FORMAL TYPES AT THE BINDING SITE, so the emitted Rust compiles with no expected-type context. Specifically: v1.compiler.emit_rust::emit_typed_let resolves each parameter's declared formal type at its ExprLambda arm and threads it through v1.compiler.emit_rust::emit_typed_collection_lambda into v1.compiler.emit_rust::lambda_param_type_strs at the point where the parameter string is chosen -- per that function's own documented note, changing only the fallback string measures no effect -- replacing the elem_type_str: \"_\" that arm passes today. Two things do NOT retire this drop: (1) rerunning the same instrument unchanged, which reproduces the same E0282 at the emit-compile leg; and (2) hand-writing Rust parameter annotations in the emitted file, which is seed Rust and is outside every worker's authority on this lane. A default or timed-out closure of any ask is not a ruling. No operator words exist for this row; none were sought.",
   } }
 }
