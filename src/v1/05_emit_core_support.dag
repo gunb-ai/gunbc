@@ -227,8 +227,8 @@ fn sanitize_service_name(name: String) -> String {
 // authored with a `__` into the dotted-service space, two dotted services differing only in a
 // segment's first-letter case, or a segment beginning or ending with `_` (`a_.b` and `a._b` both
 // render `A___B`). Every one reaches emitted_symbol_collision_diagnostics, which refuses it typed
-// and located, called from every target emitter. The emitted crate root admits the `__` spelling
-// through its `non_camel_case_types` allowance.
+// and located, called from every target emitter. The emitted item admits the `__` spelling
+// through its per-item `non_camel_case_types` allowance (extdeps.languages.rust.emit rust_case_allowance_attr).
 
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars
