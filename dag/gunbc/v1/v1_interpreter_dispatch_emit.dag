@@ -17,6 +17,7 @@ import std.algebra { fold_list }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_generation_produced }
 
 fn to_pascal_segment(segment: String) -> String {
   segment
@@ -410,4 +411,17 @@ fn expected_v1_interpreter_dispatch_generated_rs() -> V1InterpreterDispatchEmitO
   } else {
     V1InterpreterDispatchGenerated { content: render_dispatch_generated_rs(rows: rows) }
   }
+}
+
+fn v1_interpreter_dispatch_generated_rs_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_v1_interpreter_dispatch_generated_rs() {
+      V1InterpreterDispatchGenerated { content } => ArtifactGenerated { content: content }
+      V1InterpreterDispatchGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+data v1_interpreter_dispatch_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: v1_interpreter_dispatch_generated_rs_artifact_generated,
+  extra_valid: artifact_generation_produced,
+  provenance: none,
 }

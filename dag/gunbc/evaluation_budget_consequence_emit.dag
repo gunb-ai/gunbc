@@ -3,6 +3,7 @@ module gunbc.evaluation_budget_consequence_emit
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 import std.evaluation_budget { evaluation_budget_refusal_code }
 import std.types { NonEmptyStr, String }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
 
 // THE MACHINE IDENTITY OF A BUDGET BREACH, PROJECTED INTO THE SEED.
 //
@@ -50,4 +51,14 @@ fn expected_evaluation_budget_consequence_generated_rs() -> String {
       )
     )
   )
+}
+
+fn evaluation_budget_consequence_generated_rs_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_evaluation_budget_consequence_generated_rs() }
+}
+
+data evaluation_budget_consequence_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: evaluation_budget_consequence_generated_rs_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

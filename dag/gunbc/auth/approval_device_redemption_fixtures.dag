@@ -28,6 +28,7 @@ import std.scoped_authorization { AttemptIdentity }
 import std.logic { Bool }
 import extdeps.languages.json.emit { json_bool }
 import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest, DeviceEnrollmentRevoked, DeviceEnrollmentUnknown }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
@@ -424,4 +425,14 @@ fn approval_device_vectors_json() -> String {
     ])),
     "\n",
   )
+}
+
+fn approval_device_vectors_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: approval_device_vectors_json() }
+}
+
+data approval_device_vectors_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: approval_device_vectors_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

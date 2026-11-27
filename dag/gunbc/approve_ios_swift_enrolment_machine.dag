@@ -19,6 +19,8 @@ import v2.extdeps.languages.swift.syntax {
   sw_cases, sw_case_payload, sw_param, sw_func, sw_enum, sw_doc, sw_cmt, sw_import, sw_tg
 }
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import v2.extdeps.languages.swift.rows { SwiftRowEmissionRefused, SwiftRowEmitted }
 
 // TWO GENERATED SWIFT FILES FOR THE APP'S ENROLMENT STATE MACHINE (gunbc.approve_ios_enrolment_machine):
 //   apps/approve-ios/Approve/EnrolmentMachine.swift       the transition table, PRINTED BY EVALUATING
@@ -188,4 +190,30 @@ fn approve_ios_enrolment_machine_tests_swift_file() -> SwiftSourceFile {
 
 fn expected_approve_ios_enrolment_machine_tests_swift() -> SwiftRowEmission {
   swift_rows_emit_source_file(f: approve_ios_enrolment_machine_tests_swift_file())
+}
+
+fn approve_ios_enrolment_machine_swift_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_approve_ios_enrolment_machine_swift() {
+      SwiftRowEmitted { source } => ArtifactGenerated { content: source }
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+}
+
+data approve_ios_enrolment_machine_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: approve_ios_enrolment_machine_swift_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
+}
+
+fn approve_ios_enrolment_machine_tests_swift_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_approve_ios_enrolment_machine_tests_swift() {
+      SwiftRowEmitted { source } => ArtifactGenerated { content: source }
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+}
+
+data approve_ios_enrolment_machine_tests_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: approve_ios_enrolment_machine_tests_swift_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

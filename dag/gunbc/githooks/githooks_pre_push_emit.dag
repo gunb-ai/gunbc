@@ -16,6 +16,7 @@ import gunbc.local_tidy_spec {
   local_tidy_fmt_outcome_recipe,
   local_tidy_fmt_pre_push_drift_recipe,
 }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
 
 data pre_push_fmt_only_note: String = "The pre-push hook is fmt-only, restored to CLAUDE.md's documented contract ('pre-push runs cargo fmt') by operator ruling 2026-07-25. It was previously a shim that exec'd `claim_batch --pre-push`, which ran the affected-set witness corpus and would cargo-build claim_batch from inside the push when the binary was missing. That weight bought ZERO enforcement: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, and gunbc.commit_workflow's own commit_gate_rust_suite_removed_disposition already records it PROVEN ineffective (#6658 landed an unformatted .rs on main and no hook caught it). That is the worst of both worlds by construction — no enforcement, but enough weight to make a legitimately-red mid-lane branch feel unpushable, which is the pressure that converts honest reds into workaround greens (priced receipt: three rounds of hand-import workarounds and one decorative gate on the namespace type-binding lane, 2026-07-25). A check that cannot enforce should at least be instant. THE 'CI LOSES NOTHING' CLAUSE WAS TRUE WHEN WRITTEN AND IS HALF FALSE NOW, corrected 2026-08-27 rather than deleted, because which half failed is the finding. It read that cargo fmt is a required-path build step and the witness corpus is the required `ci` floor which also stamps the merge-admission receipt. The witness corpus half survives under a new authority (v2.workflow.required_floor required_floor_site_disposition). THE FMT HALF DOES NOT: the 2026-08-15 floor cut deleted the build job, and neither required lane of the emitted .github/workflows/witnesses.yml runs fmt. So this hook is now the only surface that runs fmt at all, while this very note explains at length why a hook enforces nothing -- the argument for slimming and the argument that fmt is unguarded are the same argument, and they only became compatible when the thing they both relied on was deleted. Recorded at check grain as an Uncovered residual in gunbc.commit_workflow check_removal_roster; merge-admission stamping is likewise gone and sits on DESIGN's unguarded re-add list. The hook body is DERIVED from commit_gate_roster's GitPrePushHook enrollments via project_local_tidy_checks, so the roster stays the single authority (gunbc.design_argument::single_authority) — re-heavying the hook requires a roster edit that githooks_pre_push_emit_test catches, never a silent drift."
 
@@ -131,4 +132,14 @@ fn expected_githooks_pre_push_sh() -> String {
     "set -euo pipefail\nROOT=\"", concat(git_toplevel_shell_subexpr(), "\"\ncd \"$ROOT\"\n"),
     concat(emit_repo_local_git_config_converge_shell(), emit_pre_push_body())
   )
+}
+
+fn githooks_pre_push_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_githooks_pre_push_sh() }
+}
+
+data githooks_pre_push_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: githooks_pre_push_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

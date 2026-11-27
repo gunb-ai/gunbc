@@ -17,6 +17,7 @@ import gunbc.whole_corpus_compile_admission {
   NoBudgetForRoot,
   whole_corpus_compile_measured_root_demands,
 }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
 
 // Every projected figure is an authored declared budget, not a measured peak and not proof that a
 // whole-root compile fits. Provenance, where any exists, stays out of the operational row.
@@ -69,4 +70,14 @@ fn whole_corpus_compile_demand_projection_json(demands: List<WholeCorpusCompileD
 
 fn expected_whole_corpus_compile_measured_root_demands_json() -> String {
   whole_corpus_compile_demand_projection_json(demands: whole_corpus_compile_measured_root_demands)
+}
+
+fn whole_corpus_compile_measured_root_demands_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_whole_corpus_compile_measured_root_demands_json() }
+}
+
+data whole_corpus_compile_measured_root_demands_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: whole_corpus_compile_measured_root_demands_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

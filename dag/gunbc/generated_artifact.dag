@@ -567,7 +567,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 // uses.
 // It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
 // that arm is gone with the push, and the command is not heal's (gunbc#10958).
-data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
 
 // WHAT THIS MODULE MUST NOT IMPORT, stated where its lightness is owned. Every importer of this
 // registry -- 69 modules today -- pays for this module's whole import closure, so an import that

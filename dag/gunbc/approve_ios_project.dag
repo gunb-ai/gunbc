@@ -26,6 +26,7 @@ import extdeps.xcodegen.project_spec {
 }
 
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
 
 // THE APPROVE APP'S XCODE PROJECT, as the authority apps/approve-ios/project.yml is projected from
 // (gunbc.generated_artifact ApproveIosProjectYmlArtifact; the drift gate holds the committed file
@@ -257,4 +258,17 @@ fn approve_ios_project_yml_from(port: Port?) -> ApproveIosProjectGeneration {
 
 fn expected_approve_ios_project_yml() -> ApproveIosProjectGeneration {
   approve_ios_project_yml_from(port: approval_broker_public_port)
+}
+
+fn approve_ios_project_yml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_approve_ios_project_yml() {
+      ApproveIosProjectGenerated { content } => ArtifactGenerated { content: content }
+      ApproveIosProjectRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+data approve_ios_project_yml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: approve_ios_project_yml_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

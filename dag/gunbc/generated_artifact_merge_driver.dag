@@ -3,6 +3,7 @@ module gunbc.generated_artifact_merge_driver
 import gunbc.shell_bash_runner { bash_escape_double_quote_specials_except_expansion }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
 
 // THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
 // `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves
@@ -38,6 +39,8 @@ import gunbc.claim_executor_cli { claim_executor_relative_path }
 // turns this stop into one no writer can pass. Until those bindings land, an out-of-repository
 // autocommit that stages and commits through the unmerged path defeats this refusal, and that is a
 // stated residue, not an unnoticed one.
+
+data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
 
 data generated_artifact_merge_driver_script_directory: String = ".githooks"
 
@@ -234,4 +237,16 @@ fn expected_generated_artifact_merge_driver_sh(regen_command: String) -> String 
       )
     )
   )
+}
+
+fn generated_artifact_merge_driver_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_generated_artifact_merge_driver_sh(
+      regen_command: generated_artifact_author_regen_command
+    ) }
+}
+
+data generated_artifact_merge_driver_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: generated_artifact_merge_driver_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

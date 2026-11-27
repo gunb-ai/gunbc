@@ -5,6 +5,7 @@ import gunbc.cli_run_workspace_root_scaffold {
   gunbc_workspace_root_env_name, release_locus_tree_receipt_name,
 }
 import std.types { String }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
 
 // THE RELEASE LOCUS CONTRACT'S TWO SPELLINGS, PROJECTED INTO THE SEED SO THE SEED STOPS
 // TRANSCRIBING THEM.
@@ -52,4 +53,14 @@ fn expected_release_locus_seed_constants_generated_rs() -> String {
       ),
     ),
   )
+}
+
+fn release_locus_seed_constants_generated_rs_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_release_locus_seed_constants_generated_rs() }
+}
+
+data release_locus_seed_constants_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: release_locus_seed_constants_generated_rs_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

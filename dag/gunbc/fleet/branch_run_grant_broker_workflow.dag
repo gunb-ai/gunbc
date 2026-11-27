@@ -35,6 +35,9 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.auth.branch_dispatch_federation { branch_run_key_variable }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { BranchRunGrantBrokerWorkflowYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
 
 // THE WORKFLOW THAT ASKS FOR A RUN-SCOPED GRANT ON A BRANCH RUN'S BEHALF (gunbc.auth.branch_run_grant_broker).
 //
@@ -259,4 +262,24 @@ fn gunbc_ci_branch_run_grant_broker_invoke() -> String {
     target: gunbc_ci_branch_run_grant_broker_target,
     receipt_rel: none
   )
+}
+
+fn branch_run_grant_broker_workflow_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_branch_run_grant_broker_workflow_yml() {
+      BranchRunGrantBrokerWorkflowGenerated { content } => workflow_body_generated(content: content)
+      BranchRunGrantBrokerWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn branch_run_grant_broker_workflow_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: BranchRunGrantBrokerWorkflowYamlArtifact))
+}
+
+data branch_run_grant_broker_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: branch_run_grant_broker_workflow_yaml_artifact_generated,
+  extra_valid: branch_run_grant_broker_workflow_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.fleet.branch_run_grant_broker_workflow expected_branch_run_grant_broker_workflow_yml",
+    authority: "gunbc.fleet.branch_run_grant_broker_workflow branch_run_grant_broker_workflow",
+  } },
 }

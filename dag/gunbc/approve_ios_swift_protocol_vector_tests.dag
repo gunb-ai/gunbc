@@ -21,6 +21,7 @@ import v2.extdeps.languages.swift.syntax {
   sw_field, sw_p_, sw_func, sw_struct, sw_doc, sw_cmt, sw_import
 }
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, SwiftRowEmitted, SwiftRowEmissionRefused, swift_rows_emit_source_file }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
 
 // apps/approve-ios/ApproveTests/ProtocolVectorTests.swift AS A SWIFT SYNTAX TREE
 // (v2.extdeps.languages.swift.syntax), emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the
@@ -595,4 +596,17 @@ fn approve_ios_vectors_emission(parts: ResourceParts?, escape_present: Bool) -> 
 
 fn expected_approve_ios_protocol_vector_tests_swift() -> SwiftRowEmission {
   approve_ios_vectors_emission(parts: approve_ios_vectors_artifact_resource_parts(), escape_present: approve_ios_vectors_escape_specimens_present())
+}
+
+fn approve_ios_protocol_vector_tests_swift_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_approve_ios_protocol_vector_tests_swift() {
+      SwiftRowEmitted { source } => ArtifactGenerated { content: source }
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+}
+
+data approve_ios_protocol_vector_tests_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: approve_ios_protocol_vector_tests_swift_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

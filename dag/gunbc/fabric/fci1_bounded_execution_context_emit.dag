@@ -14,6 +14,7 @@ import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name, fci1_cont
 import gunbc.fabric.fci1_controls_slice { fci1_controls_slice_unit_text, fci1_controls_slice_unit_path }
 import std.measure { byte_size_count }
 import extdeps.systemd { SliceProperty, WorkingDirectoryProperty, RuntimeDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_generation_produced }
 
 type Fci1BoundedExecutionContextEmission
   = Fci1BoundedExecutionContextEmitted { content: String }
@@ -127,4 +128,17 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
         ], "") }
       }
   }
+}
+
+fn fci1_bounded_execution_context_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_fci1_bounded_execution_context_env() {
+      Fci1BoundedExecutionContextEmitted { content } => ArtifactGenerated { content: content }
+      Fci1BoundedExecutionContextEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+data fci1_bounded_execution_context_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  generate: fci1_bounded_execution_context_artifact_generated,
+  extra_valid: artifact_generation_produced,
+  provenance: none,
 }
