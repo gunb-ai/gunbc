@@ -2,18 +2,16 @@ module test.claim.live_deploy.serving_footprint_witness
 
 import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import gunbc.live_deploy.slice_bounds {
-  user_work_slot_memory_max, user_work_slice_memory_max_of,
-  user_work_serving_door_residency, user_work_serving_census_headroom,
-  user_work_request_footprint_of, user_work_slice_fits,
-}
+import std.measure { ByteSize, byte_size, byte_size_count, kibibyte_count }
+import gunbc.live_deploy.slice_bounds { user_work_slot_memory_max, user_work_slice_memory_max_of }
 import gunbc.live_deploy.serving_child_observations {
-  ServingChildHostOverride, serving_child_engine_bound,
+  ServingChildHostOverride, serving_child_engine_bound, serving_child_worst_instrumented,
   serving_child_residency, serving_child_residency_for, serving_child_engine_bound_is_positive,
   no_serving_child_host_override_undercuts_the_engine,
   serving_child_bound_covers_the_worst_instrumented_reading,
-  serving_child_bound_stands_on_the_engine_print, serving_child_worst_instrumented_kib,
+  serving_child_bound_stands_on_the_engine_print,
+  user_work_serving_door_residency, user_work_serving_census_headroom,
+  user_work_request_footprint_of, user_work_slice_fits,
 }
 
 fn check_or_name(name: String, held: Bool) -> String {
@@ -56,10 +54,22 @@ fn the_child_bound_is_positive() -> Bool {
 }
 
 // THE CHILD BOUND SITS AT OR ABOVE THE WORST INSTRUMENTED SERVING-ROUTE READING (review 99177's
-// fix as a change detector: an edit dropping the bound under 6090188 KiB turns this red).
+// fix as a change detector: an edit dropping the bound under 6090188 KiB turns this red), and the
+// reading is the typed KiB quantity it claims to be (review 99193: no unit-named bare Ints).
 fn the_child_bound_covers_the_worst_instrumented_reading() -> Bool {
   serving_child_bound_covers_the_worst_instrumented_reading()
-    && serving_child_worst_instrumented_kib == 6090188
+    && kibibyte_count(k: serving_child_worst_instrumented) == 6090188
+}
+
+// THE BOUNDARY IS DISCRIMINATED AT ITS REAL PRODUCERS (witness_one_interface): the footprint and
+// the fits answer below are composed ONLY from the fleet's own rows -- the standing slot ceiling,
+// the residency function, the declared slice ceiling -- never supplied literals.
+fn the_producers_inhabit_the_boundary() -> Bool {
+  let produced_footprint = user_work_request_footprint_of(unit_memory_max: user_work_slot_memory_max, child_residency: serving_child_residency(host: "srv3"))
+  let produced_slice = user_work_slice_memory_max_of(slots: 2)
+  user_work_slice_fits(slots: 1, footprint: produced_footprint, slice_max: produced_slice)
+    && !user_work_slice_fits(slots: 2, footprint: produced_footprint, slice_max: produced_slice)
+    && byte_size_count(b: produced_footprint) == byte_size_count(b: claim_footprint)
 }
 
 // THE BOUND STANDS ON THE ENGINE'S OWN PRINT, not on a transcribed plan quote or a stale
@@ -157,6 +167,7 @@ fn run_serving_footprint_witness() -> ProcessExit {
     check_or_name(name: "the_child_bound_is_positive", held: the_child_bound_is_positive()),
     check_or_name(name: "the_child_bound_covers_the_worst_instrumented_reading", held: the_child_bound_covers_the_worst_instrumented_reading()),
     check_or_name(name: "the_child_bound_stands_on_an_instrument", held: the_child_bound_stands_on_an_instrument()),
+    check_or_name(name: "the_producers_inhabit_the_boundary", held: the_producers_inhabit_the_boundary()),
     check_or_name(name: "the_host_rows_stay_above_the_engine_bound", held: the_host_rows_stay_above_the_engine_bound()),
     check_or_name(name: "an_unmeasured_host_takes_the_engine_bound", held: an_unmeasured_host_takes_the_engine_bound()),
     check_or_name(name: "a_host_row_speaks_for_its_host", held: a_host_row_speaks_for_its_host()),
