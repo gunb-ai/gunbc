@@ -31620,11 +31620,30 @@ fn probe_switch_on() -> bool {
     })
 }
 
+// FIX(lively-tern-355, manager-authorised leg spec 2026-11-27): arm ENTRY now writes an
+// event-time hit line, not just a counter bump. Before this, C1/C3/C5 had no truncation-
+// surviving witness at all: only probe_census wrote to the file, so a corpus pass killed
+// before the summary fold left those three counters with nothing to read back. Missing was
+// then indistinguishable from zero, which is exactly the defect behind the false PROBE_BROKEN.
+// Entry lines are file-only (never inline) so the per-arm inline cap semantics a reviewer
+// already read stay unchanged.
 fn probe_note_arm(arm: &str, name: String) -> String {
     if arm == "KernelMethodOnly" {
-        PROBE_C1_ARM_K_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let n = PROBE_C1_ARM_K_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let entry_line = format!(
+            "PROBE_ARM_ENTRY arm=KernelMethodOnly seq={} callee={:?}",
+            n + 1,
+            name.clone()
+        );
+        probe_record_hit(&entry_line);
     } else if arm == "DeclarationOnly" {
-        PROBE_C3_ARM_D_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let n = PROBE_C3_ARM_D_ENTRIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let entry_line = format!(
+            "PROBE_ARM_ENTRY arm=DeclarationOnly seq={} callee={:?}",
+            n + 1,
+            name.clone()
+        );
+        probe_record_hit(&entry_line);
     }
     name
 }
@@ -31647,7 +31666,13 @@ fn probe_census(
                 probe_record_hit(&line);
                 probe_emit_inline("KernelMethodOnly", &line, n + 1);
                 if probe_switch_on() {
-                    PROBE_C5_ARM_K_CENSUS_DROPPED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let n = PROBE_C5_ARM_K_CENSUS_DROPPED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let drop_line = format!(
+                        "PROBE_ARM_K_CENSUS_DROPPED arm=KernelMethodOnly seq={} callee={:?}",
+                        n + 1,
+                        name.clone()
+                    );
+                    probe_record_hit(&drop_line);
                     eprintln!(
                         "PROBE_OVERRIDE_APPLIED arm=KernelMethodOnly callee={:?} census_present_treated_as_absent",
                         name.clone()
