@@ -22,6 +22,7 @@ import gunbc.compute.work_provider_local {
   UnitPopulation, PopulationOccupied, PopulationEmpty, PopulationUnknown,
   UnitPropertyReading, unit_property_from_shell,
 }
+import gunbc.compute.seat_cgroup_absence { SeatCgroupUnobservable }
 import gunbc.compute.unit_bounds { compute_kill_mode_property, compute_kill_mode_value }
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
@@ -593,7 +594,10 @@ fn lifecycle_of(load: UnitPropertyReading, active: UnitPropertyReading, result: 
 // THE SAME FOLD ON A RECORD. The lifecycle and termination folds must reach the same agreement about a
 // manager's absence, and they can only agree if both are handed the same reading.
 fn lifecycle_of_record(record: SeatStopRecord, load: UnitPropertyReading, active: UnitPropertyReading, result: UnitPropertyReading, pop: UnitPopulation) -> UnitLifecycle {
-  unit_lifecycle_decide(o: UnitLifecycleObservations { stop_record: record, load_state: load, active_state: active, result: result, population: pop })
+  // The cgroup reading is SUPPLIED UNOBSERVABLE here: every claim in this witness predates the cgroup
+  // proof and must see exactly the answers it saw before -- the proof arms are claimed, with supplied
+  // values, in test.claim.compute.seat_cgroup_absence_witness.
+  unit_lifecycle_decide(o: UnitLifecycleObservations { stop_record: record, load_state: load, active_state: active, result: result, population: pop, seat_cgroup: SeatCgroupUnobservable { detail: "not consulted by this claim" } })
 }
 
 // CRITERION 1: FOUR STATES FROM THE MANAGER'S OWN VOCABULARY, AND UNKNOWN IS AN ARM.
