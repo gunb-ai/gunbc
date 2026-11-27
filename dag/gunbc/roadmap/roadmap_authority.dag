@@ -9757,6 +9757,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "namespace-legacy-choice-retirement", parent: "interpreter-evaluates-the-resolved-call-target"),
     edge(child: "test-everything-runs-what-changed", parent: "read-set-convergence"),
     edge(child: "test-everything-runs-what-changed", parent: "claim-route-loads-by-layout-demand"),
+    edge(child: "required-check-named-witnesses-runs-no-claim-module", parent: "test-everything-runs-what-changed"),
   ], guarantee_ladder_edges())
 }
 
