@@ -370,7 +370,7 @@ test fn a_checked_ceiling_is_distinguishable_from_an_uncheckable_one() -> Bool {
   // claim is the one that fails.
   match realization_gpu_join(gpu: observed_card("NVIDIA RTX 2000 Ada Generation", 12288, 50000)) {
     RealizationGpuJoined { gpu: _, board: b, carried: carried } =>
-      b.facts.model == "NVIDIA RTX 2000 Ada Generation"
+      b.facts.model == "RTX 2000 Ada Generation"
       && count(carried |> filter(g => match g { FigureAbsent { figure: _ } => true  _ => false })) == 0
       && count(carried |> filter(g => match g { FigureCited { figure: BoardPowerCeiling, authority: _ } => true  _ => false })) == 1
     RealizationGpuRefused { gpu: _, refusal: _ } => false
