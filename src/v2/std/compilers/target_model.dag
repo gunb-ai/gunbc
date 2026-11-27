@@ -1821,6 +1821,22 @@ type OperatorChainsPolicy
   | ChainsNo
   | ChainsUndeclared
 
+// Three states for "does this value expression PROVE it is a comparison apply". The unknown is
+// its own state and is never collapsed into either known answer (gunbc.design_argument::
+// declared_intent -- review 99405: squeezing comparison / not-a-comparison / undecodable into a
+// Bool hides the choice). The consumer seams take their opposite safe directions from this one
+// state: grouping WRAPS an undecodable operand (extra parens are correct by construction), and the
+// chain guard does NOT claim it is a comparison -- a refusal under
+// target_value_expression_emit_comparison_operand_is_comparison for an operand never SHOWN to be
+// a comparison is a plausible fabrication (gunbc.design_argument::fail_closed). The undecodable
+// operand is refused instead by its own emit, under the decode reason it owns
+// (target_value_expr_operand_wire_malformed, located at the operand node): the guard not firing
+// is not fail-open, it is the refusal arriving with the true reason.
+type OperandComparisonState
+  = ComparisonDetected
+  | NotComparison
+  | OperandOperationEdgeUndecodable
+
 type TargetOperatorRealization {
   operation: CanonicalOperation
   shape: TargetOperatorShape
@@ -6660,8 +6676,10 @@ fn target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(
 }
 
 // True when the enclosing operator is a comparison (canonical_operation_is_comparison) and either
-// positional operand is itself a comparison apply — the shape Rust rejects because its comparison
-// operators do not chain. The variant decision lives in the classification, not here.
+// positional operand is a PROVEN comparison apply -- the shape Rust rejects because its comparison
+// operators do not chain. An undecodable operand is not claimed as a comparison here (review
+// 99405); it meets its true refusal at its own emit. The variant decision lives in the
+// classification, not here.
 fn target_value_expr_operands_form_comparison_chain(
   enclosing_op: CanonicalOperation,
   operands: List<TargetValueExpression>
@@ -6674,49 +6692,49 @@ fn target_value_expr_operands_form_comparison_chain(
 }
 
 fn target_value_expr_operands_hold_comparison(operands: List<TargetValueExpression>) -> Bool {
-  target_value_expr_operand_slot_holds_comparison(operands: operands, index: 0)
-  || target_value_expr_operand_slot_holds_comparison(operands: operands, index: 1)
-}
-
-// The ONE decision both emit-seam rules consult for "operand is a primitive apply whose operation
-// edge cannot be decoded" (chain check below and the grouping rule's Rejected arm above). A non-apply
-// operand is never "an apply whose op failed": a binding ref, literal or closure is what its kind
-// says it is, so the rules cannot diverge on that distinction again.
-fn target_value_expr_operand_is_undecodable_primitive_apply(operand: TargetValueExpression) -> Bool {
-  match operand.kind {
-    TargetValueExprPrimitiveApply =>
-      match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+  // A chain is PROVEN only by a slot whose operation decoded to a comparison. An
+  // OperandOperationEdgeUndecodable slot proves no chain and is never reported as one (review
+  // 99405): the enclosing emit proceeds, reaches that operand, and the operand's own emit refuses
+  // with the decode reason it owns, located at the operand. Nothing renders either way -- the
+  // refusal moves to the arm that can name the true reason, it does not disappear.
+  match target_value_expr_operand_slot_comparison_state(operands: operands, index: 0) {
+    ComparisonDetected => true
+    _ =>
+      match target_value_expr_operand_slot_comparison_state(operands: operands, index: 1) {
+        ComparisonDetected => true
+        _ => false
       }
-    _ => false
   }
 }
 
-fn target_value_expr_operand_slot_holds_comparison(
+// THE ONE decision both emit-seam rules consult about an operand: what it PROVES about being a
+// comparison apply, with the undecodable operation edge kept as its own state (OperandComparisonState
+// above; review 99405). A non-apply operand is never "an apply whose op failed": a binding ref,
+// literal or closure is what its kind says it is, so the rules cannot diverge on that distinction
+// again. One decode, three states, both seams consult it.
+fn target_value_expr_operand_comparison_state(operand: TargetValueExpression) -> OperandComparisonState {
+  match operand.kind {
+    TargetValueExprPrimitiveApply =>
+      match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
+        Accepted { value: op, diagnostics: _ } =>
+          if canonical_operation_is_comparison(op: op) {
+            ComparisonDetected
+          } else {
+            NotComparison
+          }
+        Rejected { diagnostics: _ } => OperandOperationEdgeUndecodable
+      }
+    _ => NotComparison
+  }
+}
+
+fn target_value_expr_operand_slot_comparison_state(
   operands: List<TargetValueExpression>,
   index: Int
-) -> Bool {
+) -> OperandComparisonState {
   match list_at_optional(xs: operands, index: index) {
-    Present { value: operand } =>
-      if target_value_expr_operand_is_undecodable_primitive_apply(operand: operand) {
-        // A primitive apply whose operation edge fails to decode is UNKNOWN, not "not a
-        // comparison": the chain check must not widen on it (gunbc.design_argument::fail_closed —
-        // a failure arm refuses, never widens). It is therefore treated as a comparison, so the
-        // target's chains row decides: today every row is chains=no or Absent, so the emit refuses
-        // with its own typed reason (target_value_expression_emit_comparison_operand_is_comparison)
-        // instead of handing the target `a < b == c`. Same shared predicate decides this shape in
-        // the grouping rule, where the fail-closed direction is WRAP (extra parens).
-        true
-      } else {
-        match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
-          Accepted { value: op, diagnostics: _ } => canonical_operation_is_comparison(op: op)
-          // Reachable only for NON-apply kinds: an apply with an undecodable operation took the
-          // arm above. A binding ref, literal, closure or any other kind is not a comparison apply.
-          Rejected { diagnostics: _ } => false
-        }
-      }
-    Absent => false
+    Present { value: operand } => target_value_expr_operand_comparison_state(operand: operand)
+    Absent => NotComparison
   }
 }
 
@@ -7124,13 +7142,13 @@ fn target_value_expression_operand_needs_grouping(
           }
         // An operand shaped as a primitive apply whose operation cannot be decoded is WRAPPED:
         // every unknown in the grouping rule fails closed (extra parens are correct by
-        // construction); there is no invariant making this arm unreachable, since the predicate is
-        // callable on any value-expression node. The twin decision — the chain check treats this
-        // same shape as an unknown comparison and REFUSES — consults the same predicate
-        // target_value_expr_operand_is_undecodable_primitive_apply, so the rules cannot diverge.
-        Rejected { diagnostics: _ } =>
-          target_value_expr_operand_is_undecodable_primitive_apply(operand: operand)
-      }
+        // construction); there is no invariant making this arm unreachable, since the decision is
+        // callable on any value-expression node. This is the same decode decision the
+        // OperandComparisonState seams consult (target_value_expr_operand_comparison_state keys
+        // on exactly this Accepted/Rejected split), so the grouping rule and the chain rule
+        // cannot diverge on the distinction; they differ only in safe direction -- WRAP here,
+        // no-fabricated-refusal in the chain guard (review 99405).
+        Rejected { diagnostics: _ } => true
     TargetValueExprConditional => true
     _ => false
   }

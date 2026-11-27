@@ -2,7 +2,7 @@ module v2.test.claim.target_model_external_authority_decode
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
-import std.algebra { Empty, list_snoc_item, fold_list }
+import std.algebra { Empty, list_snoc_item, fold_list, string_contains }
 import std.optional { Absent, Optional, Present }
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
@@ -29,6 +29,7 @@ import v2.std.compilers.target_model {
   target_value_expression_operand_needs_grouping,
   target_value_expression_primitive_apply,
   target_value_expr_comparison_chain_refuses,
+  target_value_expr_primitive_apply_operation_from_wire,
   target_value_expression_emit_comparison_operand_is_comparison_diagnostic,
   target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic,
   ChainsYes,
@@ -42,7 +43,7 @@ import v2.std.compilers.target_model {
   target_external_authority_from_node,
   target_uri_scheme_discriminant
 }
-import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_reason_lexemes }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 import std.types { NonEmptyStr, List }
@@ -536,11 +537,29 @@ test fn chains_declared_yes_permits_nested_comparison() -> Bool {
   ) == false
 }
 
-// Chain-side counterpart of grouping_undecodable_apply_operand_wraps: an operand whose operation
-// cannot be decoded is UNKNOWN, not "not a comparison", so the slot predicate treats it as a
-// comparison (fail closed) and the target's chains row decides. With no chains edge — every
-// target's shape today — the chain check refuses rather than letting `a < b == c` through.
-test fn chains_undecodable_operand_treated_as_comparison_refuses() -> Bool {
+// Chain-side counterpart of grouping_undecodable_apply_operand_wraps, rewritten for review 99405:
+// an operand whose operation edge cannot be decoded is UNDECIDED about being a comparison, and the
+// chain guard must never report it as one. The old claim named
+// chains_undecodable_operand_treated_as_comparison_refuses asserted the guard treating it as a
+// comparison (refuse under target_value_expression_emit_comparison_operand_is_comparison) -- the
+// review's defect: a reader sent looking for a chained comparison that was never shown to exist
+// (gunbc.design_argument::fail_closed, "a wrong answer is a loud, typed, located error, never a
+// plausible fabrication"). The guard now refuses only PROVEN chains; the undecodable operand meets
+// its true refusal at its own emit, under target_value_expr_operand_wire_malformed located at the
+// operand (witnessed below). Fail-closed is preserved: nothing renders in either direction.
+
+// A primitive-apply value expression whose operation edge cannot be decoded: the atom node carries
+// no operation edge at all. This is review 99405's failure-scenario shape (lt(x, <apply with a
+// malformed op edge>)), constructed at decision level because the ingest pipeline cannot author a
+// malformed op edge from a well-typed source.
+fn claim_undecodable_apply() -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprPrimitiveApply,
+    node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+  }
+}
+
+test fn chains_undecodable_operand_alone_proves_no_chain_does_not_refuse() -> Bool {
   target_value_expr_comparison_chain_refuses(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence(
@@ -550,14 +569,37 @@ test fn chains_undecodable_operand_treated_as_comparison_refuses() -> Bool {
       )
     ]),
     enclosing_op: canonical_operation_op_lt(),
-    operands: [
-      TargetValueExpression {
-        kind: TargetValueExprPrimitiveApply,
-        node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
-      },
-      claim_flat_binding()
-    ]
+    operands: [claim_undecodable_apply(), claim_flat_binding()]
+  ) == false
+}
+
+// The OTHER slot proving the chain still refuses: the shape reason is TRUE then, and the
+// undecodable slot neither masks nor fabricates it.
+test fn chains_undecodable_operand_with_proven_comparison_sibling_refuses() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_undecodable_apply(), claim_lt_apply()]
   )
+}
+
+// The refusal the undecodable operand actually meets: decoding its operation edge rejects under
+// target_value_expr_operand_wire_malformed -- the true reason the chain guard must not pre-empt
+// with a comparison-shape claim, and the reason the operand's own emit carries.
+test fn undecodable_op_edge_decode_refuses_under_operand_wire_malformed() -> Bool {
+  match target_value_expr_primitive_apply_operation_from_wire(
+    wire: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "operand_wire_malformed")
+  }
 }
 
 // The chain check's scope is the chaining POLICY, not operand decodability: with chains=yes
