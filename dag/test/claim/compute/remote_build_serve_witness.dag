@@ -519,11 +519,15 @@ test fn the_wall_bound_is_on_the_granted_unit_not_the_answer_printer() -> Bool {
   }
 }
 
-// THE WITNESS DOOR. These claims ride no schedule lane today (the file carries no WetScheduledClaim rows
-// at this head; the brief's standing rule is that evidence is the posted manual receipt), and several of
-// them read tempdirs and identity files that a --claim-run mock table would fake into agreement -- the
-// exact failure mode that made three false claims read TRUE before. So the whole set runs through THIS
-// door with --function, no mock responses: exit 0 only when every claim holds; a red claim names itself.
+// THE WITNESS DOOR, the aggregate manual-receipt entry -- the same shape as
+// test.claim.compute.compute_recover_catalog_witness. Three of these claims (the probe-decode set this
+// program added) are ALSO enrolled one-per-row in gunbc.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule; the schedule has no runner today, so the posted receipt from running THIS
+// door is the evidence, exactly as in that precedent. Several claims read tempdirs and identity files
+// that a --claim-run mock table would fake into agreement -- the failure mode that made three false
+// claims read TRUE once -- so this entry runs through --function with no mock responses. The roster
+// below must list EVERY test fn in this module: exit 0 only when every claim holds, and a red claim
+// names itself.
 fn check_or_name(name: String, held: Bool) -> String {
   if held { "" } else { concat(name, " ") }
 }
@@ -558,6 +562,7 @@ fn run_remote_build_serve_witness() -> ProcessExit {
     check_or_name(name: "a_malformed_identity_file_refuses_rather_than_reading_as_absent", held: a_malformed_identity_file_refuses_rather_than_reading_as_absent()),
     check_or_name(name: "a_refused_identity_refuses_the_whole_receipt", held: a_refused_identity_refuses_the_whole_receipt()),
     check_or_name(name: "the_real_read_route_reads_a_preplaced_identity_file", held: the_real_read_route_reads_a_preplaced_identity_file()),
+    check_or_name(name: "a_request_that_waited_past_its_ceiling_refuses_to_start", held: a_request_that_waited_past_its_ceiling_refuses_to_start()),
     check_or_name(name: "a_remote_build_dependent_request_pre_builds_its_seed", held: a_remote_build_dependent_request_pre_builds_its_seed()),
     check_or_name(name: "an_unreadable_host_clock_is_a_cannot_serve_answer_not_a_wait_refusal", held: an_unreadable_host_clock_is_a_cannot_serve_answer_not_a_wait_refusal()),
     check_or_name(name: "a_wait_bound_refusal_is_capacity_limited_and_retry_allowed", held: a_wait_bound_refusal_is_capacity_limited_and_retry_allowed()),
