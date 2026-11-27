@@ -1,28 +1,40 @@
 module test.claim.roadmap.roadmap_serve_healthz_served_plan_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, List }
 import extdeps.ietf.http_semantics { GET }
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, ServeWireResponse, ServeRequestHeader }
 import gunbc.auth.request_authentication { AccessPathLocalDev, AuthAbsent, RequestAccessPath, RequestAuthenticationEvidence }
-import gunbc.roadmap.roadmap_serve { HealthzHandler, DailyBodyRenderedUnderThisPlan, roadmap_serve_invoke_over }
-import gunbc.roadmap.roadmap_site_surface_observe { render_roadmap_site_surface_bundle_for_projection }
+import gunbc.roadmap.roadmap_serve { HealthzHandler, DailyBodyRenderedUnderThisPlan, roadmap_serve_invoke_over, roadmap_serve_handle_srv1_lab }
+import gunbc.roadmap.roadmap_ingress { roadmap_ingress }
+import gunbc.http_ingress { HttpIngressBound, HttpIngressRefused, http_ingress_pre_evaluation_routes }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  render_roadmap_site_surface_bundle_for_projection,
+  roadmap_site_tree_surface_bundle,
+}
 import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
+import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead }
 import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified, observe_running_release_identity }
+import gunbc.live_deploy.candidate { candidate_release_of_tree_surface }
+import gunbc.live_deploy.readiness { observe_service_readiness_from_healthz }
+import gunbc.readiness { Ready, Pending, Refused }
+import gunbc.live_deploy.release_binding { PairBoundToServe, PairServeRefused, lab_pair_serve_verdict }
+import gunbc.live_deploy.deployed_tree_observation { DeployedTreeObserved, DeployedScopeMatchesCommit }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 
-// THE /healthz HANDLER ANSWERS FROM THE PLAN THE SERVE SEAM HANDS IT, AND READS NO CARRIER OF ITS OWN.
-// Incident 2026-11-26 (srv1-lab-codex-feedback-v0 at a58ba3e3): the handler ignored the entry's plan and
-// called materialize_live_roadmap_site_surface_bundle, which is pinned to srv1_live_dashboard_instance, so every
-// lab probe added and removed a git worktree in production's repository, fetched, reset --hard and folded the
-// whole projection, and overran the 30 s serve budget. These claims supply the plan as a VALUE at the
-// gunbc.roadmap.roadmap_serve roadmap_serve_invoke_over interface (DESIGN section 3, a witness discriminates at
-// one interface): on a handler that reads only that value they are pure, and on one that reaches past it to a
-// carrier the hermetic route refuses the host effect (NoMockResponse), which is this claim's red.
+// THE /healthz SURFACE IS A FACT OF (interpreter, tree), NOT OF THE PLAN THE ENTRY SERVES (operator ruling
+// 2026-11-26, on gunbc#17128's proposal). gunbc#17128 made the handler render over the served instance's plan
+// thunk, which made every probe snapshot, fold and render that instance's event log -- more than the 30 s serve
+// budget on the srv1 lab, so the belt's 5 s /healthz probe refused and the lab standings froze. The handler now
+// publishes the carrier-free tree surface (gunbc.roadmap.roadmap_site_surface_observe
+// roadmap_site_tree_surface_bundle) and never evaluates the plan thunk.
 //
-// The two plans render different surfaces, so a handler that answered a constant -- or one plan's surface for
-// the other -- cannot satisfy both claims.
+// The claims supply values at the gunbc.roadmap.roadmap_serve roadmap_serve_invoke_over interface (DESIGN
+// section 3, a witness discriminates at one interface), keep ONE inhabitance claim on the real entry, and check
+// that every party that compares the published surface -- candidate, readiness, belt pair gate -- agrees on it.
 
 fn healthz_fixture_request() -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
   ServeHttpRequest {
@@ -61,10 +73,10 @@ fn healthz_served_over(plan: RoadmapAuthorityProjection) -> ServeHttpResponse {
   )
 }
 
-// The expectation is spelled by the producers the route itself uses (render over the plan, then the one
+// The expectation is spelled by the producers the route itself uses (the tree surface, then the one
 // served-document producer), never a hand-assembled body.
-fn healthz_expected_over(plan: RoadmapAuthorityProjection) -> String {
-  let bundle = render_roadmap_site_surface_bundle_for_projection(proj: plan)
+fn healthz_expected_tree_document() -> String {
+  let bundle = roadmap_site_tree_surface_bundle()
   healthz_body_with_release_identity(
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
@@ -74,14 +86,108 @@ fn healthz_expected_over(plan: RoadmapAuthorityProjection) -> String {
   )
 }
 
-test fn healthz_publishes_the_surface_of_the_supplied_projected_plan() -> Bool {
-  let r = healthz_served_over(plan: healthz_fixture_projected_plan())
-  r.status == 200 && r.body == healthz_expected_over(plan: healthz_fixture_projected_plan())
+// TWO DIFFERENT PLANS, ONE BODY. The two supplied plans render different surfaces (the third conjunct makes that
+// non-vacuous: their own bundle identities differ), and the handler answers the same document for both -- the
+// tree's. RED (described, and it is gunbc#17128's own behaviour): a handler that renders over the plan it is
+// handed answers two different bodies here, which is exactly what that PR's
+// healthz_publishes_the_surface_of_the_supplied_refused_plan asserted (`r.body != ...projected...`).
+test fn healthz_is_the_tree_surface_whatever_plan_the_entry_serves() -> Bool {
+  let projected = healthz_served_over(plan: healthz_fixture_projected_plan())
+  let refused = healthz_served_over(plan: healthz_fixture_refused_plan())
+  projected.status == 200
+    && refused.status == 200
+    && projected.body == refused.body
+    && projected.body == healthz_expected_tree_document()
+    && render_roadmap_site_surface_bundle_for_projection(proj: healthz_fixture_projected_plan()).bundle_identity
+      != render_roadmap_site_surface_bundle_for_projection(proj: healthz_fixture_refused_plan()).bundle_identity
 }
 
-test fn healthz_publishes_the_surface_of_the_supplied_refused_plan() -> Bool {
-  let r = healthz_served_over(plan: healthz_fixture_refused_plan())
-  r.status == 200
-    && r.body == healthz_expected_over(plan: healthz_fixture_refused_plan())
-    && r.body != healthz_expected_over(plan: healthz_fixture_projected_plan())
+// THE REAL ENTRY, ON ITS REAL ROUTE: the srv1 lab's entry function, whose own plan thunk reads the lab instance's
+// event carrier, answers GET /healthz with the tree document. This is the inhabitance claim: the route from the
+// entry through roadmap_serve_handle_over, the route table and HealthzHandler is executed, not supplied. RED: a
+// handler that evaluates the entry's plan reaches the carrier read (Filesystem.List on the instance's event
+// worktree), which the hermetic route refuses (UNOBSERVED HostEffectRefused) -- what gunbc#17128's handler did on
+// this entry and what made every lab probe cost a full snapshot, fold and render.
+test fn the_lab_entry_answers_healthz_without_reading_its_carrier() -> Bool {
+  let headers: List<ServeRequestHeader> = []
+  let r: ServeWireResponse = roadmap_serve_handle_srv1_lab(
+    method: "GET",
+    path: "/healthz",
+    body: "",
+    tailscale_identity: "",
+    request_headers: headers,
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 200 && r.body == healthz_expected_tree_document()
+}
+
+// EVERY COMPARING PARTY AGREES ON THE ONE CARRIER-FREE IDENTITY. The surface the process publishes (read back off
+// the served body), the candidate's expected identity (gunbc.live_deploy.candidate
+// candidate_release_of_tree_surface), the readiness verdict over the same tree bundle (gunbc.live_deploy.readiness
+// observe_service_readiness_from_healthz) and the belt/launch pair verdict (gunbc.live_deploy.release_binding
+// lab_pair_serve_verdict, the fold gunbc.roadmap.roadmap_belt_tick_cli belt_pair_serve_gate_at calls with
+// roadmap_site_tree_surface_bundle().bundle_identity) all hold over a served body produced by the real handler.
+// RED: any one side rendered over a different projection -- the log-tracking expectation this change deleted,
+// stood in for here by the refused-plan surface the first claim shows is a different identity -- breaks the
+// equality and the verdicts (ProcessSurfaceMismatch, ReleaseSurfaceMixed).
+test fn every_comparing_party_agrees_on_the_tree_surface_the_process_publishes() -> Bool {
+  let served = healthz_served_over(plan: healthz_fixture_refused_plan()).body
+  let tree = roadmap_site_tree_surface_bundle()
+  let candidate = candidate_release_of_tree_surface(revision: deploy_witness_release_revision, bundle: tree)
+  let published = match observe_running_release_identity(healthz_body: served) {
+    RunningReleaseIdentified { observation: o } => o.surface_bundle_identity == candidate.expected_surface_identity
+    RunningReleaseUnidentified { cause: _ } => false
+  }
+  let ready = match observe_service_readiness_from_healthz(
+    read: HealthzBodyRead { body: served },
+    bundle: tree,
+    expected_revision: candidate.revision,
+    expected_surface_identity: candidate.expected_surface_identity,
+  ) {
+    Ready { evidence: _ } => true
+    Pending { cause: _ } => false
+    Refused { cause: _ } => false
+  }
+  let paired = match git_object_id_from_untagged_hex(hex: deploy_witness_release_revision as String) {
+    Absent => false
+    Present { value: o } =>
+      match lab_pair_serve_verdict(
+        observation: DeployedTreeObserved { revision: o, tree: o, content: DeployedScopeMatchesCommit },
+        identity: observe_running_release_identity(healthz_body: served),
+        expected_surface: tree.bundle_identity,
+      ) {
+        PairBoundToServe { binding: _ } => true
+        PairServeRefused { binding: _, reason: _ } => false
+      }
+  }
+  published && ready && paired
+}
+
+// ONCE PER PROCESS, AND THE SAME BYTES THE HANDLER ANSWERS. The production binding (gunbc.roadmap.roadmap_ingress,
+// for the srv1 lab's entry) hands the host a pre-evaluation row for GET /healthz, which the host renders once at
+// startup and answers without entering the evaluator; its response is exactly what the lab entry's handler answers
+// for /healthz. RED: a binding without the row (the table then holds /livez alone, so every probe evaluates the
+// handler), or a row rendering any other document (a stale or plan-dependent surface).
+test fn the_lab_binding_answers_healthz_before_evaluation_with_the_handlers_bytes() -> Bool {
+  let headers: List<ServeRequestHeader> = []
+  let handled: ServeWireResponse = roadmap_serve_handle_srv1_lab(
+    method: "GET",
+    path: "/healthz",
+    body: "",
+    tailscale_identity: "",
+    request_headers: headers,
+    release_revision: deploy_witness_release_revision,
+  )
+  match roadmap_ingress(
+    handler: "roadmap_serve_handle_srv1_lab",
+    listener: "tcp:127.0.0.1:0",
+    release_revision: deploy_witness_release_revision as String,
+    cpu_limit_ms: 30000,
+    wall_limit_ms: 120000,
+  ) {
+    HttpIngressRefused { reason: _ } => false
+    HttpIngressBound { binding: b } =>
+      count(filter(http_ingress_pre_evaluation_routes(b: b, bound_host: "127.0.0.1", bound_port: 8080),
+        r => r.method == "GET" && r.target == "/healthz" && r.response == handled)) == 1
+  }
 }

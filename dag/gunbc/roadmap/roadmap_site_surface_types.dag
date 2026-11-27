@@ -107,11 +107,6 @@ type RoadmapSiteSurfaceBundle {
   healthz_body: String
 }
 
-type LiveRoadmapSiteSurfaceBundle {
-  subject: String
-  bundle: RoadmapSiteSurfaceBundle
-}
-
 // ONE semantic snapshot per operation: authority projected once, surface rendered once, healthz
 // serialized once. subject_identity hashes acceptance plus roadmap/dispatch document bodies (or the
 // exact typed refusal detail). producer_identity names the observe/render implementation.
@@ -120,4 +115,3 @@ type LiveRoadmapSiteSurfaceBundle {
 // the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or
 // rendering producers.
 
-data roadmap_site_surface_subject: String = "gunbc.roadmap_static_site/live-tree"

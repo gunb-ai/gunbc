@@ -122,7 +122,6 @@ test fn the_real_apply_route_refuses_a_remote_locus_typed() -> Bool {
     candidate: CandidateRelease {
       revision: deploy_witness_release_revision,
       expected_surface_identity: content_hash_atom(value: "surface" as NonEmptyStr),
-      expected_dispatch_digest: content_hash_atom(value: "dispatch" as NonEmptyStr),
     },
     plan: deploy_witness_full_install_plan(spec: spec),
     transport: SshShell { ssh_host: "srv-x" },

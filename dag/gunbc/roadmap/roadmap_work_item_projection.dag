@@ -199,6 +199,9 @@ fn projection_kind_is_carried(kind: RoadmapEventKind) -> Bool {
     CommentDeleted { comment: _ } => false
     ResultReturned { attempt: _, claim: _, outcome: _ } => false
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
+    // A merge is appended after the acceptance it lands and changes no standing
+    // (gunbc.design_ruling recorder ruling, gunbc#16965); it is not one of the boundary's four kinds.
+    PullRequestMergedEvent { merge: _ } => false
   }
 }
 
@@ -249,6 +252,9 @@ fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: Str
         CommentDeleted { comment: _ } => acc
         ResultReturned { attempt: _, claim: _, outcome: _ } => acc
         AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => acc
+        // The merge event names the head that landed, not the acceptance's evidence; the acceptance row stays the
+        // one place this fold reads evidence from.
+        PullRequestMergedEvent { merge: _ } => acc
       }
     })
 }
