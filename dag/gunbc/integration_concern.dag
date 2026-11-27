@@ -492,8 +492,18 @@ data pxe_2c_base_revision: CommitSha = "58852e892425e4c5de1f3bb3d73a0352d26e27be
 
 // P2a (gunbc#16467): the review sighting for emitter_string_return_carries_no_typed_refusal,
 // whose row file lives under dag/gunbc/integration_concern/.
+data orch_emit_refusal_reaches_committed_bytes_unobserved_review: SightingEvidence = CitesDeclaration {
+  declaration: decl_ref(module_path: "test.claim.compiler_gate_contract_stamp_witness", decl_name: "the_generated_step_has_no_warning_arm_and_no_override_input_holds"),
+}
+
 data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = CitesDeclaration {
   declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script_for_target"),
+}
+
+// The step-emitter word-wall coverage gap (review 97776). Its row file lives under
+// dag/gunbc/integration_concern/; this is the review sighting the row's RequirementEstablished cites.
+data step_emitter_word_wall_coverage_gap_review: SightingEvidence = CitesDeclaration {
+  declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
 }
 
 // The main revision the edge gate was found refusing a branch dispatch against: the session branch head
