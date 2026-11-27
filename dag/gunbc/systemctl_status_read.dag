@@ -38,6 +38,8 @@ fn systemctl_status_read(transport: HostEffectTransport, unit: NonEmptyStr) -> U
       unit_status_capture_from_stdout(stdout: out, refusal: "")
     HostOperationRefused { operation: _, reason: why } =>
       UnitStatusCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      UnitStatusCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

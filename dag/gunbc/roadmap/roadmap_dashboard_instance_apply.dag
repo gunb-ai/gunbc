@@ -190,7 +190,7 @@ import gunbc.owned_directory {
   OwnedDirectoryInstallPlan,
   owned_directory_path,
   owned_directory_stat_args,
-  owned_directory_observe, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ObserverTransportRefused,
+  owned_directory_observe, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ObserverTransportRefused, ObserverTransportUnanswered,
   owned_directory_install_args,
   owned_directory_decide,
   owned_directory_ensure,
@@ -1656,10 +1656,10 @@ fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, a
     DashboardSshProvision { host } =>
       match typed_argv_exec_over_ssh(host: host, argv: concat([program as String], args)) {
         TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
-        // An overrun observer leg read nothing; the observer is reported as not having been answered,
-        // never as exited with some guessed status.
-        TypedArgvExecOverran { deadline: d } => ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "dashboard observer", deadline: d) } }
-        TypedArgvExecWireInconsistent { fault: f } => ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "dashboard observer", fault: f) } }
+        // An overrun observer leg was SENT and was not answered; it is reported as dispatched-unknown,
+        // never as a pre-dispatch refusal and never as exited with some guessed status.
+        TypedArgvExecOverran { deadline: d } => ObserverReadFailed { origin: ObserverTransportUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "dashboard observer", deadline: d) } }
+        TypedArgvExecWireInconsistent { fault: f } => ObserverReadFailed { origin: ObserverTransportUnanswered { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "dashboard observer", fault: f) } }
         TypedArgvExecConverged { result } =>
           if result.exit_code == 0 { ObserverReadOut { stdout: result.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: result.exit_code, stderr: result.stderr } } }

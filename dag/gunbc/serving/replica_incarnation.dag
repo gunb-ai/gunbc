@@ -18,7 +18,7 @@ import extdeps.procps.pgrep {
 import extdeps.prometheus.client { SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_operation_exec {
-  HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
+  HostOperation, HostOperationObserved, HostOperationRefused, HostOperationOutcomeUnanswered, host_operation_unanswered_reason, host_operation_exec,
   ProcfsReadStat, ProcfsReadPidStat, GetconfClockTicksPerSecond, Sha256SumFile,
 }
 import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
@@ -115,6 +115,8 @@ fn host_read_text(transport: HostEffectTransport, operation: HostOperation) -> H
     HostOperationObserved { stdout: out, success: true, stderr: _ } => HostTextObserved { stdout: out }
     HostOperationObserved { stdout: _, success: false, stderr: _ } => HostTextRefused { cause: "the read exited non-zero" }
     HostOperationRefused { operation: op, reason: why } => HostTextRefused { cause: join([op, ": ", why], "") }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      HostTextRefused { cause: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

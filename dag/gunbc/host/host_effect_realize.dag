@@ -570,7 +570,7 @@ import gunbc.owned_directory {
   owned_directory_ensure, owned_directory_ensure_observed, owned_directory_observe, owned_directory_install_argv,
   owned_directory_outcome_converged, owned_directory_outcome_detail,
   ObserverRead, ObserverReadOut, ObserverReadFailed,
-  ObserverTransportRefused, ObserverExited,
+  ObserverTransportRefused, ObserverTransportUnanswered, ObserverExited,
 }
 import gunbc.ensure { EnsureMayApply, EnsureObservation }
 import gunbc.executor_privileged_operation {
@@ -6378,10 +6378,11 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
 fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
   match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
     RunArgvTransportRefused { reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
-    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
-    // not-observed with the typed reason, which already carries the specific fault (deadline / wire shape);
-    // the arm itself records that the leg was dispatched, not refused.
-    RunArgvTransportUnanswered { cause: _, reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. It maps to the
+    // ObserverTransportUnanswered origin (NOT the pre-dispatch ObserverTransportRefused), so the
+    // diagnostic says "dispatched, reply could not be read" and never "the transport refused the read".
+    // A failed read still establishes nothing (yields INACCESSIBLE; no policy installs on it).
+    RunArgvTransportUnanswered { cause: _, reason: r } => ObserverReadFailed { origin: ObserverTransportUnanswered { cause: r } }
     RunArgvTransportObserved { observed: o } =>
       if o.success {
         ObserverReadOut { stdout: o.stdout }

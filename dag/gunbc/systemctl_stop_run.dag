@@ -38,6 +38,11 @@ fn systemctl_stop_run(transport: HostEffectTransport, unit: NonEmptyStr) -> Syst
       }
     HostOperationRefused { operation: _, reason: why } =>
       SystemctlStopRefused { reason: why }
+    // Effectful: the stop was SENT and its reply could not be read, so whether the unit stopped is
+    // UNKNOWN. The consumer withholds on a non-Stopped outcome; the reason states it was dispatched
+    // and the effect is unknown -- never "the unit was not stopped because the stop was refused".
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      SystemctlStopRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

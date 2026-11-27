@@ -152,6 +152,12 @@ type HostOperation =
 type HostOperationOutcome =
     HostOperationObserved { stdout: String, success: Bool, stderr: String? }
   | HostOperationRefused { operation: String, reason: String }
+  // The operation leg WAS DISPATCHED and its reply came back unreadable (ran past its deadline, or an
+  // inconsistent wire shape): the value is not established and, for a mutating operation, the effect is
+  // unknown. This is NOT HostOperationRefused (a pre-dispatch refusal -- nothing sent). Consumers must decide
+  // it explicitly: read-only ones withhold the value with the cause; effectful ones treat the effect as unknown.
+  // A dispatched leg must never be reported as "refused"/"not run" (#17119).
+  | HostOperationOutcomeUnanswered { operation: String, cause: String }
 
 // THE ARGV IDENTITY, DERIVED. This is the ONE place an operation's declaration is named, and it is
 // a function of the operation rather than a field beside it -- which is what makes the ssh and local
@@ -337,6 +343,13 @@ fn host_operation_materialize_argv(operation: HostOperation) -> ArgvMaterializat
   )
 }
 
+// Renders a dispatched-but-unanswerable host operation: the leg WAS SENT, so it is never described
+// as "not run"/"refused"/not-dispatched; the value (or, for a mutating operation, the effect) simply
+// could not be established, and `cause` says why (deadline overrun or inconsistent wire reply).
+export fn host_operation_unanswered_reason(operation: String, cause: String) -> String {
+  concat(concat("the ", operation), concat(" leg was dispatched but its reply could not be read; whether it took effect is unknown (", concat(cause, ")")))
+}
+
 fn host_operation_outcome_from_exec(
   operation: HostOperation,
   outcome: TypedArgvExecOutcome,
@@ -345,9 +358,9 @@ fn host_operation_outcome_from_exec(
     TypedArgvExecConverged { result: r } =>
       HostOperationObserved { stdout: r.stdout, success: r.success, stderr: r.stderr }
       TypedArgvExecOverran { deadline: d } =>
-        HostOperationRefused { operation: host_operation_label(operation: operation), reason: typed_argv_exec_overran_reason(leg_hint: "host operation", deadline: d) }
+        HostOperationOutcomeUnanswered { operation: host_operation_label(operation: operation), cause: typed_argv_exec_overran_reason(leg_hint: "host operation", deadline: d) }
     TypedArgvExecWireInconsistent { fault: f } =>
-        HostOperationRefused { operation: host_operation_label(operation: operation), reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "host operation", fault: f) }
+        HostOperationOutcomeUnanswered { operation: host_operation_label(operation: operation), cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "host operation", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       HostOperationRefused { operation: host_operation_label(operation: operation), reason: why }
   }

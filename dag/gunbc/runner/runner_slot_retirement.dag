@@ -28,6 +28,8 @@ import gunbc.host.host_operation_exec {
   CgroupReadEvents,
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcomeUnanswered,
+  host_operation_unanswered_reason,
   HostOperationOutcome,
   host_operation_exec,
 }
@@ -1000,6 +1002,8 @@ fn cgroup_occupancy_from_reads(
   match directory_test {
     HostOperationRefused { operation: _, reason: why } =>
       CgroupUnobserved { cause: join(["the slot cgroup directory test refused: ", why], "") }
+    HostOperationOutcomeUnanswered { operation: _, cause: c } =>
+      CgroupUnobserved { cause: host_operation_unanswered_reason(operation: "the slot cgroup directory test", cause: c) }
     HostOperationObserved { stdout: _, success: exists, stderr: _ } =>
       if !exists {
         CgroupAbsent
@@ -1007,6 +1011,8 @@ fn cgroup_occupancy_from_reads(
         match events_read {
           HostOperationRefused { operation: _, reason: why } =>
             CgroupUnobserved { cause: join(["cgroup.events could not be read: ", why], "") }
+          HostOperationOutcomeUnanswered { operation: _, cause: c } =>
+            CgroupUnobserved { cause: host_operation_unanswered_reason(operation: "the cgroup.events read", cause: c) }
           HostOperationObserved { stdout: body, success: ok, stderr: _ } =>
             if !ok {
               CgroupUnobserved { cause: "reading cgroup.events exited unsuccessfully, so subtree occupancy is unknown" }
@@ -1055,6 +1061,8 @@ fn observe_slot_cgroup_occupancy(
         let dir = host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path })
         match dir {
           HostOperationRefused { operation: _, reason: _ } =>
+            cgroup_occupancy_from_reads(directory_test: dir, events_read: dir)
+          HostOperationOutcomeUnanswered { operation: _, cause: _ } =>
             cgroup_occupancy_from_reads(directory_test: dir, events_read: dir)
           HostOperationObserved { stdout: _, success: exists, stderr: _ } =>
             if !exists {

@@ -36,6 +36,8 @@ fn systemctl_is_active_read(transport: HostEffectTransport, unit: NonEmptyStr) -
       unit_is_active_capture_from_result(state: out, active: ok)
     HostOperationRefused { operation: _, reason: why } =>
       UnitIsActiveCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      UnitIsActiveCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

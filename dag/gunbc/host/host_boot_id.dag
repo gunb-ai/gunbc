@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import extdeps.uuid { Uuid }
 import extdeps.linux.kernel_random { kernel_boot_id_of }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
-import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved, HostOperationRefused }
+import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved, HostOperationRefused, HostOperationOutcomeUnanswered, host_operation_unanswered_reason }
 
 // ONE BOOT OF ONE HOST, NAMED BY ITS KERNEL (random(4) boot_id, extdeps.linux.kernel_random). It is the
 // board-neutral boot identity: what an initialized host's OS identity carries (gunbc.host.initialized_host), what
@@ -49,6 +49,7 @@ type BootIdReadVerdict
 fn boot_id_read_verdict(host: String, read: HostOperationOutcome) -> BootIdReadVerdict {
   match read {
     HostOperationRefused { operation: _, reason: why } => BootIdReadUnreadable { cause: concat("the boot id read was refused: ", why) }
+    HostOperationOutcomeUnanswered { operation: _, cause: c } => BootIdReadUnreadable { cause: host_operation_unanswered_reason(operation: "boot id read", cause: c) }
     HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
       if ok == false {
         BootIdReadUnreadable { cause: join(["the boot id read on ", host, " exited unsuccessfully"], "") }

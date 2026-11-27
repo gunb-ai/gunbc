@@ -9,6 +9,7 @@ import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcomeUnanswered,
   host_operation_exec,
   host_operation_materialize_argv,
   HostnameReadShort,
@@ -45,6 +46,8 @@ fn hostname_short_read(transport: HostEffectTransport) -> HostnameShortCapture {
       hostname_short_value_from_stdout(success: ok, stdout: out)
     HostOperationRefused { operation: _, reason: why } =>
       HostnameShortCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      HostnameShortCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

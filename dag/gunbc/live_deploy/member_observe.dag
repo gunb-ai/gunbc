@@ -41,7 +41,7 @@ import extdeps.access.posix { file_mode_octal }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, owned_directory_path, owned_directory_demand_at,
   owned_directory_observe, owned_directory_decide,
-  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverExited,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverTransportUnanswered, ObserverExited,
 }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.auth.tracker_web_oauth_client {
@@ -1073,9 +1073,9 @@ fn privileged_directory_read(arm: ObservationArm, op: ExecutorPrivilegedOperatio
           if r.exit_code == 0 { ObserverReadOut { stdout: r.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
           TypedArgvExecOverran { deadline: d } =>
-            ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "member observe executor read", deadline: d) } }
+            ObserverReadFailed { origin: ObserverTransportUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "member observe executor read", deadline: d) } }
           TypedArgvExecWireInconsistent { fault: f } =>
-            ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe executor read", fault: f) } }
+            ObserverReadFailed { origin: ObserverTransportUnanswered { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe executor read", fault: f) } }
       }
   }
 }
