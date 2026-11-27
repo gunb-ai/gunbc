@@ -357,10 +357,10 @@ fn host_operation_outcome_from_exec(
   match outcome {
     TypedArgvExecConverged { result: r } =>
       HostOperationObserved { stdout: r.stdout, success: r.success, stderr: r.stderr }
-      TypedArgvExecOverran { deadline: d } =>
-        HostOperationOutcomeUnanswered { operation: host_operation_label(operation: operation), cause: typed_argv_exec_overran_reason(leg_hint: "host operation", deadline: d) }
+    TypedArgvExecOverran { deadline: d } =>
+      HostOperationOutcomeUnanswered { operation: host_operation_label(operation: operation), cause: typed_argv_exec_overran_reason(leg_hint: "host operation", deadline: d) }
     TypedArgvExecWireInconsistent { fault: f } =>
-        HostOperationOutcomeUnanswered { operation: host_operation_label(operation: operation), cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "host operation", fault: f) }
+      HostOperationOutcomeUnanswered { operation: host_operation_label(operation: operation), cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "host operation", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       HostOperationRefused { operation: host_operation_label(operation: operation), reason: why }
   }

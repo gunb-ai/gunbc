@@ -535,6 +535,7 @@ import gunbc.hostname_set {
   HostnameSetCasReadRefused,
   HostnameSetCasBaseMismatch,
   HostnameSetCasApplyFailed,
+  HostnameSetCasOutcomeUnknown,
 }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.access.posix_effective_principal_read_op {
@@ -5006,6 +5007,15 @@ fn realize_set_hostname_cas_on_host(
     HostnameSetCasApplyFailed { stderr: e } =>
       NotConverged {
         reason: concat("host_effect: SetHostnameCas hostnamectl set-hostname failed: ", e),
+        applied: intent,
+      }
+    // The set-hostname leg was SENT and its reply could not be read, so it may already have applied.
+    // NotConverged is the safe withhold (never claim converged), but the reason states the effect is
+    // UNKNOWN and dispatched -- never "failed", which would invite a blind retry that could re-run a
+    // hostname change that already took.
+    HostnameSetCasOutcomeUnknown { cause: c } =>
+      NotConverged {
+        reason: concat("host_effect: SetHostnameCas set-hostname leg was dispatched but its reply could not be read; whether the hostname took is unknown: ", c),
         applied: intent,
       }
   }

@@ -17,8 +17,9 @@ import gunbc.host.host_identity_observation { HostIdentityObservationRow, fixtur
 import gunbc.host.host_operation_exec { HostnameReadShort, host_operation_materialize_argv }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot, fleet_machine_registry }
 import gunbc.hostname_read { hostname_short_read_operation_argv_matches_authority }
-import gunbc.hostname_set { HostnameSetCasApplied, HostnameSetCasBaseMismatch, HostnameSetCasApplyFailed, hostname_set_cas, hostname_set_cas_from_outcome, hostname_set_privileged_operation_argv_matches_fleet_grant }
-import gunbc.typed_argv_exec { TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.hostname_set { HostnameSetCasApplied, HostnameSetCasBaseMismatch, HostnameSetCasApplyFailed, HostnameSetCasOutcomeUnknown, hostname_set_cas, hostname_set_cas_from_outcome, hostname_set_privileged_operation_argv_matches_fleet_grant }
+import gunbc.typed_argv_exec { TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason }
+import extdeps.ssh.session { OverrunWithoutDeadline }
 import std.algebra { string_contains }
 import std.measure { second }
 import gunbc.host.host_identity_access { host_identity_srv1_access }
@@ -431,16 +432,23 @@ test fn witness_invalid_desired_hostname_unwritable() -> Bool {
 }
 
 
-// A DISPATCHED hostname-set leg that ran past its deadline (TypedArgvExecOverran) WAS sent -- the hostname may
-// already have changed. It must be rendered with its own cause and NOT as "leg NOT attempted" (#17119: a sent
-// leg must never read as one never sent). RED-BY-MUTATION: restoring the "leg NOT attempted: " prefix on the
-// overran arm of hostname_set_cas_from_outcome makes the not-contains check fail -> false.
-test fn a_dispatched_overran_hostname_leg_is_never_leg_not_attempted() -> Bool {
+// A DISPATCHED hostname-set leg that ran past its deadline (TypedArgvExecOverran) or whose reply came
+// back inconsistent (TypedArgvExecWireInconsistent) WAS sent -- the hostname may already have changed.
+// It must be the dispatched-unknown arm (HostnameSetCasOutcomeUnknown), NOT an apply-failure (which says
+// the change did not take) and NOT "leg NOT attempted" (which says nothing was sent). (#17119 reviews
+// 99419, 99463.) RED-BY-MUTATION: routing either producer arm back to HostnameSetCasApplyFailed makes the
+// match fall to the ApplyFailed/Applied arms -> false.
+test fn a_dispatched_hostname_leg_is_dispatched_unknown_never_a_failure() -> Bool {
   let overran = hostname_set_cas_from_outcome(outcome: TypedArgvExecOverran { deadline: second(count: 30) })
+  let wire = hostname_set_cas_from_outcome(outcome: TypedArgvExecWireInconsistent { fault: OverrunWithoutDeadline })
   match overran {
-    HostnameSetCasApplied => false
-    HostnameSetCasApplyFailed { stderr: s } =>
-      !string_contains(s: s, pattern: "NOT attempted")
-        && s == typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: second(count: 30))
+    HostnameSetCasOutcomeUnknown { cause: c } =>
+      c == typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: second(count: 30))
+        && !string_contains(s: c, pattern: "NOT attempted")
+    _ => false
   }
+    && match wire {
+      HostnameSetCasOutcomeUnknown { cause: c } => !string_contains(s: c, pattern: "NOT attempted")
+      _ => false
+    }
 }

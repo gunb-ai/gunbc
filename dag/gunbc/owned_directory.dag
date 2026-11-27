@@ -274,7 +274,7 @@ type ObserverRead
   = ObserverReadOut { stdout: String }
   | ObserverReadFailed { origin: ObserverFailure }
 
-fn observer_failure_text(f: ObserverFailure) -> String {
+export fn observer_failure_text(f: ObserverFailure) -> String {
   match f {
     ObserverNotSpawned { cause } => join(["the observer could not be spawned: ", cause], "")
     ObserverTransportRefused { cause } => join(["the transport refused the read: ", cause], "")

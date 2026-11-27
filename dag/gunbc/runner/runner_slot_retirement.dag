@@ -94,7 +94,7 @@ import gunbc.systemctl_show_read {
 // contains any live processes; otherwise, 0"). That key is a bit, not a count; a count would have to
 // be summed over a subtree walk that the kernel already did, and carrying one would invite the next
 // consumer to decide something from a number that was never the subtree's.
-type CgroupOccupancy
+export type CgroupOccupancy
   = CgroupObservedEmpty
   | CgroupObservedPopulated
   | CgroupAbsent
@@ -995,7 +995,7 @@ fn retirement_active_state_is_running(state: String) -> Bool {
 // a body the kernel's documented form does not admit -- is UNOBSERVED, which blocks. There is no
 // arm that reads `cgroup.procs`: a procs-only decision is the defect this fold replaced, and a
 // second path beside the events read would be a second authority for one question (gunbc.design_argument::single_authority).
-fn cgroup_occupancy_from_reads(
+export fn cgroup_occupancy_from_reads(
   directory_test: HostOperationOutcome,
   events_read: HostOperationOutcome,
 ) -> CgroupOccupancy {

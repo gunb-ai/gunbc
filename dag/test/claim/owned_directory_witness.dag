@@ -8,7 +8,7 @@ import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryReading,
   owned_directory_decide, owned_directory_reading_of_stat_line, owned_directory_observe,
-  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused, ObserverTransportUnanswered,
   owned_directory_ensure, owned_directory_ensure_observed, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
   owned_directory_act_time_handover, HandoverOwnerChanged, HandoverAppeared,
   SameUserRegroupToDeclaredGroup, owned_directory_inheriting_from_parent,
@@ -128,6 +128,24 @@ test fn observe_only_absent_refuses() -> Bool {
   let absent = EnsureAbsent { reason: "absent" }
   starts_with(s: decision_label(o: absent, may_apply: false), prefix: "refuse:")
     && decision_label(o: absent, may_apply: true) == "apply"
+}
+
+// THE DISPATCHED-UNKNOWN OBSERVER READ (#17119 review 99437): a read whose leg WAS SENT but whose reply
+// came back unreadable (deadline overrun or inconsistent wire shape) is still INACCESSIBLE -- a failed read
+// establishes nothing and no policy installs -- but its origin is `ObserverTransportUnanswered`, NOT the
+// pre-dispatch `ObserverTransportRefused`, so the refusal reason says "dispatched ... could not be read"
+// and never "the transport refused the read"/"not run". Red-by-mutation: routing the dispatched-unknown
+// producer to ObserverTransportRefused (or claiming a read value) makes this false.
+test fn a_dispatched_unanswered_observer_read_is_inaccessible_and_never_called_refused() -> Bool {
+  let unanswered = p => ObserverReadFailed { origin: ObserverTransportUnanswered { cause: "inconsistent wire reply" } }
+  starts_with(s: decision_label(o: observe_with(list: unanswered, stat: unanswered), may_apply: true), prefix: "refuse:")
+    && match owned_directory_ensure_observed(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: unanswered, stat: unanswered), run: plan => false) {
+      OwnedDirectoryEnsured { target: _, converged: _ } => false
+      OwnedDirectoryEnsureRefused { target: _, reason } =>
+        string_contains(s: reason, pattern: "dispatched")
+          && !string_contains(s: reason, pattern: "refused the read")
+          && !string_contains(s: reason, pattern: "not run")
+    }
 }
 
 // A MODE DRIFT ON THE DEMANDED OWNER'S DIRECTORY IS REPAIRED, not refused.

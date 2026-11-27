@@ -63,8 +63,6 @@ fn systemctl_show_property_read(
       SystemdPropertyCaptureRefused { reason: why }
     HostOperationOutcomeUnanswered { operation: op, cause: c } =>
       SystemdPropertyCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
-    HostOperationOutcomeUnanswered { operation: _, cause: c } =>
-      SystemdPropertyCaptureRefused { reason: join(["the property read was dispatched but its reply could not be read; the value is unknown: ", c], "") }
   }
 }
 
