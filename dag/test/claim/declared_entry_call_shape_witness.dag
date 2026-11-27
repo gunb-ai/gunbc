@@ -35,10 +35,16 @@ import gunbc.instruments.declared_entry_call_shape {
 import gunbc.witness.declared_entry_call_shape_step {
   declared_entry_call_shape_step, declared_entry_call_shape_step_name,
   declared_entry_call_shape_if_condition, declared_entry_call_shape_line_ceiling,
-  declared_entry_changed_path, declared_entry_candidate_path,
-  declared_entry_call_shape_instrument_entry
+  declared_entry_call_shape_instrument_entry,
+  declared_entry_base_env_name, declared_entry_event_name_env_name
+}
+import extdeps.languages.yaml.types {
+  YamlKeyValue, YamlValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence,
+  YamlMapping
 }
 import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
 import std.optional { Optional, Present, Absent }
 
 // WHY THE IMPORTS STOP HERE. The claim that the required job CARRIES this step -- the enrolment claim, the
@@ -275,9 +281,48 @@ fn shn(name: String) -> String {
   join(["$", "{", name, "}"], "")
 }
 
+// The same assembly for a double-quoted shell reference, `"$name"`, which is how bash_emit renders a variable
+// word: a needle that spelled it directly would have the medium read the scripts variable as one of ours.
+fn shv(name: String) -> String {
+  join(["\"", "$", name, "\""], "")
+}
+
+// A GitHub expression opener, assembled so the .dag medium does not try to interpolate a needle that is
+// describing someone elses grammar.
+fn w_dollar_brace(text: String) -> String {
+  join(["$", "{", text], "")
+}
+
+// The scalar arms spelled out, because the environment bindings this claim reads are strings and the medium
+// will not let a claim pretend a coproduct is one.
+fn w_yaml_text(v: YamlValue) -> String {
+  match v {
+    YamlString { value: s } => s
+    YamlInt { lexeme: l } => l
+    YamlFloat { lexeme: l } => l
+    YamlBool { value: b } => if b { "true" } else { "false" }
+    YamlNull => "null"
+    YamlSequence { elements: _ } => "sequence"
+    YamlMapping { entries: _ } => "mapping"
+  }
+}
+
 fn w_step_run(step: Step) -> String {
   match step {
     RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+// The step's environment bindings, rendered the way the emitter will write them: `key: value` per line. This
+// is the document boundary the two GitHub expressions are allowed to cross, so a claim has to be able to read it.
+fn w_step_env(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: env, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match env {
+        Present { value: entries } => join(map(xs: entries, f: fn(e) { match e { YamlKeyValue { key: k, value: v } => concat(k, concat(": ", w_yaml_text(v: v))) } }), "\n")
+        Absent => ""
+      }
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
   }
 }
@@ -327,81 +372,133 @@ test fn the_step_runs_on_the_events_that_carry_a_base() -> Bool {
 }
 
 // THE SCOPE COMES FROM THE EVENT'S OWN BASE, AND THE STEP REFUSES WITHOUT ONE. Both rejected spellings are
-// pinned absent: GITHUB_BASE_REF is a branch name that moves under the run, and a diff against main counts
-// main's commits as the PR's. The fetch is present because the checkout's depth is not this step's fact to
-// assume, and the refusal is present because a base that cannot be resolved must not become a green.
+// absent: GITHUB_BASE_REF is a branch name that moves under the run, and a two-dot diff against main charges
+// every commit main gained after the branch opened to this PR. The base is fetched explicitly because the
+// checkout is shallow, and a base that cannot be resolved is a refusal -- never a guess, never a skip.
 test fn the_step_computes_its_diff_from_the_events_base_and_refuses_without_it() -> Bool {
   let run = w_step_run(step: w_step())
-  w_has(hay: run, needle: "base='${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}'")
-    && w_has(hay: run, needle: join(["git diff --name-only \"", shn("base"), "...HEAD\" -- '*.dag'"], ""))
-    && w_has(hay: run, needle: "git fetch")
-    && w_has(hay: run, needle: "refusing to guess a scope")
+  w_has(hay: run, needle: concat("if '[' '-z' ", concat(shv(name: "GUNBC_DECLARED_ENTRY_BASE_SHA"), " ']'; then")))
+    && w_has(hay: run, needle: join(["'git' 'diff' '--name-only' ", shv(name: "GUNBC_DECLARED_ENTRY_BASE_SHA"), "'...HEAD' '--' '*.dag' > ", shv(name: "changed")], ""))
+    && w_has(hay: run, needle: "'git' 'fetch' '--no-tags' '--depth=1' 'origin'")
+    && w_has(hay: run, needle: "could not be fetched: refusing to guess a scope")
     && !w_has(hay: run, needle: "GITHUB_BASE_REF")
     && !w_has(hay: run, needle: "origin/main")
 }
 
-// THE ONLY SKIP IS AN EMPTY DIFF. The two skip arms print what they skipped -- a step that exits silently on
-// the common path reads as one that did not run -- and every other exit is a refusal.
-test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
+// THE TWO EXPRESSIONS REACH THE DOCUMENT THROUGH THE ENVIRONMENT, AND NOTHING ELSE. A GitHub expression is
+// substituted into the workflow document before any shell exists, so it must arrive verbatim, and the only
+// carrier that promises that is a yaml scalar. `env:` is where the fleet already binds them:
+// gunbc.required_lanes_gate required_lanes_gate_stmts records what happens otherwise -- a bash literal word
+// is quoted and escaped, `'\''` is an illegal escape in expression syntax, and the whole document then fails
+// to parse before the runner starts. Pinned from both sides: the script carries no expression at all, and it
+// reads the two variables the bindings create.
+test fn the_expressions_reach_the_document_through_the_environment_only() -> Bool {
   let run = w_step_run(step: w_step())
-  w_has(hay: run, needle: "::notice title=declared entry call shape::skipped: no .dag change in this diff, scope empty")
-    && w_has(hay: run, needle: "::notice title=declared entry call shape::skipped: event ")
-    && w_has(hay: run, needle: join(["if [ ! -s \"", shn("changed"), "\" ]; then"], ""))
-    && w_has(hay: run, needle: "  exit 1")
-    // A skip that only prints is a green nobody can count. Both skip arms carry a runner annotation, and
-    // the two refusal arms carry ::error, so the degradations are visible in the run rather than in text
-    // someone has to scroll (gunbc.design_argument::fail_closed: typed, located and countable).
-    && w_count_lines(hay: run, needle: "::error title=declared entry call shape::") == 2
-    && w_count_lines(hay: run, needle: "::notice title=declared entry call shape::skipped:") == 2
+  let env = w_step_env(step: w_step())
+  !w_has(hay: run, needle: w_dollar_brace(text: ""))
+    && w_has(hay: run, needle: shv(name: declared_entry_base_env_name))
+    && w_has(hay: run, needle: shv(name: declared_entry_event_name_env_name))
+    && w_has(hay: env, needle: concat(declared_entry_base_env_name, concat(": ", w_dollar_brace(text: "{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"))))
+    && w_has(hay: env, needle: concat(declared_entry_event_name_env_name, concat(": ", w_dollar_brace(text: "{ github.event_name }}"))))
 }
 
-// THE SHELL IS MARKED AS SHELL. What remains in bash is the git facts the model cannot reach under the
-// budget (base resolution, the fetch, the diff, the `git grep` narrowing); the marker names the capability
-// that retires it, and it must be the FIRST line of the emitted script so the committed YAML carries the
-// obligation and a reader of witnesses.yml finds it before any command does.
+// THE BINARY ASKED IS THE ONE THAT OWNS THE `run` VERB. The first enrolled version was handed the fast-lane's
+// staged generator, whose verbs are emit / check-layout / check-references / parse-population: it printed
+// `REFUSED: unknown verb run` and reddened the required lane (run 46025990627, job 140597407049). The full CLI
+// is this job's own "Build the compiler" product, and a step reaching for the staged copy again is a red claim
+// here rather than a red runner. Its absence is also not a silence: a reused fast lane leaves no CLI, and the
+// step refuses that state out loud rather than skipping a diff it was asked to judge.
+test fn the_step_asks_a_binary_that_owns_the_run_verb() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: concat("'", concat(w_step_bin, "' 'run'")))
+    && w_has(hay: run, needle: concat("'test' '-x' '", concat(w_step_bin, "'")))
+    && w_has(hay: run, needle: "no executable run-verb CLI at ")
+    && !w_has(hay: run, needle: "v2-native-cli")
+    && !w_has(hay: run, needle: "gunbc-fast-lane-native-cli")
+    && !w_has(hay: run, needle: "runner.temp")
+}
+
+// THE ONE SKIP IS THE EMPTY DIFF, AND IT IS COUNTABLE. `exit 0` appears exactly once in the script, on the
+// branch where the diff names no .dag file, and the sentence says so; every other refusal is `exit 1` with a
+// `::error` annotation naming what is missing. A run that judged nothing is never green, and a degradation
+// that lives only in log prose is not a degradation the fleet can see.
+test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: join(["if '[' '!' '-s' ", shv(name: "changed"), " ']'; then"], ""))
+    && w_has(hay: run, needle: "'skipped: no .dag change in this diff, scope empty'")
+    && w_count_lines(hay: run, needle: "; exit 0; fi") == 1
+    && w_count_lines(hay: run, needle: "; exit 1; fi") == 6
+    && w_has(hay: run, needle: "'sort' '-u'")
+}
+
+// THE CARRIER CARRIES ITS OWN DISSOLUTION, ON THE LINE THE RUNNER READS FIRST. The step is the one place on
+// this route where a model cannot answer for itself -- a whole-tree `git grep` it could only reply to by
+// reading every tracked .dag (measured 5 m 18 s for the whole-tree reverse pass, against 105 s at a real
+// scope) -- so the file names the capability that would absorb it, as gunbc.witness.runner_host_deploy_unit_
+// scripts does for its shell, and the rendering refuses if the marker is removed.
 test fn the_shell_carrier_names_its_dissolution_on_the_first_line() -> Bool {
   let run = w_step_run(step: w_step())
   let first = match split(s: run, delimiter: "\n").first() {
     Present { value: v } => v
     Absent => ""
   }
-  starts_with(s: first, prefix: "# dissolve-on: declared_entry_call_shape_scope_lines")
-    && w_has(hay: first, needle: "v2.extdeps.languages.bash_build")
+  starts_with(s: first, prefix: "# dissolve-on: declared_entry_call_shape_scope_statements")
+    && w_has(hay: first, needle: "DISSOLVES WHEN")
+    && w_has(hay: first, needle: "rendered by v2.workflow.bash_emit bash_emit_stmts")
+    && w_has(hay: first, needle: "moves into gunbc.instruments.declared_entry_call_shape")
 }
 
-// THE SEARCH KEYS COME FROM THE MODEL. Which module a changed path declares is the instrument's rule, so the
-// step asks its entry for the keys; the step must not spell the path-to-module rule a second time in shell.
-// This is the fix for a duplicated rule whose disagreement was silently available: an empty stem set made
-// `git grep` match nothing, the scope came back as only the changed files, and the run passed.
+// THE DEBT IS REGISTERED AS A DISPOSITION, NOT ONLY AS PROSE. A comment a reader may skip is the marker; the
+// same admission carried as a `Scaffold` with a `dissolves_to` and a `bind` is the version the model carries,
+// and it names the declaration the statements live in, so the day the whole-tree search is modelled the
+// refusal points at the node that has to move rather than at a paragraph. Asserted against the module text
+// because a `Scaffold` never reaches the emitted script -- asking the script to show it would have been a
+// claim that can only be satisfied by putting the disposition in the wrong medium.
+test fn the_carriers_debt_is_registered_as_a_disposition() -> Bool {
+  let text = Filesystem.Read(path: concat(w_step_module, ".dag"), expect: ExpectSuccess).content
+  w_has(hay: text, needle: "Scaffold {")
+    && w_has(hay: text, needle: "dissolves_to: SingleAuthority")
+    && w_has(hay: text, needle: "decl_name: \"declared_entry_call_shape_scope_statements\"")
+    && w_has(hay: text, needle: "module_path: \"gunbc.witness.declared_entry_call_shape_step\"")
+}
+
+// THE SEARCH KEYS ARE THE MODEL'S, NOT THE SHELL'S. The stems come from the instrument's own path rule, so
+// there is one module-name grammar between the route that declares an entry and the check that resolves it;
+// the text-only entry is not on this route at all, and the shell invents no `sed` mapping of its own.
 test fn the_step_asks_the_instrument_for_its_search_keys() -> Bool {
   let run = w_step_run(step: w_step())
-  w_has(hay: run, needle: "--function declared_entry_call_shape_stems_emit")
-    && w_has(hay: run, needle: join(["--arg stems_file=", shn("dir"), "/stems.txt"], ""))
-    && w_has(hay: run, needle: join(["git grep -l -F -f \"", shn("stems"), "\" -- '*.dag'"], ""))
-    && !w_has(hay: run, needle: "sed -E")
+  w_has(hay: run, needle: "'--function' 'declared_entry_call_shape_stems_emit'")
+    && w_has(hay: run, needle: "'--arg' 'stems_file='")
+    && !w_has(hay: run, needle: "'--function' 'declared_entry_call_shape_import_lines'")
+    && !w_has(hay: run, needle: "sed -n")
 }
 
-// THE REVERSE PASS IS THERE, AND IT IS THE WIDEST READING OF THE NAME. This is the arm that catches the
-// historical break: a caller nobody had to edit. The ceiling is a mis-scope detector, and the absence of a
-// lower-bound test is a decision, not an omission -- a floor would red a legitimate one-file PR.
+// THE REVERSE PASS IS NARROW AND ITS BUDGET ONLY REFUSES UPWARD. `git grep -l -F -f` answers in 8 s what the
+// model can only answer by reading every tracked .dag, and an exit of 2 (a real repository error) is a
+// refusal, not an empty answer. Over-large is the only direction the ceiling can speak in: a silently
+// truncated scope is a green on a run that judged nothing.
 test fn the_step_widens_to_reverse_importers_and_bounds_its_scope_above_only() -> Bool {
   let run = w_step_run(step: w_step())
-  w_has(hay: run, needle: join(["git grep -l -F -f \"", shn("stems"), "\" -- '*.dag'"], ""))
-    && w_has(hay: run, needle: "-gt " + declared_entry_call_shape_line_ceiling)
-    && w_has(hay: run, needle: "lines=$(xargs -r -a ")
-    && !w_has(hay: run, needle: "-lt ")
+  w_has(hay: run, needle: "'git' 'grep' '-l' '-F' '-f'")
+    && w_has(hay: run, needle: "this is a repository error, not an empty answer")
+    && w_has(hay: run, needle: join(["if '[' ", shv(name: "lines"), " '-gt' '250000' ']'"], ""))
+    && w_has(hay: run, needle: "is above the budget of ")
+    && w_has(hay: run, needle: "the line count of the scope could not be computed")
+    && w_has(hay: run, needle: "'wc' '-l'")
 }
 
-// THE STEP RUNS THE INSTRUMENT IT NAMES, with both scope files and the job's own source-root pair. Read as
-// one string built by one function, so a step that named a different entry than the instrument's own module
-// would be caught here rather than at the moment a PR goes green for the wrong reason.
+// THE INSTRUMENT IS ASKED ABOUT FILES, NEVER ABOUT TEXT THE SHELL CHOSE. Both invocations pass their scope as
+// a file of paths, and each option is its own word with its own value word -- the first draft folded them
+// (`--entry=dag/...`, `changed_paths_file=...` unquoted) so the words it printed were not the words the
+// engine's own argument shape promises.
 test fn the_step_hands_the_instrument_its_scope_files() -> Bool {
   let run = w_step_run(step: w_step())
-  w_has(hay: run, needle: "--entry " + declared_entry_call_shape_instrument_entry)
-    && w_has(hay: run, needle: "--function main")
-    && w_has(hay: run, needle: join(["--arg changed_paths_file=", shn("dir"), declared_entry_changed_path], ""))
-    && w_has(hay: run, needle: join(["--arg candidate_importers_file=", shn("dir"), declared_entry_candidate_path], ""))
-    && w_has(hay: run, needle: "--source-root dag --source-root src/v2")
+  w_has(hay: run, needle: "'--function' 'main'")
+    && w_has(hay: run, needle: "'--arg' 'changed_paths_file='")
+    && w_has(hay: run, needle: "'--arg' 'candidate_importers_file='")
+    && w_has(hay: run, needle: "'--source-root' 'dag'")
+    && !w_has(hay: run, needle: "--arg changed_paths_file=")
+    && !w_has(hay: run, needle: "--source-root=dag")
 }
 
 // THE STEP MODULE STAYS SLIM, and the reason is not taste. Its first draft imported the job's binary
@@ -416,13 +513,15 @@ fn w_step_module_imports() -> List<String> {
   declared_entry_call_shape_import_lines(path: concat(w_step_module, ".dag"))
 }
 
-test fn the_step_module_names_only_the_cli_leaf_and_the_actions_shape() -> Bool {
+test fn the_step_module_imports_the_node_route_and_nothing_from_the_fleet_hubs() -> Bool {
   let lines = w_step_module_imports()
-  length(xs: lines) == 5
-    && list_member(xs: lines, x: "import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }", eq: w_str_eq)
+  length(xs: lines) == 12
     && list_member(xs: lines, x: "import std.types { List, String }", eq: w_str_eq)
-    && list_member(xs: lines, x: "import std.optional { Present }", eq: w_str_eq)
+    && list_member(xs: lines, x: "import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }", eq: w_str_eq)
     && list_member(xs: lines, x: "import extdeps.github.actions { Step, RunStep }", eq: w_str_eq)
-    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.cli.parse_verdict_invocation") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.extdeps.languages.bash_build") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.workflow.bash_emit") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.std.node") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "extdeps.languages.yaml.types") })) == 1)
     && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "gunbc.") })) == 0)
 }

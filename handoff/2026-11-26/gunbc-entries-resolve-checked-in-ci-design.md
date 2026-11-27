@@ -464,3 +464,82 @@ measurement can therefore come silently from someone else's build while a claim 
 binary aside does not satisfy it either: the gate requires hard-link twins under `deps`, i.e. the artifact
 cargo actually built. Every figure from here is from a build at this head immediately followed by the lane in
 the same shell.
+
+## 15. The step, modelled — the review round, and the two defects only a runner can find
+
+Three review rounds (99299, 99306, 99360 on the green PR; 99367 on the red one) landed the same two findings,
+and both were right. The first step was a `.dag` file holding a bash script in string rows — `sh()` /
+`braces()` helpers and `" echo …"` / `" exit 0"` rows — which is `how_to_work`'s presumed-scaffold tell ("raw
+shell implementing semantics expressible in `.dag`") with no dissolution condition, next to `fail_closed`'s
+"A dissolution condition describes how admitted debt ends; it does not authorize creating it." So the step was
+rewritten onto the carrier the fleet already uses: every statement is a `v2.extdeps.languages.bash_build` node
+and the file emits through `v2.workflow.bash_emit bash_emit_stmts`, the way
+`gunbc.witness.runner_host_deploy_unit_scripts` does. The render is a refusal, not a fallback —
+`declared_entry_call_shape_script_is_renderable` fails the build and the poison appends the emitter's own
+reason — because a step whose script fails to render is a step that checks nothing, which is the defect this
+row exists to close. The residual shell is one narrowing (`git grep -l -F` over 10,898 tracked `.dag`, ~8 s
+against a measured 5 m 18 s if the model has to read every file to answer it), and it carries its dissolution
+on the first line the runner reads, with `Scaffold{dissolves_to: SingleAuthority, bind: DeclarationRef}`
+naming the instrument that absorbs it when a modelled whole-tree content search exists at required-job budget.
+
+Four things the rewrite changed that a reader of the string-row file would not predict:
+
+**(1) The empty-diff skip is the only skip, and it is counted.** The earlier version *passed* on a missing
+base — reviewed as "the step reports success when it has nothing to judge", correctly: a step enrolled on the
+two base-carrying events that arrives without a base is being handed input it was not enrolled for, and the
+answer is a typed refusal (`fail_closed`: runtime uncertainty → typed refusal), not a notice. `exit 0` now
+appears exactly once, on the empty `.dag` diff, and the claims count both classes: `"; exit 0; fi") == 1`,
+`"; exit 1; fi") == 6`.
+
+**(2) A GitHub expression cannot ride inside a bash literal.** `${{ … }}` is substituted into the *document*
+before a shell exists, so it must arrive verbatim; `bash_build_word_lit` quotes its word and escapes `"` as
+`'\''`, and expression grammar admits no backslash — the workflow would fail to parse before the runner
+started. This is not speculation: `gunbc.required_lanes_gate required_lanes_gate_stmts` records exactly that
+defect and its fix, and the step now binds the two values in `env:` (`GUNBC_DECLARED_ENTRY_BASE_SHA`,
+`GUNBC_DECLARED_ENTRY_EVENT_NAME`) and reads them as variables. The medium fights the witness too: a `.dag`
+string containing `${{` is read as an interpolation, so both step and claims assemble the opener from parts,
+and a claim asserts the script contains no expression at all.
+
+**(3) `unknown verb run` — the runner is the only witness that sees the binary.** The first enrolled version
+was handed the fast-lane's staged generator, whose verbs are emit / check-layout / check-references /
+parse-population, and the required job died with `REFUSED: unknown verb run — usage: <binary> emit --entry …`
+(exit 2; run 46025990627, job 140597407049) on both PRs while **every local claim was green**. A claim reads
+the step's text; it never asks whether the thing the text names exists. The step now names
+`target/release/gunbc` — this job's own "Build the compiler" product — and a claim refuses either staged name
+by string. Because a reused fast lane leaves that path absent, the script `test -x` refuses out loud rather
+than skipping a diff it was asked to judge; the silence alternative is the same hole as a green on an unjudged
+run.
+
+**(4) Two argument shapes that only execute.** `--arg` and its value are separate words (`'--arg'
+'changed_paths_file=…'`); the first draft folded them (`--entry=dag/…`, unquoted `changed_paths_file=…`), and
+the two budget comparisons had their operands reversed, so the ceiling could never fire — an arm that forces
+the ceiling to 2 and still exits 0 is the only way to learn that. Both are now written through the node API
+(`bash_build_word_lit` / `bash_build_word_concat_from_nodes` for the option and its value, `bash_build_test_bracket` with the variable first) and both are executed.
+
+**Arms, seven, against the rendered step, engine built from this checkout:**
+
+| arm | input | observed |
+|---|---|---|
+| A1 | base env empty (the base-less-event shape) | `…reached this step without a base commit to diff against; the check cannot judge anything and refuses rather than passing an unjudged run`, rc 1 |
+| A2 | base == HEAD | `skipped: no .dag change in this diff, scope empty`, rc 0 |
+| A3 | base 40 zeros, unfetchable | `…is not in this checkout and could not be fetched: refusing to guess a scope`, rc 1 |
+| A4 | ceiling literal forced to 2 | `scope of 78 .dag files / 53638 lines is above the budget of 2 lines: …`, rc 1 |
+| A5 | binary left at `target/release/gunbc`, absent here | `no executable run-verb CLI at target/release/gunbc: …`, rc 1 |
+| A6 | one scoped `.dag` at mode `000` | `cat: …caller_bad.dag: Permission denied`, then `the line count of the scope could not be computed: a candidate file could not be read. Refusing rather than budgeting against a scope that was not read`, rc 1 |
+| A7 | real scope: 11 changed, 78 in scope, 53,638 lines | `scope: 78 .dag files, 53638 lines (…)`, silence, rc 0, ARM7_SEC s |
+
+A4 also re-printed the instrument's self-cost from the engine's own residency line:
+`resolve_entry_graph_inclusive ms=4224`, `closure_files=53`, `max_rss_kib=174288` — the number that makes the
+check affordable inside a required job, and the reason the instrument may not import a `gunbc.*` hub.
+
+**The layout row the reviews did not ask for and CI would have found.** A new *fixture* namespace needs a row
+in `dag/gunbc/layout_namespace_row/gunbc_tree.dag`; `test.fixture.declared_entry_call_shape` was missing and
+the row was emitted from the layout authority rather than typed by hand (the emitted row was compared
+byte-for-byte against `layout_migration layout_namespaces_emit`'s own output before it was pasted). The
+instrument and step modules sit under namespaces that already have rows.
+
+**Tally at this head, engine built from this checkout, freshness gate satisfied:** the lane
+`test.claim.declared_entry_call_shape_witness` runs **24 claims — 24 held, 0 did not hold, 0 unobserved** in one
+process, 612 s. The two enrolment claims in `test.claim.compiler_gate_emit_build_lane_witness`
+(the required job's own bound-step list carries the step; the committed YAML carries its name, id, entry and
+condition) are re-run against the regenerated file and reported with the PR.

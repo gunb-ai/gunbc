@@ -110,7 +110,7 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
-import gunbc.witness.declared_entry_call_shape_step { declared_entry_call_shape_step, declared_entry_call_shape_step_name }
+import gunbc.witness.declared_entry_call_shape_step { declared_entry_call_shape_step, declared_entry_call_shape_step_name, declared_entry_gunbc_bin }
 import gunbc.witness.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
@@ -928,7 +928,7 @@ fn compiler_gate_fast_lane_check_bound_steps() -> List<CompilerGateBoundStep> {
     // still reaching the caller nobody had to edit -- the shape of the defect this step exists to catch.
     CompilerGateBoundStep {
       step: declared_entry_call_shape_step(
-        bin: native_cli_bin(),
+        bin: declared_entry_gunbc_bin,
         source_roots: v2_native_cli_source_roots()
       ),
       role: capability_neutral,
