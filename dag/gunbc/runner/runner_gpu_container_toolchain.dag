@@ -647,8 +647,9 @@ fn runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: Bool, transpor
   } else {
     match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv_words(command: nvidia_ctk_cdi_generate_command())), transport: transport) {
       RunArgvTransportRefused { reason: r } => CdiGenerateFailed { cause: r }
-      // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
-      // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+      // Dispatched, reply unreadable: the cdi-generate leg WAS sent and may have written a spec file, so its
+      // on-disk effect is unknown. Reported as failed (the spec cannot be trusted as generated) with the typed
+      // reason naming the real fault; it is never retried blindly, and never described as "not run".
       RunArgvTransportUnanswered { cause: _, reason: r } => CdiGenerateFailed { cause: r }
       RunArgvTransportObserved { observed: o } =>
         if o.success {
@@ -1399,6 +1400,11 @@ data gpu_container_provision_active_word: String = "active"
 type GpuContainerProvisionStep
   = GpuContainerProvisioned { step: String }
   | GpuContainerProvisionRefused { step: String, cause: String }
+  // DISPATCHED, reply unreadable (overran or an inconsistent wire shape): the elevated leg WAS sent and its
+  // effect on the host is unknown. Distinct from Refused (which means never dispatched, or ran-and-was-refused
+  // with an exit code) so the dispatch fact is not lost from the arm -- the discriminator is the arm, not the
+  // cause string. A dispatched-unknown elevated step blocks the grant and is never retried blindly.
+  | GpuContainerProvisionUnanswered { step: String, cause: String }
   | GpuContainerProvisionSkipped { step: String, reason: String }
 
 // ONE ELEVATED COMMAND, in the same two-field shape the custody leg uses, so a step is data. THE LEG
@@ -1477,9 +1483,9 @@ fn gpu_container_provision_diagnostic_text(argv: List<String>, transport: HostEf
 fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: HostEffectTransport) -> GpuContainerProvisionStep {
   match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: leg.argv), transport: transport) {
     RunArgvTransportRefused { reason: r } => GpuContainerProvisionRefused { step: leg.step, cause: r as String }
-    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
-    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
-    RunArgvTransportUnanswered { cause: _, reason: r } => GpuContainerProvisionRefused { step: leg.step, cause: r as String }
+    // Dispatched, reply unreadable: the elevated leg WAS sent and its effect is unknown. A distinct arm (not
+    // Refused) so the dispatch fact survives -- the consumers block on it and never call it "not run".
+    RunArgvTransportUnanswered { cause: _, reason: r } => GpuContainerProvisionUnanswered { step: leg.step, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code == 0 {
         GpuContainerProvisioned { step: leg.step }
@@ -1520,6 +1526,10 @@ fn gpu_container_provision_run_legs(legs: List<GpuContainerProvisionLeg>, transp
 fn gpu_container_provision_has_refusal(steps: List<GpuContainerProvisionStep>) -> Bool {
   steps.any(s => match s {
     GpuContainerProvisionRefused { step: _, cause: _ } => true
+    // An unanswered elevated step blocks the grant just as a refusal does: its effect on the host is unknown,
+    // so the label must not be granted. (It is NOT retried blindly -- the recurring row forbids re-issuing a
+    // non-idempotent elevated step without a readback.)
+    GpuContainerProvisionUnanswered { step: _, cause: _ } => true
     GpuContainerProvisioned { step: _ } => false
     GpuContainerProvisionSkipped { step: _, reason: _ } => false
   })
@@ -1575,11 +1585,15 @@ fn gpu_container_subordinate_range_verification_proven(
   let successes = filter(steps, s => match s {
     GpuContainerProvisioned { step: st } => st == step_name
     GpuContainerProvisionRefused { step: _, cause: _ } => false
+    GpuContainerProvisionUnanswered { step: _, cause: _ } => false
     GpuContainerProvisionSkipped { step: _, reason: _ } => false
   })
   let counter_records = filter(steps, s => match s {
     GpuContainerProvisioned { step: _ } => false
     GpuContainerProvisionRefused { step: st, cause: _ } => st == step_name
+    // An unanswered verify step is NOT proof: its on-host effect is unknown, so it counts as a counter-record
+    // and the subordinate-range label is withheld rather than granted on an unread reply.
+    GpuContainerProvisionUnanswered { step: st, cause: _ } => st == step_name
     GpuContainerProvisionSkipped { step: st, reason: _ } => st == step_name
   })
   length(successes) > 0 && length(counter_records) == 0
@@ -1816,6 +1830,7 @@ fn gpu_container_provision_plan_check_count(actions: List<GpuContainerProvisionA
 fn gpu_container_provision_first_refusal(steps: List<GpuContainerProvisionStep>) -> String? {
   match filter(steps, s => match s {
     GpuContainerProvisionRefused { step: _, cause: _ } => true
+    GpuContainerProvisionUnanswered { step: _, cause: _ } => true
     GpuContainerProvisioned { step: _ } => false
     GpuContainerProvisionSkipped { step: _, reason: _ } => false
   }).first() {
@@ -1823,6 +1838,7 @@ fn gpu_container_provision_first_refusal(steps: List<GpuContainerProvisionStep>)
     Present { value: s } =>
       match s {
         GpuContainerProvisionRefused { step: st, cause: c } => Present { value: join([st, ": ", c], "") }
+        GpuContainerProvisionUnanswered { step: st, cause: c } => Present { value: join([st, ": ", c], "") }
         _ => Absent
       }
   }
@@ -1832,6 +1848,8 @@ fn gpu_container_provision_step_text(steps: List<GpuContainerProvisionStep>) -> 
   join(map(steps, s => match s {
     GpuContainerProvisioned { step: st } => join(["+", st], "")
     GpuContainerProvisionRefused { step: st, cause: c } => join(["-", st, " (", c, ")"], "")
+    // A dispatched-but-unreadable elevated step renders with its own marker, never the refused "-" glyph.
+    GpuContainerProvisionUnanswered { step: st, cause: c } => join(["?", st, " (", c, ")"], "")
     GpuContainerProvisionSkipped { step: st, reason: r } => join(["~", st, " (", r, ")"], "")
   }), " ")
 }
@@ -2970,7 +2988,7 @@ fn gpu_container_provision_run_action(
         RunArgvTransportRefused { reason: r } => [GpuContainerProvisionRefused { step: s, cause: r }]
         // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
         // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
-        RunArgvTransportUnanswered { cause: _, reason: r } => [GpuContainerProvisionRefused { step: s, cause: r }]
+        RunArgvTransportUnanswered { cause: _, reason: r } => [GpuContainerProvisionUnanswered { step: s, cause: r }]
         RunArgvTransportObserved { observed: o } =>
           match gpu_container_provision_check_verdict(check: k, job_user: job_user, stdout: o.stdout) {
             Present { value: why } => [GpuContainerProvisionRefused { step: s, cause: why }]
