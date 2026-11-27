@@ -456,13 +456,10 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
 
 // Serving apply is retired (hardware sold): the step refuses rather than invoking a deleted entry.
 test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
-  match outcome_accepted_value(gunbc_ci_spark_serving_apply_invoke()) {
-    Absent => false
-    Present { value: invoke } =>
-      string_contains(s: invoke, pattern: "DGX Spark serving path retired")
-        && string_contains(s: invoke, pattern: "exit 1")
-        && !string_contains(s: invoke, pattern: "pair_serving_apply")
-  }
+  let invoke = gunbc_ci_spark_serving_apply_invoke();
+  string_contains(s: invoke, pattern: "DGX Spark serving path retired")
+    && string_contains(s: invoke, pattern: "exit 1")
+    && !string_contains(s: invoke, pattern: "pair_serving_apply")
 }
 
 // ── THE DARK INSTALL REACHES srv1 UNDER THE RUNNER PRINCIPAL ────────────────────────────────
@@ -585,18 +582,24 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // claims because they are three producers; joined in one, the claim built the whole job list and the
 // whole host-reset-return job to read one step and one field.
 test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs() -> Bool {
-  match fleet_converge_reset_observer_dispatch_admission_step() {
-    RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
-      (match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false })
-        && (match c {
-              Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
-              Absent => false
-            })
-        && string_contains(s: r, pattern: gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_host_reset_dispatch_admission_target))
-        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
-        && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
-        && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  match outcome_accepted_value(fleet_converge_reset_observer_dispatch_admission_step()) {
+    Absent => false
+    Present { value: step } => match step {
+      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+        (match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false })
+          && (match c {
+                Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
+                Absent => false
+              })
+          && (match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_host_reset_dispatch_admission_target)) {
+                Present { value: entry_path } => string_contains(s: r, pattern: entry_path)
+                Absent => false
+              })
+          && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
+          && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
+          && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
   }
 }
 
@@ -820,13 +823,16 @@ fn step_run_text(step: Step) -> String {
 }
 
 fn microvm_network_step_env_text() -> String {
-  match fleet_converge_microvm_network_observe_step() {
-    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match e {
-        Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
-        Absent => ""
-      }
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  match outcome_accepted_value(fleet_converge_microvm_network_observe_step()) {
+    Absent => ""
+    Present { value: step } => match step {
+      RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match e {
+          Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
+          Absent => ""
+        }
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+    }
   }
 }
 
@@ -907,27 +913,28 @@ test fn the_keyring_converge_stays_with_the_executor_key() -> Bool {
 // The plan choice must reach the commissioning-only entry with both admission bindings,
 // and participate in the shared plan artifact upload rather than silently losing its receipt.
 test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
-  let step = fleet_converge_workspace_commissioning_plan_step()
-  let env = step_env_text(step: step)
-  let scope_matches = match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {
-    Present { value: WorkspaceSlotCommissioningOnly } => true
-    _ => false
+  match outcome_accepted_value(fleet_converge_workspace_commissioning_plan_step()) {
+    Absent => false
+    Present { value: step } =>
+      (match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {
+        Present { value: WorkspaceSlotCommissioningOnly } => true
+        _ => false
+      })
+        && step_id_text(step: step) == "workspace_commissioning_plan"
+        && string_contains(s: step_run_text(step: step), pattern: "--function fleet_converge_workspace_commissioning_plan_wet")
+        && string_contains(s: step_env_text(step: step), pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
+        && string_contains(s: step_env_text(step: step), pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
+        && string_contains(s: fleet_converge_any_plan_step_if, pattern: "workspace_commissioning_plan")
+        && match step {
+          RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: Present { value: bound } } =>
+            bound == gunbc.fleet.fleet_workflow_steps.gunbc_ci_fleet_converge_plan_step_timeout_minutes
+          _ => false
+        }
+        && match fleet_converge_mode_fleet_ssh_key_demand(mode: WorkspaceCommissioningPlan) {
+          FleetSshKeyConsumed => true
+          FleetSshKeyNotConsumed => false
+        }
   }
-  scope_matches
-    && step_id_text(step: step) == "workspace_commissioning_plan"
-    && string_contains(s: step_run_text(step: step), pattern: "--function fleet_converge_workspace_commissioning_plan_wet")
-    && string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
-    && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
-    && string_contains(s: fleet_converge_any_plan_step_if, pattern: "workspace_commissioning_plan")
-    && match step {
-      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: Present { value: bound } } =>
-        bound == gunbc.fleet.fleet_workflow_steps.gunbc_ci_fleet_converge_plan_step_timeout_minutes
-      _ => false
-    }
-    && match fleet_converge_mode_fleet_ssh_key_demand(mode: WorkspaceCommissioningPlan) {
-      FleetSshKeyConsumed => true
-      FleetSshKeyNotConsumed => false
-    }
 }
 
 // A GUEST-IMAGE BUILD WRITES ONLY INTO ITS OWN RUN (runner workspace, own artifact), so it takes a group keyed
@@ -978,26 +985,30 @@ test fn the_srv15_versions_read_step_is_the_model_projection() -> Bool {
 // it runs exactly when the read runs; and its ONLY consumer is the read's WIF_ACCESS_TOKEN binding.
 test fn the_srv15_read_mint_is_iam_observe_under_the_reads_own_condition() -> Bool {
   let mint = fleet_converge_srv15_read_wif_auth_step()
-  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
-  match mint {
-    UsesStep { name: _, id: mid, uses: _, with: Present { value: ws }, env: _, if_condition: mic, continue_on_error: _, timeout_minutes: _ } =>
-      mid == Present { value: fleet_converge_srv15_versions_read_wif_step_id as String }
-        && any(ws, w => w.key == "service_account" && w.value == yaml_string(s: iam_observe_service_account as String))
-        && any(ws, w => w.key == "workload_identity_provider" && w.value == yaml_string(s: gcp_iam_observe_wif_provider_resource()))
-        && any(ws, w => w.key == "token_format" && w.value == yaml_string(s: "access_token"))
-        && mic == read.if_condition
-    _ => false
+  match outcome_accepted_value(fleet_converge_srv15_bmc_secret_versions_read_step()) {
+    Absent => false
+    Present { value: read } => match mint {
+      UsesStep { name: _, id: mid, uses: _, with: Present { value: ws }, env: _, if_condition: mic, continue_on_error: _, timeout_minutes: _ } =>
+        mid == Present { value: fleet_converge_srv15_versions_read_wif_step_id as String }
+          && any(ws, w => w.key == "service_account" && w.value == yaml_string(s: iam_observe_service_account as String))
+          && any(ws, w => w.key == "workload_identity_provider" && w.value == yaml_string(s: gcp_iam_observe_wif_provider_resource()))
+          && any(ws, w => w.key == "token_format" && w.value == yaml_string(s: "access_token"))
+          && mic == read.if_condition
+      _ => false
+    }
   }
 }
 
 test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
-  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
   let yml = expected_fleet_converge_yml_content()
-  match read {
-    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: es }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      count(filter(es, e => e.key == "WIF_ACCESS_TOKEN")) == 1
-        && any(es, e => e.key == "WIF_ACCESS_TOKEN" && e.value == yaml_string(s: "${{ steps." + (fleet_converge_srv15_versions_read_wif_step_id as String) + ".outputs.access_token }}"))
-    _ => false
+  match outcome_accepted_value(fleet_converge_srv15_bmc_secret_versions_read_step()) {
+    Absent => false
+    Present { value: read } => match read {
+      RunStep { name: _, id: _, run: _, shell: _, env: Present { value: es }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        count(filter(es, e => e.key == "WIF_ACCESS_TOKEN")) == 1
+          && any(es, e => e.key == "WIF_ACCESS_TOKEN" && e.value == yaml_string(s: "${{ steps." + (fleet_converge_srv15_versions_read_wif_step_id as String) + ".outputs.access_token }}"))
+      _ => false
+    }
   }
     && string_contains(s: yml, pattern: "steps.wif_auth_srv15_read.outputs.access_token")
     // review 96099 / review 96142: "sole consumer" must be checked, not just named. The generated
