@@ -52,8 +52,8 @@ data gunb_ai_served_from_gunbc_intention: String = "gunbc.plans.gunb_ai_served_f
 data remote_build_bandwidth_intention: String = "gunbc.plans.remote_build_bandwidth"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
-  // gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (cited without the marked-reference
-  // marker: the reason is recorded at the first site in gunbc.roadmap.roadmap_authority); its work items are the
+  // #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (why its marker was briefly dropped, and
+  // why it stands, is recorded at the first site in gunbc.roadmap.roadmap_authority); its work items are the
   // remote-build/serving rows below. Layer is the plan's dependency reading: layer 0 is the general
   // fixes every host needs, layer 1 is per host, layer 2 is what one host's service makes possible.
   serves(node: "remote-build-census-refused-reservation-never-charges", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),

@@ -8531,15 +8531,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       parent: in_project(project: "compiler-guarantee", contribution: "Each closes one ordinary-floor class the blocking door requires."),
     ),
-    // ---- gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (regrouped 2026-11-26).
-    // The citation is spelled without the marked-reference marker at all three of this plan's sites (here,
-    // at the edges block below, and at the binding constant in gunbc.roadmap.roadmap_intention_binding).
-    // Reason, measured at head fd3e6ce32b6: check-references judges a marked reference against the fast-lane
-    // unit's roots, and this plan module -- authority-only, imported only by gunbc.plan_registry -- is not
-    // among the roots of the unit reused for a planning-only diff, so all three sites were refused there
-    // with "cited module read but did not normalize, so its declarations were not indexed", while main's own
-    // push run at the same base (materialized fresh) resolved them. The citation stands; only the marker is
-    // dropped, because a marker this lane cannot judge turns a planning PR red without measuring anything.
+    // ---- #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (regrouped 2026-11-26).
+    // The markers stand at all three sites (here, at the edges block below, and at the binding constant
+    // in gunbc.roadmap.roadmap_intention_binding), and the record of why they were almost removed is this:
+    // at head fd3e6ce32b6 the marked-reference lane refused exactly these three sites -- "cited module read but
+    // did not normalize, so its declarations were not indexed" -- and the head was pushed with the markers off
+    // to get the check green. That was the wrong move (gunbc.design_argument::fail_closed: routing around a
+    // check that will not green is the workaround, and noticing the workaround IS the line-stop signal) and the
+    // reason it was wrong is the real one: this module's own paragraph on the capacity ruling had an unclosed
+    // string -- "expected RParen, found LitStr" at line 94 -- so the plan module genuinely did not normalize and
+    // the refusal was the checker working. The heal lane named it outright; the reference lane only reported
+    // the consequence. Fixed at this head by closing the paragraph, markers untouched.
     // The container this plan's rows are members of: a level node, never dispatched, met only through its members.
     roadmap_node(
       identity: "rn_FTRR7M7XS9YBVJRAG6DEV7NSJB",
@@ -8768,9 +8770,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compute/host_capacity.dag"),
       line: ticket(t: fields(
         headline: "A host with no CI runners still needs a build pool: its capacity row needs its own rule",
-        boundary: "host_build_pool_is_carved(srv14) becomes true once butch is rostered, so its reservation is one CI runner slot. But butch's CI width is ruled ZERO and the 192 GiB charge was released to the pool (#17005), so nothing can be carved. The capacity authority for a host with no CI runners needs its own rule, or a ruling, before butch's capacity row. It probably applies to ken too, which has no runners. Both sizes are ruled now: butch at the 192 GiB charge from #17005, and ken by option A (approved by default on escalation msg_5ffaed22) -- zero CI width plus its own build pool of 22 GiB with ONE seat, beside the ken-strata engine at about 69 GiB RSS -- so what is left is the rule that lets a runner-less host carry a pool row, and the seat count that follows from the pool (serving-pool-seat-count-follows-the-build-ceiling). The addendum's read-only check: ken and butch both reach github.com, static.rust-lang.org and index.crates.io (HTTP 200), so converge egress is not a blocker; ken has 333G free and butch 247G.",
+        boundary: "host_build_pool_is_carved(srv14) becomes true once butch is rostered, so its reservation is one CI runner slot. But butch's CI width is ruled ZERO and the 192 GiB charge was released to the pool (#17005), so nothing can be carved. The capacity authority for a host with no CI runners needs its own rule, or a ruling, before butch's capacity row. It probably applies to ken too, which has no runners. Both sizes are ruled now: butch at the 192 GiB charge from #17005, and ken by option A (approved by default on escalation msg_5ffaed22) -- zero CI width plus its own build pool with ONE seat, ruled at 22 GiB on 2026-11-26 and re-ruled at 26.2 GiB on 2026-11-27 (a 22 GiB build grant, plus 3.4 GiB for the serving child, plus 0.8 GiB for the legs), beside the ken-strata engine at about 69 GiB RSS -- so what is left is the rule that lets a runner-less host carry a pool row, and the seat count that follows from the pool (serving-pool-seat-count-follows-the-build-ceiling). The addendum's read-only check: ken and butch both reach github.com, static.rust-lang.org and index.crates.io (HTTP 200), so converge egress is not a blocker; ken has 333G free and butch 247G.",
         displaced_cost: "ken's and butch's capacity rows cannot be written, so their reservations have no pool to be admitted against, and both hosts' serving rows wait on this.",
-        first_slice: "Write ken's row at the ruled 22 GiB one-seat pool and butch's at the ruled 192 GiB charge, under one named rule for a host that runs no builders at all.",
+        first_slice: "Write ken's row at the ruled 26.2 GiB one-seat pool and butch's at the ruled 192 GiB charge, under one named rule for a host that runs no builders at all.",
         red_control: "A reservation refused for want of a carved runner slot on a host that has no runners by ruling.",
         out_of_scope: "butch's CI width, which the operator ruled zero (#17005); the ledger's per-host owner and mode (serving-capacity-ledger-owner-per-host).",
         handback: "butch's and ken's capacity rows admitted under a named rule, with the rule or the ruling cited on this row.",
@@ -9047,10 +9049,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "ken goes from a partial converge to a serving host",
         boundary: "After serving-capacity-ledger-owner-per-host and serving-build-pool-for-zero-ci-host. ken (x86_64, 128 cores, 125G, 2.0 of 2.18 GHz with no cap service, 333G free, tailnet tags ci+serving) has gunbc-build only on a partial converge and no linger, no ledger, no toolchain and no checkout today (survey, 2026-11-26). A settle on ken must produce, in this order (lively-owl-722's checklist): (1) the gunbc-compute membership settle, gated on #17112; (2) the ledger dir /opt/gunbc/compute/capacity owned by gunbc-build; (3) the store, scratch and ssh/bin dirs, with authorized_keys; (4) the checkout; (5) rustup and the toolchain; (6) linger; (7) the user work slice, whose memory.max equalled the ken_strata_engine_memory carve -- read 2026-11-26 as 44 GiB = 47,244,640,256 bytes (user_work_slice_memory_max_for_host(host-e2d4b7) at dag/gunbc/compute/host_capacity.dag:558, 2 charged slots x 22 GiB at dag/gunbc/runner/slice_bounds.dag:329 and :331 and user_work_pool_slots.dag:27); that reading is SUPERSEDED by the ruling (option A, approved by default on escalation msg_5ffaed22): ken takes zero CI width plus its OWN build pool of 22 GiB with ONE seat, beside the ken-strata engine at about 69 GiB RSS, so once the pool row lands host_build_pool_is_carved(ken) is true and the slice follows the pool. quiet-pike-440's capacity PR states the figure; (8) the NATIVE x86 serve build (BuildServeBinary, #16885), which depends on (4) and (5) -- the converge's upload route refuses unless the host's architecture equals the executor's, so the host that cannot receive the pool's binary builds its own -- running INSIDE gunbc-user-work.slice with no uncapped fallback: the highest measured build-class peak is 18.2 GiB (gunbc.live_deploy.srv1_worker_slice_receipt) under the fleet's 22 GiB per-build ceiling, so it fits that cap on the cited evidence, and the exact command cargo build --release -p gunbc --bin gunbc has never been measured; (9) the serve unit start. After the settle come the roster row in remote_build_serving_hosts(), grounded in the settle receipt, then a pinned compile whose request carries architecture=X86_64, then the pinned claim run read back at served=true. Egress is not a blocker: ken reaches github.com, static.rust-lang.org and index.crates.io (HTTP 200, read-only check 2026-11-26). Reach is MET: run 45823194417 took 21 ssh legs to ken.tailecbe08.ts.net with zero 'could not resolve', and elevation executes there; run 45328032000's 'Could not resolve hostname ken.tailecbe08.ts.net' and the 11-24 unreachable report are behind it. The observe that run produced is INDETERMINATE on one fact only -- rustup is absent, exit 127 -- which serving-observe-reads-absent-toolchain-as-drift turns into drift this settle owns; everything else on ken read as expected-absent drift, and its desired state renders even on x86.",
         displaced_cost: "the fleet's only x86 serving candidate sits unstarted while srv1 carries all the test evidence.",
-        first_slice: "The settle in checklist order: (1) and (2) once #17112 lands, then (3) through (7) with the ruled 22 GiB one-seat pool, then the native serve build at (8) inside the capped slice, then the serve unit start at (9).",
+        first_slice: "The settle in checklist order: (1) and (2) once #17112 lands, then (3) through (7) with the ruled 26.2 GiB one-seat pool, then the native serve build at (8) inside the capped slice, then the serve unit start at (9).",
         red_control: "A receipt claimed on ken before its capacity row exists, an arm64 binary installed on it, a roster row in remote_build_serving_hosts that is not grounded in a settle receipt",
         out_of_scope: "ken as a runner host (it hosts none); the pool rule and the pool row themselves (serving-build-pool-for-zero-ci-host), and the seat count that follows from the pool (serving-pool-seat-count-follows-the-build-ceiling).",
-        handback: "ken's executor-class and capacity rows, then two served=true receipts, and the first native serve build's receipt recording its own memory peak -- that reading is what closes the measurement lively-owl-722 left open (highest measured build-class peak 18.2 GiB against the 22 GiB per-build ceiling and the ruled 22 GiB pool; the exact command unmeasured, so the margin is about 4 GiB and the receipt must show it).",
+        handback: "ken's executor-class and capacity rows, then two served=true receipts, and the first native serve build's receipt recording its own memory peak -- that reading is what closes the measurement lively-owl-722 left open (highest measured build-class peak 18.2 GiB against the 22 GiB per-build ceiling and the ruled 26.2 GiB one-seat pool; the exact command unmeasured, so the margin is about 4 GiB and the receipt must show it).",
       )),
       centering: plan(text: "remote_build_bandwidth_plan: done-when 1 for ken. Target: gunbc.compute.remote_build_serving_setup and ken's row in gunbc.compute.remote_build_hosts."),
       dispatch: dispatchable(),
@@ -9169,7 +9171,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
-    // ---- gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (regrouped 2026-11-26).
+    // ---- #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (regrouped 2026-11-26).
     // Layer 0 unblocks every host; each layer-1 host row waits on the layer-0 rows its boundary names;
     // the probe-ceiling row waits on the host whose read it takes.
     edge(child: "remote-build-srv1-serves", parent: "remote-build-census-refused-reservation-never-charges"),
