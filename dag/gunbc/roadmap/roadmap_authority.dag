@@ -8431,6 +8431,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "desired_state_follows_the_machine_plan: the single highest-leverage piece of the report. Target: a read module wired as a mode of dag/gunbc/fleet/fleet_converge_workflow.dag, whose legs already reach each host over SSH."),
     ),
     roadmap_node(
+      identity: "rn_92EE4628EE423C51435DD347A9",
+      id: "fleet-truth-read-producers-cover-all-five-axes",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_converge_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "The per-host truth read refuses THREE of its five axes for want of a producer; give each refused axis an arm, a parser and a witness on the existing converge route",
+        boundary: "MEASURED at origin/main: type HostTruthAxis (gunbc.fleet.fleet_host_truth_read, decl type HostTruthAxis) has FIVE members; on the host_truth_read_observe route (gunbc.fleet.fleet_host_truth_observe, decl fn host_truth_read_observe, landed #16966 at 61af31ae604) THREE are typed refusals for want of a producer on this route -- TruthDeclaredHardwareEnumerates (per-host PCI class count; gunbc.host.host_operation_exec has NO Lspci arm: 0 hits), TruthEnabledUnitHasItsHardware (enabled-unit list; NO list-unit-files arm: 0 hits), and TruthIdentityAnchoredNotAddressed (the known_hosts scan observation exists only on the fleet_host_key_scan route, whose receipt never reaches a single-mode converge dispatch, per the module's own header comment at the identity-refusal paragraph). TWO axes have real producers today: TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared. The row states the number three, measured. Producers land as NEW HostOperation members in gunbc.host.host_operation_exec, extdeps parsers for their output, wired into host_truth_read_observe as steps of the EXISTING converge route -- no new job (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21; gunbc.design_ruling::job_roster_closed_to_growth).",
+        displaced_cost: "An axis with no producer can only refuse, so a host whose hardware vanished or whose unit was disabled out of band is indistinguishable from a host nobody read (gunbc.design_argument::fail_closed); the sibling row fleet-truth-per-host-read puts host runs out of scope, leaving the producer half ownerless.",
+        first_slice: "One axis end to end: the Lspci HostOperation arm + its extdeps parser + the observe wiring + witness for TruthDeclaredHardwareEnumerates, refusal distinguishable from no-read.",
+        red_control: "Per refused axis: with the producer absent or failing, the witness shows the typed refusal DISTINCT from the no-read case; with the producer present, the witness shows a typed value from a real read. A witness that cannot tell 'producer failed' from 'host never read' reds.",
+        out_of_scope: "No new job or timer (roster closed to growth); no CI budget movement -- any figure-level ask goes to the operator BEFORE the PR; the two axes that already have producers are not re-opened.",
+        handback: "Per refused axis: the new HostOperation member, its parser, the observe step, and the witness receipt (typed value from a real read AND a refusal distinguishable from no read); one wet srv1 leg per roster host under lane srv1 rules."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The read is only as good as its instruments: a read that fails into absence is a lie with a timestamp."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: the single highest-leverage piece of the report. Target: a read module wired as a mode of dag/gunbc/fleet/fleet_converge_workflow.dag, whose legs already reach each host over SSH."),
+    ),
+    roadmap_node(
       identity: "rn_FTTHBL2H9F36L05V7532GS61R4",
       id: "fleet-truth-rosters-consume-the-read",
       owner: "model",
@@ -9511,6 +9529,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "bobo-onboarding-end-to-end", parent: "bringup-entry-verifies-managed-unit"),
     edge(child: "edge-concurrent-install-offers", parent: "install-holds-one-store-and-edge-reconciles-attempts"),
     edge(child: "redfish-boot-once-live-route", parent: "boot-once-one-judgment"),
+    edge(child: "fleet-truth-read-producers-cover-all-five-axes", parent: "fleet-truth-per-host-read"),
     edge(child: "fleet-truth-rosters-consume-the-read", parent: "fleet-truth-per-host-read"),
     edge(child: "fleet-truth-unit-orphans-closed", parent: "fleet-truth-per-host-read"),
     edge(child: "fleet-truth-serving-leaf-caps-joined-to-working-set", parent: "fleet-truth-per-host-read"),
