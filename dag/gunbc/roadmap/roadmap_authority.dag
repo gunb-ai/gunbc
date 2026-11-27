@@ -3446,7 +3446,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Running a claim and landing a planning change take minutes, not hours",
           boundary: "The friction one planning change met on 2026-11-26 (gunbc#17167): six claim files verified by exact label took about 80 minutes, a 2-claim file took 981 seconds, a branch build took 14 minutes, and the help text named selection forms that select nothing. Members are the frictions no node owned. Those already owned stay there: the per-process whole-tree front end with claim-route-loads-by-layout-demand, and claims absent from the required check with required-check-named-witnesses-runs-no-claim-module.",
-          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), test-everything-runs-what-changed (the goal: bazel test //... behavior), a-claim-module-pays-only-for-its-subject, one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
+          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), test-everything-runs-what-changed (the goal: bazel test //... behavior), a-claim-module-pays-only-for-its-subject, test-discovery-reads-the-parse, one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
           red_control: "A member that makes a slow step cheaper to repeat (a cache, a wider pool, a timeout) without removing the repeated work is not payoff, by gunbc.design_argument minimize_redundancy.",
           displaced_cost: "Slow verification is why claims stopped being run regularly: authors and agents batch, wait, or skip, and the wait is where defects accumulate unseen.",
           handback: "Per member: the step's before and after on the same instrument, and the surplus work deleted rather than cached."
@@ -3500,6 +3500,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "Per hub: the closure before and after, the affected test modules' wall time before and after on the same binary, and verdicts unchanged."
         )),
       parent: in_project(project: "claim-loop-is-tight", contribution: "A claim run pays for what its claims are about."),
+    ),
+    roadmap_node(
+      identity: "rn_SQGCOCJN6B65SF5U67FQQVJZFY",
+      id: "test-discovery-reads-the-parse",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/workflow/floor_discovery_source_authority.dag"),
+      line: ticket(t: fields(
+          headline: "Test discovery decides from the parse's facts instead of re-scanning source text",
+          boundary: "Both front ends parse each file, keep only the test names, and hand the raw text to v2.workflow.floor_discovery_source_authority, which re-scans it line by line with string helpers for the disposition row and wire-contract declarations: a fact computed, discarded and re-derived (the declared scaffold floor_discovery_surface_text_scan_scaffold). The corpus-walk producer re-reads and re-scans every file for its two callers, gunbc.instruments.layout_witness_join and v2.compiler.effect_demand_floor_join. Operator 2026-11-27: delete the permanently red live census rather than grow the interpreter for it, and run this as its own session.",
+          displaced_cost: "Every claim run and floor run re-parses declarations by string matching, and the scan admits comment text as semantics.",
+          first_slice: "A parse-tree capture of data declarations (name, declared type path, initializer path) in the seed (heads parse plus pooled tokens) and v2 (beside test_marker_content, feeding acquisition_requests_ok and acquisition_test_markers); AcquiredModule and source_root_eval carry it; the producer takes (repo_path, marked, data_declarations) from its callers; the authority decides from it. Delete the 12 string helpers, the content parameter, the scaffold and its dissolution rows, and witness_execution_class_live_census with its long-lane row; rewrite the 33 text-fixture claims as fact fixtures.",
+          red_control: "Every refusal stays (malformed and duplicate disposition, misplaced wire contract, unparseable source) except a trailing comment on a disposition row, which DESIGN section 4c says cannot change semantics; no corpus file has one.",
+          out_of_scope: "Relocating the placement and disposition rules out of discovery.",
+          handback: "Discovered rows over the floor's full prepared inventory identical old against new, each difference named; self-host and v2-native-cli builds green; the rewritten claims held."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Finding the tests costs nothing the parse did not already pay."),
     ),
     roadmap_node(
       identity: "rn_YCI5MTHYVH4H3TMLMH4Z3746ZU",
