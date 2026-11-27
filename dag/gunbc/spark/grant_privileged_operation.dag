@@ -36,6 +36,7 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
   FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  FleetPrincipalLegOutcome,
   }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_grant_reconcile {
@@ -616,6 +617,41 @@ fn privileged_step_lease(
   }
 }
 
+// THE EXEC OUTCOME AS A PURE DECISION. A privileged leg whose exec came back wire-inconsistent or
+// overran WAS dispatched -- the credential WAS read and kept, and the far-side command may have run --
+// so it lands in PrivilegedCommandUnanswered (effect unknown), NEVER CredentialNotMaterialized (which
+// reads as "this run never received the credential, the step was never attempted"). This is the whole
+// 4th-arm contract for the spark grant path, factored out so a witness drives it and the destructive
+// removal readback is gated on it. (#17119 manager item 4, follow-up of #16984.)
+fn privileged_step_outcome_of_exec(command: AdmittedRootArgv, lease: AuthorizationRequest<SparkBootstrapSubject>, exec: FleetPrincipalLegOutcome) -> PrivilegedStepOutcome {
+  match exec {
+    FleetPrincipalLegRefused { cause: why } =>
+      CredentialNotMaterialized { lease: lease, cause: why as String }
+    FleetPrincipalLegOverran { session: _, deadline: d } =>
+      PrivilegedCommandUnanswered {
+        command: command,
+        cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
+      }
+    FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+      PrivilegedCommandUnanswered {
+        command: command,
+        cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark grant privileged materialize", fault: f),
+      }
+    FleetPrincipalLegRan { session: _, result: result } =>
+      if result.success {
+        PrivilegedCommandSucceeded { command: command }
+      } else if sudo_rejected_the_credential(stderr: result.stderr) {
+        CredentialRejected { lease: lease }
+      } else {
+        PrivilegedCommandFailed {
+          command: command,
+          exit_code: result.exit_code,
+          stderr: result.stderr,
+        }
+      }
+  }
+}
+
 fn run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -644,39 +680,18 @@ fn run_privileged_step(
               SshTargetRefused { endpoint: e, refusal: why } =>
                 CredentialNotMaterialized { lease: effective_lease, cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
               SshTargetResolved { target: lease_target } =>
-              match exec_as_fleet_principal_with_stdin(
-                kind: ProvisioningLeg,
-                context: context,
-                target: lease_target,
-                words: words,
-                stdin_payload: join([secret, "\n"], ""),
-                credential: BootstrapCredentialInRunEnvironment,
-              ) {
-                FleetPrincipalLegRefused { cause: why } =>
-                  CredentialNotMaterialized { lease: effective_lease, cause: why as String }
-                  FleetPrincipalLegOverran { session: _, deadline: d } =>
-                    PrivilegedCommandUnanswered {
-                      command: command,
-                      cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
-                    }
-                  FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
-                    PrivilegedCommandUnanswered {
-                      command: command,
-                      cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark grant privileged materialize", fault: f),
-                    }
-                FleetPrincipalLegRan { session: _, result: result } =>
-                  if result.success {
-                    PrivilegedCommandSucceeded { command: command }
-                  } else if sudo_rejected_the_credential(stderr: result.stderr) {
-                    CredentialRejected { lease: effective_lease }
-                  } else {
-                    PrivilegedCommandFailed {
-                      command: command,
-                      exit_code: result.exit_code,
-                      stderr: result.stderr,
-                    }
-                  }
-              }
+              privileged_step_outcome_of_exec(
+                command: command,
+                lease: effective_lease,
+                exec: exec_as_fleet_principal_with_stdin(
+                  kind: ProvisioningLeg,
+                  context: context,
+                  target: lease_target,
+                  words: words,
+                  stdin_payload: join([secret, "\n"], ""),
+                  credential: BootstrapCredentialInRunEnvironment,
+                ),
+              )
               }
           }
       }

@@ -32,6 +32,13 @@ import gunbc.spark.grant_privileged_operation {
   BootstrapCredentialNotMaterialized,
 }
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
+import gunbc.fleet.fleet_bootstrap_principal_session {
+  FleetSshKeySession, FleetPrincipalLegRefused, FleetPrincipalLegWireInconsistent, fleet_principal_leg_of_exec,
+}
+import extdeps.ssh.session { SshSessionExecResult, ssh_session_exec_outcome }
+import gunbc.spark.grant_privileged_operation {
+  privileged_step_outcome_of_exec, privileged_step_unanswered, PrivilegedCommandUnanswered,
+}
 
 // A CARRIED name, never a derived one -- the fixture supplies it exactly as an operator would.
 fn enrolled() -> SparkCredentialStanding {
@@ -354,4 +361,39 @@ test fn the_sudo_prompt_is_a_non_empty_portable_sentinel() -> Bool {
          Absent => false
          Present { value: _ } => true
        }
+}
+
+// A DISPATCHED-BUT-UNREADABLE PRIVILEGED STEP KEEPS THE CREDENTIAL AND IS RECOGNISED AS UNANSWERED
+// (so its independent readback runs) (#17119 manager item 4, follow-up of #16984). The exec is built
+// through the real decoder + the single fleet conversion, so the leg is genuinely wire-inconsistent
+// AFTER the sink. Driven through the real production decision privileged_step_outcome_of_exec on a
+// destructive sudoers step, it must land in PrivilegedCommandUnanswered -- NOT CredentialNotMaterialized
+// (which reads as "this run never received its bytes, the step was never attempted"): the credential WAS
+// read and kept, the far-side command may have run, so the destructive step's independent readback is
+// gated on (privileged_step_unanswered == true). The receipt names DISPATCHED / effect unknown and never
+// "never attempted" / "never received". The discriminator is the ARM, not the text: a genuine pre-dispatch
+// refusal is the DIFFERENT arm CredentialNotMaterialized, whose receipt DOES say "never attempted".
+// The sudoers-REMOVAL command (RemoveRetiredSharedInspectDropin) is a sealed sole_constructor carrier --
+// mint-proof outside this module by design (gunbc#13373), so it cannot be hand-built in a witness; it
+// flows run_retired_dropin_removal -> run_privileged_step -> this SAME privileged_step_outcome_of_exec and
+// the SAME privileged_step_unanswered readback gate as the destructive step driven here, so the gate proven
+// here is the one the removal relies on. Red-by-mutation: fold the WireInconsistent arm of
+// privileged_step_outcome_of_exec back onto CredentialNotMaterialized and this returns false.
+test fn a_dispatched_unreadable_privileged_step_keeps_the_credential_and_runs_the_removal_readback() -> Bool {
+  let result = SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", overran: true, wall_deadline_seconds: Absent }
+  let exec = ssh_session_exec_outcome(result: result)
+  let converted = fleet_principal_leg_of_exec(session: FleetSshKeySession, exec: exec)
+  let is_wire = match converted { FleetPrincipalLegWireInconsistent { session: _, fault: _ } => true _ => false }
+  let removal = InstallStagedSudoers { staged_path: "/home/runner/staged-sudoers" as NonEmptyStr, dropin_path: "/etc/sudoers.d/gunbc-spark" as NonEmptyStr }
+  let outcome = privileged_step_outcome_of_exec(command: removal, lease: lease_with(standing: enrolled()), exec: converted)
+  let is_unanswered = match outcome { PrivilegedCommandUnanswered { command: _, cause: _ } => true _ => false }
+  let not_never_sent = match outcome { CredentialNotMaterialized { lease: _, cause: _ } => false _ => true }
+  let readback_runs = privileged_step_unanswered(outcome)
+  let wire = privileged_step_outcome_wire(outcome: outcome)
+  let receipt_clean = string_contains(wire, "DISPATCHED") && string_contains(wire, "effect unknown")
+    && !string_contains(wire, "never attempted") && !string_contains(wire, "never received")
+  // the pre-dispatch refusal is the DISTINCT arm, proving the arm (not the text) is the discriminator
+  let pre = privileged_step_outcome_of_exec(command: removal, lease: lease_with(standing: enrolled()), exec: FleetPrincipalLegRefused { cause: "the transport refused before any leg ran" as NonEmptyStr })
+  let pre_is_not_unanswered = match pre { PrivilegedCommandUnanswered { command: _, cause: _ } => false _ => true }
+  is_wire && is_unanswered && not_never_sent && readback_runs && receipt_clean && pre_is_not_unanswered
 }
