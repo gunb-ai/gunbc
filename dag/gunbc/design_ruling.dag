@@ -1441,12 +1441,9 @@ data generated_artifact_production_lives_with_its_producer_2026_11_27: DesignRul
 
 fn design_rulings() -> List<DesignRuling> {
   [
-<<<<<<< HEAD
+    generated_artifact_production_lives_with_its_producer_2026_11_27,
     claim_selection_follows_bazel_target_patterns_2026_11_27,
     standing_fallbacks_are_retired_in_priority_order_2026_11_26,
-=======
-    generated_artifact_production_lives_with_its_producer_2026_11_27,
->>>>>>> origin/simplify/artifact-dispatch-at-the-periphery
     turn_admission_and_relocation_are_to_become_a_real_fabric_scheduler_2026_11_25,
     dag_invocation_is_one_conformance_pattern,
     operator_hand_applied_srv3_srv4_power_caps_2026_11_24,
