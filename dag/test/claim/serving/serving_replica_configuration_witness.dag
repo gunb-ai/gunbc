@@ -292,6 +292,10 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
 test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
   match h11_four_engines_configuration.prefix_cache_ratio {
     RatioObserved { hits: hits, misses: misses, standing: _ } => hits == 3 && misses == 50
+    // An empty-on-a-pass receipt or no producer at all would contradict what this row carries, and either
+    // way the claim does not hold: the arm is named rather than left to a wildcard, because the elaborator
+    // refuses a match that hides a variant (the route's own error at this line was exactly that).
+    RatioEmptyOnPass { pass: _, obligation: _ } => false
     RatioUnread { obligation: _ } => false
   }
     && match prefix_cache_ratio_permille(ratio: h11_four_engines_configuration.prefix_cache_ratio) {
