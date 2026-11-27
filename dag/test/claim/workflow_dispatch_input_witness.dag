@@ -456,7 +456,7 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
 
 // Serving apply is retired (hardware sold): the step refuses rather than invoking a deleted entry.
 test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
-  let invoke = gunbc_ci_spark_serving_apply_invoke();
+  let invoke = gunbc_ci_spark_serving_apply_invoke()
   string_contains(s: invoke, pattern: "DGX Spark serving path retired")
     && string_contains(s: invoke, pattern: "exit 1")
     && !string_contains(s: invoke, pattern: "pair_serving_apply")
