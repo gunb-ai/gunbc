@@ -70,6 +70,8 @@ import gunbc.design_argument {
 }
 import gunbc.roadmap.roadmap_review_criteria { review_home_text }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { DesignArtifact }
 
 // THE DOCUMENT CARRIES RULES, NOT THEIR HISTORY. A dated operator ruling is cited by its
 // gunbc.design_ruling row -- `ruling(r:)` renders the row's own reference -- and the row keeps
@@ -658,4 +660,15 @@ fn expected_design_md() -> String {
 
 fn design_drifted(committed: String) -> Bool {
   !(committed == expected_design_md())
+}
+
+fn design_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_design_md() }
+}
+
+data design_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: DesignArtifact,
+  generate: design_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

@@ -1,6 +1,8 @@
 module extdeps.filesystem.rust_realization
 
 import std.integer { int_to_decimal_string }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { FileTransportRealizationGeneratedRsArtifact }
 
 // THE RUST REALIZATION OF create-new PUBLISH, AS ONE AUTHORITY BOTH CONSUMERS COPY.
 //
@@ -179,3 +181,14 @@ fn rust_file_create_new_canonical_block() -> String {
 // CrossesDevices, both from the host; there is no copy fallback, because a link across filesystems
 // is not a copy. The source is left in place for its owner to remove.
 data rust_file_link_create_new_fn_def: String = "fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {\n    std::fs::hard_link(source_path, file_path)\n}\n"
+
+fn file_transport_realization_generated_rs_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_gunbc_file_transport_generated_rs() }
+}
+
+data file_transport_realization_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: FileTransportRealizationGeneratedRsArtifact,
+  generate: file_transport_realization_generated_rs_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
+}

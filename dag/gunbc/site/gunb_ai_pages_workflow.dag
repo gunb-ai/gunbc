@@ -36,6 +36,9 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_for_target }
 import gunbc.site.gunb_ai_site { gunb_ai_site_stage_dir }
 import extdeps.github.expressions { Expression, LogicalAnd, StepOutcomeFailure, step_outcome_is, serialize_expression }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { GunbAiPagesWorkflowYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
 
 // gunb.ai's DEPLOY: ON A PUSH TO MAIN, RENDER THE SITE FROM ITS TYPED MODULES AND PUBLISH IT TO GITHUB PAGES.
 //
@@ -326,4 +329,25 @@ fn expected_gunb_ai_pages_workflow_yml() -> GunbAiPagesWorkflowGenerationOutcome
           }
       }
   }
+}
+
+fn gunb_ai_pages_workflow_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_gunb_ai_pages_workflow_yml() {
+      GunbAiPagesWorkflowGenerated { content } => workflow_body_generated(content: content)
+      GunbAiPagesWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn gunb_ai_pages_workflow_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: GunbAiPagesWorkflowYamlArtifact))
+}
+
+data gunb_ai_pages_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: GunbAiPagesWorkflowYamlArtifact,
+  generate: gunb_ai_pages_workflow_yaml_artifact_generated,
+  extra_valid: gunb_ai_pages_workflow_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.site.gunb_ai_pages_workflow expected_gunb_ai_pages_workflow_yml",
+    authority: "gunbc.site.gunb_ai_pages_workflow gunb_ai_pages_workflow",
+  } },
 }

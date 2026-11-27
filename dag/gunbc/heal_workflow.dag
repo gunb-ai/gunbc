@@ -55,6 +55,9 @@ import gunbc.heal_candidate {
   heal_candidate_run_id_env
 }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { HealWorkflowYamlArtifact }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
 
 // THE PULL REQUEST'S OWN HALF OF HEAL, IN ITS OWN WORKFLOW (gunbc#10958 Phase A).
 //
@@ -669,4 +672,25 @@ fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
     target: gunbc_ci_heal_candidate_stage0_target,
     receipt_rel: none
   )
+}
+
+fn heal_workflow_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_heal_workflow_yml() {
+      HealWorkflowGenerated { content } => workflow_body_generated(content: content)
+      HealWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn heal_workflow_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: HealWorkflowYamlArtifact))
+}
+
+data heal_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: HealWorkflowYamlArtifact,
+  generate: heal_workflow_yaml_artifact_generated,
+  extra_valid: heal_workflow_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.heal_workflow expected_heal_workflow_yml",
+    authority: "gunbc.heal_workflow heal_workflow_of",
+  } },
 }

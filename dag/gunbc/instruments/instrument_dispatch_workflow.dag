@@ -60,6 +60,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_exit, bash_build_if_from_stmts, bash_build_subshell_from_stmts,
 }
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { InstrumentDispatchYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
 
 // ONE OPERATOR-DISPATCHED RUN OF ONE ROSTERED INSTRUMENT, ON THE FLEET, AND NOTHING ELSE.
 //
@@ -823,4 +826,25 @@ fn expected_instrument_dispatch_yml_with(workflow: Workflow) -> InstrumentDispat
           }
       }
   }
+}
+
+fn instrument_dispatch_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_instrument_dispatch_yml() {
+      InstrumentDispatchWorkflowGenerated { content } => workflow_body_generated(content: content)
+      InstrumentDispatchWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn instrument_dispatch_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: InstrumentDispatchYamlArtifact))
+}
+
+data instrument_dispatch_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: InstrumentDispatchYamlArtifact,
+  generate: instrument_dispatch_yaml_artifact_generated,
+  extra_valid: instrument_dispatch_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.instruments.instrument_dispatch_workflow expected_instrument_dispatch_yml",
+    authority: "gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_workflow",
+  } },
 }

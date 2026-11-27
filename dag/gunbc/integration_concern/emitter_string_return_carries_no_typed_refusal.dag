@@ -13,7 +13,7 @@ import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Integratio
 // three ways -- the word wall (gunbc_invoke_word_unsafe_poison), the orchestration rejection
 // (gunbc_invoke_step_orch_refused_poison), and a target whose module derives no storage path
 // (gunbc_run_step_target_unstored_poison) -- and all three collapse their typed refusal into a marker
-// STRING in the rendered bytes, which gunbc.tier_o_artifact_emit tier_o_workflow_produced later finds
+// STRING in the rendered bytes, which gunbc.generated_artifact_production workflow_body_generated later finds
 // with a prefix scan. Each refusal locates itself (the word or the sanitized module_path/decl_name
 // follows the marker) and the committed-workflow door is closed while the scan stands, but a refusal
 // rendered into anything the scan does not read travels untyped. The honest terminal shape is one
@@ -35,10 +35,10 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
     tail: [
       decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_orch_refused_poison"),
       decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison"),
-      decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_workflow_produced"),
+      decl_ref(module_path: "gunbc.generated_artifact_production", decl_name: "workflow_body_generated"),
     ],
   },
-  question: "when the *_invoke job bodies return a typed refusal carrier unwrapped once at artifact_generate, delete the three poisons and the tier_o_workflow_produced prefix scan together. Until then the family is mitigatable, stated as such: located markers behind one prefix, the scan the only gate, and any render outside the scan's reach unguarded.",
+  question: "when the *_invoke job bodies return a typed refusal carrier unwrapped once at artifact_generate, delete the three poisons and the workflow_body_generated prefix scan together. Until then the family is mitigatable, stated as such: located markers behind one prefix, the scan the only gate, and any render outside the scan's reach unguarded.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "b45535c5d7f184b7ec9ffb687f7c387705f9b247",
@@ -46,7 +46,7 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
         head: CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison") },
         tail: [
           CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_unsafe_poison") },
-          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_workflow_produced") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.generated_artifact_production", decl_name: "workflow_body_generated") },
         ],
       },
       account: "P2a added the third sibling (the unstored-target poison beside the word wall and orchestration poisons) and the Tier O prefix scan; dashboard review 95421 on gunb-ai/gunbc#16467 at head b45535c5d7f (Verdict: REQUEST_CHANGES) judged marker-string plus string_contains a fail_closed fork for the Absent arm. The family-wide retype was ruled its own change, not P2a; this row is its trigger. Dashboard review 95484 on the same PR (Verdict: REQUEST_CHANGES) refused the per-character sanitizer that had been duplicated beside the alphabet's home; this row's own citations were the proof (they named the copy by home). It is now deleted: the Absent arm renders through gunbc_invoke_sanitize_word, the family's single character map, so the family keeps ONE sanitizer and this concern tracks only the typed threading.",

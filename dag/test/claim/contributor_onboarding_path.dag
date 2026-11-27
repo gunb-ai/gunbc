@@ -49,7 +49,6 @@ import gunbc.generated_artifact {
   artifact_is_committed
 }
 import gunbc.instruments.docs_projection_gate {
-  docs_projection_producer,
   artifact_is_docs_located,
   artifact_has_docs_producer,
   docs_located_artifacts,

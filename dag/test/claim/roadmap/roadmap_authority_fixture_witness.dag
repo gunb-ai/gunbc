@@ -50,7 +50,8 @@ import gunbc.roadmap.roadmap_authority_fixture {
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_directory, artifact_name, artifact_path, artifact_eq }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
-import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.generated_artifact_emit { artifact_generate }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationRefused }
 import gunbc.instruments.generated_artifact_gate { artifact_selection_for_path, ArtifactSelected, ArtifactSelectionEmpty }
 import std.filesystem { path_parent_directory }
 import gunbc.live_deploy.member_identity { structural_digest_wire }

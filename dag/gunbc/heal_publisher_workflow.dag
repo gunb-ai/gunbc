@@ -62,6 +62,9 @@ import gunbc.ci.ci_retry { ci_retry_step }
 import gunbc.auth.github_app_credential_step {github_app_installation_token_prelude, heal_publisher_token_mint}
 import gunbc.auth.github_apps {gunbai_bot_declared, gunbai_bot_declared_installation_id}
 import gunbc.auth.heal_publisher_federation {HealPublisherFederation}
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { HealPublisherWorkflowYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
 
 
 // THE PROTECTED PUBLISHER (gunbc#10958 Phase B), AND EVERY STRUCTURAL REASON IT IS SAFE TO GIVE IT A
@@ -856,4 +859,25 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
     }),
     "\n"
   )
+}
+
+fn heal_publisher_workflow_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_heal_publisher_workflow_yml() {
+      HealPublisherWorkflowGenerated { content } => workflow_body_generated(content: content)
+      HealPublisherWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn heal_publisher_workflow_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: HealPublisherWorkflowYamlArtifact))
+}
+
+data heal_publisher_workflow_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: HealPublisherWorkflowYamlArtifact,
+  generate: heal_publisher_workflow_yaml_artifact_generated,
+  extra_valid: heal_publisher_workflow_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",
+    authority: "gunbc.heal_publisher_workflow heal_publisher_workflow_of",
+  } },
 }

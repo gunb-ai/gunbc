@@ -20,6 +20,9 @@ import gunbc.auth.approval_device_wire {
 import gunbc.auth.approval_google_enrolment { approval_google_enrolment_protocol }
 import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import v2.extdeps.languages.swift.rows { SwiftRowEmissionRefused, SwiftRowEmitted }
+import gunbc.generated_artifact { ApproveIosProtocolSwiftArtifact }
 
 // apps/approve-ios/Approve/Protocol.swift AS A SWIFT SYNTAX TREE (v2.extdeps.languages.swift.syntax),
 // emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
@@ -232,4 +235,18 @@ fn approve_ios_protocol_swift_file() -> SwiftSourceFile {
 
 fn expected_approve_ios_protocol_swift() -> SwiftRowEmission {
   swift_rows_emit_source_file(f: approve_ios_protocol_swift_file())
+}
+
+fn approve_ios_protocol_swift_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_approve_ios_protocol_swift() {
+      SwiftRowEmitted { source } => ArtifactGenerated { content: source }
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+}
+
+data approve_ios_protocol_swift_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: ApproveIosProtocolSwiftArtifact,
+  generate: approve_ios_protocol_swift_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

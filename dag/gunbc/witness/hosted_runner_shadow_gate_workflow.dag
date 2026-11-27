@@ -38,7 +38,6 @@ import gunbc.compute.remote_build_client { remote_gate_exit_code, GateNoHostAdmi
 import gunbc.source_layout { layout_tree_directory, LayoutTreeDag, LayoutTreeV2 }
 import std.integer { int_to_decimal_string }
 import gunbc.generated_artifact { HostedRunnerShadowGateYamlArtifact }
-import gunbc.generated_workflow_provenance { generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
 import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.tailscale_ci_oauth_client {
   ci_oauth_client_id, ci_oauth_client_tags, tailscale_oauth_client_secret_ref,
@@ -54,6 +53,9 @@ import gunbc.secret_provision { secret_ref_pin_version }
 import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command_to }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_for }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated, generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
 
 // THE HOSTED-RUNNER SHADOW GATE: a NON-required GitHub Actions job on a standard GitHub-hosted
 // runner that joins the tailnet and drives the gunbc remote build for every required-gate row.
@@ -785,7 +787,7 @@ fn expected_hosted_runner_shadow_gate_yml_with(workflow: Workflow) -> ShadowGate
 //     --function shadow_gate_emit_cli
 
 fn shadow_gate_emit_cli() -> ProcessExit {
-  match generated_workflow_provenance_header(a: HostedRunnerShadowGateYamlArtifact) {
+  match generated_workflow_provenance_header(provenance: hosted_runner_shadow_gate_yaml_artifact_production.provenance) {
     GeneratedWorkflowProvenanceHeaderProduced { content: header } =>
       match expected_hosted_runner_shadow_gate_yml() {
         ShadowGateWorkflowGenerated { content } => {
@@ -795,6 +797,27 @@ fn shadow_gate_emit_cli() -> ProcessExit {
         ShadowGateWorkflowGenerationRefused { reason } => ExitFailure { code: 1, reason: reason }
       }
     GeneratedWorkflowProvenanceHeaderNotApplicable =>
-      ExitFailure { code: 1, reason: "gunbc.generated_workflow_provenance has no provenance row for HostedRunnerShadowGateYamlArtifact: the commit-policy admission requires one (fail-closed)" }
+      ExitFailure { code: 1, reason: "hosted_runner_shadow_gate_yaml_artifact_production carries no provenance for HostedRunnerShadowGateYamlArtifact: the commit-policy admission requires one (fail-closed)" }
   }
+}
+
+fn hosted_runner_shadow_gate_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_hosted_runner_shadow_gate_yml() {
+      ShadowGateWorkflowGenerated { content } => workflow_body_generated(content: content)
+      ShadowGateWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn hosted_runner_shadow_gate_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: HostedRunnerShadowGateYamlArtifact))
+}
+
+data hosted_runner_shadow_gate_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: HostedRunnerShadowGateYamlArtifact,
+  generate: hosted_runner_shadow_gate_yaml_artifact_generated,
+  extra_valid: hosted_runner_shadow_gate_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.witness.hosted_runner_shadow_gate_workflow expected_hosted_runner_shadow_gate_yml",
+    authority: "gunbc.witness.hosted_runner_shadow_gate_workflow shadow_gate_workflow",
+  } },
 }

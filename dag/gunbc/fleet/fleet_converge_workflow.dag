@@ -327,6 +327,10 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, step_yaml }
 import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { FleetConvergeYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, workflow_body_generated }
+import std.optional { Present }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -9611,4 +9615,25 @@ fn fleet_converge_managed_host_network_install_receipt_upload_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
+}
+
+fn fleet_converge_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_fleet_converge_yml() {
+      FleetConvergeYamlGenerated { content } => workflow_body_generated(content: content)
+      FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn fleet_converge_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: FleetConvergeYamlArtifact))
+}
+
+data fleet_converge_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: FleetConvergeYamlArtifact,
+  generate: fleet_converge_yaml_artifact_generated,
+  extra_valid: fleet_converge_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.fleet.fleet_converge_workflow expected_fleet_converge_yml",
+    authority: "gunbc.fleet.fleet_converge_workflow fleet_converge_workflow",
+  } },
 }
