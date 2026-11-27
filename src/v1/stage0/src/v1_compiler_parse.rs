@@ -258,6 +258,7 @@ pub struct ParseContext {
     pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
     pub heads_only: bool,
+    pub no_record_brace: bool,
     pub env: Rc<ParseEnvironment>,
     pub source_extents: Rc<ParseSourceExtentState>,
 }
@@ -858,6 +859,7 @@ pub fn parse_context_with_source_extents(
         let __rb_4_0 = ctx.declaration_occurrences.clone();
         let __rb_5_0 = ctx.reference_occurrences.clone();
         let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_6_5 = ctx.no_record_brace.clone();
         let __rb_7_0 = ctx.env.clone();
         let __rb_8_0 = source_extents.clone();
         let mut __rb_h = ctx;
@@ -870,6 +872,7 @@ pub fn parse_context_with_source_extents(
                 __rb_r.declaration_occurrences = __rb_4_0;
                 __rb_r.reference_occurrences = __rb_5_0;
                 __rb_r.heads_only = __rb_6_0;
+                __rb_r.no_record_brace = __rb_6_5;
                 __rb_r.env = __rb_7_0;
                 __rb_r.source_extents = __rb_8_0;
             }
@@ -882,6 +885,7 @@ pub fn parse_context_with_source_extents(
                     declaration_occurrences: __rb_4_0,
                     reference_occurrences: __rb_5_0,
                     heads_only: __rb_6_0,
+                    no_record_brace: __rb_6_5,
                     env: __rb_7_0,
                     source_extents: __rb_8_0,
                 });
@@ -889,6 +893,21 @@ pub fn parse_context_with_source_extents(
         }
         __rb_h
     }
+}
+
+pub fn parse_context_set_no_record_brace(ctx: Rc<ParseContext>, value: bool) -> Rc<ParseContext> {
+    Rc::new(ParseContext {
+        source_indices: ctx.source_indices.clone(),
+        intern_table: ctx.intern_table.clone(),
+        occurrence_allocator: ctx.occurrence_allocator.clone(),
+        occurrence_index: ctx.occurrence_index.clone(),
+        declaration_occurrences: ctx.declaration_occurrences.clone(),
+        reference_occurrences: ctx.reference_occurrences.clone(),
+        heads_only: ctx.heads_only.clone(),
+        no_record_brace: value,
+        env: ctx.env.clone(),
+        source_extents: ctx.source_extents.clone(),
+    })
 }
 
 pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceIndex> {
@@ -933,6 +952,7 @@ pub fn parse_context_with_occurrence_state(
         let __rb_4_0 = declaration_occurrences.clone();
         let __rb_5_0 = reference_occurrences.clone();
         let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_6_5 = ctx.no_record_brace.clone();
         let __rb_7_0 = ctx.env.clone();
         let __rb_8_0 = ctx.source_extents.clone();
         let mut __rb_h = ctx;
@@ -945,6 +965,7 @@ pub fn parse_context_with_occurrence_state(
                 __rb_r.declaration_occurrences = __rb_4_0;
                 __rb_r.reference_occurrences = __rb_5_0;
                 __rb_r.heads_only = __rb_6_0;
+                __rb_r.no_record_brace = __rb_6_5;
                 __rb_r.env = __rb_7_0;
                 __rb_r.source_extents = __rb_8_0;
             }
@@ -957,6 +978,7 @@ pub fn parse_context_with_occurrence_state(
                     declaration_occurrences: __rb_4_0,
                     reference_occurrences: __rb_5_0,
                     heads_only: __rb_6_0,
+                    no_record_brace: __rb_6_5,
                     env: __rb_7_0,
                     source_extents: __rb_8_0,
                 });
@@ -978,6 +1000,7 @@ pub fn parse_context_with_intern_table(
         let __rb_4_0 = ctx.declaration_occurrences.clone();
         let __rb_5_0 = ctx.reference_occurrences.clone();
         let __rb_6_0 = ctx.heads_only.clone();
+        let __rb_6_5 = ctx.no_record_brace.clone();
         let __rb_7_0 = ctx.env.clone();
         let __rb_8_0 = ctx.source_extents.clone();
         let mut __rb_h = ctx;
@@ -990,6 +1013,7 @@ pub fn parse_context_with_intern_table(
                 __rb_r.declaration_occurrences = __rb_4_0;
                 __rb_r.reference_occurrences = __rb_5_0;
                 __rb_r.heads_only = __rb_6_0;
+                __rb_r.no_record_brace = __rb_6_5;
                 __rb_r.env = __rb_7_0;
                 __rb_r.source_extents = __rb_8_0;
             }
@@ -1002,6 +1026,7 @@ pub fn parse_context_with_intern_table(
                     declaration_occurrences: __rb_4_0,
                     reference_occurrences: __rb_5_0,
                     heads_only: __rb_6_0,
+                    no_record_brace: __rb_6_5,
                     env: __rb_7_0,
                     source_extents: __rb_8_0,
                 });
@@ -4204,6 +4229,7 @@ pub fn parse_context_for_tokens(
         declaration_occurrences: Some(Rc::new(vec![])),
         reference_occurrences: Some(Rc::new(vec![])),
         heads_only: heads_only.clone(),
+        no_record_brace: false,
         env: env.clone(),
         source_extents: parse_source_extent_state_empty(),
     })
@@ -15789,13 +15815,45 @@ pub fn parse_ident_expr(
             if (is_uppercase_start(name.clone())
                 && tok_is_lbrace(token_stream_first(tokens.clone())))
             {
-                parse_record_literal(
-                    tokens.clone(),
-                    ctx.clone(),
-                    name.clone(),
-                    span.clone(),
-                    entry.clone(),
-                )
+                if !ctx.no_record_brace {
+                    parse_record_literal(
+                        tokens.clone(),
+                        ctx.clone(),
+                        name.clone(),
+                        span.clone(),
+                        entry.clone(),
+                    )
+                } else {
+                    let rec = parse_record_literal(
+                        tokens.clone(),
+                        parse_context_set_no_record_brace(ctx.clone(), false),
+                        name.clone(),
+                        span.clone(),
+                        entry.clone(),
+                    );
+                    if has_err(rec.err.clone()) {
+                        parsed_expr_result(
+                            entry.clone(),
+                            tokens.clone(),
+                            ctx.clone(),
+                            |identity| {
+                                crate::v1_std_core::make_named_expr_node(
+                                    identity,
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar {
+                                        binding_kind: std::option::Option::None,
+                                    }),
+                                    Rc::new(vec![]),
+                                    std::option::Option::None,
+                                    span.clone(),
+                                    span.clone(),
+                                )
+                            },
+                        )
+                    } else {
+                        rec
+                    }
+                }
             } else {
                 parsed_expr_result(entry.clone(), tokens.clone(), ctx.clone(), |identity| {
                     crate::v1_std_core::make_named_expr_node(
@@ -18071,7 +18129,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                 err: r.err.clone(),
             });
         }
-        let r = parse_expr_no_brace(r.tokens.clone(), ctx.clone());
+        let r = parse_expr_no_brace(r.tokens.clone(), parse_context_set_no_record_brace(ctx.clone(), true));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -18083,7 +18141,10 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
         let condition = r.expr.clone();
         let r = parse_block(
             skip_newlines(r.tokens.clone()),
-            parse_context_after_node(r.ctx.clone(), condition.clone()),
+            parse_context_set_no_record_brace(
+                parse_context_after_node(r.ctx.clone(), condition.clone()),
+                false,
+            ),
         );
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -18095,9 +18156,12 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
         }
         let then_branch = r.expr.clone();
         let tokens = skip_newlines(r.tokens.clone());
-        let ctx = parse_context_after_node_list(
-            r.ctx.clone(),
-            Rc::new(vec![condition.clone(), then_branch.clone()]),
+        let ctx = parse_context_set_no_record_brace(
+            parse_context_after_node_list(
+                r.ctx.clone(),
+                Rc::new(vec![condition.clone(), then_branch.clone()]),
+            ),
+            false,
         );
         match (*eat(
             tokens.clone(),

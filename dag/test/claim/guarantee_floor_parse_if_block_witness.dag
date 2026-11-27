@@ -1,0 +1,87 @@
+module test.claim.guarantee_floor_parse_if_block_witness
+
+// COMPLETENESS WITNESS for roadmap node floor-parse-formation-wall (rn_VNYPK344GM56QEWP34G7VCG4OA).
+// The measured false refusal: a block after a bare identifier in if-condition position refused as
+// "expected RParen, found Colon" -- parse_ident_expr routed an uppercase token followed by '{' into
+// parse_record_literal unconditionally, so `if x == Upper { ... }` ate the branch brace. The wall
+// marks if-condition position (ParseContext.no_record_brace, set by parse_if) and, only under the
+// mark, the record-literal parse is ATTEMPTED and falls back to the plain variable when it refuses.
+// These legs are parse-level (ParseError class rows only): the discriminating observation is
+// formation, not resolution -- later-stage classes on undeclared names are out of scope here and
+// named so in each fixture. This module is a NEW file; it enrolls no corpus rows (the probe corpus
+// stays untouched until the stagger ban lifts), so the pair is carried here, by name.
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+}
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, CensusVerdict }
+import std.types { String }
+import std.process { ProcessExit }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
+}
+
+// PASS SHAPE (the false refusal, now closed): an uppercase token ends the condition and the branch
+// block follows immediately. Before the wall this refused with ParseError rows ("expected RParen,
+// found ..." family); with the wall the branch brace is the block it is and no ParseError appears.
+// Resolution classes for the undeclared uppercase name are a later stage and not asserted either way.
+data if_block_after_upper_condition: String =
+  "fn classify(x: Int) -> Int {\n  if x == BrandNominal { 1 } else { 2 }\n}\n"
+
+// NAMED NEGATIVE: a record literal in ordinary expression position keeps its formation refusal.
+// The mark is set by parse_if ONLY; nothing in this wall widens or narrows expression-position
+// record parsing, so a malformed record there still refuses with ParseError rows.
+data malformed_record_expression_position: String =
+  "fn probe() -> Int {\n  let x = Brand { 1 }\n  x\n}\n"
+
+// A LEGITIMATE record literal in if-condition position parses AS THE RECORD LITERAL IT IS: the
+// attempt succeeds (field spelling `value: 1`), no fallback, no ParseError rows. This is the case
+// the fallback must not swallow.
+data record_literal_in_condition_position: String =
+  "fn probe(x: Int) -> Int {\n  if x == Present { value: 1 } else { 0 }\n}\n"
+
+// VERBATIM carrier input (recurring_failure_mode row guarantee.seed_checklist.parse_formation_silent):
+// the measured false refusal, condition `brand_verdict == BrandNominalDistinctDeclarations` followed
+// by the block `{ record_lit_union_name_is_not_an_arm(decl: d, type_name: n) }` whose first token is
+// lowercase -- the record attempt must refuse and the fallback must yield the block. Zero ParseError
+// rows is the closed-defect observation.
+data measured_carrier_if_block_input: String =
+  "fn union_arm_gate(d: Int, n: Int, brand_verdict: Int) -> Int {\n  if brand_verdict == BrandNominalDistinctDeclarations { record_lit_union_name_is_not_an_arm(decl: d, type_name: n) } else { 0 }\n}\n"
+
+// LEG 1 (decider for the completeness slice): the false refusal is closed -- the block parses.
+test fn if_block_after_bare_upper_identifier_parses_as_block() -> ProcessExit {
+  census_verdict_all([
+    blocking_verdict(source: if_block_after_upper_condition, wanted: "ParseError", holds: fn(n) { n == 0 })
+  ])
+}
+
+// LEG 2 (named negative, must stay red-side green): expression-position record refusal untouched.
+test fn malformed_record_in_expression_position_still_refuses() -> ProcessExit {
+  census_verdict_all([
+    blocking_verdict(source: malformed_record_expression_position, wanted: "ParseError", holds: fn(n) { n >= 1 })
+  ])
+}
+
+// LEG 3: the fallback does not swallow a real record literal in condition position.
+test fn record_literal_in_condition_position_still_parses_as_record() -> ProcessExit {
+  census_verdict_all([
+    blocking_verdict(source: record_literal_in_condition_position, wanted: "ParseError", holds: fn(n) { n == 0 })
+  ])
+}
+
+// LEG 4: the verbatim carrier input, the measured false refusal, parses clean of ParseError rows.
+test fn measured_carrier_if_block_input_parses_clean() -> ProcessExit {
+  census_verdict_all([
+    blocking_verdict(source: measured_carrier_if_block_input, wanted: "ParseError", holds: fn(n) { n == 0 })
+  ])
+}

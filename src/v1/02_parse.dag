@@ -179,6 +179,7 @@ type ParseContext {
   declaration_occurrences: List<DeclarationOccurrence>?
   reference_occurrences: List<ReferenceOccurrence>?
   heads_only: Bool
+  no_record_brace: Bool
   env: ParseEnvironment
   source_extents: ParseSourceExtentState
 }
@@ -562,8 +563,30 @@ fn parse_context_with_source_extents(ctx: ParseContext, source_extents: ParseSou
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences,
     heads_only: ctx.heads_only,
+    no_record_brace: ctx.no_record_brace,
     env: ctx.env,
     source_extents: source_extents,
+  }
+}
+
+// IF-CONDITION POSITION MARKER (roadmap floor-parse-formation-wall, completeness slice): with the
+// mark set, an uppercase-named identifier immediately followed by '{' in expression position first
+// ATTEMPTS the record literal and, when that attempt refuses, falls back to the plain variable --
+// so a block after a bare identifier in if-condition position parses as the block it is, while a
+// legitimate record literal in the same position (`if x == Present { value: y } { ... }`) keeps
+// parsing as the record literal it is. Only parse_if sets the mark; every branch-body parse clears it.
+fn parse_context_set_no_record_brace(ctx: ParseContext, value: Bool) -> ParseContext {
+  ParseContext {
+    source_indices: ctx.source_indices,
+    intern_table: ctx.intern_table,
+    occurrence_allocator: ctx.occurrence_allocator,
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences,
+    heads_only: ctx.heads_only,
+    no_record_brace: value,
+    env: ctx.env,
+    source_extents: ctx.source_extents,
   }
 }
 
@@ -607,6 +630,7 @@ fn parse_context_with_occurrence_state(
     declaration_occurrences: declaration_occurrences,
     reference_occurrences: reference_occurrences,
     heads_only: ctx.heads_only,
+    no_record_brace: ctx.no_record_brace,
     env: ctx.env,
     source_extents: ctx.source_extents,
   }
@@ -624,6 +648,7 @@ fn parse_context_with_intern_table(
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences,
     heads_only: ctx.heads_only,
+    no_record_brace: ctx.no_record_brace,
     env: ctx.env,
     source_extents: ctx.source_extents,
   }
@@ -2357,6 +2382,7 @@ fn parse_context_for_tokens(
     declaration_occurrences: Present { value: [] },
     reference_occurrences: Present { value: [] },
     heads_only: heads_only,
+    no_record_brace: false,
     env: env,
     source_extents: parse_source_extent_state_empty(),
   }
@@ -5819,7 +5845,19 @@ fn parse_ident_expr(tokens: TokenStream, ctx: ParseContext, name: String) -> Exp
     parsed_expr_result(from: entry, tokens: r.tokens, ctx: param_mint.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], [parsed_name_leaf(occurrence_identity: param_mint.identity, name: name, span: span)]), inferred: none, span: span))
   } else {
     if is_uppercase_start(name: name) && tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
-      parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span, from: entry)
+      if ctx.no_record_brace {
+        // Attempt the record literal; on refusal fall back to the plain variable so the surrounding
+        // if keeps its branch brace. The attempt is side-effect-free on failure: it mints identities
+        // only on its success path, and the fallback rebuilds from the saved entry, tokens and ctx.
+        let rec = parse_record_literal(tokens: tokens, ctx: parse_context_set_no_record_brace(ctx: ctx, value: false), name: name, span: span, from: entry)
+        if has_err(err: rec.err) {
+          parsed_expr_result(from: entry, tokens: tokens, ctx: ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span))
+        } else {
+          rec
+        }
+      } else {
+        parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span, from: entry)
+      }
     } else {
       parsed_expr_result(from: entry, tokens: tokens, ctx: ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span))
     }
@@ -6596,15 +6634,15 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "if" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr_no_brace(tokens: r.tokens, ctx: ctx)
+  let r = parse_expr_no_brace(tokens: r.tokens, ctx: parse_context_set_no_record_brace(ctx: ctx, value: true))
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let condition = r.expr
 
-  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: parse_context_after_node(ctx: r.ctx, node: condition))
+  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: parse_context_set_no_record_brace(ctx: parse_context_after_node(ctx: r.ctx, node: condition), value: false))
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let then_branch = r.expr
   let tokens = skip_newlines(tokens: r.tokens)
-  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: [condition, then_branch])
+  let ctx = parse_context_set_no_record_brace(ctx: parse_context_after_node_list(ctx: r.ctx, nodes: [condition, then_branch]), value: false)
 
   match eat(tokens: tokens, expected: ExpectKeyword { text: "else" }) {
   EatConsumed { token: _, tokens: __ec } =>
