@@ -1,0 +1,339 @@
+module test.claim.fleet.gpu_cap_policy_derivation_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { watt, watt_count, percent }
+import std.decl_ref { decl_ref }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.pci.identity { PciAddress }
+import extdeps.power.types { PowerSupplyCatalogRow }
+import extdeps.power.eighty_plus { Gold }
+import extdeps.vendor.asrock { asrock }
+import extdeps.linux.amdgpu_hwmon { Power1Cap }
+import extdeps.standards.nfpa_70 { ContinuousLoadFraction, nec_continuous_load_fraction }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity, HostContainsComponent, physical_asset_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_04, gpu_board_05, gpu_board_11 }
+import gunbc.fleet.gpu_device_observation { GpuDeviceObservation, GpuDeviceEnumerated, GpuPowerLimitControl, NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap }
+import gunbc.fleet.fleet_power_circuit { SharedPowerCircuit, RatingCited, BoundUnstated }
+import gunbc.fleet.host_power_constraints {
+  HostPowerConstraints, PsuCatalogued, PsuUnread, EfficiencyFloorStated, NonGpuCeilingStated, host_power_constraint_rows,
+}
+import gunbc.serving.gpu_power_state_policy { fleet_gpu_cap_default }
+import gunbc.fleet.gpu_cap_policy_derivation {
+  CapDerivationInputs, DeviceRuleTarget, RuleTargetDerived, RuleTargetUnread,
+  RaisedToDeviceMinimum, WithinDeviceRange,
+  HostCapDerivation, HostCapsSelected, HostCapsRefused, HostHeadroomUnestablished, HostSelectionNeedsEvidence,
+  PolicyDefaultFits, ReducedTowardMinimum, PsuSustainedOutput, CircuitContinuousAllowance,
+  HeadroomNeed, PsuUnreadNeed, ContinuousFractionUngrounded, CircuitMemberUnestablished, UnidentifiedGpuNeed,
+  PsuEfficiencyFloorUnreadNeed, NonGpuCeilingUnreadNeed, CircuitRatingUnreadNeed,
+  ConformsToRule, DepartsFromRule,
+  DerivedDeviceCap,
+  fleet_cap_derivation_inputs, rule_targets_on, derive_host_caps_with, derive_fleet_caps, gpu_hosts_of,
+  decision_conformance, fleet_gpu_cap_report_md_with,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE REAL PATH ────────────────────────────────────────────────────────────────────────────────────
+
+fn target_of(ts: List<DeviceRuleTarget>, board: PhysicalAssetIdentity) -> DeviceRuleTarget? {
+  filter(ts, t => match t {
+    RuleTargetDerived { host: _, board: b, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => physical_asset_identity_eq(a: b, b: board)
+    RuleTargetUnread { host: _, board: b, cause: _ } => physical_asset_identity_eq(a: b, b: board)
+  }).first()
+}
+
+fn lands_at(t: DeviceRuleTarget?, rated: Nat, unclamped: Nat, target: Nat, raised: Bool) -> Bool {
+  match t {
+    Absent => false
+    Present { value: x } => match x {
+      RuleTargetUnread { host: _, board: _, cause: _ } => false
+      RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: r, minimum: _, maximum: _, unclamped: u, target: w, clamp: c, current: _ } =>
+        watt_count(w: r) == rated && watt_count(w: u) == unclamped && watt_count(w: w) == target
+          && match c { RaisedToDeviceMinimum => raised  WithinDeviceRange => !raised  _ => false }
+    }
+  }
+}
+
+// THE RULE, ON THE CARDS THE FLEET HOLDS, READ FROM THEIR OWN DEVICE ROWS. These are the operator's worked
+// examples: 60 percent of the card's read default, clamped into its range -- the Workstation card stays at
+// 360 W, the Max-Q's 180 W rises to its 250 W floor, the Ada's 42 W is inside its range, the R9700's 180 W
+// rises to 210 W and the T10's 90 W to 100 W. srv4's Ada carries its default only because this change put the
+// read 70 W on its row: before, the rule had no rated basis there and named that read instead.
+test fn the_rule_lands_each_held_card_where_the_operator_worked_it() -> Bool {
+  let inputs = fleet_cap_derivation_inputs()
+  lands_at(t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_srv1), board: gpu_board_01), rated: 600, unclamped: 360, target: 360, raised: false)
+    && lands_at(t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_srv1), board: gpu_board_04), rated: 300, unclamped: 180, target: 250, raised: true)
+    && lands_at(t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_srv4), board: gpu_board_05), rated: 70, unclamped: 42, target: 42, raised: false)
+    && lands_at(t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_6ce85c), board: gpu_board_02), rated: 300, unclamped: 180, target: 210, raised: true)
+    && lands_at(t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_e2d4b7), board: gpu_board_11), rated: 150, unclamped: 90, target: 100, raised: true)
+}
+
+fn needs_of(d: HostCapDerivation) -> List<HeadroomNeed> {
+  match d {
+    HostHeadroomUnestablished { host: _, targets: _, needs: ns } => ns
+    _ => [] as List<HeadroomNeed>
+  }
+}
+
+fn host_of_derivation(d: HostCapDerivation) -> HostIdentity? {
+  match d {
+    HostHeadroomUnestablished { host: h, targets: _, needs: _ } => Present { value: h }
+    _ => Absent
+  }
+}
+
+fn derivation_for(ds: List<HostCapDerivation>, host: HostIdentity) -> List<HeadroomNeed> {
+  flat_map(ds, d => match host_of_derivation(d: d) {
+    Present { value: h } => if host_identity_eq(a: h, b: host) { needs_of(d: d) } else { [] as List<HeadroomNeed> }
+    Absent => [] as List<HeadroomNeed>
+  })
+}
+
+// THE ROUTE THE REAL FLEET TAKES TODAY, ASSERTED AS A ROUTE: every GPU host is WITHHELD, and each is withheld
+// for the reads its own rows name -- not for one generic reason. srv1 has a cited supply, so what it waits on
+// is the supply's efficiency floor, its non-GPU ceiling and its breaker's rating; srv3 waits on its two cards'
+// identities; host-6ce85c on the T10 nobody inventoried. A derivation that handed any of them a number would
+// put 42 W on srv3/srv4's cards on a strip whose rating nobody has read, and this claim reds.
+test fn every_gpu_host_is_withheld_today_for_the_reads_its_rows_name() -> Bool {
+  let ds = derive_fleet_caps()
+  let srv1 = derivation_for(ds: ds, host: operator_host_srv1)
+  let srv3 = derivation_for(ds: ds, host: operator_host_srv3)
+  let h11 = derivation_for(ds: ds, host: operator_host_6ce85c)
+  ds.length() == 5
+    && all(ds, d => match d { HostHeadroomUnestablished { host: _, targets: _, needs: ns } => ns.length() > 0  _ => false })
+    && any(srv1, n => match n { PsuEfficiencyFloorUnreadNeed { host: _, read_obligation: _ } => true  _ => false })
+    && any(srv1, n => match n { NonGpuCeilingUnreadNeed { host: _, read_obligation: _ } => true  _ => false })
+    && any(srv1, n => match n { CircuitRatingUnreadNeed { circuit: _, read_obligation: _ } => true  _ => false })
+    && !any(srv1, n => match n { PsuUnreadNeed { host: _, read_obligation: _ } => true  _ => false })
+    && any(srv3, n => match n { UnidentifiedGpuNeed { host: _, reported: _, read_obligation: _ } => true  _ => false })
+    && any(h11, n => match n { UnidentifiedGpuNeed { host: _, reported: r, read_obligation: _ } => string_contains(s: r as String, pattern: "T10")  _ => false })
+}
+
+fn conforms_on(inputs: CapDerivationInputs, t: DeviceRuleTarget?) -> Bool {
+  match t {
+    Present { value: x } => match decision_conformance(inputs: inputs, t: x) { ConformsToRule { cap: _, decided_on: _ } => true  _ => false }
+    Absent => false
+  }
+}
+
+fn departs_on(inputs: CapDerivationInputs, t: DeviceRuleTarget?, cap: Nat, rule: Nat) -> Bool {
+  match t {
+    Present { value: x } => match decision_conformance(inputs: inputs, t: x) {
+      DepartsFromRule { cap: c, rule_target: r, decided_on: _, said: s } => watt_count(w: c) == cap && watt_count(w: r) == rule && (s as String) != ""
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// THE OPERATOR'S STANDING DECISIONS, CLASSIFIED -- NOT REWRITTEN. h11's 210 W and ken's 100 W are what the rule
+// derives (each card's own floor), so they conform; srv1's 300 W departs on both cards, in opposite directions
+// (above the Max-Q's 250 W, below the Workstation's 360 W), and srv4's 30 W departs below 42 W. A departure keeps
+// the operator's words.
+test fn the_standing_decisions_conform_or_depart_with_the_operators_words() -> Bool {
+  let inputs = fleet_cap_derivation_inputs()
+  conforms_on(inputs: inputs, t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_6ce85c), board: gpu_board_02))
+    && conforms_on(inputs: inputs, t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_e2d4b7), board: gpu_board_11))
+    && departs_on(inputs: inputs, t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_srv1), board: gpu_board_04), cap: 300, rule: 250)
+    && departs_on(inputs: inputs, t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_srv1), board: gpu_board_01), cap: 300, rule: 360)
+    && departs_on(inputs: inputs, t: target_of(ts: rule_targets_on(inputs: inputs, host: operator_host_srv4), board: gpu_board_05), cap: 30, rule: 42)
+}
+
+// THE RELATION COVERS EXACTLY THE GPU HOSTS: an identity join, both directions. A host that gains a card with
+// no constraint row is withheld (HostConstraintRowMissing), and a row for a host with no GPU is dead data.
+test fn every_gpu_host_has_exactly_one_constraint_row_and_no_row_is_idle() -> Bool {
+  let hosts = gpu_hosts_of(inputs: fleet_cap_derivation_inputs())
+  all(hosts, h => filter(host_power_constraint_rows, r => host_identity_eq(a: r.host, b: h)).length() == 1)
+    && all(host_power_constraint_rows, r => any(hosts, h => host_identity_eq(a: h, b: r.host)))
+}
+
+// ── SUPPLIED FLEETS: THE ARMS THE REAL FLEET CANNOT REACH YET ─────────────────────────────────────────
+
+data fixture_authority: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "fixture.invalid/cited" } }
+data host_a: HostIdentity = "fixture-host-a" as HostIdentity
+data host_b: HostIdentity = "fixture-host-b" as HostIdentity
+data board_a1: PhysicalAssetIdentity = "fixture-board-a1" as PhysicalAssetIdentity
+data board_a2: PhysicalAssetIdentity = "fixture-board-a2" as PhysicalAssetIdentity
+data board_b1: PhysicalAssetIdentity = "fixture-board-b1" as PhysicalAssetIdentity
+
+fn device(host: HostIdentity, board: PhysicalAssetIdentity, lo: Nat, hi: Nat, rated: Nat, control: GpuPowerLimitControl) -> GpuDeviceObservation {
+  GpuDeviceEnumerated {
+    host: host, board: board, gpu_uuid: Present { value: join(["GPU-", board as String], "") as NonEmptyStr },
+    pci_address: "0000:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: lo), power_limit_maximum: watt(count: hi), power_limit_current: watt(count: rated),
+    power_limit_default: Present { value: watt(count: rated) }, power_limit_control: control, read_on: "fixture" as NonEmptyStr,
+  }
+}
+
+fn known_host(host: HostIdentity, psu_rated: Nat, non_gpu: Nat) -> HostPowerConstraints {
+  HostPowerConstraints {
+    host: host,
+    psu: PsuCatalogued {
+      component: join(["fixture-psu-", host as String], "") as PhysicalAssetIdentity,
+      catalog: PowerSupplyCatalogRow { model: "FIXTURE" as NonEmptyStr, manufacturer: asrock, rated_output: watt(count: psu_rated), efficiency: Gold },
+      catalog_source: decl_ref(module_path: "test.claim.fleet.gpu_cap_policy_derivation_witness", decl_name: "fixture_psu"),
+      efficiency_floor: EfficiencyFloorStated { floor: percent(count: 90), standing: CitedToAuthority { authority: fixture_authority } },
+    },
+    non_gpu_draw: NonGpuCeilingStated { dc_watts: watt(count: non_gpu), standing: CitedToAuthority { authority: fixture_authority } },
+    unidentified_gpus: [],
+  }
+}
+
+fn circuit_of(carry: Nat) -> SharedPowerCircuit {
+  SharedPowerCircuit {
+    identity: decl_ref(module_path: "test.claim.fleet.gpu_cap_policy_derivation_witness", decl_name: "fixture_circuit"),
+    label: "fixture circuit" as NonEmptyStr,
+    members: [host_a, host_b],
+    rating: RatingCited { carry_limit: watt(count: carry), standing: CitedToAuthority { authority: fixture_authority } },
+    member_draw_bound: BoundUnstated { read_obligation: "fixture: no member bound" as NonEmptyStr },
+    trips: [],
+  }
+}
+
+data cited_fraction: ContinuousLoadFraction = ContinuousLoadFraction { fraction: percent(count: 80), standing: CitedToAuthority { authority: fixture_authority } }
+
+// Host A carries a 600 W card (range 150-600, rule target 360) and a 300 W card (range 250-325, rule target
+// raised to 250): targets 610 W, floors 400 W. Host B carries one 150 W card (range 100-150, target 100).
+fn fleet(carry: Nat, b_control: GpuPowerLimitControl, fraction: ContinuousLoadFraction, a_rows: List<HostPowerConstraints>) -> CapDerivationInputs {
+  CapDerivationInputs {
+    policy: fleet_gpu_cap_default,
+    continuous_fraction: fraction,
+    constraint_rows: concat(a_rows, [known_host(host: host_b, psu_rated: 1000, non_gpu: 100)]),
+    installed: [
+      HostContainsComponent { host: host_a, component: board_a1 },
+      HostContainsComponent { host: host_a, component: board_a2 },
+      HostContainsComponent { host: host_b, component: board_b1 },
+    ],
+    devices: [
+      device(host: host_a, board: board_a1, lo: 150, hi: 600, rated: 600, control: NvidiaSmiPowerLimit),
+      device(host: host_a, board: board_a2, lo: 250, hi: 325, rated: 300, control: NvidiaSmiPowerLimit),
+      device(host: host_b, board: board_b1, lo: 100, hi: 150, rated: 150, control: b_control),
+    ],
+    circuits: [circuit_of(carry: carry)],
+    decisions: [],
+  }
+}
+
+fn known_fleet(psu_a: Nat, carry: Nat) -> CapDerivationInputs {
+  fleet(carry: carry, b_control: NvidiaSmiPowerLimit, fraction: cited_fraction, a_rows: [known_host(host: host_a, psu_rated: psu_a, non_gpu: 200)])
+}
+
+fn no_cap() -> Nat { 0 }
+
+fn cap_on(caps: List<DerivedDeviceCap>, board: PhysicalAssetIdentity) -> Nat {
+  fold(caps, init: no_cap(), f: (acc, c) => if physical_asset_identity_eq(a: c.board, b: board) { watt_count(w: c.cap) } else { acc })
+}
+
+// EVERYTHING KNOWN AND ROOMY: the default fits, std.decision selects it, and the receipt names this host's
+// subject -- the route through select_realization, not a short cut around it.
+test fn a_known_host_with_room_selects_the_default_through_std_decision() -> Bool {
+  match derive_host_caps_with(inputs: known_fleet(psu_a: 1600, carry: 3000), host: host_a) {
+    HostCapsSelected { host: _, targets: _, caps: cs, allocation: a, receipt: r } =>
+      cap_on(caps: cs, board: board_a1) == 360 && cap_on(caps: cs, board: board_a2) == 250
+        && match a { PolicyDefaultFits { tightest: _, slack: _ } => true  _ => false }
+        && string_contains(s: r.scope.decision_subject.decl_name as String, pattern: "fixture-host-a")
+    _ => false
+  }
+}
+
+// THE SUPPLY BINDS: 700 W less 200 W non-GPU leaves 500 W for 610 W of targets over 400 W of floors, so every
+// card keeps 100/210 of the room above its floor -- the 600 W card goes 360 -> 250, the Max-Q-shaped card
+// stays at its 250 W floor -- and the binding constraint is the supply, named.
+test fn a_tight_supply_reduces_every_card_by_one_fraction_toward_its_floor() -> Bool {
+  match derive_host_caps_with(inputs: known_fleet(psu_a: 700, carry: 3000), host: host_a) {
+    HostCapsSelected { host: _, targets: _, caps: cs, allocation: a, receipt: _ } =>
+      cap_on(caps: cs, board: board_a1) == 250 && cap_on(caps: cs, board: board_a2) == 250
+        && match a {
+          ReducedTowardMinimum { binding: b, numerator: n, denominator: d } => n == 100 && d == 210
+            && match b { PsuSustainedOutput { psu: _, rated_output: r, non_gpu: g } => watt_count(w: r) == 700 && watt_count(w: g) == 200  _ => false }
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// CIRCUIT DENSITY BINDS, ACROSS HOSTS: 1200 W x 80 % continuous x 90 % floor = 864 W DC, less 300 W of the
+// members' non-GPU ceilings, leaves 564 W for 710 W of targets over 500 W of floors (t = 64/210). Host A takes
+// 464 W (the 600 W card at 214 W), host B keeps its 100 W floor, and the two together sit at the circuit's 564 W.
+test fn circuit_density_is_summed_over_every_member_and_binds_host_a() -> Bool {
+  let inputs = known_fleet(psu_a: 1600, carry: 1200)
+  let a_ok = match derive_host_caps_with(inputs: inputs, host: host_a) {
+    HostCapsSelected { host: _, targets: _, caps: cs, allocation: a, receipt: _ } =>
+      cap_on(caps: cs, board: board_a1) == 214 && cap_on(caps: cs, board: board_a2) == 250
+        && match a { ReducedTowardMinimum { binding: b, numerator: _, denominator: _ } => match b { CircuitContinuousAllowance { circuit: _, carry_limit: _, continuous_fraction: _, lowest_efficiency_floor: _, members_non_gpu: _ } => true  _ => false }  _ => false }
+    _ => false
+  }
+  let b_ok = match derive_host_caps_with(inputs: inputs, host: host_b) {
+    HostCapsSelected { host: _, targets: _, caps: cs, allocation: _, receipt: _ } => cap_on(caps: cs, board: board_b1) == 100
+    _ => false
+  }
+  a_ok && b_ok
+}
+
+// RED: EVEN EVERY CARD AT ITS FLOOR DOES NOT FIT. 550 W less 200 W leaves 350 W against 400 W of floors. The host
+// REFUSES naming the supply; it is not handed its minima as "the best we can do".
+test fn a_host_whose_floors_exceed_its_supply_refuses_naming_the_supply() -> Bool {
+  match derive_host_caps_with(inputs: known_fleet(psu_a: 550, carry: 3000), host: host_a) {
+    HostCapsRefused { host: _, targets: _, violated: v, causes: cz, scope: _ } =>
+      v.length() == 1 && cz.length() > 0
+        && all(v, b => match b { PsuSustainedOutput { psu: _, rated_output: r, non_gpu: _ } => watt_count(w: r) == 550  _ => false })
+    _ => false
+  }
+}
+
+// RED: A SUPPLY NOBODY READ YIELDS THE READ, NOT A NUMBER -- and it withholds the OTHER member of its circuit
+// too, because a circuit with a member of unknown draw has no sum.
+test fn an_unread_supply_withholds_its_host_and_its_circuit_partner() -> Bool {
+  let unread_a = HostPowerConstraints {
+    host: host_a,
+    psu: PsuUnread { component: Absent, read_obligation: "fixture: read the supply" as NonEmptyStr },
+    non_gpu_draw: NonGpuCeilingStated { dc_watts: watt(count: 200), standing: CitedToAuthority { authority: fixture_authority } },
+    unidentified_gpus: [],
+  }
+  let inputs = fleet(carry: 3000, b_control: NvidiaSmiPowerLimit, fraction: cited_fraction, a_rows: [unread_a])
+  let a_withheld = match derive_host_caps_with(inputs: inputs, host: host_a) {
+    HostHeadroomUnestablished { host: _, targets: _, needs: ns } => any(ns, n => match n { PsuUnreadNeed { host: _, read_obligation: _ } => true  _ => false })
+    _ => false
+  }
+  let b_withheld = match derive_host_caps_with(inputs: inputs, host: host_b) {
+    HostHeadroomUnestablished { host: _, targets: _, needs: ns } => any(ns, n => match n { CircuitMemberUnestablished { circuit: _, member: m } => host_identity_eq(a: m, b: host_a)  _ => false })
+    _ => false
+  }
+  a_withheld && b_withheld
+}
+
+// RED: THE NEC FRACTION AS THIS REPOSITORY CARRIES IT IS TRANSCRIBED, so a fleet whose every other fact is
+// known is still withheld on it, naming the read.
+test fn a_transcribed_continuous_fraction_withholds_rather_than_derates() -> Bool {
+  let inputs = fleet(carry: 3000, b_control: NvidiaSmiPowerLimit, fraction: nec_continuous_load_fraction, a_rows: [known_host(host: host_a, psu_rated: 1600, non_gpu: 200)])
+  match derive_host_caps_with(inputs: inputs, host: host_a) {
+    HostHeadroomUnestablished { host: _, targets: _, needs: ns } => ns.length() == 1 && any(ns, n => match n { ContinuousFractionUngrounded { read_obligation: _ } => true  _ => false })
+    _ => false
+  }
+}
+
+// AN amdgpu CARD HAS NO DOCUMENTED COUPLING OF ITS CAP TO SUSTAINED DRAW, so a host carrying one defers through
+// std.decision's own closure (CausalModelUnestablished) even when every bound is known.
+test fn an_amdgpu_host_defers_on_its_undocumented_cap_coupling() -> Bool {
+  let inputs = fleet(carry: 3000, b_control: AmdgpuHwmonPowerCap { attribute: Power1Cap }, fraction: cited_fraction, a_rows: [known_host(host: host_a, psu_rated: 1600, non_gpu: 200)])
+  match derive_host_caps_with(inputs: inputs, host: host_b) {
+    HostSelectionNeedsEvidence { host: _, targets: _, needs: ns } => ns.length() > 0
+    _ => false
+  }
+}
+
+// THE REPORT IS THE DERIVATION'S OWN OUTPUT: a selected host renders its derived watts and its binding
+// constraint, a refused one renders REFUSED.
+test fn the_report_renders_selected_and_refused_rows_from_the_derivation() -> Bool {
+  let roomy = fleet_gpu_cap_report_md_with(inputs: known_fleet(psu_a: 700, carry: 3000))
+  let refused = fleet_gpu_cap_report_md_with(inputs: known_fleet(psu_a: 550, carry: 3000))
+  string_contains(s: roomy, pattern: "| fixture-host-a | fixture-board-a1 GPU-fixture-board-a1 | 600 W | 150-600 W | 360 W -> 360 W | 250 W | reduced by 100/210")
+    && string_contains(s: refused, pattern: "| REFUSED | violates supply fixture-psu-fixture-host-a: 550 W DC less 200 W non-GPU")
+}

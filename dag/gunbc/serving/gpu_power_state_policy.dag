@@ -3,7 +3,7 @@ module gunbc.serving.gpu_power_state_policy
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure {
-  Hertz, Watt, TokensPerSecond, hertz, hertz_count, watt, watt_count, tokens_per_second,
+  Hertz, Watt, TokensPerSecond, Permille, permille, hertz, hertz_count, watt, watt_count, tokens_per_second,
   tokens_per_second_count,
 }
 import std.nat { Nat }
@@ -147,6 +147,43 @@ fn gpu_cap_admitted(a: GpuCapAdmission) -> Bool {
   }
 }
 
+// ── THE FLEET'S DEFAULT RULE (operator ruling 2026-11-27) ─────────────────────────────────────────────
+//
+// ONE VALUE FOR THE WHOLE FLEET, NOT A ROW PER HOST. The operator ruled a default for every GPU the fleet
+// holds (gunbc.design_ruling::fleet_gpu_cap_default_sixty_percent_2026_11_27): a card's cap is 60 percent of
+// its rated power limit. This row is that number, said once; every host reads it through
+// gunbc.fleet.gpu_cap_policy_derivation, which is the only fold that turns it into watts.
+//
+// WHAT "RATED" READS. The card's own reported default power limit (gunbc.fleet.gpu_device_observation
+// power_limit_default -- nvidia-smi power.default_limit, amdgpu power1_cap_default): the limit the vendor
+// ships the card at and the one it returns to with nobody touching it. That is the one source the rule
+// reads; a vendor catalog's board rating (extdeps.gpu.* board_power) is a different authority and is NOT a
+// fallback, so a card whose default was never read has no rule-derived cap rather than one computed from
+// some other figure.
+//
+// THE CLAMP IS PART OF THE RULE, AND THAT IS A STATED DEPARTURE FROM admit_gpu_cap_against's "AN INFEASIBLE
+// CAP REFUSES, NEVER CLAMPS". That rule protects a decision from being silently changed into a different
+// number; here the decision itself is "60 percent, then into the device's settable range", so raising a
+// T10's 90 W to its 100 W floor IS the decision, not a change to it. The derived value is still handed to
+// admission like any other cap, and it cannot be out of range by construction.
+//
+// A DEFAULT, NOT AN OVERRIDE. The per-host decisions below stand where they are; the derivation classifies
+// each as conforming to this rule or departing from it, and a departure keeps the operator's own recorded
+// words as its reason. Nothing here rewrites them.
+type FleetGpuCapDefault {
+  // Thousandths of the rated limit, so the rule's arithmetic stays exact at integer grain: the cap is
+  // floor(rated x fraction / 1000), rounded DOWN so the rule never puts a card above the stated fraction.
+  fraction_of_rated: Permille
+  decided_on: NonEmptyStr
+  said: NonEmptyStr
+}
+
+data fleet_gpu_cap_default: FleetGpuCapDefault = FleetGpuCapDefault {
+  fraction_of_rated: permille(count: 600),
+  decided_on: "2026-11-27" as NonEmptyStr,
+  said: "operator: i would say we should aim for repo wide 60% by default - and then we should also make sure each host has its constraints factored out (like deployment details/circuit information, i.e. can't violate circuit density, the actual PSU in the chassis, mobo constraints) - my point is this needs to be pulled out and related properly now that we have a lot of hosts" as NonEmptyStr,
+}
+
 // ── srv1: the operator's decision of 2026-11-07, one value read by both RTX PRO 6000 boards ─────────────
 
 data srv1_pro_6000_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
@@ -221,6 +258,32 @@ data srv4_rtx_2000_ada_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap 
   said: "operator, 2026-11-24, on the sweep: \"lower the cap but also lower the clock rate so it doesn't just boost -> throttle\"; and in the unit the operator wrote that day, the history of the number itself: \"operator 2026-10-26 noise/heat at 40 W; lowered to 30 W 2026-11-24 for power after surge-strip trips; matches srv3\". The 30 W was read back off both cards as nvidia-smi power.limit 30.00 W at the 2026-11-24 22:03-22:05 UTC ssh pass, and the sweep that chose the clock lock ran 150 s per level under live serving traffic (clocksweep.sh): 210-1500 MHz averaged 906 MHz at 27.0 W against 869 MHz unlocked at 29.1 W." as NonEmptyStr,
 }
 
+// srv3's pair: the operator's 2026-10-26 noise/heat figure, which srv3 was back at by the end of 2026-11-24
+// (nvidia-smi power.limit 40 W on both cards at the 2026-11-25 ~06:10 UTC pass) and still runs at on
+// 2026-11-27. It has NO InstalledGpuCapIntent: srv3's cards have no physical asset identity for an intent to
+// name (gunbc.integration_concern::srv3_serving_cards_have_no_identity_to_cap). The decision lives here anyway,
+// because this module is where cap decisions live -- gunbc.serving.gpu_power_cap_pricing used to carry its own
+// copy of it (srv3_cap_40w_2026_11_24, typed SustainedPowerDraw, a timescale nobody stated) and now reads this
+// row. The bounds arm is CappedQuantityUnstated for the same reason as srv4's: a number and a purpose, no
+// timescale.
+data srv3_rtx_2000_ada_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 40),
+  bounds: CappedQuantityUnstated,
+  decided_on: "2026-10-26" as NonEmptyStr,
+  said: "operator capped srv3's Adas at 40 W on 2026-10-26 for noise/heat; returned there on 2026-11-24 as the final choice, with no SM clock ceiling" as NonEmptyStr,
+}
+
+// srv4's 40 W, the figure srv4's own unit records as the operator's of 2026-10-26 and the one the operator
+// restored on 2026-11-24 before the strip's second opening sent the cards back to 30 W. SUPERSEDED by
+// srv4_rtx_2000_ada_cap_decision and held only because a priced candidate in
+// gunbc.serving.gpu_power_cap_pricing is the 40 W operating point it was taken under; no intent reads it.
+data srv4_rtx_2000_ada_cap_decision_superseded_40w: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 40),
+  bounds: CappedQuantityUnstated,
+  decided_on: "2026-11-24" as NonEmptyStr,
+  said: "operator restored 40 W after judging the 30 W drop not worth 10 W per card; the strip opened again later the same day and the caps went back to 30 W" as NonEmptyStr,
+}
+
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
@@ -240,8 +303,12 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   // folds. They are NOT in current_gpu_device_observations: that list is read as present fact by
   // admit_gpu_cap_against and by the converge and boot-state paths, and butch enumerates no A2s today.
   // host-6ce85c: one decision for both R9700s. gpu_board_02 is inside its device's range and PENDING because no
-  // converge writes an amdgpu power1_cap (see admit_gpu_cap_against); it was written by hand on 2026-11-12 and is
-  // lost at the next reboot. gpu_board_03 does not enumerate, so its cap is pending on the device itself.
+  // converge writes an amdgpu power1_cap (see admit_gpu_cap_against); it was written by hand on 2026-11-12. The
+  // 2026-11-12 reading that it "is lost at the next reboot" is SUPERSEDED as a claim: the operator's session read
+  // on 2026-11-27 (read-only, relayed) found an r9700-power-cap.service on the host and both R9700s reporting
+  // power1_cap 210 W -- the unit's bytes, digest and journal are unread, so nothing here says what it does at boot.
+  // gpu_board_03's row still reads not-enumerated (2026-11-12); the 2026-11-27 relay reports two R9700s at 210 W,
+  // so that row is stale until its PCI function is read (gunbc.fleet.host_power_constraints carries the relay).
   InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_02, selection: h11_r9700_cap_decision },
   InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_03, selection: h11_r9700_cap_decision },
   // ken: the operator's cap over all three read functions. Each admits through the driver's own power-limit

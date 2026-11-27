@@ -1,0 +1,1077 @@
+module gunbc.fleet.gpu_cap_policy_derivation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_saturating_sub, nat_to_decimal_string }
+import std.integer { nat_to_int, int_to_decimal_string }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.measure { Watt, watt, watt_count, Percent, percent, percent_count, permille_count }
+import std.pareto { ParetoEntry, SelectionAxis, LowerIsBetter, axis_point_reading }
+import std.decision {
+  DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveTerm, ObjectiveMeasure,
+  ChoiceDomain, DecisionSubject, DecisionRegion, DecisionAssessment,
+  VariesAlong, MonotoneIncreasing,
+  ConstraintDisposition, ConstraintSatisfied, ParameterDisposition, ParameterBound,
+  PhysicalModelEstablished, CausalModelEstablished, CausalModelUnestablished, VendorDocumentedCoupling,
+  HardConstraint, NonMoneyConstraint, UniqueSurvivorElsePrefer,
+  RealizationSelectionResult, SelectedWithin, CandidateFieldUnestablished, NoFeasibleRealization,
+  SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
+  SelectionReceipt, DecisionScope, SelectionEvidenceNeed, selection_evidence_need_cause,
+  select_realization,
+}
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import extdeps.standards.nfpa_70 { ContinuousLoadFraction, nec_continuous_load_fraction }
+import extdeps.nvidia.system_management_interface { extdeps_external_authority_anchor }
+import product.host_identity { HostIdentity, host_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity, PhysicalContainment, HostContainsComponent, physical_asset_identity_eq }
+import gunbc.fleet.gpu_device_observation {
+  GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated, GpuPowerLimitControl,
+  NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap, current_gpu_device_observations, gpu_device_observation_board,
+}
+import gunbc.fleet.fleet_physical_inventory { installed_gpu_board_containments }
+import gunbc.fleet.fleet_power_circuit {
+  SharedPowerCircuit, RatingCited, RatingUnread, BoundStated, BoundUnstated, circuit_carries, fleet_power_circuits,
+}
+import gunbc.fleet.machine_board { MachineBoardStanding, MachineBoardCatalogued, MachineBoardUncatalogued, MachineBoardProviderOwned }
+import gunbc.fleet.host_power_constraints {
+  HostPowerConstraints, HostPsuConstraint, PsuCatalogued, PsuUnread,
+  EfficiencyFloorStated, EfficiencyFloorUnread, NonGpuCeilingStated, NonGpuCeilingUnread,
+  host_power_constraint_rows, host_board_of,
+}
+import gunbc.serving.gpu_power_state_policy {
+  FleetGpuCapDefault, fleet_gpu_cap_default, InstalledGpuCapIntent, OperatorDeclaredCap, installed_gpu_cap_intents,
+}
+
+// THE FLEET'S DEFAULT GPU CAP, DERIVED PER DEVICE AND BOUNDED PER HOST AND PER CIRCUIT.
+//
+// THE RULE (gunbc.design_ruling::fleet_gpu_cap_default_sixty_percent_2026_11_27; the value is
+// gunbc.serving.gpu_power_state_policy fleet_gpu_cap_default, read here and nowhere restated). Two grains:
+//   1. DEVICE: the card's rule target is floor(rated x 600/1000), rated being the card's own reported
+//      default limit, then clamped into the device's settable [min, max]. A T10's 90 W becomes its 100 W floor,
+//      an R9700's 180 W its 210 W floor, a Max-Q's 180 W its 250 W floor -- the clamp is part of the rule.
+//   2. HOST AND CIRCUIT: the sum of a host's caps plus the rest of the host must fit what feeds it. Three bounds
+//      exist and each is a linear budget on the host's GPU sum, in DC watts at the cards:
+//        - the supply:      rated DC output - the host's non-GPU ceiling;
+//        - a stated per-member bound on the circuit (gunbc.fleet.fleet_power_circuit MemberDrawBound), converted
+//          to DC through the supply's efficiency floor, less the non-GPU ceiling;
+//        - the circuit itself, CIRCUIT DENSITY: the rating x the continuous-load fraction
+//          (extdeps.standards.nfpa_70) is the AC the members may hold continuously; through the LOWEST member
+//          floor it becomes a DC budget for every GPU on the circuit, less every member's non-GPU ceiling.
+//
+// THE ALLOCATION RULE WHEN THE DEFAULT DOES NOT FIT: proportional reduction toward each card's own minimum, by
+// one common fraction t in [0, 1]: cap = min + floor((target - min) x t). Every card gives up the same share of
+// the room it had above its floor -- no card drops below its floor, no card is singled out, and the result is a
+// pure function of the facts, so it is the same every time it is asked. Over a circuit, t is computed for the
+// whole circuit and each host then takes the smaller of that and its own supply's t, so a host held down by its
+// own supply never borrows the room that frees on the circuit (the circuit's sum only falls). This is a POLICY
+// choice of this module, stated so the operator can rule on it: the alternatives -- reducing the largest cards
+// first, or protecting one host's cards -- are different rules, not refinements.
+//
+// WHEN EVEN EVERY CARD AT ITS MINIMUM DOES NOT FIT, the host REFUSES with the violated constraint named. It is
+// never handed its minima "as the best we can do": a sum that cannot be carried is an electrical fact, and
+// putting the cards at their floor would hide it behind a number that still trips the breaker.
+//
+// WHEN A NEEDED FACT IS UNREAD, THE DEFAULT IS WITHHELD -- fail-closed, and this is the choice the operator
+// should review. The tempting arm is "apply 60 percent anyway: it is lower than the vendor default, so it
+// cannot make anything worse". That is false here: srv3 and srv4 sit BELOW their rule target today (40 and
+// 30 W against 42 W) on the strip that opened twice on 2026-11-24, so applying the default there RAISES draw on
+// a circuit whose rating nobody has read. A rule that admitted only lowering moves under an unread headroom
+// would be a second rule; this module states the question instead (HostHeadroomUnestablished carries every
+// read that would close it, and the PR that introduced this module asks it).
+//
+// WHERE std.decision ENTERS (gunbc.design_argument::selection_precedes_convergence). The rule generates the
+// candidate field -- the default vector, and the reduced or all-minimum vector when the default does not fit --
+// and std.decision selects among them: the bounds are HardConstraints that exclude a candidate BEFORE dominance,
+// the field is ranked on two funded axes (the host's GPU cap sum, and its shortfall from the rule) under a policy
+// that prefers the rule's default among survivors, and a field the constraints empty is NoFeasibleRealization
+// with the violated constraint located. No second decision vocabulary exists here; this
+// module's own arms wrap std.decision's, as gunbc.auth.authorization_pattern_selection's do. The decision is per
+// HOST, because the host is what the supply bounds and what an applier converges; the circuit enters as each
+// member's share.
+//
+// WHAT THIS MODULE DOES NOT DO. It writes nothing to any device: gunbc.fleet.gpu_power_cap_converge is the
+// applier, and the price gate on a tripped circuit is gunbc.fleet.gpu_cap_priced_actuation. It does not replace
+// the operator's per-host decisions in gunbc.serving.gpu_power_state_policy: it classifies each as conforming to
+// the rule or departing from it, and a departure keeps the operator's own words. What an applier consumes is
+// `DerivedCapRow`: per device, its identity and control, the derived watts or the refusal/withholding cause, and
+// the binding constraint.
+
+// ── INPUTS, AS ONE RECORD A WITNESS CAN SUPPLY ────────────────────────────────────────────────────────
+
+type CapDerivationInputs {
+  policy: FleetGpuCapDefault
+  continuous_fraction: ContinuousLoadFraction
+  constraint_rows: List<HostPowerConstraints>
+  installed: List<PhysicalContainment>
+  devices: List<GpuDeviceObservation>
+  circuits: List<SharedPowerCircuit>
+  decisions: List<InstalledGpuCapIntent>
+}
+
+fn fleet_cap_derivation_inputs() -> CapDerivationInputs {
+  CapDerivationInputs {
+    policy: fleet_gpu_cap_default,
+    continuous_fraction: nec_continuous_load_fraction,
+    constraint_rows: host_power_constraint_rows,
+    installed: installed_gpu_board_containments,
+    devices: current_gpu_device_observations,
+    circuits: fleet_power_circuits(),
+    decisions: installed_gpu_cap_intents,
+  }
+}
+
+// ── THE DEVICE GRAIN ──────────────────────────────────────────────────────────────────────────────────
+
+type RangeClamp
+  = WithinDeviceRange
+  | RaisedToDeviceMinimum
+  | LoweredToDeviceMaximum
+
+type DeviceRuleTarget
+  = RuleTargetDerived {
+      host: HostIdentity
+      board: PhysicalAssetIdentity
+      gpu_uuid: NonEmptyStr?
+      control: GpuPowerLimitControl
+      rated: Watt
+      minimum: Watt
+      maximum: Watt
+      unclamped: Watt
+      target: Watt
+      clamp: RangeClamp
+      current: Watt
+    }
+  | RuleTargetUnread { host: HostIdentity, board: PhysicalAssetIdentity, cause: NonEmptyStr }
+
+fn rule_fraction_of(rated: Watt, policy: FleetGpuCapDefault) -> Watt {
+  watt(count: watt_count(w: rated) * permille_count(p: policy.fraction_of_rated) / 1000)
+}
+
+fn rule_target_of(host: HostIdentity, board: PhysicalAssetIdentity, o: GpuDeviceObservation, policy: FleetGpuCapDefault) -> DeviceRuleTarget {
+  match o {
+    GpuDeviceNotEnumerated { host: _, board: _, cause: c, read_on: r } => RuleTargetUnread {
+      host: host, board: board,
+      cause: join(["the board does not enumerate (", c as String, "; read ", r as String, "): its default limit and range are unread"], "") as NonEmptyStr,
+    }
+    GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: cur, power_limit_default: d, power_limit_control: k, read_on: _ } =>
+      match d {
+        Absent => RuleTargetUnread {
+          host: host, board: board,
+          cause: "the device's default power limit (the rule's rated basis) was never read: read nvidia-smi power.default_limit or amdgpu power1_cap_default" as NonEmptyStr,
+        }
+        Present { value: rated } => {
+          let raw = rule_fraction_of(rated: rated, policy: policy)
+          if watt_count(w: raw) < watt_count(w: lo) {
+            RuleTargetDerived { host: host, board: board, gpu_uuid: u, control: k, rated: rated, minimum: lo, maximum: hi, unclamped: raw, target: lo, clamp: RaisedToDeviceMinimum, current: cur }
+          } else if watt_count(w: raw) > watt_count(w: hi) {
+            RuleTargetDerived { host: host, board: board, gpu_uuid: u, control: k, rated: rated, minimum: lo, maximum: hi, unclamped: raw, target: hi, clamp: LoweredToDeviceMaximum, current: cur }
+          } else {
+            RuleTargetDerived { host: host, board: board, gpu_uuid: u, control: k, rated: rated, minimum: lo, maximum: hi, unclamped: raw, target: raw, clamp: WithinDeviceRange, current: cur }
+          }
+        }
+      }
+  }
+}
+
+fn installed_boards_of(inputs: CapDerivationInputs, host: HostIdentity) -> List<PhysicalAssetIdentity> {
+  flat_map(inputs.installed, c => match c {
+    HostContainsComponent { host: h, component: b } => if host_identity_eq(a: h, b: host) { [b] } else { [] }
+    _ => []
+  })
+}
+
+// One target per device the board shows; a board the device rows do not cover at all is unread, not absent.
+fn rule_targets_on(inputs: CapDerivationInputs, host: HostIdentity) -> List<DeviceRuleTarget> {
+  flat_map(installed_boards_of(inputs: inputs, host: host), b => {
+    let seen = filter(inputs.devices, o => physical_asset_identity_eq(a: gpu_device_observation_board(o: o), b: b))
+    if seen.length() == 0 {
+      [RuleTargetUnread { host: host, board: b, cause: "no device observation exists for this installed board: read its UUID, PCI function and min/max/default/current limits" as NonEmptyStr }]
+    } else {
+      map(seen, o => rule_target_of(host: host, board: b, o: o, policy: inputs.policy))
+    }
+  })
+}
+
+fn derived_targets(ts: List<DeviceRuleTarget>) -> List<DeviceRuleTarget> {
+  filter(ts, t => match t {
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => true
+    RuleTargetUnread { host: _, board: _, cause: _ } => false
+  })
+}
+
+fn target_watts(t: DeviceRuleTarget) -> Nat {
+  match t {
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: w, clamp: _, current: _ } => watt_count(w: w)
+    RuleTargetUnread { host: _, board: _, cause: _ } => no_watts()
+  }
+}
+
+fn minimum_watts(t: DeviceRuleTarget) -> Nat {
+  match t {
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: m, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => watt_count(w: m)
+    RuleTargetUnread { host: _, board: _, cause: _ } => no_watts()
+  }
+}
+
+// Nat seeds for the folds below: a bare literal is an Int, and a fold's accumulator keeps its seed's type.
+fn no_watts() -> Nat { 0 }
+fn whole_percent() -> Nat { 100 }
+
+fn sum_targets(ts: List<DeviceRuleTarget>) -> Nat { fold(ts, init: no_watts(), f: (acc, t) => acc + target_watts(t: t)) }
+fn sum_minima(ts: List<DeviceRuleTarget>) -> Nat { fold(ts, init: no_watts(), f: (acc, t) => acc + minimum_watts(t: t)) }
+
+// ── WHAT IS STILL UNREAD ──────────────────────────────────────────────────────────────────────────────
+
+type HeadroomNeed
+  = HostConstraintRowMissing { host: HostIdentity }
+  | PsuUnreadNeed { host: HostIdentity, read_obligation: NonEmptyStr }
+  | PsuEfficiencyFloorUnreadNeed { host: HostIdentity, read_obligation: NonEmptyStr }
+  | NonGpuCeilingUnreadNeed { host: HostIdentity, read_obligation: NonEmptyStr }
+  | UnidentifiedGpuNeed { host: HostIdentity, reported: NonEmptyStr, read_obligation: NonEmptyStr }
+  | DeviceTargetUnreadNeed { host: HostIdentity, board: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | HostOnNoCircuit { host: HostIdentity }
+  | HostOnSeveralCircuits { host: HostIdentity, circuits: List<DeclarationRef> }
+  | CircuitRatingUnreadNeed { circuit: DeclarationRef, read_obligation: NonEmptyStr }
+  | ContinuousFractionUngrounded { read_obligation: NonEmptyStr }
+  | CircuitMemberUnestablished { circuit: DeclarationRef, member: HostIdentity }
+
+fn standing_is_grounded(s: CitedFigureStanding) -> Bool {
+  match s {
+    CitedToAuthority { authority: _ } => true
+    ObservedByReceipt { observed: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+  }
+}
+
+fn standing_obligation(s: CitedFigureStanding, fallback: NonEmptyStr) -> NonEmptyStr {
+  match s {
+    TranscribedUncited { read_obligation: o } => o
+    CitedToAuthority { authority: _ } => fallback
+    ObservedByReceipt { observed: _ } => fallback
+  }
+}
+
+// What one host's own facts resolve to, before any circuit is consulted.
+type HostFacts {
+  host: HostIdentity
+  targets: List<DeviceRuleTarget>
+  psu_component: PhysicalAssetIdentity
+  psu_rated: Watt
+  efficiency_floor: Percent
+  non_gpu: Watt
+}
+
+type HostFactResolution
+  = HostFactsResolved { facts: HostFacts }
+  | HostFactsUnresolved { targets: List<DeviceRuleTarget>, needs: List<HeadroomNeed> }
+
+fn psu_needs(host: HostIdentity, psu: HostPsuConstraint) -> List<HeadroomNeed> {
+  match psu {
+    PsuUnread { component: _, read_obligation: o } => [PsuUnreadNeed { host: host, read_obligation: o }]
+    PsuCatalogued { component: _, catalog: _, catalog_source: _, efficiency_floor: f } => match f {
+      EfficiencyFloorUnread { read_obligation: o } => [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: o }]
+      EfficiencyFloorStated { floor: _, standing: s } =>
+        if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: standing_obligation(s: s, fallback: "the efficiency floor's standing is unstated" as NonEmptyStr) }] }
+    }
+  }
+}
+
+fn non_gpu_needs(row: HostPowerConstraints) -> List<HeadroomNeed> {
+  match row.non_gpu_draw {
+    NonGpuCeilingUnread { read_obligation: o } => [NonGpuCeilingUnreadNeed { host: row.host, read_obligation: o }]
+    NonGpuCeilingStated { dc_watts: _, standing: s } =>
+      if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [NonGpuCeilingUnreadNeed { host: row.host, read_obligation: standing_obligation(s: s, fallback: "the non-GPU ceiling's standing is unstated" as NonEmptyStr) }] }
+  }
+}
+
+fn unidentified_needs(row: HostPowerConstraints) -> List<HeadroomNeed> {
+  map(row.unidentified_gpus, g => UnidentifiedGpuNeed { host: row.host, reported: g.reported, read_obligation: g.identity_obligation })
+}
+
+fn target_needs(ts: List<DeviceRuleTarget>) -> List<HeadroomNeed> {
+  flat_map(ts, t => match t {
+    RuleTargetUnread { host: h, board: b, cause: c } => [DeviceTargetUnreadNeed { host: h, board: b, cause: c }]
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => [] as List<HeadroomNeed>
+  })
+}
+
+fn resolve_host_facts(inputs: CapDerivationInputs, host: HostIdentity) -> HostFactResolution {
+  let targets = rule_targets_on(inputs: inputs, host: host)
+  match filter(inputs.constraint_rows, r => host_identity_eq(a: r.host, b: host)).first() {
+    Absent => HostFactsUnresolved { targets: targets, needs: concat([HostConstraintRowMissing { host: host }], target_needs(ts: targets)) }
+    Present { value: row } => {
+      let needs = concat(concat(psu_needs(host: host, psu: row.psu), non_gpu_needs(row: row)), concat(unidentified_needs(row: row), target_needs(ts: targets)))
+      if needs.length() > 0 {
+        HostFactsUnresolved { targets: targets, needs: needs }
+      } else {
+        match row.psu {
+          PsuUnread { component: _, read_obligation: o } => HostFactsUnresolved { targets: targets, needs: [PsuUnreadNeed { host: host, read_obligation: o }] }
+          PsuCatalogued { component: comp, catalog: cat, catalog_source: _, efficiency_floor: f } =>
+            match f {
+              EfficiencyFloorUnread { read_obligation: o } => HostFactsUnresolved { targets: targets, needs: [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: o }] }
+              EfficiencyFloorStated { floor: fl, standing: _ } =>
+                match row.non_gpu_draw {
+                  NonGpuCeilingUnread { read_obligation: o } => HostFactsUnresolved { targets: targets, needs: [NonGpuCeilingUnreadNeed { host: host, read_obligation: o }] }
+                  NonGpuCeilingStated { dc_watts: n, standing: _ } => HostFactsResolved {
+                    facts: HostFacts { host: host, targets: targets, psu_component: comp, psu_rated: cat.rated_output, efficiency_floor: fl, non_gpu: n },
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn host_needs_of(r: HostFactResolution) -> List<HeadroomNeed> {
+  match r {
+    HostFactsResolved { facts: _ } => [] as List<HeadroomNeed>
+    HostFactsUnresolved { targets: _, needs: n } => n
+  }
+}
+
+// ── THE BOUNDS ────────────────────────────────────────────────────────────────────────────────────────
+
+type BindingConstraint
+  = PsuSustainedOutput { psu: PhysicalAssetIdentity, rated_output: Watt, non_gpu: Watt }
+  | CircuitMemberDrawBound { circuit: DeclarationRef, draw_limit: Watt, efficiency_floor: Percent, non_gpu: Watt }
+  | CircuitContinuousAllowance { circuit: DeclarationRef, carry_limit: Watt, continuous_fraction: Percent, lowest_efficiency_floor: Percent, members_non_gpu: Watt }
+
+// A budget, in DC watts at the cards, on ONE host's GPU sum. The circuit's budget arrives here as this host's
+// share of it.
+type HostBound {
+  identity: DeclarationRef
+  binding: BindingConstraint
+  budget: Nat
+}
+
+fn bound_identity(kind: String, host: HostIdentity, subject: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: join([kind, "-", host as String, "-", subject], ""))
+}
+
+fn psu_bound(f: HostFacts) -> HostBound {
+  HostBound {
+    identity: bound_identity(kind: "psu-sustained-output", host: f.host, subject: f.psu_component as String),
+    binding: PsuSustainedOutput { psu: f.psu_component, rated_output: f.psu_rated, non_gpu: f.non_gpu },
+    budget: nat_saturating_sub(a: watt_count(w: f.psu_rated), b: watt_count(w: f.non_gpu)),
+  }
+}
+
+fn member_bounds(c: SharedPowerCircuit, f: HostFacts) -> List<HostBound> {
+  match c.member_draw_bound {
+    BoundUnstated { read_obligation: _ } => [] as List<HostBound>
+    BoundStated { draw_limit: l, standing: _ } => [HostBound {
+      identity: bound_identity(kind: "circuit-member-bound", host: f.host, subject: c.identity.decl_name as String),
+      binding: CircuitMemberDrawBound { circuit: c.identity, draw_limit: l, efficiency_floor: f.efficiency_floor, non_gpu: f.non_gpu },
+      budget: nat_saturating_sub(a: watt_count(w: l) * percent_count(p: f.efficiency_floor) / 100, b: watt_count(w: f.non_gpu)),
+    }]
+  }
+}
+
+// THE CIRCUIT, SUMMED OVER EVERY MEMBER. Resolvable only when the rating is cited, the continuous fraction is
+// grounded, and every member's own facts resolve: a circuit whose members are partly unknown has no sum.
+type CircuitResolution
+  = CircuitResolved { circuit: SharedPowerCircuit, members: List<HostFacts>, binding: BindingConstraint, budget: Nat, minima: Nat, targets: Nat }
+  | CircuitUnresolved { needs: List<HeadroomNeed> }
+
+fn min_percent(fs: List<HostFacts>) -> Nat {
+  fold(fs, init: whole_percent(), f: (acc, x) => if percent_count(p: x.efficiency_floor) < acc { percent_count(p: x.efficiency_floor) } else { acc })
+}
+
+fn resolve_circuit(inputs: CapDerivationInputs, c: SharedPowerCircuit) -> CircuitResolution {
+  let rating_needs = match c.rating {
+    RatingUnread { read_obligation: o } => [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: o }]
+    RatingCited { carry_limit: _, standing: s } =>
+      if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: standing_obligation(s: s, fallback: "the circuit rating's standing is unstated" as NonEmptyStr) }] }
+  }
+  let fraction_needs = if standing_is_grounded(s: inputs.continuous_fraction.standing) { [] as List<HeadroomNeed> } else { [ContinuousFractionUngrounded { read_obligation: standing_obligation(s: inputs.continuous_fraction.standing, fallback: "unstated" as NonEmptyStr) }] }
+  let resolutions = map(c.members, m => resolve_host_facts(inputs: inputs, host: m))
+  let member_needs = flat_map(c.members, m => match resolve_host_facts(inputs: inputs, host: m) {
+    HostFactsResolved { facts: _ } => [] as List<HeadroomNeed>
+    HostFactsUnresolved { targets: _, needs: _ } => [CircuitMemberUnestablished { circuit: c.identity, member: m }]
+  })
+  let needs = concat(concat(rating_needs, fraction_needs), member_needs)
+  if needs.length() > 0 {
+    CircuitUnresolved { needs: needs }
+  } else {
+    let facts = flat_map(resolutions, r => match r {
+      HostFactsResolved { facts: f } => [f]
+      HostFactsUnresolved { targets: _, needs: _ } => [] as List<HostFacts>
+    })
+    match c.rating {
+      RatingUnread { read_obligation: o } => CircuitUnresolved { needs: [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: o }] }
+      RatingCited { carry_limit: limit, standing: _ } => {
+        let lowest_floor = min_percent(fs: facts)
+        let non_gpu = fold(facts, init: no_watts(), f: (acc, x) => acc + watt_count(w: x.non_gpu))
+        let continuous_ac = watt_count(w: limit) * percent_count(p: inputs.continuous_fraction.fraction) / 100
+        let budget = nat_saturating_sub(a: continuous_ac * lowest_floor / 100, b: non_gpu)
+        let every_target = flat_map(facts, x => derived_targets(ts: x.targets))
+        CircuitResolved {
+          circuit: c, members: facts,
+          binding: CircuitContinuousAllowance {
+            circuit: c.identity, carry_limit: limit, continuous_fraction: inputs.continuous_fraction.fraction,
+            lowest_efficiency_floor: percent(count: lowest_floor),
+            members_non_gpu: watt(count: non_gpu),
+          },
+          budget: budget, minima: sum_minima(ts: every_target), targets: sum_targets(ts: every_target),
+        }
+      }
+    }
+  }
+}
+
+// THE REDUCTION FRACTION a budget leaves over a set of cards: 1 when the targets fit, (budget - minima) /
+// (targets - minima) when only part of the room above the floors fits, and infeasible when the floors alone do
+// not fit. Carried as a rational so the arithmetic stays exact.
+type ReductionFraction
+  = FitsWhole
+  | ReducedBy { numerator: Nat, denominator: Nat }
+  | FloorsDoNotFit
+
+fn reduction_for(budget: Nat, targets: Nat, minima: Nat) -> ReductionFraction {
+  if targets <= budget { FitsWhole }
+  else if minima > budget { FloorsDoNotFit }
+  else { ReducedBy { numerator: nat_saturating_sub(a: budget, b: minima), denominator: nat_saturating_sub(a: targets, b: minima) } }
+}
+
+fn reduced_cap(t: DeviceRuleTarget, f: ReductionFraction) -> Nat {
+  match f {
+    FitsWhole => target_watts(t: t)
+    FloorsDoNotFit => minimum_watts(t: t)
+    ReducedBy { numerator: n, denominator: d } =>
+      if d == 0 { target_watts(t: t) } else { minimum_watts(t: t) + nat_saturating_sub(a: target_watts(t: t), b: minimum_watts(t: t)) * n / d }
+  }
+}
+
+// This host's share of a resolved circuit under the circuit's own fraction. When the circuit's floors do not
+// fit, the share is what is left for this host with every OTHER member at its floor -- which is below this
+// host's own floors, so the all-minimum candidate is excluded and the refusal names the circuit.
+fn circuit_share_bound(cr: CircuitResolution, host: HostIdentity, own: List<DeviceRuleTarget>) -> List<HostBound> {
+  match cr {
+    CircuitUnresolved { needs: _ } => [] as List<HostBound>
+    CircuitResolved { circuit: c, members: _, binding: b, budget: budget, minima: m, targets: t } => {
+      let f = reduction_for(budget: budget, targets: t, minima: m)
+      let share = match f {
+        FloorsDoNotFit => nat_saturating_sub(a: budget, b: nat_saturating_sub(a: m, b: sum_minima(ts: own)))
+        FitsWhole => sum_targets(ts: own)
+        ReducedBy { numerator: _, denominator: _ } => fold(own, init: no_watts(), f: (acc, x) => acc + reduced_cap(t: x, f: f))
+      }
+      let share_bound = HostBound {
+        identity: bound_identity(kind: "circuit-continuous-share", host: host, subject: c.identity.decl_name as String),
+        binding: b,
+        budget: share,
+      }
+      [share_bound]
+    }
+  }
+}
+
+fn circuits_of(inputs: CapDerivationInputs, host: HostIdentity) -> List<SharedPowerCircuit> {
+  filter(inputs.circuits, c => circuit_carries(c: c, host: host))
+}
+
+// ── THE SELECTION ─────────────────────────────────────────────────────────────────────────────────────
+
+data ax_host_gpu_cap_sum: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "ax_host_gpu_cap_sum")
+data ax_rule_shortfall: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "ax_rule_shortfall")
+data id_term: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "term_host_sustained_gpu_draw")
+data id_var: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "var_per_device_power_limits")
+data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "objective_rule_conformant_draw")
+data id_region: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "region_device_settable_ranges")
+data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "domain_rule_generated_vectors")
+data id_policy: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "policy_prefer_rule_default")
+data id_param_rule: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "param_fleet_default_fraction")
+data id_param_devices: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: "param_device_ranges")
+
+// TWO AXES, AND WHY. The host's cap sum is what the bounds constrain (a HardConstraint caps a LowerIsBetter
+// axis from above), and the shortfall from the rule -- the watts the vector sits below every card's rule
+// target -- is what the rule asks to minimise. On those two the default and any reduction are incomparable
+// (less draw, more shortfall), so the choice between them is the policy's, and the policy prefers the default:
+// a reduction is selected only when the bounds have excluded the default, never because it draws less.
+fn selection_axes() -> List<SelectionAxis> {
+  [SelectionAxis { identity: ax_host_gpu_cap_sum, goal: LowerIsBetter }, SelectionAxis { identity: ax_rule_shortfall, goal: LowerIsBetter }]
+}
+
+fn subject_identity(host: HostIdentity) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: join(["host-gpu-cap-subject-", host as String], ""))
+}
+
+fn candidate_identity(host: HostIdentity, which: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: join(["host-gpu-cap-", which, "-", host as String], ""))
+}
+
+fn subject_for(host: HostIdentity, bounds: List<HostBound>) -> DecisionSubject {
+  DecisionSubject {
+    identity: subject_identity(host: host),
+    question: join(["which per-device power limits on ", host as String, " follow the fleet default rule within what feeds the host"], "") as NonEmptyStr,
+    parameters: [ContextParameter { identity: id_param_rule }, ContextParameter { identity: id_param_devices }],
+    constraints: map(bounds, b => DecisionConstraint { identity: b.identity }),
+    objective: ObjectiveMeasure {
+      identity: id_objective,
+      goal: LowerIsBetter,
+      terms: [ObjectiveTerm { identity: id_term, ground: CitedToAuthority { authority: extdeps_external_authority_anchor } }],
+    },
+    choice_domain: ChoiceDomain { identity: id_domain, variables: [DecisionVariable { identity: id_var }] },
+  }
+}
+
+fn host_has_amdgpu(ts: List<DeviceRuleTarget>) -> Bool {
+  any(ts, t => match t {
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: k, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } =>
+      match k {
+        AmdgpuHwmonPowerCap { attribute: _ } => true
+        NvidiaSmiPowerLimit => false
+      }
+    RuleTargetUnread { host: _, board: _, cause: _ } => false
+  })
+}
+
+// THE COUPLING THAT LETS A CAP STAND FOR DRAW. A circuit and a supply carry draw, not limits; the rule bounds
+// draw by the limits because the driver enforces the limit on sustained draw. nvidia-smi documents its power
+// limit as the board's maximum power management limit (extdeps.nvidia.system_management_interface's anchor).
+// amdgpu documents power1_cap only as the "selected power cap" with its averaging window unstated
+// (extdeps.linux.amdgpu_hwmon PowerCapSettingWindowUnstated), and host-6ce85c read 43 of 224 two-second samples
+// above a 210 W cap -- so a host with an amdgpu card has NO documented coupling, and its selection defers with
+// that read named rather than treating its cap sum as its draw.
+fn assessment_for(host: HostIdentity, ts: List<DeviceRuleTarget>, bounds: List<HostBound>, policy: FleetGpuCapDefault) -> DecisionAssessment {
+  let subject = subject_for(host: host, bounds: bounds)
+  DecisionAssessment {
+    subject: subject,
+    sensitivities: [
+      VariesAlong {
+        term: id_term, variable: id_var, region: DecisionRegion { identity: id_region },
+        relation: MonotoneIncreasing,
+        coupling: CitedToAuthority { authority: extdeps_external_authority_anchor },
+      },
+    ],
+    constraints: map(bounds, b => ConstraintSatisfied {
+      constraint: b.identity,
+      evidence: join(["a stated budget of ", nat_to_decimal_string(value: b.budget), " W DC on the host's GPU sum, applied to every candidate before dominance"], "") as NonEmptyStr,
+    }),
+    parameters: [
+      ParameterBound { parameter: id_param_rule, evidence: join(["fleet default ", nat_to_decimal_string(value: permille_count(p: policy.fraction_of_rated)), " permille of each card's read default limit, decided ", policy.decided_on as String], "") as NonEmptyStr },
+      ParameterBound { parameter: id_param_devices, evidence: join(["every installed device's [min, max] and default read: ", nat_to_decimal_string(value: ts.length()), " devices"], "") as NonEmptyStr },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: if host_has_amdgpu(ts: ts) {
+      CausalModelUnestablished {
+        subject: subject_identity(host: host),
+        read_obligation: "an amdgpu power1_cap is documented only as the 'selected power cap', its averaging window unstated (extdeps.linux.amdgpu_hwmon PowerCapSettingWindowUnstated), and host-6ce85c read 2-second averages up to 234 W under a 210 W cap: a document or a measured sustained-draw window that couples power1_cap to sustained draw" as NonEmptyStr,
+      }
+    } else {
+      CausalModelEstablished {
+        couplings: [VendorDocumentedCoupling { authority: extdeps_external_authority_anchor, term: id_term, variable: id_var, subject: subject_identity(host: host) }],
+      }
+    },
+  }
+}
+
+fn entry_of(host: HostIdentity, which: String, label: String, sum: Nat, shortfall: Nat) -> ParetoEntry {
+  ParetoEntry {
+    identity: candidate_identity(host: host, which: which),
+    display_label: join([label, " (", nat_to_decimal_string(value: sum), " W on ", host as String, ")"], "") as NonEmptyStr,
+    readings: [
+      axis_point_reading(axis: ax_host_gpu_cap_sum, point_micro: nat_to_int(n: sum) * 1000000),
+      axis_point_reading(axis: ax_rule_shortfall, point_micro: nat_to_int(n: shortfall) * 1000000),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn hard_constraint_of(b: HostBound) -> HardConstraint {
+  HardConstraint { identity: b.identity, axis: ax_host_gpu_cap_sum, bound_micro: nat_to_int(n: b.budget) * 1000000, denomination: NonMoneyConstraint }
+}
+
+// The fraction a host's own bounds leave, and the bound that leaves it: the smallest wins, ties to the first.
+fn fraction_lt(a: ReductionFraction, b: ReductionFraction) -> Bool {
+  match a {
+    FloorsDoNotFit => match b { FloorsDoNotFit => false  FitsWhole => true  ReducedBy { numerator: _, denominator: _ } => true }
+    FitsWhole => false
+    ReducedBy { numerator: an, denominator: ad } => match b {
+      FloorsDoNotFit => false
+      FitsWhole => true
+      ReducedBy { numerator: bn, denominator: bd } => an * bd < bn * ad
+    }
+  }
+}
+
+type TightestBound { bound: HostBound?, fraction: ReductionFraction }
+
+fn tightest(bounds: List<HostBound>, targets: Nat, minima: Nat) -> TightestBound {
+  fold(bounds, init: TightestBound { bound: Absent, fraction: FitsWhole }, f: (acc, b) => {
+    let f = reduction_for(budget: b.budget, targets: targets, minima: minima)
+    match acc.bound {
+      Absent => TightestBound { bound: Present { value: b }, fraction: f }
+      Present { value: _ } => if fraction_lt(a: f, b: acc.fraction) { TightestBound { bound: Present { value: b }, fraction: f } } else { acc }
+    }
+  })
+}
+
+// ── THE RESULT ────────────────────────────────────────────────────────────────────────────────────────
+
+type DerivedDeviceCap {
+  board: PhysicalAssetIdentity
+  gpu_uuid: NonEmptyStr?
+  control: GpuPowerLimitControl
+  cap: Watt
+}
+
+type HostAllocation
+  = PolicyDefaultFits { tightest: BindingConstraint?, slack: Watt }
+  | ReducedTowardMinimum { binding: BindingConstraint, numerator: Nat, denominator: Nat }
+
+type HostCapDerivation
+  = HostCapsSelected { host: HostIdentity, targets: List<DeviceRuleTarget>, caps: List<DerivedDeviceCap>, allocation: HostAllocation, receipt: SelectionReceipt }
+  | HostCapsRefused { host: HostIdentity, targets: List<DeviceRuleTarget>, violated: List<BindingConstraint>, causes: List<NonEmptyStr>, scope: DecisionScope }
+  | HostHeadroomUnestablished { host: HostIdentity, targets: List<DeviceRuleTarget>, needs: List<HeadroomNeed> }
+  | HostSelectionNeedsEvidence { host: HostIdentity, targets: List<DeviceRuleTarget>, needs: List<SelectionEvidenceNeed> }
+  | HostSelectionRefused { host: HostIdentity, targets: List<DeviceRuleTarget>, defects: List<NonEmptyStr> }
+
+fn caps_at(ts: List<DeviceRuleTarget>, f: ReductionFraction) -> List<DerivedDeviceCap> {
+  flat_map(ts, t => match t {
+    RuleTargetDerived { host: _, board: b, gpu_uuid: u, control: k, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } =>
+      [DerivedDeviceCap { board: b, gpu_uuid: u, control: k, cap: watt(count: reduced_cap(t: t, f: f)) }]
+    RuleTargetUnread { host: _, board: _, cause: _ } => [] as List<DerivedDeviceCap>
+  })
+}
+
+fn derive_host_caps_with(inputs: CapDerivationInputs, host: HostIdentity) -> HostCapDerivation {
+  let own = resolve_host_facts(inputs: inputs, host: host)
+  let cs = circuits_of(inputs: inputs, host: host)
+  let circuit_placement_needs = if cs.length() == 0 { [HostOnNoCircuit { host: host }] } else if cs.length() > 1 { [HostOnSeveralCircuits { host: host, circuits: map(cs, c => c.identity) }] } else { [] as List<HeadroomNeed> }
+  let resolved_circuits = map(cs, c => resolve_circuit(inputs: inputs, c: c))
+  let circuit_needs = flat_map(resolved_circuits, r => match r {
+    CircuitResolved { circuit: _, members: _, binding: _, budget: _, minima: _, targets: _ } => [] as List<HeadroomNeed>
+    CircuitUnresolved { needs: n } => filter(n, x => match x {
+      CircuitMemberUnestablished { circuit: _, member: m } => !host_identity_eq(a: m, b: host)
+      _ => true
+    })
+  })
+  let needs = concat(host_needs_of(r: own), concat(circuit_placement_needs, circuit_needs))
+  match own {
+    HostFactsUnresolved { targets: ts, needs: _ } => HostHeadroomUnestablished { host: host, targets: ts, needs: needs }
+    HostFactsResolved { facts: f } =>
+      if needs.length() > 0 {
+        HostHeadroomUnestablished { host: host, targets: f.targets, needs: needs }
+      } else {
+        let ts = derived_targets(ts: f.targets)
+        let bounds = concat(concat([psu_bound(f: f)], flat_map(cs, c => member_bounds(c: c, f: f))),
+          flat_map(resolved_circuits, r => circuit_share_bound(cr: r, host: host, own: ts)))
+        select_host_caps(inputs: inputs, host: host, ts: ts, bounds: bounds)
+      }
+  }
+}
+
+fn select_host_caps(inputs: CapDerivationInputs, host: HostIdentity, ts: List<DeviceRuleTarget>, bounds: List<HostBound>) -> HostCapDerivation {
+  let targets = sum_targets(ts: ts)
+  let minima = sum_minima(ts: ts)
+  let tb = tightest(bounds: bounds, targets: targets, minima: minima)
+  let default_entry = entry_of(host: host, which: "policy-default", label: "every card at its rule target", sum: targets, shortfall: no_watts())
+  let reduced_sum = fold(ts, init: no_watts(), f: (acc, t) => acc + reduced_cap(t: t, f: tb.fraction))
+  let field = match tb.fraction {
+    FitsWhole => [default_entry]
+    ReducedBy { numerator: _, denominator: _ } =>
+      [default_entry, entry_of(host: host, which: "reduced-toward-minimum", label: "every card reduced by one common fraction toward its own minimum", sum: reduced_sum, shortfall: nat_saturating_sub(a: targets, b: reduced_sum))]
+    FloorsDoNotFit =>
+      [default_entry, entry_of(host: host, which: "all-at-minimum", label: "every card at its own minimum", sum: minima, shortfall: nat_saturating_sub(a: targets, b: minima))]
+  }
+  match select_realization(
+    assessment: assessment_for(host: host, ts: ts, bounds: bounds, policy: inputs.policy),
+    candidate_field_identity: decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: join(["host-gpu-cap-field-", host as String], "")),
+    field: field,
+    axes: selection_axes(),
+    constraints: map(bounds, b => hard_constraint_of(b: b)),
+    constraint_authority: decl_ref(module_path: "gunbc.fleet.host_power_constraints", decl_name: "host_power_constraint_rows"),
+    policy: UniqueSurvivorElsePrefer { identity: id_policy, preferred: default_entry.identity },
+    evidence_snapshot: decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: join(["host-gpu-cap-evidence-", host as String], "")),
+  ) {
+    SelectedWithin { candidate: c, receipt: r } =>
+      if declaration_ref_eq(a: c.identity, b: default_entry.identity) {
+        HostCapsSelected {
+          host: host, targets: ts, caps: caps_at(ts: ts, f: FitsWhole), receipt: r,
+          allocation: PolicyDefaultFits {
+            tightest: match tb.bound { Present { value: b } => Present { value: b.binding }  Absent => Absent },
+            slack: watt(count: match tb.bound { Present { value: b } => nat_saturating_sub(a: b.budget, b: targets)  Absent => no_watts() }),
+          },
+        }
+      } else {
+        match tb.bound {
+          Absent => HostSelectionRefused { host: host, targets: ts, defects: ["a reduced candidate was selected with no bound that required it" as NonEmptyStr] }
+          Present { value: b } => match tb.fraction {
+            ReducedBy { numerator: n, denominator: d } => HostCapsSelected {
+              host: host, targets: ts, caps: caps_at(ts: ts, f: tb.fraction), receipt: r,
+              allocation: ReducedTowardMinimum { binding: b.binding, numerator: n, denominator: d },
+            }
+            _ => HostSelectionRefused { host: host, targets: ts, defects: ["the selected candidate is neither the default nor a reduction" as NonEmptyStr] }
+          }
+        }
+      }
+    NoFeasibleRealization { causes: cz, scope: sc } => HostCapsRefused {
+      host: host, targets: ts, causes: cz, scope: sc,
+      violated: map(filter(bounds, b => minima > b.budget), b => b.binding),
+    }
+    SelectionNeedsEvidence { needs: ns } => HostSelectionNeedsEvidence { host: host, targets: ts, needs: ns }
+    SelectionNeedsPolicy { survivors: _ } => HostSelectionRefused { host: host, targets: ts, defects: ["the rule's field left several survivors and the default was not among them" as NonEmptyStr] }
+    CandidateFieldUnestablished { causes: cz } => HostSelectionRefused { host: host, targets: ts, defects: cz }
+    RealizationSelectionRefused { defects: ds } => HostSelectionRefused { host: host, targets: ts, defects: ds }
+  }
+}
+
+// Every host the inputs know to carry a GPU -- an installed board, or a reported card on a constraint row --
+// deduplicated by identity in first-seen order. This is the population the report covers, derived rather than
+// listed, so a host that gains a card joins the report without an edit here.
+fn gpu_hosts_of(inputs: CapDerivationInputs) -> List<HostIdentity> {
+  let contained = flat_map(inputs.installed, c => match c {
+    HostContainsComponent { host: h, component: _ } => [h]
+    _ => [] as List<HostIdentity>
+  })
+  let reported = flat_map(inputs.constraint_rows, r => if r.unidentified_gpus.length() > 0 { [r.host] } else { [] as List<HostIdentity> })
+  fold(concat(contained, reported), init: [] as List<HostIdentity>, f: (acc, h) =>
+    if any(acc, x => host_identity_eq(a: x, b: h)) { acc } else { concat(acc, [h]) })
+}
+
+fn derive_fleet_caps_with(inputs: CapDerivationInputs) -> List<HostCapDerivation> {
+  map(gpu_hosts_of(inputs: inputs), h => derive_host_caps_with(inputs: inputs, host: h))
+}
+
+fn derive_fleet_caps() -> List<HostCapDerivation> {
+  derive_fleet_caps_with(inputs: fleet_cap_derivation_inputs())
+}
+
+// ── THE OPERATOR'S STANDING DECISIONS, CLASSIFIED AGAINST THE RULE ───────────────────────────────────
+
+type DecisionConformance
+  = NoOperatorDecision
+  | ConformsToRule { cap: Watt, decided_on: NonEmptyStr }
+  | DepartsFromRule { cap: Watt, rule_target: Watt, decided_on: NonEmptyStr, said: NonEmptyStr }
+  | RuleTargetUnreadForDecision { cap: Watt, decided_on: NonEmptyStr }
+
+fn decision_conformance(inputs: CapDerivationInputs, t: DeviceRuleTarget) -> DecisionConformance {
+  let board = match t {
+    RuleTargetDerived { host: _, board: b, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => b
+    RuleTargetUnread { host: _, board: b, cause: _ } => b
+  }
+  match filter(inputs.decisions, i => physical_asset_identity_eq(a: i.board, b: board)).first() {
+    Absent => NoOperatorDecision
+    Present { value: i } => match i.selection {
+      OperatorDeclaredCap { cap: c, bounds: _, decided_on: d, said: s } => match t {
+        RuleTargetUnread { host: _, board: _, cause: _ } => RuleTargetUnreadForDecision { cap: c, decided_on: d }
+        RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: tw, clamp: _, current: _ } =>
+          if watt_count(w: c) == watt_count(w: tw) { ConformsToRule { cap: c, decided_on: d } } else { DepartsFromRule { cap: c, rule_target: tw, decided_on: d, said: s } }
+      }
+    }
+  }
+}
+
+// ── THE APPLIER-FACING ROW, AND THE TABLE ─────────────────────────────────────────────────────────────
+
+type DerivedCapOutcome
+  = CapDerived { cap: Watt, allocation: HostAllocation }
+  | CapRefused { violated: List<BindingConstraint>, causes: List<NonEmptyStr> }
+  | CapWithheld { causes: List<NonEmptyStr> }
+
+type CappedSubject
+  = IdentifiedDevice { board: PhysicalAssetIdentity, gpu_uuid: NonEmptyStr?, control: GpuPowerLimitControl? }
+  | UnidentifiedCards { reported: NonEmptyStr, count: Nat, reading: NonEmptyStr }
+
+type DerivedCapRow {
+  host: HostIdentity
+  subject: CappedSubject
+  target: DeviceRuleTarget?
+  outcome: DerivedCapOutcome
+  decision: DecisionConformance
+}
+
+fn watts_text(w: Watt) -> String { join([nat_to_decimal_string(value: watt_count(w: w)), " W"], "") }
+
+fn binding_text(b: BindingConstraint) -> String {
+  match b {
+    PsuSustainedOutput { psu: p, rated_output: r, non_gpu: n } =>
+      join(["supply ", p as String, ": ", watts_text(w: r), " DC less ", watts_text(w: n), " non-GPU"], "")
+    CircuitMemberDrawBound { circuit: c, draw_limit: l, efficiency_floor: e, non_gpu: n } =>
+      join(["member bound on ", c.decl_name as String, ": ", watts_text(w: l), " AC x ", nat_to_decimal_string(value: percent_count(p: e)), "% floor less ", watts_text(w: n), " non-GPU"], "")
+    CircuitContinuousAllowance { circuit: c, carry_limit: l, continuous_fraction: fr, lowest_efficiency_floor: e, members_non_gpu: n } =>
+      join(["circuit density on ", c.decl_name as String, ": ", watts_text(w: l), " x ", nat_to_decimal_string(value: percent_count(p: fr)), "% continuous x ", nat_to_decimal_string(value: percent_count(p: e)), "% floor less ", watts_text(w: n), " members' non-GPU"], "")
+  }
+}
+
+fn need_text(n: HeadroomNeed) -> String {
+  match n {
+    HostConstraintRowMissing { host: h } => join(["no power-constraint row for ", h as String, " (gunbc.fleet.host_power_constraints)"], "")
+    PsuUnreadNeed { host: h, read_obligation: o } => join([h as String, " supply: ", o as String], "")
+    PsuEfficiencyFloorUnreadNeed { host: h, read_obligation: o } => join([h as String, " supply efficiency floor: ", o as String], "")
+    NonGpuCeilingUnreadNeed { host: h, read_obligation: _ } => join([h as String, " non-GPU draw ceiling unread"], "")
+    UnidentifiedGpuNeed { host: h, reported: r, read_obligation: o } => join([h as String, " carries an unidentified ", r as String, ": ", o as String], "")
+    DeviceTargetUnreadNeed { host: h, board: b, cause: c } => join([h as String, " ", b as String, ": ", c as String], "")
+    HostOnNoCircuit { host: h } => join(["which circuit feeds ", h as String, " is unread (gunbc.fleet.fleet_power_circuit)"], "")
+    HostOnSeveralCircuits { host: h, circuits: cs } => join([h as String, " is named on several circuits: ", join(map(cs, c => c.decl_name as String), ", ")], "")
+    CircuitRatingUnreadNeed { circuit: c, read_obligation: o } => join(["circuit ", c.decl_name as String, " rating: ", o as String], "")
+    ContinuousFractionUngrounded { read_obligation: o } => join(["continuous-load fraction: ", o as String], "")
+    CircuitMemberUnestablished { circuit: c, member: m } => join(["circuit ", c.decl_name as String, " cannot be summed: member ", m as String, " is unestablished"], "")
+  }
+}
+
+fn short_need_text(n: HeadroomNeed) -> String {
+  match n {
+    HostConstraintRowMissing { host: _ } => "constraint row missing"
+    PsuUnreadNeed { host: _, read_obligation: _ } => "PSU unread"
+    PsuEfficiencyFloorUnreadNeed { host: _, read_obligation: _ } => "PSU efficiency floor unread"
+    NonGpuCeilingUnreadNeed { host: _, read_obligation: _ } => "non-GPU ceiling unread"
+    UnidentifiedGpuNeed { host: _, reported: r, read_obligation: _ } => join(["unidentified ", r as String], "")
+    DeviceTargetUnreadNeed { host: _, board: b, cause: _ } => join([b as String, " target unread"], "")
+    HostOnNoCircuit { host: _ } => "circuit unknown"
+    HostOnSeveralCircuits { host: _, circuits: _ } => "circuit ambiguous"
+    CircuitRatingUnreadNeed { circuit: c, read_obligation: _ } => join([c.decl_name as String, " rating unread"], "")
+    ContinuousFractionUngrounded { read_obligation: _ } => "NEC continuous fraction uncited"
+    CircuitMemberUnestablished { circuit: _, member: m } => join(["circuit member ", m as String, " unestablished"], "")
+  }
+}
+
+fn host_outcome_for(d: HostCapDerivation, t: DeviceRuleTarget) -> DerivedCapOutcome {
+  let board = match t {
+    RuleTargetDerived { host: _, board: b, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => b
+    RuleTargetUnread { host: _, board: b, cause: _ } => b
+  }
+  match d {
+    HostCapsSelected { host: _, targets: _, caps: cs, allocation: a, receipt: _ } =>
+      match filter(cs, c => physical_asset_identity_eq(a: c.board, b: board)).first() {
+        Present { value: c } => CapDerived { cap: c.cap, allocation: a }
+        Absent => CapWithheld { causes: ["the device's rule target is unread" as NonEmptyStr] }
+      }
+    HostCapsRefused { host: _, targets: _, violated: v, causes: cz, scope: _ } => CapRefused { violated: v, causes: cz }
+    HostHeadroomUnestablished { host: _, targets: _, needs: ns } => CapWithheld { causes: map(ns, n => short_need_text(n: n) as NonEmptyStr) }
+    HostSelectionNeedsEvidence { host: _, targets: _, needs: ns } => CapWithheld { causes: map(ns, n => selection_evidence_need_cause(n: n)) }
+    HostSelectionRefused { host: _, targets: _, defects: ds } => CapRefused { violated: [], causes: ds }
+  }
+}
+
+fn host_of(d: HostCapDerivation) -> HostIdentity {
+  match d {
+    HostCapsSelected { host: h, targets: _, caps: _, allocation: _, receipt: _ } => h
+    HostCapsRefused { host: h, targets: _, violated: _, causes: _, scope: _ } => h
+    HostHeadroomUnestablished { host: h, targets: _, needs: _ } => h
+    HostSelectionNeedsEvidence { host: h, targets: _, needs: _ } => h
+    HostSelectionRefused { host: h, targets: _, defects: _ } => h
+  }
+}
+
+fn targets_of(d: HostCapDerivation) -> List<DeviceRuleTarget> {
+  match d {
+    HostCapsSelected { host: _, targets: t, caps: _, allocation: _, receipt: _ } => t
+    HostCapsRefused { host: _, targets: t, violated: _, causes: _, scope: _ } => t
+    HostHeadroomUnestablished { host: _, targets: t, needs: _ } => t
+    HostSelectionNeedsEvidence { host: _, targets: t, needs: _ } => t
+    HostSelectionRefused { host: _, targets: t, defects: _ } => t
+  }
+}
+
+fn derived_cap_rows_with(inputs: CapDerivationInputs) -> List<DerivedCapRow> {
+  flat_map(derive_fleet_caps_with(inputs: inputs), d => {
+    let host = host_of(d: d)
+    let device_rows = map(targets_of(d: d), t => DerivedCapRow {
+      host: host,
+      subject: match t {
+        RuleTargetDerived { host: _, board: b, gpu_uuid: u, control: k, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => IdentifiedDevice { board: b, gpu_uuid: u, control: Present { value: k } }
+        RuleTargetUnread { host: _, board: b, cause: _ } => IdentifiedDevice { board: b, gpu_uuid: Absent, control: Absent }
+      },
+      target: Present { value: t },
+      outcome: host_outcome_for(d: d, t: t),
+      decision: decision_conformance(inputs: inputs, t: t),
+    })
+    let reported_rows = flat_map(filter(inputs.constraint_rows, r => host_identity_eq(a: r.host, b: host)), r =>
+      map(r.unidentified_gpus, g => DerivedCapRow {
+        host: host,
+        subject: UnidentifiedCards { reported: g.reported, count: g.count, reading: g.reading },
+        target: Absent,
+        outcome: CapWithheld { causes: [join(["no board identity: ", g.identity_obligation as String], "") as NonEmptyStr] },
+        decision: NoOperatorDecision,
+      }))
+    concat(device_rows, reported_rows)
+  })
+}
+
+fn derived_cap_rows() -> List<DerivedCapRow> {
+  derived_cap_rows_with(inputs: fleet_cap_derivation_inputs())
+}
+
+fn clamp_text(c: RangeClamp) -> String {
+  match c {
+    WithinDeviceRange => ""
+    RaisedToDeviceMinimum => " (raised to min)"
+    LoweredToDeviceMaximum => " (lowered to max)"
+  }
+}
+
+fn signed_text(i: Int) -> String {
+  if i > 0 { join(["+", int_to_decimal_string(value: i)], "") } else { int_to_decimal_string(value: i) }
+}
+
+fn decision_text(d: DecisionConformance) -> String {
+  match d {
+    NoOperatorDecision => "none"
+    ConformsToRule { cap: c, decided_on: on } => join(["conforms (", watts_text(w: c), ", ", on as String, ")"], "")
+    DepartsFromRule { cap: c, rule_target: t, decided_on: on, said: _ } => join(["DEPARTS: ", watts_text(w: c), " vs rule ", watts_text(w: t), " (", on as String, ")"], "")
+    RuleTargetUnreadForDecision { cap: c, decided_on: on } => join([watts_text(w: c), " (", on as String, "), rule target unread"], "")
+  }
+}
+
+fn device_text(s: CappedSubject) -> String {
+  match s {
+    IdentifiedDevice { board: b, gpu_uuid: u, control: _ } => match u {
+      Present { value: uuid } => join([b as String, " ", uuid as String], "")
+      Absent => b as String
+    }
+    UnidentifiedCards { reported: r, count: n, reading: _ } => join([nat_to_decimal_string(value: n), "x ", r as String, " (no board identity)"], "")
+  }
+}
+
+fn rated_cell(t: DeviceRuleTarget) -> String {
+  match t {
+    RuleTargetUnread { host: _, board: _, cause: _ } => "unread"
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: ra, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } => watts_text(w: ra)
+  }
+}
+
+fn range_cell(t: DeviceRuleTarget) -> String {
+  match t {
+    RuleTargetUnread { host: _, board: _, cause: _ } => "unread"
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: lo, maximum: hi, unclamped: _, target: _, clamp: _, current: _ } =>
+      join([nat_to_decimal_string(value: watt_count(w: lo)), "-", nat_to_decimal_string(value: watt_count(w: hi)), " W"], "")
+  }
+}
+
+fn target_cell(t: DeviceRuleTarget) -> String {
+  match t {
+    RuleTargetUnread { host: _, board: _, cause: c } => join(["unread: ", c as String], "")
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: un, target: tw, clamp: c, current: _ } =>
+      join([watts_text(w: un), " -> ", watts_text(w: tw), clamp_text(c: c)], "")
+  }
+}
+
+fn live_cell(t: DeviceRuleTarget) -> String {
+  match t {
+    RuleTargetUnread { host: _, board: _, cause: _ } => "unread"
+    RuleTargetDerived { host: _, board: _, gpu_uuid: _, control: _, rated: _, minimum: _, maximum: _, unclamped: _, target: tw, clamp: _, current: cur } =>
+      join([watts_text(w: cur), " (", signed_text(i: nat_to_int(n: watt_count(w: cur)) - nat_to_int(n: watt_count(w: tw))), ")"], "")
+  }
+}
+
+fn outcome_cap_cell(o: DerivedCapOutcome) -> String {
+  match o {
+    CapDerived { cap: c, allocation: _ } => watts_text(w: c)
+    CapRefused { violated: _, causes: _ } => "REFUSED"
+    CapWithheld { causes: _ } => "withheld"
+  }
+}
+
+fn outcome_reason_cell(o: DerivedCapOutcome) -> String {
+  match o {
+    CapDerived { cap: _, allocation: a } => match a {
+      PolicyDefaultFits { tightest: t, slack: s } => match t {
+        Present { value: b } => join(["default fits; tightest: ", binding_text(b: b), " (", watts_text(w: s), " spare)"], "")
+        Absent => "default fits; no bound applies"
+      }
+      ReducedTowardMinimum { binding: b, numerator: n, denominator: d } =>
+        join(["reduced by ", nat_to_decimal_string(value: n), "/", nat_to_decimal_string(value: d), " of the room above each minimum; binding: ", binding_text(b: b)], "")
+    }
+    CapRefused { violated: v, causes: cz } => join(concat(map(v, b => join(["violates ", binding_text(b: b)], "")), map(cz, c => c as String)), "; ")
+    CapWithheld { causes: cz } => join(map(cz, c => c as String), "; ")
+  }
+}
+
+fn row_line(r: DerivedCapRow) -> String {
+  let live = match r.subject {
+    UnidentifiedCards { reported: _, count: _, reading: rd } => rd as String
+    IdentifiedDevice { board: _, gpu_uuid: _, control: _ } => match r.target {
+      Absent => "?"
+      Present { value: t } => live_cell(t: t)
+    }
+  }
+  let head = match r.target {
+    Absent => " | ? | ? | ? | "
+    Present { value: t } => join([" | ", rated_cell(t: t), " | ", range_cell(t: t), " | ", target_cell(t: t), " | "], "")
+  }
+  join([
+    "| ", r.host as String, " | ", device_text(s: r.subject), head,
+    outcome_cap_cell(o: r.outcome), " | ", outcome_reason_cell(o: r.outcome),
+    " | ", live, " | ", decision_text(d: r.decision), " |",
+  ], "")
+}
+
+fn board_text(b: MachineBoardStanding) -> String {
+  match b {
+    MachineBoardCatalogued { catalog: c, source: _ } => c.model_label as String
+    MachineBoardUncatalogued { board: n, obligation: _ } => join([n as String, " (uncatalogued)"], "")
+    MachineBoardProviderOwned { provider: _ } => "provider-owned"
+  }
+}
+
+fn psu_text(p: HostPsuConstraint) -> String {
+  match p {
+    PsuCatalogued { component: c, catalog: cat, catalog_source: _, efficiency_floor: f } =>
+      join([c as String, " = ", cat.model as String, " ", watts_text(w: cat.rated_output), " DC; efficiency floor ", match f {
+        EfficiencyFloorStated { floor: fl, standing: _ } => join([nat_to_decimal_string(value: percent_count(p: fl)), "%"], "")
+        EfficiencyFloorUnread { read_obligation: _ } => "unread"
+      }], "")
+    PsuUnread { component: c, read_obligation: _ } => match c {
+      Present { value: comp } => join([comp as String, " (model/rating unread)"], "")
+      Absent => "no supply recorded"
+    }
+  }
+}
+
+fn host_relation_line(inputs: CapDerivationInputs, h: HostIdentity) -> String {
+  let circuits = circuits_of(inputs: inputs, host: h)
+  let rows = filter(inputs.constraint_rows, r => host_identity_eq(a: r.host, b: h))
+  join([
+    "| ", h as String,
+    " | ", match rows.first() { Present { value: r } => psu_text(p: r.psu)  Absent => "NO ROW" },
+    " | ", join(map(host_board_of(host: h), b => board_text(b: b)), ", "),
+    " | ", join(map(circuits, c => c.identity.decl_name as String), ", "),
+    " | ", match rows.first() {
+      Present { value: r } => match r.non_gpu_draw {
+        NonGpuCeilingStated { dc_watts: w, standing: _ } => watts_text(w: w)
+        NonGpuCeilingUnread { read_obligation: _ } => "unread"
+      }
+      Absent => "NO ROW"
+    },
+    " | ", nat_to_decimal_string(value: installed_boards_of(inputs: inputs, host: h).length()),
+    " |",
+  ], "")
+}
+
+// THE FACT-COLLECTION CHECKLIST: every distinct read the fleet's hosts are waiting on, in the derivation's own
+// words, deduplicated. It is what the operator supplies to turn a withheld host into a selected one.
+fn fact_checklist_with(inputs: CapDerivationInputs) -> List<String> {
+  let every_line = flat_map(derive_fleet_caps_with(inputs: inputs), d => match d {
+    HostHeadroomUnestablished { host: _, targets: _, needs: ns } => map(ns, n => need_text(n: n))
+    HostSelectionNeedsEvidence { host: h, targets: _, needs: ns } => map(ns, n => join([h as String, ": ", selection_evidence_need_cause(n: n) as String], ""))
+    _ => [] as List<String>
+  })
+  fold(every_line, init: [] as List<String>, f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
+}
+
+fn fleet_gpu_cap_report_md_with(inputs: CapDerivationInputs) -> String {
+  let title = join(["## Fleet GPU cap derivation (rule: ", nat_to_decimal_string(value: permille_count(p: inputs.policy.fraction_of_rated)), " permille of each card's read default limit, clamped to its range; decided ", inputs.policy.decided_on as String, ")"], "")
+  let device_table = concat([
+      title,
+      "",
+      "| host | device | rated | range | 60% -> rule target | constraint-bounded cap | binding constraint / cause | live cap (live - target) | operator decision |",
+      "|---|---|---|---|---|---|---|---|---|",
+    ], map(derived_cap_rows_with(inputs: inputs), r => row_line(r: r)))
+  let relation_table = concat([
+      "",
+      "### Host power relation",
+      "",
+      "| host | supply | board | circuit | non-GPU ceiling | installed GPU boards |",
+      "|---|---|---|---|---|---|",
+    ], map(gpu_hosts_of(inputs: inputs), h => host_relation_line(inputs: inputs, h: h)))
+  let checklist = concat(["", "### Facts the derivation is waiting on", ""], map(fact_checklist_with(inputs: inputs), x => join(["- ", x], "")))
+  join(concat(concat(device_table, relation_table), checklist), "\n")
+}
+
+fn fleet_gpu_cap_report_md() -> String {
+  fleet_gpu_cap_report_md_with(inputs: fleet_cap_derivation_inputs())
+}

@@ -29,7 +29,9 @@ import gunbc.fleet.fleet_power_circuit {
   circuit_label, circuit_member_draw_bound, circuit_members, circuit_rating_read_obligation, surge_strip,
 }
 import gunbc.serving.gpu_power_state_policy {
-  GpuPowerCapSelection, OperatorDeclaredCap, SustainedPowerDraw, gpu_power_cap_selected,
+  GpuPowerCapSelection, gpu_power_cap_selected,
+  srv4_rtx_2000_ada_cap_decision, srv4_rtx_2000_ada_cap_decision_superseded_40w, srv3_rtx_2000_ada_cap_decision,
+  ken_t10_cap_decision,
 }
 
 // A POWER-CAP VALUE, PRICED: the decode it costs, against the circuit it was asked to protect.
@@ -937,33 +939,12 @@ fn card_of(c: CapCandidate) -> Optional<NonEmptyStr> {
 //   - single hwmon apm_xgene readings, taken while the load was changing, which bound nothing and are quoted
 //     in the read obligations rather than carried as a draw.
 
-data srv4_cap_40w_2026_11_24: GpuPowerCapSelection = OperatorDeclaredCap {
-  cap: watt(count: 40),
-  bounds: SustainedPowerDraw,
-  decided_on: "2026-11-24" as NonEmptyStr,
-  said: "operator restored 40 W after judging the 30 W drop not worth 10 W per card; the strip opened again later the same day and the caps went back to 30 W" as NonEmptyStr,
-}
-
-data srv4_cap_30w_2026_11_24: GpuPowerCapSelection = OperatorDeclaredCap {
-  cap: watt(count: 30),
-  bounds: SustainedPowerDraw,
-  decided_on: "2026-11-24" as NonEmptyStr,
-  said: "operator set srv3/srv4 GPUs to 30 W after the surge-strip openings (~09:19 and ~21:57 UTC); 30 W is the RTX 2000 Ada's minimum settable limit (gunbc.fleet.gpu_device_observation power_limit_minimum)" as NonEmptyStr,
-}
-
-data srv3_cap_40w_2026_11_24: GpuPowerCapSelection = OperatorDeclaredCap {
-  cap: watt(count: 40),
-  bounds: SustainedPowerDraw,
-  decided_on: "2026-10-26" as NonEmptyStr,
-  said: "operator capped srv3's Adas at 40 W on 2026-10-26 for noise/heat; returned there on 2026-11-24 as the final choice, with no SM clock ceiling" as NonEmptyStr,
-}
-
-data ken_cap_100w_2026_11_24: GpuPowerCapSelection = OperatorDeclaredCap {
-  cap: watt(count: 100),
-  bounds: SustainedPowerDraw,
-  decided_on: "2026-11-24" as NonEmptyStr,
-  said: "operator capped each Tesla T10 on ken at 100 W (t10-power-cap.service)" as NonEmptyStr,
-}
+// THE CAP DECISIONS THESE CANDIDATES WERE TAKEN UNDER ARE NOT RESTATED HERE. This module used to carry its own
+// four OperatorDeclaredCap rows (srv4 40 W and 30 W, srv3 40 W, ken 100 W), each typed SustainedPowerDraw --
+// a timescale the operator never stated for any of them, and a second copy of decisions that
+// gunbc.serving.gpu_power_state_policy already held as CappedQuantityUnstated (ken's on a different date). Two
+// authorities for one decision, disagreeing on one field, is the fork gunbc.design_argument::single_authority
+// refuses; the candidates below now name the policy module's rows, which are the only cap decisions there are.
 
 // THE CEILINGS, as the 22:45 UTC sweep decided them.
 data srv4_ceiling_1500_2026_11_24: SmClockCeiling = CappedWithin { maximum: hertz(count: 1500000000) }
@@ -1128,7 +1109,7 @@ data srv4_sweep_unlocked_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-unlocked"),
   label: "srv4, 30 W, clock unlocked: 869 MHz avg, 29.1 W, 96% power-capped, 28.0 tok/s" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: Unlocked,
   condition: condition_unread_srv4,
@@ -1146,7 +1127,7 @@ data srv4_sweep_2400_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-2400"),
   label: "srv4, 30 W, ceiling 2400 MHz: 797 MHz avg, 28.0 W, 100% power-capped, 30.3 tok/s" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 2400000000) },
   condition: condition_unread_srv4,
@@ -1164,7 +1145,7 @@ data srv4_sweep_1800_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-1800"),
   label: "srv4, 30 W, ceiling 1800 MHz: 888 MHz avg, 27.6 W, 91% power-capped, 31.9 tok/s" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 1800000000) },
   condition: condition_unread_srv4,
@@ -1187,7 +1168,7 @@ data srv4_sweep_1500_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-1500"),
   label: "srv4, 30 W, ceiling 1500 MHz (CHOSEN): 906 MHz avg, 27.0 W, 87% power-capped, 26.1 tok/s" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: srv4_ceiling_1500_2026_11_24,
   condition: condition_unread_srv4,
@@ -1205,7 +1186,7 @@ data srv4_sweep_1200_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-1200"),
   label: "srv4, 30 W, ceiling 1200 MHz: 837 MHz avg, 25.6 W, 78% power-capped, 23.8 tok/s" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 1200000000) },
   condition: condition_unread_srv4,
@@ -1223,7 +1204,7 @@ data srv4_sweep_900_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-900"),
   label: "srv4, 30 W, ceiling 900 MHz: 744 MHz avg, 24.0 W, 74% power-capped, 18.8 tok/s" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 900000000) },
   condition: condition_unread_srv4,
@@ -1244,7 +1225,7 @@ data srv4_40w_30ghz_morning_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-40w-3ghz-morning"),
   label: "srv4, 40 W, 3.0 GHz, clock unlocked (2026-11-24 morning)" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_40w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision_superseded_40w,
   cpu_cap: Uncapped,
   sm_clock: Unlocked,
   condition: condition_unread_srv4,
@@ -1256,7 +1237,7 @@ data srv4_30w_20ghz_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-2ghz"),
   label: "srv4, 30 W, 2.0 GHz capped, clock unlocked" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
   sm_clock: Unlocked,
   condition: condition_unread_srv4,
@@ -1268,7 +1249,7 @@ data srv4_30w_30ghz_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-3ghz"),
   label: "srv4, 30 W, 3.0 GHz (CPU cap released), clock unlocked" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: Unlocked,
   condition: condition_unread_srv4,
@@ -1280,7 +1261,7 @@ data srv4_40w_30ghz_afternoon_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-40w-3ghz-afternoon"),
   label: "srv4, 40 W, 3.0 GHz, clock unlocked (afternoon, 28.5-34 tok/s)" as NonEmptyStr,
   host: operator_host_srv4,
-  gpu_cap: srv4_cap_40w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision_superseded_40w,
   cpu_cap: Uncapped,
   sm_clock: Unlocked,
   condition: condition_unread_srv4,
@@ -1295,7 +1276,7 @@ data srv3_40w_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv3-40w"),
   label: "srv3, 40 W, 3.0 GHz, no ceiling (operator's final choice for srv3)" as NonEmptyStr,
   host: operator_host_srv3,
-  gpu_cap: srv3_cap_40w_2026_11_24,
+  gpu_cap: srv3_rtx_2000_ada_cap_decision,
   cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
   sm_clock: Unlocked,
   condition: condition_unread_srv3,
@@ -1307,7 +1288,7 @@ data srv3_30w_2ghz_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv3-30w-2ghz"),
   label: "srv3, 30 W, 2.0 GHz capped, ceiling 210-1500 MHz" as NonEmptyStr,
   host: operator_host_srv3,
-  gpu_cap: srv4_cap_30w_2026_11_24,
+  gpu_cap: srv4_rtx_2000_ada_cap_decision,
   cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
   sm_clock: srv3_ceiling_1500_2026_11_24,
   condition: condition_unread_srv3,
@@ -1322,7 +1303,7 @@ data ken_t10_cool_unlocked_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "ken-t10-100w-unlocked"),
   label: "ken T10 cool card, 100 W, unlocked: swung 510-1575 MHz pinned at the cap, 92-96 W" as NonEmptyStr,
   host: operator_host_e2d4b7,
-  gpu_cap: ken_cap_100w_2026_11_24,
+  gpu_cap: ken_t10_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: Unlocked,
   condition: ken_condition_gpu0,
@@ -1351,7 +1332,7 @@ data ken_t10_cool_1000mhz_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "ken-t10-100w-1000mhz-cool"),
   label: "ken T10 cool card, 100 W, ceiling 300-1000 MHz (CHOSEN): ~990 MHz, 68-80 W, power-capped 1%" as NonEmptyStr,
   host: operator_host_e2d4b7,
-  gpu_cap: ken_cap_100w_2026_11_24,
+  gpu_cap: ken_t10_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: ken_ceiling_1000_2026_11_24,
   condition: ken_condition_gpu0,
@@ -1383,7 +1364,7 @@ data ken_t10_leaky_1000mhz_candidate: CapCandidate = CapCandidate {
   identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "ken-t10-100w-1000mhz-leaky"),
   label: "ken T10 GPU1 (82 C, leaky), 100 W, ceiling 300-1000 MHz: ~790 MHz at 83 W at EVERY level" as NonEmptyStr,
   host: operator_host_e2d4b7,
-  gpu_cap: ken_cap_100w_2026_11_24,
+  gpu_cap: ken_t10_cap_decision,
   cpu_cap: Uncapped,
   sm_clock: ken_ceiling_1000_2026_11_24,
   condition: ken_condition_gpu1,

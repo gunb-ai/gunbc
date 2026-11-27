@@ -148,7 +148,10 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
   // never as a verdict that the boot mechanism succeeded -- that question stays with
   // gunbc.fleet.gpu_power_cap_converge. The UUIDs were never read, so the row still cannot be joined to a
   // boot unit that addresses cards by UUID; srv4's unit addresses none, which is why the two still line up.
-  // The UUIDs were not read.
+  // The UUIDs were not read. THE DEFAULT IS NOW CARRIED: 70 W, which the 2026-11-07 survey recorded (the
+  // inventory rows above gpu_board_05_asset say so) and the operator's session re-read on 2026-11-27; it was
+  // Absent here only because the typed row had been transcribed without it, and the fleet default rule
+  // (gunbc.fleet.gpu_cap_policy_derivation) reads it as the card's rated limit.
   GpuDeviceEnumerated {
     host: operator_host_srv4,
     board: gpu_board_05,
@@ -157,9 +160,9 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_minimum: watt(count: 30),
     power_limit_maximum: watt(count: 70),
     power_limit_current: watt(count: 30),
-    power_limit_default: Absent,
+    power_limit_default: Present { value: watt(count: 70) },
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "nvidia-smi power.limit over ssh, 2026-11-24 22:03-22:05 UTC pass (30.00 W); range and its 2026-11-07 15:35Z fleet-survey origin unchanged since" as NonEmptyStr,
+    read_on: "nvidia-smi power.limit over ssh, 2026-11-24 22:03-22:05 UTC pass (30.00 W); range and its 2026-11-07 15:35Z fleet-survey origin unchanged since; default 70 W from the 2026-11-07 survey (fleet_physical_inventory's account of it) and the operator's session's read-only relay of 2026-11-27 (30 W current, 30 W min, 70 W default on both cards)" as NonEmptyStr,
   },
   GpuDeviceEnumerated {
     host: operator_host_srv4,
@@ -169,9 +172,9 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_minimum: watt(count: 30),
     power_limit_maximum: watt(count: 70),
     power_limit_current: watt(count: 30),
-    power_limit_default: Absent,
+    power_limit_default: Present { value: watt(count: 70) },
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "nvidia-smi power.limit over ssh, 2026-11-24 22:03-22:05 UTC pass (30.00 W); range and its 2026-11-07 15:35Z fleet-survey origin unchanged since" as NonEmptyStr,
+    read_on: "nvidia-smi power.limit over ssh, 2026-11-24 22:03-22:05 UTC pass (30.00 W); range and its 2026-11-07 15:35Z fleet-survey origin unchanged since; default 70 W from the 2026-11-07 survey (fleet_physical_inventory's account of it) and the operator's session's read-only relay of 2026-11-27 (30 W current, 30 W min, 70 W default on both cards)" as NonEmptyStr,
   },
   // srv14/butch's four NVIDIA A2 readings (gpu_board_07..10, read 2026-11-10) are NOT in this list and never
   // will be again: the operator's 2026-11-17 report says all four cards were physically removed from butch to

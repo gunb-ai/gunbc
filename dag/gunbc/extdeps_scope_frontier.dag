@@ -263,6 +263,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/connector/molex_mini_fit_jr.dag",
   "dag/extdeps/standards/awg.dag",
   "dag/extdeps/standards/atx12v_psdg.dag",
+  "dag/extdeps/standards/nfpa_70.dag",
   "dag/extdeps/physics/dry_air.dag",
   "dag/extdeps/apple/property_list.dag",
   "dag/extdeps/apple/info_plist.dag",
