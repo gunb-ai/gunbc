@@ -757,15 +757,22 @@ fn count_starting(rows: List<String>, needle: String) -> Int {
 // keys). Same broken-gate class as the clean-bit suppression and the "untrimmed" closing-section
 // check: reported as a finding about the CHECKS, not tuned away. The replacement reads the key at
 // whatever position it holds inside a line and returns the characters after THAT key's '='.
+fn provenance_tokens(line: String) -> List<String> {
+  split(s: line, delimiter: " ")
+}
+
 fn provenance_value(rows: List<String>, key: String) -> String {
   let hits = fold(rows, init: [], f: (acc, row) =>
-    concat(acc, filter(split(s: row, delimiter: " "), t => row_starts(t, key))))
+    fold(provenance_tokens(line: row), init: acc, f: (a, t) =>
+      if row_starts(t, key) { list_push(xs: a, item: t) } else { a }))
   match hits.first() {
-    Present { value: t } =>
-      match split(s: t, delimiter: "=").skip(n: 1).first() {
+    Present { value: t } => {
+      let parts = split(s: t, delimiter: "=")
+      match parts.skip(n: 1).first() {
         Present { value: v } => v
         Absent {} => ""
       }
+    }
     Absent {} => ""
   }
 }
