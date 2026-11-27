@@ -395,6 +395,16 @@ pub(crate) fn acquire_layout_closure_seeded(
         index.insert(seed.clone(), snapshot.clone());
         queue.push_back(seed.clone());
     }
+    close_over_layout(source_roots, custom, duplicates, index, queue)
+}
+
+fn close_over_layout(
+    source_roots: &[String],
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    duplicates: CustomRootDuplicate,
+    mut index: ModuleSourceIndex,
+    mut queue: VecDeque<String>,
+) -> Result<ModuleSourceIndex, String> {
     let mut known: HashSet<String> = index.keys().cloned().collect();
     while let Some(module) = queue.pop_front() {
         let Some(source) = index.get(&module).cloned() else {
@@ -415,6 +425,139 @@ pub(crate) fn acquire_layout_closure_seeded(
         }
     }
     Ok(index)
+}
+
+pub(crate) fn claim_route_acquired_index(
+    source_roots: &[String],
+    scopes: &[super::ClaimSelectionScope],
+    module_selected: &dyn Fn(&str) -> bool,
+) -> Result<
+    (
+        Rc<MultiEntryIndex>,
+        Vec<(String, Rc<v1_compiler_compile::SourceFile>)>,
+    ),
+    String,
+> {
+    let custom = custom_root_module_census_under(source_roots, CustomRootDuplicate::Refuse)?;
+    let mut candidates: std::collections::BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> =
+        std::collections::BTreeMap::new();
+    for scope in scopes {
+        let name = scope.module_segments.join(".");
+        if !name.is_empty() {
+            if let Some(source) =
+                read_layout_module(source_roots, &custom, &name, CustomRootDuplicate::Refuse)?
+            {
+                candidates.insert(name.clone(), source);
+            }
+        }
+        if scope.beneath {
+            for (module, source) in layout_modules_beneath(source_roots, &name)? {
+                candidates.insert(module, source);
+            }
+        }
+    }
+    for (module, source) in &custom {
+        candidates.insert(module.clone(), source.clone());
+    }
+    let selected: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = candidates
+        .into_iter()
+        .filter(|(module, _)| module_selected(module))
+        .collect();
+    super::pre_entry_phase::mark_demand_acquired_path();
+    let source_files = super::pre_entry_phase::timed(
+        "demand_layout_acquire",
+        super::pre_entry_phase::PhaseScale::Closure,
+        || {
+            let mut index: ModuleSourceIndex = HashMap::new();
+            let mut queue: VecDeque<String> = VecDeque::new();
+            for (module, source) in &selected {
+                index.insert(module.clone(), source.clone());
+                queue.push_back(module.clone());
+            }
+            close_over_layout(
+                source_roots,
+                &custom,
+                CustomRootDuplicate::Refuse,
+                index,
+                queue,
+            )
+        },
+    )?;
+    super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
+    let facts = module_graph_facts_from_acquired(&source_files, source_roots);
+    Ok((
+        Rc::new(new_multi_entry_index_acquired(
+            source_files,
+            source_roots,
+            facts,
+        )),
+        selected,
+    ))
+}
+
+fn layout_modules_beneath(
+    source_roots: &[String],
+    module: &str,
+) -> Result<Vec<(String, Rc<v1_compiler_compile::SourceFile>)>, String> {
+    let mut found = Vec::new();
+    for root in source_roots {
+        if !source_root_is_governed_layout(root) {
+            continue;
+        }
+        let root_rel = root.trim_end_matches('/').to_string();
+        let dir_rel = if module.is_empty() {
+            root_rel.clone()
+        } else {
+            let Ok(file_rel) = module_storage_relative(module) else {
+                continue;
+            };
+            file_rel.trim_end_matches(".dag").to_string()
+        };
+        if !dir_rel.starts_with(&format!("{root_rel}/")) && dir_rel != root_rel {
+            continue;
+        }
+        let dir = workspace_root().join(&dir_rel);
+        if !dir.is_dir() {
+            read_set_record("probe", &dir_rel);
+            continue;
+        }
+        read_set_record("dir", &dir_rel);
+        let mut files = Vec::new();
+        super::collect_dag_files_result(&dir, &mut files)?;
+        for acquired in files {
+            let path = acquired.path();
+            let content = acquired
+                .read()
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+            let rel = super::module_index_path_key(path);
+            let Some(declared) = extract_module_path(&content) else {
+                return Err(format!(
+                    "cause=ClaimSourceWithoutModule path={rel} -- a source under a selected \
+                     package declares no module"
+                ));
+            };
+            if read_derived_roster_module(&declared)?.is_some() {
+                found.push((
+                    declared,
+                    Rc::new(v1_compiler_compile::SourceFile { path: rel, content }),
+                ));
+                continue;
+            }
+            let expected = module_storage_relative(&declared)?;
+            if expected != rel {
+                return Err(format!(
+                    "cause=ModuleOffLayoutPath module={declared} path={rel} expected={expected} \
+                     -- a module is found by its layout path, so one stored elsewhere refuses"
+                ));
+            }
+            read_set_record("file", &rel);
+            found.push((
+                declared,
+                Rc::new(v1_compiler_compile::SourceFile { path: rel, content }),
+            ));
+        }
+    }
+    Ok(found)
 }
 
 fn demanded_module_names(

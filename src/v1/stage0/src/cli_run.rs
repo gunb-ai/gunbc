@@ -20539,7 +20539,7 @@ pub(crate) fn collect_dag_files_tolerant(
 ///
 /// So locate the entry rather than assume a cwd: `process_workspace_root` is git-toplevel
 /// derived, hence identical in both worlds. Every workspace-root-relative entry goes through
-/// this typed boundary so `resolve_entry_graph_shared` sees one anchored spelling per entry —
+/// this typed boundary so the resolve sees one anchored spelling per entry —
 /// alternate spellings would resolve the same closure twice.
 ///
 /// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
@@ -20562,7 +20562,7 @@ fn resolve_workspace_entry(
     String,
 > {
     let anchored = process_workspace_root().join(entry.0);
-    resolve_entry_graph_shared(source_roots, &anchored.to_string_lossy())
+    demand_acquire::resolve_entry_graph_demand_acquired(source_roots, &anchored.to_string_lossy())
 }
 
 fn parse_reads_live_tree_disposition(
@@ -20845,16 +20845,20 @@ pub fn claim_route_module_paths(
 /// not applied: that is the `//:required` aggregate's question, and this route answers what a
 /// named claim OBSERVED, the distinction `gunbc.target_invocation` keeps for every direct
 /// invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimSelectionScope {
+    pub module_segments: Vec<String>,
+    pub beneath: bool,
+}
+
 pub fn run_claim_route(
     source_roots: &[String],
+    scopes: &[ClaimSelectionScope],
     module_selected: &dyn Fn(&str) -> bool,
     claim_selected: &dyn Fn(&str, &str) -> bool,
     execution_mode: v1_interpreter::ExecutionMode,
     fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
 ) -> Result<Vec<ClaimRouteMember>, String> {
-    // The ONE module-index walk, taken fallibly: an unreadable source is no observation, not a
-    // wrong label and not a failed claim. The walk fills the shared path-index cache on success,
-    // so the resolves below read it instead of walking again.
     // THE OPTION'S OWN ADMISSION, TAKEN BEFORE ANY WORK. `--source-root` is an option this change
     // adds, so its admission is this change's to own: a corpus root the route cannot read -- an
     // absolute path outside the checkout, a traversal out of it, or a path that is not a directory
@@ -20892,27 +20896,13 @@ pub fn run_claim_route(
             }
         }
     }
-    if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
-        return Err(format!(
-            "{} unreadable claim source(s) — no observation:\n  {}",
-            refusals.len(),
-            refusals
-                .iter()
-                .map(ModuleIndexRefusal::rendered)
-                .collect::<Vec<_>>()
-                .join("\n  ")
-        ));
-    }
-    let index = entry_resolve::try_process_shared_index(source_roots)?;
-    let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
-        .source_files
-        .iter()
-        .filter(|(module_path, _)| module_selected(module_path))
-        .collect();
+    let (index, selected_sources) =
+        demand_acquire::claim_route_acquired_index(source_roots, scopes, module_selected)?;
+    let selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> =
+        selected_sources.iter().map(|(m, sf)| (m, sf)).collect();
     if selected.is_empty() {
         return Ok(Vec::new());
     }
-    selected.sort_by(|a, b| a.0.cmp(b.0));
     let module_for_path: std::collections::HashMap<String, String> = selected
         .iter()
         .map(|(m, sf)| (sf.path.replace('\\', "/"), (*m).clone()))

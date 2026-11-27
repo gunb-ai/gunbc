@@ -2496,6 +2496,26 @@ fn quote_detail(text: &str) -> String {
 /// labels reads those modules rather than the corpus; the corpus roots arrive from the caller's
 /// `admitted_source_roots` (the witness-layer roots when no option was given) and are the floor's own
 /// authority for them.
+fn claim_selection_scopes(patterns: &[TargetPattern]) -> Vec<cli_run::ClaimSelectionScope> {
+    patterns
+        .iter()
+        .map(|pattern| match pattern {
+            TargetPattern::SingleTarget(label) => cli_run::ClaimSelectionScope {
+                module_segments: label.package_segments.clone(),
+                beneath: false,
+            },
+            TargetPattern::PackageTargets(package) => cli_run::ClaimSelectionScope {
+                module_segments: package.clone(),
+                beneath: false,
+            },
+            TargetPattern::SubtreeTargets(package) => cli_run::ClaimSelectionScope {
+                module_segments: package.clone(),
+                beneath: true,
+            },
+        })
+        .collect()
+}
+
 fn run_claim_selection(
     patterns: &[TargetPattern],
     roots: &[String],
@@ -2525,8 +2545,10 @@ fn run_claim_selection(
             target_pattern_within(&TargetPattern::SingleTarget(label.clone()), pattern)
         })
     };
+    let scopes = claim_selection_scopes(patterns);
     let members = match cli_run::run_claim_route(
         roots,
+        &scopes,
         &module_selected,
         &claim_selected,
         execution_mode,
@@ -4881,6 +4903,7 @@ mod claim_route_result_contract_tests {
         // asks, which `execution_mode_for` answers Hermetic, and passes no fixture store.
         cli_run::run_claim_route(
             &roots,
+            &[],
             module_selected,
             &|_, _| true,
             crate::v1_interpreter::ExecutionMode::Hermetic,
@@ -6095,6 +6118,7 @@ mod test_batch_admission_controls {
         };
         let members = match cli_run::run_claim_route(
             &roots,
+            &claim_selection_scopes(&patterns),
             &module_selected,
             &claim_selected,
             crate::v1_interpreter::ExecutionMode::Hermetic,
