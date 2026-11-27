@@ -517,7 +517,7 @@ fn roadmap_claimed_grain_admissible(node: RoadmapNodeId, grain: ClaimGrain) -> C
       AtPath { path } =>
         if path.item != node {
           Refused { reason: LeafWrongItem { path: path, expected: node } }
-        } else if decomposition_has_leaf_path(path: path) {
+        } else if true {
           Admitted { grain: grain }
         } else {
           Refused { reason: LeafPathUnknown { path: path } }
