@@ -21,6 +21,7 @@ import extdeps.nvidia.management_library { nvml_clocks_event_mask, NvmlClocksEve
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
   StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
+  StrataConversationCacheBudget, strata_conversation_cache_mebibytes,
 }
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark {
@@ -131,6 +132,17 @@ fn fx_flags(pool_workers: Nat?) -> StrataServeFlags {
       stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
       experts: StrataExpertsMapped,
       vram_reserve: none,
+      // THE FIXTURE NAMES ITS PARKED-CONVERSATION BUDGET rather than leaving it to the build: this cell's
+      // receipt is about pool_workers, and the cache pair is a fixture like the rest -- but a fixture that
+      // OMITTED the pair would read as a launch that parks nothing (extdeps.strata.serve_flags
+      // strata_conversation_cache_words), which is the fail-open default this class is about, so the fixture
+      // states a budget. 1024 MiB across the same slot count the cell runs.
+      conversation_cache: Present {
+        value: StrataConversationCacheBudget {
+          budget: strata_conversation_cache_mebibytes(count: positive_measure_count(predecessor: 1023)),
+          slots: positive_slot_count(count: positive_measure_count(predecessor: 7)),
+        },
+      },
     },
     parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
   )

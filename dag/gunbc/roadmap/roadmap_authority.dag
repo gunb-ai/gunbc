@@ -6484,7 +6484,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "bmc_fan_monitor, bmc_fan_converge, fabric_required_build_cell, fleet_show_effective_read and srv3_install_media_fetch matched on their Optional first() sites so gunbc#11720's wall holds over them; the srv3 module's own Present/Absent variants shadow Optional's and must be qualified or renamed. Branch fierce-seal-607/optional-at-required-tail carries the uncommitted work.",
         displaced_cost: "Five closures no gate compiles keep an Optional flowing into a required T, which the floor cannot see.",
         first_slice: "Resolve the srv3 name collision, commit the branch, floor clean, land.",
-        red_control: "Each site's Absent arm refuses with a typed cause; a bare Present in srv3 resolves to exactly one declaration.",
+        red_control: "Each site's Absent arm either refuses with a typed cause or yields absence into an Optional-typed result; no site lets an Optional reach a required T; a bare Present in srv3 resolves to exactly one declaration.",
         out_of_scope: "The gunbc#11720 residuals in gated closures are already covered by the wall.",
         handback: "Return the landed head and the collision resolution."
       )),

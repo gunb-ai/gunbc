@@ -11,10 +11,11 @@ import extdeps.posix.process
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import gunbc.harness.harness_shell_job_policy { ShellJobSchedule }
 import gunbc.harness.harness_shell_job {
-  HarnessShellSpawn, ShellSpawned, ShellSpawnFailed, harness_start_shell_job, harness_await_pid,
+  HarnessShellSpawn, ShellSpawned, ShellSpawnFailed, harness_start_shell_job,
   harness_kill_running_job, JobKillConfirmed, JobKillUnconfirmed,
   harness_job_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
+import gunbc.process_lifecycle { process_await_reap }
 
 // THE REAL-PROCESS CLAIMS, AT THE harness_shell_job INTERFACE. Their import closure does not reach
 // gunbc.harness.harness_tool (and so not gunbc.compute.test_run or gunbc.host.host_effect), so they
@@ -46,7 +47,7 @@ test fn a_long_command_stays_running_past_the_hold_and_the_group_kill_confirms()
   let ok = match spawn {
     ShellSpawnFailed { program: _, cause: _ } => false
     ShellSpawned { job } =>
-      match harness_await_pid(pid: job.pid, remaining: second(count: 1)) {
+      match process_await_reap(pid: job.pid, remaining: second(count: 1)) {
         StillRunning =>
           match harness_kill_running_job(job: job) {
             JobKillConfirmed { job: _ } => true
@@ -75,7 +76,7 @@ test fn the_expiry_status_inside_the_backstop_is_the_commands_own_exit() -> Bool
   let ok = match spawn {
     ShellSpawnFailed { program: _, cause: _ } => false
     ShellSpawned { job } =>
-      match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
+      match process_await_reap(pid: job.pid, remaining: second(count: 5)) {
         Exited { code } =>
           code == coreutils_timeout_expired_exit_code
             && (match harness_job_backstop_standing(job: job, code: code) {
@@ -105,7 +106,7 @@ test fn the_backstop_expiry_kills_the_process_group_and_an_unobserved_exit_reads
   let hit = match spawn {
     ShellSpawnFailed { program: _, cause: _ } => false
     ShellSpawned { job } =>
-      match harness_await_pid(pid: job.pid, remaining: second(count: 8)) {
+      match process_await_reap(pid: job.pid, remaining: second(count: 8)) {
         Exited { code } =>
           code == coreutils_timeout_expired_exit_code
             && (match harness_job_backstop_standing(job: job, code: code) {

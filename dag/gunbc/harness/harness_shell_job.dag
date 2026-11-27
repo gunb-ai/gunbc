@@ -12,6 +12,7 @@ import extdeps.shell
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import extdeps.clock { Clock }
 import std.measure { Second, second, measure_le, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import gunbc.process_lifecycle { process_await_reap }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, schedule_seconds,
 }
@@ -345,25 +346,6 @@ fn harness_stdio_move_note(
   }
 }
 
-fn harness_await_pid(pid: Int, remaining: Second) -> ProcessReapOutcome {
-  let reaped = posix.Process.Reap(pid: pid)
-  match reaped.reaped {
-    StillRunning =>
-      if measure_le(a: remaining, b: second(count: 0)) {
-        StillRunning
-      } else {
-        let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        match measure_sub(a: remaining, b: second(count: 1)) {
-          MeasureDifference { value: next } => harness_await_pid(pid: pid, remaining: next)
-          MeasureSubtrahendExceedsMinuend => StillRunning
-        }
-      }
-    Exited { code } => Exited { code: code }
-    Signaled { signal } => Signaled { signal: signal }
-    ReapRefused { cause } => ReapRefused { cause: cause }
-  }
-}
-
 fn harness_replace_job(jobs: List<HarnessShellJob>, job: HarnessShellJob) -> List<HarnessShellJob> {
   concat(filter(jobs, j => !(j.id == job.id)), [job])
 }
@@ -542,7 +524,7 @@ type HarnessJobKill
 
 fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
   let signaled = harness_job_group_signal(job: job)
-  match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
+  match process_await_reap(pid: job.pid, remaining: second(count: 5)) {
     Exited { code } =>
       JobKillConfirmed {
         job: harness_job_finished(job: job, outcome: JobExitedOutcome { code: code }),

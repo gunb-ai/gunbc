@@ -819,6 +819,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "unknown_wire_line_is_read_as_the_census_answering" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "unknown_wire_line_is_read_as_the_census_answering",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unknown_wire_line_with_no_detail_still_names_the_census" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unknown_wire_line_with_no_detail_still_names_the_census",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_unknown_detail_quoting_the_census_word_stays_whole" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_unknown_detail_quoting_the_census_word_stays_whole",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "an_absent_seat_cgroup_proves_the_end" },
       entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
       function: "an_absent_seat_cgroup_proves_the_end",

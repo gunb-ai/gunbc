@@ -41,6 +41,29 @@ data srv3_strata_launch_parameters: StrataLaunchParameters = StrataLaunchParamet
   stages: StrataSplitStages { split: StrataLayerSplitAt { boundaries: [24] }, trim_stage_weights: true },
   experts: StrataExpertsPrivate,
   vram_reserve: none,
+  // NO WORD ABOUT PARKED CONVERSATIONS, and the reason is a fact about this row, not an omission: this
+  // cell has never run. Its engine image does not exist yet (`EngineImagePending` below pins none), so
+  // there is no argv to transcribe -- and inventing `--conversation-cache-mib 65536 --conversation-cache-slots 24`
+  // here would state a launch nobody has launched, while making the two figures a second authority beside
+  // the memory row that read them (gunbc.design_argument::single_authority). srv3's LIVE engine does carry
+  // the pair -- 64 GiB in 24 slots, read 2026-11-08 -- and that reading has ONE home:
+  // gunbc.serving.serving_host_memory srv3_strata_engine_memory, whose figure the agreement carries as
+  // EVIDENCE in the ask it gives this engine (serving_replica_profile::parking_ask_agreement); it is not what
+  // answers the question, because a launch this repository has not read cannot be agreed with a row read off
+  // the machine (gunbc.recurring_failure_mode::
+  // a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build).
+  // ABSENT IS THIS ROW'S OWN COVERAGE STATE, NOT A STRATA FACT: the cell's in-image argv has never been
+  // read -- this plan's engine image is EngineImagePending (no rootless Docker on srv3 yet), so no container
+  // has run these flags -- and a missing observation is a downstream obligation, never an arm of the upstream
+  // module (gunbc.design_argument::external_upstreams). srv3's live strata-pool.service carries the pair (64
+  // GiB in 24 slots, read 2026-11-08) and gunbc.serving.serving_host_memory srv3_strata_engine_memory is the
+  // single authority for that figure, which the agreement carries as EVIDENCE in its ask -- never as the
+  // answer.
+  // NOTE FOR THE NEXT RUNG: when this cell's image is pinned by digest, its in-image argv must NAME the
+  // pair and this field becomes `Present { value: StrataConversationCacheBudget { ... } }` -- the budget the
+  // image carries. A serving launch does not stay absent: strata_launch_conversation_cache_words renders
+  // nothing for it, which is the build deciding again.
+  conversation_cache: Absent,
 }
 
 // THE BENCHMARK CELL'S OWN FLAGS: here, and only here, the slot count is written by hand, because in a
