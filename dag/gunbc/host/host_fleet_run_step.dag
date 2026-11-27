@@ -19,6 +19,7 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.host.host_primary_network_apply { host_primary_network_receipt_path }
 import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import v2.std.diagnostic { Outcome }
 
 
 data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
@@ -86,7 +87,7 @@ data gunbc_ci_host_reset_dispatch_admission_target: GunbcRunStepTarget = gunbc_r
 )
 
 
-fn gunbc_ci_export_host_reader_converge_invoke() -> String {
+fn gunbc_ci_export_host_reader_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_export_host_reader_converge_target,
@@ -94,7 +95,7 @@ fn gunbc_ci_export_host_reader_converge_invoke() -> String {
   )
 }
 
-fn gunbc_ci_boot_medium_reader_probe_invoke() -> String {
+fn gunbc_ci_boot_medium_reader_probe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_boot_medium_reader_probe_target,
@@ -102,7 +103,7 @@ fn gunbc_ci_boot_medium_reader_probe_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_primary_network_observe_invoke() -> String {
+fn gunbc_ci_host_primary_network_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_primary_network_observe_target,
@@ -110,7 +111,7 @@ fn gunbc_ci_host_primary_network_observe_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_primary_network_converge_invoke() -> String {
+fn gunbc_ci_host_primary_network_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_primary_network_converge_target,
@@ -118,7 +119,7 @@ fn gunbc_ci_host_primary_network_converge_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
+fn gunbc_ci_host_memory_envelope_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_memory_envelope_observe_target,
@@ -126,7 +127,7 @@ fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_budget_preflight_invoke() -> String {
+fn gunbc_ci_host_budget_preflight_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_budget_preflight_target,
@@ -134,7 +135,7 @@ fn gunbc_ci_host_budget_preflight_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_reset_return_invoke() -> String {
+fn gunbc_ci_host_reset_return_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_reset_return_target,
@@ -142,7 +143,7 @@ fn gunbc_ci_host_reset_return_invoke() -> String {
   )
 }
 
-fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
+fn gunbc_ci_host_reset_dispatch_admission_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_host_reset_dispatch_admission_target,

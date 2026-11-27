@@ -2,6 +2,7 @@ module test.claim.namecheap_workflow_witness
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.fleet.fleet_converge_workflow {
@@ -27,10 +28,12 @@ fn auth_step_matches(st: Step) -> Bool {
   }
 }
 test fn separate_job_uses_dedicated_identity() -> Bool {
-  let job = fleet_converge_namecheap_observe_job()
-  job.id == "namecheap-observe" && match job.environment { Present { value } => value == "namecheap-dns" Absent => false }
+  match outcome_accepted_value(fleet_converge_namecheap_observe_job()) {
+    Absent => false
+    Present { value: job } => job.id == "namecheap-observe" && match job.environment { Present { value } => value == "namecheap-dns" Absent => false }
     && count(filter(job.steps, s => auth_step_matches(st: s))) == 1
     && any(job.needs, n => n == "build")
+  }
 }
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: NamecheapObserve) { FleetSshKeyNotConsumed => true _ => false }
