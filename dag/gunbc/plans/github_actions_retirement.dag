@@ -1,0 +1,41 @@
+module gunbc.plans.github_actions_retirement
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn github_actions_retirement_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal:** gunbc runs no GitHub Actions: no workflow, no runner registration, and no credential anywhere that trusts a GitHub Actions identity token."),
+      p(text: "**What this carrier holds:** the direction, why, and done-when. It holds no phase list, owner, item status or done mark; the work items that realize it are roadmap nodes that name this intention, and their order and timing live in gunbc.roadmap."),
+      p(text: "**Read at:** gunbc main `1d8a1d397675` on 2026-11-24 (keen-dove-217), by source inspection; nothing was run."),
+    ]),
+
+    h2(text: "1. The decision this intention stands on"),
+    p(text: "GitHub Actions is wound down entirely, and the deletion is a milestone of its own: gunbc.design_ruling::github_actions_are_wound_down_entirely_2026_11_24. Whether GitHub stays the code repository is a separate question this intention does not decide; deleting Actions does not wait on it."),
+
+    h2(text: "2. Why"),
+    ul(items: [
+      li(text: "Actions is a second execution authority beside the fabric: it decides which runner runs what, keeps its own slots, and publishes the required verdict. work-execution-redesign already moves the verdict onto an admitted fabric receipt (work-exec-5-ci-verdict-from-receipt); once nothing else needs Actions, keeping it is an admitted dependency with no consumer (gunbc.design_argument::consumption)."),
+      li(text: "Its identity tokens are a trust root. gunbc.auth.github_gcp_federation admits GitHub's OIDC issuer into Google workload-identity pools, and at this read the repository-wide pool is reachable from any same-repository pull-request job, which reaches the srv3 BMC secret and the R2 token, while a pool kept for a retired heal publisher can still reach the bot app's key. The operator chose to delete these with Actions rather than narrow them first; until deletion that exposure is accepted, not fixed."),
+    ]),
+
+    h2(text: "3. Done when"),
+    ul(items: [
+      li(text: "The repository has no .github/workflows file, and nothing in gunbc emits one, except the gunb.ai Pages deploy (gunbc.site.gunb_ai_pages_workflow), which is exempt until gunb.ai needs more than a static site and then moves to a route that is not GitHub Pages (gunbc.design_ruling::gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26): the workflow emitters (the compiler gate, heal, heal publisher, drift watch, instrument dispatch, fleet converge and the rest) are deleted, or re-targeted at the fabric, never left emitting a file nothing runs."),
+      li(text: "No fleet host carries a GitHub Actions runner registration, unit or slot."),
+      li(text: "No workload-identity pool or provider in any project admits token.actions.githubusercontent.com, and no secret, environment or app permission exists only to serve an Actions run; each is deleted, not disabled. Checked by reading the live Google estate, not the repository's model of it."),
+      li(text: "Every check a merge requires is published from a fabric receipt, and every operation a workflow performed has a named fabric route or was retired for want of a consumer."),
+    ]),
+  ]
+}
+
+data github_actions_retirement_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "github-actions-retirement",
+  title: "GitHub Actions retired: no workflows, no runners, no credential trusting an Actions token",
+  body: github_actions_retirement_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every condition in section 3 holds: no workflow file or emitter, no runner registration, no pool, secret or permission trusting an Actions token, and every required check published from a fabric receipt.") },
+}

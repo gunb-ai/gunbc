@@ -183,7 +183,8 @@ data branch_run_grant_broker_job_permissions: WorkflowPermissions = WorkflowPerm
   pull_requests: none,
   issues: none,
   actions: Present { value: PermWrite },
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 fn branch_run_grant_broker_job() -> Job {

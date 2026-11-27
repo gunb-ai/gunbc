@@ -1,0 +1,73 @@
+module gunbc.integration_concern.amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern {
+  ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, CitesDeclaration,
+  fleet_host_state_pass_2026_11_24_revision,
+}
+
+// THE OPERATOR ASKED FOR A CLOCK CEILING ON EVERY CARD, AND ONE CARD CANNOT BE ASKED. On 2026-11-24 the
+// instruction was "lower the cap but also lower the clock rate so it doesn't just boost -> throttle", and a
+// locked-clock sweep under live traffic chose the numbers (clocksweep.sh on srv4, kensweep.sh on ken; the
+// chosen locks are rows of gunbc.fleet.gpu_power_cap_boot_state). Three of the four card sets got their lock
+// through nvidia-smi's `-lgc`. The Radeon AI PRO R9700 on host-6ce85c (h11-a16) did not, and the reason is a
+// capability of the driver rather than an act nobody took: an SM clock ceiling on that card needs amdgpu's
+// OverDrive feature, and the card's ppfeaturemask reads 0xfff7bfff, which lacks the OverDrive bit. Enabling it
+// is a kernel parameter and a reboot -- and a reboot of that host takes its serving engines with it, so it is
+// the operator's call and has not been made.
+//
+// WHAT THE MODEL DOES NOT HAVE. extdeps.gpu.amd models the card as it is sold: its catalog row, its board
+// facts, the published figures and the standing they carry (r9700_figures_standing). None of that vocabulary
+// has a feature mask, and an absent feature bit is not the same fact as an absent field -- the model cannot
+// say "this card cannot be clock-locked, and here is the mask that says so", so the fact has to live in a
+// concern, which is what this row is. The kernel-parameter route is also unmodeled: no declaration carries
+// amdgpu module parameters for this host, so nothing could record the change if the operator authorized it.
+//
+// WHY THE REQUIREMENT'S STANDING IS UNESTABLISHED, AND BY WHAT IT WOULD BE SETTLED. The ceiling was asked for
+// as a general instruction on 2026-11-24, and the R9700 was left unlocked that day at the operator's pass.
+// What would make it a requirement rather than an ask is the measurement the pass suspected and did not
+// establish: the card holds ~3.3 GHz at ~180 W in steady serving but spikes to 400-450 W for two seconds, and
+// those spikes are the likely trigger for the surge-protecting strip that took h11, srv3 and srv4 down twice
+// (gunbc.integration_concern.surge_strip_carried_three_hosts_and_tripped_twice). A per-card energy meter on
+// that strip, or a capture of the spike time against the trip time, settles it. Until then this row keeps the
+// ask and the missing capability visible without pretending the reboot-and-kernel-parameter decision has been
+// taken, and it does not license setting ppfeaturemask by hand on a serving host.
+data amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs: IntegrationConcern = IntegrationConcern {
+  identity: "amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.gpu.amd", decl_name: "amd_radeon_ai_pro_r9700_catalog"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "fleet_power_cap_boot_units_beyond_srv1"),
+      decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "h11_r9700_cap_decision"),
+    ],
+  },
+  question: "Is a clock ceiling on the R9700 required -- that is, are its 400-450 W two-second spikes what trips the strip -- and if so, who authorizes the kernel parameter and the reboot that would set the OverDrive bit?",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.gpu.amd", decl_name: "amd_radeon_ai_pro_r9700_catalog"),
+    requirement: "A per-card SM clock ceiling for the Radeon AI PRO R9700 at host-6ce85c (h11-a16), the amdgpu counterpart of the `nvidia-smi -lgc` locks recorded on srv4 and ken. It cannot be expressed or applied today: the card's ppfeaturemask reads 0xfff7bfff and lacks the OverDrive bit the ceiling needs, so the route is a kernel parameter plus a reboot (operator's call, not taken), and neither the published-figure catalog nor any model of this host's kernel module parameters carries a feature mask or an amdgpu module parameter to record the finding or the change in.",
+    standing: RequirementUnestablished {
+      decided_by: "a reading that ties the R9700's 400-450 W two-second spikes to the surge-strip trips of 2026-11-24 (~09:19 and ~21:57 UTC): per-socket power on the strip, or the spike's timestamp against the trip's. If they coincide, the ceiling is required and the kernel parameter and reboot become the thing to schedule; if they do not, the operator's decision to leave this card unlocked at the 2026-11-24 pass stands and this row closes as distinct.",
+    },
+  },
+  sightings: [
+    ConcernSighting {
+      revision: fleet_host_state_pass_2026_11_24_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "fleet_power_cap_boot_units_beyond_srv1"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "extdeps.gpu.amd", decl_name: "r9700_figures_standing"),
+          },
+        ],
+      },
+      account: "The 2026-11-24 final-state pass found three card sets locked and this one not: srv4's Adas at 210-1500 MHz, ken's T10s at 300-1000 MHz (both chosen by a 150 s-per-level sweep under live traffic), srv1's RTX PRO 6000 left unlocked because it held 2.2-2.8 GHz without collapsing, and the R9700 left unlocked because it cannot be locked as the driver stands. The steady figures named here (~3.3 GHz at ~180 W, spikes to 400-450 W for two seconds) are single readings from that pass's ssh observations, not means, and they are carried with the standing extdeps.gpu.amd gives published R9700 figures -- TranscribedUncited, which is why the causal claim about the strip above is written as the thing to measure rather than as a finding.",
+    },
+  ],
+  disposition: Open,
+}

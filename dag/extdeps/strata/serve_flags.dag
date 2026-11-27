@@ -2,11 +2,17 @@ module extdeps.strata.serve_flags
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count_value }
+import std.measure {
+  TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count,
+  positive_slot_count_value,
+  Measure, Memory, Mebi, measure_count,
+  PositiveMeasureCount, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
+  positive_measure_count, positive_measure_count_from_int, positive_measure_count_value,
+}
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 
 // THE STRATA ENGINE'S SERVING FLAGS, as the upstream documents them at commit
 // 8183c6b67162340c09b67360860177c577a65f2e of https://github.com/Niko1221/Strata (README.md "Good to
@@ -75,13 +81,170 @@ type StrataExpertResidency
   = StrataExpertsPrivate
   | StrataExpertsMapped
 
+// `--conversation-cache-mib N` and `--conversation-cache-slots K` (docs/DETAILS.md, "Multiple
+// conversations (opt-in)"): a bounded host-RAM cache in which the engine PARKS the conversations it is
+// not running, so the next turn of each one reuses its prompt instead of re-reading it cold. THIS IS THE
+// ENGINE'S ONLY WAY TO KEEP ANY CONVERSATION OTHER THAN THE LIVE ONE WARM: with nothing parked, every
+// other conversation pays a full cold re-read on its next turn.
+//
+// WHY THE ARM IS REQUIRED AND NOT AN ABSENT OPTIONAL: what the ENGINE does when the pair is absent is a
+// fact of the release, not of the flag. The docs at the anchor commit size the budget from the RAM that
+// is free once the model is loaded from 0.2.3 (#3493) -- 40% of what is left above
+// --conversation-cache-min-free-mib, at most 8192, in steps of 256, and OFF when that is under 1024 --
+// while the build the fleet ran on h11 (Strata 0.1.38 HIP) is REPORTED by the operator to have parked
+// nothing with the pair unset (2026-11-24; strata_conversation_cache_unset_standing below). So "the flag
+// is absent" is not a policy the author chose and not even a stable fact: it is the build deciding.
+// Carrying it as an absent optional field would let a launch row silently inherit that decision, which
+// is the fail-open default gunbc.design_argument::declared_intent refuses; making it a required arm
+// means every modeled launch names which of the four it is, and `Unset` -- legal as the transcription
+// of an argv as read -- is the arm a serving launch must refuse (gunbc.serving.serving_replica_profile
+// strata_launch_parking_agreement).
+//
+// THE BUDGET IS NOT A MEASURE CONCEPT OF ITS OWN, AND THIS MODULE DECLARES NO MEASURE TYPE: the bound is
+// spelled with `std.measure`'s own exported parts -- `Measure<Memory, Mebi, PositiveMeasureCount>` -- at the
+// field and in the constructor's signature, the way `extdeps.accounting.budget` and
+// `extdeps.bmc.pid_control_program` build `Measure { count: ... }`. Under gunbc.design_argument::how_to_work
+// an added name must say whether it is a transparent reference, a restriction, a distinct identity or an
+// independent fork: here the answer is that no name is added at all, so the quantity stays `std.measure`'s
+// identity and nothing can drift from it (gunbc.design_argument::minimize_redundancy: "net concepts must not
+// grow by re-invention"). It is the mebi sibling of what `std.measure::FiniteByteSize` is for bytes.
+//
+// The count being POSITIVE is not decoration; it is this flag's own fact. The engine reads
+// `--conversation-cache-mib 0` as the OFF word, which is what `StrataConversationCacheOff` renders together
+// with the reason its author chose -- so a zero-MiB budget is not a very small cache, it is the other arm
+// wearing a budget's name, and the serving agreement would record a launch that parks nothing as agreeing to
+// park K conversations. Under `std.measure::Mebibyte` (`Measure<Memory, Mebi, Nat>`) zero was a value a row
+// could write; over `PositiveMeasureCount` it has no constructor -- unwritable rather than checked
+// (gunbc.design_argument::fail_closed, gunbc.design_argument::guarantee_ladder).
+//
+// WHY SPELDE HERE RATHER THAN ALIASED IN std.measure BESIDE FiniteByteSize -- a declared divergence, with its
+// authority named. A new public concept in `std.measure` is not a free alias there: every one of its 138
+// types and 282 functions, `FiniteByteSize` and `finite_byte_size` among them, has a hand-written
+// counterpart in src/v1/stage0/src/std_measure.rs, the seed mirror the Rust emission route resolves
+// against, and the v1 seed is semantics-frozen -- so the alias buys one consumer a substrate file to write
+// and keep true. The pick is recorded as the manager's ruling on 2026-11-26 over review 98940's second
+// option; if a second consumer ever needs the same bound, the concept goes to `std.measure` with its mirror,
+// which is where a generic positive-Mebibyte measure properly belongs.
+
+// What a MiB figure READ from somewhere (an argv, a doc, an operator note) is until it is checked: zero and
+// anything below it come back as the non-positive arm naming what was observed, because a read that saw a
+// zero has read the OFF word and must route to `StrataConversationCacheOff`, not to a budget.
+//
+// WHO WILL CALL IT, NAMED (gunbc.design_argument::consumption: a declaration is consumed by a named consumer
+// over an executing route, or it is a declared frontier with its trigger). No production row writes a budget
+// yet -- no engine in the fleet has had this pair in a modeled launch -- so today the route's caller is the
+// claim route (`test.claim.serving.strata_conversation_cache_parking_witness`). The change that consumes it in
+// production is the row that records an engine's LAUNCHED argv: the strata-pool engine-cfg / unit render that
+// is the FIRST RUNG UP on
+// gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them
+// (its own follow-up: "a production route consumes ... the strata-pool launch cfg / unit render", byte source
+// /home/ubuntu/strata-pool/cfg.json), together with the h11 launch row Part A records from the unit's
+// `ExecStart`. Whose `--conversation-cache-mib 8192 --conversation-cache-slots 4` can enter the model as
+// `StrataConversationCacheBudget` only through THIS checked route, because a read of `0` must land on the Off
+// arm naming what it observed rather than on a budget of nothing.
+//
+// WHY THE ROWS THAT ALREADY CARRY THE NUMBER ARE NOT THE CONSUMER. `gunbc.serving.serving_host_memory`'s
+// engine-as-launched rows state MiB figures for a parked cache today (8192 for h11's buses, 65536/24 for srv3,
+// 16384/8 for srv4, 12288/6 for ken). They are EVIDENCE about what the host holds, not the launch's policy:
+// this PR's own claims refuse an agreement that lets such a row answer a launch that named nothing
+// (`witness_a_read_row_does_not_answer_a_launch_that_names_nothing`), because that substitution is how h11 came
+// to be believed warm while it parked no one. So when the renderer above writes a budget it writes it from the
+// launch's own bytes, through this route -- and the memory row keeps its place as the figure an ask may carry
+// and no verdict may stand on. This route's next rung is also named on
+// gunbc.recurring_failure_mode::a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build,
+// whose `declaration_refs` carry it so the frontier is checked rather than asserted.
+type StrataConversationCacheMebibytesBuild
+  = StrataConversationCacheMebibytesBuilt { budget: Measure<Memory, Mebi, PositiveMeasureCount> }
+  | StrataConversationCacheMebibytesNonPositive { observed: Int }
+
+fn strata_conversation_cache_mebibytes(
+  count: PositiveMeasureCount,
+) -> Measure<Memory, Mebi, PositiveMeasureCount> {
+  Measure { count: count }
+}
+
+fn strata_conversation_cache_mebibytes_from_int(observed: Int) -> StrataConversationCacheMebibytesBuild {
+  match positive_measure_count_from_int(count: observed) {
+    PositiveMeasureCountBuilt { count: positive } =>
+      StrataConversationCacheMebibytesBuilt { budget: strata_conversation_cache_mebibytes(count: positive) }
+    PositiveMeasureCountRefused { cause: cause } =>
+      StrataConversationCacheMebibytesNonPositive { observed: cause.observed }
+  }
+}
+
+// The count as an Int, for rendering the flag's word: measure_count hands back the positive count it
+// carries, and reading a positive count is total -- there is no zero case to handle, which is the whole point.
+fn strata_conversation_cache_mebibytes_value(budget: Measure<Memory, Mebi, PositiveMeasureCount>) -> Int {
+  positive_measure_count_value(count: measure_count(budget))
+}
+
+type StrataConversationCache
+  // A bounded cache: K conversations parked inside N Mebibyte of host RAM. N is positive by construction --
+  // see above -- so this arm can never be the engine's off word wearing a budget's name.
+  = StrataConversationCacheBudget { budget: Measure<Memory, Mebi, PositiveMeasureCount>, slots: PositiveSlotCount }
+  // The engine parks nothing. Spelled ON THE COMMAND LINE as the docs' own off word, so a launch that
+  // chose it says so in its argv instead of relying on a build default; the reason names why a launch
+  // would choose it (a benchmark cell measuring the cold path, for instance).
+  | StrataConversationCacheOff { reason: NonEmptyStr }
+  // The argv as READ carries neither flag, so this build's default decides and this row does not claim
+  // to know what that default is. This is a transcription of someone else's argv, never a policy a plan
+  // picks; `detail` names the argv and the read. READ IS NOT SILENCE: a launch whose argv nobody has read
+  // is not this arm either -- it is the absent case of the `Optional` on
+  // `StrataLaunchParameters.conversation_cache`, one type up, where this repository's coverage state lives
+  // (gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked is the same confusion on the
+  // reading side, and keeping the two apart is what the `Optional` beside this type is for).
+  | StrataConversationCacheUnset { detail: NonEmptyStr }
+
+// THE THREE ARMS ARE ALL THE UPSTREAM DOCUMENTS, and that is the line this type does not cross
+// (gunbc.design_argument::external_upstreams: "observations this repository makes are receipts in the
+// observing layer, never facts of the upstream"; "a missing observation is a downstream coverage
+// obligation, never an `Unobserved` property inside the upstream module"). Whether a launch's argv has been
+// READ AT ALL is therefore NOT an arm here -- it is this repository's coverage state, and the consuming layer
+// carries it as the `Optional` on `StrataLaunchParameters.conversation_cache` below, supplied by whoever
+// writes the row. The arm that was here until 2026-11-26 (`StrataConversationCacheUnread`) was this
+// repository's own not-yet-read state filed as a fact of Strata, and the fleet facts that stood beside it
+// (a host, a deployed build, the operator's report) have moved to the same consuming layer
+// (gunbc.serving.serving_replica_profile::strata_deployed_build_precedes_the_auto_size).
+
+// THE LAUNCHABLE RECORD: the flag list held ONCE (StrataLaunchParameters, below) plus the batch-slot
+// count. The nine fields were spelled twice before 2026-11-25 -- here and again in StrataLaunchParameters,
+// copied field by field by the bridge -- which is one set of launch flags modeled in two places
+// (gunbc.design_argument::minimize_redundancy: "a concept is modeled once and every use derived from it";
+// gunbc.design_argument::single_authority: "an additional name hides a copied definition"). The slot count
+// enters this record only through the bridge below.
 type StrataServeFlags {
+  launch: StrataLaunchParameters
+  // THE ONE FIELD THAT IS NOT A LAUNCH PARAMETER: `--parallel N` (README.md) -- slots answered at once,
+  // one by default -- is the replica's admitted concurrency: the engine reserves VRAM per slot, and the
+  // pool router caps the upstream at the SAME number, so writing it beside the router row is writing one
+  // fact twice. When that happened on srv3 (slots 8 written here while the router admitted 4), the
+  // surplus reservation came straight out of the expert cache and every stream paid for it
+  // (gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them). A
+  // production row therefore carries StrataLaunchParameters, NOT this record: the slot count enters a
+  // production launch only through the bridge below, from its authority -- the deployment's capacity shape
+  // (gunbc.serving.serving_capacity_anchor::ServingCapacityShape's turns, via
+  // gunbc.serving.serving_replica_profile::replica_engine_launch). A benchmark cell may still write it
+  // itself, because there the concurrency is the experiment's independent variable, not an admission.
+  parallel: PositiveSlotCount
+}
+
+// THE LAUNCH PARAMETERS, MINUS THE ADMISSION NUMBER. This is the record a production replica row
+// carries: everything the engine is launched with EXCEPT the batch slot count, which has an authority
+// of its own (see the note on StrataServeFlags.parallel). What this type settles is that a PRODUCTION
+// ROW cannot spell the disagreement: no field of it holds a slot count. What it does NOT settle is
+// whether the misconfiguration is unnameable corpus-wide -- the bridge below is public and
+// StrataServeFlags (the record below: this list plus the slot count) remains directly constructible, so a
+// caller that bypasses the profile derivation can still write a second number. The rung the class actually
+// sits at is recorded on
+// gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them: below the
+// ladder on the production path -- the derivation exists and witnesses run it, but no production route
+// consumes it yet, and this type alone guards no path that runs (gunbc.design_argument::guarantee_ladder:
+// rung inflation is worse than sitting low; gunbc.design_argument::consumption).
+type StrataLaunchParameters {
   kv_format: StrataKvFormat
   kv_residency: StrataKvResidency
   // `--max-context N`
   max_context: TokenCount
-  // `--parallel N` (README.md): slots answered at once; one by default.
-  parallel: PositiveSlotCount
   batch_groups: StrataBatchGroups?
   // `--pool-workers N` (docs/DETAILS.md): CPU expert-pool worker threads, used as given; absent lets
   // the engine pick.
@@ -90,9 +253,63 @@ type StrataServeFlags {
   experts: StrataExpertResidency
   // `--vram-reserve-mib N` (docs/DETAILS.md)
   vram_reserve: Mebibyte?
+  // `--conversation-cache-mib N --conversation-cache-slots K` (docs/DETAILS.md). REQUIRED, not a maybe
+  // beside the others: leaving the FIELD out is not "no opinion", it is the build's default deciding a
+  // policy -- see StrataConversationCache above. The `Optional` around it is NOT that maybe: `present(v)`
+  // is what a read argv says, and `absent()` is the row's AUTHOR declaring that this repository has not
+  // read that launch's argv yet. The absence is the consumer's coverage state in std's own absence carrier,
+  // which is why the flag type needed no "unread" arm (gunbc.design_argument::external_upstreams).
+  conversation_cache: Optional<StrataConversationCache>
+}
+
+// WHAT THE DOCUMENTATION SAYS THE ENGINE DOES WHEN THE PAIR IS UNSET, with the release it says it for.
+// It is a standing and not a byte figure because the answer is a policy the release chose, and it CHANGED
+// between releases (0.2.3, #3493), which is the whole reason the flag cannot be left absent.
+data strata_conversation_cache_unset_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+// The same question at the releases BEFORE 0.2.3, which the anchor commit's docs do not answer: the
+// auto-sizing above arrived at release 0.2.3 (its PR #3493), and the releases before it document no
+// auto-sizing -- on those an absent budget left no conversations parked. That is a fact of the upstream and
+// its own tags, so it is stated HERE; which build a host actually runs is an observation of ours and lives
+// in the consuming layer (gunbc.serving.serving_replica_profile::strata_deployed_build_precedes_the_auto_size),
+// never here (gunbc.design_argument::external_upstreams).
+data strata_conversation_cache_unset_standing_pre_0_2_3: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read Strata's own release notes / CHANGELOG at the tags before 0.2.3, and the engine log line docs/DETAILS.md promises names the budget it chose, for what an absent --conversation-cache-mib did on those releases; this module holds no reading of them, so nothing beyond the statement that no auto-sizing is documented there may be asserted from here" as NonEmptyStr,
+}
+
+// THE ONE BRIDGE FROM PARAMETERS TO A FULL FLAG RECORD. It receives the slot count as an argument, so
+// no construction puts a `parallel` into a record from anywhere but the caller's authority: a
+// benchmark cell passes the concurrency it means to measure; a production replica's slots come from
+// its capacity shape through gunbc.serving.serving_replica_profile::replica_engine_launch. The bridge
+// is public and places no gate on its `parallel` argument -- it prevents nothing by itself; the
+// production derivation that would use it has witnesses but no production consumer yet, and the class's
+// declared rung (below the ladder on the production path, with both climb steps named) lives on
+// gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them.
+fn strata_launch_with_parallel(parameters: StrataLaunchParameters, parallel: PositiveSlotCount) -> StrataServeFlags {
+  StrataServeFlags { launch: parameters, parallel: parallel, }
 }
 
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
+
+// `--parallel N` (README.md): slots answered at once, ONE by default. THE FLOOR IS THE CARRIER'S, NOT A
+// LITERAL WRITTEN HERE. What the flag documents as its minimum is exactly the smallest value the slot
+// carrier can hold, so it is DERIVED from that carrier -- the least positive count is the successor of
+// zero, which is what `PositiveSlotCount` is built from -- and read back through the carrier's own reader.
+// Until 2026-11-27 this was `data ... : Nat = 1`, a bare literal beside a comment claiming it "agrees with
+// the type's own floor": two sources for one fact, free to drift apart, with nothing tying them together
+// (review 99153; gunbc.design_argument::single_authority: "a second place that independently decides it is
+// a fork"; ::minimize_redundancy: "a concept is modeled once and every use derived from it").
+// A consumer that has NOT read a launch's argv can still bound how many of its conversations can need
+// parking: at most `held - this` of them. It is carried here, beside the flag it describes, because the
+// bound is the flag's -- a consumer hardcoding a floor of its own would be choosing a policy the flag owns
+// (gunbc.design_argument::declared_intent).
+fn strata_parallel_minimum_slots() -> Int {
+  positive_slot_count_value(
+    slots: positive_slot_count(count: positive_measure_count(predecessor: 0)),
+  )
+}
 
 fn strata_kv_format_word(f: StrataKvFormat) -> String {
   match f {
@@ -106,18 +323,49 @@ fn strata_optional_words(present: Bool, words: List<String>) -> List<String> {
   if present { words } else { [] as List<String> }
 }
 
+// THE CONVERSATION-CACHE WORDS, one per arm. A budget emits the docs' pair; an explicit off emits the
+// docs' own off word (`--conversation-cache-mib 0`, docs/DETAILS.md) so a launch that chose to park
+// nothing SAYS so in its argv rather than leaving it to a build default; an `Unset` transcription emits
+// nothing, because emitting something would be inventing an argv nobody launched. That empty answer is
+// why a SERVING launch refuses the `Unset` arm instead of rendering it (gunbc.serving.serving_replica_profile
+// strata_launch_parking_agreement): argv is the last place the choice is still visible, and silence there is
+// the build deciding again.
+fn strata_conversation_cache_words(cache: StrataConversationCache) -> List<String> {
+  match cache {
+    StrataConversationCacheBudget { budget: n, slots: k } =>
+      ["--conversation-cache-mib", to_string(strata_conversation_cache_mebibytes_value(budget: n)), "--conversation-cache-slots", to_string(positive_slot_count_value(slots: k))]
+    StrataConversationCacheOff { reason: _ } => ["--conversation-cache-mib", "0"]
+    // Silence renders no word: to emit one would be to write an argv nobody launched
+    // (gunbc.design_argument::fail_closed -- no plausible text for a fact never read). Whether the argv was
+    // read at all is not this type's question -- that is the `Optional` on the record below.
+    StrataConversationCacheUnset { detail: _ } => [] as List<String>
+  }
+}
+
+// THE CACHE WORDS OF A LAUNCH RECORD, whose cache may never have been read. An unread launch renders no
+// cache word beside the rest -- nothing is invented for a launch nobody has looked at. Rendering is not
+// where that state is refused (a rendered argv is not what a host installs from this module); the refusal
+// lives with the agreement that counts a launch as parked, in
+// gunbc.serving.serving_replica_profile::parking_judgement_for_launch.
+fn strata_launch_conversation_cache_words(read: Optional<StrataConversationCache>) -> List<String> {
+  match read {
+    Present { value: cache } => strata_conversation_cache_words(cache: cache)
+    Absent => [] as List<String>
+  }
+}
+
 fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
-  let kv_resident = match flags.kv_residency {
+  let kv_resident = match flags.launch.kv_residency {
     StrataKvResidentWindow { tokens: t } => ["--kv-resident", to_string(token_count_value(t: t))]
     StrataKvFullyResident => [] as List<String>
   }
-  let batch_groups = match flags.batch_groups {
+  let batch_groups = match flags.launch.batch_groups {
     Absent => [] as List<String>
     Present { value: StrataBatchGroupsAuto } => ["--batch-groups", "auto"]
     Present { value: StrataBatchGroupsCount { groups: g } } => ["--batch-groups", to_string(positive_slot_count_value(slots: g))]
   }
-  let pool = match flags.pool_workers { Absent => [] as List<String>, Present { value: n } => ["--pool-workers", to_string(n)] }
-  let stages = match flags.stages {
+  let pool = match flags.launch.pool_workers { Absent => [] as List<String>, Present { value: n } => ["--pool-workers", to_string(n)] }
+  let stages = match flags.launch.stages {
     StrataSingleStage => [] as List<String>
     StrataSplitStages { split: s, trim_stage_weights: trim } => concat(
       match s {
@@ -127,15 +375,24 @@ fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
       strata_optional_words(present: trim, words: ["--trim-stage-weights"]),
     )
   }
-  let experts = match flags.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
-  let reserve = match flags.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
-  concat(concat(concat(concat(concat(concat(concat(
-    ["--kv", strata_kv_format_word(f: flags.kv_format)],
+  let experts = match flags.launch.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
+  let reserve = match flags.launch.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
+  // THE CACHE WORDS (strata_launch_conversation_cache_words, which asks strata_conversation_cache_words what
+  // the READ argv says), appended last. An `Unset` transcription renders nothing here, and so does `absent()`
+  // -- this repository has not read that launch's argv, which is the consumer's coverage state on
+  // `StrataLaunchParameters.conversation_cache`, never an arm of the upstream's flag type
+  // (gunbc.design_argument::external_upstreams). That is exactly why the SERVING launch refuses the first and
+  // asks for the read on the second instead of rendering either
+  // (gunbc.serving.serving_replica_profile::strata_launch_parking_agreement): argv is the last place the
+  // choice is still visible, and an empty answer is the build deciding again.
+  concat(concat(concat(concat(concat(concat(concat(concat(
+    ["--kv", strata_kv_format_word(f: flags.launch.kv_format)],
     kv_resident),
-    ["--max-context", to_string(token_count_value(t: flags.max_context)), "--parallel", to_string(positive_slot_count_value(slots: flags.parallel))]),
+    ["--max-context", to_string(token_count_value(t: flags.launch.max_context)), "--parallel", to_string(positive_slot_count_value(slots: flags.parallel))]),
     batch_groups),
     pool),
     stages),
     experts),
-    reserve)
+    reserve),
+    strata_launch_conversation_cache_words(read: flags.launch.conversation_cache))
 }

@@ -51,8 +51,8 @@ import gunbc.design.gunb_ai_hues {
 // where. The measures, gaps and font stacks below are the stylesheet's own values (rem, not the px
 // of gunbc.site.gunb_ai_tokens) and are listed in the PR as disagreements, not reconciled.
 //
-// Consumers (gunbc.design_argument::consumption): sheet_write_arg is the build route; test.claim.site_gunb_ai_css_witness executes
-// render_sheet. Outside the claim runner:
+// Consumers (gunbc.design_argument::consumption): gunbc.site.gunb_ai_site serves render_sheet at the page's stylesheet path;
+// test.claim.site_gunb_ai_css_witness executes render_sheet. sheet_write_arg writes it alone:
 //   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_css.dag \
 //     --function sheet_write_arg --arg dir=/tmp/gunbai/assets
 

@@ -1,0 +1,42 @@
+module gunbc.integration_concern.instrument_backed_absence_claims_have_three_authorities
+
+// ONE ROW FOR THREE LEDGER ENTRIES THAT ANSWER ONE QUESTION. This is a RECORD of a suspected fork, not a
+// consolidation: merging, dissolving, or re-homing any of the three rows is a LATER root-generalization task
+// (gunbc.design_argument::root_generalization) and nothing in this batch performs it. The three rows each
+// stand as written and keep their own receipts; what this entry adds is the observation, sighted 2026-11-27,
+// that several rows answer one question -- an authority claim stated wider than the instrument or census
+// behind it can carry -- and a reader who knows the family exists is less likely to file a fourth.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, instrument_backed_absence_claims_have_three_authorities_authorities }
+
+data instrument_backed_absence_claims_have_three_authorities: IntegrationConcern = IntegrationConcern {
+  identity: "instrument_backed_absence_claims_have_three_authorities",
+  kind: SuspectedFork {
+    authorities: instrument_backed_absence_claims_have_three_authorities_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrument_does_not_own", decl_name: "green_reported_over_a_population_the_instrument_does_not_own"),
+    tail: [
+      decl_ref(module_path: "gunbc.recurring_failure_mode.a_census_is_cited_wider_than_the_closure_its_instrument_compiles", decl_name: "a_census_is_cited_wider_than_the_closure_its_instrument_compiles"),
+      decl_ref(module_path: "gunbc.recurring_failure_mode.doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it", decl_name: "doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it"),
+    ],
+  },
+  question: "Do these three rows answer ONE question -- when an assertion is backed by an instrument (a run, a check report, a search, a census), what population does that instrument actually own, and does the assertion stay inside it -- or three questions? Each row files its own specimens and its own controls; none of the three subsumes another as written. What is shared is the shape: an authority claim wider than the closure its instrument compiles. Consolidation into one row, if it happens, is a root-generalization task to be scheduled on its own merits, with each row's specimens migrated without loss -- it is explicitly NOT part of this batch, and this entry licenses no merge, dissolve, or re-home of any row.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "9f2c6c996502d2d0ffa5b5421c88bf96ad49e5dd",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrument_does_not_own", decl_name: "green_reported_over_a_population_the_instrument_does_not_own") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.a_census_is_cited_wider_than_the_closure_its_instrument_compiles", decl_name: "a_census_is_cited_wider_than_the_closure_its_instrument_compiles") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it", decl_name: "doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it") },
+        ],
+      },
+      account: "Sighted 2026-11-27 while recording the claim_batch route-absence specimen on the green_reported row by lane direction: three separate recurring_failure_mode rows were named as possible homes for one sighting, and the discriminator between them (which instrument, which population, which direction of over-reach) is the same discriminator in all three. That is the fork signature -- several rows answering one question. Per the lane brief and the design argument on root generalization, the family is RECORDED here and left alone: the three rows stand, this entry raises no claim of coverage across them, and consolidation is deferred to a later root-generalization task.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

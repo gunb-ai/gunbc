@@ -9,8 +9,8 @@ import gunbc.design.palette { Swatch }
 // THE GUNB MARKS, AND THE ONE PLACE THEY ARE DRAWN. Every surface that shows a gunb mark -- the
 // workspace's header and favicon, the robot avatars, the build-meter worker, and (as their
 // generation lands) gunb.ai's assets, the iOS app icon and the GitHub App avatars -- derives from
-// the model below. This repository is the authority and gunb-ai/frontend consumes what it emits;
-// a mark copied into another repository by hand is a second authority for one drawing.
+// the model below. This repository is the authority, and gunb.ai's mark is rendered here
+// (gunbc.site.gunb_ai_mark); a mark copied into another repository by hand is a second authority for one drawing.
 //
 // THREE SEPARATE FACTS: GEOMETRY, KIND, TREATMENT.
 // - Geometry is a BrandMark: named parts, each a typed shape, all in ONE coordinate space (the

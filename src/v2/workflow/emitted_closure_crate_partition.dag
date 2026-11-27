@@ -32,7 +32,16 @@ import v2.std.witness { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Optional, Present }
 import v2.std.compilers.compilation_unit { ModuleDag }
-import v2.workflow.rust_crate_partition { resolve_partition_outcome }
+import v2.workflow.rust_crate_partition {
+  DependencyEdgeProjectionRefusal,
+  DependencyEdgesProjected,
+  DependencyEdgesRefused,
+  ProjectedDependencyOutsideNodes,
+  ProjectedDependencyUnresolved,
+  ProjectedFactLookupRejected,
+  project_dependency_edges,
+  resolve_partition_outcome
+}
 
 // THE MODULE DAG OF THE RETAINED EMITTED COMPILER CLOSURE, DERIVED -- NOT AUTHORED. The subject is
 // the closure the self-host route emits: v2.compiler.source_root_eval's, whose entry file is the one the layout
@@ -93,55 +102,29 @@ fn emitted_closure_module_at(by_path: Map<String, String>, path: String) -> Opti
 type ModuleDagDerivationRefusal
   = ClosureEntryUndeclared { entry_path: String }
   | ClosureDependencyUnresolved { importer_path: String, target_module: String }
+  | ClosureFactLookupRejected { key: String }
 
 type ModuleDagDerivation
   = ModuleDagDerived { module_dag: ModuleDag }
   | ModuleDagDerivationRefused { cause: ModuleDagDerivationRefusal }
 
-type ClosureEdgeFold {
-  edges: List<ModuleDagEdge>
-  refusal: Optional<ModuleDagDerivationRefusal>
-}
-
 fn closure_entry_declared(entry_path: String, declarations: List<ModuleDeclarationFact>) -> Bool {
   declarations |> any(decl => decl.path == entry_path)
 }
 
-fn closure_edge_step(
-  acc: ClosureEdgeFold,
-  edge: ModuleDependencyEdge,
-  by_path: Map<String, String>,
-  module_set: Map<String, Bool>
-) -> ClosureEdgeFold {
-  match acc.refusal {
-    Present { value: _ } => acc
-    Absent =>
-      match emitted_closure_module_at(by_path: by_path, path: edge.path) {
-        Absent => acc
-        Present { value: importer } => {
-          let unresolved = ClosureEdgeFold {
-            edges: acc.edges,
-            refusal: Present { value: ClosureDependencyUnresolved { importer_path: edge.path, target_module: edge.target_module } }
-          }
-          if !edge.target_declared {
-            unresolved
-          } else {
-            match map_get_checked(module_set, edge.target_module) {
-              Accepted { value: Present { value: _ }, diagnostics: _ } =>
-                if importer == edge.target_module {
-                  acc
-                } else {
-                  ClosureEdgeFold {
-                    edges: acc.edges |> list_push(ModuleDagEdge { from: importer as ModuleId, to: edge.target_module as ModuleId }),
-                    refusal: Absent
-                  }
-                }
-              Accepted { value: Absent, diagnostics: _ } => unresolved
-              Rejected { diagnostics: _ } => unresolved
-            }
-          }
-        }
-      }
+// The edges are the shared projection's (v2.workflow.rust_crate_partition project_dependency_edges),
+// the one rule both fact-reading partitions call; this module supplies only its nodes, which are
+// the closure's modules under their own names. A declared target outside the closure cannot occur
+// for a closure computed from the same facts, and is reported as the unresolved dependency it
+// would be.
+fn closure_refusal_of(cause: DependencyEdgeProjectionRefusal) -> ModuleDagDerivationRefusal {
+  match cause {
+    ProjectedDependencyUnresolved { importer_path: path, target_module: target } =>
+      ClosureDependencyUnresolved { importer_path: path, target_module: target }
+    ProjectedDependencyOutsideNodes { importer_path: path, importer: _, target_module: target } =>
+      ClosureDependencyUnresolved { importer_path: path, target_module: target }
+    ProjectedFactLookupRejected { key: key } =>
+      ClosureFactLookupRejected { key: key }
   }
 }
 
@@ -163,17 +146,14 @@ fn module_dag_from_dependency_facts(
         Absent => acc
       }
     })
-    let module_set = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, true) })
-    let folded = edges |> fold(init: ClosureEdgeFold { edges: [], refusal: Absent }, f: fn(acc, edge) {
-      closure_edge_step(acc: acc, edge: edge, by_path: by_path, module_set: module_set)
-    })
-    match folded.refusal {
-      Present { value: cause } => ModuleDagDerivationRefused { cause: cause }
-      Absent =>
+    let node_by_module = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, module_id as String) })
+    match project_dependency_edges(importer_node_by_path: by_path, node_by_module: node_by_module, dependencies: edges) {
+      DependencyEdgesRefused { cause: cause } => ModuleDagDerivationRefused { cause: closure_refusal_of(cause: cause) }
+      DependencyEdgesProjected { edges: projected } =>
         ModuleDagDerived {
           module_dag: ModuleDag {
             modules: modules,
-            edges: folded.edges,
+            edges: projected,
             exports: empty_map(),
             type_definitions: empty_map(),
           }

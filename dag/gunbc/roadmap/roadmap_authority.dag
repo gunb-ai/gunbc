@@ -60,7 +60,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
 }
 import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
 import gunbc.roadmap.roadmap_event_carrier {
-  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused, RoadmapAllEventsRead, CarrierReadAttached,
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused, RoadmapAllEventsRead,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
@@ -4115,7 +4115,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "Found on 2026-11-15 by the deploy-artifact closure work (PR #16535, side chat finding F2). std.algebra list_append takes two FreeMonoid<T> values, but list_append([\"a\"], \"bc\") is accepted by the claim run and evaluates to [\"a\", \"bc\"]: a String reaches a FreeMonoid<T> parameter unchecked. This is below the ordinary floor (gunbc.design_argument::guarantee_ladder: values inhabit declared types), and it hides the list_push/list_append mix-up that authors make. Repro module: import std.algebra { list_append }, std.list { list_cover }, std.types { String, List, Bool }; fn eq_str(a: String, b: String) -> Bool { a == b }; test fn probe() -> Bool { list_cover(held: list_append([\"a\"], \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) } passes and must be refused. argument-type-compatibility-grounding covers the v2 exemption, not this generic-parameter case.",
         displaced_cost: "A wrong-type argument to a generic list operation runs and returns a plausible list, so the mistake is found only by a reviewer or a wrong answer downstream.",
         first_slice: "Find where the generic parameter binding admits a non-collection argument for FreeMonoid<T> and make it refuse with a located argument-type diagnostic.",
-        red_control: "The repro refuses at typecheck naming the argument and parameter, and list_append over two lists and list_push over a list and an element still pass; RED on main.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING, AND THIS NODE SHIPS THE WITNESS: it does not exist yet. WITNESS TO AUTHOR: dag/test/claim/text_at_free_monoid_run_carrier_witness.dag, seventeen legs, none of them in the tree at this revision -- git grep -l over dag at main returns 0 files for each name below; the names are read from the branch where they were first executed and are recorded here as the required shape of the witness, not as content main has (executed first on the head of pull/16894). THE PAIR THAT DECIDES THIS ROW: text_actual_at_run_of_string_is_refused_naming_the_right_parameter must come back DID NOT HOLD before the wall and HELD after it, naming the argument and the parameter it belongs to, while the_same_call_over_two_runs_is_not_refused stays HELD on both trees. list_push_takes_an_element_where_an_element_is_required must stay HELD, so the wall cannot be bought by breaking list_append in general, and an_int_at_an_element_the_sibling_run_grounds_is_refused keeps a sibling argument from grounding the run carrier. GREEN AT counts only when the batch reports seventeen claim(s), seventeen held, zero did not hold, zero unobserved and rc 0, with every leg named in its own HELD outcome=Pass line and the selection-count line beside every count. RED AT must be EXECUTED at a main sha with identical failure text at the same sha: the parse control on main released binaries, the claim route on a gunbc built from main and labelled main-built, manifest-unmatched, its sha256 read from disk in the same log as the heavy-slot acquisition line. A quoted property is not a control; only the run is.",
         out_of_scope: "Other generic-parameter positions, unless the same rule covers them.",
         handback: "The rule repaired and where, the controls, and a recurring_failure_mode row for the class."
       )),
@@ -6484,7 +6484,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "bmc_fan_monitor, bmc_fan_converge, fabric_required_build_cell, fleet_show_effective_read and srv3_install_media_fetch matched on their Optional first() sites so gunbc#11720's wall holds over them; the srv3 module's own Present/Absent variants shadow Optional's and must be qualified or renamed. Branch fierce-seal-607/optional-at-required-tail carries the uncommitted work.",
         displaced_cost: "Five closures no gate compiles keep an Optional flowing into a required T, which the floor cannot see.",
         first_slice: "Resolve the srv3 name collision, commit the branch, floor clean, land.",
-        red_control: "Each site's Absent arm refuses with a typed cause; a bare Present in srv3 resolves to exactly one declaration.",
+        red_control: "Each site's Absent arm either refuses with a typed cause or yields absence into an Optional-typed result; no site lets an Optional reach a required T; a bare Present in srv3 resolves to exactly one declaration.",
         out_of_scope: "The gunbc#11720 residuals in gated closures are already covered by the wall.",
         handback: "Return the landed head and the collision resolution."
       )),
@@ -6511,16 +6511,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_1KRJKPNSVCMTVHGHXH91HYFPZ4",
       id: "egress-program-residue",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
-      line: ticket(t: fields(
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
         headline: "Primitive-egress residue: TEXT-0 alphabet collapse, alias fixture enrolment, admission rows, hex literal",
-        boundary: "TEXT-0's alphabet collapse; enrolment of the applied-generic alias fixture; the 40 consumed ACTION-USE transition-admission rows deleted as gunbc#11790 deleted the first 11; a hex literal form for .dag; heal.yml dispatch-only with the dashboard readiness pending quirk recorded; batch floor 2 on a quiet host under ruling A; the unlanded demand-engine plan refinements on branch fierce-seal-607/plan-e2-handler (D11 realization ruling, E2 handler shape) folded into `gunbc.plans.demand_engine_program`.",
+        boundary: "TEXT-0's alphabet collapse (standing item, trigger = a definition of the TEXT-0 alphabet); enrolment of the applied-generic alias fixture; the 40 consumed ACTION-USE transition-admission rows deleted as gunbc#11790 deleted the first 11; a hex literal form for .dag; heal.yml dispatch-only with the dashboard readiness pending quirk recorded; batch floor 2 on a quiet host under ruling A; the unlanded demand-engine plan refinements on branch fierce-seal-607/plan-e2-handler (D11 realization ruling, E2 handler shape) folded into `gunbc.plans.demand_engine_program`.",
         displaced_cost: "Each is a small known debt whose only cost today is being remembered by a person instead of a row.",
-        first_slice: "The 40 consumed admission rows, which is a deletion whose census is the floor.",
-        red_control: "A consumed admission row surviving deletion reds; a hex literal that lexes as two tokens refuses.",
+        first_slice: "The worker's first move is the item-2 enrolment check, not a new census: the five alias-class probe arms named in red_control agree with the measured standing, executed by the class's own witness module (enrolment vehicle gunbc#17120, head 597715c30cf, seven of seven claims held by execution — landing awaits its merge; this row claims no rung on main until then). The admission-rows item is landed history, not a live population: dag/gunbc/namespace/transition_admission holds 0 files at origin/main.",
+        red_control: "The admission-rows control is an executed historical pair, not a live census: RED at 318345ec761f^ — 56 transition-admission rows orphaned by the removed namespace-wave wall stand, and a consumed admission row surviving deletion reds — GREEN at 318345ec761f (gunbc#12195; zero survive; the first 11 went earlier at 2f18c488c8a, gunbc#11790). The alias fixture enrols the measured standing, five probes named by class: alias-of-applied-form at its matching formal, and the same formal spelled directly, both expecting the counted unmodeled advisory and required to agree with each other; the unparameterized alias at its formal expecting zero diagnostics; the wrong-instantiation call expecting the counted advisory, named explicitly as a standing hole so it reds the day a terminal refusal lands; and the both-sides-aliased case expecting a blocking type mismatch. The class is enrolled in the guarantee probe corpus under the expectations schema as Manager A's plan defines it, executed by the class's own witness module.",
         out_of_scope: "None of these widens the program.",
         handback: "Return each item landed or reclassified with its trigger."
-      )),
+      ), on: "2026-11-26", note: "Dated note, planning retext (ad hoc planning worker, per lane manager's adjudication set). (1) The first_slice and the first red_control clause no longer name the deleted 40-row admission population; original texts preserved here verbatim: first_slice was 'The 40 consumed admission rows, which is a deletion whose census is the floor.' and the first red_control clause was 'A consumed admission row surviving deletion reds'. HISTORICAL DISCHARGE in closing-commit-pair form: the namespace-wave-admission wall and module gunbc.namespace.transition_admission were deleted by gunbc#11774; the first 11 consumed rows went at 2f18c488c8a (gunbc#11790), 17 more at 89bd288096e (gunbc#11771), and the remaining 56 — rows written after the wall's deletion, each adjudicating a namespace-wave refusal that no longer existed — at 318345ec761f (gunbc#12195). Measured at origin/main: 0 files under dag/gunbc/namespace/transition_admission; ACTION-USE has 0 hits under that namespace even at 318345ec761f^. The row's '40' figure is superseded by that record. (2) The TEXT-0 alphabet collapse item is RECLASSIFIED WITH ITS TRIGGER: TEXT-0 has no definer in the tree — the phrase occurs only in this row's text and in the dag/gunbc/primitive_egress/category lane table pointing at issue 11630 (2 hits each, 0 elsewhere); the item's premise is gone and it now reads as a standing item whose trigger is a definition of the TEXT-0 alphabet, which no row or plan carries today. (3) The alias-fixture item's enrolment executed seven of seven claims at gunbc#17120 head 597715c30cf with the run record posted on that pull request; landing is on its merge, and no rung is claimed on main before then. CONTEXT, not a criterion: dag/test/claim/guarantee_probe_corpus_witness.dag carries a known pre-existing entry-closure defect — a call to gunbc.guarantee_measurement::distinct_string_count with no established callee identity, that function being a non-pub fn of gunbc.guarantee_measurement and absent from the witness's import block — which predates this lane's work and is owned elsewhere; this row's acceptance does not wait on that repair, and that is why the class's probes are executed by their own witness module. (4) The heal.yml dispatch-only item stays in the boundary list and moves only through its generator, gunbc.heal_workflow::heal_workflow_of per the file's generated-artifact header — hand-editing .github/workflows/heal.yml is refused by that header. (5) The boundary list is unchanged and the handback stands unchanged: each item landed or reclassified with its trigger. (6) HEX-LITERAL CLAUSE MOVED OUT OF red_control AS INHERITED DESCRIPTION, NOT AN EXECUTED CONTROL: 'a hex literal that lexes as two tokens refuses' travelled verbatim from the pre-retext red_control and no executed claim covers it. Raw searches, all three re-executed at base d20fa377f6c8 and printed with their EXACT commands and scopes (no 'many'); counts move with the tip, so the base sha is part of each claim. Command one: git grep -in hex origin/main -- dag/test/claim | wc -l = 2553 lines (pattern hex, case-insensitive, scope dag/test/claim); the sole hex-refusal-NAMED claim, test fn witness_local_hex_literal_refused in dag/test/claim/roadmap/roadmap_register_witness.dag, is a CSS-theming decoy (it plants a rogue StaticRule color #0969da for unthemed_color_decls; command two: git grep -c 0969da origin/main -- dag/test/claim/roadmap/roadmap_register_witness.dag = 3), not a lexer claim; the historical dag/test/claim/roadmap_register_witness_test.dag was deleted at 681bcc8bf99. Command three: git grep -in 'two tokens' origin/main -- dag | wc -l = 15 (pattern two tokens, single-quoted in the shell -- identical regex to the double-quoted spelling -- case-insensitive, scope dag; the lane manager measured 14 at an earlier tip; content owners running other patterns over other scopes report different counts, e.g. a narrower phrase or a whole-tree scope -- the command above is the claim). Of them: this row's own clause; unrelated claim families -- the caret lexing row in dag/gunbc/symbol_identity_census.dag (caret-hat ident lexes as ShCaret plus identifier, a different claim family), the CLI argv-fold probe in dag/test/claim/cli_surface_boundary_probe.dag, a lexer-adjacent but different-claim file (gunbc.recurring_failure_mode::v2_lexer_carries_no_layout_so_a_newline_before_a_dual_role_operator_merges_silently, newline/dual-role-operator merge, not hex), and comment prose or roster strings in floor_demand, ledger_row_coherence (two hits plus its claim file), bmc_account_state_parsers, srv1_serving_launch, css_prefers_color_scheme, extdeps_git_inspect_partial_clone_trust, srv1_replica_rendered_boot_path, ubuntu_autoinstall_seed, roadmap_cutover (two hits). No lexer hex-refusal claim exists among them. RECONCILIATION with the content owner eager-koi-371: the five alias arms enumerated in red_control, plus the corpus census claim and the agreement claim, are the seven -- equal to DECLARED_TEST_FNS of the class witness module.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
@@ -7147,14 +7147,31 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "planning",
       carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
       line: ticket(t: updated(t: fields(
-        headline: "One projection row per work item, served as JSON from the daily workspace",
-        boundary: "gunbc.roadmap.roadmap_work_item_projection serves one row per work item as JSON from the daily workspace, at the path projection.json beside standings.json -- the path a consumer fetches to find the projection, declared here because a reader detects the projection by fetching it. The row's shape is declared here, because it is what a consumer of the projection is built against: node, intention, layer, item_state; leaves -- one entry per leaf occurrence, each with its leaf path as the decomposition spells it, its start day and finish day from the schedule answer, and on_critical_path; in_flight -- the derived set, each entry with its leaf path, its claim's assignee and its claim's return_to; latest_event; acceptance_evidence; events -- the item's past events with the timestamp each one was recorded at (claimed, released, acceptance recorded, retired), read from the event log at the read and kept in no store of this row's own, so a consumer can draw the progress already made and not only the plan ahead; and read_on, the date the document was read, together with the inputs that read used (worker_count, the day priors, the assumed findings counts), each shown as an input and not as a fact. It IS planning_consolidation section 1's projection; every consumer reads this row and keeps no state of its own, and a field this row does not serve is not part of the projection.",
+        headline: "One projection row per intention-bound work item, served as JSON from the daily workspace",
+        boundary: "gunbc.roadmap.roadmap_work_item_projection serves one row per intention-bound work item as JSON from the daily workspace, at the path projection.json beside standings.json -- the path a consumer fetches to find the projection, declared here because a reader detects the projection by fetching it. The row's shape is declared here, because it is what a consumer of the projection is built against: node, intention, layer, item_state; leaves -- one entry per leaf occurrence, each with its leaf path as the decomposition spells it, its start day and finish day from the schedule answer, and on_critical_path; in_flight -- the derived set, each entry with its leaf path, its claim's assignee and its claim's return_to; latest_event; acceptance_evidence; events -- the item's past events with the timestamp each one was recorded at (claimed, released, acceptance recorded, retired), read from the event log at the read and kept in no store of this row's own, so a consumer can draw the progress already made and not only the plan ahead; and read_on, the date the document was read, together with the inputs that read used (worker_count, the day priors, the assumed findings counts), each shown as an input and not as a fact. It IS planning_consolidation section 1's projection; every consumer reads this row and keeps no state of its own, and a field this row does not serve is not part of the projection. This release's population is intention-bound work items: an item reaches the projection only when it carries an intention binding, so a dispatchable item with no binding (floor-parse-formation-wall is the live specimen) is NOT on this release's projection, and the bindings enumerated are not silently treated as the whole population. Widening to every dispatchable item, with a missing binding refusing with a typed error naming the item rather than being silently absent, is tracked by roadmap-work-item-projection-unbound-coverage, not left here as prose.",
         displaced_cost: "Without it each reader folds the log itself, and the readers are where the drift lives; there is no one place to read what is true about an item on the day of the read.",
         first_slice: "Serve the projection for one item with leaves in flight, then the same item after a planted release, and show both rows against the shape above, field for field.",
         red_control: "A row's in-flight leaves are the derived set and never a stored list, and a served row that omits a declared field of the shape above -- a leaf without its on_critical_path, an in-flight entry without its claim's assignee or return_to, an event without the timestamp it was recorded at, a row without read_on and its inputs -- is not the projection; the events a row carries are the event log's own rows at that read, never a copy this row keeps; a planted binding of this row to an intention that does not exist refuses at load, by the binding carrier's own check.",
         out_of_scope: "No rendering; no operator to-do list on the row -- section 1's projection states, it does not nag. No reader outside this repository is named or bound here.",
         handback: "The two JSON rows, the planted-binding refusal output, and the diff."
       ), on: "2026-11-19", note: "Source review at 398136026b345e087968a9db4ba42ec551c5ca4c (2026-11-19); source presence is not acceptance. roadmap_item_gantt supplies computed per-item rows, but the requested projection.json contract also needs log-derived in-flight leaves and binding refusals. Reuse both producers; the served projection and release control are the actual integration work, not another timeline calculation.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
+    ),
+    roadmap_node(
+      identity: "rn_01M860NYJB8ZYT25DWT2RTA2G1",
+      id: "roadmap-work-item-projection-unbound-coverage",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_work_item_projection.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Every dispatchable work item gets a projection row; an unbound one refuses by name",
+        boundary: "gunbc.roadmap.roadmap_work_item_projection serves one row per DISPATCHABLE work item, not only the intention-bound ones. A dispatchable item that carries no intention binding refuses with a typed error naming the node, so it is visibly absent rather than silently omitted. The release before this one served only intention-bound items and left a dispatchable item with no binding (floor-parse-formation-wall is the live specimen) off the projection with no signal; this node widens the served population to every dispatchable item and turns the missing binding into a refusal that names the item. It is the tracked follow-up that roadmap-work-item-projection's boundary names; this is that node, declared so the leftover population is a plan and not prose.",
+        displaced_cost: "An unbound dispatchable item is invisible on the timeline with no signal it was dropped, so a reader cannot tell 'nobody planned it' from 'it has no binding'; the omission reads as completeness.",
+        first_slice: "Serve a row for an item that carries a binding, then plant a dispatchable item with no binding and show it refuses with the typed error naming the node, rather than being omitted.",
+        red_control: "A planted dispatchable item with no intention binding refuses with the typed error naming the node and the item; it is NOT omitted from the population. Serving it as an empty row, or dropping it silently, is the defect this node removes.",
+        out_of_scope: "No rendering; no change to the row shape; no new intention -- it consumes the same bindings roadmap-work-item-projection does.",
+        handback: "The bound-item row, the planted unbound-item refusal output naming the node, and the diff."
+      ), on: "2026-11-24", note: "Declared 2026-11-24 in PR #16974 as the tracked follow-up roadmap-work-item-projection's boundary named (review 97810: the boundary made two claims and left the leftover population an untracked stall). Manager (valiant-owl-234) ruling: the widening is this node, not prose in the projection's boundary. floor-parse-formation-wall is the known live unbound specimen. Not implemented here -- this node declares the target.")),
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
     ),
@@ -7262,6 +7279,197 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Every branded carrier name is reached by a checked constructor, so the brand means something the checker enforces."),
+    ),
+    // ---- gunbc.plans.gunb_ai_served_from_gunbc (merry-eagle-717, 2026-11-24) ---------------
+    // The site's source and deploy move into gunbc and gunb-ai/frontend is archived, then the content is
+    // refreshed. The cutover is one node because the authority transition is one motion
+    // (gunbc.design_argument::replacement_migration); the refresh waits on it so it is written once, in gunbc.
+    roadmap_node(
+      identity: "rn_F8YSNN55TQSIEP8DDD5X8O218I",
+      id: "gunb-ai-served-from-gunbc",
+      owner: "site",
+      carriers: carrier(path: "dag/gunbc/plans/gunb_ai_served_from_gunbc.dag"),
+      line: ticket(t: level_fields(
+        headline: "gunb.ai is served from gunbc, and gunb-ai/frontend is archived",
+        boundary: "Serves gunbc.plans.gunb_ai_served_from_gunbc under gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24. Owns where gunb.ai's served bytes come from and how they are deployed, and the content refresh that follows. It does not own the DNS zone (gunbc.cloudflare.zone; no record changes), the brand mark's geometry (gunbc.design.brand_mark), or the lab and daily workspace, which are served elsewhere.",
+        approach: "Members in dependency order: the cutover (gunb-ai-deploy-cutover), then the refresh (gunb-ai-content-refresh), which edits only gunbc's typed site modules.",
+        red_control: "Met only through its members: the intention's done-when holds (gunb.ai serves gunbc's render at a named main commit, the frontend repository is archived with no gunbc file naming it as a source, and the operator judges the content current).",
+        displaced_cost: "Two repositories answer what gunb.ai says: the frontend repository hand-maintains the served files and gunbc keeps a transcribed model plus committed copies to compare against, so every site change is written twice.",
+        handback: "gunb.ai deployed from gunbc on merge, the frontend repository archived, and refreshed content."
+      )),
+      parent: in_project(project: "gunbc-project-root", contribution: "The public site states what the project is; one source for it means a change to what the project says is one reviewed change here."),
+    ),
+    roadmap_node(
+      identity: "rn_S4YN3WB8XG94FDD2RPELEDGR5G",
+      id: "gunb-ai-deploy-cutover",
+      owner: "site",
+      carriers: carrier(path: "dag/gunbc/site/gunb_ai_page.dag"),
+      line: ticket(t: fields(
+        headline: "One cut: an emitted gunbc workflow deploys gunb.ai from the site modules' render, and gunb-ai/frontend stops being a source",
+        boundary: "Serves gunbc.plans.gunb_ai_served_from_gunbc under gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24. A new workflow emitted from a .dag model (beside the existing emitted workflows, enrolled in the drift watch's artifact roster) that, on main only, renders the site and publishes it through the GitHub Pages actions. THE PUBLIC PATH LIST IS EXPLICIT and is the four files the page links: index.html (gunbc.site.gunb_ai_page), assets/site.css (gunbc.site.gunb_ai_css), assets/cards.js (gunbc.site.gunb_ai_deck) and assets/mark.svg (gunbc.site.gunb_ai_mark). The frontend's publish step (gunb-ai/frontend .github/workflows/pages.yml at 3152d4c) also stages five PNG icons under assets/ and CNAME; neither is carried. The PNGs are linked from no served file, and the operator chose to drop them (gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24), so gunbc.design.brand_mark_assets is not built by the deploy; nothing off the path list enters the Pages artifact. The custom domain is a setting of the destination repository's Pages site, not a staged CNAME file: GitHub ignores a CNAME file in a custom-workflow deployment. In the same change: delete the parity comparisons against dag/test/fixture/gunb_ai/live_* and those fixtures, keeping each discriminating claim that does not depend on the copy; delete every comment that names gunb-ai/frontend as where a value is re-derived from. DNS records are not edited.",
+        displaced_cost: "Each site change is edited in gunb-ai/frontend and re-transcribed into gunbc's model and fixtures; the two can disagree and only a parity witness, run by hand, notices.",
+        first_slice: "Confirm the render against the served files at gunb-ai/frontend 3152d4c (its head since 2026-06-16). site.css and cards.js are compared byte-exact. index.html and mark.svg are compared under the differences their writers already enumerate (gunbc.site.gunb_ai_page parity_nullities, seven rows; gunbc.site.gunb_ai_mark mark_parity_nullities, the self-close spelling), and any difference those rows do not name fails. Then the workflow's model and emission, with its time and memory budgets stated in the pull request for the operator under gunbc.design_ruling::ci_job_budgets_closed_to_growth.",
+        red_control: "Before the domain moves: a planted guard refusal in the page render (an href the URL guard refuses) makes the workflow fail having uploaded nothing, and the unplanted render, from a named main commit, deploys to gunbc's project Pages URL, where every path on the list is fetched and equals that commit's artifact byte for byte. Only then, with the operator asked immediately before: remove the custom domain from gunb-ai/frontend, set it on gunbc's Pages site, and read back that gunbc's Pages site holds the domain, that the served deployment is the named commit, that HTTPS is enforced, and that every public path at gunb.ai and www.gunb.ai equals the artifact byte for byte. Matching bytes alone do not show which repository served them, so the Pages binding readback is required. Until all of that holds, the frontend's last successful deployment stays restorable (its workflow is not disabled and the repository is not archived). Then, before archiving: close gunb-ai/frontend#2 (an earlier operator-selected pitch around multi-target emission, still open) with a note recording that gunbc.plans.gunb_ai_served_from_gunbc and gunb-ai-content-refresh supersede it, and record that comment's permalink, because an archived repository's pull requests are read-only. Disabling the frontend's deploy and archiving the repository are the last steps.",
+        out_of_scope: "Any content change (gunb-ai-content-refresh); DNS record edits (the apex and www behavior is verified, not changed; gunbc.cloudflare.zone records the GitHub Pages addresses only from the historical Namecheap transcription, and its origin readback is pending); a pull-request or merge-group trigger; carrying workpad.html, legacy/, docs/, scripts/, PROPOSAL.md or DESIGN.md across; modeling the deck's retained JavaScript further.",
+        handback: "The emitted workflow and its run URLs (project-URL deploy and custom-domain deploy), the deployed commit, the per-path byte comparisons at the project URL and at gunb.ai and www.gunb.ai, the Pages binding readback, the deleted fixtures and parity comparisons with the claims kept, the permalink of the supersession note closing gunb-ai/frontend#2, and the archived frontend repository."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunb-ai-served-from-gunbc", contribution: "The authority transition itself: after it, gunbc is the only place gunb.ai's bytes come from."),
+    ),
+    roadmap_node(
+      identity: "rn_LZGDD7HEJWFT7KDW6EWM56YLSS",
+      id: "gunb-ai-content-refresh",
+      owner: "site",
+      carriers: carrier(path: "dag/gunbc/site/gunb_ai_content.dag"),
+      line: ticket(t: fields(
+        headline: "gunb.ai's pitch redone from first principles: architecture determines which mistakes a program can make and which work it has to do",
+        boundary: "Serves gunbc.plans.gunb_ai_served_from_gunbc. Operator, 2026-11-24: the theming may be fine but the terms and pitch are outdated, to be reconsidered from first principles; the highlight is the separation of business intent from the implementation, which the current page does not make clear. Direction given by the operator: the page is about how a program's architecture determines which mistakes it can make and which work it has to do. First principles is the method, separation of concerns is what the programmer does, and safety and performance are the consequences the page demonstrates. The reader is engineers who design and maintain systems. The three-card deck is replaced by one worked example a reader can inspect, and the first action is 'Trace the build decision'. The first draft's example is the development-build reuse decision: gunbc.devboot.subject::BuildSubject separates the source tree, the requested product, the target and the build settings; gunbc.devboot.outcome::record_matches_request and gunbc.devboot.outcome::reuse_decision_from_match decide reuse; gunbc.devboot.produce::live_reuse_report calls that decision on the production path; and test.claim.devboot_subject_identity_witness covers a matching request, another subject with bytes available, and a matching record without bytes. Each claim on the page names the declaration or receipt that evidences it, and the page claims no more than those establish (on a valid hit the service avoids a build; a request for another target cannot receive that executable). Changed only through gunbc.site.gunb_ai_content, gunbc.site.gunb_ai_page and gunbc.site.gunb_ai_deck (which may be replaced or removed); the theme (gunbc.site.gunb_ai_tokens, gunbc.site.gunb_ai_layout, gunbc.site.gunb_ai_css, gunbc.design.gunb_ai_hues, gunbc.design.gunb_ai_live_scale) is kept unless the new structure needs a change. The earlier pitch in gunb-ai/frontend#2 is superseded by this direction; the cutover closes that pull request with a supersession note before archiving, and this item links that note's permalink from its handback. Operator, 2026-11-24, on a text draft: too much copy; the page leads with clear pictures and diagrams, with words reduced to a headline, one sentence and labels, because the concept is simple enough to show.",
+        displaced_cost: "The site pitches codegen from one description ('describe the system once, let the compiler derive the rest'), which is no longer what the project argues; readers meet a project that does not match it, and the separation of intent from implementation, which the operator names as the highlight, is not visible.",
+        first_slice: "Agree a diagram-first mockup with the operator, starting from the review draft for operator approval (headline 'Make the rules of your architecture executable.', the 'Can we safely skip this build?' example), with each claim tied to its declaration; on the operator's approval, rewrite the content model and page, replace the deck with the diagrams as static markup, and render; the operator reviews the rendered page before merge.",
+        red_control: "The render served at gunb.ai after merge equals the merged commit's render; each claim on the page names a declaration or receipt that resolves at that commit, and a planted claim citing a declaration that does not exist fails the content witness; the operator's review of the rendered page is the acceptance of whether it is current.",
+        out_of_scope: "The deploy route itself; DNS; new served pages beyond what the operator asks for; the Google-operation example, which stays in DESIGN.md.",
+        handback: "The merged content changes, the deployed commit, the operator's review of the rendered page, and the permalink of the cutover's supersession note on gunb-ai/frontend#2."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunb-ai-served-from-gunbc", contribution: "The reason for the move: the site is out of date, and after the cut it is updated in one place."),
+    ),
+    // ---- gunbc.plans.findings_reach_a_replan (swift-deer-673, 2026-11-27) --------------------
+    // An escalation that meets a replan criterion owes a recorded replan decision before its node is attempted
+    // again (gunbc.design_ruling::escalation_meeting_a_replan_criterion_owes_a_replan_decision_2026_11_27). The model
+    // lands first; the worker exit and the dispatch refusal consume it; the continuation route consumes both.
+    roadmap_node(
+      identity: "rn_Y2AOGCWBFUD32MQ1UMSZJ53L8C",
+      id: "contributor-findings-reach-a-replan",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/plans/findings_reach_a_replan.dag"),
+      line: ticket(t: level_fields(
+        headline: "A contributor who learns the assignment is wrong can say so, and an escalation that meets a replan criterion owes a recorded replan decision",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan under gunbc.design_ruling::escalation_meeting_a_replan_criterion_owes_a_replan_decision_2026_11_27. Owns the factory's route from an escalation to a replan decision, the worker's disproved-premise exit, the belt criterion reviewer's verdict meaning, and the how_to_work statement and onboarding priority. It does not own GitHub pull request review, the control plane's prompts, or the delivery of unresolved findings to the next brief (PR 17167).",
+        approach: "Members in dependency order: the model (replan-criterion-and-decision-modeled); then the worker exit (disproved-premise-is-a-submission-outcome) and the dispatch refusal (owed-replan-refuses-dispatch); then the continuation route (escalations-route-to-the-replan) and the brief (dispatch-brief-asks-for-the-finding). The design text (how-to-work-names-contributor-ownership) and the reviewer verdict (criterion-reviewer-approves-its-criterion) are independent.",
+        red_control: "Met only through its members: the intention's done-when holds on the tree, and the operator accepts the judgement condition.",
+        displaced_cost: "A worker that disproves its brief is replaced by another attempt on the same brief, a supervisor's plan-defect verdict reaches no owner, and the roadmap drifts from the tree, so honest findings cost an attempt and are then lost.",
+        handback: "Per member: its receipt; together, a replayed escalation of each source reaching a recorded replan decision with no new attempt in between."
+      )),
+      parent: in_project(project: "factory", contribution: "The factory turns a finding into a corrected plan instead of another attempt against a known-bad one."),
+    ),
+    roadmap_node(
+      identity: "rn_IS4MBYSCRT5GM58P6WU53OFFK9",
+      id: "replan-criterion-and-decision-modeled",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "One classifier says which escalations meet a replan criterion, and a replan decision is a typed record with closed outcomes",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. Model, before any route consumes it: (1) the escalation sources a belt attempt can end in (worker blocked, needs-context and disproved-premise declarations; supervisor plan-defect and stuck verdicts; a goal-audit finding that the acceptance check can pass with the goal unmet; an exhausted retry), each read from its existing typed carrier and never from rendered text; (2) one classifier from a source to meets-the-criterion or not, the criterion being concrete evidence that the node's premise, boundary, approach, red control or acceptance command is false or insufficient for its intention; (3) the replan decision: it cites the escalation it answers, names its decider (the manager of the owning session, or the operator by escalation), and has exactly the outcomes in the plan's section 1. The re-estimate and split outcomes consume gunbc.plans.planning_consolidation section 7's protocol and gunbc.roadmap.roadmap_effort_estimate, and the already-holds outcome consumes the existing acceptance evidence law (gunbc.roadmap.roadmap_issue_command), never a second one. Decide against gunbc.roadmap.roadmap_event_log whether the decision is a new item-event kind or a typed payload on an existing one (handed_back, retired).",
+        displaced_cost: "Without one classifier and one decision type, each route (continuation, supervisor, goal audit, retry) would decide on its own whether a finding forces a replan, and they would disagree.",
+        first_slice: "Read every escalation carrier named above at the current head and list, with the declaration that produces it, what evidence each already carries; then the classifier and the decision type, with a witness over each source.",
+        red_control: "A witness drives every escalation source through the classifier: a plan-defect verdict and a disproved-premise declaration with evidence meet the criterion, and a blocked declaration whose cause is infrastructure does not. A replan decision with no cited escalation, or with an outcome outside the closed set, does not construct. An already-holds outcome without an earning pull request is refused by the existing evidence law, not by a new check.",
+        out_of_scope: "Wiring any route to the classifier (escalations-route-to-the-replan); the dispatch refusal (owed-replan-refuses-dispatch); the worker's exit (disproved-premise-is-a-submission-outcome).",
+        handback: "The classifier, the decision type and the witness; the list of escalation carriers read, each with its producing declaration; and the event-log decision with its reason."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The vocabulary every route consumes: which escalations owe a replan, and what a replan decides."),
+    ),
+    roadmap_node(
+      identity: "rn_CP1QYUP8MKP3GQGU99Q7ZPTONX",
+      id: "disproved-premise-is-a-submission-outcome",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_submission.dag"),
+      line: ticket(t: fields(
+        headline: "A worker can end an attempt by declaring the premise disproved, with its evidence, and that is never a candidate or done",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. In gunbc.roadmap.roadmap_submission, a disproved-premise declaration that requires what was established, its consequence for the goal and the decision needed, and is not a verification candidate (the one classifier that decides candidacy stays the only one). In gunbc.harness.harness_guidance, the exit is rendered as a completion a worker may choose, and the conclusions that push past evidence ('Reading alone completes nothing', 'make the change now' when rounds are short) are qualified so they do not apply once the worker holds evidence that the premise is wrong. The rule against redefining a code-change task as analysis completed stands: a declaration without its evidence does not decode. Settle the plan's open question (a fourth readiness or a typed cause on blocked) against the classifier from replan-criterion-and-decision-modeled.",
+        displaced_cost: "Today the honest finding is declared as blocked or needs-context, which reads as failure or a request for help, so a worker is pushed to force the brief through instead.",
+        first_slice: "Extend the submission decode and its witness, then render the exit in the worker guidance from the same readiness keys the decode reads.",
+        red_control: "A disproved-premise artifact missing any of its three evidence fields does not decode; one carrying them decodes and is classified as not a candidate; a ready artifact is unchanged. The rendered worker guidance names the exit and its required fields.",
+        out_of_scope: "What the belt does with the declaration (escalations-route-to-the-replan); the dispatch brief's text (dispatch-brief-asks-for-the-finding).",
+        handback: "The decode and guidance changes with their witnesses, and the readiness decision with its reason."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "Telling the truth is a first-class way for a worker to finish."),
+    ),
+    roadmap_node(
+      identity: "rn_JFLWHLU000XXTPHLLDNTI51JGW",
+      id: "owed-replan-refuses-dispatch",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_readiness.dag"),
+      line: ticket(t: fields(
+        headline: "A node with an owed replan is refused by the dispatcher until its replan decision is recorded",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. An escalation that meets the replan criterion records an owed replan on its node, and the one readiness predicate (gunbc.roadmap.roadmap_readiness) refuses the node, with a typed cause naming the escalation, until a replan decision answers it. The owed set is derived from the event log, never written beside it, so it is visible in every projection of the work as an open obligation rather than silence.",
+        displaced_cost: "Without the refusal, the replan is advice: the next tick dispatches the unchanged node and the finding is overtaken.",
+        first_slice: "Derive the owed set from the escalation and decision events, then add the refusal arm to the readiness predicate with its witness.",
+        red_control: "A node with an escalation meeting the criterion and no decision is refused with the escalation named; recording a decision whose outcome admits the node again makes it ready; a decision of retirement leaves it unready for its existing retired reason. A node with only a non-criterion escalation is unaffected.",
+        out_of_scope: "Which escalations meet the criterion (replan-criterion-and-decision-modeled); routing the escalation (escalations-route-to-the-replan).",
+        handback: "The readiness arm, the derivation of the owed set, and the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The replan is structural: the node cannot be attempted again until it is decided."),
+    ),
+    roadmap_node(
+      identity: "rn_DF87RNRPRBWQ0KXDERLLVWCPBJ",
+      id: "escalations-route-to-the-replan",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag"),
+      line: ticket(t: fields(
+        headline: "An escalation that meets the replan criterion reaches the node's owner, and never a fresh attempt on the unchanged node",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. gunbc.roadmap.roadmap_attempt_continuation consumes the classifier: a criterion-meeting capture leads to the owed replan, not continuation_next_attempt; a non-criterion blocked or needs-context capture keeps today's route. The supervisor's plan-defect and stuck verdicts (gunbc.harness.harness_turn) take the same route, which closes the declared frontier in gunbc.roadmap.roadmap_result_returned (a lineage ending without a candidate is owed a result). The goal-audit and exhausted-retry sources join through the same classifier. One route to the decision, not one per source.",
+        displaced_cost: "Today a worker's honest finding buys another attempt on the same brief, and a supervisor's plan-defect stops a session whose reason reaches nobody.",
+        first_slice: "Replay today's continuation decision on a captured disproved-premise submission and a plan-defect lineage, showing both reach a next attempt or nothing; then route both through the classifier.",
+        red_control: "The replay above goes red: a criterion-meeting capture or a plan-defect lineage that produces a next attempt fails the witness. A non-criterion blocked capture still produces a next attempt, and a ready capture is unchanged. The result pass returns a terminal result for a plan-defect lineage.",
+        out_of_scope: "The decision type and classifier (replan-criterion-and-decision-modeled); the readiness refusal (owed-replan-refuses-dispatch); notifying the control plane, which renders the owed set rather than being sent it.",
+        handback: "The continuation and supervisor-route changes, the closed frontier in the result pass, and the replay witness red before and green after."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "Every escalation that bears on the plan reaches someone who can change the plan."),
+    ),
+    roadmap_node(
+      identity: "rn_0TLOEMMHEYXJF1HB40Q2Y7OCX0",
+      id: "dispatch-brief-asks-for-the-finding",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_spawner.dag"),
+      line: ticket(t: fields(
+        headline: "The dispatch brief asks for the first change the evidence supports, and for the finding when the evidence disproves the premise",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. gunbc.roadmap.roadmap_spawner::dispatch_brief_template stops asking for 'M1 smallest change' and asks for the first change M0's evidence supports. It gains the exit when M0 disproves the premise, rendered from the disproved-premise submission's own fields so the brief and the decode cannot disagree. gunbc.roadmap.roadmap_dispatch_actuator stops filling 'what comes back even if the fix does not land' with 'implementation diff plus receipts', and names the finding and the decision needed. A candidate submitted as ready still owes a diff.",
+        displaced_cost: "The brief tells a worker the smallest diff is the job before it has read the system, so a disproved premise looks like a failure to deliver.",
+        first_slice: "Render the brief for an existing dispatchable node before and after, and compare.",
+        red_control: "A witness over the rendered brief: it names the disproved-premise exit with the same field names the submission decode requires, and contains neither 'smallest change' nor 'implementation diff plus receipts' as the answer for a fix that does not land.",
+        out_of_scope: "The submission decode (disproved-premise-is-a-submission-outcome); the belt's routing (escalations-route-to-the-replan); the control plane's own brief text.",
+        handback: "The template and renderer changes, a rendered brief before and after, and the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The assignment itself says that a wrong premise is a finding to bring back."),
+    ),
+    roadmap_node(
+      identity: "rn_TONKAGF0HZPT832Y8DNDBT8Q94",
+      id: "how-to-work-names-contributor-ownership",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/design_argument.dag"),
+      line: ticket(t: fields(
+        headline: "how_to_work states the contributor's responsibility for a disproved premise, its reviewer asks about it, and it is first-day reading",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. Edit the existing claim, adding no new row: gunbc.design_argument::how_to_work gains the responsibility shared by authors, reviewers and managers. Once there is concrete evidence a premise is wrong, follow it far enough to correct it within your authority or put it in the hands of someone who can; preserving a sound design after understanding it is good work; a number may confirm or refuse a design, never choose the fix. Its review part gains the tells of transactional work: a brief forced through against evidence the change itself contains; a repair chosen by one number on one axis; a fix at the named site when the contract failure is upstream, which consumes gunbc.design_argument::earliest_unjustified_boundary rather than restating it. gunbc.design_document's rendered explanation follows, and gunbc.contributor_onboarding_path moves how_to_work from WhenItBites to first-day priority. DESIGN.md is regenerated in the same change. Citations are by symbol only.",
+        displaced_cost: "The ownership stance is implicit across several claims, and the how-to-work reviewer asks only about temporary work and workarounds, so a tidy diff that forces a wrong brief through passes every belt reviewer.",
+        first_slice: "Draft the statement and the tells beside the existing claims they rest on (earliest_unjustified_boundary, continuous_generalization, plans_are_intentions), naming what is new and what is consumed.",
+        red_control: "The derived review roster carries the new tells for the how-to-work criterion; the onboarding witness reads first-day priority for how_to_work; DESIGN.md regenerated equals the projection. A belt how-to-work reviewer, given a fixture diff that deletes rows not matching the brief's description in the manner #17120's worker refused to, rejects it, and approves the corrected version. If no harness runs a belt reviewer against a fixed diff, the handback says so and names it as this item's unmet red, rather than claiming the reviewer catches it.",
+        out_of_scope: "A new design row or a new reviewer for ownership; GitHub pull request review prompts; the control plane's working agreements.",
+        handback: "The design-argument, design-document and onboarding changes, the regenerated DESIGN.md, and the reviewer fixture result or the named missing harness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The design states what every contributor owes when a premise fails, and the belt's reviewer asks it."),
+    ),
+    roadmap_node(
+      identity: "rn_JZWUD79KP099IHR271SPCZ1ANX",
+      id: "criterion-reviewer-approves-its-criterion",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_review_guidance.dag"),
+      line: ticket(t: fields(
+        headline: "A belt criterion reviewer's approve means no defect on its one criterion; goal sufficiency is the goal audit's alone",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. gunbc.harness.harness_review_guidance defines approve as 'the change does what the goal states and nothing the non-goals forbid' and tells the reviewer to judge the diff against the goal, while gunbc.roadmap.roadmap_review_criteria assigns the goal question to the goal audit alone. That is two authorities for one judgment. Approve becomes no defect on the stated criterion, and the reviewer is told to follow the dependency from the change to a defect that would make a claim of the change false. gunbc.roadmap.roadmap_review_role::review_brief keeps only the per-candidate facts the criterion needs; whether its goal and out-of-scope lines stay is decided by what the criterion reads. The goal audit is unchanged.",
+        displaced_cost: "Each criterion reviewer re-judges the goal against the ticket's boundary, so the brief's framing fences every review and a finding outside the ticket reads as off-topic.",
+        first_slice: "Render a criterion reviewer's system prompt and brief before and after, and confirm the goal audit's is unchanged.",
+        red_control: "A witness over the rendered reviewer guidance: the approve word names the criterion and does not name the goal; the goal audit's approve word still names the goal and the displaced cost. The existing review-role and review-function witnesses stay green.",
+        out_of_scope: "The goal audit; GitHub pull request reviewers; new criteria.",
+        handback: "The guidance and brief changes, the rendered prompts before and after, and the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "Each belt reviewer judges its own criterion, so judging the goal has one home."),
     ),
     // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
     // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
@@ -8100,6 +8308,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "gunbhub_source_of_truth_plan: gunbc's own source control is the authority over what landed. Target: dag/gunbc/plans/gunbhub_source_of_truth.dag."),
     ),
     roadmap_node(
+      identity: "rn_S8GJNH5FEC0WXJVW1S1WTKGB69",
+      id: "github-actions-deleted",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/github_actions_retirement.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "GitHub Actions is deleted: no workflows but the exempt gunb.ai Pages deploy, no runners, no credential trusting an Actions token",
+        boundary: "The deletion milestone the operator asked for on 2026-11-24 (gunbc.design_ruling::github_actions_are_wound_down_entirely_2026_11_24). At this read main has nine workflows (branch-run-grant-broker, drift-watch, fleet-converge, heal-publish, heal, hosted-runner-shadow-gate, instrument-dispatch, microvm-shakedown, witnesses), each emitted from a .dag module, and gunbc.auth.github_gcp_federation admits GitHub's OIDC issuer into Google workload-identity pools. Each workflow's operation gets a named fabric route or is retired for want of a consumer; then the workflow, its emitter, the runner registrations and every pool, secret, environment and app permission that serves only Actions are deleted, not disabled. Moving the source repository off GitHub is not part of it. THE ONE EXEMPTION: gunbc.site.gunb_ai_pages_workflow (gunb-ai-pages, the gunb.ai GitHub Pages deploy) and the pages and id-token grants its job holds are exempt (gunbc.design_ruling::gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26); it is among the last Actions uses to go, and moves to a route that is not GitHub Pages when gunb.ai needs more than a static site. It needs no Google workload-identity pool, so the Google-side deletion is unaffected.",
+        displaced_cost: "Actions stays a second execution authority and its identity tokens stay a trust root: today any same-repository pull-request job can reach the srv3 BMC secret and the R2 token through the repository-wide pool, an exposure the operator accepted until this deletion rather than narrowing it.",
+        first_slice: "Account for each of the nine workflows: its consumer, its fabric route or its retirement. Delete the retired github-heal-publisher pool and any workflow with no consumer first, since neither waits on the verdict switch.",
+        red_control: "OPEN: not yet measured. The pair to execute: after deletion no workflow other than the exempt Pages deploy (gunbc.site.gunb_ai_pages_workflow) runs, a workflow file pushed on a branch runs nowhere and gets no token, and a token minted by any GitHub Actions run is refused by every Google project's security token service, read from the live estate; the required check on the same commit still publishes, from a fabric receipt.",
+        out_of_scope: "GitHub as the code repository, a separate question. Narrowing the pools before deletion, which the operator skipped.",
+        handback: "The per-workflow account, the deleted workflows, emitters, runner registrations and pools, and the live-estate read showing no provider admits the Actions issuer."
+      ), on: "2026-11-26", note: "merry-eagle-717 (asked by keen-dove-217): headline, boundary and red control narrowed to except the gunb.ai Pages deploy, which the operator exempted (gunbc.design_ruling::gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26). Actions stays enabled for that one workflow, so the red reads as no other workflow running.")),
+      parent: in_project(project: "work-execution-redesign", contribution: "The end of the old execution route: once the verdict comes from a fabric receipt, Actions is deleted rather than kept beside it."),
+      centering: plan(text: "github_actions_retirement_plan: gunbc runs no GitHub Actions. Target: dag/gunbc/plans/github_actions_retirement.dag."),
+    ),
+    roadmap_node(
       identity: "rn_G75EV6NFA5Y20CRRZKH42F629W",
       id: "empty-service-admissibility",
       owner: "self-host",
@@ -8444,6 +8669,467 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       parent: in_project(project: "compiler-guarantee", contribution: "Each closes one ordinary-floor class the blocking door requires."),
     ),
+    // ---- #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (regrouped 2026-11-26).
+    // The container this plan's rows are members of: a level node, never dispatched, met only through its members.
+    roadmap_node(
+      identity: "rn_FTRR7M7XS9YBVJRAG6DEV7NSJB",
+      id: "remote-build-bandwidth",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/remote_build_bandwidth.dag"),
+      line: ticket(t: level_fields(
+        headline: "Every candidate serving host serves a pinned compile and a pinned claim run end to end, with no hand cleanup of host state",
+        boundary: "The program, not the keystrokes. It owns the repository's claims about remote build serving: that each candidate host (srv1, srv3, srv4, ken, butch) answers pinned remote compiles and claim runs read back at served=true, that blockers are found by one read-only survey rather than one at a time by live converges, that a refused reservation never charges the pool, and that a request is wall-bounded on the host. Physical host actions and the operator's standing decisions (the CPU cap, the held srv3 request) are the operator's and stay out.",
+        approach: "Three layers, each a row under this one. Layer 0 is the general fixes, which run in parallel and unblock every host, including the read-only precondition survey that finds the blockers at once. Layer 1 is per host, each row waiting on the layer-0 rows its own boundary names. Layer 2 is what only a host in service makes possible or cheap. The plan carrier holds the intention, the survey evidence and the operator's open questions.",
+        red_control: "Met only through its members: every member row is either accepted or refused with a reason, and no host counts as serving without a pinned compile and a pinned claim run read back at served=true with no hand cleanup before or after.",
+        displaced_cost: "Four hosts sit unable to serve while one carries all the test evidence (load 48, about 48 min per gunbc test), and blockers surface one at a time through live converges -- the shape the operator named as how the mtcollins program died.",
+        handback: "Every candidate host on the serving roster with its receipts, the survey route that found the blockers in one pass, and the plan's open questions answered by the operator."
+      )),
+      parent: in_project(project: "work-execution-redesign", contribution: "The admitted remote-build bridge serves from every candidate host, so CI and sessions have bandwidth while the durable route is built."),
+    ),
+    // Layer 0: the general fixes, which run in parallel and unblock every host.
+    roadmap_node(
+      identity: "rn_D6KLH87FHH9C0DHY91WYLKE6R3",
+      id: "remote-build-census-refused-reservation-never-charges",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/work_provider_local.dag"),
+      line: ticket(t: fields(
+        headline: "A terminal slot the capacity ledger never charged is skipped by the attempt-record census instead of held unknown",
+        boundary: "Bug A of the 2026-11-26 read-only survey, stated in the plan's section 4: srv1 09bcdd84...#8 and srv3 2c56092...#2 carry state terminal:recovered with detail 'reservation refused: ... pool-full (attempt 1)' and granted_kib 23068672. No seat was granted and no unit existed, yet the census demands proof that a unit ended and keeps a charge. Admission reads only the capacity ledger, and a refused reservation never enters it, so the refused slot can never obtain unit proof: it is permanent census poison, the census stays unknown, and the serving converge refuses on it. The fix shape the survey states: a terminal slot the ledger never charged is skipped; an unreadable ledger stays unknown. Serves the plan's done-when 3.",
+        displaced_cost: "srv1's and srv3's converges refuse on records that charged nothing, and the operator's ruling srv1_stale_seats_released_proven_ended_2026_11_26 (#17124) has to release seats by hand as a fallback.",
+        first_slice: "Decide the census verdict from what the ledger charged: skip a terminal slot it never charged, and keep an unreadable ledger unknown.",
+        red_control: "A refused-reservation record is census-charged.",
+        out_of_scope: "reporting every unclassifiable slot in one pass (remote-build-census-reports-every-unknown); the ledger's per-host owner and mode (serving-capacity-ledger-owner-per-host); the operator's stale-seat release ruling, which stays a fallback.",
+        handback: "srv1's and srv3's attempt-record census reading closed with the refused-reservation records still on disk, and a converge that no longer refuses on them.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: the census must agree with what the ledger charged, or no host's converge can close. Target: gunbc.compute.work_provider_local's recovery census and its ledger read."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The census stops treating a slot that charged nothing as an unknown, so a serving converge can finish on its own records."),
+    ),
+    roadmap_node(
+      identity: "rn_5Y785GP6BFM009620CV6A3OWDD",
+      id: "remote-build-census-reports-every-unknown",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/work_provider_local.dag"),
+      line: ticket(t: fields(
+        headline: "The census classifies every attempt slot and reports every unknown, not the first one",
+        boundary: "The corrected reading of Bug B (crisp-pike-295, 2026-11-26, from run logs and code): there is no spool-lookup bug. The census fold short-circuits at the FIRST unknown slot, so srv1 011dfdd...#1 (terminal:succeeded, its spool record at attempt-exit-spool/1005/done/011dfdd...+70c25cd...+success+exited+0) was never classified at all. The fix is that the fold classifies every slot and reports all unknowns. The stop hook works: ExecStopPost install -d .../attempt-exit-spool/1005/done/<id>+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}, and records exist on all three serving hosts. Serves the plan's done-when 3.",
+        displaced_cost: "one unknown slot hides every slot behind it, so a converge lists one blocker per run and the operator clears them serially -- the phase the operator closed on 2026-11-26.",
+        first_slice: "Make the census fold total over slots: classify all of them, then report every unknown with its record id.",
+        red_control: "Two unknown slots both appear in the refusal.",
+        out_of_scope: "the ledger-charge rule that decides what is classifiable at all (remote-build-census-refused-reservation-never-charges); the spool's write side, which the survey found working; the per-host survey that reads these verdicts (remote-build-serving-precondition-survey-route).",
+        handback: "A census output listing every unclassifiable slot on a host in one pass, with srv1's 011dfdd classified.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: blockers are found all at once, and a fold that stops at the first unknown cannot do that. Target: gunbc.compute.work_provider_local's census fold."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The census classifies every slot and names every unknown at once, which is what makes one survey report complete."),
+    ),
+    roadmap_node(
+      identity: "rn_WG2MYCIUI9C5GV2VQ7FEL55K0O",
+      id: "remote-build-request-host-wall-bounds",
+      owner: "fleet",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/compute/remote_build_wire.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/compute/remote_build_serve_front_door.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "A request is wall-bounded on the host: a bound on how long it may wait to start, and one on how long it may run",
+        boundary: "The plan's done-when 4. The leg's ceiling is carried in the wire words (gunbc.compute.remote_build_wire), and the front door's hand-off runs the child under it; a request whose start is delayed past its bound refuses instead of queueing. Both bounds are enforced host-side, so a client that gives up, or is merely old, cannot hold a seat for hours. The survey read exactly that on srv3: a request from srv2 held since 2026-11-25 12:46 with the TCP connection still established, and a claim-run unit running since 06:07.",
+        displaced_cost: "a seat held by a request nobody is waiting for is bandwidth the fleet does not have, and srv3 is the one host currently serving.",
+        first_slice: "Carry the leg ceiling in the wire words and run the door's child under it, then add the bound on waiting before start.",
+        red_control: "Removing the bound reproduces a child that outlives its leg.",
+        out_of_scope: "the serving probe leg's ceiling figure, which is a host read (remote-build-serving-probe-ceiling-from-host-read); the operator's decision on the request held since 2026-11-25 (plan section 5); client-side timeouts, which are not enforcement.",
+        handback: "A host that refuses an over-bound request with a typed cause, and a seat that returns without hand cleanup when a client gives up.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: nothing that never ends is bandwidth. Target: gunbc.compute.remote_build_wire's words and the front door's hand-off."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "A request cannot hold a seat past its wall bound, so a host stays available for the next one."),
+    ),
+    roadmap_node(
+      identity: "rn_ACV3GXHZQIFGVBD3HLI4A2Y0OI",
+      id: "serving-capacity-ledger-owner-per-host",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/host_capacity.dag"),
+      line: ticket(t: fields(
+        headline: "The serving capacity ledger's owner and mode are stated per host, not inherited from srv1's",
+        boundary: "In flight as gunbc#17112. The 2026-11-26 survey read /opt/gunbc/compute/capacity as briansrls:gunbc-compute 03770 on srv1, briansrls:gunbc-compute on srv3 and srv4, and ABSENT on ken and butch. Done when #17112 is merged and ken's and butch's desired state names only converge-ensured members.",
+        displaced_cost: "a host whose ledger is absent or owned by the wrong principal cannot admit a reservation at all: ken's and butch's converge has nothing to write a capacity row into.",
+        first_slice: "#17112's merge, then the two hosts' desired state naming only converge-ensured members.",
+        red_control: "A desired state naming a ledger member the converge does not ensure is refused rather than converged into a hand-made group.",
+        out_of_scope: "what the pool's width is for a host with no CI runners (serving-build-pool-for-zero-ci-host); the seat and lease law itself (gunbc.compute.attempt_lifecycle).",
+        handback: "ken's and butch's ledger rows present, owned and mode-set by the converge, and both hosts' desired state admitting only ensured members.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a host cannot reserve against a ledger it does not have. Target: gunbc.compute.host_capacity's per-host ledger state."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "Each host's capacity ledger has one converge-ensured owner, so a new host's ledger row is settled rather than hand-made."),
+    ),
+    roadmap_node(
+      identity: "rn_WKC0HADL763RTDMPU0BQVFCF8R",
+      id: "remote-build-shadow-gate-remote-steps-run",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/witness/hosted_runner_shadow_gate_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "The shadow gate's remote steps actually run",
+        boundary: "In flight as gunbc#17129 (the git credential config key). Done when the first workflow_dispatch reaches a real leg.",
+        displaced_cost: "the gate whose job is to compare the remote path against CI compares nothing while its remote steps are skipped.",
+        first_slice: "#17129's merge, then one workflow_dispatch read at a real leg.",
+        red_control: "A dispatch whose remote steps are skipped while the job is green.",
+        out_of_scope: "making the remote verdict required, which is work-exec-5-ci-verdict-from-receipt's; the gate label passing remotely, which this intention defers to the work-execution-redesign program (plan section 1).",
+        handback: "One workflow_dispatch run id whose remote leg executed, read from its log.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a gate that skips its subject is not evidence. Target: gunbc.witness.hosted_runner_shadow_gate_workflow's steps."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The shadow gate's remote steps run, so a remote-build change is proven before it reaches a serving host."),
+    ),
+    roadmap_node(
+      identity: "rn_N5JMCGKO2UI9LTA629DP2UGL9V",
+      id: "remote-build-serving-precondition-survey-route",
+      owner: "fleet",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/fleet/fleet_converge_workflow.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/fleet/fleet_host_truth_read.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "One read-only dispatch reports every unmet serving precondition on every candidate host",
+        boundary: "The plan's done-when 2. A read-only fleet-converge observe mode (or an extension of gunbc.fleet.fleet_host_truth_read, #16966) reporting per host: accounts, groups and members, linger, user@ slice and delegation, work slice memory.max, ledger owner and mode, forced-command entry, checkout revision, serve binary digest, toolchain, CPU ceiling, tailnet tags, live gunbc-compute units, and attempt-record census verdicts. It reports ALL of them, not the first refusal. The 2026-11-26 survey in this plan's section 4 was run by hand, from srv2, at the operator's direction, with no host mutated; this row makes that survey a modelled route so the next one is one dispatch.",
+        displaced_cost: "the process the operator named on 2026-11-26: 'somehow we need to fine all of the current blockers instead of serially - our process is too slow'. Each blocker today is found by a live converge that stops at its first failure.",
+        first_slice: "One observe pass over srv1, srv3, srv4, ken and butch printing the whole per-host list, with no host mutated.",
+        red_control: "A host with two unmet preconditions reported as one.",
+        out_of_scope: "mutating anything: this route is read-only; the fixes themselves, which are this intention's other rows; the existing consumers of the host-truth read, which keep their own claims.",
+        handback: "One dispatch whose output lists every unmet precondition per candidate host, diffed against the 2026-11-26 hand survey.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: find every blocker at once. Target: the fleet-converge observe mode and gunbc.fleet.fleet_host_truth_read."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "Every candidate host's unmet preconditions come back in one read-only dispatch, which is the regroup's whole point."),
+    ),
+    roadmap_node(
+      identity: "rn_VS43GZEPPNY6FP6IVOLS5G3XAI",
+      id: "fleet-converge-dispatch-admission-step-slim-entry",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_converge_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "The fleet-converge dispatch-admission step enters through a slim entry instead of resolving the whole pool",
+        boundary: "The 'hostname converge dispatch admission' step resolves 1585 modules (301 s, 6.1 GiB) to print 'not this mode', and dies at its 5-minute step timeout (runs 45770097040, 45773631715). The answer is a slim entry, not a bigger timeout (gunbc.design_ruling::ci_job_budgets_closed_to_growth).",
+        displaced_cost: "srv4 has never been observed by the fleet-converge route at all -- the step times out before it reads anything -- and every host queued behind it in that job is unobserved too.",
+        first_slice: "An entry point for that step that resolves only what the mode check needs and prints the same verdict.",
+        red_control: "The step resolving the full pool again, or a timeout raise standing in for the slim entry.",
+        out_of_scope: "any raise to a CI time or memory budget, which the operator has closed to growth; the converge's other steps.",
+        handback: "A fleet-converge run id where the admission step resolves a bounded module count and srv4 is observed.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a host cannot be fixed by a route that never reads it. Target: gunbc.fleet.fleet_converge_workflow's dispatch-admission step."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The hostname_converge dispatch-admission step resolves a slim entry, so a converge leg stops dying at its own step timeout."),
+    ),
+    roadmap_node(
+      identity: "rn_GZM3BDD0JEM8ZPP3AYEDR02HVZ",
+      id: "serving-observe-assesses-installed-revision",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serving_converge.dag"),
+      line: ticket(t: fields(
+        headline: "Serving observe assesses against the dispatched ref, not a remembered revision",
+        boundary: "Observe derives its desired state from the dispatched ref, so a host that has just converged always reports checkout and serve_binary drift. The survey's reads are the population: srv1 checkout 71b23d66 with a serve bin from 2026-11-26 03:18, srv3 a8034c12 with 160f8a56, srv4 f41ce8aa with a bin from 2026-11-21. Drift must mean the difference against the ref actually dispatched, or observe cannot be the pre-service read.",
+        displaced_cost: "every converge pays a re-install of a checkout and binary the host already has, or the operator learns to ignore observe -- and observe is what the per-host rows read first.",
+        first_slice: "Derive the desired checkout revision and serve-binary digest from the dispatched ref and compare them against the host read.",
+        red_control: "A just-converged host still reporting checkout and serve_binary drift.",
+        out_of_scope: "how a serve binary is produced for a host the CI pool cannot upload to (remote-build-ken-serves); the survey route's per-host read (remote-build-serving-precondition-survey-route).",
+        handback: "An observe pass that reports no drift on a freshly converged host, and drift on a stale one.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: the read that says a host is ready must not lie about drift. Target: gunbc.compute.remote_build_serving_converge's observe leg."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "Observe reads the revision actually installed, so a just-converged host's drift is visible instead of invented."),
+    ),
+    roadmap_node(
+      identity: "rn_UMY8RLK5VTA323TTLT3AY10JQ6",
+      id: "serving-converge-applied-then-refused-is-typed",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serving_converge.dag"),
+      line: ticket(t: fields(
+        headline: "A converge that applied every arm and then refused says applied-then-refused in its receipt",
+        boundary: "srv3's converge 45762320308 applied all its arms and then exited 1 at recover-catalog. Its receipt must read applied-then-refused rather than failed, so the next run does not re-apply what landed and nobody is told the host is unchanged.",
+        displaced_cost: "a refused-after-apply converge hides what already landed: srv3's recovery leg is the last thing between it and serving, and reading it as a failure invites a re-converge that could undo the arms.",
+        first_slice: "Type the leg reading as arms applied plus a named refusal, and carry it into the receipt.",
+        red_control: "A converge that applied arms and then refused printing the same receipt as one that applied nothing.",
+        out_of_scope: "why recover-catalog refused on srv3 (the two census rows); the recover-catalog leg's own acceptance bar.",
+        handback: "Receipt text naming both halves: what was applied, and the refusal that followed.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a receipt that hides what landed restarts work already done. Target: gunbc.compute.remote_build_serving_converge's receipt shape."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "A converge that applied arms and then refused says so, so a host's state after a refusal is readable."),
+    ),
+    roadmap_node(
+      identity: "rn_H5L9U8DSPF5N6C36GUV05JPOS4",
+      id: "fleet-drain-jobs-join-host-mutation-group",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_converge_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "The drain jobs serialize with the host's other mutations in one host-mutation group",
+        boundary: "Carried from closed gunbc#16813 (branch sleek-koi-601/drain-trio-subject-domain as the shape reference). The attempt-unit drain runs are not in the host-mutation group the converge's steps write under, so a drain can mutate a host while a converge mutates it.",
+        displaced_cost: "a converge and a drain racing on one host produce a state neither read explains, and the census rows above are read mid-change.",
+        first_slice: "Put the drain jobs in the same host-mutation group the converge's steps use.",
+        red_control: "A drain and a converge admitted for one host at the same time.",
+        out_of_scope: "the drain's own unit law (gunbc.compute.recorded_cgroup_drain); the group's membership rules beyond adding these jobs.",
+        handback: "One run where a drain and a converge on the same host are serialized by the group, read from the workflow.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a host read is only evidence if nothing else is mutating the host. Target: the host-mutation group in gunbc.fleet.fleet_converge_workflow."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "Drain jobs join the host mutation group, so host work stops colliding with the drain emptying it."),
+    ),
+    roadmap_node(
+      identity: "rn_OKNA813M6K1U215W9IHEZC9LYH",
+      id: "remote-build-client-pin-reaches-sessions",
+      owner: "ctrl/session image",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_client.dag"),
+      line: ticket(t: fields(
+        headline: "The remote-build client pin reaches the session containers that call it",
+        boundary: "ctrl#2540 merged (pin b4c9972 plus a fail-closed gate), but session containers still run /usr/local/bin/remote-build dated 2026-11-20 with no ceiling. Done when the deployed copy carries the gate. The ceiling the client sends is what the host-side bounds (remote-build-request-host-wall-bounds) act on.",
+        displaced_cost: "sessions send unbounded requests, so the host-side bounds have nothing to enforce and the pinned client's fail-closed gate protects nobody.",
+        first_slice: "Ship the pinned copy into the session image and read the deployed file's digest back.",
+        red_control: "A session whose /usr/local/bin/remote-build predates the gate.",
+        out_of_scope: "the host-side bounds themselves (remote-build-request-host-wall-bounds); ctrl's session guidance text, which this intention defers to the work-execution-redesign program (plan section 1).",
+        handback: "A session container whose remote-build copy matches the pinned revision and refuses without a ceiling.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a bound the client never sends cannot be enforced by the host. Target: the session image's deployed remote-build client."),
+      dispatch: Present { value: Dispatchable { repo: "ctrl", acceptance: ManualAcceptance } },
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The pinned client with its fail-closed gate is what session containers actually run, so sessions ask for what the host enforces."),
+    ),
+    roadmap_node(
+      identity: "rn_5FAPEZ50YMJ22ICA3ILLMB3T3I",
+      id: "serving-build-pool-for-zero-ci-host",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/host_capacity.dag"),
+      line: ticket(t: fields(
+        headline: "A host with no CI runners still needs a build pool: its capacity row needs its own rule",
+        boundary: "host_build_pool_is_carved(srv14) becomes true once butch is rostered, so its reservation is one CI runner slot. But butch's CI width is ruled ZERO and the 192 GiB charge was released to the pool (#17005), so nothing can be carved. The capacity authority for a host with no CI runners needs its own rule, or a ruling, before butch's capacity row. It probably applies to ken too, which has no runners. The addendum's read-only check: ken and butch both reach github.com, static.rust-lang.org and index.crates.io (HTTP 200), so converge egress is not a blocker; ken has 333G free and butch 247G.",
+        displaced_cost: "ken's and butch's capacity rows cannot be written, so their reservations have no pool to be admitted against, and both hosts' serving rows wait on this.",
+        first_slice: "Name the rule, or ask for the ruling, that decides the build pool of a host with zero CI runners, and write butch's and ken's capacity rows from it.",
+        red_control: "A reservation refused for want of a carved runner slot on a host that has no runners by ruling.",
+        out_of_scope: "butch's CI width, which the operator ruled zero (#17005); the ledger's per-host owner and mode (serving-capacity-ledger-owner-per-host).",
+        handback: "butch's and ken's capacity rows admitted under a named rule, with the rule or the ruling cited on this row.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: two of the five candidate hosts have no runners, and a pool carved from runners is empty for them. Target: gunbc.compute.host_capacity's build-pool derivation."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "A host with no CI runners gets its own capacity rule, so ken and butch can have a capacity row at all."),
+    ),
+    roadmap_node(
+      identity: "rn_VL3GL4EVYNEQYTIAXD7SE9NVNN",
+      id: "gunbc-entries-resolve-checked-in-ci",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/witness/compiler_gate_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "Every declared entry a route uses is resolved by a check in CI, so a call-shape break fails a PR",
+        boundary: "Every declared entry used by a route -- the instrument gates, the fleet-converge steps, the remote-build client and serve entries -- is resolved in CI, so a call-shape break fails a PR instead of being found at full closure cost by whoever runs the entry next. Evidence, 2026-11-26: a93c6559c97 broke generated_artifact_gate through a call-shape mismatch at dag/gunbc/site/gunb_ai_pages_workflow.dag:88, which loyal-badger found only after a 1252 s / 13.5 GiB resolve; the hostname-admission step spends 301 s twice; the client witness entry took 704 s to refuse. Design first -- a cheap per-module check rather than a full closure -- and keep it under budget (gunbc.design_ruling::ci_job_budgets_closed_to_growth).",
+        displaced_cost: "each break is paid at full closure cost by whoever runs the entry next: 1252 s and 13.5 GiB on one, 301 s twice on another, 704 s to refuse on a third -- and the merge that caused it stays green.",
+        first_slice: "A design note: what per-module check resolves the declared entries of a route, which population it covers, and its measured cost against the admitted budget.",
+        red_control: "Reintroduce the claim_run argument and the check fails.",
+        out_of_scope: "raising any CI time or memory budget, closed to growth; judging witness bodies -- the check resolves entries, it does not evaluate claims; full-closure resolution as the mechanism, which is the very cost this row exists to avoid.",
+        handback: "The check enrolled on the required lane with its measured per-PR cost, and the planted call-shape break refused by it.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: the fleet's own routes break silently at merge and the cost lands on whoever runs the entry next. Target: gunbc.witness.compiler_gate_workflow's entry resolution."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "Every declared entry a route uses is resolved in CI, so a call-shape break fails a PR instead of costing the next person a full closure."),
+    ),
+    roadmap_node(
+      identity: "rn_5SQT43AE6Q1ZVDNJEDVX6RK334",
+      id: "remote-build-census-proves-ended-without-root-cgroup-events",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/work_provider_local.dag"),
+      line: ticket(t: fields(
+        headline: "The proof that a unit ended works on hosts with no root cgroup.events file",
+        boundary: "Bug C of the 2026-11-26 survey work (still-tern-419, run logs): srv3's converge 45762320308 refuses on seat 2c560927..#1 -- terminal:recovered, no unit, no stop-hook record -- because the unit-ended proof reads /sys/fs/cgroup/cgroup.events, which does not exist on these hosts; 250433fc..#1 has the same shape. This is crisp-pike-295's paused cgroup-absent fix. It is a different defect from the two census rows: those misclassify what the ledger charged, this one cannot read any proof at all. Serves the plan's done-when 3.",
+        displaced_cost: "srv3's converge stays refused on seats whose units are gone, no matter how many of the census fixes land.",
+        first_slice: "Prove a unit ended from the records the host does keep -- the stop-hook spool record and the unit's own absence -- rather than from a cgroup file this host layout never provides.",
+        red_control: "A seat whose unit is gone and whose cgroup path is absent stays unknown.",
+        out_of_scope: "the census's ledger-charge verdicts (remote-build-census-refused-reservation-never-charges, remote-build-census-reports-every-unknown); any host mutation.",
+        handback: "srv3's converge past both seats, with the proof it used named in the receipt.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 3, in srv3's shape of unknown. Target: gunbc.compute.work_provider_local's ended-unit proof."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The ended-unit proof works on hosts with no root cgroup.events file, so seats whose units are gone stop reading as unknown."),
+    ),
+    roadmap_node(
+      identity: "rn_TJ92FE73SB5Y4JBRQXNWT91S5S",
+      id: "remote-build-run-level-leg-budget",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build.dag"),
+      line: ticket(t: fields(
+        headline: "A run's summed leg ceilings are bounded against the step bound that carries it",
+        boundary: "A probe overrun moves the walk on to the next host, but a request overrun answers HostOutcomeUnknown and stops the walk; with two rostered hosts, 2 x 1500 s already exceeds the 1800 s step bound, and no row models the run total. Design first, and stay inside the admitted budgets (gunbc.design_ruling::ci_job_budgets_closed_to_growth).",
+        displaced_cost: "One host's overrun spends the whole step, and the run's verdict becomes the step timeout instead of a per-host answer.",
+        first_slice: "Model the run total: sum the leg ceilings a run can spend, and refuse a run whose ceilings exceed its step bound.",
+        red_control: "A run whose summed leg ceilings exceed its step bound is admitted.",
+        out_of_scope: "raising any budget; the per-leg ceilings themselves (ServingProbeLeg, HostBuildLeg at 900 s); remote-build-serving-probe-ceiling-from-host-read.",
+        handback: "A run-level budget check the dispatcher reads, with the arithmetic in the refusal.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 4 at the level of the whole run, not the single leg. Target: gunbc.compute.remote_build's host walk and its step bound."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "A run's leg ceilings are bounded against its step bound, so one host's overrun cannot spend the whole walk."),
+    ),
+    // Layer 1: per host, each after the layer-0 rows its boundary names.
+    roadmap_node(
+      identity: "rn_7PI7X0MZSI49YIUB2NQ3SNTJW1",
+      id: "remote-build-srv1-serves",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serving_converge.dag"),
+      line: ticket(t: fields(
+        headline: "srv1 serves a pinned compile and a pinned claim run with no hand cleanup",
+        boundary: "After both census rows. srv1 is where all test evidence is produced today (load 48, about 48 min per gunbc test); it runs the OLD remote_build_serve.dag forced command rather than the front door, with cpu-freq-cap.service active at 2.0 of 3.0 GHz, a ledger at briansrls:gunbc-compute 03770, checkout 71b23d66, a serve bin from 2026-11-26 03:18, 131 attempt records and 17 spool records, two of them the refused-reservation census poison. Two things the survey did not settle: srv1 is OFF the dispatch roster -- remote_build_serving_hosts() is [srv3, srv4] -- so serving dispatch does not reach it until a roster row lands from its receipts; and its front-door install is UNKNOWN, its last clean authorized_keys verdict being from head f2aae263274, before #17114. Converge it to main behind the front door, then read a pinned compile and a pinned claim run back at served=true.",
+        displaced_cost: "the only host making test evidence is the one host that has to carry all of it.",
+        first_slice: "Converge srv1 to main's front door, binary and checkout, then one pinned compile read back at served=true.",
+        red_control: "A receipt at served=true that needed hand cleanup of host state before or after it.",
+        out_of_scope: "the operator's CPU-cap question (plan section 5); the stale-seat release ruling, which stays a fallback; the items this intention defers (plan section 1).",
+        handback: "Two receipts on srv1, one compile and one claim run, both served=true, with the commands and host reads attached.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 1 for srv1. Target: gunbc.compute.remote_build_serving_converge over srv1's row in gunbc.compute.remote_build_hosts."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The host that makes all the test evidence today starts serving pinned work itself."),
+    ),
+    roadmap_node(
+      identity: "rn_88YGJNW1GHFRJYLOR91X11HXT4",
+      id: "remote-build-srv3-serves",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serving_converge.dag"),
+      line: ticket(t: fields(
+        headline: "srv3 keeps serving behind the front door and gives up the probe read",
+        boundary: "After the refused-reservation census row, the host wall bounds, the shadow gate and the cgroup-absent ended-unit proof. srv3 is furthest along: FRONT DOOR entry (#17114), checkout a8034c12, serve bin 160f8a56, a claim-run unit (gunbc-compute-d6481839...) running since 06:07 at 20 GB and progressing, and a request from srv2 held since 2026-11-25 12:46 with TCP still established. Its refused-reservation record 2c56092...#2 poisons its census, and its 15 spool records include one oom-kill. The served probe read for the plan's done-when 5 is taken here, behind the door.",
+        displaced_cost: "the one host already behind the front door is also the one holding a dead request, and the probe ceiling is still a dev box's figure.",
+        first_slice: "Clear the census poison, take the served probe read behind the door, then one pinned compile and one pinned claim run at served=true.",
+        red_control: "A held request outliving its bound, or a probe ceiling still quoted from a dev box.",
+        out_of_scope: "whether the request held since 2026-11-25 is let finish or stopped (plan section 5, the operator's); shrinking the probe ceiling itself (remote-build-serving-probe-ceiling-from-host-read).",
+        handback: "The probe read taken behind the door, and two served=true receipts on srv3.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 1 and 5's read for srv3. Target: gunbc.compute.remote_build_serving_converge over srv3's row."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The host already behind the front door serves, and gives the probe ceiling its host-side read."),
+    ),
+    roadmap_node(
+      identity: "rn_CYZ02OZBW39JOPH8Z0IQ11EFZA",
+      id: "remote-build-srv4-serves",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serving_converge.dag"),
+      line: ticket(t: fields(
+        headline: "srv4 is observed by the converge for the first time and then serves",
+        boundary: "After both census rows. srv4 sits behind the OLD forced command, checkout f41ce8aa, serve bin from 2026-11-21, a 25 GiB work slice, and has never been observed by the fleet-converge route: its two 2026-11-26 observes died in the build job's dispatch-admission step (runs 45770097040, 45773631715), which #17118 (merged 07:34Z) has since gated to mode==hostname_converge, so no srv4 host blocker is known or cleared. It holds 14 spool records. First fleet observe, then converge to the front door, then served receipts.",
+        displaced_cost: "the host that served the first remote compile on 2026-11-21 has not been read by the fleet route since, so its state is folklore.",
+        first_slice: "One fleet observe of srv4 at a current main head, then the converge to the front door.",
+        red_control: "A serve receipt claimed on srv4 without the host having been observed by the modelled route.",
+        out_of_scope: "the CPU-cap question (plan section 5); the slim entry itself, which srv4 no longer waits on now that #17118 gates the dispatch-admission step to hostname_converge.",
+        handback: "srv4's first observe output, then two served=true receipts.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 1 for srv4. Target: gunbc.compute.remote_build_serving_converge over srv4's row."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The host the fleet route never read is observed, converged and made to serve."),
+    ),
+    roadmap_node(
+      identity: "rn_Y0XLIYCVXZ275L2LW8YD0EGP6G",
+      id: "remote-build-ken-serves",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serving_setup.dag"),
+      line: ticket(t: fields(
+        headline: "ken goes from a partial converge to a serving host",
+        boundary: "After serving-capacity-ledger-owner-per-host and serving-build-pool-for-zero-ci-host. ken (x86_64, 128 cores, 125G, 2.0 of 2.18 GHz with no cap service, 333G free, tailnet tags ci+serving) has gunbc-build only on a partial converge and no linger, no ledger, no toolchain and no checkout today (survey, 2026-11-26). A settle on ken must produce, in this order (lively-owl-722's checklist): (1) the gunbc-compute membership settle, gated on #17112; (2) the ledger dir /opt/gunbc/compute/capacity owned by gunbc-build; (3) the store, scratch and ssh/bin dirs, with authorized_keys; (4) the checkout; (5) rustup and the toolchain; (6) linger; (7) the user work slice, whose memory.max equals the ken_strata_engine_memory carve -- read 2026-11-26 as 44 GiB = 47,244,640,256 bytes (user_work_slice_memory_max_for_host(host-e2d4b7) at dag/gunbc/compute/host_capacity.dag:558, 2 charged slots x 22 GiB at dag/gunbc/runner/slice_bounds.dag:329 and :331 and user_work_pool_slots.dag:27), and ken takes that branch rather than host_build_pool_reservation because it is off remote_build_serving_hosts() so host_build_pool_is_carved(ken) is false; (8) the NATIVE x86 serve build (BuildServeBinary, #16885), which depends on (4) and (5) -- the converge's upload route refuses unless the host's architecture equals the executor's, so the host that cannot receive the pool's binary builds its own -- running INSIDE gunbc-user-work.slice with no uncapped fallback: the highest measured build-class peak is 18.2 GiB (gunbc.live_deploy.srv1_worker_slice_receipt) under the fleet's 22 GiB per-build ceiling, so it fits that cap on the cited evidence, and the exact command cargo build --release -p gunbc --bin gunbc has never been measured; (9) the serve unit start. After the settle come the roster row in remote_build_serving_hosts(), grounded in the settle receipt, then a pinned compile whose request carries architecture=X86_64, then the pinned claim run read back at served=true. Egress is not a blocker: ken reaches github.com, static.rust-lang.org and index.crates.io (HTTP 200, read-only check 2026-11-26). Reach is: run 45328032000 failed with 'Could not resolve hostname ken.tailecbe08.ts.net', so resolving and reaching ken from the node that will run the settle is a precondition, not an assumption.",
+        displaced_cost: "the fleet's only x86 serving candidate sits unstarted while srv1 carries all the test evidence.",
+        first_slice: "Resolve and reach ken from the executor that will run the settle, then the settle in checklist order: (1) and (2) once #17112 lands, then (3) through (7), then the native serve build at (8) inside the capped slice, then the serve unit start at (9).",
+        red_control: "A receipt claimed on ken before its capacity row exists, an arm64 binary installed on it, a roster row in remote_build_serving_hosts that is not grounded in a settle receipt, or a ken converge dispatched without a resolve and reach read of ken from its executor.",
+        out_of_scope: "ken as a runner host (it hosts none); the pool rule for a host with no runners (serving-build-pool-for-zero-ci-host).",
+        handback: "ken's executor-class and capacity rows, then two served=true receipts, and the first native serve build's receipt recording its own memory peak -- that reading is what closes the measurement lively-owl-722 left open (highest measured build-class peak 18.2 GiB against the 22 GiB ceiling and the 44 GiB slice; the exact command unmeasured).",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 1 for ken. Target: gunbc.compute.remote_build_serving_setup and ken's row in gunbc.compute.remote_build_hosts."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "An x86_64 host is built up to serving from nothing, so serving is not confined to arm64."),
+    ),
+    roadmap_node(
+      identity: "rn_IEWS4DSUP6WS1J4ERNNIQF1OYJ",
+      id: "remote-build-butch-serves",
+      owner: "fleet",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/compute/remote_build_serving_setup.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/compute/remote_build_hosts.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "butch joins the serving roster through its receipts",
+        boundary: "After serving-capacity-ledger-owner-per-host and serving-build-pool-for-zero-ci-host. butch = operator_host_srv14 (aarch64, 80 cores, 250G, 3.0 GHz with no cap service, 247G free) carries the tailnet tag ci only, which is by design and is enough: the remote-build client reaches serving hosts through tag_ci_dispatch_to_build_hosts_ssh_grant (dst tag:ci, tcp:22, extdeps/tailscale/acl.dag:231-236), the converge peer executor already reached butch:22 with tag:ci only (observe run 45641490241, converge 45686569467), and tag:serving gates only dashboard-to-inference ports 18081-18083 (extdeps/tailscale/acl.dag:211-217); participation is ci_runner_enrollment_participation (gunbc/fleet/fleet_enrollment.dag:241) and serving is role-gated to InferenceServingParticipation (gunbc/tailscale_fleet_auth_key.dag:238-240), so applying it would falsify a host that runs no inference engines (#16848). It has gunbc-build only on a partial converge with no linger. Its settle is the same shape as ken's, in the same order (lively-owl-722's checklist), with butch's values: (1) the gunbc-compute membership settle, gated on #17112; (2) the ledger dir /opt/gunbc/compute/capacity owned by gunbc-build; (3) the store, scratch and ssh/bin dirs, with authorized_keys; (4) the checkout; (5) rustup and the toolchain; (6) linger; (7) the user work slice, whose memory.max equals butch's own strata engine carve; (8) the native serve build for its own architecture (aarch64), which depends on (4) and (5); (9) the serve unit start. After the settle come the roster row in remote_build_serving_hosts(), grounded in the settle receipt, then a pinned compile and a pinned claim run at served=true. Read-only reachability comes before the pinned compile: srv3 and srv4 are known not to see butch over the tailnet, so verify that the node issuing the pinned client compile reaches butch:22. This row also carries the addendum's two steps: flip the gunbc.compute.fabric_executor_class srv14 row from Expected to Observed from a host arch read, and add srv14 to remote_build_serving_hosts after its receipts (the step-6 PR). Whether the native cargo serve build runs inside the capped slice is settled as it is on ken: inside gunbc-user-work.slice with no uncapped fallback, and its receipt records its memory peak.",
+        displaced_cost: "the fastest un-capped host in the fleet is invisible to serving dispatch.",
+        first_slice: "A reach read from the node that will issue the pinned client compile to butch:22, then the settle in checklist order: (1) and (2) once #17112 lands, then (3) through (7), then the native serve build at (8), then the serve unit start at (9).",
+        red_control: "srv14 in remote_build_serving_hosts before its receipts, the executor-class row still Expected after the arch read, or a pinned compile dispatched to butch without a prior reach read from its issuing node.",
+        out_of_scope: "butch's CI width, ruled zero (#17005); applying tag:serving, which nothing here consumes and which would misstate its role.",
+        handback: "butch's receipts, the flipped executor-class row, and the srv14 serving-hosts step-6 PR.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 1 for butch, and the roster row that makes it visible. Target: gunbc.compute.remote_build_serving_setup and remote_build_serving_hosts."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The fastest un-capped host joins the serving roster through its receipts."),
+    ),
+    // Layer 2: what a host in service makes possible.
+    roadmap_node(
+      identity: "rn_LS19TBDETNE1OGFJJHQ0ZTZEQY",
+      id: "remote-build-serving-probe-ceiling-from-host-read",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_known_hosts_anchor.dag"),
+      line: ticket(t: fields(
+        headline: "The serving probe leg's ceiling comes from a serving-host read behind the front door",
+        boundary: "The plan's done-when 5. ServingProbeLeg is 600 s and serving_probe_cold_answer_read asserts Second=240 in gunbc.fleet.fleet_known_hosts_anchor; both are figures taken from a dev box. Shrink them from the read srv3-serves takes behind the door. HostBuildLeg's 900 s stays.",
+        displaced_cost: "a probe ceiling that is a guess costs either a false refusal on a busy host or hours of held seat on an idle one.",
+        first_slice: "Replace the anchor's figure with the srv3 read, naming the host, the time and the command it came from.",
+        red_control: "A ceiling asserted without a named host read behind the front door.",
+        out_of_scope: "HostBuildLeg's 900 s; the request's host-side bounds (remote-build-request-host-wall-bounds).",
+        handback: "The new ceiling, the read it came from, and the probe leg passing on srv3 at it.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a bound on a route nobody has measured is folklore. Target: gunbc.fleet.fleet_known_hosts_anchor's serving probe leg."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The probe leg's ceiling comes from a serving host behind the door, so probes stop timing out on a figure from a dev box."),
+    ),
+    roadmap_node(
+      identity: "rn_F8WDXDQ062IM42M06SLSLEP2GO",
+      id: "remote-build-client-closure-cost",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_client.dag"),
+      line: ticket(t: fields(
+        headline: "The remote-build client's entry stops paying for a closure it does not read",
+        boundary: "The client entry resolves about 906 modules (68 s, 3.6 GiB; 832 s measured on a contended host). Design first: what the client actually reads, and what has to be in its closure at all.",
+        displaced_cost: "832 s and 3.6 GiB at the start of every remote request, paid on the contended host that is the last one serving.",
+        first_slice: "A design note naming what the client entry must resolve and which of its closure it can drop.",
+        red_control: "The client resolving the same 906 modules after the change.",
+        out_of_scope: "implementation, until the design is read; the converge step's slim entry (fleet-converge-dispatch-admission-step-slim-entry), which is the same class in another route.",
+        handback: "The design, then a measured before and after of the client's resolve count, wall time and peak.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a request pays for its entry before it pays for its build. Target: gunbc.compute.remote_build_client's entry closure."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The client entry stops costing a full closure to run, so pinned compiles stay usable from a session."),
+    ),
+    roadmap_node(
+      identity: "rn_DOK3VEPFHMW5TMM1DFIFUDAVGW",
+      id: "remote-build-served-attempt-host-log-read",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_serve.dag"),
+      line: ticket(t: fields(
+        headline: "A served attempt's host log is readable through a modelled read-only route",
+        boundary: "Carried from closed gunbc#16859, and in progress by crisp-pike-295: a read-only fourth operation scoped to the host's own ledger. Without it a remote answer that says work-failed cannot be turned into why: srv4's gate label //gunbc/instruments:v2-native-cli answered work-failed with host exit 101 while the same label is green in CI, and no modelled read could say why.",
+        displaced_cost: "every remote work-failed answer is a dead end until someone reads the host by hand.",
+        first_slice: "crisp-pike-295's read-only fourth operation over the host's own ledger.",
+        red_control: "A served attempt whose log can only be reached by a hand ssh.",
+        out_of_scope: "per-claim verdicts, which ride a typed receipt and are deferred by this intention (plan section 1); the front door's write side.",
+        handback: "One host log fetched through the modelled route and attached to its receipt.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: a verdict a worker cannot read is not a result. Target: gunbc.compute.remote_build_serve's operations, read-only."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "A served attempt's host log is readable through a bounded read-only operation, so a receipt can be checked without a shell on the host."),
+    ),
+    roadmap_node(
+      identity: "rn_MTLTYBE73DZPMZ64OMME5VC0T7",
+      id: "remote-build-executes-the-bound-source",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build.dag"),
+      line: ticket(t: fields(
+        headline: "A remote attempt executes exactly the source its request was identified by",
+        boundary: "Carried from closed gunbc#16859: a retry can execute a modified checkout under a clean identity. The host must refuse, or rematerialize, a checkout that does not match the request's identity.",
+        displaced_cost: "a receipt that names source the host never compiled: the verdict is about a different program than the one that ran.",
+        first_slice: "Bind the identity check to the checkout the leg actually runs in.",
+        red_control: "A retry executing a modified checkout under a clean identity.",
+        out_of_scope: "rematerialization policy beyond the refusal; the materialization ladder's own law.",
+        handback: "A refusal, or a rematerialized run, on a planted modified checkout, with the request identity in the receipt.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: the answer must be about the program that ran. Target: gunbc.compute.remote_build's checkout identity check."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "The host runs the source the request names, so a receipt is about the program that ran."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -8463,6 +9149,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    // ---- #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan (regrouped 2026-11-26).
+    // Layer 0 unblocks every host; each layer-1 host row waits on the layer-0 rows its boundary names;
+    // the probe-ceiling row waits on the host whose read it takes.
+    edge(child: "remote-build-srv1-serves", parent: "remote-build-census-refused-reservation-never-charges"),
+    edge(child: "remote-build-srv1-serves", parent: "remote-build-census-reports-every-unknown"),
+    edge(child: "remote-build-srv3-serves", parent: "remote-build-census-refused-reservation-never-charges"),
+    edge(child: "remote-build-srv3-serves", parent: "remote-build-request-host-wall-bounds"),
+    edge(child: "remote-build-srv3-serves", parent: "remote-build-shadow-gate-remote-steps-run"),
+    edge(child: "remote-build-srv4-serves", parent: "remote-build-census-refused-reservation-never-charges"),
+    edge(child: "remote-build-srv4-serves", parent: "remote-build-census-reports-every-unknown"),
+    edge(child: "remote-build-ken-serves", parent: "serving-capacity-ledger-owner-per-host"),
+    edge(child: "remote-build-ken-serves", parent: "serving-build-pool-for-zero-ci-host"),
+    edge(child: "remote-build-butch-serves", parent: "serving-capacity-ledger-owner-per-host"),
+    edge(child: "remote-build-butch-serves", parent: "serving-build-pool-for-zero-ci-host"),
+    edge(child: "remote-build-srv3-serves", parent: "remote-build-census-proves-ended-without-root-cgroup-events"),
+    edge(child: "remote-build-serving-probe-ceiling-from-host-read", parent: "remote-build-srv3-serves"),
     // The capture-count debt admitted by the plan rather than by its author (vivid-swift-693, 2026-11-25):
     // the consumer row DissolutionCondition names this row, so the trigger is the plan own, not the worker own.
     edge(child: "source-annotation-fold-carries-absorbed-capture-count", parent: "parse-comment-gap-attachment-v2-consumed"),
@@ -8579,6 +9281,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-work-item-projection", parent: "roadmap-schedule-bottlenecks-and-offer"),
     edge(child: "roadmap-work-item-projection", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-timeline-page", parent: "roadmap-work-item-projection"),
+    edge(child: "roadmap-work-item-projection-unbound-coverage", parent: "roadmap-work-item-projection"),
     edge(child: "roadmap-return-to-principal-records-acceptance", parent: "roadmap-claim-names-leaf"),
 
     edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
@@ -8627,6 +9330,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "github-actions-deleted", parent: "work-exec-5-ci-verdict-from-receipt"),
     edge(child: "gunbhub-simple-frontend", parent: "2-scm-p0-landing-spine"),
     edge(child: "gunbhub-authoritative-cutover", parent: "gunbhub-simple-frontend"),
     edge(child: "gunbhub-authoritative-cutover", parent: "2-scm-p0-landing-spine"),
@@ -8817,6 +9521,15 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // true leaf; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
     edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
+    // gunb.ai: the refresh waits on the cutover, so the content is written once, in gunbc (merry-eagle-717, 2026-11-24).
+    edge(child: "gunb-ai-content-refresh", parent: "gunb-ai-deploy-cutover"),
+    // findings reach a replan (swift-deer-673, 2026-11-27): the model first, then the worker exit and the dispatch
+    // refusal, then the continuation route that consumes both and the brief that renders the exit.
+    edge(child: "disproved-premise-is-a-submission-outcome", parent: "replan-criterion-and-decision-modeled"),
+    edge(child: "owed-replan-refuses-dispatch", parent: "replan-criterion-and-decision-modeled"),
+    edge(child: "escalations-route-to-the-replan", parent: "disproved-premise-is-a-submission-outcome"),
+    edge(child: "escalations-route-to-the-replan", parent: "owed-replan-refuses-dispatch"),
+    edge(child: "dispatch-brief-asks-for-the-finding", parent: "disproved-premise-is-a-submission-outcome"),
   ], guarantee_ladder_edges())
 }
 
@@ -9117,10 +9830,9 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // is the fail-open this whole change exists to close
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
 fn roadmap_retired_node_ids_load_over(layout: RoadmapEventCarrierLayout) -> RoadmapRetiredNodeIds {
-  // Reads through the ATTACHED arm of the single read entry point; the fold over what it read is SHARED with the
-  // launcher's scoped read (the _of_read below), so a log nobody opened refuses identically on both paths — one
-  // fold, not two (gunbc.design_argument::root_generalization).
-  roadmap_retired_node_ids_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })))
+  // The fold over what it read is SHARED with the plan projection (the _of_read below), so a log nobody opened
+  // refuses identically on both paths — one fold, not two (gunbc.design_argument::root_generalization).
+  roadmap_retired_node_ids_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)))
 }
 
 // THE SHARED RETIRED FOLD, over an ALREADY-READ log feed. Refused — never empty — when the log cannot be read at
@@ -9822,7 +10534,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "One probe pair per floor class (deliberately-bad input expected to refuse; legitimate control expected to accept), enrolled as expecting-red rows via the known-red quarantine mechanism so today's fail-open state is measured, not asserted. Every currently-legitimate map/fold/filter/flat_map/service invocation form appears as a positive control so a future wall cannot green by refusing the language.",
         displaced_cost: "Replaces anecdote (gunbc#7479's 500) with a counted deficit per class; each wall that lands flips its probes to regression controls loudly.",
         first_slice: "MIGRATE, do not duplicate: the landed controls from gunbc#7484, #7519, and #7485 become the durable per-class probes (one probe pair per class/path, keyed by the measurement schema's identities — never a fresh test family beside each PR). Then the unwalled census classes: generic instantiation, field-through-generic, exhaustiveness-via-blocked-lookup, record completeness, cardinality seam, and the parser silent-separator pair (measured specimen, gunbc#7484 review trail 2026-07-31).",
-        red_control: "A probe that stops expecting red without its class's wall having landed is itself a red (greening is counted); the corpus reds if any probe pair loses its executing consumer.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/guarantee_floor_class_probe_witness.dag and dag/test/claim/guarantee_probe_corpus_witness.dag, both in the tree at this revision. WHAT MAIN HAS TODAY (git grep -l over dag, one file each): identity_registry_is_unique, duplicate_probe_id_reds_registry, every_below_floor_hole_row_is_one_of_the_declared_holes. WHAT THIS NODE MUST ADD, not in the tree at this revision (git grep -l over dag at main returns 0 files for each): counted_below_floor_hole_rows_match_declared_count and floor_cardinality_seam_call_argument_refuses_proving_harness_is_live -- the second is the named negative proving the harness can refuse at all, without which a silent leg is a missing run and not a finding. THE PAIRS THAT DECIDE THIS ROW: duplicate_probe_id_reds_registry must refuse when one probe id is used twice while identity_registry_is_unique stays HELD on the well-formed corpus; every_below_floor_hole_row_is_one_of_the_declared_holes together with the counting leg this node adds must refuse when a below-floor row loses its pair or an undeclared hole appears. GREEN AT counts only when the whole block comes back HELD outcome=Pass with rc 0 on the claim route, one label per operand, the batch own exit status on its own line and the selection-count line beside every count. A probe that stops expecting red before its own class wall has landed is itself a red, and greening is counted: the still-silent legs are hole carriers recorded as recurring_failure_mode rows with a bounded trigger, never accepted behaviour. A PLANTED BREAK MUST NOT BE INERT: a control that stays green with the enforcement gutted measures nothing, so prove the break TOOK by the flip of a NAMED DECIDING leg - its verdict line must move from HELD to DID NOT HOLD inside the red acquisition - not by the batch finishing. Where the enforcement lives at two layers (the .dag source AND its committed generated Rust under src/v1/stage0), the break lands at BOTH, and the log shows the generated half regenerated with the tree zero-diff after regeneration. WHY THIS IS REQUIRED AND NOT HYGIENE: a lane control was recorded asserting seventeen claim(s), seventeen held for a witness module absent from the tree (roadmap review 99033, reproduced by me: git ls-files and git grep over dag/test/claim return 0 files for every leg that row says decides it). A control that cannot fail measures nothing, and a held count is not a measurement.",
         out_of_scope: "No compiler change; probes measure, walls land in the floor-wall nodes.",
         handback: "Probe roster with per-class expected/actual disposition and the enrollment receipt."
       ), on: "2026-09-30", note: "Re-observe: gunbc.guarantee_probe_corpus exists; the handback count is unverified."), on: "2026-09-30", note: "Not yet centered: needs its count re-derived before the bar can be judged.")),
@@ -9890,7 +10602,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "The frontier's measured causes, repaired upstream so the wall can decide them: a lambda-parameter receiver whose type never propagates from the declared fn type it is bound under; a coproduct payload bound by destructuring typed as its variant name; the optional receiver whose cardinality drops before lookup; the brand-alias LEAF form the peel cannot reach (qualified-name leaf, measured and declared on the gunbc#7484 frontier roster). Each repair shrinks the roster in both directions — correct calls resolve, bogus methods refuse.",
         displaced_cost: "Every roster row this discharges converts an admitted-by-key site into a decided one; the frontier ratchet only shrinks.",
         first_slice: "The lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in (10 of 13 measured residue sites).",
-        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/algebra_receiver_annotated_witness.dag legs annotated_fn_parameter_fold_resolves and annotated_list_cons_fold_resolves, which is this row's first_slice -- the lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in; dag/test/claim/algebra_receiver_forwarding_witness.dag legs nested_generic_pattern_still_expands_for_lookup and whole_value_pattern_retains_application_for_later_destructuring; dag/test/claim/algebra_receiver_application_witness.dag leg matched_collection_retains_receiver_type_argument; dag/test/claim/algebra_receiver_self_witness.dag leg folded_structural_collection_can_reverse. NAMED NEGATIVES IN THE SAME RUN: dag/test/claim/algebra_receiver_alias_witness.dag legs alias_return_is_a_refusal_fixture, alias_field_is_a_refusal_fixture and alias_field_refusal_is_a_no_observation_with_its_own_cause must keep refusing, each with its own cause, and dag/test/claim/algebra_expansion_evidence_witness.dag must keep its pair split -- expansion_receiver_raises_the_evidence_diagnostic firing while nominal_receiver_raises_no_evidence_diagnostic stays silent. A repair that makes both raise, or neither, has not made the receiver decidable; it has moved the guess, and that pair is what says so. RED: the green legs above FAIL on main's RELEASED claim_batch -- sha256 read from disk and matched to release-bins.manifest, never built from the PR lineage -- at the main sha printed in the same log, through HEAVY_OWNER with one acquisition per stage, invoked as claim_batch --source-root dag --source-root src/v2 --source-root src/v1 --entry <module> --functions <the legs above, by name>. GREEN: the same names PASS on the branch binary at the final head, each PASS naming its leg, each real exit status on its own line. THE COUNT THAT MUST MOVE: the residue roster in docs/plans/compiler-guarantee-recovery-gap-analysis.md, printed by the same command before and after, falling monotonically as roster rows are discharged with their occurrence budgets. IF A RESIDUE CAUSE IS ALREADY REPAIRED ON MAIN: report it as already landed and obtain the observed red by breaking it off current main with RedProbe (dag/gunbc/roadmap/roadmap_status.dag:78), pushing probe_ref red-control/method-receiver-normalization and never merging it.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/algebra_receiver_annotated_witness.dag legs annotated_fn_parameter_fold_resolves and annotated_list_cons_fold_resolves, which is this row's first_slice -- the lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in; dag/test/claim/algebra_receiver_forwarding_witness.dag legs nested_generic_pattern_still_expands_for_lookup and whole_value_pattern_retains_application_for_later_destructuring; dag/test/claim/algebra_receiver_application_witness.dag leg matched_collection_retains_receiver_type_argument; dag/test/claim/algebra_receiver_self_witness.dag leg folded_structural_collection_can_reverse. NAMED NEGATIVES IN THE SAME RUN: dag/test/claim/algebra_receiver_alias_witness.dag legs alias_return_is_a_refusal_fixture, alias_field_is_a_refusal_fixture and alias_field_refusal_is_a_no_observation_with_its_own_cause must keep refusing, each with its own cause, and dag/test/claim/algebra_expansion_evidence_witness.dag must keep its pair split -- expansion_receiver_raises_the_evidence_diagnostic firing while nominal_receiver_raises_no_evidence_diagnostic stays silent. EACH NAMED NEGATIVE MUST PRINT ITS OWN FIXTURE PARSE rc AND ITS ZERO-BLOCKING COUNT BESIDE ANY REFUSAL COUNT IT QUOTES: a fixture whose embedded source does not parse measures the fixture's string rot, not the compiler's decision, and a refusal arising from an unrelated cause is not this row's named negative (measured on main 2026-11-26: two of these three alias fixtures reported census observed 0 only because their embedded source lexed as Unknown at a ';' separator, and the third accepted an alias-return receiver this row says must refuse). A repair that makes both raise, or neither, has not made the receiver decidable; it has moved the guess, and that pair is what says so. RED: the green legs above DID NOT HOLD on the CLAIM ROUTE by main's released gunbc, or come back UNOBSERVED outcome=ClosureDiagnostics with the refusing diagnostic quoted verbatim beside that command's own rc -- a break that takes the fixture's closure down before the claim evaluates is still an OBSERVED red, because the leg cannot pass and the named diagnostic is the observation; an UNOBSERVED that names no diagnostic is NOT a red. This alternate form is permitted here because it was EXECUTED: the annotated_fn_parameter_fold_resolves and annotated_list_cons_fold_resolves legs came back that way under the executed break, so the row does not demand a verdict word the observed red cannot produce -- sha256 read from disk in the log, never a binary built from the PR lineage -- at the main sha printed in the same log, through HEAVY_OWNER with one acquisition per stage, invoked as gunbc test //test/claim/<module>:<fn> with each label its own operand and roots --source-root dag --source-root src/v2; the verdict vocabulary is HELD outcome=Pass, DID NOT HOLD and UNOBSERVED outcome=..., never PASS or FAIL, and a required witness counts only if it appears BY NAME in the log with its command's own exit status on its own line. GREEN: the same names HELD outcome=Pass on the branch binary at the final head, each HELD naming its leg, each real exit status on its own line. THE COUNT THAT MUST MOVE: the residue roster in docs/plans/compiler-guarantee-recovery-gap-analysis.md, printed by the same command before and after, falling monotonically as roster rows are discharged with their occurrence budgets. IF A RESIDUE CAUSE IS ALREADY REPAIRED ON MAIN: report it as already landed and obtain the observed red by breaking it off current main with the RedProbe variant of gunbc.roadmap.roadmap_status::RedObservation, pushing probe_ref red-control/method-receiver-normalization and never merging it. A PLANTED BREAK MUST NOT BE INERT: a control that stays green with the enforcement gutted measures nothing, so prove the break TOOK by the flip of a NAMED DECIDING leg - its verdict line must move from HELD to DID NOT HOLD inside the red acquisition - not by the batch finishing. Where the enforcement lives at two layers (the .dag source AND its committed generated Rust under src/v1/stage0), the break lands at BOTH, and the log shows the generated half regenerated with the tree zero-diff after regeneration. WHY THIS IS REQUIRED AND NOT HYGIENE: a lane control was recorded asserting seventeen claim(s), seventeen held for a witness module absent from the tree (roadmap review 99033, reproduced by me: git ls-files and git grep over dag/test/claim return 0 files for every leg that row says decides it). A control that cannot fail measures nothing, and a held count is not a measurement.",
         out_of_scope: "The zero-resolution general wall (next node); ambiguity.",
         handback: "Roster rows discharged, the receiver families now decidable, probe receipts."
       ), on: "2026-09-30", note: "Not yet centered: v1 infer walls: admitted only under the v1 PURPOSE test; each needs a scoping read.")),
@@ -9975,7 +10687,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "A call whose callee resolves NO signature bypasses every call-shape judgment (measured: 3 label fossils invisible to the landed wall in dag_collect, found only by grep). Either the callee resolves and is judged, or the failure to resolve is itself a typed, counted fact — never a silent fallthrough to the method bridge. Rides the namespace lane's resolution coverage; this node owns the call-shape consequence.",
         displaced_cost: "The wall's own measured blind spot: correctness there currently rests on grep.",
         first_slice: "Count the fallthrough (typed, per-module) so the blind spot has a size before it has a fix.",
-        red_control: "The dag_collect specimen class reds if reintroduced once coverage lands; fallthrough count monotonically falls.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING, AND THIS NODE SHIPS THE WITNESS: it does not exist yet. WITNESS TO AUTHOR: dag/test/claim/sig_unresolved_fallthrough_witness.dag, three legs, none of them in the tree at this revision -- git grep -l over dag at main returns 0 files for each name below; the names are read from the branch where they were first executed and are recorded here as the required shape of the witness, not as content main has (executed first on the head of pull/17028). THE PAIR THAT DECIDES THIS ROW: locally_declared_kernel_name_mislabeled_call_is_refused must refuse where locally_declared_correctly_labeled_call_compiles_clean must be accepted. class_row_is_rostered_with_matching_identity must join the coverage claim to its recurring_failure_mode row, so a coverage claim with no establishing row does not count and a slice of shared cost is billed only by named identities joined to that row. GREEN AT counts only when the batch reports three claim(s), three held, zero did not hold, zero unobserved and rc 0, with the selection-count line pasted beside every count. RED AT must be EXECUTED at a main sha where the mislabeled call is accepted and the fallthrough is unjudged, with identical failure text at the same sha, and the fallthrough count reported as a number that does not rise.",
         out_of_scope: "The resolution mechanism itself (namespace lane).",
         handback: "Fallthrough census, then the coverage receipt."
       ), on: "2026-09-30", note: "Not yet centered: v1 infer walls: admitted only under the v1 PURPOSE test; each needs a scoping read.")),
@@ -10060,7 +10772,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "lookup_variant_in_type and lookup_field_in_variant answer PatternLookupBlocked with diagnostics: [] — exhaustiveness-not-established passing as success-adjacent. Split the verdict three ways (Exhaustive | NonExhaustive | ExhaustivenessUnknown) and refuse Unknown into any accepted executable artifact.",
         displaced_cost: "Closes the fallback-arm shape the census names for blocked lookups — exhaustiveness-not-established passing as success-adjacent; the measured disposition lives in the carrier, not this ticket.",
         first_slice: "The typed Unknown verdict plus the refusal, probe-paired with a blocked-lookup fixture.",
-        red_control: "Probe: match whose coproduct lookup is blocked refuses as exhaustiveness-not-established; control: every resolved exhaustive match compiles.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING, AND THIS NODE SHIPS THE WITNESS: it does not exist yet. WITNESS TO AUTHOR: dag/test/claim/infer_exhaustiveness_unknown_refusal_witness.dag, five legs, none of them in the tree at this revision -- git grep -l over dag at main returns 0 files for each name below; the names are read from the branch where they were first executed and are recorded here as the required shape of the witness, not as content main has (executed first on the head of pull/16895). THE PAIR THAT DECIDES THIS ROW: w_blocked_coproduct_match_refuses_as_exhaustiveness_not_established must come back DID NOT HOLD at red_at and HELD at green_at, and w_resolved_exhaustive_match_compiles must be HELD on both trees. Supporting legs the witness must also carry: w_blocked_match_with_irrefutable_arm_is_accepted, w_resolved_missing_arm_still_reports_non_exhaustive, the_refusal_is_the_only_delta_against_the_irrefutable_control. WHAT THE TAKER PASTES: the claim route with one label per operand -- gunbc test //test/claim/infer_exhaustiveness_unknown_refusal_witness:<leg> -- the batch own exit status on its own line, and the selection-count line beside every count, because a run that selects nothing is vacuous. INSTRUMENT CHECK FIRST: on the binary actually executed, grep -ac ExhaustivenessUnknown must read 0 at red_at and 1 at green_at, so an armless binary cannot be read as a pass. ARM: on_main -- red_at is an ancestor of main where the arm is absent, green_at is the node head, so red_base and probe_ref are empty. A leg that passes only while the compiler is silent is not a witness; that shape is carried by a recurring_failure_mode row with a bounded trigger.",
         out_of_scope: "PatternDynamic (already diagnoses); exhaustiveness algorithm changes for resolved types.",
         handback: "The verdict type, the two closed arms, probe flip receipt."
       ), on: "2026-09-30", note: "Re-observe: state unknown."), on: "2026-09-30", note: "Not yet centered: state unknown.")),
@@ -10144,7 +10856,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "Make sugar and explicitly authored Optional applications resolve to std.optional.Optional with its acquisition dependency, through v2.compiler.module_acquisition, lowering, resolution and inference, preserving aliases, type arguments, constructor parents and nested layers. Remove the synthetic kernel-mint authority at each complete replacement boundary.",
         displaced_cost: "A kernel mint beside the declaration is a second authority and its homonyms bind the wrong type.",
         first_slice: "A production-source control showing T? and explicit Optional reach one declaration.",
-        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/kernel_optional_mint_shape_witness.dag, where the_conforming_declaration_is_admitted is the accepted side and a_concrete_payload_type_is_refused, a_second_type_parameter_is_refused, a_renamed_payload_field_is_refused, a_third_arm_is_refused and a_declaration_spelled_without_a_type_parameter_is_refused are the refused side; the leg that decides THIS row's question -- whether the sugar and the explicitly authored declaration reach ONE declaration -- is a_sugared_optional_match_lowers_to_the_host_option_by_identity. The cardinality half is dag/test/claim/optional_layers_witness.dag legs required_composed_with_one_layer_is_one_layer, substituting_an_optional_into_an_optional_adds_a_layer, one_layer_is_not_two and peel_of_one_layer_is_required, with peel_of_required_refuses and required_is_not_one_layer as the named negatives. RED: those legs FAIL, failure text verbatim, under main's RELEASED claim_batch -- sha256 read from disk and matched to release-bins.manifest, never built from the PR lineage -- at the main sha printed in the same log, through HEAVY_OWNER with one acquisition per stage, invoked as claim_batch --source-root dag --source-root src/v2 --source-root src/v1 --entry <module> --functions <the legs above, by name>. GREEN: the same names PASS on the branch binary at the final head, with each PASS naming its leg and each real exit status on its own line. THE HOMONYM CONTROL THE BOUNDARY ASKS FOR HAS NO LEG AT MAIN: a locally authored Optional that shadows std.optional.Optional must refuse rather than be adopted, and the taker adds that leg and names it instead of inheriting the silence. IF THE BEHAVIOUR IS ALREADY ON MAIN: report the row as already landed and obtain the observed red by breaking the invariant off current main with RedProbe (dag/gunbc/roadmap/roadmap_status.dag:78), red_at first parent being a main sha, pushing probe_ref red-control/cardinality-optional-declaration and never merging it.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/kernel_optional_mint_shape_witness.dag, where the_conforming_declaration_is_admitted is the accepted side and a_concrete_payload_type_is_refused, a_second_type_parameter_is_refused, a_renamed_payload_field_is_refused, a_third_arm_is_refused and a_declaration_spelled_without_a_type_parameter_is_refused are the refused side; the leg that decides THIS row's question -- whether the sugar and the explicitly authored declaration reach ONE declaration -- is a_sugared_optional_match_lowers_to_the_host_option_by_identity. The cardinality half is dag/test/claim/optional_layers_witness.dag legs required_composed_with_one_layer_is_one_layer, substituting_an_optional_into_an_optional_adds_a_layer, one_layer_is_not_two and peel_of_one_layer_is_required, with peel_of_required_refuses and required_is_not_one_layer as the named negatives. RED: those legs DID NOT HOLD, failure text verbatim, under main's released gunbc on the CLAIM ROUTE -- sha256 read from disk, never built from the PR lineage -- at the main sha printed in the same log, through HEAVY_OWNER with one acquisition per stage, invoked as gunbc test //test/claim/<module>:<fn> with each label its own operand and roots --source-root dag --source-root src/v2. GREEN: the same names HELD outcome=Pass on the branch binary at the final head, with each HELD naming its leg and each real exit status on its own line. THE HOMONYM CONTROL THE BOUNDARY ASKS FOR, in the verbatim words this row carried before my own plan PR 17098 replaced them: A local homonym redirecting T?, or a missing Optional declaration not refusing, keeps this red. A locally authored Optional that shadows std.optional.Optional is NOT adopted as the sugar target: it stays a separate application, and the leg names that non-adoption instead of inheriting silence. The taker does NOT demand a refusal here -- main pins the homonym specimen ACCEPTED at v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_is_not_the_optional_instance, v2.test.claim.optional_sugar_declaration_bound::osd_local_homonym_stays_an_application and v2.test.claim.optional_sugar_declaration_bound::osd_specimens_are_accepted, and a refusal would regress previously-accepted programs against the landed optional_sugar_is_declaration_bound ruling. Those three legs are parsed-tier, because the claim route's universe (gunbc.discovery_census::claim_route_universe, hand-mirrored in the seed as target_invocation_host::claim_route_universe) covers only //test/claim/... and a v2-prefixed module is answered by the native universe first; so the executed discriminating pair is added under dag/test/claim/ -- the homonym is NOT the optional instance and stays an application, with a genuine std.optional application IS the optional instance as the named negative that must fail in the same acquisition. IF THE BEHAVIOUR IS ALREADY ON MAIN: report the row as already landed and obtain the observed red by breaking the invariant off current main with the RedProbe variant of gunbc.roadmap.roadmap_status::RedObservation, red_at first parent being a main sha, pushing probe_ref red-control/cardinality-optional-declaration and never merging it. A PLANTED BREAK MUST NOT BE INERT: a control that stays green with the enforcement gutted measures nothing, so prove the break TOOK by the flip of a NAMED DECIDING leg - its verdict line must move from HELD to DID NOT HOLD inside the red acquisition - not by the batch finishing. Where the enforcement lives at two layers (the .dag source AND its committed generated Rust under src/v1/stage0), the break lands at BOTH, and the log shows the generated half regenerated with the tree zero-diff after regeneration. WHY THIS IS REQUIRED AND NOT HYGIENE: a lane control was recorded asserting seventeen claim(s), seventeen held for a witness module absent from the tree (roadmap review 99033, reproduced by me: git ls-files and git grep over dag/test/claim return 0 files for every leg that row says decides it). A control that cannot fail measures nothing, and a held count is not a measurement.",
         out_of_scope: "Retiring every seed occurrence is not a gate on a native consumer already using the correct authority.",
         handback: "Controls for same-declaration, homonym, missing authority and nested layers, and exactly which mint route was deleted."
       )),
@@ -10314,7 +11026,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "Two slices, one wall. Safety: a missing list separator refuses at parse instead of parsing as element juxtaposition (the measured below-floor census row — a dropped comma silently changes list arity). Completeness: a block after a bare identifier in if-condition position parses as the block it is, closing the measured false refusal (expected-RParen on legitimate input). Probe-paired via the corpus's parser pair; grammar-owned, no host parser (census queue items 6-7).",
         displaced_cost: "The separator specimen survived regen, whole-corpus compile, fixed-point verify, and a 15-case matrix; only a human diff read caught it (review 45347).",
         first_slice: "The separator refusal with legitimate-list controls green.",
-        red_control: "RedProbe (roadmap_status.dag:78) on dag/test/claim/guarantee_floor_class_probe_witness.dag, executed on srv1 through the shared limiter, over the three separator probe rows enrolled in dag/gunbc/guarantee_probe_corpus.dag: floor_parse_list_separator_control_probe (:257), floor_parse_list_separator_green_probe (:258), floor_parse_list_separator_hole_probe (:259), class floor_parse_list_separator_class (:185), path v1_compile_rust_path_id. THE PAIR THAT DECIDES THE NODE, each named BY NAME in one PASS log, with the batch own exit status on its own line: floor_parse_list_separator_doubled_separator_control_refuses (:260), the wrong case refused with exactly 1 ParseError row, and floor_parse_list_separator_green_control_is_clean (:267), the correct case accepted with 0 rows total. red_at: a child of a main sha in which the separator refusal is absent from the v2 parser, where the batch FAILS naming the omission case; green_at: red_at first parent or later. TWO LEGS IN THAT FILE ARE RUNG-DROPS AND MUST FLIP WITH THE WALL RATHER THAN BE DELETED SILENTLY: floor_parse_list_separator_omission_is_still_silent (:253) asserts 0 ParseError rows on the omitted-separator source, and floor_hole_receipt_records_acceptance_as_the_observation (:290) asserts observation_is_clean on that same source; both pass only while the compiler is wrong, so the change landing the refusal inverts them (the omission refused naming the missing separator, the refused count 1), and the recurring_failure_mode row carrying the hole is the record until then. The if-block fixture parses correctly and every legitimate list in corpus still parses, so the refusal cannot be bought by widening the grammar.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS MODULE AND LEGS BY NAME: the legs are test fns in dag/test/claim/guarantee_floor_class_probe_witness.dag, declared module test.claim.guarantee_floor_class_probe_witness, cited as test.claim.guarantee_floor_class_probe_witness::<fn>; the probe rows they read are data in gunbc.guarantee_probe_corpus, cited as gunbc.guarantee_probe_corpus::floor_parse_list_separator_control_probe, ::floor_parse_list_separator_green_probe and ::floor_parse_list_separator_hole_probe under class gunbc.guarantee_probe_corpus::floor_parse_list_separator_class, path v1_compile_rust_path_id. Name the module and the symbol, never a line number: `module.path::decl` per gunbc.design_argument::single_authority. THE PAIR THAT DECIDES THE NODE, each appearing BY NAME with its own verdict line in one log and its command's own exit status on its own line: test.claim.guarantee_floor_class_probe_witness::floor_parse_list_separator_doubled_separator_control_refuses, the wrong case refused with exactly 1 blocking ParseError row, and test.claim.guarantee_floor_class_probe_witness::floor_parse_list_separator_green_control_is_clean, the correct case accepted with 0 rows total. RUN EVERY LEG ON THE CLAIM ROUTE, not through the deleted claim_batch verb: invoked as `gunbc test //test/claim/guarantee_floor_class_probe_witness:<fn>` with each label its own operand and roots --source-root dag --source-root src/v2, one stage per heavy-slot acquisition on srv1, and the verdict vocabulary is HELD outcome=Pass, DID NOT HOLD and UNOBSERVED outcome=..., never PASS or FAIL. INSTRUMENT CHECK FIRST: grep -ac of the wall's diagnostic name on the binary you are about to run must read 0 before any leg runs on it, and the binary must be main's own with its sha256 read from disk in the log, never a binary built from the PR lineage. THREE OF THE NAMED LEGS ARE ADDED OR INVERTED BY THIS CHANGE, so they do not exist in their final form at red_at on main: obtain the red by overlaying the witness file's exact committed bytes onto a main tree without the wall, printing the overlaid file's sha256 on its own line beside the sha256 of git show <head>:dag/test/claim/guarantee_floor_class_probe_witness.dag, so red and green are PROVEN to have run identical witness content rather than asserted to. red_at: the main sha whose build lacks the separator refusal, where the deciding leg reports DID NOT HOLD naming the omission case; green_at: red_at or later, with every named leg reporting HELD outcome=Pass and zero UNOBSERVED. TWO LEGS IN THAT FILE ARE RUNG-DROPS AND MUST FLIP WITH THE WALL RATHER THAN BE DELETED SILENTLY: test.claim.guarantee_floor_class_probe_witness::floor_parse_list_separator_omission_is_still_silent asserts 0 ParseError rows on the omitted-separator source, and test.claim.guarantee_floor_class_probe_witness::floor_hole_receipt_records_acceptance_as_the_observation asserts observation_is_clean on that same source; both pass only while the compiler is wrong, so the change landing the refusal inverts them (the omission refused naming the missing separator, the refused count 1), and the recurring_failure_mode row carrying the hole is the record until then. The if-block fixture parses correctly and every legitimate list in the corpus still parses, so the refusal cannot be bought by widening the grammar. IF THE WALL IS ALREADY ON MAIN: report the row as already landed and obtain the observed red by breaking the invariant off current main with the RedProbe variant of gunbc.roadmap.roadmap_status::RedObservation, red_at's first parent being a main sha, pushing probe_ref red-control/floor-parse-formation-wall and never merging it. A PLANTED BREAK MUST NOT BE INERT: a control that stays green with the enforcement gutted measures nothing, so prove the break TOOK by the flip of a NAMED DECIDING leg - its verdict line must move from HELD to DID NOT HOLD inside the red acquisition - not by the batch finishing. Where the enforcement lives at two layers (the .dag source AND its committed generated Rust under src/v1/stage0), the break lands at BOTH, and the log shows the generated half regenerated with the tree zero-diff after regeneration. WHY THIS IS REQUIRED AND NOT HYGIENE: a lane control was recorded asserting seventeen claim(s), seventeen held for a witness module absent from the tree (roadmap review 99033, reproduced by me: git ls-files and git grep over dag/test/claim return 0 files for every leg that row says decides it). A control that cannot fail measures nothing, and a held count is not a measurement.",
         out_of_scope: "Grammar redesign; lookahead classes the census does not name.",
         handback: "The two closed defects, probe flips, corpus parse receipt."
       ), on: "2026-09-30", note: "Name which parser this wall is measured on (v1 or v2; #12773 open)."), on: "2026-09-30", note: "Not yet centered: parser subject undecided."), on: "2026-11-24", note: "Centered on the v2 parser by measurement, not assertion. The observing instrument is #v2.compiler.parse_acceptance_census::parse_acceptance_of_text, declared at src/v2/compiler/parse_acceptance_census.dag:52, called by the probe witness shipped in gunbc#16878 at src/v2/test/claim/parse/sibling_comma_gap_probe.dag -- that witness is not on main until gunbc#16878 merges, so it is cited by file path rather than as a checked symbol. The parser binary was built at main 4cb919e4a1094b400179f749cce83b4e6a2a6a62, a main tree and never the wall of its own lineage. Both alternatives are rejected as measured blind: a claim --entry sweep parses entry closures rather than function bodies, so an undemanded new body contributes zero error lines and a parse wall cannot surface; and the stage0 seed Rust parser is grammar-inert, so no grammar edit can move it. The 2026-09-30 note citing gunbc#12773 as open is answered: gunbc#12773 is MERGED, titled v2 parse: layout derived from the stream source with RefuseOnMatch and AfterLineBreak grammar arms, so the grammar arms this wall needs live in v2. Locus is the bracketed list literal production #v2.extdeps.languages.dag::dag_grammar_comma_list_expr at src/v2/extdeps/languages/dag.dag:953; bare non-bracketed juxtaposition is the adjacent concern owned by residue-field-consequence-adoption, not this wall. The two 2026-09-30 notes above stand as written history. 2026-11-25 CRITERIA FIX BY THE LANE MANAGER, authorised by neat-badger-614 (msg_15194358): red_control REWRITTEN, so node_criteria_digest MOVES for this row; this is a criteria change, not a progress note. The text it replaces named NO executable witness - it read: The separator probe flips exactly when the refusal lands; the if-block fixture parses correctly; every legitimate list in corpus still parses - and the only probe path it cited, sibling_comma_gap_probe.dag under src/v2/test/claim/parse/, does not exist: 0 files repo-wide at origin/main 0d399a799b64, its only hit anywhere in the repo being this file. Measured with hit counts: git grep -n floor_parse_list_separator over dag/gunbc/guarantee_probe_corpus.dag = 11 hits at :185 :197 :257 :258 :259 :670 :671 :676 :677 :682 :683; dag/test/claim/guarantee_floor_class_probe_witness.dag exists at 21340 bytes carrying the legs named above. dispatch REMOVED (NotDispatchable, the convention of the 183 rows that omit the field): ladder-probe-corpus and floor-generic-field-constraint-wall both edit that witness file, so the three land in dependency order, never in parallel. ALSO 2026-11-25 (b) RE-CENTRED ON THE v1 PARSER BY MEASUREMENT, per neat-badger-614 (msg_0bdc00e2), after the row's 2026-11-24 note said the wall was centred on the v2 parser. The list-literal parser is in v1: src/v1/02_parse.dag:5762 dispatches Present { value: ShLBracket } => parse_list_literal(tokens: tokens, ctx: ctx), defined at :6841. The corpus carries exactly two route ids, guarantee_probe_corpus.dag:138 v1_compile_rust_path_id and :139 v2_infer_eval_path_id, and inside fn guarantee_probe_rows() the 39 rows split 37 / 2 across them, so no probe row exists on any v2 PARSE route: a wall landed in the v2 parser today could not be observed by any probe. The 2026-11-24 note came from the OBSERVING instrument (src/v2/compiler/parse_acceptance_census.dag, parse_acceptance_of_text at :52) and conflated which compiler reads a file with which compiler must refuse it. The v2 route's own enrolment is its own row (rn_7C9829041BF4909E8AFD14A3C6), so this row stays on v1: the refusal lands in parse_list_literal, measured by the v1-path probes named in red_control. The if-block half already has a carrier on main: dag/gunbc/recurring_failure_mode/a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed.dag, named here so a worker extends that row instead of minting a second home for the same defect.")),
@@ -10346,7 +11058,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         boundary: "A record literal missing a required field refuses at compile with the field named; defaults apply only where declared; a literal claiming a nominal type it does not ground refuses. Owns the census's record-completeness class — the declared-conformance chain owns return, data, and generic instantiation, not this. Probe-paired via the corpus's record-completeness pair. Motivating specimen: HandAuthoredDocBind's primary_work construction wall currently rests on record-completeness enforcement that is itself unmeasured.",
         displaced_cost: "A construction wall anywhere in the corpus is only as strong as required-field enforcement; this node is what makes primary_work-style walls load-bearing rather than declared.",
         first_slice: "Missing-required-field refusal, probe-paired.",
-        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/anonymous_record_literal_roster_witness.dag legs an_anonymous_list_element_refuses_a_missing_field_test and an_anonymous_data_initializer_refuses_a_missing_field_test (the refused case) paired with an_anonymous_list_element_with_the_full_roster_compiles_test and an_anonymous_data_initializer_with_the_full_roster_compiles_test (the accepted case); the nominal-grounding half is dag/test/claim/record_literal_names_a_union_type_witness.dag legs a_record_literal_naming_a_union_refuses_at_a_data_binding, a_record_literal_naming_a_union_refuses_at_a_return, a_record_literal_naming_a_union_refuses_at_a_list_element, a_record_literal_naming_a_union_refuses_at_a_call_argument and a_record_literal_naming_an_alias_of_a_union_refuses, paired with the_fielded_arm_is_accepted, the_empty_arm_is_accepted and a_record_and_an_alias_of_a_record_are_accepted. RED: those refusal legs FAIL, with their failure text recorded verbatim, when run by main's RELEASED claim_batch -- sha256 read from disk in the log and matched to release-bins.manifest, never a binary built from the PR lineage -- at the main sha printed in the same log, through HEAVY_OWNER with one acquisition per stage, invoked as claim_batch --source-root dag --source-root src/v2 --source-root src/v1 --entry <module> --functions <the legs above, by name>. GREEN: the same leg names PASS on the branch binary at the final head, every PASS line naming its leg and every real exit status on its own line. NAMED NEGATIVES IN THE SAME RUN, so a green cannot come from an arm that stopped judging: an_unknown_name_keeps_its_own_refusal and the_constructor_question_is_asked_before_the_fields must keep refusing. THE DECLARED-DEFAULTS HALF OF THE BOUNDARY HAS NO WITNESS AT MAIN -- whoever takes this row states that and adds the leg, rather than reading the silence as coverage. IF THE BEHAVIOUR IS ALREADY ON MAIN: report the row as already landed and obtain the observed red by breaking the invariant off current main with RedProbe (dag/gunbc/roadmap/roadmap_status.dag:78), red_at first parent being a main sha, pushing probe_ref red-control/floor-record-construction-wall and never merging it. A control never observed red on any tree is not a control.",
+        red_control: "RED IS OBTAINED BY EXECUTION, NOT BY READING. WITNESS, MODULE AND LEGS BY NAME: dag/test/claim/anonymous_record_literal_roster_witness.dag legs an_anonymous_list_element_refuses_a_missing_field_test and an_anonymous_data_initializer_refuses_a_missing_field_test (the refused case) paired with an_anonymous_list_element_with_the_full_roster_compiles_test and an_anonymous_data_initializer_with_the_full_roster_compiles_test (the accepted case); the nominal-grounding half is dag/test/claim/record_literal_names_a_union_type_witness.dag legs a_record_literal_naming_a_union_refuses_at_a_data_binding, a_record_literal_naming_a_union_refuses_at_a_return, a_record_literal_naming_a_union_refuses_at_a_list_element, a_record_literal_naming_a_union_refuses_at_a_call_argument and a_record_literal_naming_an_alias_of_a_union_refuses, paired with the_fielded_arm_is_accepted, the_empty_arm_is_accepted and a_record_and_an_alias_of_a_record_are_accepted. RED: those refusal legs DID NOT HOLD, with their failure text recorded verbatim, when run on the CLAIM ROUTE by main's released gunbc -- sha256 read from disk in the log, never a binary built from the PR lineage -- at the main sha printed in the same log, through HEAVY_OWNER with one acquisition per stage, invoked as gunbc test //test/claim/<module>:<fn> with each label its own operand and roots --source-root dag --source-root src/v2; the verdict vocabulary is HELD outcome=Pass, DID NOT HOLD and UNOBSERVED outcome=..., never PASS or FAIL, and a required witness counts only if it appears BY NAME in the log with its command's own exit status on its own line. GREEN: the same leg names HELD outcome=Pass on the branch binary at the final head, every HELD line naming its leg and every real exit status on its own line. NAMED NEGATIVES IN THE SAME RUN, so a green cannot come from an arm that stopped judging: an_unknown_name_keeps_its_own_refusal and the_constructor_question_is_asked_before_the_fields must keep refusing. THE DECLARED-DEFAULTS HALF OF THE BOUNDARY HAS NO WITNESS AT MAIN -- whoever takes this row states that and adds the leg, rather than reading the silence as coverage. IF THE BEHAVIOUR IS ALREADY ON MAIN: report the row as already landed and obtain the observed red by breaking the invariant off current main with the RedProbe variant of gunbc.roadmap.roadmap_status::RedObservation, red_at first parent being a main sha, pushing probe_ref red-control/floor-record-construction-wall and never merging it. A control never observed red on any tree is not a control. A PLANTED BREAK MUST NOT BE INERT: a control that stays green with the enforcement gutted measures nothing, so prove the break TOOK by the flip of a NAMED DECIDING leg - its verdict line must move from HELD to DID NOT HOLD inside the red acquisition - not by the batch finishing. Where the enforcement lives at two layers (the .dag source AND its committed generated Rust under src/v1/stage0), the break lands at BOTH, and the log shows the generated half regenerated with the tree zero-diff after regeneration. WHY THIS IS REQUIRED AND NOT HYGIENE: a lane control was recorded asserting seventeen claim(s), seventeen held for a witness module absent from the tree (roadmap review 99033, reproduced by me: git ls-files and git grep over dag/test/claim return 0 files for every leg that row says decides it). A control that cannot fail measures nothing, and a held count is not a measurement.",
         out_of_scope: "Row polymorphism; invocation default semantics (call-shape owns those).",
         handback: "The judgment site, probe flip, corpus receipt."
       ), on: "2026-09-30", note: "The v2 twin landed in #12763."), on: "2026-09-30", note: "Not yet centered: v1 half scoping.")),

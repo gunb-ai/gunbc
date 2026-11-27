@@ -14,13 +14,11 @@ import gunbc.fleet.fleet_host_power {
 }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
-import std.measure { hertz_count }
 import gunbc.fleet.fleet_host_assembly { host_installed_components, psu_srv1, psu_srv1_b }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
 import product.placement_supply { physical_asset_identity_eq }
 import std.list { list_member }
-import gunbc.fleet.cpu_freq_cap_boot_state { cpu_freq_ceiling_standing_read }
 import gunbc.fleet.fleet_work_energy_cost {
   WorkEnergyCostOutcome, EnergyCostDerived, EnergyCostRefused, ReadingAppliesToSupersededAssembly,
   DrawPowerStateAttribution, DrawAttributableToHostPowerState, DrawNotAttributableToHostPowerState,
@@ -239,22 +237,17 @@ test fn witness_capped_hosts_price_while_their_power_state_stays_unattributed() 
       DrawAttributableToHostPowerState { host: _ } => false
       DrawNotAttributableToHostPowerState { host: h, gaps } =>
         (h as String) == "srv3"
-          && gaps.length() == 2
-          && gaps.any(g => match g {
+          && gaps.length() == 1
+          && !gaps.any(g => match g {
+            // CLOSED 2026-11-24/25: the operator's final-state pass read srv3's ceiling holding -- enabled,
+            // active, scaling_max_freq 2000000 on all 128 policies -- so gunbc.fleet.cpu_freq_cap_boot_state
+            // moved the row to CeilingStands and this gap must stop being built. A re-opened standing would
+            // rebuild it and red HERE, which is the point of keeping the assertion rather than deleting it.
             CpuCeilingNotReadHolding {
-              host: gh, unit_path, applied_on, applied_ceiling, parts_rated_clock,
-              sits_below_the_parts_rated_clock, what_would_make_it_attributable,
-            } =>
-              (gh as String) == "srv3"
-                && (unit_path as String) == "/etc/systemd/system/cpu-freq-cap.service"
-                && (applied_on as String) == "2026-11-24"
-                && hertz_count(h: applied_ceiling) == 2000000000
-                && hertz_count(h: parts_rated_clock) == 3000000000
-                && sits_below_the_parts_rated_clock
-                && (what_would_make_it_attributable as String) == (cpu_freq_ceiling_standing_read as String)
-            HostFigureStillInferredWhilePowerStateMoved {
-              host: _, basis_host: _, observed_on: _, confound: _,
-            } => false
+              host: _, unit_path: _, applied_on: _, applied_ceiling: _, parts_rated_clock: _,
+              sits_below_the_parts_rated_clock: _, what_would_make_it_attributable: _,
+            } => true
+            HostFigureStillInferredWhilePowerStateMoved { host: _, basis_host: _, observed_on: _, confound: _ } => false
           })
           && gaps.any(g => match g {
             CpuCeilingNotReadHolding {
