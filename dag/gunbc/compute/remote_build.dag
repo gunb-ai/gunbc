@@ -930,10 +930,20 @@ data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_ad
 
 
 
+// THE PROBE'S THREE VOICES AND ITS SILENCE. ProbeReady and ProbeCannotServe are things the HOST SAID:
+// the forced entry ran and spoke the serving contract (or the binary's own typed refusal -- exits 0, 1,
+// 2 are the gunbc binary speaking before the contract, review 95521). ProbeUnreachable is the transport
+// saying it never reached a host (ssh's own 255). PROBE UNRECOGNIZED is the fourth, different thing:
+// the transport connected and something on the far side exited with a code that is neither an ending
+// word nor the binary's own vocabulary -- the forced entry's scope wrapper dying at admission (exit 6,
+// srv3 2026-11-27) is the canonical case. That is NOT a host declaration: an unread exit is a host that
+// never answered, and it must never be recorded as a host standing (manager ruling 2026-11-27:
+// unrecognized probe = UNKNOWN host, never "answered, do not retry" and never a cannot-serve standing).
 type RemoteBuildProbe
   = ProbeReady
   | ProbeUnreachable { detail: String }
   | ProbeCannotServe { detail: String }
+  | ProbeUnrecognized { exit_code: Int, detail: String }
 
 fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
   let answer = remote_build_split_answer(stdout: stdout)
@@ -949,17 +959,32 @@ fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) 
     Absent =>
       if exit_code == openssh_connection_failed_exit_code {
         ProbeUnreachable { detail: stderr }
-      } else {
+      } else if exit_code == 0 || exit_code == 1 || exit_code == 2 {
+        // The gunbc binary's OWN vocabulary (review 95521): it ran and refused before the contract --
+        // a host speaking, in the wrong register. Still a host declaration, so cannot-serve.
         ProbeCannotServe { detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+      } else {
+        // Neither an ending word, nor ssh's own failure, nor the binary's refusal vocabulary: an
+        // unread exit is a host that NEVER ANSWERED. The srv3 2026-11-27 class -- the forced entry's
+        // scope wrapper refused at admission (exit 6) -- was recorded as a host cannot-serve standing,
+        // a declaration the host never made.
+        ProbeUnrecognized {
+          exit_code: exit_code,
+          detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer; the host never spoke the serving contract: ", stderr], ""),
+        }
       }
   }
 }
 
 // The attempt a failed probe records; a ready probe records nothing and the request is sent.
+// A host that never answered (transport failure OR an unread exit) is UNKNOWN -- answered exactly
+// like an unreachable host, so the walk moves on with nothing sent, and the host's standing is
+// untouched by an unread exit. The detail keeps which of the two silences it was.
 fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
   match p {
     ProbeReady => none
     ProbeUnreachable { detail } => Present { value: HostUnreachable { detail: detail } }
+    ProbeUnrecognized { exit_code: _, detail } => Present { value: HostUnreachable { detail: detail } }
     ProbeCannotServe { detail } => Present { value: HostCannotServe { detail: detail } }
   }
 }
