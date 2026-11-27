@@ -1,0 +1,83 @@
+{
+  "prediction": {
+    "subject": "gunbc run --source-root A --source-root B --entry A/entry.dag --function main; one process per command; pinned production shadow image SHA256 38c7a13ce1ca61e6b0691e5360ef451993059d630d7b8ee4534adc9686c1dc78",
+    "initial": "A/entry.dag imports the named function answer from shadow.helper. Initially A/helper.dag is its sole declaration and B is empty. Hold both --source-root arguments fixed throughout.",
+    "ordered_predictions": [
+      [
+        "baseline",
+        "success, both source questions miss"
+      ],
+      [
+        "unchanged",
+        "success, both hit and agree with fresh evaluation"
+      ],
+      [
+        "warm_competitor",
+        "after B/other.dag declares the same module but returns a different answer, a nonzero duplicate-module refusal identifies the conflicting module and both files; no stale success"
+      ],
+      [
+        "cold_competitor",
+        "same refusal result and conflicting locations using an independent empty store"
+      ],
+      [
+        "restored",
+        "remove B/other.dag, success, both original source questions hit/equal and give baseline answers"
+      ]
+    ],
+    "interpretation": "Failure location may predate the instrumented production boundary; shadow hit count during refusal is recorded without a prediction. If observed results contradict any individual expectation, retain the observations."
+  },
+  "image_sha256": "38c7a13ce1ca61e6b0691e5360ef451993059d630d7b8ee4534adc9686c1dc78",
+  "full_stderr_byte_equal": false,
+  "cases": [
+    {
+      "case": "baseline",
+      "exit": 0,
+      "stdout": "",
+      "cause": [],
+      "records": {
+        "miss/absent": 2
+      },
+      "wall_ms": 1800.724
+    },
+    {
+      "case": "unchanged",
+      "exit": 0,
+      "stdout": "",
+      "cause": [],
+      "records": {
+        "hit/equal": 2
+      },
+      "wall_ms": 1661.631
+    },
+    {
+      "case": "warm_competitor",
+      "exit": 1,
+      "stdout": "",
+      "cause": [
+        "cause: module shadow.helper is declared in both target/shadow-two-root-2u6nr490/A/helper.dag and target/shadow-two-root-2u6nr490/B/other.dag"
+      ],
+      "records": {},
+      "wall_ms": 8.427
+    },
+    {
+      "case": "cold_competitor",
+      "exit": 1,
+      "stdout": "",
+      "cause": [
+        "cause: module shadow.helper is declared in both target/shadow-two-root-2u6nr490/A/helper.dag and target/shadow-two-root-2u6nr490/B/other.dag"
+      ],
+      "records": {},
+      "wall_ms": 8.193
+    },
+    {
+      "case": "restored",
+      "exit": 0,
+      "stdout": "",
+      "cause": [],
+      "records": {
+        "hit/equal": 2
+      },
+      "wall_ms": 1776.526
+    }
+  ]
+}

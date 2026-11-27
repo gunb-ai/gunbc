@@ -3,6 +3,7 @@ module gunbc.seed_growth_admission
 import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
+import gunbc.materialization_shadow_seed_growth { materialization_shadow_seed_growth_justification }
 import gunbc.native_product_cache_seed_growth { native_product_cache_seed_growth_justification }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
@@ -401,6 +402,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     value_depth_seed_growth_justification,
     value_drop_binding_adaptation_seed_growth_justification,
     process_lifecycle_seed_growth_justification,
+    materialization_shadow_seed_growth_justification,
     native_product_cache_seed_growth_justification,
     run_arg_typed_bind_seed_growth_justification,
     rust_shell_stderr_capture_seed_growth_justification,

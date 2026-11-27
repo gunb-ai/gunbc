@@ -6484,7 +6484,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "bmc_fan_monitor, bmc_fan_converge, fabric_required_build_cell, fleet_show_effective_read and srv3_install_media_fetch matched on their Optional first() sites so gunbc#11720's wall holds over them; the srv3 module's own Present/Absent variants shadow Optional's and must be qualified or renamed. Branch fierce-seal-607/optional-at-required-tail carries the uncommitted work.",
         displaced_cost: "Five closures no gate compiles keep an Optional flowing into a required T, which the floor cannot see.",
         first_slice: "Resolve the srv3 name collision, commit the branch, floor clean, land.",
-        red_control: "Each site's Absent arm refuses with a typed cause; a bare Present in srv3 resolves to exactly one declaration.",
+        red_control: "Each site's Absent arm either refuses with a typed cause or yields absence into an Optional-typed result; no site lets an Optional reach a required T; a bare Present in srv3 resolves to exactly one declaration.",
         out_of_scope: "The gunbc#11720 residuals in gated closures are already covered by the wall.",
         handback: "Return the landed head and the collision resolution."
       )),
@@ -7349,6 +7349,144 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "gunb-ai-served-from-gunbc", contribution: "The reason for the move: the site is out of date, and after the cut it is updated in one place."),
+    ),
+    // ---- gunbc.plans.findings_reach_a_replan (swift-deer-673, 2026-11-27) --------------------
+    // An escalation that meets a replan criterion owes a recorded replan decision before its node is attempted
+    // again (gunbc.design_ruling::escalation_meeting_a_replan_criterion_owes_a_replan_decision_2026_11_27). The model
+    // lands first; the worker exit and the dispatch refusal consume it; the continuation route consumes both.
+    roadmap_node(
+      identity: "rn_Y2AOGCWBFUD32MQ1UMSZJ53L8C",
+      id: "contributor-findings-reach-a-replan",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/plans/findings_reach_a_replan.dag"),
+      line: ticket(t: level_fields(
+        headline: "A contributor who learns the assignment is wrong can say so, and an escalation that meets a replan criterion owes a recorded replan decision",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan under gunbc.design_ruling::escalation_meeting_a_replan_criterion_owes_a_replan_decision_2026_11_27. Owns the factory's route from an escalation to a replan decision, the worker's disproved-premise exit, the belt criterion reviewer's verdict meaning, and the how_to_work statement and onboarding priority. It does not own GitHub pull request review, the control plane's prompts, or the delivery of unresolved findings to the next brief (PR 17167).",
+        approach: "Members in dependency order: the model (replan-criterion-and-decision-modeled); then the worker exit (disproved-premise-is-a-submission-outcome) and the dispatch refusal (owed-replan-refuses-dispatch); then the continuation route (escalations-route-to-the-replan) and the brief (dispatch-brief-asks-for-the-finding). The design text (how-to-work-names-contributor-ownership) and the reviewer verdict (criterion-reviewer-approves-its-criterion) are independent.",
+        red_control: "Met only through its members: the intention's done-when holds on the tree, and the operator accepts the judgement condition.",
+        displaced_cost: "A worker that disproves its brief is replaced by another attempt on the same brief, a supervisor's plan-defect verdict reaches no owner, and the roadmap drifts from the tree, so honest findings cost an attempt and are then lost.",
+        handback: "Per member: its receipt; together, a replayed escalation of each source reaching a recorded replan decision with no new attempt in between."
+      )),
+      parent: in_project(project: "factory", contribution: "The factory turns a finding into a corrected plan instead of another attempt against a known-bad one."),
+    ),
+    roadmap_node(
+      identity: "rn_IS4MBYSCRT5GM58P6WU53OFFK9",
+      id: "replan-criterion-and-decision-modeled",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+        headline: "One classifier says which escalations meet a replan criterion, and a replan decision is a typed record with closed outcomes",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. Model, before any route consumes it: (1) the escalation sources a belt attempt can end in (worker blocked, needs-context and disproved-premise declarations; supervisor plan-defect and stuck verdicts; a goal-audit finding that the acceptance check can pass with the goal unmet; an exhausted retry), each read from its existing typed carrier and never from rendered text; (2) one classifier from a source to meets-the-criterion or not, the criterion being concrete evidence that the node's premise, boundary, approach, red control or acceptance command is false or insufficient for its intention; (3) the replan decision: it cites the escalation it answers, names its decider (the manager of the owning session, or the operator by escalation), and has exactly the outcomes in the plan's section 1. The re-estimate and split outcomes consume gunbc.plans.planning_consolidation section 7's protocol and gunbc.roadmap.roadmap_effort_estimate, and the already-holds outcome consumes the existing acceptance evidence law (gunbc.roadmap.roadmap_issue_command), never a second one. Decide against gunbc.roadmap.roadmap_event_log whether the decision is a new item-event kind or a typed payload on an existing one (handed_back, retired).",
+        displaced_cost: "Without one classifier and one decision type, each route (continuation, supervisor, goal audit, retry) would decide on its own whether a finding forces a replan, and they would disagree.",
+        first_slice: "Read every escalation carrier named above at the current head and list, with the declaration that produces it, what evidence each already carries; then the classifier and the decision type, with a witness over each source.",
+        red_control: "A witness drives every escalation source through the classifier: a plan-defect verdict and a disproved-premise declaration with evidence meet the criterion, and a blocked declaration whose cause is infrastructure does not. A replan decision with no cited escalation, or with an outcome outside the closed set, does not construct. An already-holds outcome without an earning pull request is refused by the existing evidence law, not by a new check.",
+        out_of_scope: "Wiring any route to the classifier (escalations-route-to-the-replan); the dispatch refusal (owed-replan-refuses-dispatch); the worker's exit (disproved-premise-is-a-submission-outcome).",
+        handback: "The classifier, the decision type and the witness; the list of escalation carriers read, each with its producing declaration; and the event-log decision with its reason."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The vocabulary every route consumes: which escalations owe a replan, and what a replan decides."),
+    ),
+    roadmap_node(
+      identity: "rn_CP1QYUP8MKP3GQGU99Q7ZPTONX",
+      id: "disproved-premise-is-a-submission-outcome",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_submission.dag"),
+      line: ticket(t: fields(
+        headline: "A worker can end an attempt by declaring the premise disproved, with its evidence, and that is never a candidate or done",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. In gunbc.roadmap.roadmap_submission, a disproved-premise declaration that requires what was established, its consequence for the goal and the decision needed, and is not a verification candidate (the one classifier that decides candidacy stays the only one). In gunbc.harness.harness_guidance, the exit is rendered as a completion a worker may choose, and the conclusions that push past evidence ('Reading alone completes nothing', 'make the change now' when rounds are short) are qualified so they do not apply once the worker holds evidence that the premise is wrong. The rule against redefining a code-change task as analysis completed stands: a declaration without its evidence does not decode. Settle the plan's open question (a fourth readiness or a typed cause on blocked) against the classifier from replan-criterion-and-decision-modeled.",
+        displaced_cost: "Today the honest finding is declared as blocked or needs-context, which reads as failure or a request for help, so a worker is pushed to force the brief through instead.",
+        first_slice: "Extend the submission decode and its witness, then render the exit in the worker guidance from the same readiness keys the decode reads.",
+        red_control: "A disproved-premise artifact missing any of its three evidence fields does not decode; one carrying them decodes and is classified as not a candidate; a ready artifact is unchanged. The rendered worker guidance names the exit and its required fields.",
+        out_of_scope: "What the belt does with the declaration (escalations-route-to-the-replan); the dispatch brief's text (dispatch-brief-asks-for-the-finding).",
+        handback: "The decode and guidance changes with their witnesses, and the readiness decision with its reason."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "Telling the truth is a first-class way for a worker to finish."),
+    ),
+    roadmap_node(
+      identity: "rn_JFLWHLU000XXTPHLLDNTI51JGW",
+      id: "owed-replan-refuses-dispatch",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_readiness.dag"),
+      line: ticket(t: fields(
+        headline: "A node with an owed replan is refused by the dispatcher until its replan decision is recorded",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. An escalation that meets the replan criterion records an owed replan on its node, and the one readiness predicate (gunbc.roadmap.roadmap_readiness) refuses the node, with a typed cause naming the escalation, until a replan decision answers it. The owed set is derived from the event log, never written beside it, so it is visible in every projection of the work as an open obligation rather than silence.",
+        displaced_cost: "Without the refusal, the replan is advice: the next tick dispatches the unchanged node and the finding is overtaken.",
+        first_slice: "Derive the owed set from the escalation and decision events, then add the refusal arm to the readiness predicate with its witness.",
+        red_control: "A node with an escalation meeting the criterion and no decision is refused with the escalation named; recording a decision whose outcome admits the node again makes it ready; a decision of retirement leaves it unready for its existing retired reason. A node with only a non-criterion escalation is unaffected.",
+        out_of_scope: "Which escalations meet the criterion (replan-criterion-and-decision-modeled); routing the escalation (escalations-route-to-the-replan).",
+        handback: "The readiness arm, the derivation of the owed set, and the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The replan is structural: the node cannot be attempted again until it is decided."),
+    ),
+    roadmap_node(
+      identity: "rn_DF87RNRPRBWQ0KXDERLLVWCPBJ",
+      id: "escalations-route-to-the-replan",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag"),
+      line: ticket(t: fields(
+        headline: "An escalation that meets the replan criterion reaches the node's owner, and never a fresh attempt on the unchanged node",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. gunbc.roadmap.roadmap_attempt_continuation consumes the classifier: a criterion-meeting capture leads to the owed replan, not continuation_next_attempt; a non-criterion blocked or needs-context capture keeps today's route. The supervisor's plan-defect and stuck verdicts (gunbc.harness.harness_turn) take the same route, which closes the declared frontier in gunbc.roadmap.roadmap_result_returned (a lineage ending without a candidate is owed a result). The goal-audit and exhausted-retry sources join through the same classifier. One route to the decision, not one per source.",
+        displaced_cost: "Today a worker's honest finding buys another attempt on the same brief, and a supervisor's plan-defect stops a session whose reason reaches nobody.",
+        first_slice: "Replay today's continuation decision on a captured disproved-premise submission and a plan-defect lineage, showing both reach a next attempt or nothing; then route both through the classifier.",
+        red_control: "The replay above goes red: a criterion-meeting capture or a plan-defect lineage that produces a next attempt fails the witness. A non-criterion blocked capture still produces a next attempt, and a ready capture is unchanged. The result pass returns a terminal result for a plan-defect lineage.",
+        out_of_scope: "The decision type and classifier (replan-criterion-and-decision-modeled); the readiness refusal (owed-replan-refuses-dispatch); notifying the control plane, which renders the owed set rather than being sent it.",
+        handback: "The continuation and supervisor-route changes, the closed frontier in the result pass, and the replay witness red before and green after."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "Every escalation that bears on the plan reaches someone who can change the plan."),
+    ),
+    roadmap_node(
+      identity: "rn_0TLOEMMHEYXJF1HB40Q2Y7OCX0",
+      id: "dispatch-brief-asks-for-the-finding",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_spawner.dag"),
+      line: ticket(t: fields(
+        headline: "The dispatch brief asks for the first change the evidence supports, and for the finding when the evidence disproves the premise",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. gunbc.roadmap.roadmap_spawner::dispatch_brief_template stops asking for 'M1 smallest change' and asks for the first change M0's evidence supports. It gains the exit when M0 disproves the premise, rendered from the disproved-premise submission's own fields so the brief and the decode cannot disagree. gunbc.roadmap.roadmap_dispatch_actuator stops filling 'what comes back even if the fix does not land' with 'implementation diff plus receipts', and names the finding and the decision needed. A candidate submitted as ready still owes a diff.",
+        displaced_cost: "The brief tells a worker the smallest diff is the job before it has read the system, so a disproved premise looks like a failure to deliver.",
+        first_slice: "Render the brief for an existing dispatchable node before and after, and compare.",
+        red_control: "A witness over the rendered brief: it names the disproved-premise exit with the same field names the submission decode requires, and contains neither 'smallest change' nor 'implementation diff plus receipts' as the answer for a fix that does not land.",
+        out_of_scope: "The submission decode (disproved-premise-is-a-submission-outcome); the belt's routing (escalations-route-to-the-replan); the control plane's own brief text.",
+        handback: "The template and renderer changes, a rendered brief before and after, and the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The assignment itself says that a wrong premise is a finding to bring back."),
+    ),
+    roadmap_node(
+      identity: "rn_TONKAGF0HZPT832Y8DNDBT8Q94",
+      id: "how-to-work-names-contributor-ownership",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/design_argument.dag"),
+      line: ticket(t: fields(
+        headline: "how_to_work states the contributor's responsibility for a disproved premise, its reviewer asks about it, and it is first-day reading",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. Edit the existing claim, adding no new row: gunbc.design_argument::how_to_work gains the responsibility shared by authors, reviewers and managers. Once there is concrete evidence a premise is wrong, follow it far enough to correct it within your authority or put it in the hands of someone who can; preserving a sound design after understanding it is good work; a number may confirm or refuse a design, never choose the fix. Its review part gains the tells of transactional work: a brief forced through against evidence the change itself contains; a repair chosen by one number on one axis; a fix at the named site when the contract failure is upstream, which consumes gunbc.design_argument::earliest_unjustified_boundary rather than restating it. gunbc.design_document's rendered explanation follows, and gunbc.contributor_onboarding_path moves how_to_work from WhenItBites to first-day priority. DESIGN.md is regenerated in the same change. Citations are by symbol only.",
+        displaced_cost: "The ownership stance is implicit across several claims, and the how-to-work reviewer asks only about temporary work and workarounds, so a tidy diff that forces a wrong brief through passes every belt reviewer.",
+        first_slice: "Draft the statement and the tells beside the existing claims they rest on (earliest_unjustified_boundary, continuous_generalization, plans_are_intentions), naming what is new and what is consumed.",
+        red_control: "The derived review roster carries the new tells for the how-to-work criterion; the onboarding witness reads first-day priority for how_to_work; DESIGN.md regenerated equals the projection. A belt how-to-work reviewer, given a fixture diff that deletes rows not matching the brief's description in the manner #17120's worker refused to, rejects it, and approves the corrected version. If no harness runs a belt reviewer against a fixed diff, the handback says so and names it as this item's unmet red, rather than claiming the reviewer catches it.",
+        out_of_scope: "A new design row or a new reviewer for ownership; GitHub pull request review prompts; the control plane's working agreements.",
+        handback: "The design-argument, design-document and onboarding changes, the regenerated DESIGN.md, and the reviewer fixture result or the named missing harness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "The design states what every contributor owes when a premise fails, and the belt's reviewer asks it."),
+    ),
+    roadmap_node(
+      identity: "rn_JZWUD79KP099IHR271SPCZ1ANX",
+      id: "criterion-reviewer-approves-its-criterion",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_review_guidance.dag"),
+      line: ticket(t: fields(
+        headline: "A belt criterion reviewer's approve means no defect on its one criterion; goal sufficiency is the goal audit's alone",
+        boundary: "Serves gunbc.plans.findings_reach_a_replan. gunbc.harness.harness_review_guidance defines approve as 'the change does what the goal states and nothing the non-goals forbid' and tells the reviewer to judge the diff against the goal, while gunbc.roadmap.roadmap_review_criteria assigns the goal question to the goal audit alone. That is two authorities for one judgment. Approve becomes no defect on the stated criterion, and the reviewer is told to follow the dependency from the change to a defect that would make a claim of the change false. gunbc.roadmap.roadmap_review_role::review_brief keeps only the per-candidate facts the criterion needs; whether its goal and out-of-scope lines stay is decided by what the criterion reads. The goal audit is unchanged.",
+        displaced_cost: "Each criterion reviewer re-judges the goal against the ticket's boundary, so the brief's framing fences every review and a finding outside the ticket reads as off-topic.",
+        first_slice: "Render a criterion reviewer's system prompt and brief before and after, and confirm the goal audit's is unchanged.",
+        red_control: "A witness over the rendered reviewer guidance: the approve word names the criterion and does not name the goal; the goal audit's approve word still names the goal and the displaced cost. The existing review-role and review-function witnesses stay green.",
+        out_of_scope: "The goal audit; GitHub pull request reviewers; new criteria.",
+        handback: "The guidance and brief changes, the rendered prompts before and after, and the witness."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "contributor-findings-reach-a-replan", contribution: "Each belt reviewer judges its own criterion, so judging the goal has one home."),
     ),
     // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
     // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
@@ -9402,6 +9540,13 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
     // gunb.ai: the refresh waits on the cutover, so the content is written once, in gunbc (merry-eagle-717, 2026-11-24).
     edge(child: "gunb-ai-content-refresh", parent: "gunb-ai-deploy-cutover"),
+    // findings reach a replan (swift-deer-673, 2026-11-27): the model first, then the worker exit and the dispatch
+    // refusal, then the continuation route that consumes both and the brief that renders the exit.
+    edge(child: "disproved-premise-is-a-submission-outcome", parent: "replan-criterion-and-decision-modeled"),
+    edge(child: "owed-replan-refuses-dispatch", parent: "replan-criterion-and-decision-modeled"),
+    edge(child: "escalations-route-to-the-replan", parent: "disproved-premise-is-a-submission-outcome"),
+    edge(child: "escalations-route-to-the-replan", parent: "owed-replan-refuses-dispatch"),
+    edge(child: "dispatch-brief-asks-for-the-finding", parent: "disproved-premise-is-a-submission-outcome"),
   ], guarantee_ladder_edges())
 }
 

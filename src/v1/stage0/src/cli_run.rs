@@ -92,6 +92,7 @@ mod claim_execution;
 pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
+mod materialization_shadow;
 mod native_lane_runner;
 mod native_product_cache;
 pub mod reach_base_standings;
@@ -18124,6 +18125,15 @@ fn report_pre_entry_phases(
             peak_rss_vhwm_bytes().map_or("refused".to_string(), |b| (b / 1024).to_string())
         );
     }
+}
+
+/// Repository-owned command bindings name their declaration. The retained seed projects its
+/// repository path with the same layout lookup used for demand acquisition.
+pub(crate) fn bootstrap_declaration_entry(module: &str) -> String {
+    source_layout_lookup::module_storage_relative(module).unwrap_or_else(|cause| {
+        eprintln!("REFUSED: no repository source path for bootstrap module `{module}`: {cause}");
+        std::process::exit(2);
+    })
 }
 
 /// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure

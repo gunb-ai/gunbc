@@ -1,20 +1,26 @@
 module gunbc.runner.runner_microvm_boot_probe
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command, coreutils_timeout_expired_exit_code }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command }
+// THE LIFECYCLE PRIMITIVES THE BOUND IS IMPOSED WITH. This module starts the subject and signals ONLY the
+// process group it started, on the same primitives gunbc.harness.harness_shell_job uses for its backstopped
+// jobs. The import is bare, exactly as that module takes it, so posix.Process / posix.Signal and the closed
+// ProcessReapOutcome coproduct arrive whole. The bounded WAIT over Reap is NOT duplicated here: it is
+// gunbc.process_lifecycle::process_await_reap, the single implementation this module and the harness share
+// (review 98515 on this PR, gunbc.design_argument::root_generalization -- the trigger was the second local
+// implementation of one rule, and this module's copy was the second).
+import extdeps.posix.process
+import extdeps.posix.signal
+import gunbc.process_lifecycle { process_await_reap }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
   firecracker_vm_config_document, firecracker_run_config_command,
@@ -38,9 +44,7 @@ import gunbc.runner.runner_microvm_host_ready {
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
   microvm_host_binding_wet, microvm_host_binding_refusal_text,
 }
-import gunbc.command_runner {
-  ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
-}
+import gunbc.command_runner { run_shell_commands, LocalExec }
 
 data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthority
 
@@ -143,18 +147,517 @@ fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResoluti
 // behaviour can extend it. A step timeout is not a substitute: it kills the step and can leave the
 // VMM it spawned running, which is precisely the uncontrolled VM this probe must not create.
 //
-// THE KILL ESCALATION IS NOT OPTIONAL. A TERM that a wedged VMM declines leaves the same orphan the
-// deadline existed to prevent, so the deadline escalates to KILL unconditionally.
+// THE BOUNDER IS THIS LAYER, NOT A WRAPPED TOOL. This module starts the subject with
+// the posix.Process service's StartDetached operation (which spawns with POSIX_SPAWN_SETPGROUP, so the
+// subject LEADS the group this lifecycle owns; its refusal is a value of
+// #extdeps.posix.process::ProcessSpawnOutcome), waits on the kernel's own classification through that
+// service's Reap operation (whose answer is a #extdeps.posix.process::ProcessReapOutcome), and signals
+// that group -- and only that group -- with the posix.Signal service's TerminateProcessGroup operation
+// after its OWN
+// deadline ran out with the subject still alive. It does not wrap the subject in GNU timeout on the
+// production route, and it does not read a timeout exit status or timeout's --verbose text as evidence
+// that a bound fired: that diagnostic is authored onto a stderr the timed-out subject shares and can
+// write to, so text there cannot evidence an enforcement event. What this layer may assert is evidence
+// IT owns -- the deadline value it imposed, the fact that it chose to signal, and the kernel's reap
+// classification of the group it started. GNU timeout stays modelled where it belongs, as an upstream
+// convention in #extdeps.tools.gnu_coreutils::coreutils_timeout_expired_exit_code cited to timeout(1),
+// for the readers that still consume it; this module stopped being one of them.
 data runner_microvm_boot_probe_deadline: Second = second(count: 180)
 
+// HOW LONG THIS LAYER WAITS FOR ITS OWN TERM BEFORE IT ESCALATES, and then for its own KILL.
+// The posix.Signal service's TerminateProcessGroup operation carries SIGTERM only (its upstream kill(2)
+// form; see #extdeps.posix.signal::linux_standard_signal_number for the wire number), and a subject is
+// free to catch it -- a wedged Firecracker VMM is exactly the subject that does. THE KILL ESCALATION IS
+// NOT OPTIONAL. A TERM a wedged VMM declines leaves the same orphan the deadline existed to prevent, so
+// when the confirming reap still answers StillRunning after this long, this layer escalates to the
+// sibling posix.Signal KillProcessGroup operation on the SAME group it started, and waits this long
+// again for the confirming reap. A deadline is claimed only when a reap ANSWERS Signalled -- the kernel
+// confirming a signal this layer itself sent; the number it reports says which of the two landed.
 data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 
-fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
-  timeout_command(
-    duration: runner_microvm_boot_probe_deadline,
-    kill_after: runner_microvm_boot_probe_kill_grace,
-    command: firecracker_run_config_command(binary: binary, config_path: config_path),
+// THE GNU-TIMEOUT WRAPPER THIS ROUTE USED TO COMPOSE IS GONE, AND WHY IT COULD NOT STAY. An earlier
+// revision of this file kept a builder around because the authority row
+// #gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event::bare_exit_124_read_as_an_observed_timeout_event
+// names a bound-requesting site by DeclarationRef -- but a citation is not a consumer, and a witness of
+// argv shape is not a consumer either (gunbc.design_argument::consumption: "a witness asserting existence
+// rather than exercising behavior"), while gunbc.design_argument::replacement_migration says the old
+// authority ends in one motion at its root. So the wrapper is deleted with the route that replaced it,
+// and the row's reference moved to the declaration that now imposes the bound:
+// #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_run_bounded. What upstream says about
+// timeout(1) -- that 124 is ITS convention and what its --verbose diagnostics mean -- stays modelled where
+// it belongs, in #extdeps.tools.gnu_coreutils::coreutils_timeout_expired_exit_code, which nine other
+// production call sites, in seven files, still consume through timeout_command (measured
+// at this head: 8 call sites, 7 files). This file no longer composes one, because
+// constructing a GNU timeout invocation does not establish that its deadline fired.
+
+// THE RECEIPT: WHAT THE BOUND THIS LAYER IMPOSES ACTUALLY DID, in one bounded invocation, as observed
+// by the layer that imposed it. It is minted only by runner_microvm_boot_probe_run_bounded below, and it
+// travels to the classifier together with the capture of that same run, so a caller cannot hand the
+// classifier a receipt it did not obtain from the invocation it is judging.
+//
+// WHY NOTHING HERE IS A STATUS. The authority row
+// #gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event::bare_exit_124_read_as_an_observed_timeout_event
+// re-derives on srv1 that `timeout --kill-after=1s 5s sh -c 'exit 124'` (the child's OWN 124, no expiry)
+// and `timeout --kill-after=1s 0.1s sleep 2` (a real expiry) BOTH exit 124. A status cannot tell those
+// two events apart, so no arm of this receipt is keyed on one. What discriminates is which end of the
+// lifecycle answered, twice over: whether THIS layer decided to signal after its own deadline ran out
+// with the subject still alive, and whether the kernel then reaped the group it started as Signalled.
+//
+// THE FORGERY THIS SHAPE CLOSES. An earlier revision of this receipt recognised the bounder's own
+// --verbose enforcement diagnostic in the run's stderr. That was withdrawn under a binding review
+// finding on gunbc#17013: stderr is shared with the bounded subject (gunbc.command_runner's
+// run_shell_command_observe captures it separately from the exit status, and any program the subject runs
+// may write it -- named in prose, not marked: a marked reference into gunbc.command_runner currently
+// refuses because that module does not normalize, a pre-existing main-tree condition this PR does not
+// touch), so a
+// child can print the enforcement sentence with no clock having expired. Every consumer of such a
+// receipt -- including the three bare-124 readers named by the follow-up row
+// bare-124-timeout-readers-consume-the-bound-observation, which is a CHILD of this roadmap node -- would
+// inherit a deadline claim the subject can forge. Text on a shared stderr is not enforcement evidence,
+// and nothing in this receipt consults it (gunbc.design_argument::epistemic_humility: the discriminating
+// observation is typed and emitted where the bound is imposed, never a promoted guess).
+//
+// A SEAM FACT RECORDED RATHER THAN REPAIRED (v1 is semantics-frozen: Manager B, 2026-11-25). The route
+// this replaced -- gunbc.command_runner's run_shell_command_observe, realized by
+// src/v1/stage0/src/v1_interpreter.rs::shell_result_from_capture, which flattens a signal death with
+// `code().unwrap_or(-1)` -- cannot separate a child killed by SIGKILL from a child that reports 137 of
+// its own accord: executed on srv1, a real escalation printed exit_code -1 where a child's own
+// `exit 137` printed 137 (raw lines in the PR body). That flattening is a v1 SEED fact and this change
+// does not touch it; it is also the reason the bounder here never reads a status.
+type ExecutionBoundReceipt
+  = BoundFired { deadline: Second, reaped_signal: Int }
+  | BoundChildExited { exit_code: Int }
+  | BoundSignalledByOther { signal: Int }
+  | BoundReapRefused { cause: String }
+  // The reap refused AFTER this layer's own group signal was accepted by the kernel. It is its own arm,
+  // not a sharing of BoundKillRefused, because the two events have different remedies: there the signal
+  // verb refused and the host's signal path is where to look, and here the signal SUCCEEDED and the
+  // confirmation reap is what refused, so the lifecycle is where to look. A review finding on gunbc#17013
+  // (review 98366) required this split -- folding a refused reap into a refused signal sends the operator
+  // to the wrong machine (gunbc.design_argument::fail_closed: "a wrong answer is a loud, typed, located
+  // error, never a warning or a plausible fabrication").
+  | BoundReapRefusedAfterOurSignal { deadline: Second, cause: String }
+  // THE SIGNAL TOOL NAMED A REFUSAL AND THE KERNEL SAW NO DEATH. Minted where the group-signal tool
+  // printed a reason in its own words (an errno line from kill(1)) while the confirming reap answered no
+  // death -- the one arm where anything from the tool decides, and it decides only a REFUSAL, routing the
+  // operator to the host's signal path (LSM, seccomp, a permission boundary) rather than to this
+  // repository's lifecycle. The tool's exit STATUS is never consulted for this arm or against it: for
+  // the negative-pid group form it was measured answering BOTH WAYS on two instruments of one kernel
+  // (boot_id c095c0cd) -- exit 0 with empty stderr having signalled nobody on srv1 at 2026-11-26
+  // 13:49Z, exit 1 while the group died of that very signal in the session container at 13:48Z -- and
+  // boot_probe_judge_confirmation carries both measurements, each naming its kill(1) by sha256 rather
+  // than by a version string, so a key on it would mint both this refusal and its opposite from a liar
+  // (gunbc.design_argument::external_upstreams).
+  | BoundKillRefused { deadline: Second, detail: String }
+  // THE CONFIRMATION NEVER CAME. This layer delivered its signals to the group it started and the
+  // confirming reap did not answer a death inside the confirmation bound this layer itself imposed
+  // (`confirmation_bound`). Two situations reach it, and this layer observed NEITHER of them as a death:
+  // a subject the kernel is not reaping (signal(7): SIGKILL cannot be caught, blocked or ignored, so this
+  // is the kernel's own accounting, not the bound's), and a caller who imposed a zero-length confirmation
+  // window, where no death was looked for at all. Both are refusals with the bound they were refused
+  // under, and neither is ever rendered as a fired deadline -- an actuation this layer performed is not
+  // evidence of the convergence it was meant to cause (gunbc.design_argument::selection_precedes_convergence).
+  | BoundDeathUnconfirmedWithinBound { deadline: Second, confirmation_bound: Second }
+  | BoundKillUnconfirmed { deadline: Second, exit_code: Int }
+  | BoundKillUnnameable { pid: Int }
+  | BoundSpawnRefused { program: String, cause: String }
+  | NoExecutionBound
+
+// THE CAPTURE THIS LAYER OWNS. The posix.Process service's StartDetached operation writes the subject's stdout and
+// stderr to files THIS caller named, and the console is read back from there -- never out of an argv
+// pipeline. A read that failed is carried as a NAMED CAUSE, never as an empty console: "the guest printed
+// nothing" and "we could not read what the guest printed" are different claims, and collapsing them is the
+// fabricated-plausible-answer shape (gunbc.design_argument::fail_closed). Absence of a cause IS the read
+// succeeding -- there is no sentinel string standing in for it, so no reader can mistake "" (a console that
+// really was empty, which is what a silent guest prints) for a successful read.
+type BootProbeConsole {
+  stdout: String
+  stderr: String
+  source: String
+  read_cause: String?
+}
+
+// ONE BOUNDED INVOCATION: the receipt and the capture taken with it. They travel together because the
+// run that produces one produces the other -- the pairing claim this witness asserts at one interface
+// (gunbc.design_argument::witness_one_interface).
+type BoundedBootRun {
+  receipt: ExecutionBoundReceipt
+  console: BootProbeConsole
+}
+
+// THE BOUNDED INVOCATION. One call, one subject, one bound. `deadline` and `kill_grace` are THE VALUES
+// THIS LAYER IMPOSES, and the receipt carries them back rather than re-reading the module data, so a
+// verdict can never render a bound that was not the one imposed on the run it describes. The production
+// probe passes #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_deadline and
+// #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_kill_grace; a witness imposes a
+// short bound on its own child. `subject` is the argv to bound and the two
+// files are paths the CALLER owns: the wet probe writes them under its own probe directory and a
+// witness writes them under its own mktemp directory -- never a path belonging to another session, and
+// nothing is ever killed by name or pattern (the only group signalled is the one minted from the pid
+// THIS call started, below).
+fn runner_microvm_boot_probe_run_bounded(
+  subject: ArgvCommand,
+  deadline: Second,
+  kill_grace: Second,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  let started = posix.Process.StartDetached(
+    program: subject.program.invocation,
+    arguments: subject.arguments,
+    stdout_file: stdout_file,
+    stderr_file: stderr_file,
   )
+  match started.spawn {
+    SpawnRefused { program: p, cause: c } =>
+      BoundedBootRun {
+        receipt: BoundSpawnRefused { program: p as String, cause: c as String },
+        console: empty_boot_probe_console(source: stdout_file as String),
+      }
+    Spawned { pid: pid } =>
+      boot_probe_after_first_reap(
+        pid: pid,
+        deadline: deadline,
+        kill_grace: kill_grace,
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+  }
+}
+
+// THE FIRST REAP, before this layer has signalled anything. An Exited here is the subject's own ending
+// whatever its code -- 124, 137, 1, 0 -- and it is judged on console content, never as a deadline (the
+// row's red control). A Signalled here came from someone this layer is not: an outside kill, the host
+// OOM killer, or the subject signalling its own group. It is refused by name rather than read as ours.
+fn boot_probe_after_first_reap(
+  pid: Int,
+  deadline: Second,
+  kill_grace: Second,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  match process_await_reap(pid: pid, remaining: deadline) {
+    Exited { code: code } =>
+      boot_probe_bounded_read(
+        receipt: BoundChildExited { exit_code: code },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    Signaled { signal: signal } =>
+      boot_probe_bounded_read(
+        receipt: BoundSignalledByOther { signal: signal },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    ReapRefused { cause: cause } =>
+      boot_probe_bounded_read(
+        receipt: BoundReapRefused { cause: cause },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    StillRunning =>
+      boot_probe_enforce_deadline(
+        pid: pid,
+        deadline: deadline,
+        kill_grace: kill_grace,
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+  }
+}
+
+// THE ENFORCEMENT DECISION, MADE BY THE LAYER THAT OWNS THE BOUND. This is reached only when THIS
+// layer's own await ran its own deadline out with the subject still alive -- the decision, not an
+// inference from a status. The group is minted from the pid THIS StartDetached returned:
+// #extdeps.posix.process::process_group_leader is the sole mint of #extdeps.posix.process::ProcessGroupLeader
+// and it refuses 0, 1 and negatives, so the signal can never be aimed at a pid a caller chose, and the
+// only group this can reach is the one this invocation started (SETPGROUP at spawn makes the subject its
+// own group leader).
+fn boot_probe_enforce_deadline(
+  pid: Int,
+  deadline: Second,
+  kill_grace: Second,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  let leader = process_group_leader(spawned_pid: pid)
+  match leader {
+    Present { value: group } =>
+      boot_probe_after_group_signal(
+        pid: pid,
+        deadline: deadline,
+        kill_grace: kill_grace,
+        group: group,
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    Absent =>
+      boot_probe_bounded_read(
+        receipt: BoundKillUnnameable { pid: pid },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+  }
+}
+
+// WHAT THE TWO WITNESSES ANSWERED, BEFORE THIS LAYER DECIDES WHAT ANY OF IT MEANS. The judgement is its
+// own total function so every arm can be witnessed hermetically: the wet lane must not have to fabricate
+// a kill to reach a refusal arm, and posix.Signal.KillProcessGroup declares no mock_response on purpose
+// (a replayed pid is a fabricated kill). The wet producer feeds this the two answers it actually obtained.
+type ConfirmationAnswer
+  = ConfirmedDead { signal: Int }
+  | ConfirmedExited { code: Int }
+  | ConfirmationRefused { cause: String }
+  | SignalRefusedByTool { message: String }
+  | DeathUnobservedWithinBound
+
+// THE DEATH IS THE REAP'S TO REPORT, AND THE REAP'S ALONE. posix.Process.Reap is waitpid(2) about the
+// very pid this layer started, so its four answers decide every arm here. The signal tool's answer is a
+// different kind of fact, and a weaker one: both group signals ride procps kill(1) -- the transports of
+// the TerminateProcessGroup and KillProcessGroup operations of the extdeps.posix.signal module, which since
+// the measured mis-parse now emit the negative group target AFTER a "--" separator, the one rendering
+// this repository also declares at #extdeps.procps.kill::procps_ng_kill_term_pgid_argv -- and an
+// independently versioned upstream's exit status is worth nothing here. It was MEASURED answering
+// OPPOSITELY on two instruments of ONE kernel (boot_id c095c0cd) for the bare negative form, so a key on
+// it would mint either verdict from a liar. On srv1 at 2026-11-26 13:49Z, in the strace-wrapped wet
+// escalation of this very path, the argv left this layer as issued -- execve("/usr/bin/kill", ["kill",
+// "-TERM", "-3971854"]) and execve("/usr/bin/kill", ["kill", "-KILL", "-3975026"]) -- and kill(1) called
+// kill(-3, SIGTERM) = -1 ESRCH and kill(-3, SIGKILL) = -1 ESRCH: the bare negative target was parsed to
+// 3, a group that does not exist. It exited 0 with empty stderr while the subjects, whose pgrp equalled
+// the pid this layer had recorded at spawn, were alive at t=0/1/3/5 s in state S (wchan do_wait,
+// hrtimer_nanosleep). In the session container on that same kernel at 13:48Z, /usr/bin/kill sha256
+// 390f101aa531bed0639f8637f4a1350453347b36f6a15e148f5300db8788c5d1 (67824 bytes, printing "kill from
+// procps-ng 4.0.4"), the SAME argv exited 1 while the group died of that very signal. One reported
+// version string, two instruments, opposite statuses -- and neither status is kill(2)'s answer, so the
+// status gates NOTHING here -- neither a fired bound nor a refused one
+// (gunbc.design_argument::external_upstreams,
+// gunbc.design_argument::selection_precedes_convergence -- an actuation return cannot mint convergence).
+// What the tool says in WORDS still carries weight, because kill(1) prints an errno line only when
+// kill(2) refused a target it could name: a printed errno together with no death observed is the
+// operator's pointer to the host's signal path -- LSM, seccomp, a permission boundary outside this
+// repository -- refusing the delivery. An empty message together with no death says only that this
+// layer's confirmation bound ran out, which is this layer's own unfinished business: escalated once,
+// then refused under the bound it was refused under, and never charged to the tool.
+fn boot_probe_judge_confirmation(reaped: ProcessReapOutcome, tool_message: String) -> ConfirmationAnswer {
+  match reaped {
+    Signaled { signal: s } => ConfirmedDead { signal: s }
+    Exited { code: c } => ConfirmedExited { code: c }
+    ReapRefused { cause: c } => ConfirmationRefused { cause: c }
+    StillRunning =>
+      if tool_message == "" { DeathUnobservedWithinBound } else { SignalRefusedByTool { message: tool_message } }
+  }
+}
+
+fn boot_probe_after_group_signal(
+  pid: Int,
+  deadline: Second,
+  kill_grace: Second,
+  group: ProcessGroupLeader,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  // THE POLITE SIGNAL, QUEUED. kill(2) answers when a signal is queued for the group, never when the
+  // group died, and for this tool form even that answer is unreliable -- see
+  // boot_probe_judge_confirmation. So the op's status is not read here at all: only its message travels,
+  // and the death is established solely by the confirming reap in boot_probe_confirm_signal.
+  let sent = posix.Signal.TerminateProcessGroup(group: group)
+  boot_probe_confirm_signal(
+    pid: pid,
+    deadline: deadline,
+    remaining: kill_grace,
+    kill_grace: kill_grace,
+    group: group,
+    escalated: false,
+    tool_word: "the polite group term",
+    tool_message: sent.stderr,
+    stdout_file: stdout_file,
+    stderr_file: stderr_file,
+  )
+}
+
+// THE CONFIRMATION, RUN TWICE: once after this layer's SIGTERM, and once after its escalated SIGKILL.
+// Only the kernel may close this arm: Signalled after OUR signal is the bound firing, and the arm carries
+// both the deadline value WE imposed and the signal the kernel reported -- the number says which of the
+// two landed. An Exited after our signal is NOT credited to the bound (the subject ended on its own terms
+// and the timing is not evidence). A StillRunning once the grace expires escalates, when this pass is the
+// TERM pass (`escalated` is false); on the KILL pass there is nothing left to send, so it is the survivor
+// refusal -- and never a fired deadline.
+fn boot_probe_confirm_signal(
+  pid: Int,
+  deadline: Second,
+  remaining: Second,
+  kill_grace: Second,
+  group: ProcessGroupLeader,
+  escalated: Bool,
+  tool_word: String,
+  tool_message: String,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  // THE POLL IS NOT THIS MODULE'S TO WRITE. gunbc.process_lifecycle::process_await_reap holds the one
+  // implementation of "poll Reap once a second until the bound the caller holds runs out"; this function
+  // decides only what the answers MEAN for a bound this layer imposed, and it decides through
+  // boot_probe_judge_confirmation so the deciding itself is witnessed without a live kill. A non-positive
+  // bound asks the reap NOTHING and answers StillRunning on the spot -- the zero-window discriminator the
+  // wet pair turns on, and the reason a signal this layer sent can never mint a deadline by itself.
+  match boot_probe_judge_confirmation(
+    reaped: process_await_reap(pid: pid, remaining: remaining),
+    tool_message: tool_message,
+  ) {
+    ConfirmedDead { signal: signal } =>
+      boot_probe_bounded_read(
+        receipt: BoundFired { deadline: deadline, reaped_signal: signal },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    ConfirmedExited { code: code } =>
+      boot_probe_bounded_read(
+        receipt: BoundKillUnconfirmed { deadline: deadline, exit_code: code },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    ConfirmationRefused { cause: cause } =>
+      boot_probe_bounded_read(
+        receipt: BoundReapRefusedAfterOurSignal { deadline: deadline, cause: cause },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    SignalRefusedByTool { message: message } =>
+      // The tool named a refusal in its own words AND the kernel's witness saw no death: the only arm
+      // where anything the signal tool said decides, and it decides a REFUSAL -- pointing the operator
+      // at the host's signal path instead of letting a queueing status speak for a death.
+      boot_probe_bounded_read(
+        receipt: BoundKillRefused {
+          deadline: deadline,
+          detail: join([tool_word, " was refused by the host's signal path: ", message], ""),
+        },
+        stdout_file: stdout_file,
+        stderr_file: stderr_file,
+      )
+    DeathUnobservedWithinBound =>
+      // The confirmation bound ran out without the kernel having answered a death, and the tool printed
+      // no reason. That is this layer's own unfinished business, never a fact about the subject, and it
+      // is decided here -- escalate once, and if this pass IS the escalation, refuse under the bound it
+      // was refused under rather than call an unobserved death a fired deadline.
+      if escalated {
+        boot_probe_bounded_read(
+          receipt: BoundDeathUnconfirmedWithinBound {
+            deadline: deadline,
+            confirmation_bound: kill_grace,
+          },
+          stdout_file: stdout_file,
+          stderr_file: stderr_file,
+        )
+      } else {
+        boot_probe_escalate_kill(
+          pid: pid,
+          deadline: deadline,
+          kill_grace: kill_grace,
+          group: group,
+          stdout_file: stdout_file,
+          stderr_file: stderr_file,
+        )
+      }
+  }
+}
+
+// THE ESCALATION, AND WHY IT IS THIS LAYER'S JOB. The group was started by this layer's own bounded
+// invocation and named by nothing else, so the survivor of a declined SIGTERM is this layer's unfinished
+// cleanup -- precisely the uncontrolled VM this probe must not leave behind. The signal goes to the SAME
+// sealed ProcessGroupLeader the SIGTERM went to, which #extdeps.posix.process::process_group_leader
+// minted from the pid this invocation spawned and refuses for pid 0, 1 and negatives: this is a kill of
+// one process group this layer owns, never a broadcast, and it targets no pid it did not start.
+fn boot_probe_escalate_kill(
+  pid: Int,
+  deadline: Second,
+  kill_grace: Second,
+  group: ProcessGroupLeader,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  // THE ESCALATION'S ANSWER IS NOT ITS OWN PROOF. posix.Signal.KillProcessGroup carries `delivered`,
+  // which is kill(1)'s claim about queueing -- and for this negative-pid form that claim is measured
+  // inverted against the kernel's own report (boot_probe_judge_confirmation). Nothing gates on it: the
+  // SIGKILL goes to the SAME sealed ProcessGroupLeader the SIGTERM went to, and the confirming reap
+  // alone decides, because a status from the kill would have minted a convergence the kernel never
+  // reported (gunbc.design_argument::selection_precedes_convergence).
+  let sent = posix.Signal.KillProcessGroup(group: group)
+  boot_probe_confirm_signal(
+    pid: pid,
+    deadline: deadline,
+    remaining: kill_grace,
+    kill_grace: kill_grace,
+    group: group,
+    escalated: true,
+    tool_word: "the escalated group kill",
+    tool_message: sent.stderr,
+    stdout_file: stdout_file,
+    stderr_file: stderr_file,
+  )
+}
+
+fn boot_probe_bounded_read(
+  receipt: ExecutionBoundReceipt,
+  stdout_file: NonEmptyStr,
+  stderr_file: NonEmptyStr,
+) -> BoundedBootRun {
+  let out = Filesystem.Read(path: stdout_file as String)
+  let err = Filesystem.Read(path: stderr_file as String)
+  if !out.success {
+    BoundedBootRun {
+      receipt: receipt,
+      console: BootProbeConsole {
+        stdout: "",
+        stderr: "",
+        source: stdout_file as String,
+        read_cause: Present { value: join(["the stdout capture could not be read: ", out.error], "") },
+      },
+    }
+  } else if !err.success {
+    BoundedBootRun {
+      receipt: receipt,
+      console: BootProbeConsole {
+        stdout: out.content,
+        stderr: "",
+        source: stderr_file as String,
+        read_cause: Present { value: join(["the stderr capture could not be read: ", err.error], "") },
+      },
+    }
+  } else {
+    BoundedBootRun {
+      receipt: receipt,
+      console: BootProbeConsole {
+        stdout: out.content,
+        stderr: err.content,
+        source: stdout_file as String,
+        read_cause: Absent,
+      },
+    }
+  }
+}
+
+fn empty_boot_probe_console(source: String) -> BootProbeConsole {
+  BootProbeConsole {
+    stdout: "",
+    stderr: "",
+    source: source,
+    read_cause: Present { value: "nothing was started, so nothing was captured" },
+  }
+}
+
+fn runner_microvm_boot_probe_deadline_text(deadline: Second) -> String {
+  concat(to_string(second_count(s: deadline)), " seconds")
+}
+
+// THE OBSERVING ENTRY POINT for one bounded boot-probe invocation: it takes the receipt and the capture
+// out of the SAME BoundedBootRun the bound produced -- neither can be supplied independently of the run
+// it describes -- and carries both into the classifier. This is the function the real-spawn witness
+// drives end to end.
+fn runner_microvm_boot_probe_verdict_from_run(
+  runner: ActionsRunnerRelease,
+  run: BoundedBootRun,
+) -> BootProbeVerdict {
+  guest_agent_boot_verdict(runner: runner, console: run.console, receipt: run.receipt)
 }
 
 // THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, NOT A GREETING. The console must carry the
@@ -166,56 +669,252 @@ fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String
 // discards stdout on a non-admitted exit, then labelled the surviving STDERR as "the console" -- a
 // fabricated label over missing evidence. A guest that panics and is then killed by its deadline
 // prints its panic to stdout, so that arm without stdout is the one arm that had to keep it.
+// WHY THIS LAYER'S OWN ENFORCEMENT COULD NOT BE CONFIRMED, carried on the refusal so each refusal
+// states what was actually observed. An earlier revision folded two of these into one message and a
+// review finding on gunbc#17013 required the split; the arms below are separate because THEIR REMEDIES
+// are separate (gunbc.design_argument::fail_closed: "a wrong answer is a loud, typed, located error,
+// never a warning or a plausible fabrication").
+//   SignalledWithoutOurKill   -- the kernel reaped the subject as Signalled although THIS layer had not
+//        signalled it: an outside hand ended it (the host OOM killer, an operator, or the subject
+//        signalling its own group). Remedy: find the other signaler; the bound is neither implicated nor
+//        exonerated.
+//   ReapNeverAnswered         -- waitpid refused, so how the subject ended is unknown at all. Remedy: the
+//        lifecycle, not the subject. NOT named ReapRefused: the closed #extdeps.posix.process::ProcessReapOutcome
+//        already owns that arm name for the kernel's own ECHILD answer, and this arm is a step later -- it says
+//        the bound this layer imposed was never observed to be enforced at all.
+//   ReapRefusedAfterOurSignal -- this layer imposed the bound, its group signal was ACCEPTED by the kernel,
+//        and the confirmation reap that followed is what refused. The signal is not the suspect and the
+//        host's signal path is the wrong place to look; the remedy is the lifecycle that owes this layer a
+//        reap. Kept apart from ReapNeverAnswered because the first says the bound was never enforced at all and
+//        this one says it was enforced and then could not be read back.
+//   GroupSignalRefused        -- this layer decided at the deadline and asked the kernel to signal the
+//        group it started, and the group verb refused. Remedy: the host's signal path.
+//   ConfirmationUnobserved    -- this layer delivered its signals to the group it started and the
+//        confirming reap never answered a death inside the confirmation bound IT imposed. Either the
+//        kernel is not reaping the process (signal(7): SIGKILL cannot be caught, blocked or ignored -- a
+//        matter for the host's process accounting) or the window was too short to look -- and in neither
+//        case did this layer observe the death, so the answer is a refusal naming both bounds, never a
+//        deadline. Remedy: the host's process accounting or a wider confirmation bound, not a claim about
+//        this bound.
+//   KillNotConfirmedByReap    -- this layer signalled and the kernel then reaped the subject as EXITED, so
+//        the death is not attributable to that signal. Remedy: read the subject, not the bound.
+//   GroupUnnameable           -- the pid this invocation started could not be minted as a group leader, so
+//        nothing was signalled. Remedy: the lifecycle primitive.
+// ONE REPRESENTATION OF THE BOUND. Every arm that names a bound carries it as a std.measure Second --
+// the same carrier the receipt uses -- so a consumer can compare or compute with the bound it is being told
+// about. The rendered "N seconds" form exists only inside boot_probe_verdict_text, at the boundary where a
+// duration becomes a sentence (DESIGN.md: the string form belongs only at the transport boundary; and
+// gunbc.design_argument::fail_closed on restating a constraint the model already carries).
+type EnforcementMismatch
+  = SignalledWithoutOurKill { signal: Int }
+  | ReapNeverAnswered { cause: String }
+  | ReapRefusedAfterOurSignal { deadline: Second, cause: String }
+  | GroupSignalRefused { deadline: Second, detail: String }
+  | ConfirmationUnobserved { deadline: Second, confirmation_bound: Second }
+  | KillNotConfirmedByReap { deadline: Second, exit_code: Int }
+  | GroupUnnameable { pid: Int }
+
 type BootProbeVerdict
   = BootPrintedRunnerVersion { version: String }
   | BootProducedNoConsole { cause: String }
   | BootConsoleLacksRunnerVersion { expected: String, console: String }
   | BootConsoleLacksGuestBooted { console: String }
   | BootNotAttempted { cause: String }
-  | BootExceededHostDeadline { deadline: String, console: String, detail: String }
+  | BootExceededHostDeadline {
+      deadline: Second
+      console: String
+      console_cause: String?
+      detail: String
+    }
+  | BootDeadlineEnforcementUnobservable {
+      console: String
+      console_cause: String?
+      detail: String
+      cause: EnforcementMismatch
+    }
+  | BootConsoleUnreadable { path: String, cause: String }
   | BootVmmFailed { exit_code: Int, console: String, detail: String }
 
-fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
-  if observed.exit_code == coreutils_timeout_expired_exit_code {
-    BootExceededHostDeadline {
-      deadline: concat(to_string(second_count(s: runner_microvm_boot_probe_deadline)), " seconds"),
-      console: observed.stdout,
-      detail: observed.stderr,
-    }
-  } else if observed.exit_code != 0 {
-    BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
-  } else if observed.stdout == "" {
+// THE CLASSIFIER CONSUMES THE RECEIPT, never a bare status, and it has NO ARM THAT KEYS A DEADLINE ON
+// 124 -- the row's out_of_scope forbids one anywhere, and none is added here.
+//   BoundFired                -> BootExceededHostDeadline, rendering the duration THIS layer imposed and
+//                                the signal the kernel reported: an observed event, not an invented one
+//                                (gunbc.design_argument::epistemic_humility).
+//   BoundChildExited          -> judged on console content exactly as if no bound had been placed, so a
+//                                guest that exited 124 of its own accord reaches BootVmmFailed -- the
+//                                cause BootVmmFailed exists to carry, which the old bare-124 read
+//                                discarded. This arm IS the row's red control.
+//   the six unobservable arms -> BootDeadlineEnforcementUnobservable with a typed cause: no deadline is
+//                                asserted and none is ruled out, and no status is consulted on the way
+//                                there (gunbc.design_argument::fail_closed).
+//   BoundSpawnRefused         -> BootNotAttempted: nothing ran, so nothing can be judged.
+//   NoExecutionBound          -> the captured-console route of #gunbc.runner.runner_observed_version_check:
+//                                a committed FILE, with no bounder and no reaper, so there is no subject
+//                                status at all and the reader's own status is never laundered into the
+//                                subject's. Console content alone decides.
+fn boot_probe_verdict_by_content(
+  runner: ActionsRunnerRelease,
+  console: BootProbeConsole,
+  exit_code: Int,
+) -> BootProbeVerdict {
+  if exit_code != 0 {
+    BootVmmFailed { exit_code: exit_code, console: console.stdout, detail: console.stderr }
+  } else if console.stdout == "" {
     BootProducedNoConsole {
       cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
     }
-  } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
+  } else if string_contains(s: console.stdout, pattern: runner.version as String) {
     BootPrintedRunnerVersion { version: runner.version as String }
   } else {
-    BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
+    BootConsoleLacksRunnerVersion { expected: runner.version as String, console: console.stdout }
+  }
+}
+
+fn boot_probe_verdict(
+  runner: ActionsRunnerRelease,
+  console: BootProbeConsole,
+  receipt: ExecutionBoundReceipt,
+) -> BootProbeVerdict {
+  match receipt {
+    BoundSpawnRefused { program: p, cause: c } =>
+      BootNotAttempted {
+        cause: join(["nothing was started: the bounded invocation was refused before a pid existed (", p, ": ", c, ")"], ""),
+      }
+    BoundFired { deadline: d, reaped_signal: sig } =>
+      BootExceededHostDeadline {
+        deadline: d,
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: join([
+          "this probe imposed the bound (", runner_microvm_boot_probe_deadline_text(deadline: d),
+          ") on a process group it started, signalled that group itself once the bound ran out with the",
+          " subject still alive, and the kernel reaped the subject as signalled (signal ", to_string(sig),
+          "); the deadline is a death this layer caused and the kernel confirmed -- not an exit status",
+          " read as a deadline",
+        ], ""),
+      }
+    BoundChildExited { exit_code: code } =>
+      match console.read_cause {
+        Present { value: c } => BootConsoleUnreadable { path: console.source, cause: c }
+        Absent => boot_probe_verdict_by_content(runner: runner, console: console, exit_code: code)
+      }
+    BoundSignalledByOther { signal: sig } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: SignalledWithoutOurKill { signal: sig },
+      }
+    BoundReapRefused { cause: c } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: ReapNeverAnswered { cause: c },
+      }
+    BoundReapRefusedAfterOurSignal { deadline: d, cause: c } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: ReapRefusedAfterOurSignal {
+          deadline: d,
+          cause: c,
+        },
+      }
+    BoundKillRefused { deadline: d, detail: dd } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: GroupSignalRefused {
+          deadline: d,
+          detail: dd,
+        },
+      }
+    BoundDeathUnconfirmedWithinBound { deadline: d, confirmation_bound: cb } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: ConfirmationUnobserved {
+          deadline: d,
+          confirmation_bound: cb,
+        },
+      }
+    BoundKillUnconfirmed { deadline: d, exit_code: code } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: KillNotConfirmedByReap {
+          deadline: d,
+          exit_code: code,
+        },
+      }
+    BoundKillUnnameable { pid: pid } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: GroupUnnameable { pid: pid },
+      }
+    NoExecutionBound =>
+      match console.read_cause {
+        Present { value: c } => BootConsoleUnreadable { path: console.source, cause: c }
+        Absent => boot_probe_verdict_by_content(runner: runner, console: console, exit_code: 0)
+      }
   }
 }
 
 // A LIVE BOOT OF THIS IMAGE MUST ALSO CARRY THE AGENT'S GuestBooted MARKER, read through
-// gunbc.runner.runner_guest_image guest_console_carries -- the host's one console reader -- so a version
+// #gunbc.runner.runner_guest_image::guest_console_carries -- the host's one console reader -- so a version
 // string that reached the console some other way is not read as the agent having run. It is a layer
 // over boot_probe_verdict rather than inside it because that verdict also judges consoles captured
 // before the marker existed (gunbc.runner_observed_version_check's committed Mt. Collins capture),
 // where requiring it would fail a true version readback for a reason unrelated to the version.
-fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
-  let base = boot_probe_verdict(runner: runner, observed: observed)
+fn guest_agent_boot_verdict(
+  runner: ActionsRunnerRelease,
+  console: BootProbeConsole,
+  receipt: ExecutionBoundReceipt,
+) -> BootProbeVerdict {
+  let base = boot_probe_verdict(runner: runner, console: console, receipt: receipt)
   match base {
     BootPrintedRunnerVersion { version: _ } =>
-      if guest_console_carries(console: observed.stdout, kind: GuestEmitted { event: GuestBooted }) {
+      if guest_console_carries(console: console.stdout, kind: GuestEmitted { event: GuestBooted }) {
         base
       } else {
-        BootConsoleLacksGuestBooted { console: observed.stdout }
+        BootConsoleLacksGuestBooted { console: console.stdout }
       }
     BootProducedNoConsole { cause: _ } => base
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => base
     BootConsoleLacksGuestBooted { console: _ } => base
     BootNotAttempted { cause: _ } => base
-    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => base
+    BootExceededHostDeadline { deadline: _, console: _, console_cause: _, detail: _ } => base
+    BootDeadlineEnforcementUnobservable { console: _, console_cause: _, detail: _, cause: _ } => base
+    BootConsoleUnreadable { path: _, cause: _ } => base
     BootVmmFailed { exit_code: _, console: _, detail: _ } => base
+  }
+}
+
+// EVERY FAILING ARM CARRIES THE CONSOLE, because on this subject the console IS the evidence and the
+// failure is when you most need it. An earlier revision routed the VMM through the capture that
+// discards stdout on a non-admitted exit, then labelled the surviving STDERR as "the console" -- a
+// fabricated label over missing evidence. A guest that panics and is then killed by its deadline prints
+// its panic to stdout, so that arm without stdout is the one arm that had to keep it.
+// THE CONSOLE BLOCK, HONEST ABOUT WHETHER IT WAS READ. An unreadable capture is never rendered as an
+// empty console: "the guest printed nothing" and "this layer could not read what the guest printed" are
+// different claims, and printing the former when the latter happened is the fabricated-plausible-answer
+// shape gunbc.design_argument::fail_closed refuses. Absent is the read succeeding; the string is then
+// shown as captured.
+fn boot_probe_console_block(console: String, read_cause: String?) -> String {
+  match read_cause {
+    Present { value: c } => join([
+      "\n--- console ---\n(unreadable: ", c,
+      ") -- the capture could not be read; this is NOT the claim that the guest printed nothing",
+      "\n--- end console ---",
+    ], "")
+    Absent => join(["\n--- console ---\n", console, "\n--- end console ---"], "")
   }
 }
 
@@ -228,10 +927,60 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
     BootConsoleLacksGuestBooted { console: c } =>
       join(["boot=console-without-guest-booted (the guest agent never reported GuestBooted)\n--- console ---\n", c, "\n--- end console ---"], "")
     BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
-    BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
-      join(["boot=host-deadline-expired after ", d,
-            " -- the guest did not power itself off and the host killed the VMM\nvmm-stderr: ", e,
-            "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootExceededHostDeadline { deadline: d, console: c, console_cause: capture_cause, detail: e } =>
+      join(["boot=host-deadline-expired after ", runner_microvm_boot_probe_deadline_text(deadline: d),
+            " -- this probe imposed that bound, signalled its own process group when the bound ran out,",
+            " and the kernel reaped the subject as signalled\n", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: SignalledWithoutOurKill { signal: sig } } =>
+      join(["boot=deadline-enforcement-unobservable -- the kernel reaped the bounded subject as signalled",
+            " (signal ", to_string(sig), ") although this layer had not signalled its process group: some",
+            " other hand ended it (an outside kill, the host OOM killer, or the subject signalling its own",
+            " group), so the bound neither fired nor did not, and NO deadline is claimed",
+            " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ReapNeverAnswered { cause: rc } } =>
+      join(["boot=deadline-enforcement-unobservable -- the kernel refused this layer's reap of the bounded",
+            " subject (", rc, "), so how it ended is unknown and NO deadline is claimed",
+            " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ReapRefusedAfterOurSignal { deadline: d, cause: rc } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", the kernel ACCEPTED its",
+            " signal to the process group this layer started, and then refused this layer's confirmation reap",
+            " of that subject (", rc, "). The signal verb is not the suspect and the host's signal path is",
+            " not where to look; the lifecycle that owes this layer a reap is. How the subject ended is",
+            " unknown, so NO deadline is claimed",
+            " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: GroupSignalRefused { deadline: d, detail: dd } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), " and asked the kernel to",
+            " signal the process group it started, and the group signal was refused (", dd, "); the subject",
+            " was never confirmed dead by that signal, so NO deadline is claimed",
+            " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ConfirmationUnobserved { deadline: d, confirmation_bound: cb } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d),
+            ", DELIVERED its signal to the process group it started, escalated to the group kill, and the",
+            " confirming reap answered no death inside the ", runner_microvm_boot_probe_deadline_text(deadline: cb),
+            " confirmation bound this layer itself set. This layer therefore holds NO observation that its",
+            " signal ended the group -- kill(2) 0 means queued, and only the reap can report the death --",
+            " so the run is a refusal and NOT a deadline that fired (an actuation is not the convergence it",
+            " aimed at -- gunbc.design_argument::selection_precedes_convergence, epistemic_humility)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: KillNotConfirmedByReap { deadline: d, exit_code: code } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", signalled the process group",
+            " it started, and the kernel then reaped the subject as EXITED (", to_string(code), "), not as",
+            " signalled: the death is not attributable to this layer's signal, so NO deadline is claimed",
+            " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: GroupUnnameable { pid: pid } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer started pid ", to_string(pid), " but that pid",
+            " could not be minted as a process-group leader, so nothing was signalled and NO deadline is",
+            " claimed (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootConsoleUnreadable { path: p, cause: cc } =>
+      join(["boot=console-unreadable path=", p, " (", cc, ") -- the capture could not be read, which is NOT",
+            " the claim that the guest printed nothing (gunbc.design_argument::fail_closed)"], "")
     BootVmmFailed { exit_code: x, console: c, detail: e } =>
       join(["boot=vmm-failed exit=", to_string(x), "\nvmm-stderr: ", e,
             "\n--- console ---\n", c, "\n--- end console ---"], "")
@@ -245,7 +994,9 @@ fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => false
     BootConsoleLacksGuestBooted { console: _ } => false
     BootNotAttempted { cause: _ } => false
-    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
+    BootExceededHostDeadline { deadline: _, console: _, console_cause: _, detail: _ } => false
+    BootDeadlineEnforcementUnobservable { console: _, console_cause: _, detail: _, cause: _ } => false
+    BootConsoleUnreadable { path: _, cause: _ } => false
     BootVmmFailed { exit_code: _, console: _, detail: _ } => false
   }
 }
@@ -327,17 +1078,22 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                     },
                   )
                 } else {
-                  runner_microvm_boot_probe_receipt_wet(
-                    verdict: guest_agent_boot_verdict(
-                      runner: image.runner,
-                      observed: run_shell_command_observe(
-                        command: runner_microvm_boot_probe_bounded_command(
-                          binary: firecracker_installed_binary(root: fc_root, rel: firecracker_release_aarch64),
-                          config_path: runner_microvm_boot_probe_config_path(root: root),
-                        ),
-                        transport: LocalExec,
-                      ),
+                  // THE BOUND IS IMPOSED HERE: this layer starts the VMM in a process group of its own,
+                  // waits on the kernel's classification, and signals that group -- and only that group --
+                  // if its own deadline runs out. The captures are files this probe owns, under the probe
+                  // directory it staged. No GNU timeout wrapper, no status-based deadline read.
+                  let run = runner_microvm_boot_probe_run_bounded(
+                    subject: firecracker_run_config_command(
+                      binary: firecracker_installed_binary(root: fc_root, rel: firecracker_release_aarch64),
+                      config_path: runner_microvm_boot_probe_config_path(root: root),
                     ),
+                    deadline: runner_microvm_boot_probe_deadline,
+                    kill_grace: runner_microvm_boot_probe_kill_grace,
+                    stdout_file: join([runner_microvm_boot_probe_dir(root: root), "/vmm-console.txt"], "") as NonEmptyStr,
+                    stderr_file: join([runner_microvm_boot_probe_dir(root: root), "/vmm-stderr.txt"], "") as NonEmptyStr,
+                  )
+                  runner_microvm_boot_probe_receipt_wet(
+                    verdict: runner_microvm_boot_probe_verdict_from_run(runner: image.runner, run: run),
                   )
                 }
               }

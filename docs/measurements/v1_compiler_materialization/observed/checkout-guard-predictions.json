@@ -1,0 +1,17 @@
+{
+  "subject": "gunbc.fleet.fleet_converge_plan_revision::verify_checkout_at_plan_revision",
+  "replication": "Fresh gunbc process on each call, identical binary and command-line arguments, same artifact and tree. Both real Git checkouts are mounted read-only at /checkout inside separate mount and network namespaces. Only the legitimately fetched historical plan receipt is visible at the production path. The mismatch fixture is a distinct empty commit on the original tree.",
+  "artifact": 15077460698,
+  "plan_run": 45722153952,
+  "receipt_sha256": "4d7f51b3a20a0eec4c17cd9b1aad4a3e47e87718c8b54454d09ea277f9529b89",
+  "matching_head": "a58ba3e3d4ae4725915cadbcf6275bc84a25152f",
+  "mismatching_head": "0f36c96f528f6fcef055f121e6b323ae5420a352",
+  "common_tree": "6e2988ba58f88f681ca4c3086d67fea72d072de7",
+  "rows": [
+    {"case": "cold-match", "result": "exit 0", "store": "clean, first lookup per observed key misses; repeated provider rounds may hit in this same process"},
+    {"case": "warm-match", "result": "exit 0 with the same output as cold-match", "store": "all keys previously observed; comparisons equal"},
+    {"case": "warm-mismatch", "result": "exit 1 with CheckoutHeadMismatch naming receipt and observed HEAD", "store": "same set of compiler keys and equal comparisons despite distinct Git commit"},
+    {"case": "cold-mismatch", "result": "same exit and refusal as warm-mismatch", "store": "separate empty journal; first lookup per key misses"}
+  ],
+  "interpretation": "The current probe observes complete NewlineIndex answers after production. A hit/equal is a matching prediction, not a skipped producer. No speedup or two-host portability is preregistered as an outcome of this initial experiment. Report elapsed time, process CPU, peak RSS, count of reads compared and available byte measures. A different result/trace is a failed prediction; an environmental refusal before evaluation is unobserved."
+}
