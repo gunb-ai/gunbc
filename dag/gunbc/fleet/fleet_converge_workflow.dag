@@ -93,7 +93,10 @@ import extdeps.github.expressions {
 }
 import std.unicode.scalar { ascii_lowercase }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
-import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_plan_artifact_location {
+  fleet_plan_run_artifact_dir, fleet_converge_plan_anchor_env_name, fleet_converge_plan_anchor_path_expr,
+  fleet_converge_run_artifact_root_env_name, fleet_converge_run_artifact_plan_run_id_env_name, fleet_converge_run_artifact_attempt_env_name,
+}
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
@@ -1660,7 +1663,7 @@ fn fleet_converge_plan_revision_download_step() -> Step {
     with: Present {
       value: [
         kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
-        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
+        kv(key: "path", value: yaml_string(s: fleet_converge_plan_anchor_path_expr)),
         kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
         kv(key: "run-id", value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
       ]
@@ -1685,6 +1688,7 @@ fn fleet_converge_plan_revision_resolve_step() -> Outcome<Step> {
       value: [
         kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
         kv(key: fleet_converge_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        fleet_converge_plan_anchor_env_row(),
       ]
     },
     working_directory: none,
@@ -1707,7 +1711,7 @@ fn fleet_converge_checkout_verify_step(if_condition: String?) -> Outcome<Step> {
     id: Present { value: "checkout_verify" },
     run: zesty_run,
     shell: none,
-    env: none,
+    env: Present { value: [fleet_converge_plan_anchor_env_row()] },
     working_directory: none,
     if_condition: if_condition,
     continue_on_error: none,
@@ -2125,7 +2129,7 @@ fn fleet_converge_plan_upload_step() -> Step {
     with: Present {
       value: workflow_artifact_upload_with(
         name: gunbc_fleet_converge_plan_artifact_name,
-        path: fleet_converge_plan_artifact_dir,
+        path: fleet_converge_plan_run_artifact_dir_expr(),
         retention_days: Present { value: 30 },
         compression_level: Present { value: 0 },
         absence: AbsenceRefused,
@@ -2146,7 +2150,7 @@ fn fleet_converge_plan_download_step() -> Step {
     with: Present {
       value: [
         kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
-        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
+        kv(key: "path", value: yaml_string(s: fleet_converge_plan_anchor_path_expr)),
         kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
         kv(key: "run-id", value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
       ]
@@ -2156,6 +2160,52 @@ fn fleet_converge_plan_download_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
+}
+
+// THE PER-RUN ARTIFACT ROOT the PLAN STEP publishes into the pack, so concurrent runs never share
+// one filename (roadmap row serve-entry-verdict-path-is-per-run). These three env rows are set
+// ONLY on the plan steps that mint a FleetConvergePlanReceipt; the plan step reads them, composes
+// run_artifact_dir via gunbc.fleet.fleet_plan_artifact_location fleet_plan_run_artifact_dir, and
+// publishes it in the receipt. The recorder and the swap read the dir back from the pack and never
+// read these names -- so setting them at apply has no effect there (witness leg 3). The root is the
+// runner-owned, writable RUNNER_TEMP; the identity is this run's id plus attempt, so a re-run of
+// the same revision lands in its own directory instead of clobbering the last one.
+data fleet_converge_plan_run_root_expr: NonEmptyStr = "${{ runner.temp }}/fleet-converge-run"
+data fleet_converge_plan_run_id_expr: NonEmptyStr = "${{ github.run_id }}"
+data fleet_converge_plan_run_attempt_expr: NonEmptyStr = "${{ github.run_attempt }}"
+
+// THE ONE RENDERER CALL IN THE WORKFLOW (manager ruling 2026-11-24). The dir shape is spelled
+// only by gunbc.fleet.fleet_plan_artifact_location fleet_plan_run_artifact_dir; the runtime
+// composer (compose_fleet_converge_run_artifact_dir*) calls the SAME function with the env values
+// above. The plan upload path, the recorder's GUNBC_FLEET_CONVERGE_PLAN_ANCHOR and the three env
+// inputs all come from this one source, so the upload path, the anchor and the composed dir
+// cannot drift -- there is no second template.
+fn fleet_converge_plan_run_artifact_dir_expr() -> String {
+  fleet_plan_run_artifact_dir(
+    root: fleet_converge_plan_run_root_expr,
+    plan_run_id: fleet_converge_plan_run_id_expr,
+    attempt: fleet_converge_plan_run_attempt_expr,
+  )
+}
+
+// The PLAN JOB's anchor: the very directory the plan uploads from, so the pack sits at the
+// artifact root and the recorder reads <anchor>/plan_receipt.json without recomposing anything.
+fn fleet_converge_plan_anchor_plan_env_row() -> YamlKeyValue {
+  kv(key: fleet_converge_plan_anchor_env_name, value: yaml_string(s: fleet_converge_plan_run_artifact_dir_expr()))
+}
+
+// The CONSUMER'S anchor: where the download step lands the plan bundle (apply, revision-admit,
+// swap-side consumers). Consumers receive ONLY this directory and read <anchor>/<name>.
+fn fleet_converge_plan_anchor_env_row() -> YamlKeyValue {
+  kv(key: fleet_converge_plan_anchor_env_name, value: yaml_string(s: fleet_converge_plan_anchor_path_expr))
+}
+
+fn fleet_converge_run_artifact_dir_env_rows() -> List<YamlKeyValue> {
+  [
+    kv(key: fleet_converge_run_artifact_root_env_name, value: yaml_string(s: fleet_converge_plan_run_root_expr as String)),
+    kv(key: fleet_converge_run_artifact_plan_run_id_env_name, value: yaml_string(s: fleet_converge_plan_run_id_expr as String)),
+    kv(key: fleet_converge_run_artifact_attempt_env_name, value: yaml_string(s: fleet_converge_plan_run_attempt_expr as String)),
+  ]
 }
 
 fn fleet_converge_plan_step() -> Outcome<Step> {
@@ -2168,10 +2218,13 @@ fn fleet_converge_plan_step() -> Outcome<Step> {
     run: zesty_run,
     shell: none,
     env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-      ]
+      value: concat(
+        [
+          kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+          kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        ],
+        fleet_converge_run_artifact_dir_env_rows(),
+      )
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
@@ -2200,7 +2253,7 @@ fn fleet_converge_serve_entry_verdict_step() -> Outcome<Step> {
     id: Present { value: "serve_entry_verdict" },
     run: zesty_run,
     shell: none,
-    env: none,
+    env: Present { value: [fleet_converge_plan_anchor_plan_env_row()] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_serve_entry_verdict_step_if },
     continue_on_error: none,
@@ -2224,10 +2277,13 @@ fn fleet_converge_launch_environment_plan_step() -> Outcome<Step> {
     run: zesty_run,
     shell: none,
     env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-      ]
+      value: concat(
+        [
+          kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+          kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        ],
+        fleet_converge_run_artifact_dir_env_rows(),
+      )
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_launch_environment_plan_step_if },
@@ -2249,10 +2305,13 @@ fn fleet_converge_workspace_commissioning_plan_step() -> Outcome<Step> {
     run: zesty_run,
     shell: none,
     env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-      ]
+      value: concat(
+        [
+          kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+          kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        ],
+        fleet_converge_run_artifact_dir_env_rows(),
+      )
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_workspace_commissioning_plan_step_if },
@@ -2299,6 +2358,7 @@ fn fleet_converge_apply_step() -> Outcome<Step> {
         ),
         kv(key: fleet_converge_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
         kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        fleet_converge_plan_anchor_env_row(),
       ]
     },
     working_directory: none,
@@ -5592,7 +5652,10 @@ fn fleet_converge_apply_receipt_upload_step() -> Step {
     id: "apply_receipt_upload",
     name: "Upload fleet converge apply receipt",
     artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
-    path: gunbc_fleet_converge_apply_receipt_artifact_dir,
+    // The apply job writes its receipt INTO the admitted anchor beside the pack it read; the
+    // artifact therefore carries the run's anchored bundle, and consumers read
+    // <anchor>/apply_receipt.json next to <anchor>/plan_receipt.json.
+    path: fleet_converge_plan_anchor_path_expr,
     if_condition: fleet_converge_apply_step_if,
   )
 }
@@ -5658,6 +5721,7 @@ fn fleet_converge_dashboard_deploy_step() -> Outcome<Step> {
         kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
         kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
         kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
+        fleet_converge_plan_anchor_env_row(),
       ]
     },
     working_directory: none,
@@ -5812,7 +5876,7 @@ fn fleet_converge_dashboard_deploy_job() -> Outcome<Job> {
           id: "dashboard_plan_receipt_download",
           name: "Download the plan artifact (carries the plan receipt) from the plan run",
           artifact: gunbc_fleet_converge_plan_artifact_name,
-          path: fleet_converge_plan_artifact_dir,
+          path: fleet_converge_plan_anchor_path_expr,
           run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
         )),
           fleet_converge_admit_apply_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
@@ -5820,7 +5884,7 @@ fn fleet_converge_dashboard_deploy_job() -> Outcome<Job> {
           id: "dashboard_apply_receipt_download",
           name: "Download the fleet apply receipt from the apply run",
           artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
-          path: fleet_converge_apply_receipt_dir,
+          path: fleet_converge_plan_anchor_path_expr,
           run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
         )),
           fleet_converge_checkout_verify_step(if_condition: none),
@@ -5894,6 +5958,7 @@ fn fleet_converge_desired_instance_deploy_step() -> Outcome<Step> {
       kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
       kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
       kv(key: live_deploy_ci_instance_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      fleet_converge_plan_anchor_env_row(),
     ] },
     working_directory: none,
     if_condition: none,
@@ -6002,7 +6067,7 @@ fn fleet_converge_desired_instance_deploy_job() -> Outcome<Job> {
               id: "desired_instance_plan_receipt_download",
               name: "Download the plan artifact (carries the plan receipt) from the plan run",
               artifact: gunbc_fleet_converge_plan_artifact_name,
-              path: fleet_converge_plan_artifact_dir,
+              path: fleet_converge_plan_anchor_path_expr,
               run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
             )),
           fleet_converge_admit_apply_run_pointer_step(if_condition: fleet_converge_dispatch_event_if),
@@ -6010,7 +6075,7 @@ fn fleet_converge_desired_instance_deploy_job() -> Outcome<Job> {
               id: "desired_instance_apply_receipt_download",
               name: "Download the fleet apply receipt from the apply run",
               artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
-              path: fleet_converge_apply_receipt_dir,
+              path: fleet_converge_plan_anchor_path_expr,
               run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
             )),
           fleet_converge_checkout_verify_step(if_condition: none),
@@ -7410,6 +7475,7 @@ fn fleet_converge_rlm_receipt_step() -> Outcome<Step> {
         kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
         kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
         kv(key: rlm_dashboard_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.dashboard_workflow_run_id }}")),
+        fleet_converge_plan_anchor_env_row(),
       ]
     },
     working_directory: none,
@@ -7438,7 +7504,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Outcome<Job> {
           id: "rlm_plan_download",
           name: "Download fleet converge plan artifact (plan run)",
           artifact: gunbc_fleet_converge_plan_artifact_name,
-          path: fleet_converge_plan_artifact_dir,
+          path: fleet_converge_plan_anchor_path_expr,
           run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
         )),
           outcome_accepted(value: fleet_converge_receipt_download_step(
@@ -9850,13 +9916,20 @@ fn fleet_converge_workspace_operation_step(mode: FleetConvergeWorkflowMode, run:
   RunStep {
     name: Present { value: concat("Workspace: ", fleet_converge_workflow_mode_wire(mode: mode)) },
     id: Present { value: fleet_converge_workflow_mode_wire(mode: mode) }, run: run, shell: none,
-    env: Present { value: [
+    env: Present { value: concat([
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ inputs.host }}")),
       kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ inputs.expected_revision }}")),
-    ] },
+    ], fleet_converge_workspace_operation_mode_env_rows(mode: mode)) },
     working_directory: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
     continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+}
+
+// Only the WorkspaceAllocationPlan operation MINTS a FleetConvergePlanReceipt (via scoped_plan_wet),
+// so only it needs the per-run artifact-dir env the plan step composes into the pack. The image-build
+// and other workspace operations mint nothing, so they get no extra env (no unused variables).
+fn fleet_converge_workspace_operation_mode_env_rows(mode: FleetConvergeWorkflowMode) -> List<YamlKeyValue> {
+  if mode == WorkspaceAllocationPlan { fleet_converge_run_artifact_dir_env_rows() } else { [] }
 }
 
 fn fleet_converge_guest_image_upload_step(label: String, id: String, name: String, paths: String, mode: FleetConvergeWorkflowMode) -> Step {

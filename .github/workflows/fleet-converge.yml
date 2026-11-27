@@ -204,7 +204,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
-          path: /tmp/fleet-converge-plan
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.plan_workflow_run_id }}
         if: github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'desired_instance_deploy'
@@ -217,6 +217,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FLEET_CONVERGE_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         if: github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'dashboard_deploy' || github.event.inputs.mode == 'desired_instance_deploy'
         timeout-minutes: 5
   build:
@@ -1164,6 +1165,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 15
       - name: Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)
@@ -1174,6 +1178,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'launch_environment_plan'
         timeout-minutes: 15
       - name: Fleet allocation-store substrate plan
@@ -1191,6 +1198,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'workspace_commissioning_plan'
         timeout-minutes: 15
       - name: "Workspace: workspace_allocation_plan"
@@ -1201,6 +1211,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ inputs.host }}
           RLM_EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'workspace_allocation_plan'
         timeout-minutes: 30
       - name: "Workspace: workspace_image_build"
@@ -1257,6 +1270,8 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/pre_swap_admission.dag --function record_plan_serve_entry_compile_verdict
+        env:
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-run/${{ github.run_id }}/${{ github.run_attempt }}
         if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan'
         timeout-minutes: 45
       - name: Upload fleet converge plan artifact
@@ -1264,7 +1279,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: fleet-converge-plan
-          path: /tmp/fleet-converge-plan
+          path: ${{ runner.temp }}/fleet-converge-run/${{ github.run_id }}/${{ github.run_attempt }}
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -1275,7 +1290,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
-          path: /tmp/fleet-converge-plan
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.plan_workflow_run_id }}
         if: github.event.inputs.mode == 'apply'
@@ -1285,13 +1300,15 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function verify_checkout_at_plan_revision
+        env:
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         if: github.event.inputs.mode == 'apply'
         timeout-minutes: 5
       - name: Fleet converge apply (CAS + generated apply.sh)
         id: apply
         run: |-
           set -euo pipefail
-          ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
+          ACTUAL="$(cat "${GUNBC_FLEET_CONVERGE_PLAN_ANCHOR}/plan_content.hex")"
           if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
@@ -1299,6 +1316,7 @@ jobs:
           EXPECTED_HASH: ${{ github.event.inputs.plan_artifact_hash }}
           FLEET_CONVERGE_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         if: github.event.inputs.mode == 'apply'
         timeout-minutes: 60
       - name: Upload fleet converge apply receipt
@@ -1306,7 +1324,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: fleet-converge-apply-receipt
-          path: /tmp/fleet-converge-apply
+          path: ${{ runner.temp }}/fleet-converge-plan
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
@@ -3676,7 +3694,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
-          path: /tmp/fleet-converge-plan
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.plan_workflow_run_id }}
         timeout-minutes: 10
@@ -3695,7 +3713,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-apply-receipt
-          path: /tmp/fleet-converge-apply
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.apply_workflow_run_id }}
         timeout-minutes: 10
@@ -3704,6 +3722,8 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function verify_checkout_at_plan_revision
+        env:
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         timeout-minutes: 5
       - name: "Admit the host budget before the fold: a bound must constrain this process (gunbc.host.host_budget_preflight)"
         id: host_budget_preflight
@@ -3722,6 +3742,7 @@ jobs:
           RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         timeout-minutes: 60
       - name: Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)
         id: dashboard_receipt_assert
@@ -3855,7 +3876,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
-          path: /tmp/fleet-converge-plan
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.plan_workflow_run_id }}
         timeout-minutes: 10
@@ -3874,7 +3895,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-apply-receipt
-          path: /tmp/fleet-converge-apply
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.apply_workflow_run_id }}
         timeout-minutes: 10
@@ -3883,6 +3904,8 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function verify_checkout_at_plan_revision
+        env:
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         timeout-minutes: 5
       - name: "Admit the host budget before the fold: a bound must constrain this process (gunbc.host.host_budget_preflight)"
         id: host_budget_preflight
@@ -3908,6 +3931,7 @@ jobs:
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
           GUNBC_DEPLOY_INSTANCE_SUBJECT: ${{ github.event.inputs.subject_host }}
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         timeout-minutes: 60
       - name: Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)
         id: desired_instance_deploy_receipt_assert
@@ -4381,7 +4405,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: fleet-converge-plan
-          path: /tmp/fleet-converge-plan
+          path: ${{ runner.temp }}/fleet-converge-plan
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.plan_workflow_run_id }}
         timeout-minutes: 10
@@ -4414,6 +4438,7 @@ jobs:
           RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_DASHBOARD_RUN_ID: ${{ github.event.inputs.dashboard_workflow_run_id }}
+          GUNBC_FLEET_CONVERGE_PLAN_ANCHOR: ${{ runner.temp }}/fleet-converge-plan
         timeout-minutes: 5
       - name: Upload roadmap launch deployment receipt
         id: rlm_receipt_upload

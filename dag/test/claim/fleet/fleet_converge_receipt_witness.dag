@@ -67,6 +67,7 @@ fn fixture_plan_receipt() -> FleetConvergePlanReceipt {
     lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 5,
     apply_terminal: FullyApplied,
+    run_artifact_dir: "/tmp/gunbc-fleet-converge-runs/adhoc-e0d11c26-fe7/2" as NonEmptyStr,
   }
 }
 

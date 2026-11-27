@@ -25,12 +25,14 @@ import gunbc.actions_run_binding {
 import gunbc.running_release_identity { release_revision_text_valid }
 import gunbc.live_deploy.apply_receipt { rlm_plan_artifact_hash_env_name }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
+import gunbc.fleet.fleet_plan_artifact_location {
+  admit_fleet_plan_anchor_env_wet, AnchorAdmitted, fleet_plan_anchor_admission_text, fleet_plan_receipt_path_in,
+}
 import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceipt,
   FleetConvergePlanReceiptDecoded,
   FleetConvergePlanReceiptUnreadable,
   read_fleet_converge_plan_receipt_at,
-  fleet_converge_plan_receipt_path,
   fleet_converge_plan_run_id_env_name,
 }
 
@@ -131,7 +133,9 @@ fn admit_checkout_at(expected: String) -> CheckoutHeadAdmission {
 }
 
 fn resolve_plan_revision_admission() -> PlanRevisionAdmission {
-  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+  match admit_fleet_plan_anchor_env_wet() {
+    AnchorAdmitted { anchor: anchor } =>
+  match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: anchor)) {
     FleetConvergePlanReceiptUnreadable { reason: r } => PlanRunUnreadable { cause: r }
     FleetConvergePlanReceiptDecoded { receipt: receipt } => {
       let run_id = actions_variable_trimmed(name: fleet_converge_plan_run_id_env_name as NonEmptyStr)
@@ -147,6 +151,8 @@ fn resolve_plan_revision_admission() -> PlanRevisionAdmission {
         )
       }
     }
+      }
+    refused => PlanRunUnreadable { cause: fleet_plan_anchor_admission_text(a: refused) }
   }
 }
 
@@ -197,12 +203,16 @@ fn observe_actions_run_binding_at_checkout() -> ActionsRunBindingObservation {
 // is the tree the plan receipt names. The receipt was tied to GitHub by the plan-revision job that
 // chose this checkout; this step is the independent readback of what the checkout actually is.
 fn verify_checkout_at_plan_revision() -> ProcessExit {
-  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
-    FleetConvergePlanReceiptUnreadable { reason: r } => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: PlanRunUnreadable { cause: r })], ""))
-    FleetConvergePlanReceiptDecoded { receipt: receipt } => match admit_checkout_at(expected: receipt.run.run_revision) {
-      CheckoutHeadAdmitted { revision: _ } => ExitSuccess
-      refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: refused)], ""))
-    }
+  match admit_fleet_plan_anchor_env_wet() {
+    AnchorAdmitted { anchor: anchor } =>
+      match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: anchor)) {
+        FleetConvergePlanReceiptUnreadable { reason: r } => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: PlanRunUnreadable { cause: r })], ""))
+        FleetConvergePlanReceiptDecoded { receipt: receipt } => match admit_checkout_at(expected: receipt.run.run_revision) {
+          CheckoutHeadAdmitted { revision: _ } => ExitSuccess
+          refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: refused)], ""))
+        }
+      }
+    refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", fleet_plan_anchor_admission_text(a: refused)], ""))
   }
 }
 

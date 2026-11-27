@@ -1,7 +1,7 @@
 module test.claim.live_deploy.serve_entry_verdict_witness
 
-import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.algebra { string_contains, trim }
 import gunbc.live_deploy.pre_swap_admission {
   deployment_requires_plan_serve_entry_verdict,
   ServeEntryVerdictRecord,
@@ -27,8 +27,46 @@ import gunbc.live_deploy.pre_swap_admission {
   ServeEntryVerdictDirRefused,
   serve_entry_verdict_dir_admission,
   serve_entry_verdict_dir_refusal_text,
+  serve_entry_verdict_path,
 }
-import extdeps.languages.json.emit { serialize_json }
+import gunbc.fleet.fleet_plan_artifact_location {
+  fleet_plan_run_artifact_dir, fleet_plan_artifact_path_at, fleet_plan_receipt_path_in,
+  admit_fleet_plan_anchor_wet, admit_fleet_plan_anchor_env_wet,
+  FleetPlanAnchorAdmission, AnchorAdmitted, AnchorEnvAbsent, AnchorPackAbsent, AnchorProbeRefused, PackOutsideAnchor,
+  fleet_plan_anchor_admission_text, fleet_plan_run_dir_claim_text, claim_fleet_plan_run_dir_exclusive_wet,
+  FleetPlanRunDirClaim, RunDirClaimed, RunDirLeafExists, RunDirParentsRefused, RunDirCreateRefused,
+  fleet_converge_plan_receipt_name, fleet_converge_apply_receipt_name,
+}
+import std.process { ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture }
+import extdeps.tools.gnu_coreutils {
+  mktemp_directory_command, rm_recursive_force_command, ln_symbolic_force_command, realpath_canonical_command,
+  mkdir_create_only_with_mode_command,
+}
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import gunbc.fleet.fleet_converge_receipt {
+  write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
+  read_fleet_converge_plan_receipt_at, read_fleet_converge_apply_receipt_at,
+  FleetConvergeReceiptWrite, ReceiptWritten, ReceiptWriteRefused,
+  FleetConvergeApplyReceipt, FleetConvergeApplyReceiptDecoded, FleetConvergeApplyReceiptUnreadable,
+}
+import gunbc.actions_run_binding { ActionsRunBinding, actions_run_binding_json }
+import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanReceipt,
+  FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceiptUnreadable,
+  fleet_converge_plan_receipt_decode,
+  fleet_converge_plan_receipt_identity_hex,
+  fleet_converge_plan_receipt_json,
+  fleet_converge_plan_receipt_schema,
+  fleet_converge_apply_terminal_wire,
+}
+import gunbc.fleet.fleet_converge_terminal { FullyApplied }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.live_deploy.desired { srv1_production_desired_deployment, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.apply { operator_local_deploy_dissolved_refusal }
 
@@ -403,5 +441,461 @@ test fn a_writable_verdict_dir_is_admitted() -> Bool {
   match serve_entry_verdict_dir_admission(dir: "/tmp/fleet-converge-plan", probe_success: true, probe_error: "") {
     ServeEntryVerdictDirWritable => true
     ServeEntryVerdictDirRefused { dir, reason } => false
+  }
+}
+
+// ── THE SERVE-ENTRY VERDICT DESTINATION IS PER-RUN (roadmap row serve-entry-verdict-path-is-per-run) ──
+// The defect this row removes: every run wrote its verdict to one fixed file, so two concurrent runs
+// -- or a person's run beside CI -- clobbered each other, and a non-owner could not write the shared
+// directory at all (the STEP-1 red). The fix: the plan step composes a per-run destination
+// (root / plan_run_id / attempt) and publishes it in the pack; the recorder and the swap read that
+// destination back from the pack and never recompute it. These legs prove the three claims:
+//   (a) two concurrent runs of the SAME revision land in distinct destinations, and a run is stable;
+//   (b) the shared fixed path is run-independent (two runs collide), which the per-run path is not;
+//   (c) a pack that does not carry the destination is refused by name -- never defaulted, and the
+//       identity of the pack covers the field so a tampered pack fails the decode's recompute.
+// The witness is deterministic: the destinations are built by the production composer, so it proves
+// the composition is injective in run identity -- the property that makes concurrent runs disjoint --
+// without depending on a runner-owned directory the witness principal cannot create.
+
+data per_run_root: String = "/tmp/gunbc-fleet-converge-runs"
+data per_run_a: String = "9001"
+data per_run_b: String = "9002"
+
+fn per_run_fixture_run(run_id: String) -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: run_id,
+    run_revision: fixture_revision,
+    execution_revision: fixture_revision,
+  }
+}
+
+fn per_run_fixture_receipt(run_artifact_dir: NonEmptyStr) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: per_run_fixture_run(run_id: "9001"),
+    observed_host: "srv1",
+    scope_wire: "full_host",
+    member_set_fingerprint_hex: "fnv1a64:0011223344556677",
+    plan_artifact_hash: "a1b2c3d4e5f60718",
+    observed_baseline_hex: "1122334455667788",
+    prior_generation: 4,
+    planned_generation: 5,
+    lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+    lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 5,
+    apply_terminal: FullyApplied,
+    run_artifact_dir: run_artifact_dir,
+  }
+}
+
+fn per_run_dir(run_id: String, attempt: String) -> String {
+  fleet_plan_run_artifact_dir(
+    root: per_run_root as NonEmptyStr,
+    plan_run_id: run_id as NonEmptyStr,
+    attempt: attempt as NonEmptyStr,
+  )
+}
+
+// (a) SAME revision, two run ids -> distinct destinations; the same run id is stable.
+test fn concurrent_runs_of_the_same_revision_get_distinct_destinations() -> Bool {
+  let a = per_run_dir(run_id: per_run_a, attempt: "1")
+  let b = per_run_dir(run_id: per_run_b, attempt: "1")
+  let a_again = per_run_dir(run_id: per_run_a, attempt: "1")
+  a != b && a == a_again
+    && string_contains(s: a, pattern: per_run_a)
+    && string_contains(s: b, pattern: per_run_b)
+}
+
+// (a2) an ATTEMPT is part of the identity, so a re-run of one run id does not reuse the last dir.
+test fn a_rerun_of_the_same_revision_lands_in_its_own_attempt_dir() -> Bool {
+  let attempt1 = per_run_dir(run_id: per_run_a, attempt: "1")
+  let attempt2 = per_run_dir(run_id: per_run_a, attempt: "2")
+  attempt1 != attempt2
+}
+
+// (a3) the two serve-entry verdict paths under those per-run dirs are distinct.
+test fn the_verdict_paths_under_per_run_dirs_are_distinct() -> Bool {
+  let pa = serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_a, attempt: "1") as NonEmptyStr)
+  let pb = serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_b, attempt: "1") as NonEmptyStr)
+  pa != pb && string_contains(s: pa, pattern: "serve_entry_verdict.json")
+}
+
+// (b) THE RED: the shared fixed path is a constant of no run input, so two runs aim at ONE file.
+test fn the_shared_fixed_path_collides_across_runs_while_the_per_run_path_does_not() -> Bool {
+  // The retired shared location: every per-run verdict path must differ from it (negative control).
+  let fixed_a = "/tmp/fleet-converge-plan/serve_entry_verdict.json"
+  let fixed_b = "/tmp/fleet-converge-plan/serve_entry_verdict.json"
+  fixed_a == fixed_b
+    && serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_a, attempt: "1") as NonEmptyStr)
+       != serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_b, attempt: "1") as NonEmptyStr)
+}
+
+// (c1) a well-formed pack decodes with the destination preserved unchanged.
+test fn a_pack_preserves_the_run_artifact_dir_through_the_round_trip() -> Bool {
+  let want = join([per_run_root, "/", per_run_a, "/1"], "")
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: fleet_converge_plan_receipt_json(r: per_run_fixture_receipt(run_artifact_dir: want as NonEmptyStr)))) {
+    FleetConvergePlanReceiptDecoded { receipt } => receipt.run_artifact_dir == want
+    FleetConvergePlanReceiptUnreadable { reason } => false
+  }
+}
+
+// (c2) an EMPTY destination is refused by name, never defaulted. The field is a NonEmptyStr the
+// decoder CONSTRUCTS, so the empty case is unreachable by construction; pinned against
+// hand-written wire text instead of a built receipt.
+test fn a_pack_with_an_empty_run_artifact_dir_is_refused_by_name() -> Bool {
+  let good = per_run_fixture_receipt(run_artifact_dir: join([per_run_root, "/", per_run_a, "/1"], "") as NonEmptyStr)
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema)),
+    json_kv(key: "run", value: actions_run_binding_json(binding: per_run_fixture_run(run_id: "9001"))),
+    json_kv(key: "observed_host", value: json_string(s: "srv1")),
+    json_kv(key: "scope_wire", value: json_string(s: "full_host")),
+    json_kv(key: "member_set_fingerprint_hex", value: json_string(s: "fnv1a64:0011223344556677")),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: "a1b2c3d4e5f60718")),
+    json_kv(key: "observed_baseline_hex", value: json_string(s: "1122334455667788")),
+    json_kv(key: "prior_generation", value: json_string(s: to_string(value: 4))),
+    json_kv(key: "planned_generation", value: json_string(s: to_string(value: 5))),
+    json_kv(key: "lease_key", value: json_string(s: "fleet-converge-plan:srv1")),
+    json_kv(key: "lease_resource_fingerprint", value: json_string(s: "fnv1a64:aaaaaaaaaaaaaaaa")),
+    json_kv(key: "lease_owner_fingerprint", value: json_string(s: "fnv1a64:bbbbbbbbbbbbbbbb")),
+    json_kv(key: "lease_generation", value: json_string(s: to_string(value: 5))),
+    json_kv(key: "apply_terminal", value: json_string(s: fleet_converge_apply_terminal_wire(terminal: FullyApplied))),
+    json_kv(key: "run_artifact_dir", value: json_string(s: "")),
+    json_kv(key: "receipt_identity", value: json_string(s: fleet_converge_plan_receipt_identity_hex(r: good))),
+  ]))) {
+    FleetConvergePlanReceiptUnreadable { reason } => string_contains(s: reason, pattern: "run_artifact_dir")
+    FleetConvergePlanReceiptDecoded { receipt } => false
+  }
+}
+
+// (c3) an OLD-SHAPE pack (v1, which carries no destination member) is refused at the schema gate,
+// not decoded with a defaulted field. This is the schema-bump guarantee the row demands.
+test fn an_old_shape_pack_without_the_destination_is_refused_not_defaulted() -> Bool {
+  match fleet_converge_plan_receipt_decode(raw: "{\"schema\":\"fleet-converge-plan-receipt/v1\"}") {
+    FleetConvergePlanReceiptUnreadable { reason } => true
+    FleetConvergePlanReceiptDecoded { receipt } => false
+  }
+}
+
+// (c4) the identity text covers the destination, so two packs differing only in it have distinct
+// identities -- a pack whose destination was swapped fails the decode's recompute-and-compare.
+test fn the_pack_identity_covers_the_run_artifact_dir() -> Bool {
+  let ia = fleet_converge_plan_receipt_identity_hex(r: per_run_fixture_receipt(run_artifact_dir: join([per_run_root, "/", per_run_a, "/1"], "") as NonEmptyStr))
+  let ib = fleet_converge_plan_receipt_identity_hex(r: per_run_fixture_receipt(run_artifact_dir: join([per_run_root, "/", per_run_b, "/1"], "") as NonEmptyStr))
+  ia != ib
+}
+
+
+// ── WET LEGS: per-run packs, anchored readers, containment (review 98083 blocking defect 1) ────
+// The collision review 98083 named was NOT that the verdict path was shared -- that was stage 1 --
+// but that the PACK itself sat at one fixed shared path, so two concurrent plan runs clobbered one
+// pack and a non-ghrunner identity hit Permission denied at the pack write. These legs execute the
+// fix: the pack lives in the plan run's own directory; every consumer receives ONLY the admitted
+// anchor and reads <anchor>/<name>; and the admission contains the pack by canonical SEPARATOR
+// prefix, so neither a symlinked pack nor a prefix-sibling is read through the anchor. The witness
+// principal is the person running it -- never the ghrunner -- so leg (iii) is the real permission
+// boundary the defect walked into.
+
+data anchor_witness_root: String = "/tmp/gunbc-serve-entry-anchor-witness"
+
+fn wipe_anchor_witness_root_wet() -> Bool {
+  match run_shell_commands(commands: [rm_recursive_force_command(path: anchor_witness_root)], transport: LocalExec) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+fn mktemp_outside_dir_wet() -> String {
+  match run_shell_command_capture(command: mktemp_directory_command(template: "gunbc-anchor-outside-XXXXXX" as NonEmptyStr), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    _ => ""
+  }
+}
+
+fn path_exists_wet(path: String) -> Bool {
+  match run_shell_command_capture(command: test_regular_file_command(path: path), transport: LocalExec) {
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn canonical_of_wet(path: String) -> String {
+  match run_shell_command_capture(command: realpath_canonical_command(path: path), transport: LocalExec) {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    _ => ""
+  }
+}
+
+fn anchor_witness_dir(name: String) -> String {
+  join([anchor_witness_root, "/", name], "")
+}
+
+fn anchor_witness_parents(run_id: String) -> String {
+  join([anchor_witness_root, "/", run_id], "")
+}
+
+fn apply_fixture(plan_run_id: String) -> FleetConvergeApplyReceipt {
+  FleetConvergeApplyReceipt {
+    run: per_run_fixture_run(run_id: "9100"),
+    plan_run_id: plan_run_id,
+    plan_receipt_identity: "identity-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    plan_artifact_hash: "a1b2c3d4e5f60718",
+    observed_host: "srv1",
+    prior_generation: 4,
+    planned_generation: 5,
+    expected_revision_admitted: fixture_revision,
+    terminal: FullyApplied,
+    locked_apply_exit_code: 0,
+  }
+}
+
+fn claim_anchor_run_wet(run_id: String, attempt: String) -> FleetPlanRunDirClaim {
+  claim_fleet_plan_run_dir_exclusive_wet(
+    parents: anchor_witness_parents(run_id: run_id),
+    run_artifact_dir: anchor_witness_dir(name: join([run_id, "/", attempt], "")) as NonEmptyStr,
+  )
+}
+
+// (i) TWO CONCURRENT PLAN RUNS MINT DISTINCT PACKS, and each reader gets its own run_artifact_dir.
+// The collision review 98083 named: both runs wrote one fixed pack. Here the packs live at
+// <dirA>/plan_receipt.json and <dirB>/plan_receipt.json, each reader that reads its own dir decodes
+// its own destination -- never the other run's.
+test fn two_concurrent_plan_runs_mint_distinct_packs_and_each_reader_gets_its_own_dir() -> Bool {
+  wipe_anchor_witness_root_wet()
+    && match claim_anchor_run_wet(run_id: "9001", attempt: "1") {
+        RunDirClaimed { run_artifact_dir: dir_a } =>
+          match claim_anchor_run_wet(run_id: "9002", attempt: "1") {
+            RunDirClaimed { run_artifact_dir: dir_b } =>
+              match write_fleet_converge_plan_receipt(r: per_run_fixture_receipt(run_artifact_dir: dir_a)) {
+                ReceiptWritten { path: pack_a } =>
+                  match write_fleet_converge_plan_receipt(r: per_run_fixture_receipt(run_artifact_dir: dir_b)) {
+                    ReceiptWritten { path: pack_b } =>
+                      pack_a != pack_b
+                        && pack_a == fleet_plan_receipt_path_in(run_artifact_dir: dir_a)
+                        && pack_b == fleet_plan_receipt_path_in(run_artifact_dir: dir_b)
+                        && match read_fleet_converge_plan_receipt_at(path: pack_a) {
+                            FleetConvergePlanReceiptDecoded { receipt: ra } =>
+                              match read_fleet_converge_plan_receipt_at(path: pack_b) {
+                                FleetConvergePlanReceiptDecoded { receipt: rb } =>
+                                  ra.run_artifact_dir == dir_a && rb.run_artifact_dir == dir_b && ra.run_artifact_dir != rb.run_artifact_dir
+                                FleetConvergePlanReceiptUnreadable { reason: _ } => false
+                              }
+                            FleetConvergePlanReceiptUnreadable { reason: _ } => false
+                          }
+                    ReceiptWriteRefused { path: _, error: _ } => false
+                  }
+                ReceiptWriteRefused { path: _, error: _ } => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+}
+
+// (ii) TWO CONCURRENT APPLIES each read back THEIR OWN apply receipt from their own anchor dir.
+test fn two_concurrent_applies_each_read_back_their_own_apply_receipt() -> Bool {
+  wipe_anchor_witness_root_wet()
+    && match claim_anchor_run_wet(run_id: "9101", attempt: "1") {
+        RunDirClaimed { run_artifact_dir: dir_a } =>
+          match claim_anchor_run_wet(run_id: "9102", attempt: "1") {
+            RunDirClaimed { run_artifact_dir: dir_b } =>
+              match write_fleet_converge_apply_receipt(apply_receipt_dir: dir_a, r: apply_fixture(plan_run_id: "9101")) {
+                ReceiptWritten { path: ra_path } =>
+                  match write_fleet_converge_apply_receipt(apply_receipt_dir: dir_b, r: apply_fixture(plan_run_id: "9102")) {
+                    ReceiptWritten { path: rb_path } =>
+                      ra_path != rb_path
+                        && match read_fleet_converge_apply_receipt_at(path: ra_path) {
+                            FleetConvergeApplyReceiptDecoded { receipt: ra } =>
+                              match read_fleet_converge_apply_receipt_at(path: rb_path) {
+                                FleetConvergeApplyReceiptDecoded { receipt: rb } =>
+                                  ra.plan_run_id == "9101" && rb.plan_run_id == "9102"
+                                    && ra_path == fleet_plan_artifact_path_at(run_artifact_dir: dir_a, name: fleet_converge_apply_receipt_name)
+                                FleetConvergeApplyReceiptUnreadable { reason: _ } => false
+                              }
+                            FleetConvergeApplyReceiptUnreadable { reason: _ } => false
+                          }
+                    ReceiptWriteRefused { path: _, error: _ } => false
+                  }
+                ReceiptWriteRefused { path: _, error: _ } => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+}
+
+// (iii) A NON-GHRUNNER PACK WRITE SUCCEEDS under a writable per-run root. This witness runs as the
+// person who launched it -- never the ghrunner identity -- and the old fixed /tmp/fleet-converge-plan
+// directory belongs to the ghrunner's first write, which is exactly where the defect hit Permission
+// denied. The per-run root here is a plain /tmp path this principal owns; the write must SUCCEED.
+test fn a_non_ghrunner_pack_write_succeeds_under_a_writable_per_run_root() -> Bool {
+  wipe_anchor_witness_root_wet()
+    && match claim_anchor_run_wet(run_id: "9201", attempt: "1") {
+        RunDirClaimed { run_artifact_dir: dir } =>
+          match write_fleet_converge_plan_receipt(r: per_run_fixture_receipt(run_artifact_dir: dir)) {
+            ReceiptWritten { path: pack } =>
+              path_exists_wet(path: pack)
+                && match read_fleet_converge_plan_receipt_at(path: pack) {
+                    FleetConvergePlanReceiptDecoded { receipt: _ } => true
+                    FleetConvergePlanReceiptUnreadable { reason: _ } => false
+                  }
+            ReceiptWriteRefused { path: p, error: e } => false
+          }
+        _ => false
+      }
+}
+
+// (iv) ANCHOR ABSENT => typed refusal. The witness process never sets GUNBC_FLEET_CONVERGE_PLAN_ANCHOR,
+// so the env-grain admission names the absent variable -- no default, no fallback path.
+test fn an_absent_anchor_is_a_typed_refusal_naming_the_variable() -> Bool {
+  match admit_fleet_plan_anchor_env_wet() {
+    AnchorEnvAbsent { variable: v, detail: _ } =>
+      v == "GUNBC_FLEET_CONVERGE_PLAN_ANCHOR"
+        && string_contains(s: fleet_plan_anchor_admission_text(a: AnchorEnvAbsent { variable: v, detail: "w" }), pattern: "no default and no fallback path")
+    _ => false
+  }
+}
+
+// (v) PACK ABSENT => typed refusal. A directory that exists but carries no regular pack at
+// <anchor>/plan_receipt.json refuses by name; it is not read, not defaulted.
+test fn an_anchor_without_a_pack_is_a_typed_refusal() -> Bool {
+  wipe_anchor_witness_root_wet()
+    && match run_shell_commands(commands: [mkdir_parents_command(path: anchor_witness_dir(name: "pack-absent"))], transport: LocalExec) {
+        ExitSuccess =>
+          match admit_fleet_plan_anchor_wet(anchor: anchor_witness_dir(name: "pack-absent")) {
+            AnchorPackAbsent { pack_path: p } =>
+              p == fleet_plan_receipt_path_in(run_artifact_dir: anchor_witness_dir(name: "pack-absent"))
+                && string_contains(s: fleet_plan_anchor_admission_text(a: AnchorPackAbsent { pack_path: p }), pattern: "PlanArtifactPackAbsent")
+            _ => false
+          }
+        ExitFailure { code: _, reason: _ } => false
+      }
+}
+
+// (vi) PACK OUTSIDE THE ANCHOR => typed refusal, via BOTH attacks the review names.
+// (a) a symlinked pack: <anchor>/plan_receipt.json is a symlink into a directory outside the
+//     anchor -- realpath canonicalizes it OUT, and the separator-prefix rule refuses.
+// (b) a prefix sibling: the pack's canonical path starts with the anchor as a STRING
+//     ("<anchor>EVIL/...") but never as anchor + SEPARATOR -- the string-prefix rule would admit
+//     this; the separator rule refuses it, which is the distinction the fold must keep.
+test fn a_symlinked_pack_outside_the_anchor_is_refused() -> Bool {
+  if !wipe_anchor_witness_root_wet() {
+    false
+  } else {
+    let outside = mktemp_outside_dir_wet()
+    let anchor = anchor_witness_dir(name: "sym-anchor")
+    let pack_target = join([outside, "/", fleet_converge_plan_receipt_name], "")
+    let linked = join([anchor, "/", fleet_converge_plan_receipt_name], "")
+    if outside == "" {
+      false
+    } else {
+      let anchor_made = match run_shell_commands(commands: [mkdir_parents_command(path: anchor)], transport: LocalExec) {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+      let pack_written = Filesystem.Write(path: pack_target, content: "{\"schema\":\"fleet-converge-plan-receipt/v2\"}")
+      let link_made = match run_shell_commands(commands: [ln_symbolic_force_command(target: pack_target, link_name: linked)], transport: LocalExec) {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+      if !anchor_made || !pack_written.success || !link_made {
+        false
+      } else {
+        match admit_fleet_plan_anchor_wet(anchor: anchor) {
+          PackOutsideAnchor { canonical_anchor: ca, canonical_pack: cp } =>
+            ca != "" && cp == canonical_of_wet(path: pack_target)
+              && !string_has_prefix(text: cp, prefix: join([ca, "/"], ""))
+              && string_contains(s: fleet_plan_anchor_admission_text(a: PackOutsideAnchor { anchor: anchor, pack_path: linked, canonical_anchor: ca, canonical_pack: cp }), pattern: "PlanArtifactPackOutsideAnchor")
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+test fn a_prefix_sibling_pack_is_refused_though_it_shares_the_anchor_as_a_string_prefix() -> Bool {
+  if !wipe_anchor_witness_root_wet() {
+    false
+  } else {
+    let anchor = anchor_witness_dir(name: "anchor")
+    let evil = join([anchor, "EVIL"], "")
+    let evil_pack = join([evil, "/", fleet_converge_plan_receipt_name], "")
+    let linked = join([anchor, "/", fleet_converge_plan_receipt_name], "")
+    let dirs_made = match run_shell_commands(commands: [mkdir_parents_command(path: anchor), mkdir_parents_command(path: evil)], transport: LocalExec) {
+      ExitSuccess => true
+      ExitFailure { code: _, reason: _ } => false
+    }
+    let evil_written = Filesystem.Write(path: evil_pack, content: "{\"schema\":\"fleet-converge-plan-receipt/v2\"}")
+    let link_made = match run_shell_commands(commands: [ln_symbolic_force_command(target: evil_pack, link_name: linked)], transport: LocalExec) {
+      ExitSuccess => true
+      ExitFailure { code: _, reason: _ } => false
+    }
+    if !dirs_made || !evil_written.success || !link_made {
+      false
+    } else {
+      match admit_fleet_plan_anchor_wet(anchor: anchor) {
+        PackOutsideAnchor { canonical_anchor: ca, canonical_pack: cp } =>
+          string_contains(s: cp, pattern: "anchorEVIL")
+            && !string_has_prefix(text: cp, prefix: join([ca, "/"], ""))
+            && string_has_prefix(text: cp, prefix: ca)
+            && string_contains(s: fleet_plan_anchor_admission_text(a: PackOutsideAnchor { anchor: anchor, pack_path: linked, canonical_anchor: ca, canonical_pack: cp }), pattern: "PlanArtifactPackOutsideAnchor")
+        _ => false
+      }
+    }
+  }
+}
+
+// (vii) THE OPERATOR-LOCAL per-run dir comes from the BINDING, and a same-tick collision is a
+// NAMED refusal, never a shared dir. The leaf is mkdir'd WITHOUT -p: the second claim of the same
+// leaf (two runs minted in one clock tick land on the same local-<tick> run id) refuses by name.
+test fn the_operator_local_leaf_is_claimed_exclusively_and_a_same_tick_collision_refuses_by_name() -> Bool {
+  if !wipe_anchor_witness_root_wet() {
+    false
+  } else {
+    let run_id = "local-1700000000"
+    let parents = anchor_witness_parents(run_id: run_id)
+    let leaf = join([anchor_witness_parents(run_id: run_id), "/1"], "")
+    match claim_fleet_plan_run_dir_exclusive_wet(parents: parents, run_artifact_dir: leaf) {
+      RunDirClaimed { run_artifact_dir: claimed } =>
+        claimed == leaf
+          && match claim_fleet_plan_run_dir_exclusive_wet(parents: parents, run_artifact_dir: leaf) {
+              RunDirLeafExists { run_artifact_dir: stuck, detail: _ } =>
+                stuck == leaf
+                  && string_contains(s: fleet_plan_run_dir_claim_text(c: RunDirLeafExists { run_artifact_dir: stuck, detail: "witness" }), pattern: "RunArtifactDirExists")
+                  && string_contains(s: fleet_plan_run_dir_claim_text(c: RunDirLeafExists { run_artifact_dir: stuck, detail: "witness" }), pattern: leaf)
+              _ => false
+            }
+      _ => false
+    }
+  }
+}
+
+// (vii-b) A leaf claim refused for a cause with NO leaf in the way -- permission denied, the
+// exact failure this row's red control measured on srv1 -- is the distinct RunDirCreateRefused,
+// never the collision arm: the leaf's own existence probe, not the mkdir rc alone, carries the
+// distinction, so the operator is never told about a collision that did not happen. The parents
+// are created 555 (mode at creation, never world-visible first), so the leaf mkdir hits EACCES
+// with no leaf present. The run principal is never root on the lanes this witness executes on.
+test fn a_leaf_claim_refused_without_a_leaf_reports_create_refusal_not_collision() -> Bool {
+  if !wipe_anchor_witness_root_wet() {
+    false
+  } else {
+    let parents = anchor_witness_parents(run_id: "perm")
+    let leaf = join([anchor_witness_parents(run_id: "perm"), "/1"], "")
+    match run_shell_commands(commands: [mkdir_create_only_with_mode_command(path: parents, octal_mode: "555")], transport: LocalExec) {
+      ExitFailure { code: _ } => false
+      ExitSuccess =>
+        match claim_fleet_plan_run_dir_exclusive_wet(parents: parents, run_artifact_dir: leaf) {
+          RunDirCreateRefused { exit_code: refused_code, detail: refused_detail } =>
+            string_contains(s: refused_detail, pattern: "no leaf")
+              && string_contains(s: fleet_plan_run_dir_claim_text(c: RunDirCreateRefused { run_artifact_dir: leaf, exit_code: refused_code, detail: refused_detail }), pattern: "RunArtifactDirCreateRefused")
+          RunDirLeafExists { run_artifact_dir: _, detail: _ } => false
+          RunDirClaimed { run_artifact_dir: _ } => false
+          RunDirParentsRefused { parents: _, detail: _ } => false
+        }
+    }
   }
 }

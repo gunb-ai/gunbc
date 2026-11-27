@@ -37,11 +37,16 @@ import gunbc.actions_run_binding {
   JsonStringMemberFound,
   JsonStringMemberRefused,
 }
-import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_plan_artifact_location {
+  admit_fleet_plan_anchor_env_wet, AnchorAdmitted, fleet_plan_anchor_admission_text, fleet_plan_receipt_path_in,
+}
 import gunbc.fleet.fleet_converge_receipt {
   receipt_int_member,
   ReceiptIntFound,
   ReceiptIntRefused,
+  read_fleet_converge_plan_receipt_at,
+  FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceiptUnreadable,
 }
 import extdeps.gunbc
 import extdeps.shell
@@ -515,7 +520,34 @@ fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwap
 // separate node, not a ride-along in this one.
 fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryCompileVerdict {
   if deployment_requires_plan_serve_entry_verdict(deployment: deployment) {
-    observe_plan_serve_entry_verdict(spec: selected_deployment_spec(row: deployment))
+    // THE PACK IS THE SOLE AUTHORITY on whether this run carries a verdict: the swap never reads
+    // the run-artifact root/plan-run-id/attempt env and never recomputes the plan's dir -- the
+    // pack's run_artifact_dir is the recorder's WRITE destination on the plan runner, published by
+    // the plan step, and a pack without it is a named refusal, not a fallback. WHERE the swap READS
+    // is a different fact and lives on the apply runner: the plan job records the verdict beside
+    // the pack before the upload, so on this runner both sit at the admitted anchor's root
+    // (<anchor>/plan_receipt.json, <anchor>/serve_entry_verdict.json). The anchor is contained-
+    // checked, not trusted, and the swap never composes a location from root/run id/attempt.
+    // (Witness leg 3 sets the run-artifact env vars to prove they are ignored here.)
+    match admit_fleet_plan_anchor_env_wet() {
+      AnchorAdmitted { anchor: anchor } =>
+      match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: anchor)) {
+      FleetConvergePlanReceiptUnreadable { reason } =>
+        serve_entry_verdict_as_compile_verdict(
+          consumption: ConsumedAbsent { detail: join(["the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; the swap does not recompute it and there is no cold resolve fallback"], "") },
+        )
+      FleetConvergePlanReceiptDecoded { receipt: _ } =>
+        // The decoded pack exists and carries its non-empty per-run dir (the decoder's own named
+        // refusal); WHERE the verdict is read from is the admitted anchor, not the pack's dir.
+        observe_plan_serve_entry_verdict(
+          spec: selected_deployment_spec(row: deployment),
+          run_artifact_dir: anchor as NonEmptyStr,
+        )
+      }
+      refused_anchor => serve_entry_verdict_as_compile_verdict(
+        consumption: ConsumedAbsent { detail: join(["the plan anchor is not admitted (", fleet_plan_anchor_admission_text(a: refused_anchor), "); the swap does not recompute the pack location and there is no fixed shared path to read it through"], "") },
+      )
+    }
   } else {
     let spec = selected_deployment_spec(row: deployment)
     let root = git.Inspect.Toplevel()
@@ -565,8 +597,8 @@ fn deployment_requires_plan_serve_entry_verdict(deployment: DesiredDeployment) -
 
 data serve_entry_verdict_schema: String = "live-deploy-serve-entry-verdict/v1"
 
-fn serve_entry_verdict_path() -> String {
-  join([fleet_converge_plan_artifact_dir, "/serve_entry_verdict.json"], "")
+fn serve_entry_verdict_path(run_artifact_dir: NonEmptyStr) -> String {
+  join([run_artifact_dir as String, "/serve_entry_verdict.json"], "")
 }
 
 type ServeEntryVerdictConsumption
@@ -830,8 +862,8 @@ fn serve_entry_verdict_as_compile_verdict(consumption: ServeEntryVerdictConsumpt
 // THE SWAP'S QUESTION, ANSWERED FROM THE PLAN. Reads the plan artifact's verdict, digests the
 // release binary the swap itself would promote, and admits only on a four-way identity match.
 // No branch of this function compiles anything: that is the whole point.
-fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
-  let path = serve_entry_verdict_path()
+fn observe_plan_serve_entry_verdict(spec: DeploymentSpec, run_artifact_dir: NonEmptyStr) -> ServeEntryCompileVerdict {
+  let path = serve_entry_verdict_path(run_artifact_dir: run_artifact_dir)
   let read = Filesystem.Read(path: path)
   if !read.success {
     serve_entry_verdict_as_compile_verdict(
@@ -874,8 +906,8 @@ type ServeEntryVerdictDirAdmission
 // THE VERDICT'S DESTINATION IS ADMITTED BEFORE THE WITNESS RUNS. The served-command witness costs
 // minutes; a destination that cannot take the verdict used to be discovered only at the final write,
 // after the witness had completed (pull/16891#issuecomment-7103879443). The probe outcome is read
-// from the same directory the verdict is written to (fleet_converge_plan_artifact_dir), so no second
-// location is decided here.
+// from the same directory the verdict is written to (the pack's run_artifact_dir, admitted with
+// the pack), so no second location is decided here.
 fn serve_entry_verdict_dir_admission(dir: String, probe_success: Bool, probe_error: String) -> ServeEntryVerdictDirAdmission {
   if probe_success {
     ServeEntryVerdictDirWritable
@@ -888,10 +920,10 @@ fn serve_entry_verdict_dir_refusal_text(dir: String, reason: String) -> String {
   join(["live_deploy: record_plan_serve_entry_compile_verdict — the verdict directory ", dir, " is not writable (", reason, "); refused before the served-command witness ran, so no verdict can be lost at the final write"], "")
 }
 
-fn probe_serve_entry_verdict_dir() -> ServeEntryVerdictDirAdmission {
-  let probe_path = join([fleet_converge_plan_artifact_dir, "/.serve_entry_verdict.probe"], "")
+fn probe_serve_entry_verdict_dir(run_artifact_dir: NonEmptyStr) -> ServeEntryVerdictDirAdmission {
+  let probe_path = join([run_artifact_dir as String, "/.serve_entry_verdict.probe"], "")
   let probe = Filesystem.Write(path: probe_path, content: "")
-  let admission = serve_entry_verdict_dir_admission(dir: fleet_converge_plan_artifact_dir, probe_success: probe.success, probe_error: probe.error)
+  let admission = serve_entry_verdict_dir_admission(dir: run_artifact_dir as String, probe_success: probe.success, probe_error: probe.error)
   if probe.success {
     let _ = Filesystem.Delete(path: probe_path)
     admission
@@ -900,15 +932,15 @@ fn probe_serve_entry_verdict_dir() -> ServeEntryVerdictDirAdmission {
   }
 }
 
-fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
-  match probe_serve_entry_verdict_dir() {
+fn record_plan_serve_entry_verdict_for(row: DesiredDeployment, run_artifact_dir: NonEmptyStr) -> ProcessExit {
+  match probe_serve_entry_verdict_dir(run_artifact_dir: run_artifact_dir) {
     ServeEntryVerdictDirRefused { dir, reason } =>
       exit_failure(reason: serve_entry_verdict_dir_refusal_text(dir: dir, reason: reason))
-    ServeEntryVerdictDirWritable => record_plan_serve_entry_verdict_after_dir_admitted(row: row)
+    ServeEntryVerdictDirWritable => record_plan_serve_entry_verdict_after_dir_admitted(row: row, run_artifact_dir: run_artifact_dir)
   }
 }
 
-fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) -> ProcessExit {
+fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment, run_artifact_dir: NonEmptyStr) -> ProcessExit {
   let spec = selected_deployment_spec(row: row)
   let root = git.Inspect.Toplevel()
   let root_path = root.path as String
@@ -923,7 +955,7 @@ fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) ->
         roots: deployment_serve_source_roots,
         spec: spec,
         release_revision: observe_checkout_head_hex(),
-        stderr_sink: join([serve_entry_verdict_path(), ".child-stderr"], ""),
+        stderr_sink: join([serve_entry_verdict_path(run_artifact_dir: run_artifact_dir), ".child-stderr"], ""),
       )
       let record = ServeEntryVerdictRecord {
         source_revision: observe_checkout_head_hex(),
@@ -932,7 +964,7 @@ fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) ->
         compiler_bin_sha256_hex: digest.hex as String,
         compile: compile,
       }
-      let path = serve_entry_verdict_path()
+      let path = serve_entry_verdict_path(run_artifact_dir: run_artifact_dir)
       let write = Filesystem.Write(path: path, content: serialize_json(v: serve_entry_verdict_json(record: record)))
       if !write.success {
         exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — could not write ", path, ": ", write.error], ""))
@@ -958,7 +990,17 @@ fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) ->
 // -- the deploy chain then never starts, and PR 1's run-pointer admission names the refused plan run.
 fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
   match prod_role_desired_deployment() {
-    ProdRoleDeploymentSelected { deployment } => record_plan_serve_entry_verdict_for(row: deployment)
+    ProdRoleDeploymentSelected { deployment } =>
+      match admit_fleet_plan_anchor_env_wet() {
+        AnchorAdmitted { anchor: plan_anchor } =>
+          match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: plan_anchor)) {
+            FleetConvergePlanReceiptUnreadable { reason } =>
+              exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; refusing rather than falling back to /tmp/fleet-converge-plan"], ""))
+            FleetConvergePlanReceiptDecoded { receipt } =>
+              record_plan_serve_entry_verdict_for(row: deployment, run_artifact_dir: receipt.run_artifact_dir)
+          }
+        refused_anchor => exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — ", fleet_plan_anchor_admission_text(a: refused_anchor)], ""))
+      }
     ProdRoleDeploymentRefused =>
       exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the prod-role desired deployment is refused; the serve-entry verdict has no subject")
     ProdRoleDeploymentRosterRefused =>

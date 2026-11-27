@@ -28,8 +28,11 @@ import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   run_binding_names_workflow_file,
 }
+import gunbc.fleet.fleet_plan_artifact_location {
+  admit_fleet_plan_anchor_env_wet, AnchorAdmitted, fleet_plan_anchor_admission_text,
+  fleet_plan_receipt_path_in, fleet_plan_artifact_path_at, fleet_converge_apply_receipt_name,
+}
 import gunbc.fleet.fleet_converge_receipt {
-  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
   read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
   read_fleet_converge_apply_receipt_at, FleetConvergeApplyReceiptDecoded, FleetConvergeApplyReceiptUnreadable,
 }
@@ -649,13 +652,22 @@ fn rlm_launch_deployment_receipt_bound(
   let routed_base = rlm_routed_base_url(spec: spec)
   let opened = window_snapshot(context: context, instance: instance, routed_base: routed_base)
   let origin_main = read_remote_main_hex()
-  let plan = match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
-    FleetConvergePlanReceiptDecoded { receipt: p } => PlanReceiptRead { receipt: p }
-    FleetConvergePlanReceiptUnreadable { reason: why } => PlanReceiptUnreadable { reason: why }
+  // Both predecessor receipts live in the plan run's anchored artifact directory, admitted and
+  // containment-checked here; there is no fixed shared path to read them through.
+  let receipt_anchor = admit_fleet_plan_anchor_env_wet()
+  let plan = match receipt_anchor {
+    AnchorAdmitted { anchor: a } => match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: a)) {
+      FleetConvergePlanReceiptDecoded { receipt: p } => PlanReceiptRead { receipt: p }
+      FleetConvergePlanReceiptUnreadable { reason: why } => PlanReceiptUnreadable { reason: why }
+    }
+    refused => PlanReceiptUnreadable { reason: fleet_plan_anchor_admission_text(a: refused) }
   }
-  let apply = match read_fleet_converge_apply_receipt_at(path: fleet_converge_apply_receipt_path) {
-    FleetConvergeApplyReceiptDecoded { receipt: a } => ApplyReceiptRead { receipt: a }
-    FleetConvergeApplyReceiptUnreadable { reason: why } => ApplyReceiptUnreadable { reason: why }
+  let apply = match receipt_anchor {
+    AnchorAdmitted { anchor: a } => match read_fleet_converge_apply_receipt_at(path: fleet_plan_artifact_path_at(run_artifact_dir: a, name: fleet_converge_apply_receipt_name)) {
+      FleetConvergeApplyReceiptDecoded { receipt: a } => ApplyReceiptRead { receipt: a }
+      FleetConvergeApplyReceiptUnreadable { reason: why } => ApplyReceiptUnreadable { reason: why }
+    }
+    refused => ApplyReceiptUnreadable { reason: fleet_plan_anchor_admission_text(a: refused) }
   }
   let dashboard = match read_live_deploy_apply_receipt_at(path: live_deploy_apply_receipt_artifact_path_for(instance_id: instance.instance_id as String)) {
     LiveDeployApplyReceiptDecoded { receipt: d } => DashboardReceiptRead { receipt: d }

@@ -74,8 +74,12 @@ pub enum Commands {
     },
     /// Plan or apply fleet convergence for the host this process runs on, through the same
     /// plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,
-    /// under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and
-    /// prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash;
+    /// under an operator-local run binding. `--mode plan` requires
+    /// GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT (a writable directory) and
+    /// GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT, writes the run's artifact family under
+    /// <root>/<run id>/<attempt> (the leaf claimed exclusively; absent or empty inputs are typed
+    /// refusals, never defaults) and prints the plan receipt; `--mode apply` takes that plan's run
+    /// id and bundle hash and requires GUNBC_FLEET_CONVERGE_PLAN_ANCHOR naming that directory;
     /// `--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD.
     Converge {
         /// Fleet host identity (e.g. "srv1") this process is expected to be running on; refuses on mismatch

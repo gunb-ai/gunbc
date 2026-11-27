@@ -187,11 +187,14 @@ import gunbc.actions_run_binding {
   ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read, actions_variable_trimmed,
   admit_optional_expected_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
+import gunbc.fleet.fleet_plan_artifact_location {
+  admit_fleet_plan_anchor_env_wet, AnchorAdmitted, fleet_plan_anchor_admission_text,
+  fleet_plan_receipt_path_in, fleet_plan_artifact_path_at, fleet_converge_apply_receipt_name,
+}
 import gunbc.fleet.fleet_converge_receipt {
   read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
   read_fleet_converge_apply_receipt_at, FleetConvergeApplyReceiptDecoded, FleetConvergeApplyReceiptUnreadable,
   fleet_converge_plan_receipt_identity_hex, fleet_converge_apply_receipt_identity_hex,
-  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
 }
 import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyReceipt, LiveDeployFleetProvenance, LiveDeployApplyProvenance,
@@ -1897,13 +1900,15 @@ fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeploymen
                   live_deploy_transaction_refused(deployment: deployment, arm: "FleetProvenanceAbsent", detail: why, exit: exit_failure(reason: why))
                 }
                 FleetProvenancePresent { inputs: inputs } =>
-                  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+                  match admit_fleet_plan_anchor_env_wet() {
+                    AnchorAdmitted { anchor: anchor } =>
+                  match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: anchor)) {
                     FleetConvergePlanReceiptUnreadable { reason: why } => {
                       let detail = join(["live_deploy transaction: PlanReceiptUnreadable — ", why, "; the dashboard transaction refuses to run without the predecessor receipts it must cite"], "")
                       live_deploy_transaction_refused(deployment: deployment, arm: "PlanReceiptUnreadable", detail: detail, exit: exit_failure(reason: detail))
                     }
                     FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
-                  match read_fleet_converge_apply_receipt_at(path: fleet_converge_apply_receipt_path) {
+                  match read_fleet_converge_apply_receipt_at(path: fleet_plan_artifact_path_at(run_artifact_dir: anchor, name: fleet_converge_apply_receipt_name)) {
                     FleetConvergeApplyReceiptUnreadable { reason: why } => {
                       let detail = join(["live_deploy transaction: FleetApplyReceiptUnreadable — ", why], "")
                       live_deploy_transaction_refused(deployment: deployment, arm: "FleetApplyReceiptUnreadable", detail: detail, exit: exit_failure(reason: detail))
@@ -1919,6 +1924,8 @@ fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeploymen
                   live_deploy_transaction_admitted(deployment: deployment, access: access, run: run, expected: admitted, provenance: provenance)
                   }
                   }
+                  }
+                    refused_anchor => live_deploy_transaction_refused(deployment: deployment, arm: "PlanAnchorRefused", detail: fleet_plan_anchor_admission_text(a: refused_anchor), exit: exit_failure(reason: fleet_plan_anchor_admission_text(a: refused_anchor)))
                   }
               }
       }
