@@ -305,7 +305,7 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
       RatioUnread { obligation: obligation } =>
         string_contains(s: obligation as String, pattern: "four-engine" as String)
       RatioEmptyOnPass { pass: _, obligation: _ } => false
-      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
+      RatioObserved { counts: _, standing: _ } => false
     }
     && match configuration_prefix_cache_capacity(c: h11_two_engines_configuration) {
       // One obligation, and it is the population's: the capacity side resolves (four warm sessions), so the
@@ -333,8 +333,9 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
 // a measurement and no measurement is not.
 test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
   match h11_four_engines_configuration.prefix_cache_ratio {
-    RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
-      hits == 3 && misses == 50 && positive_measure_count_nat(count: denominator) == hits + misses
+    RatioObserved { counts: counts, standing: _ } =>
+      counts.hits == 3 && counts.misses == 50
+        && positive_measure_count_nat(count: counts.total) == counts.hits + counts.misses
     // An empty-on-a-pass receipt or no producer at all would contradict what this row carries, and either
     // way the claim does not hold: the arm is named rather than left to a wildcard, because the elaborator
     // refuses a match that hides a variant (the route's own error at this line was exactly that).
@@ -348,7 +349,7 @@ test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
     && match srv3_batch8_ram_only_configuration.prefix_cache_ratio {
       RatioUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "hit" as String)
       RatioEmptyOnPass { pass: _, obligation: _ } => false
-      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
+      RatioObserved { counts: _, standing: _ } => false
     }
     // THE EMPTY COLUMN IS REFUSED A DENOMINATOR, so it is refused a ratio: the constructor names the 0 it
     // saw rather than handing back a value the read path would then have to paper over. This is the wall
@@ -413,12 +414,12 @@ test fn an_empty_pass_column_is_not_the_same_verdict_as_no_producer() -> Bool {
     && match empty_column {
       RatioEmptyOnPass { pass: pass_text, obligation: _ } => string_contains(s: pass_text as String, pattern: "empty" as String)
       RatioUnread { obligation: _ } => false
-      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
+      RatioObserved { counts: _, standing: _ } => false
     }
     && match no_producer {
       RatioUnread { obligation: _ } => true
       RatioEmptyOnPass { pass: _, obligation: _ } => false
-      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
+      RatioObserved { counts: _, standing: _ } => false
     }
     && match srv3_batch8_ram_only_configuration.concurrent_agents {
       PopulationUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "fleet_host_truth_read" as String)
@@ -426,29 +427,33 @@ test fn an_empty_pass_column_is_not_the_same_verdict_as_no_producer() -> Bool {
     }
 }
 
-// THE TYPE ITSELF REFUSES THE EMPTY COLUMN, AND THE CONSTRUCTOR OWNS THE TOTAL. RatioObserved carries its
-// denominator as a #std.measure::PositiveMeasureCount, whose only constructor is a successor, so there is
-// no spelling of a zero denominator to write: the empty pass belongs to RatioEmptyOnPass and nowhere else.
-// And the total is not a field a row types in beside its counts -- prefix_cache_pass_ratio computes it from
-// hits + misses, so a row that disagreed with itself cannot be written, and the identity below is checked
-// over EVERY row that carries a ratio rather than over the one real row.
+// THE TYPE ITSELF REFUSES THE EMPTY COLUMN, AND THE DOOR OWNS THE TOTAL. The three figures sit in a
+// sole_constructor record whose total is a #std.measure::PositiveMeasureCount, whose only constructor is a
+// successor, so there is no spelling of a zero total to write: the empty pass belongs to RatioEmptyOnPass and
+// nowhere else. And the total is not a field a row types in beside its counts -- prefix_cache_ratio_counts
+// builds it from hits + misses, and a record literal for that type outside its module is refused by the
+// checker (test.claim.sole_constructor_completeness_audit_probe f1 to f4 execute that refusal; review 99382
+// is what closed the second door). WHAT THIS CLAIM PROVES HAS CHANGED and is stated, not glossed: the
+// identity below no longer guards a hand-typed total, because that spelling no longer exists; it pins the
+// DOOR's arithmetic, checked over EVERY row that carries a ratio rather than over the one real row, and it
+// flips if prefix_cache_ratio_denominator stops summing the two counters.
 test fn an_empty_column_cannot_be_written_as_an_observed_ratio() -> Bool {
   let carrying_a_ratio = filter(replica_configuration_field, c => match c.prefix_cache_ratio {
-    RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => true
+    RatioObserved { counts: _, standing: _ } => true
     RatioEmptyOnPass { pass: _, obligation: _ } => false
     RatioUnread { obligation: _ } => false
   })
   let total_matches_its_counts = filter(replica_configuration_field, c => match c.prefix_cache_ratio {
-    RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
-      positive_measure_count_nat(count: denominator) == hits + misses
+    RatioObserved { counts: counts, standing: _ } =>
+      positive_measure_count_nat(count: counts.total) == counts.hits + counts.misses
     RatioEmptyOnPass { pass: _, obligation: _ } => true
     RatioUnread { obligation: _ } => true
   })
   carrying_a_ratio.length() == 1 && total_matches_its_counts.length() == replica_configuration_field.length()
     && match h11_pass_prefix_cache_ratio {
-      RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
-        positive_measure_count_nat(count: denominator) == hits + misses
-          && positive_measure_count_nat(count: denominator) == 53
+      RatioObserved { counts: counts, standing: _ } =>
+        positive_measure_count_nat(count: counts.total) == counts.hits + counts.misses
+          && positive_measure_count_nat(count: counts.total) == 53
       RatioEmptyOnPass { pass: _, obligation: _ } => false
       RatioUnread { obligation: _ } => false
     }
@@ -467,7 +472,7 @@ test fn an_empty_column_cannot_be_written_as_an_observed_ratio() -> Bool {
       standing: TranscribedUncited { read_obligation: "witness-supplied: no counters at all" as NonEmptyStr },
     ) {
       RatioEmptyOnPass { pass: pass_text, obligation: _ } => string_contains(s: pass_text as String, pattern: "empty" as String)
-      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
+      RatioObserved { counts: _, standing: _ } => false
       RatioUnread { obligation: _ } => false
     }
 }

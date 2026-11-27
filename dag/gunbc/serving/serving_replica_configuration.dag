@@ -183,19 +183,35 @@ type ConcurrentAgentPopulation
 // separate instrument that can print an empty column -- a pass that seated nobody is a measurement of zero,
 // while a pass that seated agents and reported no occupancy has no producer for that figure, which is the
 // unread arm's meaning.
-// THE TOTAL IS CARRIED BUT NEVER TYPED IN BESIDE THE COUNTS. denominator is the sum of hits and misses,
-// and the only way to write this arm is prefix_cache_pass_ratio, which computes it. A total stored and
-// independently written is gunbc.design_argument::single_authority's fork -- a second place that decides
-// the same fact -- and prefix_cache_ratio_permille divides by the stored total without reading misses, so a
-// row that disagreed with itself would print a believable wrong rate. The witness checks the identity over
-// every row that carries a ratio, not one, and construction is what stops the disagreement being written.
+// THE THREE FIGURES ARE SEALED AT CONSTRUCTION, AND THE RUNG IS STATED EXACTLY (review 99382, 2026-11-27;
+// gunbc.design_argument::guarantee_ladder: "the reported rung equals the rung established by executed
+// evidence ... Rung inflation is worse than sitting low"). The sentence this replaces -- "the only way to
+// write this arm is prefix_cache_pass_ratio" -- was inflation: RatioObserved is an ordinary variant arm, and
+// an ordinary arm is writable by any module that imports it, so the claim outran the mechanism. The fix is
+// the mechanism, not the sentence. hits, misses and the total now live in PrefixCacheRatioCounts, declared
+// `sole_constructor`, and the checker's construction gate refuses a record literal for that type outside
+// this module: v1.compiler.infer's sole_constructor_construction_diags emits SoleConstructorViolation, whose
+// message is "sole_constructor type '<name>' cannot be constructed outside its defining module". That
+// refusal is EXECUTED, not asserted, by test.claim.sole_constructor_completeness_audit_probe, whose f1 to f4
+// claims forge record literals in return, let-binding, call-argument and list-element position and count the
+// diagnostic; this node consumes that control rather than re-minting one. STATED AS IT IS: the seal is
+// mechanical enforcement by the checker over every construction form, not a structural impossibility -- the
+// arm stays a plain arm, and what it cannot obtain from outside is the record it carries.
 //
-// THE DENOMINATOR IS POSITIVE BY CONSTRUCTION, and that is the whole point of carrying it. An observed
-// ratio names its denominator as #std.measure::PositiveMeasureCount, whose ONLY constructor is a
-// successor, so zero has no spelling as a value: an empty hit column cannot be written as an observation,
-// and the only arm that can say "a pass ran and printed nothing" is RatioEmptyOnPass. This closes the door
-// review 99335 named -- RatioObserved { hits: 0, misses: 0 } used to be constructible and the read path
-// papered over it, which left the row's RED case living inside the type.
+// WHY SEAL RATHER THAN DROP A FIELD. hits, misses and the total are three observed numbers and the row names
+// two of them; stored as three free fields they are gunbc.design_argument::single_authority's fork, because
+// prefix_cache_ratio_permille divides by the total without reading misses, so a row that disagreed with
+// itself printed a believable wrong rate. The seal keeps all three and removes the second door. What the
+// witness's identity check proves therefore CHANGES, and it is reported rather than glossed: it no longer
+// guards a hand-typed total -- that spelling is refused -- it pins the DOOR's arithmetic, and it flips if
+// prefix_cache_ratio_denominator stops summing the two counters.
+//
+// THE TOTAL IS POSITIVE BY CONSTRUCTION, and that is the rest of the point: the door hands the sum to
+// #std.measure::PositiveMeasureCount, whose ONLY constructor is a successor, so zero has no spelling as a
+// value. An empty hit column cannot be written as an observation, and the only arm that can say "a pass ran
+// and printed nothing" is RatioEmptyOnPass. This closes the door review 99335 named -- RatioObserved {
+// hits: 0, misses: 0 } used to be constructible and the read path papered over it, which left the row's RED
+// case living inside the type.
 //
 // WHY THE WALL IS A CONSTRUCTED TYPE AND NOT A `where` REFINEMENT, recorded because the second guess is
 // the wrong one: the checker's refinement predicate vocabulary is a CLOSED set of spellings -- gt_zero and
@@ -208,8 +224,17 @@ type ConcurrentAgentPopulation
 // #std.measure::PositiveMeasureCount refuses at the type, over every path, and
 // #std.measure::PositiveSlotCount records the same choice for the same reason: "zero has no constructor
 // rather than a [refusal]".
+// THE SEALED COUNTS. One record for the three figures of one pass, sole_constructor so the only door is the
+// fn below, in this module. The total is not a fourth opinion beside the counts: the door builds it from
+// them, and the type refuses a zero total, so an empty column has no spelling here at all.
+type PrefixCacheRatioCounts sole_constructor {
+  hits: Nat,
+  misses: Nat,
+  total: PositiveMeasureCount,
+}
+
 type PrefixCachePassRatio
-  = RatioObserved { hits: Nat, misses: Nat, denominator: PositiveMeasureCount, standing: CitedFigureStanding }
+  = RatioObserved { counts: PrefixCacheRatioCounts, standing: CitedFigureStanding }
   | RatioEmptyOnPass { pass: NonEmptyStr, obligation: NonEmptyStr }
   | RatioUnread { obligation: NonEmptyStr }
 
@@ -716,34 +741,44 @@ fn prefix_cache_ratio_denominator(hits: Nat, misses: Nat) -> PositiveMeasureCoun
   positive_measure_count_from_int(count: nat_to_int(n: hits + misses))
 }
 
-// THE ONLY WAY TO WRITE A PASS RATIO, and the reason no row types its own total. The total is computed
-// from the counts by the checked constructor above, so hits, misses and the total cannot disagree -- a
-// second place that independently decides the same sum is gunbc.design_argument::single_authority's fork,
-// and prefix_cache_ratio_permille divides by that total without reading misses, so a self-contradicting
-// row would print a believable wrong rate. And because the constructor is the checked one, an empty column
-// cannot be written as an observation through this path either: 0 and 0 come back as RatioEmptyOnPass,
-// which is the row's RED case named in the type rather than a ratio with a hidden zero inside it.
-fn prefix_cache_pass_ratio(hits: Nat, misses: Nat, pass_label: NonEmptyStr, empty_column_obligation: NonEmptyStr, standing: CitedFigureStanding) -> PrefixCachePassRatio {
+// THE ONLY DOOR TO THE SEALED COUNTS, and it is in the module that seals them. It sums the two counters and
+// hands the sum to the checked positivity constructor above, so no caller ever types a total and the three
+// figures cannot disagree with one another. A refusal returns nothing at all: the caller holding two zeroes
+// cannot obtain a PrefixCacheRatioCounts, which is why an empty column can only land in RatioEmptyOnPass.
+fn prefix_cache_ratio_counts(hits: Nat, misses: Nat) -> Optional<PrefixCacheRatioCounts> {
   match prefix_cache_ratio_denominator(hits: hits, misses: misses) {
-    PositiveMeasureCountBuilt { count: count } => RatioObserved { hits: hits, misses: misses, denominator: count, standing: standing }
-    PositiveMeasureCountRefused { cause: _ } => RatioEmptyOnPass { pass: pass_label, obligation: empty_column_obligation }
+    PositiveMeasureCountBuilt { count: count } => Present { value: PrefixCacheRatioCounts { hits: hits, misses: misses, total: count } }
+    PositiveMeasureCountRefused { cause: _ } => Absent
   }
 }
 
-// THE RATIO THE PASS LEFT, in thousandths, from the counts it carried: hits over the denominator it
-// carries. A pass that counted NOTHING has no ratio -- Absent, never zero. Zero hits against a hundred
-// misses is a measurement; an empty column is not one, and reading it as one is the row's RED case.
-// There is no zero-divisor path left to guard: the arm's denominator cannot be built at zero, so the
-// divisor exists by construction and #std.measure::positive_measure_count_nat is the read std.measure
-// provides for a Nat divisor.
+// THE ONLY WAY TO WRITE A PASS RATIO OUTSIDE THIS MODULE, because the record it carries is sealed: a caller
+// that wants RatioObserved has to come through here, and here computes the total from the counts rather than
+// accepting one. And because the door is the checked one, an empty column cannot be written as an
+// observation through this path either: 0 and 0 come back as RatioEmptyOnPass, which is the row's RED case
+// named in the type rather than a ratio with a hidden zero inside it.
+fn prefix_cache_pass_ratio(hits: Nat, misses: Nat, pass_label: NonEmptyStr, empty_column_obligation: NonEmptyStr, standing: CitedFigureStanding) -> PrefixCachePassRatio {
+  match prefix_cache_ratio_counts(hits: hits, misses: misses) {
+    Present { value: counts } => RatioObserved { counts: counts, standing: standing }
+    Absent => RatioEmptyOnPass { pass: pass_label, obligation: empty_column_obligation }
+  }
+}
+
+// THE RATIO THE PASS LEFT, in thousandths, from the counts it carries: hits over the total it carries. A
+// pass that counted NOTHING has no ratio -- Absent, never zero. Zero hits against a hundred misses is a
+// measurement; an empty column is not one, and reading it as one is the row's RED case. There is no
+// zero-divisor path left to guard: the sealed record's total cannot be built at zero, so the divisor exists
+// by construction, and #std.measure::positive_measure_count_nat is the read std.measure provides for a Nat
+// divisor. What this fn does NOT do is consult misses -- which is exactly why the total may not be a second,
+// independently written figure: see the seal above.
 fn prefix_cache_ratio_permille(ratio: PrefixCachePassRatio) -> Optional<Permille> {
   match ratio {
     // Neither absence produces a ratio. The arms stay distinguishable to the caller; what they share is
     // only this: no number.
     RatioUnread { obligation: _ } => Absent
     RatioEmptyOnPass { pass: _, obligation: _ } => Absent
-    RatioObserved { hits: hits, misses: _, denominator: denominator, standing: _ } =>
-      Present { value: permille(count: hits * 1000 / positive_measure_count_nat(count: denominator)) }
+    RatioObserved { counts: counts, standing: _ } =>
+      Present { value: permille(count: counts.hits * 1000 / positive_measure_count_nat(count: counts.total)) }
   }
 }
 
