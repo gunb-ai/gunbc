@@ -2280,9 +2280,10 @@ fn compute_run_opened(
   reference: NonEmptyStr,
   reservation: ComputeReservation,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let granted = work_class_grant_amount(g: grant)
-  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant), opened: opened)
+  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant), opened: opened, runtime_max: runtime_max)
   if !compute_attempt_retries_at_ceiling(grant: grant, attempt: attempt) {
     compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
   } else {
@@ -2333,7 +2334,7 @@ fn compute_run_opened(
               ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
                 compute_run_ceiling_retry(
                   instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-                  dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened)
+                  dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened, runtime_max: runtime_max)
             }
           }
         },
@@ -2358,6 +2359,7 @@ fn compute_run_ceiling_retry(
   reference: NonEmptyStr,
   reservation: ComputeReservation,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   match opened {
     AttemptGateRefused { detail: d } =>
@@ -2365,7 +2367,7 @@ fn compute_run_ceiling_retry(
     AttemptGateReady { record: rec, generation: g } => {
       let retry = compute_run_leased(
         instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency,
-        granted: work_class_grant_amount(g: grant), grant_was_ceiling: true, opened: AttemptGateReady { record: rec, generation: g })
+        granted: work_class_grant_amount(g: grant), grant_was_ceiling: true, opened: AttemptGateReady { record: rec, generation: g }, runtime_max: runtime_max)
       compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: retry, reference: reference, reservation: reservation)
     }
   }
@@ -3242,8 +3244,8 @@ fn compute_provide_produce(
           compute_attach_under_lease(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, served: reread)
         ComputeStoreRefused { detail: _ } =>
           compute_attach_under_lease(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, served: reread)
-        ComputeStoreAbsent => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
-        ComputeStoreNotConsulted => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+        ComputeStoreAbsent => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
+        ComputeStoreNotConsulted => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
       }
       }
     }
@@ -3284,6 +3286,7 @@ fn compute_reserve_and_run(
   subject: WorkSubject,
   op: WorkOperation,
   dependency: ComputeDependency,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: work_class_memory_ceiling(instance: instance, op: op))
   if !compute_ensure_seat_dir(instance: instance, seat: compute_seat_of(owner: owner)) {
@@ -3295,7 +3298,7 @@ fn compute_reserve_and_run(
     AttemptGateReady { record: rec, generation: g } =>
       compute_reserve_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency: dependency, grant: grant, reference: rec.reference as NonEmptyStr, opened: AttemptGateReady { record: rec, generation: g })
+        dependency: dependency, grant: grant, reference: rec.reference as NonEmptyStr, opened: AttemptGateReady { record: rec, generation: g }, runtime_max: runtime_max)
   }
   }
 }
@@ -3313,6 +3316,7 @@ fn compute_reserve_opened(
   grant: WorkClassGrant,
   reference: NonEmptyStr,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds, request: work_class_grant_amount(g: grant))
   match reservation {
@@ -3325,7 +3329,7 @@ fn compute_reserve_opened(
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
       compute_run_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened)
+        dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened, runtime_max: runtime_max)
   }
 }
 
@@ -3620,6 +3624,7 @@ fn compute_run_leased(
   granted: Kibibyte,
   grant_was_ceiling: Bool,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ComputeAttempt {
   let existing = Filesystem.List(path: layout.checkout)
   let checkout = if existing.success {
@@ -3645,7 +3650,7 @@ fn compute_run_leased(
         AttemptGateReady { record: rec2, generation: g2 } =>
           compute_spawn_and_collect(
             instance: instance, layout: layout, identity: identity, op: op, dependency: dependency,
-            granted: granted, grant_was_ceiling: grant_was_ceiling, launched: AttemptGateReady { record: rec2, generation: g2 })
+            granted: granted, grant_was_ceiling: grant_was_ceiling, launched: AttemptGateReady { record: rec2, generation: g2 }, runtime_max: runtime_max)
       }
   }
 }
@@ -3659,6 +3664,7 @@ fn compute_spawn_and_collect(
   granted: Kibibyte,
   grant_was_ceiling: Bool,
   launched: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ComputeAttempt {
   match compute_launching_user_runtime_dir() {
     Absent =>

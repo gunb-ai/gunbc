@@ -20,6 +20,7 @@ import gunbc.compute.remote_build_wire {
 }
 import gunbc.compute.remote_build {
   RemoteBuildWork, RemoteCompileEntry, remote_build_source_ref,
+  remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild, RemoteRunClaims, RemoteGateSubject,
   RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
   remote_build_answer_from_exit,
   remote_build_ending_of_outcome, remote_build_answer_moves_on, remote_build_capacity_retry_floor,
@@ -397,6 +398,22 @@ test fn a_request_that_waited_past_its_ceiling_refuses_to_start() -> Bool {
     Absent => false
   }
   refused_at_ceiling && refused_past_ceiling && starts_inside
+}
+
+// THE REMOTE-BUILD DEPENDENT OPERATIONS (compile, run-claims) PRE-BUILD THE SEED as their own provide
+// call (BuildsTheSeedFirst), so the provider's own dependent build leaf finds the store present and
+// spawns no second unit -- the operation is bounded to the remaining recomputed at its own launch, and
+// the one wall is spent once across build and operation. RED CONTROL: route compile/claims through
+// CarriesItsOwnSeedBuild (a single dependent provide whose internal build runs) and this goes red.
+test fn a_remote_build_dependent_request_pre_builds_its_seed() -> Bool {
+  match remote_build_dependency_rule(op: RemoteCompileEntry { entry: "dag/x.dag" as FilePath }) {
+    RemoteBuildBuildsTheSeedFirst =>
+      match remote_build_dependency_rule(op: RemoteRunClaims { entry: "dag/x.dag" as FilePath, functions: ["f" as NonEmptyStr] }) {
+        RemoteBuildBuildsTheSeedFirst => true
+        RemoteBuildCarriesItsOwnSeedBuild => false
+      }
+    RemoteBuildCarriesItsOwnSeedBuild => false
+  }
 }
 
 // AN UNREADABLE HOST CLOCK IS ITS OWN ANSWER, not the wait-bound refusal. The host that cannot read its
