@@ -73,7 +73,8 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 //
 // WHY THE FIGURES ON THE ROW DO NOT CLOSE THIS GAP. #16960's pair is re-runnable only from the
 // carried claim_batch built at tree 91d657a62d72 (sha256
-// a10ce5fba2d7b87de5d6b65d8c6afa7aa8a4218f966771b3b2efe01d87ac77ff, held under
+// a10ce5fba2d7b87de5d6b65d8c6afa7aa8a4218f966771b3b2efe01d87ac77ff -- a file hash of a binary, not a commit, and it resolves in no git object
+// database; it is quoted as the name recorded in gunb-ai/gunbc#16960's prose -- held under
 // /home/briansrls/scratch/keen-pike-826 on srv1), whose source is deleted at main and which no
 // manifest under the shared names directory names -- the manifest line printed beside run24 names a
 // DIFFERENT claim_batch, 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177. Re-running
