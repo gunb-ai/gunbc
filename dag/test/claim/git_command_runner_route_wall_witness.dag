@@ -88,7 +88,7 @@ fn argv_ls() -> ArgvCommand = argv_command(program: ls_program(), arguments: ["-
 
 
 // is_git_program must be true for any basename-"git" spelling, false otherwise.
-fn test_is_git_program_classifies_all_spellings() -> Bool {
+test fn test_is_git_program_classifies_all_spellings() -> Bool {
   is_git_program(invocation: "git")
     && is_git_program(invocation: "/usr/bin/git")
     && is_git_program(invocation: "/usr/local/bin/git")
@@ -102,7 +102,7 @@ fn test_is_git_program_classifies_all_spellings() -> Bool {
 // RED CONTROL 1: bare mutating git on the LOCAL arm is refused.
 // ---------------------------------------------------------------------------
 
-fn test_refused_bare_mutating_local() -> Bool {
+test fn test_refused_bare_mutating_local() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_bare_commit(),
     transport: LocalExec,
@@ -113,7 +113,7 @@ fn test_refused_bare_mutating_local() -> Bool {
   }
 }
 
-fn test_refused_bare_mutating_local_add() -> Bool {
+test fn test_refused_bare_mutating_local_add() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_bare_add(),
     transport: LocalExec,
@@ -128,7 +128,7 @@ fn test_refused_bare_mutating_local_add() -> Bool {
 // RED CONTROL 2: absolute-path /usr/bin/git is refused (basename classification).
 // ---------------------------------------------------------------------------
 
-fn test_refused_absolute_path_local() -> Bool {
+test fn test_refused_absolute_path_local() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_absolute_commit(),
     transport: LocalExec,
@@ -140,7 +140,7 @@ fn test_refused_absolute_path_local() -> Bool {
   }
 }
 
-fn test_refused_deep_absolute_path_local() -> Bool {
+test fn test_refused_deep_absolute_path_local() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_deep_add(),
     transport: LocalExec,
@@ -163,7 +163,7 @@ data test_ssh_transport: CommandTransport = SshExec {
   interpretation: openssh_login_shell_interpretation,
 }
 
-fn test_refused_bare_mutating_ssh() -> Bool {
+test fn test_refused_bare_mutating_ssh() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_bare_commit(),
     transport: test_ssh_transport,
@@ -174,7 +174,7 @@ fn test_refused_bare_mutating_ssh() -> Bool {
   }
 }
 
-fn test_refused_bare_mutating_ssh_absolute() -> Bool {
+test fn test_refused_bare_mutating_ssh_absolute() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_absolute_add(),
     transport: test_ssh_transport,
@@ -207,26 +207,26 @@ fn witness_stdin_command(command: ArgvCommand) -> ProcessExit {
 
 // RED CONTROL 4: run_shell_command (a ProcessExit entry) refuses bare mutating git -- the refusal rides the
 // module's typed ProcessExit refusal (exit_failure with the wall reason), never a fabricated child exit.
-fn test_refused_bare_mutating_run_shell_command() -> Bool {
+test fn test_refused_bare_mutating_run_shell_command() -> Bool {
   process_exit_is_wall_refusal(result: run_shell_command(command: argv_bare_commit(), transport: LocalExec))
 }
 
-fn test_refused_absolute_run_shell_command() -> Bool {
+test fn test_refused_absolute_run_shell_command() -> Bool {
   process_exit_is_wall_refusal(result: run_shell_command(command: argv_absolute_commit(), transport: LocalExec))
 }
 
 // RED CONTROL 5: the SSH arm of run_shell_command is refused (a remote bare mutation has the same
 // ambient-CWD hazard, so the gate fires on the SSH arm too).
-fn test_refused_bare_mutating_run_shell_command_ssh() -> Bool {
+test fn test_refused_bare_mutating_run_shell_command_ssh() -> Bool {
   process_exit_is_wall_refusal(result: run_shell_command(command: argv_bare_commit(), transport: test_ssh_transport))
 }
 
 // RED CONTROL 6: run_shell_command_stdin_local (the other ProcessExit entry) refuses the same bare mutation.
-fn test_refused_bare_mutating_stdin_local() -> Bool {
+test fn test_refused_bare_mutating_stdin_local() -> Bool {
   process_exit_is_wall_refusal(result: witness_stdin_command(command: argv_bare_commit()))
 }
 
-fn test_refused_absolute_stdin_local() -> Bool {
+test fn test_refused_absolute_stdin_local() -> Bool {
   process_exit_is_wall_refusal(result: witness_stdin_command(command: argv_absolute_commit()))
 }
 
@@ -235,19 +235,19 @@ fn test_refused_absolute_stdin_local() -> Bool {
 // (no network needed: the gate is pure logic, checked before any transport wrapping).
 // ---------------------------------------------------------------------------
 
-fn test_admitted_read_only_passes_gate() -> Bool {
+test fn test_admitted_read_only_passes_gate() -> Bool {
   git_route_wall_admits(
     command: argv_bare_status(),
   )
 }
 
-fn test_admitted_in_repo_passes_gate() -> Bool {
+test fn test_admitted_in_repo_passes_gate() -> Bool {
   git_route_wall_admits(
     command: argv_inrepo_commit(),
   )
 }
 
-fn test_admitted_in_repo_absolute_passes_gate() -> Bool {
+test fn test_admitted_in_repo_absolute_passes_gate() -> Bool {
   git_route_wall_admits(
     command: argv_absolute_inrepo_revparse(),
   )
@@ -257,7 +257,7 @@ fn test_admitted_in_repo_absolute_passes_gate() -> Bool {
 // leading `-C`, which is exactly why they MISSED the shipped git_commit_snapshot_command leading with
 // `-c user.name=...` and being refused. This consumes the real builder, so if it ever regresses to a
 // leading `-c` the gate refuses it and this claim goes false.
-fn test_admitted_commit_snapshot_builder_passes_gate() -> Bool {
+test fn test_admitted_commit_snapshot_builder_passes_gate() -> Bool {
   git_route_wall_admits(
     command: git_commit_snapshot_command(
       repository_dir: "/tmp/seed-repo", identity_name: "w", identity_email: "w@e", message: "seed",
@@ -265,7 +265,7 @@ fn test_admitted_commit_snapshot_builder_passes_gate() -> Bool {
   )
 }
 
-fn test_non_git_passes_gate() -> Bool {
+test fn test_non_git_passes_gate() -> Bool {
   // Non-git programs are never gated.
   git_route_wall_admits(
     command: argv_ls(),
@@ -282,7 +282,7 @@ fn test_non_git_passes_gate() -> Bool {
 // cause -- no fabricated exit code -- which is the fail-closed result on the ProcessExit routes.
 // ---------------------------------------------------------------------------
 
-fn test_bare_mutating_git_yields_the_single_not_spawned_arm() -> Bool {
+test fn test_bare_mutating_git_yields_the_single_not_spawned_arm() -> Bool {
   match run_shell_command_observe_outcome(
     command: argv_bare_add(),
     transport: LocalExec,
@@ -297,7 +297,7 @@ fn test_bare_mutating_git_yields_the_single_not_spawned_arm() -> Bool {
 // PATH_BASENAME (the hoisted utility): correct on known inputs.
 // ---------------------------------------------------------------------------
 
-fn test_path_basename_correctness() -> Bool {
+test fn test_path_basename_correctness() -> Bool {
   path_basename(path: "/usr/bin/git") == "git"
     && path_basename(path: "git") == "git"
     && path_basename(path: "/opt/local/libexec/git-core/git") == "git"
@@ -315,7 +315,7 @@ fn test_path_basename_correctness() -> Bool {
 // printed the one line a sticky-mode readback would accept).
 // ---------------------------------------------------------------------------
 
-fn test_nonzero_exit_with_plausible_stdout_is_refused_not_present() -> Bool {
+test fn test_nonzero_exit_with_plausible_stdout_is_refused_not_present() -> Bool {
   let o = process_observation(exit_code: 1, stdout: "100700 sticky_dir\n", stderr: "find: permission denied\n")
   match classify_process_observation(policy: ExitZeroSucceeds, observation: o) {
     // THE BUG WOULD CLASSIFY THIS AS PRESENT; the correct rung is Refused.
@@ -326,7 +326,7 @@ fn test_nonzero_exit_with_plausible_stdout_is_refused_not_present() -> Bool {
 }
 
 // And a genuine success (exit 0, stdout) IS present -- so the control is not just "always refuse".
-fn test_zero_exit_with_stdout_is_present() -> Bool {
+test fn test_zero_exit_with_stdout_is_present() -> Bool {
   let o = process_observation(exit_code: 0, stdout: "abc123def\n", stderr: "")
   match classify_process_observation(policy: ExitZeroSucceeds, observation: o) {
     ProcessOutputPresent { text: t } => t == "abc123def\n"
