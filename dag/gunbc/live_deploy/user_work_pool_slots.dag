@@ -24,7 +24,16 @@ import std.nat { Nat }
 // concurrent review/audit/supervisor population that still injects Slice=; the cap is policy,
 // not a claim those members fit without queuing or OOM. Charging that appropriation (44 GiB)
 // into served_deployment_slice_allowance is the same ruling.
-data user_work_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
+// THREE seats at the per-request footprint (2026-11-27 capacity ruling, option A: 'srv1 max seats
+// at <=2 runners', gunbc.design_ruling::
+// remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27, approved by default on
+// operator escalation msg_3789e805): three is the LARGEST footprint-priced count whose derived CI
+// width drops by at most two -- the fold derives 8 -> 6 at three seats and 8 -> 5 at four, which the
+// card's bound refuses. The slice price is the footprint composition in
+// gunbc.live_deploy.slice_bounds::user_work_slice_memory_max_of (unit + resident serving child +
+// door, plus the once-per-slice census), NOT the bare unit ceiling: the old two-seats-x-22-GiB
+// shape (44 GiB) was the srv3 oversell class and was superseded along with the count.
+data user_work_charged_slots: Nat = Succ { prev: Succ { prev: Succ { prev: Zero } } }
 
 type UserWorkPoolSlots
   = UserWorkPoolSlotsDerived { slots: Nat }

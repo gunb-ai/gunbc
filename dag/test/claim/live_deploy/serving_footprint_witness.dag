@@ -4,6 +4,8 @@ import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { ByteSize, byte_size, byte_size_count, kibibyte_count }
 import gunbc.live_deploy.slice_bounds { user_work_slot_memory_max, user_work_slice_memory_max_of }
+import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
+import std.nat { Succ }
 import gunbc.live_deploy.serving_child_observations {
   ServingChildHostOverride, serving_child_engine_bound, serving_child_worst_instrumented,
   serving_child_residency, serving_child_residency_for, serving_child_engine_bound_is_positive,
@@ -66,10 +68,20 @@ fn the_child_bound_covers_the_worst_instrumented_reading() -> Bool {
 // the residency function, the declared slice ceiling -- never supplied literals.
 fn the_producers_inhabit_the_boundary() -> Bool {
   let produced_footprint = user_work_request_footprint_of(unit_memory_max: user_work_slot_memory_max, child_residency: serving_child_residency(host: "srv3"))
-  let produced_slice = user_work_slice_memory_max_of(slots: 2)
-  user_work_slice_fits(slots: 1, footprint: produced_footprint, slice_max: produced_slice)
-    && !user_work_slice_fits(slots: 2, footprint: produced_footprint, slice_max: produced_slice)
+  // The slice ceiling is read at the STANDING POOL'S OWN COUNT (user_work_charged_slots), which the
+  // CI-cost ruling re-priced to footprint seats (session quiet-pike-440, #17181, ruling
+  // remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27). Under footprint
+  // pricing the ceiling that max_of emits is exactly slots x footprint + census, so the discriminating
+  // pair moved from (1 fits / 2 refused) to (charged fits / charged+1 refused) -- the same boundary
+  // test, one notch up, because the slice now honestly holds what it buys. One-slot slices still
+  // admit one and refuse two (the grant-only oversell class): pinned in the claim below.
+  let produced_slice = user_work_slice_memory_max_of(slots: user_work_charged_slots)
+  user_work_slice_fits(slots: user_work_charged_slots, footprint: produced_footprint, slice_max: produced_slice)
+    && !user_work_slice_fits(slots: Succ { prev: user_work_charged_slots }, footprint: produced_footprint, slice_max: produced_slice)
     && byte_size_count(b: produced_footprint) == byte_size_count(b: claim_footprint)
+    // THE ONE-SEAT SLICE STILL REFUSES A SECOND: the grant-only oversell class, at the smallest pool.
+    && user_work_slice_fits(slots: 1, footprint: produced_footprint, slice_max: user_work_slice_memory_max_of(slots: 1))
+    && !user_work_slice_fits(slots: 2, footprint: produced_footprint, slice_max: user_work_slice_memory_max_of(slots: 1))
 }
 
 // THE BOUND STANDS ON THE ENGINE'S OWN PRINT, not on a transcribed plan quote or a stale
@@ -101,13 +113,17 @@ fn a_host_row_cannot_fabricate_headroom() -> Bool {
   byte_size_count(b: serving_child_residency_for(raised: sunken, host: "srv9")) == byte_size_count(b: serving_child_engine_bound.bytes)
 }
 
-// SRV1 SHAPE, RED CONTROL: the standing 2-slot slice (44 GiB) admits ONE 22 GiB-grant served
-// request and REFUSES a second — the ledger said two; the slice holds one. This is the over-sell
-// the footprint authority exists to catch. (The capacity ruling grows srv1's slice from the seats;
-// that side is quiet-pike-440's row, pinned there.)
-fn srv1_admits_one_and_refuses_two() -> Bool {
-  user_work_slice_fits(slots: 1, footprint: claim_footprint, slice_max: user_work_slice_memory_max_of(slots: 2))
-    && !user_work_slice_fits(slots: 2, footprint: claim_footprint, slice_max: user_work_slice_memory_max_of(slots: 2))
+// SRV1 SHAPE, THE OVERSELL CLASS, NOW CLOSED HONESTLY. Under the OLD grant-only pricing the
+// standing 2-slot slice (44 GiB) admitted ONE 22 GiB-grant request and refused a second — the
+// ledger said two; the slice held one; that over-sell is what the footprint authority exists to
+// catch. The CI-cost ruling (msg_3789e805, default-approved; session quiet-pike-440's row
+// remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27) closed it the honest
+// way: the standing slice was RE-PRICED to footprint seats, so its ceiling now holds exactly the
+// seats it sells -- charged seats fit, one more than charged is refused. If the ceiling ever drifts
+// from the seats it advertises (an oversell returning), THIS claim is where it reds.
+fn srv1_holds_its_seats_and_refuses_one_more() -> Bool {
+  user_work_slice_fits(slots: user_work_charged_slots, footprint: claim_footprint, slice_max: user_work_slice_memory_max_of(slots: user_work_charged_slots))
+    && !user_work_slice_fits(slots: Succ { prev: user_work_charged_slots }, footprint: claim_footprint, slice_max: user_work_slice_memory_max_of(slots: user_work_charged_slots))
 }
 
 // SRV3 SHAPE, THE RED CONTROL OF THE NIGHT: under today's carve (one CI slot, 25 GiB) the slice
@@ -172,7 +188,7 @@ fn run_serving_footprint_witness() -> ProcessExit {
     check_or_name(name: "an_unmeasured_host_takes_the_engine_bound", held: an_unmeasured_host_takes_the_engine_bound()),
     check_or_name(name: "a_host_row_speaks_for_its_host", held: a_host_row_speaks_for_its_host()),
     check_or_name(name: "a_host_row_cannot_fabricate_headroom", held: a_host_row_cannot_fabricate_headroom()),
-    check_or_name(name: "srv1_admits_one_and_refuses_two", held: srv1_admits_one_and_refuses_two()),
+    check_or_name(name: "srv1_holds_its_seats_and_refuses_one_more", held: srv1_holds_its_seats_and_refuses_one_more()),
     check_or_name(name: "srv3_refuses_a_single_granted_build_under_todays_carve", held: srv3_refuses_a_single_granted_build_under_todays_carve()),
     check_or_name(name: "zero_slots_always_fit_and_headroom_over_ceiling_fails_closed", held: zero_slots_always_fit_and_headroom_over_ceiling_fails_closed()),
     check_or_name(name: "butch_192gib_holds_six_not_seven", held: butch_192gib_holds_six_not_seven()),

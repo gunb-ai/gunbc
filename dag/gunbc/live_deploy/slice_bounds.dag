@@ -5,9 +5,13 @@ import std.optional { Present, Absent }
 import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Memory, One, MeasureFit, Fits, Below,
-  measure_sub, measure_fits, measure_fit_count_floor, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+  measure_sub, measure_add, measure_fits, measure_fit_count_floor, MeasureDifference, MeasureSubtrahendExceedsMinuend,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.live_deploy.serving_child_observations {
+  serving_child_residency, user_work_request_footprint_of, user_work_serving_census_headroom,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 // ── THE CGROUP BOUNDS THIS DEPLOYMENT'S SERVED PROCESSES RUN UNDER ──────────────────────────
 // THEY LIVE IN A LEAF MODULE BECAUSE TWO LAYERS NEED THEM AND ONE OF THEM IS UPSTREAM OF THE
@@ -328,8 +332,28 @@ data user_manager_remainder: ByteSize = byte_size(4294967296)
 // can import the name here without closing a cycle through roadmap_belt.
 data user_work_slot_memory_max: ByteSize = byte_size(23622320128)
 
+// THE CAPACITY RULING RE-PRICED THIS CEILING AT THE PER-REQUEST IN-SLICE FOOTPRINT (2026-11-27,
+// gunbc.design_ruling::remote_build_capacity_ruling_ci_cost_option_a_default_approved_2026_11_27,
+// decision (2), with the earlier card's footprint model from
+// gunbc.design_ruling::remote_build_capacity_ruling_default_approved_2026_11_27): slots x (the unit
+// ceiling beside its resident serving child and the per-request door --
+// gunbc.live_deploy.serving_child_observations::user_work_request_footprint_of) + the fixed
+// per-slice census headroom, ONCE. The old shape -- slots x the bare unit ceiling -- was the srv3
+// oversell class: it priced the slice blind to the child that lives inside it, and the slice
+// answered with oom_kill 40. The appropriation the width charges and the MemoryMax systemd writes
+// are THIS one function (served_slice_charge reads it too), so ceiling and charge cannot disagree
+// (gunbc.design_argument::single_authority). srv1 hosts the user-work pool (the deployment the
+// pool rides beside is placed there); if placement ever moves, the residency read moves with it --
+// it is a per-host fact, not a constant.
 fn user_work_slice_memory_max_of(slots: Nat) -> ByteSize {
-  byte_size(byte_size_count(b: user_work_slot_memory_max) * slots)
+  let footprint = user_work_request_footprint_of(
+    unit_memory_max: user_work_slot_memory_max,
+    child_residency: serving_child_residency(host: operator_host_srv1),
+  )
+  measure_add(
+    a: byte_size(byte_size_count(b: footprint) * slots),
+    b: user_work_serving_census_headroom,
+  )
 }
 
 // THE ATTEMPT-WORKER SLICE KEEPS THE BUILD-SIZED RUNNER SLOT PER SLOT: its transients are build-sized

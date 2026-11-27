@@ -23,6 +23,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, capacity_seat_for_reservation, compute_pool_slots }
 import gunbc.runner.runner_slot_desired { host_build_pool_reservation, build_pool_carve_is_due, gunbc_runner_slot_memory_max }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_max_of, user_work_slice_memory_swap_max }
+import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
 import gunbc.live_deploy.emit {
   user_work_slice_unit_file_for_host_ceiling, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
   SystemdUnitFile, serialize_systemd_unit_file,
@@ -31,10 +32,12 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3,
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The ceiling for a carved host IS its build-pool reservation, byte for byte, and is positive. Read
-// from the reservation row: when sleek-koi-601's carve moves the row (count 6->7, or seat size), this
-// re-reads -- it never pins a literal width. srv3 and srv4 are today's carved hosts (rostered, no
-// dashboard instance to carry their own ledger), so host_build_pool_reservation is one CI slot for each.
+// The ceiling for a host whose pool is held IS its build-pool reservation, byte for byte, and is
+// positive. Read from the reservation row: srv3 and srv4 are rostered build hosts whose pools the
+// capacity ruling (gunbc.design_ruling::remote_build_capacity_ruling_default_approved_2026_11_27)
+// now RULES (two footprint seats each, the CI-cost card's count) rather than carves -- the equality holds through either
+// posture, because both the carve arm and the ruled arm answer the slice with the same
+// host_build_pool_reservation (one ceiling authority per host posture). It never pins a literal width.
 fn ceiling_is_the_reservation(host: HostIdentity) -> Bool {
   byte_size_count(b: user_work_slice_memory_max_for_host(host: host))
     == byte_size_count(b: host_build_pool_reservation(host: host))
@@ -66,16 +69,22 @@ test fn the_seat_times_the_pool_count_reproduces_the_reservation() -> Bool {
 }
 
 // SRV1 IS NEVER SIZED AT THE CARVE, AND THE CARVE IS NEVER SIZED AT SRV1. srv1 carries its own ledger,
-// so its reservation row is 0 and its ceiling comes from the STANDING pool: 2 x 22 GiB -- byte-equal to
-// the slice authority user_work_slice_memory_max_of(2) the slice carries today (no srv1 fork). srv3/srv4
-// take their OWN reservation instead. The two arms are structurally disjoint, so "size srv3/srv4 at
-// srv1's value" cannot happen: srv1's ceiling is read from the standing-pool arm, srv3/srv4's from the
-// reservation row, and they are not the same source.
+// so its reservation row is 0 and its ceiling comes from the STANDING pool -- user_work_charged_slots
+// footprint-priced seats, byte-equal to the slice authority user_work_slice_memory_max_of at the same
+// count (no srv1 fork; the CI-cost card ruled srv1 its largest footprint seat count within the -2 CI
+// bound, and both sides read the SAME standing-pool name). srv3/srv4 take their OWN reservation
+// instead. The two arms are structurally disjoint, so "size srv3/srv4 at srv1's value" cannot happen:
+// srv1's ceiling is read from the standing-pool arm, srv3/srv4's from the reservation row, and they
+// are not the same source.
 test fn srv1_keeps_the_standing_pool_and_is_not_the_carve() -> Bool {
   byte_size_count(b: host_build_pool_reservation(host: operator_host_srv1)) == 0
     && byte_size_count(b: user_work_slice_memory_max_for_host(host: operator_host_srv1))
-         == byte_size_count(b: user_work_slice_memory_max_of(slots: 2))
-    && byte_size_count(b: user_work_slice_memory_max_of(slots: 2)) > 0
+         == byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_charged_slots))
+    && byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_charged_slots)) > 0
+    // The standing pool is MULTI-seat: it must hold strictly more than one footprint seat, so a
+    // regression to a single-seat slice (which would sell srv1's CI out twice over) reds here.
+    && byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_charged_slots))
+      > 2 * byte_size_count(b: user_work_slice_memory_max_of(slots: 1))
 }
 
 // INHABITANCE THROUGH THE REAL RENDER ROUTE. The per-host ceiling, fed to the real render entry

@@ -2,8 +2,8 @@ module gunbc.compute.host_capacity
 
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
 import std.algebra { empty_map, map_insert, map_lookup }
-import std.nat { Nat, Zero }
-import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count, measure_fits, Fits, Below }
+import std.nat { Nat, Succ, Zero }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count, measure_fits, Fits, Below, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import extdeps.linux.procfs
 import std.optional { Optional, Present, Absent }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -47,6 +47,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.runner.runner_slot_desired { host_build_pool_reservation, host_build_pool_is_carved, host_build_pool_is_ruled, host_ruled_build_pool_seat_count }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_max_of }
+import gunbc.live_deploy.serving_child_observations { serving_child_residency, user_work_request_footprint_of, user_work_serving_census_headroom }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
 
 // THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
@@ -537,9 +538,69 @@ fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
 // at once. This is what keeps a ruling from re-pricing a machine that has not been enrolled.
 fn build_pool_ruled_seat_count_for_host(host: HostIdentity) -> Nat? {
   if host_build_pool_is_ruled(host: host) && remote_build_host_is_serving(host: host) {
-    host_ruled_build_pool_seat_count(host: host)
+    match host_ruled_build_pool_seat_count(host: host) {
+      Present { value: named } => Present { value: named }
+      // THE RULING SIZED THE POOL BUT NAMED NO COUNT: the standing rule of the capacity
+      // ruling divides it -- floor((pool - census headroom) / per-request footprint), never
+      // below one (ruled_pool_seat_count_from_footprint below). Not the fleet divisor, not
+      // the bare per-build ceiling: the footprint is what one build actually occupies in the
+      // slice, and the srv3 OOM record (oom_kill 40) is why dividing by anything less is an
+      // oversell.
+      Absent =>
+        Present {
+          value: ruled_pool_seat_count_from_footprint(
+            host: host,
+            reservation: host_build_pool_reservation(host: host),
+          ),
+        }
+    }
   } else {
     Absent
+  }
+}
+
+// THE SEAT COUNT A RULED POOL GETS WHEN ITS RULING NAMED NO COUNT -- the standing rule of the
+// capacity ruling (gunbc.design_ruling::remote_build_capacity_ruling_default_approved_2026_11_27,
+// decision (6)), cited there and read here: floor((pool - census headroom) / per-request
+// footprint), never below one. The FOOTPRINT is one served request's in-slice occupancy -- the
+// unit ceiling (compute_build_memory_ceiling_default) beside its resident serving child and the
+// per-request door, composed by gunbc.live_deploy.serving_child_observations::
+// user_work_request_footprint_of, the same authority the door's pre-hand-off admission asks --
+// and the census headroom is the fixed per-slice term the slice must keep. Dividing by the bare
+// unit ceiling -- an earlier shape of this derivation -- is exactly the srv3 oversell: it priced
+// seats blind to the resident child and the door, and srv3's slice answered with oom_kill 40.
+// Dividing by the fleet divisor was the other blind default, retired here. Butch's 192 GiB
+// through it is SIX seats at today's instrument rows -- six concurrent builds where the fleet
+// divisor admitted two. The derivation is pure over the pool and the authority rows (no literal
+// appears; if the instrument raises the child bound, the seat count falls by itself), witnessed
+// before any admission exercises it, and stays consistent with ruled_pool_seat_of: seats x seat
+// reproduces the pool within one footprint, so the ledger appropriation
+// (host_capacity_pool_slots_for_home, the same count) can never hold the memory twice. A ruling
+// that DOES name a count (ken, srv3, srv4: RuledSeatsNamed rows) bypasses this entirely.
+fn ruled_pool_seat_count_from_footprint(host: HostIdentity, reservation: ByteSize) -> Nat {
+  match measure_sub(a: reservation, b: user_work_serving_census_headroom) {
+    // A pool that cannot even keep the census beside one request admits no honest multi-seat
+    // split; it still runs its one faithful seat (seat = pool, reserving everything the ruling
+    // released) rather than inventing a second. Unreachable over ruled pools today.
+    MeasureSubtrahendExceedsMinuend => Succ { prev: Zero }
+    MeasureDifference { value: available } => ruled_pool_seat_floor(host: host, available: available)
+  }
+}
+
+// THE FLOOR ITSELF, closed on Nat throughout (std.measure byte_size_count returns Nat, std.nat
+// divides Nat by Nat -- no crossing needed, so none is faked): the quotient is the floor, and the
+// zero divisor... there is none (the footprint is a positive sum of positive authority rows), and
+// a zero QUOTIENT -- a pool smaller than one footprint -- answers ONE faithful seat, never zero,
+// so a ruled host always has its one seat (seat = pool in the caller's arithmetic).
+fn ruled_pool_seat_floor(host: HostIdentity, available: ByteSize) -> Nat {
+  let footprint = user_work_request_footprint_of(
+    unit_memory_max: compute_build_memory_ceiling_default,
+    child_residency: serving_child_residency(host: host),
+  )
+  if byte_size_count(b: available) / byte_size_count(b: footprint) > 0 {
+    byte_size_count(b: available) / byte_size_count(b: footprint)
+  } else {
+    Succ { prev: Zero }
   }
 }
 

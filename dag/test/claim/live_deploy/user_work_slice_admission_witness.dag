@@ -18,7 +18,7 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Fits, Below }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.slice_bounds {
-  user_work_slice_admit_against, user_work_slice_memory_max_of,
+  user_work_slice_admit_against, user_work_slice_memory_max_of, user_work_slot_memory_max,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_charged_slots }
 
@@ -29,29 +29,31 @@ fn gib(n: Nat) -> ByteSize {
   byte_size(n * 1073741824)
 }
 
-// The slice ceiling here is the RULED pool width times the runner slot: two charged slots
-// (user_work_charged_slots = 2) at the 25 GiB runner slot (gunbc_runner_slot_memory_max_bytes) = 50 GiB,
-// derived from source so the witness follows the ruling when it moves rather than a stale literal.
-// SCOPE LIMIT: the shipped belt path (belt_user_work_slice_fit) reads the slice's LIVE MemoryMax -- 44
-// GiB on the incident host, not the 50 GiB the source ruling yields here -- and parses MemoryCurrent for
-// the charge. This witness exercises NEITHER the live read NOR its parsers (parse_systemd_memory_limit_show
-// incl. its Unbounded/Absent arms, nor parse_cgroup_nonnegative_bytes). A PASS therefore proves the PURE
-// fold on these literal inputs ONLY; it does not prove the actuator route. Covering the live-MemoryMax
-// parse arms and a direct compute_reserve_against Below claim are recorded UNMET OBLIGATIONS (integration
-// concern / PR body), not tested here. Claim 1 refuses because resident 41 GiB + bound 22 GiB exceed the
-// two-slot ceiling; at a runner slot of 31.5 GiB or more (two slots >= 63 GiB) that shape would become Fits.
+// The slice ceiling is the STANDING srv1 POOL read from its authority: user_work_charged_slots
+// footprint-priced seats (user_work_slice_memory_max_of) -- composed from the per-request footprint
+// and the census headroom, never written. The witness follows the ruling when it moves rather than
+// a stale literal.
+// SCOPE LIMIT: the shipped belt path (belt_user_work_slice_fit) reads the slice's LIVE MemoryMax --
+// 44 GiB on the incident host, under the pre-ruling grant-only pricing -- and parses MemoryCurrent
+// for the charge. This witness exercises NEITHER the live read NOR its parsers
+// (parse_systemd_memory_limit_show incl. its Unbounded/Absent arms, nor
+// parse_cgroup_nonnegative_bytes). A PASS therefore proves the PURE fold on these inputs ONLY; it
+// does not prove the actuator route. Covering the live-MemoryMax parse arms and a direct
+// compute_reserve_against Below claim are recorded UNMET OBLIGATIONS (integration concern / PR body),
+// not tested here. Refusals below are DERIVED FROM THE CEILING (a standing charge that leaves less
+// than one per-unit grant), so re-pricing the pool never rots the refusal property.
 fn slice_ceiling() -> ByteSize {
   user_work_slice_memory_max_of(slots: user_work_charged_slots)
 }
 
-// THE SRV1 SHAPE IS REFUSED, NOT KILLED. The six standing obligation daemons sit at ~41 GiB together (the
-// brief's reading) and the goal-audit reviewer asks for its own per-unit bound (~22 GiB, the worker ceiling).
-// Under the ruled two-slot pool the resident total plus the reviewer's bound cannot fit, so the one fit rule
-// answers Below -- the review is refused at admission and never becomes a unit the kernel can OOM.
+// THE SRV1 SHAPE IS REFUSED, NOT KILLED -- as a PROPERTY OF THE CEILING. A standing charge that leaves
+// one byte less than a full per-unit grant must REFUSE that grant: the one fit rule answers Below and
+// the review never becomes a unit the kernel can OOM. Deriving the charge from the ceiling (rather than
+// pinning the incident's 41 GiB) keeps the refusal honest across re-pricings of the pool.
 test fn srv1_shape_refuses_the_goal_audit_reviewer_before_launch() -> Bool {
-  let standing = gib(41)
-  let reviewer_bound = gib(22)
+  let reviewer_bound = user_work_slot_memory_max
   let ceiling = slice_ceiling()
+  let standing = byte_size(byte_size_count(b: ceiling) - byte_size_count(b: reviewer_bound) + 1)
   match user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: reviewer_bound) {
     // The refusal is the whole point: Below means the caller must not launch the unit.
     Below { requested: r, available: a } =>
@@ -62,6 +64,25 @@ test fn srv1_shape_refuses_the_goal_audit_reviewer_before_launch() -> Bool {
         && byte_size_count(b: a) + byte_size_count(b: standing) == byte_size_count(b: ceiling)
     // Fits here would mean the reviewer is launched to be killed -- the defect, asserted absent.
     Fits { available: _ } => false
+  }
+}
+
+// THE INCIDENT SHAPE NOW FITS (capacity ruling CI-cost card msg_3789e805, default-approved). The
+// standing srv1 pool grew from two 22 GiB GRANTS (44 GiB live on the incident host -- the ceiling that
+// killed the reviewer) to footprint-priced seats, so the incident reading -- 41 GiB of standing
+// daemons plus a 22 GiB reviewer bound -- is now admitted WITH ROOM. That is the ruling's point:
+// headroom bought by pricing each seat at what a request really occupies (grant + resident child +
+// in-footprint door) plus a fixed census, not by the grant fiction. The refusal ABOVE remains the
+// safety property; this claim pins that the re-pricing actually bought the room.
+test fn the_incident_shape_fits_under_footprint_pricing() -> Bool {
+  let ceiling = slice_ceiling()
+  let standing = gib(41)
+  let reviewer_bound = gib(22)
+  match user_work_slice_admit_against(ceiling: ceiling, charged: standing, requested: reviewer_bound) {
+    Fits { available: room } =>
+      byte_size_count(b: room) + byte_size_count(b: standing) == byte_size_count(b: ceiling)
+        && byte_size_count(b: reviewer_bound) <= byte_size_count(b: room)
+    Below { requested: _, available: _ } => false
   }
 }
 
