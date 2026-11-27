@@ -67,10 +67,13 @@ import gunbc.live_deploy.apply {
 import gunbc.live_deploy.plan_serve_entry_verdict {
   PlanCoveredRosterRows,
   plan_covered_roster_rows,
-  serve_entry_compile_identity_of,
+  ServeEntryCompileKey,
+  ServeEntryCompileDemand,
+  serve_entry_compile_key_of,
   plan_serve_entry_compile_demands,
   ServeEntryCompileResult,
-  plan_serve_entry_compile_for_identity,
+  plan_serve_entry_compile_for_key,
+  plan_serve_entry_compile_budget_refusal,
   plan_serve_entry_verdict_records,
   plan_serve_entry_compile_report,
 }
@@ -840,19 +843,19 @@ test fn both_fleet_roster_rows_are_covered_by_the_producer() -> Bool {
     && any(covered.rows, r => r.target.host.identity == srv1_lab_desired_deployment().target.host.identity)
 }
 
-// THE LAB ROW RECORDS ITS OWN ENTRY AND ARGV DIGEST (B item 7c), not a copy of the prod row: the two
-// rows are given DIFFERENT compiles, so a producer that copied the prod row across would put the
-// prod answer on the lab row and this leg would fail.
+// THE LAB ROW RECORDS ITS OWN ENTRY AND ARGV DIGEST (B item 7c), not a copy of the prod row. The
+// COMPILE is shared -- one key, one result -- but every identity member on the row is row-true: the
+// lab row carries the lab entry and the digest of the LAB spec's argv, different from the prod
+// row's digest. A producer that copied the prod row across would put the prod argv digest on the
+// lab row and this leg would fail; the shared compile answer on both rows is the (iv) shape.
 test fn the_lab_row_records_the_lab_entry_and_argv_digest_not_the_prod_row() -> Bool {
   let prod_row = srv1_production_desired_deployment()
   let lab_row = srv1_lab_desired_deployment()
-  let prod_identity = serve_entry_compile_identity_of(row: prod_row, source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
-  let lab_identity = serve_entry_compile_identity_of(row: lab_row, source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
+  let shared_key = serve_entry_compile_key_of(row: lab_row, source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
   let covered = PlanCoveredRosterRows { rows: [prod_row, lab_row], refusals: [] as List<String> }
   let results = [
-    ServeEntryCompileResult { identity: prod_identity, compile: ServeEntryCompileAdmitted },
     ServeEntryCompileResult {
-      identity: lab_identity,
+      key: shared_key,
       compile: ServeEntryCompileBlocked { blocking: 1, diagnostics: ["lab-only type error"] as List<String> },
     },
   ]
@@ -863,12 +866,13 @@ test fn the_lab_row_records_the_lab_entry_and_argv_digest_not_the_prod_row() -> 
     compiler_bin_sha256_hex: fixture_bin_hex,
   )
   let lab_spec = selected_deployment_spec(row: lab_row)
+  let prod_spec = selected_deployment_spec(row: prod_row)
   any(records, r =>
     r.subject_host == lab_subject()
       && r.instance_id == lab_instance()
       && r.entry == (lab_spec.service.serve_entry as String)
       && r.argv_digest == serve_entry_argv_digest(spec: lab_spec)
-      && r.argv_digest != prod_identity.argv_digest
+      && r.argv_digest != serve_entry_argv_digest(spec: prod_spec)
       && match r.compile {
         ServeEntryCompileBlocked { blocking, diagnostics } =>
           blocking == 1 && any(diagnostics, d => d == "lab-only type error")
@@ -876,9 +880,11 @@ test fn the_lab_row_records_the_lab_entry_and_argv_digest_not_the_prod_row() -> 
       })
 }
 
-// THE SAME COMPILE IS REFERENCED, NEVER RE-RUN (B amendment 1): one demand per DISTINCT
-// (source_revision, entry, argv_digest, compiler_bin_sha256_hex), and a row handed to the same
-// identity twice adds nothing. A second compile per row would be ~22 minutes per row with no claim.
+// THE SAME COMPILE IS REFERENCED, NEVER RE-RUN (B amendment 1 + Manager B ruling msg_c41aa071):
+// one demand per DISTINCT COMPILE KEY (source_revision, compiler_bin_sha256_hex, entry). The prod
+// and lab rows have DIFFERENT argv digests and the SAME compile key, so four rows -- two distinct
+// rows handed over twice -- demand exactly ONE compile. A second compile for the lab row would be
+// ~30 minutes paid for authored duplication at the plan-job key.
 test fn the_compile_is_demanded_once_per_distinct_computation_identity() -> Bool {
   let prod_row = srv1_production_desired_deployment()
   let lab_row = srv1_lab_desired_deployment()
@@ -887,7 +893,9 @@ test fn the_compile_is_demanded_once_per_distinct_computation_identity() -> Bool
     source_revision: fixture_revision,
     compiler_bin_sha256_hex: fixture_bin_hex,
   )
-  demands.length() == 2
+  demands.length() == 1
+    && serve_entry_argv_digest(spec: selected_deployment_spec(row: prod_row))
+      != serve_entry_argv_digest(spec: selected_deployment_spec(row: lab_row))
 }
 
 test fn rows_whose_identity_truly_differ_do_add_a_compile() -> Bool {
@@ -896,26 +904,66 @@ test fn rows_whose_identity_truly_differ_do_add_a_compile() -> Bool {
   let same = plan_serve_entry_compile_demands(rows: [prod_row, prod_row], source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
   let other_bin = plan_serve_entry_compile_demands(rows: [prod_row, prod_row], source_revision: fixture_revision, compiler_bin_sha256_hex: "a-different-compiler")
   same.length() == 1 && other_bin.length() == 1
-    && any(same, d => d.identity.compiler_bin_sha256_hex == fixture_bin_hex)
-    && any(other_bin, d => d.identity.compiler_bin_sha256_hex == "a-different-compiler")
+    && any(same, d => d.key.compiler_bin_sha256_hex == fixture_bin_hex)
+    && any(other_bin, d => d.key.compiler_bin_sha256_hex == "a-different-compiler")
     && plan_serve_entry_compile_demands(
       rows: [prod_row, lab_row],
       source_revision: fixture_revision,
       compiler_bin_sha256_hex: fixture_bin_hex,
-    ).length() == 2
+    ).length() == 1
 }
 
-// A ROW CANNOT BORROW ANOTHER ROW'S ANSWER: an identity no demand ran for fails closed into an
-// unobserved verdict naming its own entry and argv digest, rather than picking up the nearest result.
+// A ROW CANNOT BORROW ANOTHER KEY'S ANSWER: a COMPILE key no demand ran for fails closed into an
+// unobserved verdict naming its own key, rather than picking up the nearest result.
 test fn an_unanswered_identity_fails_closed_naming_its_own_identity() -> Bool {
-  let lab_identity = serve_entry_compile_identity_of(row: srv1_lab_desired_deployment(), source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
-  let verdict = plan_serve_entry_compile_for_identity(
-    results: [ServeEntryCompileResult { identity: serve_entry_compile_identity_of(row: srv1_production_desired_deployment(), source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex), compile: ServeEntryCompileAdmitted }],
-    identity: lab_identity,
+  let foreign_key = ServeEntryCompileKey {
+    source_revision: fixture_revision,
+    entry: "dag/foreign/generated_serve_entrys/other_http_binding.dag",
+    compiler_bin_sha256_hex: fixture_bin_hex,
+  }
+  let verdict = plan_serve_entry_compile_for_key(
+    results: [ServeEntryCompileResult { key: serve_entry_compile_key_of(row: srv1_production_desired_deployment(), source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex), compile: ServeEntryCompileAdmitted }],
+    key: foreign_key,
   )
   compile_verdict_tag(verdict: verdict) == "unobserved"
-    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: lab_identity.entry)
-    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: lab_identity.argv_digest)
+    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: foreign_key.entry)
+    && string_contains(s: compile_verdict_detail(verdict: verdict), pattern: fixture_bin_hex)
+}
+
+// MORE THAN ONE DISTINCT COMPILE KEY REFUSES PRE-SPEND, NAMING EVERY KEY (Manager B ruling
+// msg_c41aa071, item 3): the approved step budget carries one compile, so a roster whose rows
+// truly differ must not silently split the step. The refusal is the step's own exit_failure text,
+// read from the same pure function the worker calls, and names each key tuple in full.
+test fn more_than_one_compile_key_refuses_pre_spend_naming_every_key() -> Bool {
+  let prod_row = srv1_production_desired_deployment()
+  let two_demands = [
+    ServeEntryCompileDemand {
+      key: ServeEntryCompileKey { source_revision: fixture_revision, entry: "dag/one_http_binding.dag", compiler_bin_sha256_hex: fixture_bin_hex },
+      row: prod_row,
+    },
+    ServeEntryCompileDemand {
+      key: ServeEntryCompileKey { source_revision: fixture_revision, entry: "dag/two_http_binding.dag", compiler_bin_sha256_hex: "other-compiler-hex" },
+      row: prod_row,
+    },
+  ]
+  let inside_budget = plan_serve_entry_compile_demands(
+    rows: [prod_row, srv1_lab_desired_deployment()],
+    source_revision: fixture_revision,
+    compiler_bin_sha256_hex: fixture_bin_hex,
+  )
+  match plan_serve_entry_compile_budget_refusal(demands: two_demands) {
+    Present { value: text } =>
+      string_contains(s: text, pattern: "2 distinct serve COMPILE identities")
+        && string_contains(s: text, pattern: "dag/one_http_binding.dag")
+        && string_contains(s: text, pattern: "dag/two_http_binding.dag")
+        && string_contains(s: text, pattern: "other-compiler-hex")
+        && string_contains(s: text, pattern: "45 min")
+    Absent => false
+  }
+    && match plan_serve_entry_compile_budget_refusal(demands: inside_budget) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 // THE WORKER PRINTS THE COST IT IS ABOUT TO PAY, from the real roster: every row's key tuple and the
@@ -927,7 +975,7 @@ test fn the_report_prints_every_row_key_tuple_and_the_distinct_count() -> Bool {
   let demands = plan_serve_entry_compile_demands(rows: covered.rows, source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
   let text = plan_serve_entry_compile_report(covered: covered, demands: demands, source_revision: fixture_revision, compiler_bin_sha256_hex: fixture_bin_hex)
   string_contains(s: text, pattern: "covered roster rows: 2")
-    && string_contains(s: text, pattern: "distinct serve-entry compiles: 2")
+    && string_contains(s: text, pattern: "distinct serve COMPILE identities (source_revision, entry, compiler_bin_sha256_hex): 1")
     && string_contains(s: text, pattern: join(["host=", prod_subject()], ""))
     && string_contains(s: text, pattern: join(["host=", lab_subject()], ""))
     && string_contains(s: text, pattern: join(["instance=", lab_instance()], ""))

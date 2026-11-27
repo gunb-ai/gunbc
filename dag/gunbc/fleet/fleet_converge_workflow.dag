@@ -2110,11 +2110,14 @@ fn fleet_converge_plan_step() -> Step {
   }
 }
 
-// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission). The plan job compiles
-// the prod-role serve entry ONCE, with the release pair this run built, and publishes the verdict
-// beside the plan receipt; the swap transaction consumes it by identity -- source revision, entry,
-// serve argv, and the release binary the swap admits -- instead of paying the cold resolve again
-// (job 117824998335 spent 614964 ms there and still exited 1). It runs, immediately before the
+// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.plan_serve_entry_verdict). The plan job pays
+// the served-command witness ONCE PER DISTINCT COMPILE KEY (source_revision, compiler_bin_sha256_hex,
+// entry) over the plan-covered wet-deployable roster -- one key today, more than one refuses
+// pre-spend inside the approved one-compile budget -- and publishes the v2 verdict document beside
+// the plan receipt: one row per covered roster row, each carrying its OWN entry and serve argv
+// digest. The swap transaction consumes its row by (subject_host, instance_id) and re-checks the
+// identity members -- source revision, entry, serve argv, and the release binary the swap admits --
+// instead of paying the cold resolve again (job 117824998335 spent 614964 ms there and exited 1). It runs, immediately before the
 // artifact upload, exactly in the modes whose run-bound plan receipt the swap's receipt assertion
 // demands (fleet_converge_serve_entry_verdict_step_if: the full-host and launch-environment plans)
 // -- so no consumable plan artifact ships without the verdict, and the modes that never feed the
