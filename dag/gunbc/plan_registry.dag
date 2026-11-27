@@ -19,6 +19,7 @@ import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
 import gunbc.plans.new_server_bringup { new_server_bringup_plan }
 import gunbc.plans.aws_spot_serving { aws_spot_serving_plan }
+import gunbc.plans.remote_build_bandwidth { remote_build_bandwidth_plan }
 import gunbc.plans.v2_self_host { v2_self_host_plan }
 import gunbc.plans.factory_dogfood { factory_dogfood_plan }
 import gunbc.plans.debt_payoff { debt_payoff_plan }
@@ -33,6 +34,7 @@ import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation
 import gunbc.plans.fabric_market { fabric_market_plan }
 import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause_grain_plan }
 import gunbc.plans.gunb_ai_served_from_gunbc { gunb_ai_served_from_gunbc_plan }
+import gunbc.plans.dag_invocation_is_one_pattern { dag_invocation_is_one_pattern_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -52,6 +54,9 @@ import gunbc.plans.gunb_ai_served_from_gunbc { gunb_ai_served_from_gunbc_plan }
 // new_server_bringup is the site's boot and management edge program: it holds the intention and cites its design
 // evidence, and its realization is carried as work items under site-boot-and-management-edge on the roadmap at
 // dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention.
+// remote_build_bandwidth is the remote-build lane's intention (operator, 2026-11-21; regrouped 2026-11-26): its work
+// items are roadmap nodes bound to it in gunbc.roadmap.roadmap_intention_binding, and it retires into the
+// work-execution-redesign program once every candidate serving host serves and the deferred items have landed there.
 // desired_state_follows_the_machine is the fleet-truth program the operator's tiered breakage report of
 // 2026-11-21 produced: it holds the intention that a per-host read of hardware, enabled units, key identity,
 // binding caps and backing is what admits a host to the build and serving rosters. It is bound by structured
@@ -70,6 +75,7 @@ import gunbc.plans.gunb_ai_served_from_gunbc { gunb_ai_served_from_gunbc_plan }
 // gunb_ai_served_from_gunbc moves gunb.ai's source and deploy into this repository and archives gunb-ai/frontend
 // (operator, 2026-11-24, gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24); its work items are the members
 // of gunb-ai-served-from-gunbc on the roadmap.
+// dag_invocation_is_one_pattern names invoking a declared function as one pattern with command bindings (operator, 2026-11-26).
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
@@ -85,4 +91,6 @@ data all_plans: List<Plan> = [
   gunbhub_source_of_truth_plan,
   required_lane_claim_clause_grain_plan,
   gunb_ai_served_from_gunbc_plan,
+  dag_invocation_is_one_pattern_plan,
+  remote_build_bandwidth_plan,
 ]

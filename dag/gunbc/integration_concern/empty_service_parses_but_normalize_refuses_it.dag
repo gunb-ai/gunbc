@@ -1,0 +1,45 @@
+module gunbc.integration_concern.empty_service_parses_but_normalize_refuses_it
+
+// Filed from review 97639 on PR 16897: the claim that pins this was flipped to match main, and the open question was held only in a comment.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementUnestablished, SuspectedCapabilityGap, Triaged }
+
+data empty_service_parses_but_normalize_refuses_it: IntegrationConcern = IntegrationConcern {
+  identity: "empty_service_parses_but_normalize_refuses_it",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_service_decl_expr"),
+    requirement: "a service declaration with zero entries has one stated standing: either the grammar refuses it where it is written, or normalize admits it, and the two doors agree",
+    standing: RequirementUnestablished { decided_by: "an operator ruling on whether an empty service is admissible; no design ruling, grammar row or lowering contract searched decides it" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_service_decl_expr"),
+    tail: [],
+  },
+  question: "`service S {}` parses (the body is repeat(service_body_entry), zero entries admitted) and normalize refuses it with namespace_graft_body_dissolved_refused. Is an empty service admissible, and at which door is that decided? The claim an_empty_service_parses_and_is_refused_at_normalize_by_the_namespace_graft_holds records the measured behaviour only and is not a ruling; it goes red against an intended admission and must be re-pinned by that ruling.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c1cae82773f3a54ead0a487b64f859e7aa47ff6f",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_service_decl_expr") },
+        tail: [],
+      },
+      account: "Measured at main's released binary: an empty service parses and is refused at normalize under the namespace-graft reason, also when the module carries a function; a config-only service admits. A previous claim demanded admission and was red; PR 16897 re-pinned it to the refusal without deciding admissibility.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_service_decl_expr") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_service_decl_expr"),
+        control: Absent,
+        statement: "whatever is ruled, the empty service stays a typed located refusal or an admission; it never becomes a silent drop",
+      },
+    ],
+    next: climbs_when(capability: "an operator ruling states whether an empty service is admissible, and the claim over it asserts the ruled behaviour and cites this row"),
+  },
+}

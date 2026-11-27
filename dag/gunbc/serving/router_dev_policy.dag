@@ -16,6 +16,8 @@ import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, 
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_ada_pair_plan }
 import std.algebra { list_append }
+import std.content_hash { sha256_hex_of_text }
+import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -1585,4 +1587,403 @@ fn router_dev_srv1_write_candidate() -> ProcessExit {
       }
     }
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// THE ROUTER AS INSTALLED ON SRV1 (the 2026-11-24 / 25 host pass)
+//
+// Everything above this line is what the proxy SHOULD run. The rows below are what it DOES run, read off
+// srv1 by the serving session's host pass: the operator's hand-managed ~/router files, and the boot unit
+// that starts the container. They are OBSERVATIONS, keyed to the symbol in this module that answers the
+// same question, and they are not a second definition of anything -- no row here re-states a directive, a
+// Lua block or an upstream's launch facts, and none of them is read by a writer. Where a file's bytes
+// differ from what this module renders, the row says WHICH FIELDS differ and WHY the host holds something
+// else, which is the only honest form a record of a hand edit takes: the render stays the answer, the
+// observation says the host is not running it. gunbc.design_argument::minimize_redundancy is why the
+// comparison is a keyed observation rather than a copy, and gunbc.design_argument::epistemic_humility is
+// why the pass's own readings are recorded with the instrument that produced them and with a read
+// obligation, not as verified facts: this repo cannot re-read a host.
+//
+// The fork itself -- two authorities answering one question, the proxy's behaviour -- is filed as
+// gunbc.integration_concern.srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders. What the
+// hand-written Lua SHOULD say is not these rows' business: gunbc.serving.router_realization forbids making
+// those decisions in the proxy at all, gunbc.serving.router_dev_scaffold names that debt item by item, and
+// the operator's 2026-11-25 direction (a real fabric scheduler instead of hand rules, class B5 of this
+// pass) is recorded at gunbc.design_ruling::turn_admission_and_relocation_are_to_become_a_real_fabric_scheduler_2026_11_25.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// HOW a host file stands against the bytes this module renders for it. Three cases, and the third is not a
+// fourth way of saying "diverges": upstreams.json is not a render of anything here at all, because the
+// deploy joins per-upstream keys into it by NAME at deploy time (router_dev_srv1_write_first_party_upstreams
+// writes the keyless first-party rows to a different path for that join). So its digest can identify the
+// file the router is reading, and cannot test it against a render.
+type RouterFileComparison
+  = ByteIdenticalToRender
+  | DeclaredDivergenceFromRender
+  | DigestIdentifiesTheFileOnly { why: NonEmptyStr }
+
+// Which declaration answers the question this file answers. The symbol is a std.decl_ref DeclarationRef,
+// resolvable against the Node tree, so a rename of the renderer reddens its consumers instead of leaving
+// this row quietly stale (gunbc.design_argument::single_authority: "A stale symbol is decidable from the
+// Node tree"). HOW the render's bytes reach the host -- staging, writing, the deploy-time key join -- is
+// delivery, not identity, and lives in its own field rather than being spliced into the symbol.
+// `NotRenderedAnywhere` names the absence rather than leaving the field blank, because "no row renders
+// this file" is itself the finding.
+type RouterFileRenderAuthority
+  = RenderedBy { declaration: DeclarationRef, how_bytes_reach_the_host: NonEmptyStr }
+  | NotRenderedAnywhere { since: NonEmptyStr }
+
+// One file read off the host: where it lives, who read it and with what, what it held, and how that relates
+// to the render. `instrument` is not a comment: a sha256 with no instrument behind it is a number, and the
+// pass read these over ssh with sha256sum, which is the only thing that makes the value checkable later.
+// `read_on_utc` is the instant alone -- which pass read it, and when the file last moved, is read_context,
+// so the instant stays comparable and orderable (an event belongs in a typed carrier, not in prose).
+type RouterInstalledFileObservation {
+  host_path: NonEmptyStr
+  read_on_utc: NonEmptyStr
+  read_context: NonEmptyStr
+  instrument: NonEmptyStr
+  sha256_computed_on_host: NonEmptyStr
+  rendered_by: RouterFileRenderAuthority
+  comparison: RouterFileComparison
+  // What the host holds that the render does not produce, and why the operator's edit is there.
+  why_it_differs: NonEmptyStr
+}
+
+// The proxy's own configuration. The render is router_dev_config at the srv1 site, written in place by
+// router_dev_srv1_write_config and staged by router_dev_srv1_write_candidate; router_nginx_render_sha256()
+// below recomputes those bytes, so the divergence is re-derivable here rather than transcribed.
+data srv1_router_nginx_conf_observation: RouterInstalledFileObservation = RouterInstalledFileObservation {
+  host_path: "/home/briansrls/router/nginx.conf" as NonEmptyStr,
+  read_on_utc: "2026-11-25T06:10Z" as NonEmptyStr,
+  read_context: "The pass that recorded the 2026-11-24/25 fleet changes; the file's last hand edit was the 05:36 UTC rule of 2026-11-25." as NonEmptyStr,
+  instrument: "sha256sum over ssh on srv1, in the operator's home; the pass read the file's Lua bodies as text and the digests with the same command" as NonEmptyStr,
+  sha256_computed_on_host: "dbe82cd6d21b456b8d1626255f64890029e51bcfa43ec6d4daf2fb8e88d136c0" as NonEmptyStr,
+  rendered_by: RenderedBy {
+    declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
+    how_bytes_reach_the_host: "router_dev_config at the router_dev_srv1_site; staged by router_dev_srv1_write_candidate and written in place by router_dev_srv1_write_config." as NonEmptyStr,
+  },
+  comparison: DeclaredDivergenceFromRender,
+  why_it_differs: "The proxy on the host carries turn-admission and relocation behaviour this module does not render: an oldest-live-waiter-first fair queue, a long-wait escape, sideways moves allowed only on measured imbalance, a rule making a long wait stop overriding retain (2026-11-25 04:31 UTC), and a rule letting a waiter bound 600 s or longer take a free rented overflow slot (2026-11-25 05:36 UTC). Each is itemised in srv1_router_nginx_hand_edits_2026_11_24_25 with the backup it replaced, and the semantics are left to the scheduler class the operator asked for on 2026-11-25 rather than asserted here.",
+}
+
+// The upstream row set the router reads at start. The keys are joined into this file by name at deploy, so
+// the file is not byte-comparable with any render: its digest is recorded to say WHICH row set is live, and
+// the row-by-row account is srv1_router_live_rows_2026_11_25.
+data srv1_router_upstreams_json_observation: RouterInstalledFileObservation = RouterInstalledFileObservation {
+  host_path: "/home/briansrls/router/upstreams.json" as NonEmptyStr,
+  read_on_utc: "2026-11-25T06:10Z" as NonEmptyStr,
+  read_context: "Same pass as the proxy read; the rows had been hand-edited at 19:56 and 20:09 UTC on 2026-11-24 and once more after the 22:03-22:05 read." as NonEmptyStr,
+  instrument: "sha256sum over ssh on srv1; the row fields were read as JSON text in the same pass" as NonEmptyStr,
+  sha256_computed_on_host: "92bd52eddd87dcfda969b926ffb23f1bc1109373fef8156fbddc1884139f7537" as NonEmptyStr,
+  rendered_by: RenderedBy {
+    declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party"),
+    how_bytes_reach_the_host: "router_dev_first_party through router_dev_first_party_for_roster; its keyless bytes are written by router_dev_srv1_write_first_party_upstreams for the deploy to join keys into." as NonEmptyStr,
+  },
+  comparison: DigestIdentifiesTheFileOnly {
+    why: "The live file carries the per-upstream keys the deploy joins in by name, which are secrets and are in no row; so this digest identifies the live row set and cannot be compared with router_dev_first_party_json. What IS comparable -- the per-row fields the render does produce -- is accounted for row by row in srv1_router_live_rows_2026_11_25." as NonEmptyStr,
+  },
+  why_it_differs: "Four live rows come from no render at all, and every retain on the host is a per-card cache capacity rather than the capacity anchor's derivation. See srv1_router_live_rows_2026_11_25 for each row's account, and srv1_router_rows_removed_at_the_2026_11_24_pass for the row that left.",
+}
+
+// The container's boot unit: created 2026-11-23, in no repo, and the reason the pool comes up after a
+// reboot at all (systemd adopted the container after an unclean reboot left it Exited(255) under
+// docker's own restart policy). Recorded, deliberately NOT rendered: extdeps.systemd.unit_file's
+// SystemdUnitDirective vocabulary has no Documentation= directive and no carrier for the comment lines this
+// unit carries inside its sections, so rendering it byte-for-byte would need a consumer to add those two
+// variants to the systemd grammar. That is a decision for whoever next needs to WRITE this unit, not a
+// reason to leave the boot path unrecorded -- so the file is recorded by its digest, with the gap named.
+data srv1_router_boot_unit_observation: RouterInstalledFileObservation = RouterInstalledFileObservation {
+  host_path: "/etc/systemd/system/gunbc-router.service" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03Z" as NonEmptyStr,
+  read_context: "The boot pass read this unit during the 22:03-22:05Z window on 2026-11-24; read_on_utc records the window's start." as NonEmptyStr,
+  instrument: "sha256sum over ssh on srv1; the unit's text was read in the same pass and is what the two lines below summarise" as NonEmptyStr,
+  sha256_computed_on_host: "965a551b3d5422f9f8b32fee5082881b742ebac13a9248e5394dcf05333d89c0" as NonEmptyStr,
+  rendered_by: NotRenderedAnywhere { since: "created on the host 2026-11-23; it has never existed in any repo" as NonEmptyStr },
+  comparison: DigestIdentifiesTheFileOnly {
+    why: "Nothing renders it, so there is no render to be identical to. Its content is summarised here rather than duplicated: it starts the openresty container gunbc-router as User=briansrls in Group=docker after docker.service and network-online.target, adopts an already-running container before blocking on it (docker start then docker wait), stops it with docker stop -t 30, restarts on failure after 10 s with a burst allowance, and is WantedBy=multi-user.target." as NonEmptyStr,
+  },
+  why_it_differs: "The unit is the boot-time counterpart of the hand-run deploy this module assumes: router_dev_srv1_write_config stages bytes into the state directory the container mounts, and nothing here starts the container that reads them. Until a router realization owns that start, the pool's availability after a reboot rests on a file no row produces.",
+}
+
+// The render's own bytes, recomputed here from the renderers above -- never transcribed. A witness compares
+// these against the digests the host produced, which is what turns "the file differs" from an assertion
+// into a check.
+fn router_nginx_render_sha256() -> String {
+  match router_dev_config(site: router_dev_srv1_site()) {
+    RouterDevConfigRendered { text: t } => sha256_hex_of_text(text: t)
+    RouterDevConfigRefused { token: k } => concat("refused token: ", k)
+  }
+}
+
+fn router_first_party_rows_render_sha256() -> String {
+  match router_dev_first_party_json(fp: router_dev_first_party()) {
+    Present { value: j } => sha256_hex_of_text(text: j)
+    Absent => "refused upstream rows"
+  }
+}
+
+// The nginx.conf observation is honest exactly when the render and the host disagree AND the row says so;
+// it would be a lie in either of the two other combinations.
+fn router_nginx_divergence_is_declared_and_real() -> Bool {
+  match router_dev_config(site: router_dev_srv1_site()) {
+    RouterDevConfigRefused { token: _ } => false
+    RouterDevConfigRendered { text: t } =>
+      (sha256_hex_of_text(text: t) != srv1_router_nginx_conf_observation.sha256_computed_on_host as String)
+        && match srv1_router_nginx_conf_observation.comparison {
+          DeclaredDivergenceFromRender => true
+          _ => false
+        }
+  }
+}
+
+// ── the live upstream rows, one account each ────────────────────────────────────────────────────────
+//
+// cap = concurrent turns the router admits to that upstream; retain = conversations that may stay BOUND to
+// it, counting only bindings seen in the last 600 s (the router's bound_count) -- a new session may bind
+// there only while bound_count < retain. Both are DERIVED in the render from each deployment's capacity
+// anchor; on the host, from the 2026-11-24 / 25 pass on, retain is each card's cache capacity in
+// conversations, which is a fact about that card's engine configuration and warm-cache measurements, not
+// about throughput at the anchor context. That is the substance of every retain divergence below.
+type RouterLiveRowStanding
+  = RowMatchesRender
+  | RowDivergesFromRender {
+      diverging_fields: List<NonEmptyStr>,
+      why: NonEmptyStr,
+    }
+  | RowNoRenderProduces {
+      why: NonEmptyStr,
+      owner: NonEmptyStr,
+    }
+
+type RouterLiveRow {
+  name: NonEmptyStr
+  live_cap: Nat
+  live_retain: Nat
+  standing: RouterLiveRowStanding
+}
+
+// The set the router is actually routing to, read as JSON text at the 2026-11-25T06:10Z pass. Every row is
+// accounted for: produced by the render, diverging from it with a reason, or produced by no render at all
+// with an owner who added it. An unaccounted live row is how a fleet acquires an upstream nobody can
+// explain -- which is the reason this list is exhaustive rather than illustrative.
+data srv1_router_live_rows_2026_11_25: List<RouterLiveRow> = [
+  RouterLiveRow {
+    name: "srv1-vllm" as NonEmptyStr,
+    live_cap: 4,
+    live_retain: 28,
+    standing: RowDivergesFromRender {
+      diverging_fields: ["retain" as NonEmptyStr],
+      why: "The render derives retain from srv1_vllm_replica_shape (16 at this writing); the host holds 28, the card's measured cache capacity -- 97-98% warm at 27-28 live sessions and 70% at 42, from vLLM's /metrics counters vllm:prefix_cache_\{hits,queries}_total and vllm:external_prefix_cache_\{hits,queries}_total sampled twice and differenced under live traffic, and the LMCache log on srv1 (~/lil/serve/serve.log, ~/lil/serve-gpu1/serve.log). The anchor's own read obligations (its capacity_rests_on lines) are still open, so the operator set the number the warm-cache measurement supports. What should replace both figures -- admission by cache capacity, kept within it -- is the real fabric scheduler the operator asked for on 2026-11-25 (gunbc.design_ruling::turn_admission_and_relocation_are_to_become_a_real_fabric_scheduler_2026_11_25; implementation is class B5)." as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "srv1-vllm-1" as NonEmptyStr,
+    live_cap: 4,
+    live_retain: 28,
+    standing: RowDivergesFromRender {
+      diverging_fields: ["retain" as NonEmptyStr],
+      why: "As srv1-vllm: the second RTX PRO 6000 replica carries the same measured cache capacity, 28, against the anchor-derived 16, read the same way on the same day (~/lil/serve-gpu1/serve.log). Its replica was additionally stopped 01:31-04:49 UTC on 2026-11-25 for the Hyperflare trial and had its LMCache disk tier deleted by the operator's decision, so its warm rate is refilling and the 28 is a target measured before that deletion, not a rate read after it." as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "srv3-strata" as NonEmptyStr,
+    live_cap: 2,
+    live_retain: 16,
+    standing: RowDivergesFromRender {
+      diverging_fields: ["retain" as NonEmptyStr],
+      why: "cap agrees with the render (2, from srv3_strata_profile's anchor). retain is 16 on the host against the anchor's 8: it is set to what the engine can actually hold, 16 of its 24 conversation-cache slots, and not to a throughput derivation. The engine's own slot count and its 'parallel' setting are the sibling class that owns the relationship between engine parallelism and the router's cap (the live setting is recorded in gunbc.serving.serving_layout); this row records the host's number, and that the anchor has never read a cache capacity for srv3." as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "srv4-strata" as NonEmptyStr,
+    live_cap: 1,
+    live_retain: 8,
+    standing: RowDivergesFromRender {
+      diverging_fields: ["retain" as NonEmptyStr],
+      why: "cap agrees with the render (1, from srv4_strata_profile's anchor). retain is 8 on the host against the anchor's 4: the engine's whole conversation-cache slot count. srv4's cache budget is itself the subject of the srv4 memory-budget class, whose cgroup limit (96G/112G since 2026-11-24, gunbc.serving.serving_host_memory) is what had been starving the cache -- so this retain is a card capacity the operator chose the moment the cgroup stopped refusing to park conversations." as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "h11-03" as NonEmptyStr,
+    live_cap: 1,
+    live_retain: 4,
+    standing: RowNoRenderProduces {
+      why: "router_dev_h11_namings names one row per card as host_6ce85c_layout grants them, and those names are the buses 85, 87, 88 and c8. The host runs engines this module names no row for: h11-03 and h11-83 are live, and no naming row, layout grant or anchor produces either. Its retain, 4, is the engine's own --conversation-cache-slots 4 (cfg-83.json, appended 2026-11-24), a card configuration fact the h11 anchor has never read; the cap, 1, happens to match the shape an A16 engine would get, which is coincidence and not a render." as NonEmptyStr,
+      owner: "the operator's hand edit of ~/router/upstreams.json on srv1; no declaration in any repo produces this row (the pass that found it recorded the file's backups by name, the earliest being upstreams.json.bak-before-fair-queue-20261124T085152Z)" as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "h11-83" as NonEmptyStr,
+    live_cap: 1,
+    live_retain: 4,
+    standing: RowNoRenderProduces {
+      why: "As h11-03: bus 83 is not among the named buses, so nothing renders this row either. Its engine was restarted at 21:35 UTC on 2026-11-24 after the second surge-strip trip and came back on its own; its --conversation-cache-mib 8192 / --conversation-cache-slots 4 arguments were appended the same day, and are recorded in gunbc.serving.serving_host_memory's h11 conversation-cache rows." as NonEmptyStr,
+      owner: "the operator's hand edit of ~/router/upstreams.json on srv1; no declaration in any repo produces this row" as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "ken" as NonEmptyStr,
+    live_cap: 2,
+    live_retain: 6,
+    standing: RowNoRenderProduces {
+      why: "ken (gunbc.fleet.fleet_host_identity::operator_host_e2d4b7) is in no RouterDevHostRoster: router_dev_host_roster carries srv1's head and the three first-party serving hosts, so no projection can emit a row for ken at all -- a live row for it is a row the model cannot produce, not a row it produces wrongly. Its retain, 6, is the six conversation-cache slots its engines were trimmed to on 2026-11-19; its cap, 2, is a hand figure against three T10s that the 2026-11-24 clock sweep found to be power-bound." as NonEmptyStr,
+      owner: "the operator's hand edit of ~/router/upstreams.json on srv1 (backup upstreams.json.bak-before-ken-cap2-20261124T200945Z, which lowered this row's cap to 2)" as NonEmptyStr,
+    },
+  },
+  RouterLiveRow {
+    name: "aws-i-03948dff6672bba2e" as NonEmptyStr,
+    live_cap: 4,
+    live_retain: 8,
+    standing: RowNoRenderProduces {
+      why: "A rented overflow instance, added to the live file by the rental-loop session rather than by this module. The render deliberately keeps rentals out of the first-party set (router_dev_srv1_write_first_party_upstreams writes only first-party rows, keyless, and an upstream's overflow flag is false in every row it projects), and ctrl owns the rental side. Since 2026-11-25 05:36 UTC a waiter bound 600 s or longer may take a free rented slot, which makes this row part of the admission path -- and the rental loop's model of the router still assumes bound sessions never move, which is the pricing question raised beside it." as NonEmptyStr,
+      owner: "the rental-loop session; it added this row on 2026-11-24/25 and answers for retiring or repricing it. This module records that it exists and what it holds, and claims no authority over it." as NonEmptyStr,
+    },
+  },
+]
+
+// The rows the render produces that the host is NOT running. Naming them is the other half of the account:
+// a live set smaller than the projection is not the same fact as a live set with extra rows, and a reader
+// comparing the two lists needs both directions to see that the h11 naming rows and the live engines have
+// drifted apart on buses, not just on numbers.
+data srv1_router_rows_the_render_produces_that_are_not_live_2026_11_25: List<NonEmptyStr> = [
+  "h11-05" as NonEmptyStr,
+  "h11-07" as NonEmptyStr,
+  "h11-08" as NonEmptyStr,
+  "h11-88" as NonEmptyStr,
+]
+
+// One row the pass REMOVED from the live file, with the reason and the backup that holds what was there.
+type RouterRemovedRow {
+  name: NonEmptyStr
+  removed_at_utc: NonEmptyStr
+  backup: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+data srv1_router_rows_removed_at_the_2026_11_24_pass: List<RouterRemovedRow> = [
+  RouterRemovedRow {
+    name: "h11-t10" as NonEmptyStr,
+    removed_at_utc: "2026-11-24T09:30:43Z" as NonEmptyStr,
+    backup: "upstreams.json.bak-before-h11-t10-off-20261124T093043Z, left beside the live file in ~/router on srv1" as NonEmptyStr,
+    reason: "The T10 engine it routed to was stopped and its unit disabled the same morning (h11-strata-t10.service inactive and disabled since ~09:30 UTC), so the row was routing turns to an engine that no longer answers. Nothing in this module ever produced the row, so removing it narrows the gap instead of widening one; the card's cap and clock state, and the fact that the model cannot express the unit that applies it, are in gunbc.integration_concern.h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express.",
+  },
+]
+
+// One hand edit to the proxy's own configuration, with the backup it replaced. These rows record THAT the
+// host carries behaviour beyond the render, and WHEN; they deliberately do not restate the queueing rules,
+// which would put a second, unverifiable copy of the admission logic in the repo
+// (gunbc.design_argument::minimize_redundancy). The semantics belong to that scheduler class and to
+// whoever next renders this file.
+type RouterHandEditRecord {
+  change: NonEmptyStr
+  applied_utc: NonEmptyStr
+  backup: NonEmptyStr
+  observed_by: NonEmptyStr
+}
+
+data srv1_router_nginx_hand_edits_2026_11_24_25: List<RouterHandEditRecord> = [
+  RouterHandEditRecord {
+    change: "oldest-live-waiter-first fair queue added to the admission path" as NonEmptyStr,
+    applied_utc: "2026-11-24T08:51:52Z" as NonEmptyStr,
+    backup: "nginx.conf.bak-before-fair-queue-20261124T085152Z" as NonEmptyStr,
+    observed_by: "the pass read the file's text and digests over ssh; the ordering itself was established on the host from live waiters, not from a repo row" as NonEmptyStr,
+  },
+  RouterHandEditRecord {
+    change: "fast-poll liveness fix" as NonEmptyStr,
+    applied_utc: "2026-11-24T09:26:17Z" as NonEmptyStr,
+    backup: "nginx.conf.bak-before-fastpoll-liveness-20261124T092617Z" as NonEmptyStr,
+    observed_by: "same pass" as NonEmptyStr,
+  },
+  RouterHandEditRecord {
+    change: "sideways (lateral) moves restricted to measured imbalance, keyed on own_waiters" as NonEmptyStr,
+    applied_utc: "2026-11-24T19:01:08Z" as NonEmptyStr,
+    backup: "nginx.conf.bak-before-lateral-imbalance-only-20261124T190108Z" as NonEmptyStr,
+    observed_by: "same pass" as NonEmptyStr,
+  },
+  RouterHandEditRecord {
+    change: "RESPECT RETAIN: a long wait no longer overrides retain, and the 600 s bound move and the fair-queue eligibility check respect it too" as NonEmptyStr,
+    applied_utc: "2026-11-25T04:31Z" as NonEmptyStr,
+    backup: "nginx.conf.bak-before-respect-retain-*, the timestamped suffix the pass did not transcribe; the file is beside the live one in ~/router on srv1" as NonEmptyStr,
+    observed_by: "the pass that recorded the final digests; the retain figures it protects are the per-card cache capacities in srv1_router_live_rows_2026_11_25" as NonEmptyStr,
+  },
+  RouterHandEditRecord {
+    change: "RENTED TOO: a bound waiter of 600 s or more may take a free rented (overflow) slot" as NonEmptyStr,
+    applied_utc: "2026-11-25T05:36Z" as NonEmptyStr,
+    backup: "nginx.conf.bak-before-longwait-rented-*, the timestamped suffix the pass did not transcribe" as NonEmptyStr,
+    observed_by: "the same pass. This rule makes the rented row part of the admission path, which is why that row's owner is named in srv1_router_live_rows_2026_11_25." as NonEmptyStr,
+  },
+]
+
+// ── what these rows can be asked, and what they refuse to answer ────────────────────────────────────
+
+// Every live row carries an account, and every row that no render produces names who put it there. A row
+// with an empty account is the failure this fold exists to refuse.
+fn every_live_row_is_accounted_for() -> Bool {
+  fold(srv1_router_live_rows_2026_11_25, init: true, f: (ok, r) =>
+    ok && match r.standing {
+      RowMatchesRender => true
+      RowDivergesFromRender { diverging_fields: fields, why: why } => fields.length() > 0 && (why as String) != ""
+      RowNoRenderProduces { why: why, owner: owner } => (why as String) != "" && (owner as String) != ""
+    })
+}
+
+// Which live rows exist because a hand said so, not because a row rendered them.
+fn live_rows_no_render_produces() -> List<RouterLiveRow> {
+  srv1_router_live_rows_2026_11_25.filter(r => match r.standing {
+    RowNoRenderProduces { why: _, owner: _ } => true
+    _ => false
+  })
+}
+
+// The render's row for a name, if it projects one.
+fn rendered_row_named(name: NonEmptyStr) -> RouterDevUpstream? {
+  match router_dev_first_party() {
+    RouterDevFirstPartyRefused { reason: _ } => Absent
+    RouterDevFirstPartyRows { rows: rs } => rs.filter(u => u.name == (name as String)).first()
+  }
+}
+
+fn upstream_cap_count(u: RouterDevUpstream) -> Nat {
+  match u.capacity {
+    OwnedCap { turns: t } => t
+  }
+}
+
+fn upstream_retain_count(u: RouterDevUpstream) -> Nat {
+  match u.retention {
+    NoRetention => 0
+    RetentionAdmitted { conversations: n } => n
+  }
+}
+
+fn live_row_named(name: NonEmptyStr) -> RouterLiveRow? {
+  srv1_router_live_rows_2026_11_25.filter(r => r.name == (name as String)).first()
+}
+
+// A row the account claims the render produces must exist in the render, and a field named as diverging
+// must actually differ. This is the fold that stops an account from being a story: it re-derives the
+// projection and checks each claim against it.
+fn every_diverging_live_row_agrees_with_the_projection() -> Bool {
+  fold(srv1_router_live_rows_2026_11_25, init: true, f: (ok, r) =>
+    ok && match r.standing {
+      RowMatchesRender => match rendered_row_named(name: r.name) {
+        Absent => false
+        Present { value: u } => upstream_cap_count(u: u) == r.live_cap && upstream_retain_count(u: u) == r.live_retain
+      }
+      RowDivergesFromRender { diverging_fields: fields, why: _ } => match rendered_row_named(name: r.name) {
+        Absent => false
+        Present { value: u } => fold(fields, init: true, f: (all, field) =>
+          all && if field == ("cap" as NonEmptyStr) {
+            upstream_cap_count(u: u) != r.live_cap
+          } else if field == ("retain" as NonEmptyStr) {
+            upstream_retain_count(u: u) != r.live_retain
+          } else { false })
+      }
+      RowNoRenderProduces { why: _, owner: _ } => match rendered_row_named(name: r.name) {
+        // A row claimed to come from nowhere must NOT be in the projection, or the account is wrong.
+        Present { value: _ } => false
+        Absent => true
+      }
+    })
 }

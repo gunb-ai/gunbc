@@ -1,0 +1,65 @@
+module gunbc.serving.srv4_daily_engine_front
+
+// srv4's ENGINE TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) as DATA for the general engine-front model
+// in gunbc.serving.serving_observability. The front-realization types and the render (FrontParam /
+// EngineFrontInputs / EngineFrontVerdict / engine_front_render / engine_front_rendered_sha / EngineFrontDivergence)
+// all live in serving_observability beside engine_front_proxy_config, which is the single nginx render vocabulary
+// (reached through extdeps.proxy.openresty). srv4 supplies ONLY its own parameter values and its one divergence
+// VALUE (gunbc.design_argument::root_generalization -- the next engine front is a data row, not a copy of the render
+// or the divergence type). This is the emitter the ledger
+// (a_hand_managed_proxy_edge_drops_a_route_its_consumers_read) names as its next-rung capability: it is a RENDERER,
+// not a deploy -- it produces bytes and their standing and never touches the host.
+//
+// EARLIEST BOUNDARY repaired: the front's OWN parameters (bind address, TLS listen port, cert/key paths, the
+// loopback engine host and its host port) are modeled nowhere, so the hand-managed file was the only representation.
+// Per parent ruling (2026-11-25): reuse any srv4 front fact already modeled, and type anything not found as Unread
+// with a read obligation; engine_front_render then REFUSES, typed and located, until those are read. It never
+// renders placeholder values and never records a sha of a placeholder render.
+//
+// WHAT IS REUSED BY REFERENCE (parent condition 1) and what is NOT (so typed Unread): srv4's ENGINE upstream
+// host/port/tls_name are modeled in gunbc.serving.router_dev_policy::router_dev_first_party, but that row is the
+// ROUTER's upstream view (tailnet address, TLS to the shared pool-card identity), not the front's parameter set. The
+// front is the TLS edge ON srv4 that proxies to the engine over LOOPBACK, so a tailnet host is a different fact from a
+// loopback front target and is not reused. grep 2026-11-25 found no row modeling the front's bind/listen/cert/key/
+// loopback parameters, so each is Unread below. The route set is never hand-listed here: engine_front_proxy_config
+// derives it from engine_front_required_routes, so /metrics -- whose readers are
+// gunbc.serving.engine_progress::engine_progress_read AND gunbc.serving.serving_availability::serving_availability_bracketing_read
+// -- cannot be dropped the way srv4's `location / { return 404; }` dropped it.
+
+import std.types { NonEmptyStr }
+import std.optional { Optional }
+import std.content_hash { Sha256Digest }
+import extdeps.external_authority { TranscribedUncited }
+import gunbc.serving.serving_observability {
+  Unread, EngineFrontInputs, EngineFrontDivergence, engine_front_rendered_sha,
+}
+
+// srv4's recorded front parameters, as they stand 2026-11-25: none is modeled. Part A (calm-hawk-262) recorded only
+// the file's CONTENT fact (forwards /v1/ only, so srv4's /metrics 404s to the fleet) and no parameter; no row carries
+// the front's bind/listen/cert/key/loopback values. Each is Unread with the read that would settle it, so
+// engine_front_render refuses until every one is read.
+data srv4_daily_engine_front_inputs: EngineFrontInputs = EngineFrontInputs {
+  bind_address: Unread { obligation: "read the listen address from /opt/gunbc-serving/srv4-daily/nginx.conf on srv4 (the TLS front's bind address)" },
+  listen_port: Unread { obligation: "read the TLS listen port from srv4's nginx.conf server block (expected 443; unverified)" },
+  tls_cert: Unread { obligation: "read the ssl_certificate path from srv4's nginx.conf (the front's own cert, distinct from the engine's serve-dir identity)" },
+  tls_key: Unread { obligation: "read the ssl_certificate_key path from srv4's nginx.conf" },
+  engine_host: Unread { obligation: "read the proxy_pass upstream host the front uses for the LOCAL engine (loopback for a same-host front); the router's upstream host in gunbc.serving.router_dev_policy is tailnet-served and is NOT the front's loopback target" },
+  engine_port: Unread { obligation: "read the local engine host port the front proxies to (srv4's daily engine Docker-published host port); srv1's are 18000/18001 (gunbc.serving.srv1_serving_replica_layout) but srv4's is not modeled" },
+}
+
+// srv4's one divergence VALUE: its front's disagreement with the roster-derived render. The model render forwards
+// /metrics BY CONSTRUCTION (engine_front_proxy_config builds it from the roster, asserted on the rendered bytes in
+// the control witness -- there is no stored Bool); the hand-managed host file omits it. Neither sha is asserted as a
+// value it does not have -- the host digest was never captured and the render is refused until the parameters are
+// read -- so both are carried with their read obligations, never a placeholder. The carrier type is general
+// (gunbc.serving.serving_observability::EngineFrontDivergence); only these field VALUES are srv4 facts.
+data srv4_engine_front_divergence: EngineFrontDivergence = EngineFrontDivergence {
+  host_file_path: "/opt/gunbc-serving/srv4-daily/nginx.conf",
+  // The host's 2026-11-24 pass recorded only this content fact (Part A, calm-hawk-262): the file forwards /v1/
+  // only and answers `location / { return 404; }`, so srv4's /metrics 404s to the fleet reader. Transcribed, not a
+  // fresh host read -> its standing is TranscribedUncited with the read obligation that would re-establish it.
+  host_forwarded: TranscribedUncited { read_obligation: "re-read /opt/gunbc-serving/srv4-daily/nginx.conf on srv4 and confirm the exact forwarded location set; the 2026-11-24 pass recorded 'forwards /v1/ only, location / returns 404' but captured no digest" },
+  host_file_sha: Unread { obligation: "run sha256sum over ssh on /opt/gunbc-serving/srv4-daily/nginx.conf, recording read time and the reading instrument; Part A recorded no digest for this file (calm-hawk-262, 2026-11-25), so a host-fact read is owed" },
+  rendered_sha: engine_front_rendered_sha(inputs: srv4_daily_engine_front_inputs),
+  reason: "the roster-derived render (engine_front_proxy_config) forwards /metrics to BOTH of its readers -- the progress stall reader and the availability probe; the hand-managed srv4 front omits it (return 404), which is the fleet's blind spot on srv4 and blocks both readers. Both shas are pending: the host digest was never captured, and the model render is refused until srv4's front parameters are read. Neither is asserted as a value it does not have.",
+}
