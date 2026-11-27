@@ -155,7 +155,7 @@ pub fn witness_work_subject_key(closure_subject_digest: &str, function: &str) ->
 // not-yet-landed lane and does not call this yet. It is keying, not caching — it never supplies
 // an answer to the compiler.
 
-const CENSUS_KEY_SCHEMA: &[u8] = b"symbol-census-key-v1";
+const CENSUS_KEY_SCHEMA: &[u8] = b"symbol-census-key-v2";
 const CENSUS_QUESTION: &[u8] = b"v1.symbol.index::build_symbol_index_census";
 
 fn census_key_field(hash: &mut sha2::Sha256, bytes: &[u8]) {
@@ -169,27 +169,39 @@ fn census_key_field(hash: &mut sha2::Sha256, bytes: &[u8]) {
 ///   schema tag, question tag, the compiler-image identity digest consumed from
 ///   `transform_content_digest` (the single authority — this does NOT re-read or re-hash the
 ///   executable), the pool entry count, the closure roster count, each closure module path
-///   (sorted), then each `(module path, source bytes)` of the pool (sorted by module path).
+///   (sorted), then for each pool source, its `(source file path, module path, source bytes)`
+///   triple (sorted by file path then module path).
 ///
-/// The closure roster is load-bearing: the census is built over the ENTRY'S CLOSURE module set,
-/// not the whole pool. Two different entries over the same pool but different closures produce a
-/// different `SymbolIndex`, so a pool-only key would omit a declared input the answer depends on.
+/// Two inputs are load-bearing beyond content bytes:
+///   * The closure roster — the census is built over the ENTRY'S CLOSURE module set, not the
+///     whole pool; two different entries over the same pool but different closures produce a
+///     different `SymbolIndex`.
+///   * The source file path, bound JOINTLY with the module path and bytes. The `SymbolIndex`
+///     carries source-located nodes and is consumed through the per-file `NewlineIndex` map, so a
+///     rename of a source file (same bytes, same module declaration) changes the answer. Keying
+///     only on module path + bytes would then serve a stale answer under an unchanged key (the
+///     rename control in the fixture). Binding file path with the module and bytes — not as a
+///     separate set — is what prevents a swapped file↔module↔bytes assignment from colliding.
 ///
 /// Guarantees required by the reuse contract:
 ///   * returns a 64-hex lower-case SHA-256;
-///   * both the pool and the closure roster are sorted, so the same tree keyed in separate
+///   * the pool triples and the closure roster are sorted, so the same tree keyed in separate
 ///     processes is identical (never a `HashSet`/`HashMap` iteration order);
-///   * it is sensitive to a newly added provider module (a new entry changes the set and key);
-///   * the preimage contains no host file path, mtime or locator — only module paths and bytes.
+///   * it is sensitive to a newly added provider module and to a source-file rename;
+///   * the preimage contains only repository-relative source paths, module paths and bytes — no
+///     absolute host path, mtime or locator.
 ///
-/// Callers pass the process-shared module pool as `(module path, source bytes)` pairs plus the
-/// sorted closure roster of authored module paths the census consumed. File paths, the per-file
-/// newline index and the resolved graph are derived from these bytes and must NOT enter the
-/// preimage.
-pub fn symbol_census_key(modules: &[(String, String)], closure_roster: &[String]) -> String {
+/// Callers pass each source the producer actually read as a `(source file path, module path,
+/// source bytes)` triple, plus the sorted closure roster of authored module paths the census
+/// consumed. The per-file newline index and the resolved graph are derived from these inputs and
+/// must NOT enter the preimage.
+pub fn symbol_census_key(
+    modules: &[(String, String, String)],
+    closure_roster: &[String],
+) -> String {
     let image = transform_content_digest();
-    let mut sorted: Vec<(&String, &String)> = modules.iter().map(|(m, c)| (m, c)).collect();
-    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    let mut sorted: Vec<&(String, String, String)> = modules.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     let mut roster: Vec<&String> = closure_roster.iter().collect();
     roster.sort();
     let mut hash = sha2::Sha256::new();
@@ -201,8 +213,9 @@ pub fn symbol_census_key(modules: &[(String, String)], closure_roster: &[String]
     for module in roster {
         census_key_field(&mut hash, module.as_bytes());
     }
-    for (module, content) in sorted {
-        census_key_field(&mut hash, module.as_bytes());
+    for (file_path, module_path, content) in sorted {
+        census_key_field(&mut hash, file_path.as_bytes());
+        census_key_field(&mut hash, module_path.as_bytes());
         census_key_field(&mut hash, content.as_bytes());
     }
     hex::encode(hash.finalize())

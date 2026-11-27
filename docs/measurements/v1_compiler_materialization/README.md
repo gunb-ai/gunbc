@@ -66,16 +66,21 @@ derivations are compared:
 * **S1 — bytes-only key**: `SHA-256(running compiler image, module path, module source bytes)`.
   The wrong key under test: it binds only the consumer file, not the declarations its references
   resolve to.
-* **S4 — corrected key**: the complete key over a **sorted, source-derived** dependency set —
-  the compiler image, the sorted closure roster, and every discovered module path with its source
-  bytes. One authority: `v1_compiler::closure_identity::symbol_census_key` (seed library, declared
-  in `dag/gunbc/materialization_shadow_seed_growth.dag`).
+* **S4 — corrected key**: the complete key over a **sorted, source-derived** set —
+  the compiler image, the sorted closure roster, and every source the producer read as a
+  `(source file path, module path, source bytes)` triple (sorted by file path then module path).
+  Binding the source file path **jointly** with the module and bytes makes the key sensitive to a
+  source-file rename (which changes the `SymbolIndex`), and prevents a swapped file<->module
+  assignment from colliding. One authority: `v1_compiler::closure_identity::symbol_census_key`
+  (seed library, declared in `dag/gunbc/materialization_shadow_seed_growth.dag`).
 
 Scenario ids used in the harness: **E** the bytes-only red (provider added, consumer bytes fixed →
 intact hit whose answer disagrees); **F** the corrected key notices the provider and agrees on a
 warm repeat; **G** a body-only, reference-preserving edit recomputes to an equal answer; **H** a
-duplicate module is refused before any answer; plus a determinism control (the same tree keyed in
-two separate processes gives the same key).
+duplicate module is refused before any answer; **R** the rename control (same bytes and module,
+different source file name → the key moves, recomputes, and a warm repeat agrees) — the guard
+against binding only module path + bytes, which serves a stale answer after a rename; plus a
+determinism control (the same tree keyed in two separate processes gives the same key).
 
 **Which binary each scenario runs.** Every scenario re-executes the *test binary* (its
 `current_exe()`) once per step in a fresh OS process; that binary links the real v1 compiler

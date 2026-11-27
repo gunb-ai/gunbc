@@ -87,3 +87,38 @@ correction is recorded above, beside the prediction rather than in its place: S4
 corrected S4 key stays stable under a reference-preserving body edit, but `symbol_census_key` binds
 full source bytes, so the key moved and the lookup was a miss (the recomputed answer was still
 equal). The predictions file is left unedited.
+
+## Rename control — observed (review 99286 follow-up)
+
+Provenance: taken at the current PR head (after binding source-file identity; see below). The
+census answer digests are build-stable (`89f2a524…` baseline, `222ab9c4…` the same content under a
+renamed file); the corrected key hexes are for the **v2** key form (source-file identity bound).
+
+**Step 1 — the defect, under the then-current key (module path + bytes only).** Renaming
+`helper.dag` -> `renamed.dag` (identical bytes, identical `module census.helper`) left the S4 key
+**unchanged** (`c12bc981…` in both steps) while the census answer **changed**
+(`89f2a524…` -> `222ab9c4…`). The lookup was **hit / different**: the intact record under the
+unchanged key disagreed with the fresh answer. The prediction R1 held — the key omitted a
+source-file identity the answer depends on, because `SymbolIndex` carries `index.file` and
+source-located nodes.
+
+**Step 2 — the fix, re-observed green.** `symbol_census_key` (schema tag bumped to
+`symbol-census-key-v2`) now binds each source as a `(source file path, module path, source bytes)`
+triple, sorted by file path then module path — the file path bound **jointly** with module and
+bytes (a separate file-path set would let a swapped file<->module assignment collide):
+
+| id | Scenario | corrected key (v2) | fresh answer |
+| --- | --- | --- | --- |
+| R1a | Cold, consumer as `helper.dag` | miss / absent | `89f2a524…` (`8fbed1a9…`) |
+| R1b | Rename to `renamed.dag` (same bytes + module) | **miss / absent, key MOVED** (`8fbed1a9…` -> `0575709b…`) | `222ab9c4…` |
+| R1c | Warm repeat, renamed tree | **hit / equal** (`0575709b…`) | `222ab9c4…` |
+
+The rename control stays enrolled as a regression guard: a rename now moves the key and recomputes
+to the path-sensitive answer, and a warm repeat under the renamed key agrees. The pre-fix red is
+recorded above and guarded against by this control.
+
+**Schema note.** Because the key preimage changed (v1 -> v2), every S4 key hex in the table above
+is a v1-form value; under v2 the same scenarios produce different hexes. The E–H **relations**
+(E2 unchanged-key red, F move, D cross-process equal, G move-with-equal-answer, H refused) and the
+build-stable **answer** digests are unchanged by the schema bump; only the absolute S4 key hexes
+re-key. The fixture was re-run green on the v2 key reproducing every E–H relation.

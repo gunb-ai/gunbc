@@ -3,20 +3,21 @@
 //! This is NOT the production `build_newline_index` observer. The newline index is a
 //! content-only answer, so it can never show a provider-dependent disagreement. This fixture
 //! keys the answer to `v1.symbol.index::build_symbol_index_census` — a resolution-dependent
-//! front-end value — with two candidate cache keys, and reuses the observer's store/record
-//! machinery to observe the difference:
+//! front-end value — with two candidate cache keys, and uses the shared shadow-record authority
+//! in `closure_identity` (the same one the production observer calls) to observe the difference:
 //!
 //!   * S1 bytes-only key — derived from the compiler image + the consumer's logical path +
 //!     the consumer's bytes alone. It does not see any other module in the tree.
-//!   * S4 corrected key — derived from the compiler image + the consumer + a SORTED,
-//!     source-derived dependency set over the whole closure. Adding a previously absent
-//!     provider changes that set, and therefore the key. The set is iterated in sorted order
+//!   * S4 corrected key — derived from the compiler image + a SORTED, source-derived set over
+//!     the whole closure: each source as `(file path, module path, source bytes)`, plus the sorted
+//!     closure roster. Adding a provider changes that set; renaming a source file (same bytes and
+//!     module) changes the file path and therefore the key. The set is iterated in sorted order
 //!     (never `HashMap`/`HashSet` iteration order), so the same tree yields the same key in
 //!     separate processes.
 //!
-//! Scenario ids E–H (defined in README.md) run in fresh OS processes: the test binary is
-//! re-executed once per step via `--exact scenario_worker`. No stored answer is ever fed
-//! back to the compiler; the compiler recomputes fresh in every process.
+//! Scenario ids E–H and the rename control R (defined in README.md) run in fresh OS processes:
+//! the test binary is re-executed once per step via `--exact scenario_worker`. No stored answer
+//! is ever fed back to the compiler; the compiler recomputes fresh in every process.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -284,11 +285,14 @@ fn run_worker() {
         .1
         .clone();
     let consumer_module = module_path_from_content(&consumer_content).unwrap_or(consumer.clone());
-    // The caller's module pool: (module path, source bytes). File paths never enter the key.
-    let pool: Vec<(String, String)> = sources
+    // The caller's source pool: each source the producer reads, as (source file name, module
+    // path, source bytes). The file name is a repository-relative logical path, never a host
+    // absolute path; binding it with the module and bytes is what makes the key rename-sensitive.
+    let pool: Vec<(String, String, String)> = sources
         .iter()
-        .map(|(_, content)| {
+        .map(|(file, content)| {
             (
+                file.clone(),
                 module_path_from_content(content).unwrap_or_default(),
                 content.clone(),
             )
@@ -296,7 +300,7 @@ fn run_worker() {
         .collect();
     // The fixture's census is built over every module in the tree, so the closure roster is
     // exactly the pool's module paths.
-    let closure_roster: Vec<String> = pool.iter().map(|(module, _)| module.clone()).collect();
+    let closure_roster: Vec<String> = pool.iter().map(|(_, module, _)| module.clone()).collect();
 
     let key_hex = match derivation.as_str() {
         "s1" => {
@@ -397,6 +401,10 @@ fn write_source(scenario: &Scenario, name: &str, content: &str) {
 }
 
 fn worker(scenario: &Scenario, derivation: &str) -> WorkerResult {
+    worker_named(scenario, derivation, CONSUMER)
+}
+
+fn worker_named(scenario: &Scenario, derivation: &str, consumer: &str) -> WorkerResult {
     let exe = std::env::current_exe().expect("test executable");
     let output = Command::new(exe)
         .arg("--exact")
@@ -407,7 +415,7 @@ fn worker(scenario: &Scenario, derivation: &str) -> WorkerResult {
         .env(TREE_ENV, &scenario.tree)
         .env(STORE_ENV, &scenario.store)
         .env(DERIV_ENV, derivation)
-        .env(CONSUMER_ENV, CONSUMER)
+        .env(CONSUMER_ENV, consumer)
         .output()
         .expect("spawn fresh worker process");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -650,4 +658,57 @@ fn duplicate_provider_refuses_before_the_census_answer() {
     );
 
     fs::remove_dir_all(&scenario.dir).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Rename control: same bytes + same module declaration, different logical file name.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn renaming_the_consumer_file_under_the_corrected_key() {
+    let scenario = new_scenario("R");
+    write_source(&scenario, CONSUMER, &consumer_content(1));
+
+    // R1a: cold under the corrected key, publishing the baseline answer.
+    let cold = worker_named(&scenario, "s4", CONSUMER);
+    assert_eq!(
+        (cold.lookup.as_str(), cold.comparison.as_str()),
+        ("miss", "absent")
+    );
+
+    // R1b: rename helper.dag -> renamed.dag with identical bytes and the same module
+    // declaration, then recompute under the corrected key with the same store.
+    fs::remove_file(scenario.tree.join(CONSUMER)).unwrap();
+    write_source(&scenario, "renamed.dag", &consumer_content(1));
+    let renamed = worker_named(&scenario, "s4", "renamed.dag");
+
+    // The corrected key binds the source file identity jointly with the module and bytes, so a
+    // rename MOVES the key: it must miss and recompute, not serve the stale answer.
+    assert_ne!(
+        cold.input_digest, renamed.input_digest,
+        "a rename must move the corrected key (source-file identity is bound)"
+    );
+    assert_eq!(
+        (renamed.lookup.as_str(), renamed.comparison.as_str()),
+        ("miss", "absent"),
+        "the corrected key must recompute after a rename, not hit the stale answer"
+    );
+    // The recomputed answer differs from the baseline (the SymbolIndex is path-sensitive), which
+    // is exactly the answer the pre-fix key would have wrongly reused.
+    assert_ne!(
+        renamed.output_digest, cold.output_digest,
+        "the census answer is source-file sensitive"
+    );
+
+    // R1c: a warm repeat after the rename agrees: same (renamed) key, hit / equal.
+    let warm = worker_named(&scenario, "s4", "renamed.dag");
+    assert_eq!(
+        warm.input_digest, renamed.input_digest,
+        "the renamed key is deterministic across processes"
+    );
+    assert_eq!(
+        (warm.lookup.as_str(), warm.comparison.as_str()),
+        ("hit", "equal"),
+        "a warm repeat under the renamed key agrees"
+    );
 }
