@@ -365,14 +365,37 @@ fn census_worst_exit(left: ProcessExit, right: ProcessExit) -> ProcessExit {
 // per-leg exit code an evidence run needs; this is the enrolled address that makes the module a
 // consumer of its own legs rather than a library nothing imports
 // (gunbc.design_argument::consumption, "a module nothing imports" is dangling).
+// ONE MEMBER'S BYTES, on both variants. `CliWireUnprintable` has no bytes and no exit (gunbc.cli_wire:
+// the illegal pairing is unwritable, not validated), so a fold that only read the printable variant
+// would either fail to compile -- which is what it did, `non-exhaustive match: missing variant(s)
+// CliWireUnprintable`, and the whole instrument then resolved to nothing -- or, if it defaulted the
+// missing arm, would drop a could-not-run member and let a batch that never ran print as a batch that
+// held. The cause is printed instead of dropped: the fold stays self-describing.
+fn census_wire_bytes(wire: CliWireResponse) -> String {
+  match wire {
+    CliWirePrintable { bytes: b, exit: _ } => b
+    CliWireUnprintable { cause: c } =>
+      concat("<unprintable: ", concat(c as String, ">\n"))
+  }
+}
+
+// ONE MEMBER'S EXIT, on both variants, and the unprintable member takes the host's own code rather
+// than a friendlier one: `run_cli_wire_program` maps `CliWireUnprintable` to Termination::Refused,
+// which is rc 2 -- could-not-run. Folding it to 1 here would make the enrolled fold answer a different
+// question than the same leg run by name, and rc 1 is the code a reader may treat as answered.
+fn census_wire_exit(wire: CliWireResponse) -> ProcessExit {
+  match wire {
+    CliWirePrintable { bytes: _, exit: e } => e
+    CliWireUnprintable { cause: c } =>
+      ExitFailure { code: 2, reason: concat("renderer refused: ", c as String) }
+  }
+}
+
 fn census_legs_wire(legs: List<CliWireResponse>) -> CliWireResponse {
   let bytes = fold(
     legs,
     init: "",
-    f: (acc, wire) =>
-      match wire {
-        CliWirePrintable { bytes: b, exit: _ } => concat(acc, b)
-      }
+    f: (acc, wire) => concat(acc, census_wire_bytes(wire: wire))
   )
   let exit = fold(
     legs,
@@ -380,9 +403,7 @@ fn census_legs_wire(legs: List<CliWireResponse>) -> CliWireResponse {
     f: (acc, wire) =>
       census_worst_exit(
         left: acc,
-        right: match wire {
-          CliWirePrintable { bytes: _, exit: e } => e
-        }
+        right: census_wire_exit(wire: wire)
       )
   )
   CliWirePrintable { bytes: bytes, exit: exit }
