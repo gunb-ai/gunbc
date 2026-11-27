@@ -89,6 +89,8 @@ data materialization_shadow_seed_growth_justification: SeedGrowthJustification =
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "new_scenario"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "write_source"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "worker"),
+    decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "worker_named"),
+    decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "renaming_the_consumer_file_under_the_corrected_key"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "record_path"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "bytes_only_key_serves_a_stale_census_answer_under_a_valid_provider"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_cache_key", decl_name: "provider_makes_leaf_ambiguous"),
