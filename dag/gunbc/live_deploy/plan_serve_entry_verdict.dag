@@ -35,6 +35,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.algebra { trim }
 import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Optional, Present, Absent }
 import gunbc.actions_run_binding { actions_step_summary_append, ActionsStepSummaryAppended, ActionsStepSummaryNotWritten }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
@@ -323,14 +324,6 @@ fn plan_serve_entry_compile_refusal_text(record: ServeEntryVerdictRecord) -> Str
   }
 }
 
-fn plan_serve_entry_first_unadmitted(records: List<ServeEntryVerdictRecord>) -> Bool {
-  any(records, r => match r.compile {
-    ServeEntryCompileAdmitted => false
-    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => true
-    ServeEntryCompileUnobserved { detail: _ } => true
-  })
-}
-
 // PLAN-JOB ENTRY (fleet-converge job, after the plan step, before the artifact upload): run the
 // served command with the release pair the run itself built, ONCE PER DISTINCT COMPUTATION IDENTITY
 // over the wet-deployable roster, and publish the v2 verdict document beside the plan receipt so
@@ -393,10 +386,12 @@ fn record_plan_serve_entry_verdict_after_dir_admitted() -> ProcessExit {
         let write = Filesystem.Write(path: path, content: serialize_json(v: serve_entry_verdict_document_json(rows: records)))
         if !write.success {
           exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — could not write ", path, ": ", write.error], ""))
-        } else if plan_serve_entry_first_unadmitted(records: records) {
-          exit_failure(reason: plan_serve_entry_compile_refusal_text(record: plan_serve_entry_first_unadmitted_record(records: records)))
         } else {
-          ExitSuccess
+          match plan_serve_entry_first_unadmitted_record(records: records) {
+            Absent => ExitSuccess
+            Present { value: offender } =>
+              exit_failure(reason: plan_serve_entry_compile_refusal_text(record: offender))
+          }
         }
       }
     }
@@ -406,38 +401,23 @@ fn record_plan_serve_entry_verdict_after_dir_admitted() -> ProcessExit {
 // THE FIRST ROW THAT DID NOT ADMIT, for the refusal above. The fold names the FIRST offender so the
 // reason text is stable across runs of the same input; every other unadmitted row is still in the
 // document the plan produced, and the operator can read all of them there.
-// THE FOLD NEEDS AN INIT OF THE RECORD TYPE, and the only value that cannot be confused with a real
-// row is the all-empty one (no host carries an empty identity, no selection picks an empty instance).
-// Review 98977, point 1, on record: this placeholder is UNREACHABLE in practice -- the sole caller
-// gates on plan_serve_entry_first_unadmitted(records) == true, so the fold always replaces it with a
-// real unadmitted row before its value is ever read. The "no unadmitted record found" detail is a
-// tripwire, not a route: reaching the text in a refusal would mean the gate and the fold disagree.
-fn plan_serve_entry_first_unadmitted_record(records: List<ServeEntryVerdictRecord>) -> ServeEntryVerdictRecord {
+// THE FOLD CARRIES AN Optional, NOT A RECORD-SHAPED PLACEHOLDER (review 99369, point 1 on record;
+// gunbc.design_argument::fail_closed -- no plausible output is fabricated; gunbc.design_argument::
+// continuous_generalization -- "maybe a row" is std.optional::Optional's shape, not a sentinel or a
+// tripwire). There is no init value that could be confused with a real row, so the all-empty
+// placeholder, the empty-string test inside the step, and the gate-and-fold disagreement case are
+// all gone together: Absent IS "every row admitted", and the caller matches on it.
+fn plan_serve_entry_first_unadmitted_record(records: List<ServeEntryVerdictRecord>) -> Optional<ServeEntryVerdictRecord> {
   fold(
     records,
-    init: ServeEntryVerdictRecord {
-      subject_host: "",
-      instance_id: "",
-      source_revision: "",
-      entry: "",
-      argv_digest: "",
-      compiler_bin_sha256_hex: "",
-      compile: ServeEntryCompileUnobserved { detail: "no unadmitted record found" },
-    },
-    f: (acc, r) => match r.compile {
-      ServeEntryCompileAdmitted => acc
-      ServeEntryCompileBlocked { blocking, diagnostics } =>
-        if acc.instance_id == "" {
-          r
-        } else {
-          acc
-        }
-      ServeEntryCompileUnobserved { detail: _ } =>
-        if acc.instance_id == "" {
-          r
-        } else {
-          acc
-        }
+    init: Absent,
+    f: (acc, r) => match acc {
+      Present { value: _ } => acc
+      Absent => match r.compile {
+        ServeEntryCompileAdmitted => Absent
+        ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => Present { value: r }
+        ServeEntryCompileUnobserved { detail: _ } => Present { value: r }
+      }
     },
   )
 }
