@@ -103,7 +103,7 @@ import gunbc.host.host_effect {
   LiveDeployApprovalBrokerDarkInstall,
   LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
-  LiveDeployDigestReadback,
+  LiveDeployDispatchReadback,
   LiveDeployServeRoute,
   DeployAccessPreflight,
   LocalShell,
@@ -544,22 +544,23 @@ fn live_deploy_tailnet_door_cutover_gate(
   }
 }
 
-fn live_deploy_digest_readback_effect(spec: DeploymentSpec, candidate: CandidateRelease) -> HostEffect {
-  LiveDeployDigestReadback {
+// THE ADMITTED PROCESS'S REAL DISPATCH ROUTE ANSWERS A WELL-FORMED DOCUMENT. It carries no expected digest: the
+// route folds the live acceptance history, which the candidate's carrier-free tree surface cannot predict
+// (gunbc.rung_drop dispatch_readback_digest_equality_withdrawn).
+fn live_deploy_dispatch_readback_effect(spec: DeploymentSpec) -> HostEffect {
+  LiveDeployDispatchReadback {
     port: deployment_plan_listen_port(spec: spec),
-    expected_digest: candidate.expected_dispatch_digest,
   }
 }
 
-fn live_deploy_apply_digest_readback_via_transport(
+fn live_deploy_apply_dispatch_readback_via_transport(
   spec: DeploymentSpec,
-  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: live_deploy_digest_readback_effect(spec: spec, candidate: candidate),
+    effect: live_deploy_dispatch_readback_effect(spec: spec),
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -657,16 +658,15 @@ fn live_deploy_apply_admitted_via_transport(
   if !reconciliation_converged(r: gated) {
     gated
   } else {
-    let digest = live_deploy_apply_digest_readback_via_transport(
+    let dispatch = live_deploy_apply_dispatch_readback_via_transport(
       spec: spec,
-      candidate: candidate,
       transport: transport,
       access: access,
     )
-    if reconciliation_converged(r: digest) {
+    if reconciliation_converged(r: dispatch) {
       live_deploy_apply_identity_readback_gate(spec: spec, candidate: candidate, transport: transport, mutation: gated)
     } else {
-      match digest {
+      match dispatch {
         NotConverged { reason: why, applied: _ } =>
           match gated {
             Converged { evidence: _, applied: intent } =>

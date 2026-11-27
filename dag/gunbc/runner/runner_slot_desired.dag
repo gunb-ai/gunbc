@@ -1,9 +1,14 @@
 module gunbc.runner.runner_slot_desired
 
 import std.types { Bool, Int, String, List }
-import std.measure { ByteSize, byte_size, HardwareThreadCount }
+import std.measure { ByteSize, byte_size }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown }
 
 // THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
@@ -244,9 +249,16 @@ fn host_build_pool_is_carved(host: HostIdentity) -> Bool {
   build_pool_carve_is_due(rostered: remote_build_host_is_serving(host: host), carries_own_ledger: host_carries_own_ledger(host))
 }
 
+// THE POOL'S RESERVATION: CARVED FROM CI WHERE THE HOST PAYS FROM CI, RULED WHERE A RULING SAID IT HAS NO
+// CI TO PAY FROM. Both forms fire ONLY for a rostered host (the carve follows admission, above); which form
+// answers is the ruled-table question below. For every host without a ruling this is byte-for-byte the old
+// carve: due -> exactly one CI runner slot, not due -> zero.
 fn host_build_pool_reservation(host: HostIdentity) -> ByteSize {
-  if host_build_pool_is_carved(host: host) {
-    gunbc_runner_slot_memory_max
+  if remote_build_host_is_serving(host: host) {
+    build_pool_reservation_of_ruling(
+      ruled: host_ruled_build_pool_reservation(host: host),
+      carve_due: host_build_pool_is_carved(host: host),
+    )
   } else {
     byte_size(0)
   }
@@ -269,6 +281,102 @@ fn host_carries_own_ledger(host: HostIdentity) -> Bool {
   match dashboard_instance_for_host(host: host as String) {
     DashboardInstanceHostUnknown { host: _ } => false
     DashboardInstanceForHost { instance: _ } => true
+  }
+}
+
+// THE RULED BUILD POOL -- THE BUILD POOL OF A HOST THAT HOLDS NO CI SLOTS BY RULING.
+// The carve above is a TRANSFER: one CI runner slot leaves CI and is held by the pool. A transfer needs a
+// transferor. gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths already answers, WITH A CITED RULING,
+// that a host holds NO CI slots at all (the arm at committed_width_of: RunnerWidthDerived { slots: 0 }). Such
+// a host cannot hand over a slot it does not hold, and the plan says so in its own units:
+// gunbc.runner.runner_capacity_plan::committed_width_after_reservation refuses a host whose held slots exceed
+// its committed population (ReservationExceedsCommittedWidth) -- which is exactly the refusal the regroup
+// plan row serving-build-pool-for-zero-ci-host names as its RED CONTROL: "a reservation refused for want of a
+// carved runner slot on a host that has no runners by ruling". The refusal is about the wrong fact. On such a
+// host the pool's memory never lived in CI width at all: it is memory a ruling released from elsewhere.
+//
+// THE RULE: A ZERO-CI HOST'S BUILD POOL IS RULED, NOT CARVED. A host with a ruled row holds exactly that
+// reservation, citing the ruling that rules it -- the same shape as ruled_zero_ci_widths, which settled the
+// mirror question ("WHY A HOST TAKES NO CI SLOTS IS A RULING, NOT AN ABSENCE"). srv14 (butch) is the first
+// and only row: the operator's ruling of 2026-11-24 (verbatim: "yes you can retire the 192gib serving
+// reservation") released the retired 2 x 96 GiB Strata-engine charge TO BUTCH'S REMOTE-BUILD POOL, NOT TO CI
+// -- the interpretation recorded on the ruling itself -- so the pool's appropriation is that ruled 192 GiB,
+// CI's committed width stays the ruled zero, and NOTHING is held back from CI width: the width plan converts
+// only the carved portion (host_build_pool_reservation_from_ci_width below), so the ruled host's held-slot
+// count is zero over a committed population of zero -- CeilingCleared, never ReservationExceedsCommittedWidth.
+//
+// INVARIANTS, PINNED BY test.claim.runner.runner_capacity_plan_witness (they cannot be checked IN this module
+// without importing gunbc.runner.runner_slot_allocation, which imports THIS module -- the check lives where
+// both sides are visible): (a) a host with a ruled build-pool row is also in ruled_zero_ci_widths -- a ruled
+// pool on a host still spending CI width would double-promise the same bytes; (b) it carries no ledger of its
+// own -- such a host's reservation reaches the envelope through
+// gunbc.serving.serving_reservation::host_memory_reserved, and charging it again here would re-open the
+// double-count the host-keyed partition fixed; (c) a ruled row REPLACES the carve for its host (the ruled arm
+// is tried first), so a phantom slot never coexists with the ruled amount. A ruled row is a RULING'S
+// PROJECTION, not a second opinion: it carries the ruling's DeclarationRef the way ruled_zero_ci_widths
+// carries its ruling's, and the roster still gates when either form fires -- a pool is never held for a host
+// the dispatch roster has not admitted (gunbc.design_argument::consumption).
+//
+// THE QUANTITY IS NOT THE ENVELOPE AND MUST NOT BE READ AS ONE: this is what the pool may PROMISE (the ledger
+// appropriation, the user-work slice ceiling, the seats it divides), taken from the ruling's own number. What
+// the machine actually has stays the envelope's fact (gunbc.host.host_memory_observation), and a request is
+// still adjudicated against live MemAvailable (gunbc.compute.host_capacity's backing relation). A ruling that
+// released more than the host can hold would be caught there, not here.
+type RuledBuildPoolReservation {
+  host: HostIdentity
+  ruling: DeclarationRef
+  reservation: ByteSize
+}
+
+data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
+  RuledBuildPoolReservation {
+    host: operator_host_srv14,
+    ruling: srv14_serving_memory_charge_retirement_operator_approved_2026_11_24.reference,
+    // 192 GiB: the released charge counted in the operator's own number ("the 192gib serving reservation") --
+    // 2 x 96 GiB of strata-engine memory_max, the rows gunbc#17005 retired together with the srv14
+    // ServingHostReservation. The quiescent read behind the release is
+    // gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read (fleet-converge run 45321352046).
+    reservation: byte_size(206158430208),
+  },
+]
+
+// THE ONE LOOKUP: the ruled amount for a host, if a ruling rules one. Absent is NOT zero -- it says this
+// host's pool follows the carve, a different fact (fail_closed: absence and value do not collapse).
+fn host_ruled_build_pool_reservation(host: HostIdentity) -> ByteSize? {
+  match first_where(ruled_build_pool_reservations, r => (r.host as String) == (host as String)) {
+    Present { value: r } => Present { value: r.reservation }
+    Absent => Absent
+  }
+}
+
+// THE PREDICATE FORM, for readers (witnesses, the plan's equivalence) that must ask "is this host's pool
+// ruled" without re-deriving it from the amount -- the host_build_pool_is_carved pattern.
+fn host_build_pool_is_ruled(host: HostIdentity) -> Bool {
+  ruled_build_pool_reservations.any(r => (r.host as String) == (host as String))
+}
+
+// THE ONE COMPOSITION, PURE over the two host facts, so the positive case is witnessed BEFORE the roster
+// admits the host (the build_pool_carve_is_due pattern, review 95809): a ruled amount answers; otherwise a
+// due carve answers with exactly one CI runner slot; otherwise nothing.
+fn build_pool_reservation_of_ruling(ruled: ByteSize?, carve_due: Bool) -> ByteSize {
+  match ruled {
+    Present { value: amount } => amount
+    Absent => if carve_due { gunbc_runner_slot_memory_max } else { byte_size(0) }
+  }
+}
+
+// WHAT CI ACTUALLY GAVE UP FOR THIS HOST'S POOL -- the quantity the WIDTH PLAN converts into held-back slots
+// (gunbc.runner.runner_capacity_plan remote_build_pool_slot_reservation). A ruled pool was never CI's to give,
+// so its from-CI amount is zero; a carved pool is CI's, in full. Everything that holds memory -- the ledger
+// appropriation and seat (gunbc.compute.host_capacity host_capacity_build_seat), the user-work slice ceiling,
+// and the envelope's build-pool charge at gunbc.runner.runner_slot_allocation envelope_final -- keeps reading
+// host_build_pool_reservation: the pool holds the ruled bytes ONCE, and conservation charges them there. This
+// function separates only the question the plan asks, "how many CI slots is this host not spending", and on a
+// host whose CI width a ruling already took to zero the honest answer is zero.
+fn host_build_pool_reservation_from_ci_width(host: HostIdentity) -> ByteSize {
+  match host_ruled_build_pool_reservation(host: host) {
+    Present { value: _ } => byte_size(0)
+    Absent => host_build_pool_reservation(host: host)
   }
 }
 
