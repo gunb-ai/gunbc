@@ -366,10 +366,14 @@ fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
   }
   let experts = match flags.launch.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
   let reserve = match flags.launch.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
-  // THE CACHE WORDS (strata_conversation_cache_words), appended last. An `Unset` or `Unread` transcription
-  // renders nothing here -- which is exactly why a SERVING launch refuses the first and asks for the second
-  // instead of rendering either (gunbc.serving.serving_replica_profile strata_launch_parking_agreement):
-  // argv is the last place the choice is still visible, and an empty answer is the build deciding again.
+  // THE CACHE WORDS (strata_launch_conversation_cache_words, which asks strata_conversation_cache_words what
+  // the READ argv says), appended last. An `Unset` transcription renders nothing here, and so does `absent()`
+  // -- this repository has not read that launch's argv, which is the consumer's coverage state on
+  // `StrataLaunchParameters.conversation_cache`, never an arm of the upstream's flag type
+  // (gunbc.design_argument::external_upstreams). That is exactly why the SERVING launch refuses the first and
+  // asks for the read on the second instead of rendering either
+  // (gunbc.serving.serving_replica_profile::strata_launch_parking_agreement): argv is the last place the
+  // choice is still visible, and an empty answer is the build deciding again.
   concat(concat(concat(concat(concat(concat(concat(concat(
     ["--kv", strata_kv_format_word(f: flags.launch.kv_format)],
     kv_resident),
