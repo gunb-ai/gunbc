@@ -380,8 +380,11 @@ fn host_ruled_build_pool_reservation(host: HostIdentity) -> ByteSize? {
   }
 }
 
-// THE SEAT COUNT THE RULING DECLARES, or Absent when no ruling rules this host's pool and
-// the fleet default (compute_pool_slots) applies. host_capacity converts a ruled pool with
+// THE SEAT COUNT THE RULING DECLARES, or Absent when the ruling sized the pool without
+// naming a count (butch) or no ruling rules this host's pool -- the latter two split in
+// gunbc.compute.host_capacity::build_pool_ruled_seat_count_for_host: a ruled host without a
+// named count divides by the per-build ceiling (ruled_pool_seat_count_from_ceiling), only an
+// UNRULED shape keeps the fleet default (compute_pool_slots). host_capacity converts a ruled pool with
 // THIS number, never with the fleet default: a ruling that says "one seat of the per-build
 // ceiling" must not be split in two by a number it never chose -- the division that made
 // ken's 22 GiB ruling into two 11 GiB seats, each under his 18.2 GiB measured build peak.

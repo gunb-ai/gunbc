@@ -32,6 +32,7 @@ import gunbc.compute.host_capacity {
   ruled_pool_seat_of,
   build_pool_ruled_seat_count_for_host,
   host_capacity_pool_slots_for_home,
+  ruled_pool_seat_count_from_ceiling,
   user_work_slice_memory_max_for_host,
   capacity_seat_for_reservation,
   user_work_pool_slots,
@@ -49,6 +50,7 @@ import gunbc.runner.runner_slot_desired {
   host_build_pool_is_ruled,
   host_build_pool_reservation_from_ci_width,
   ruled_build_pool_reservations,
+  host_ruled_build_pool_seat_count,
 }
 import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24 }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_serving_hosts }
@@ -411,8 +413,17 @@ test fn the_ruled_rows_are_staged_until_the_roster_admits_them() -> Bool {
             == byte_size_count(b: user_work_slice_memory_max_of(slots: s))
       }
     && host_ci_width_is_ruled_zero(host: operator_host_srv14)
-    && byte_size_count(b: capacity_seat_for_reservation(reservation: byte_size(206158430208)))
-      == 103079215104
+    // BUTCH'S ROSTERED SHAPE IS NO LONGER THE FLEET DIVISION. His ruling sized the pool and
+    // named no count (the row's seats is Absent), so the per-build ceiling divides it: 192 GiB
+    // yields EIGHT 24 GiB seats -- eight concurrent ceiling-capped builds, not the fleet two.
+    // The fleet constant below stays only where it always belonged: unruly shapes.
+    && match host_ruled_build_pool_seat_count(host: operator_host_srv14) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    && ruled_pool_seat_count_from_ceiling(reservation: byte_size(206158430208)) == 8
+    && byte_size_count(
+      b: ruled_pool_seat_of(reservation: byte_size(206158430208), seats: 8)) == 25769803776
     && host_capacity_pool_slots_for_home(
          home: host_capacity_ledger_home(
            host: "host-e2d4b7" as NonEmptyStr,
@@ -420,6 +431,46 @@ test fn the_ruled_rows_are_staged_until_the_roster_admits_them() -> Bool {
          ),
          pool: ComputeBuildPool,
        ) == compute_pool_slots
+}
+
+// THE RED OF serving-pool-seat-count-follows-the-build-ceiling: A POOL AT OR ABOVE TWO PER-BUILD
+// CEILINGS MUST NEVER ADMIT ONLY TWO BUILDS. Butch's ruled 192 GiB, divided by the fleet divisor,
+// made two 96 GiB seats -- a reservation whose own ruling released the memory, refused breadth by a
+// number the ruling never chose, where EIGHT ceiling-sized (22 GiB-capped) builds fit side by side.
+// The count now follows the pool and the ceiling (floor, never below one), while a ruling that
+// names a count (ken: one seat) keeps its own word untouched. Asserted purely -- the rostered
+// conversions flip live only when an admission enrolls the host, through code witnessed here.
+test fn a_ruled_pool_of_many_ceiling_sizes_admits_many_builds_not_two() -> Bool {
+  let pool_192 = byte_size(206158430208)
+  let ceiling = byte_size_count(b: compute_build_memory_ceiling_default)
+  byte_size_count(b: pool_192) >= 2 * ceiling
+    && ruled_pool_seat_count_from_ceiling(reservation: pool_192) == 8
+    && byte_size_count(
+      b: ruled_pool_seat_of(reservation: pool_192, seats: ruled_pool_seat_count_from_ceiling(reservation: pool_192)))
+      == 25769803776
+    // Each seat admits a build AT the ceiling: a 24 GiB seat is not below the 22 GiB per-build cap.
+    && 25769803776 >= ceiling
+    // NO MEMORY IS HELD TWICE: count times seat reproduces the pool exactly -- the ledger
+    // appropriation (host_capacity_pool_slots_for_home) multiplies by the SAME count, so it can
+    // never double into 2x the pool the way the fleet divisor's shape could disagree with a seat.
+    && ruled_pool_seat_count_from_ceiling(reservation: pool_192) * 25769803776 == byte_size_count(b: pool_192)
+    // A two-ceiling pool takes two seats; a sub-ceiling pool and a zero pool take ONE, never zero
+    // (the one seat of a sub-ceiling pool IS the pool; the zero seat of a zero pool reserves nothing).
+    && ruled_pool_seat_count_from_ceiling(reservation: byte_size(47244640256)) == 2
+    && ruled_pool_seat_count_from_ceiling(reservation: byte_size(12884901888)) == 1
+    && byte_size_count(b: ruled_pool_seat_of(reservation: byte_size(12884901888), seats: 1)) == 12884901888
+    && ruled_pool_seat_count_from_ceiling(reservation: byte_size(0)) == 1
+    && byte_size_count(b: ruled_pool_seat_of(reservation: byte_size(0), seats: 1)) == 0
+    // A NAMED count is never re-derived: ken's row carries one seat (his ruling's own word);
+    // butch's row names nothing, which is what routes him through the ceiling derivation.
+    && match host_ruled_build_pool_seat_count(host: operator_host_srv14) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    && match host_ruled_build_pool_seat_count(host: operator_host_e2d4b7) {
+        Present { value: n } => n == 1
+        Absent => false
+      }
 }
 
 // THE UNROSTERED UNIT HOLDS BACK NOTHING, AND NEEDS NO ROW TO SAY SO. ken is enrolled for CI participation and

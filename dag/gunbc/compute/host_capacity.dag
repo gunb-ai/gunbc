@@ -537,10 +537,40 @@ fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
 // at once. This is what keeps a ruling from re-pricing a machine that has not been enrolled.
 fn build_pool_ruled_seat_count_for_host(host: HostIdentity) -> Nat? {
   if host_build_pool_is_ruled(host: host) && remote_build_host_is_serving(host: host) {
-    host_ruled_build_pool_seat_count(host: host)
+    match host_ruled_build_pool_seat_count(host: host) {
+      Present { value: named } => Present { value: named }
+      // THE RULING SIZED THE POOL BUT NAMED NO COUNT: the per-build ceiling divides it,
+      // never the fleet divisor (ruled_pool_seat_count_from_ceiling below).
+      Absent =>
+        Present {
+          value: ruled_pool_seat_count_from_ceiling(
+            reservation: host_build_pool_reservation(host: host),
+          ),
+        }
+    }
   } else {
     Absent
   }
+}
+
+// THE SEAT COUNT A RULED POOL GETS WHEN ITS RULING NAMED NO COUNT: the pool divided by the
+// fleet per-build ceiling (compute_build_memory_ceiling_default -- the memory a single build
+// is admitted at), FLOOR, and never below one. The ruling sized the pool so that builds can
+// run side by side IN IT; the number of side-by-side ceiling-sized builds the pool admits is a
+// fact about the pool and the ceiling, not a fleet default the ruling never spoke to. Butch's
+// 192 GiB through the fleet divisor gave TWO 96 GiB seats -- two concurrent builds where
+// EIGHT ceiling-sized ones fit (the red of serving-pool-seat-count-follows-the-build-ceiling).
+// This closes the same fork gunbc.design_argument::single_authority names from the other side:
+// gunbc.design_argument::declared_intent forbids a default choosing a materially different
+// meaning, and the fleet constant was exactly such a default filed under a ruling. The
+// derivation is pure over the reservation -- witnessed before any admission exercises it --
+// and stays consistent with ruled_pool_seat_of: seats * seat reproduces the pool exactly, so
+// the ledger appropriation (host_capacity_pool_slots_for_home, the same count) can never hold
+// the memory twice. A ruling that DOES name a count (ken: one seat) bypasses this entirely;
+// its count is the ruling's own word (Present arm above).
+fn ruled_pool_seat_count_from_ceiling(reservation: ByteSize) -> Nat {
+  let seats = byte_size_count(b: reservation) / byte_size_count(b: compute_build_memory_ceiling_default)
+  if seats > 0 { seats } else { 1 }
 }
 
 // THE ONE CONVERSION FROM A RULED POOL TO A SEAT, pure over the two ruled facts. NO SEAT IS EVER
