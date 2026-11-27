@@ -45,13 +45,44 @@ pub(crate) fn spawn_in_new_process_group(cmd: &mut Command) -> std::io::Result<C
     cmd.spawn()
 }
 
-/// Signal the leader AND the group. Both are sent because a child whose group was never set up
-/// is not a group leader, so the group signal alone can miss it.
-pub(crate) fn signal_process_group(pid: u32, signal: i32) {
-    unsafe {
-        let _ = libc::kill(pid as i32, signal);
-        let _ = libc::kill(-(pid as i32), signal);
+/// A pid kill(2) may NOT be aimed at as one process and, negated, as one group: the refusal is
+/// the value, and no signal was sent. kill(2) reads 0 as the caller's own group, 1 as init and -1
+/// as every process the caller may signal; a u32 above `i32::MAX` is not a pid_t at all and the
+/// `as i32` narrowing wraps it negative (u32::MAX becomes -1, and its negation 1). The admissible
+/// range is the one `extdeps.posix.process` `posix_pid_names_one_signalable_process` states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UnsignalablePid {
+    pub(crate) pid: u32,
+}
+
+impl std::fmt::Display for UnsignalablePid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "process_group::signal_process_group refused pid {}: kill(2) reads 0 as the caller's own group, 1 as init and -1 as every process the caller may signal, and a value above i32::MAX wraps negative; only 2..=i32::MAX names one process, so no signal was sent",
+            self.pid
+        )
     }
+}
+
+/// The pid as the pid_t kill(2) takes, or the refusal. The ONLY narrowing of a pid to `i32` here.
+fn signalable_pid(pid: u32) -> Result<i32, UnsignalablePid> {
+    match i32::try_from(pid) {
+        Ok(p) if p > 1 => Ok(p),
+        _ => Err(UnsignalablePid { pid }),
+    }
+}
+
+/// Signal the leader AND the group. Both are sent because a child whose group was never set up
+/// is not a group leader, so the group signal alone can miss it. A pid outside 2..=i32::MAX is
+/// refused before either `kill` is issued -- never widened into "every process" or init.
+pub(crate) fn signal_process_group(pid: u32, signal: i32) -> Result<(), UnsignalablePid> {
+    let pid = signalable_pid(pid)?;
+    unsafe {
+        let _ = libc::kill(pid, signal);
+        let _ = libc::kill(-pid, signal);
+    }
+    Ok(())
 }
 
 /// Poll for termination up to a deadline WITHOUT blocking forever. `try_wait` is used rather than
@@ -396,6 +427,24 @@ impl ProcessGroupTermination {
         }
     }
 
+    /// THE TEARDOWN THAT WAS REFUSED AT THE SIGNAL, because the pid is not one kill(2) reads as a
+    /// single process. UNSETTLED, never settled: nothing was signalled, observed or reaped, and the
+    /// refusal is carried so the caller can name it.
+    pub(crate) fn signal_refused(refusal: UnsignalablePid) -> ProcessGroupTermination {
+        ProcessGroupTermination {
+            state: ProcessGroupTerminationState::Unsettled {
+                leader: ProcessGroupWait::WaitFailed {
+                    detail: refusal.to_string(),
+                },
+                residue: ProcessGroupResidue::ResidueObservationFailed {
+                    detail: "the group was never observed, because no signal was admitted for it"
+                        .to_string(),
+                },
+                escalated_to_kill: false,
+            },
+        }
+    }
+
     fn build(
         leader: ProcessGroupWait,
         residue: ProcessGroupResidue,
@@ -444,7 +493,10 @@ pub(crate) fn terminate_process_group(
     grace: Duration,
 ) -> ProcessGroupTermination {
     let pid = identity.pid();
-    signal_process_group(pid, libc::SIGTERM);
+    if let Err(refusal) = signal_process_group(pid, libc::SIGTERM) {
+        // Nothing was signalled, so nothing may be observed or reaped as if it had been.
+        return ProcessGroupTermination::signal_refused(refusal);
+    }
 
     // Membership is polled rather than waited on, because the question is about DESCENDANTS, and
     // there is no wait primitive for "the processes my child spawned".
@@ -474,8 +526,12 @@ pub(crate) fn terminate_process_group(
             if others.is_empty() && !leader_running {
                 ProcessGroupResidue::GroupAbsent
             } else {
-                // Still pinned: the leader has not been reaped, so this number is still ours.
-                signal_process_group(pid, libc::SIGKILL);
+                // Still pinned: the leader has not been reaped, so this number is still ours. The
+                // SIGTERM above was admitted for this same pid, so this cannot refuse; it is still
+                // matched rather than discarded, because a refusal is never read as a sent signal.
+                if let Err(refusal) = signal_process_group(pid, libc::SIGKILL) {
+                    return ProcessGroupTermination::signal_refused(refusal);
+                }
                 escalated_to_kill = true;
                 match survivors(grace) {
                     Err(detail) => ProcessGroupResidue::ResidueObservationFailed { detail },
@@ -497,6 +553,46 @@ pub(crate) fn terminate_process_group(
     // The reap is LAST. Nothing below it may signal or observe the group by number.
     let leader = wait_for_exit(child, grace);
     ProcessGroupTermination::build(leader, residue, escalated_to_kill)
+}
+
+/// THE SIGNAL SINK'S REFUSALS. Every refusal case sends signal 0 -- an existence probe that
+/// delivers nothing -- so even a regression that let the call through to `kill(-1, ..)` could not
+/// harm the host running the test. `v1_interpreter` `kill_shell_process_group` is this same call
+/// with SIGKILL, so its refusal is this one.
+#[cfg(test)]
+mod signal_refusals {
+    use super::*;
+
+    #[test]
+    fn a_pid_kill_reads_as_more_than_one_process_is_refused_before_any_signal() {
+        for pid in [0u32, 1, u32::MAX, (i32::MAX as u32) + 1] {
+            assert_eq!(
+                signal_process_group(pid, 0),
+                Err(UnsignalablePid { pid }),
+                "pid {pid} reached kill(2)"
+            );
+        }
+        let refused = ProcessGroupTermination::signal_refused(UnsignalablePid { pid: 1 });
+        assert!(!refused.is_settled());
+        assert!(refused.state_debug().contains("refused pid 1"));
+    }
+
+    /// Positive control: a real child pid is admitted and the signal is delivered exactly as
+    /// before, so the refusals above are not passing because nothing is ever admitted.
+    #[test]
+    fn a_spawned_child_is_admitted_and_signalled() {
+        let mut cmd = Command::new("sleep");
+        cmd.arg("30");
+        let mut child = spawn_in_new_process_group(&mut cmd).expect("spawn sleep");
+        assert_eq!(signal_process_group(child.id(), 0), Ok(()));
+        assert_eq!(signal_process_group(child.id(), libc::SIGTERM), Ok(()));
+        assert_eq!(
+            wait_for_exit(&mut child, Duration::from_secs(10)),
+            ProcessGroupWait::Signaled {
+                signal: libc::SIGTERM
+            }
+        );
+    }
 }
 
 /// THE TEARDOWN TERMINAL'S FAILURE ARMS, on the ordinary merge path.

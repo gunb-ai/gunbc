@@ -24233,7 +24233,7 @@ fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBoo
       "(Commands::", sub.variant, " { .. }, true) => { eprintln!(\"REFUSED: --dry-run cannot execute a bootstrap successor operation\"); std::process::exit(2); },\n",
       "        (Commands::", sub.variant, " { ", binds, " }, false) => crate::cli_run::run_bootstrap_dag_operation(\n",
       "            &[", roots, "],\n",
-      "            \"", binding.entry_path, "\",\n",
+      "            &crate::cli_run::bootstrap_declaration_entry(\"", operation.module_path, "\"),\n",
       "            \"", operation.module_path, "\",\n",
       "            \"", operation.decl_name, "\",\n",
       "            vec![", public_args, "],\n",

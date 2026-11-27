@@ -275,7 +275,7 @@ pub enum TargetProducer {
     NativeServeProgram {
         entry: &'static str,
     },
-    /// `CliWireProgramProducer { entry, function }`: wet interpreter eval of a CliWireResponse
+    /// Generated from a CliWireProgramProducer declaration: wet interpreter eval of a CliWireResponse
     /// fold. Generic over entry and function so a second such instrument is a registry row.
     CliWireProgram {
         entry: &'static str,
@@ -789,8 +789,13 @@ fn run_cli_wire_census(
         };
     }
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, entry) {
-        Ok(resolved) => resolved,
+    let (_, ctx) = match cli_run::load_entry_for_functions(
+        &roots,
+        entry,
+        &[function],
+        crate::v1_interpreter::ExecutionMode::Wet,
+    ) {
+        Ok(loaded) => loaded,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
@@ -798,37 +803,22 @@ fn run_cli_wire_census(
             };
         }
     };
-    // `source_indices` came back from the resolve alongside the graph and was never used; the
-    // reader-facing refusal lines now go through the located renderer with it.
-    let blocking =
-        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
-            graph.diagnostics.clone(),
-            source_indices.clone(),
-        );
-    if !blocking.is_empty() {
-        return InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "{label_name}: {entry} has blocking diagnostics: {}",
-                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
-            ),
-        };
-    }
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
-    let value =
-        match crate::v1_interpreter::run_in_context_with_args(&ctx, function_name, &[], true) {
-            Ok(value) => value,
-            Err(cause) => {
-                return InvocationOutcome {
-                    termination: Termination::SubjectUnreached,
-                    message: format!("{label_name}: eval failed: {cause}"),
+    let value = match cli_run::run_named_function(&ctx, function, &[]) {
+        Ok(value) => value,
+        Err(refusal) => {
+            let cause = match refusal {
+                cli_run::NamedFunctionRefusal::FunctionAbsent => {
+                    format!("function `{function}` is absent")
                 }
-            }
-        };
+                cli_run::NamedFunctionRefusal::ArgumentRefused(cause) => cause,
+                cli_run::NamedFunctionRefusal::EvaluationFailed(error) => error.to_string(),
+            };
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: eval failed: {cause}"),
+            };
+        }
+    };
     match cli_run::classify_cli_wire(&value, &ctx) {
         cli_run::CliWireClass::Printable { bytes, exit } => {
             let termination = match &exit {
@@ -1094,21 +1084,22 @@ fn native_claim_child_deadline_from_binding(
             ),
         }
     };
+    const DEADLINE: &str = "native_claim_child_deadline_count";
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (_, ctx) = match cli_run::load_entry_for_functions(
+        &roots,
+        READER,
+        &[DEADLINE],
+        crate::v1_interpreter::ExecutionMode::Wet,
+    ) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return Err(ungrounded(format!("resolve failed for {READER}: {cause}")));
         }
     };
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
     let value = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "native_claim_child_deadline_count",
+        DEADLINE,
         &[(
             Some("entry".to_string()),
             crate::v1_interpreter::str_value(entry),
@@ -1176,21 +1167,22 @@ fn run_cardinality_realization() -> InvocationOutcome {
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
+    const PLAN: &str = "instrument_plan";
+    const STANDING: &str = "cardinality_realization_standing";
     let roots = v2_native_cli_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (_, ctx) = match cli_run::load_entry_for_functions(
+        &roots,
+        READER,
+        &[PLAN, STANDING],
+        crate::v1_interpreter::ExecutionMode::Wet,
+    ) {
         Ok(resolved) => resolved,
         Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
     };
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
-    let plan_value =
-        match crate::v1_interpreter::run_in_context_with_args(&ctx, "instrument_plan", &[], true) {
-            Ok(value) => value,
-            Err(cause) => return unreached(format!("instrument_plan failed: {cause}")),
-        };
+    let plan_value = match crate::v1_interpreter::run_in_context_with_args(&ctx, PLAN, &[], true) {
+        Ok(value) => value,
+        Err(cause) => return unreached(format!("instrument_plan failed: {cause}")),
+    };
     let Value::List(plan) = &plan_value else {
         return unreached(format!(
             "instrument_plan returned {plan_value:?}, not a list"
@@ -1399,7 +1391,7 @@ fn run_cardinality_realization() -> InvocationOutcome {
     );
     let standing = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "cardinality_realization_standing",
+        STANDING,
         &[(Some("observations".to_string()), observations)],
         true,
     ) {
@@ -1471,8 +1463,14 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
         }
     };
     const READER: &str = "dag/gunbc/native_claim_program.dag";
+    const STANDING: &str = "native_claim_program_standing";
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (_, ctx) = match cli_run::load_entry_for_functions(
+        &roots,
+        READER,
+        &[STANDING],
+        crate::v1_interpreter::ExecutionMode::Wet,
+    ) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
@@ -1481,11 +1479,6 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             };
         }
     };
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
     let status = i64::from(run.status.unwrap_or(-1));
     let args = [
         (
@@ -1497,20 +1490,16 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             crate::v1_interpreter::Value::Int(status),
         ),
     ];
-    let standing = match crate::v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "native_claim_program_standing",
-        &args,
-        true,
-    ) {
-        Ok(value) => cli_run::classify_exit(&value, &ctx),
-        Err(cause) => {
-            return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: the report reader failed: {cause}"),
+    let standing =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, STANDING, &args, true) {
+            Ok(value) => cli_run::classify_exit(&value, &ctx),
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label_name}: the report reader failed: {cause}"),
+                }
             }
-        }
-    };
+        };
     let (termination, verdict) = match standing {
         cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
         cli_run::ExitClass::Failure { code: 1, reason } => (
@@ -1567,14 +1556,27 @@ impl Drop for NativeServeSocketDir {
 
 fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, String> {
     const BINDINGS: &str = "dag/gunbc/instrument_targets.dag";
+    const READER: &str = "native_serve_probe_reader_for_entry";
+    const DECLARED: &str = "native_serve_probe_declared_names_for_entry";
+    const PEER: &str = "native_serve_probe_runs_peer";
+    const REFUSED_LAUNCH: &str = "native_serve_probe_runs_refused_launch";
+    const DEADLINE: &str = "native_serve_probe_runs_deadline_exit";
+    const UNIX_SOCKET: &str = "native_serve_probe_runs_unix_socket";
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = cli_run::resolve_entry_graph(&roots, BINDINGS)
-        .map_err(|cause| format!("resolve failed for {BINDINGS}: {cause}"))?;
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
+    let (_, ctx) = cli_run::load_entry_for_functions(
+        &roots,
+        BINDINGS,
+        &[
+            READER,
+            DECLARED,
+            PEER,
+            REFUSED_LAUNCH,
+            DEADLINE,
+            UNIX_SOCKET,
+        ],
         crate::v1_interpreter::ExecutionMode::Wet,
-    );
+    )
+    .map_err(|cause| format!("resolve failed for {BINDINGS}: {cause}"))?;
     let ask = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
         crate::v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -1593,7 +1595,7 @@ fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, Stri
             other => Err(format!("{function} is not a Bool: {other:?}")),
         }
     };
-    let reader_value = ask("native_serve_probe_reader_for_entry")?;
+    let reader_value = ask(READER)?;
     let reader = match &reader_value {
         crate::v1_interpreter::Value::Variant {
             variant_name,
@@ -1609,7 +1611,7 @@ fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, Stri
             ))
         }
     };
-    let declared_value = ask("native_serve_probe_declared_names_for_entry")?;
+    let declared_value = ask(DECLARED)?;
     let declared = match &declared_value {
         crate::v1_interpreter::Value::List(items) => items
             .iter()
@@ -1623,10 +1625,10 @@ fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, Stri
     Ok(NativeServeBindingRead {
         reader,
         phases: cli_run::NativeServePhases {
-            peer_instance: flag("native_serve_probe_runs_peer")?,
-            refused_launch: flag("native_serve_probe_runs_refused_launch")?,
-            deadline_exit: flag("native_serve_probe_runs_deadline_exit")?,
-            unix_socket: flag("native_serve_probe_runs_unix_socket")?,
+            peer_instance: flag(PEER)?,
+            refused_launch: flag(REFUSED_LAUNCH)?,
+            deadline_exit: flag(DEADLINE)?,
+            unix_socket: flag(UNIX_SOCKET)?,
         },
         declared,
     })
@@ -1658,8 +1660,33 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     };
     #[allow(non_snake_case)]
     let READER: &str = binding.reader.as_str();
+    const PHASES: &str = "native_serve_probe_phases_refused";
+    const REQUESTS: &str = "native_serve_probe_requests";
+    const STANDING: &str = "native_serve_probe_standing";
+    const UNIX_LAUNCH: &str = "native_serve_probe_unix_launch_argv";
+    const LAUNCH: &str = "native_serve_probe_launch_argv";
+    const REFUSED_LAUNCHES: &str = "native_serve_probe_refused_launches";
+    const DEADLINE_LAUNCHES: &str = "native_serve_probe_deadline_launches";
+    const DEADLINE_REQUESTS: &str = "native_serve_probe_deadline_requests";
+    let launch = if binding.phases.unix_socket {
+        UNIX_LAUNCH
+    } else {
+        LAUNCH
+    };
+    let mut requested = vec![PHASES, REQUESTS, STANDING, launch];
+    if binding.phases.refused_launch {
+        requested.push(REFUSED_LAUNCHES);
+    }
+    if binding.phases.deadline_exit {
+        requested.extend([DEADLINE_LAUNCHES, DEADLINE_REQUESTS]);
+    }
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (_, ctx) = match cli_run::load_entry_for_functions(
+        &roots,
+        READER,
+        &requested,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    ) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
@@ -1668,11 +1695,6 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             };
         }
     };
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
     let read = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
         crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
             .map_err(|cause| format!("{label_name}: {READER} {function} failed: {cause}"))
@@ -1695,7 +1717,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     ));
     let refusals = crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "native_serve_probe_phases_refused",
+        PHASES,
         &[(Some("declared".to_string()), declared_value)],
         true,
     );
@@ -1734,7 +1756,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let requests_for_peer_port = |peer_port: i64| -> Result<Vec<String>, String> {
         let value = crate::v1_interpreter::run_in_context_with_args(
             &ctx,
-            "native_serve_probe_requests",
+            REQUESTS,
             &[(
                 Some("peer_port".to_string()),
                 crate::v1_interpreter::Value::Int(peer_port),
@@ -1755,7 +1777,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let deadline_requests_for_silent_port = |silent_port: i64| -> Result<Vec<String>, String> {
         let value = crate::v1_interpreter::run_in_context_with_args(
             &ctx,
-            "native_serve_probe_deadline_requests",
+            DEADLINE_REQUESTS,
             &[(
                 Some("silent_port".to_string()),
                 crate::v1_interpreter::Value::Int(silent_port),
@@ -1826,7 +1848,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let unix_launch = |path: &str| -> Result<Vec<String>, String> {
         let value = crate::v1_interpreter::run_in_context_with_args(
             &ctx,
-            "native_serve_probe_unix_launch_argv",
+            UNIX_LAUNCH,
             &[(
                 Some("socket_path".to_string()),
                 crate::v1_interpreter::str_value(path),
@@ -1856,21 +1878,19 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let plan = (|| -> Result<cli_run::NativeServeLaunches, String> {
         let subject = match &unix_socket_path {
             Some(path) => unix_launch(path)?,
-            None => words(&read("native_serve_probe_launch_argv")?)
-                .ok_or("the launch argv is not a List of String")?,
+            None => words(&read(LAUNCH)?).ok_or("the launch argv is not a List of String")?,
         };
         let unix_contended = unix_contended_paths
             .iter()
             .map(|(contention, path)| Ok((*contention, path.clone(), unix_launch(path)?)))
             .collect::<Result<Vec<_>, String>>()?;
         let refused = if binding.phases.refused_launch {
-            argvs(&read("native_serve_probe_refused_launches")?)
-                .ok_or("the refused launches are not a List of argv")?
+            argvs(&read(REFUSED_LAUNCHES)?).ok_or("the refused launches are not a List of argv")?
         } else {
             Vec::new()
         };
         let deadline = if binding.phases.deadline_exit {
-            argvs(&read("native_serve_probe_deadline_launches")?)
+            argvs(&read(DEADLINE_LAUNCHES)?)
                 .ok_or("the deadline launches are not a List of argv")?
         } else {
             Vec::new()
@@ -1991,20 +2011,16 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             )),
         ),
     ];
-    let standing = match crate::v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "native_serve_probe_standing",
-        &args,
-        true,
-    ) {
-        Ok(value) => cli_run::classify_exit(&value, &ctx),
-        Err(cause) => {
-            return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: the probe reader failed: {cause}"),
+    let standing =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, STANDING, &args, true) {
+            Ok(value) => cli_run::classify_exit(&value, &ctx),
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label_name}: the probe reader failed: {cause}"),
+                }
             }
-        }
-    };
+        };
     let (termination, verdict) = match standing {
         cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
         cli_run::ExitClass::Failure { code: 1, reason } => (
@@ -4055,8 +4071,14 @@ fn typed_graph_exclusive_bytes_over(
     // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.floor.typed_graph_exclusive_bytes). Every
     // reading crosses as primitives; a count past i64 refuses rather than clamping.
     const ENTRY: &str = "dag/gunbc/floor/typed_graph_exclusive_bytes.dag";
+    const REPORT: &str = "typed_graph_exclusive_report";
     let roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+    let (_, ctx) = match cli_run::load_entry_for_functions(
+        &roots,
+        ENTRY,
+        &[REPORT],
+        crate::v1_interpreter::ExecutionMode::Wet,
+    ) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
@@ -4065,11 +4087,6 @@ fn typed_graph_exclusive_bytes_over(
             }
         }
     };
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
     use crate::v1_interpreter::Value;
     let int = |v: u64| i64::try_from(v).map(Value::Int);
     let mut readings = Vec::new();
@@ -4118,12 +4135,7 @@ fn typed_graph_exclusive_bytes_over(
         Some("readings".to_string()),
         crate::v1_interpreter::list_value(readings),
     )];
-    let report = match crate::v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "typed_graph_exclusive_report",
-        &args,
-        true,
-    ) {
+    let report = match crate::v1_interpreter::run_in_context_with_args(&ctx, REPORT, &args, true) {
         Ok(v) => v,
         Err(cause) => {
             return InvocationOutcome {
@@ -5305,8 +5317,7 @@ mod registry_rows_identity_tests {
         format!("//{package}:{target_name}")
     }
 
-    /// The rows are read ONCE per process: each read drives the wet interpreter over the whole
-    /// corpus, and both tests join against the same reading.
+    /// The identity and mutation controls share one observation of the declared rows.
     fn read_rows() -> &'static BTreeMap<String, RowReading> {
         static ROWS: std::sync::OnceLock<BTreeMap<String, RowReading>> = std::sync::OnceLock::new();
         ROWS.get_or_init(evaluate_rows)
@@ -5315,14 +5326,13 @@ mod registry_rows_identity_tests {
     fn evaluate_rows() -> BTreeMap<String, RowReading> {
         let reader = cli_run::workspace_root().join("dag/gunbc/instrument_targets.dag");
         let roots = cli_run::default_source_roots();
-        let (graph, source_indices) =
-            cli_run::resolve_entry_graph(&roots, reader.to_str().expect("utf8 path"))
-                .expect("resolve rows");
-        let ctx = cli_run::make_eval_context(
-            graph.as_ref(),
-            source_indices,
+        let (_, ctx) = cli_run::load_entry_for_functions(
+            &roots,
+            reader.to_str().expect("utf8 path"),
+            &["instrument_bindings".to_string()],
             crate::v1_interpreter::ExecutionMode::Wet,
-        );
+        )
+        .expect("resolve instrument_bindings");
         let value =
             crate::v1_interpreter::run_in_context_with_args(&ctx, "instrument_bindings", &[], true)
                 .expect("instrument_bindings");
@@ -5343,11 +5353,27 @@ mod registry_rows_identity_tests {
             else {
                 panic!("{label}: producer is not a variant")
             };
-            let reading = (
-                ctx.resolve(*variant_name),
-                text(&ctx, producer, "entry"),
-                text(&ctx, producer, "function"),
-            );
+            let (entry, function) = if ctx.sym_eq(*variant_name, "CliWireProgramProducer") {
+                let Some(Value::Record { fields: target, .. }) = ctx.field(producer, "target")
+                else {
+                    panic!("{label}: CliWire target missing")
+                };
+                let Some(Value::Record {
+                    fields: declaration,
+                    ..
+                }) = ctx.field(target, "declaration")
+                else {
+                    panic!("{label}: target declaration missing")
+                };
+                let module = text(&ctx, declaration, "module_path").expect("declaration module");
+                let name = text(&ctx, declaration, "decl_name").expect("declaration name");
+                let path = cli_run::source_layout_lookup::module_storage_relative(&module)
+                    .expect("repository entry path");
+                (Some(path), Some(name))
+            } else {
+                (text(&ctx, producer, "entry"), None)
+            };
+            let reading = (ctx.resolve(*variant_name), entry, function);
             assert!(
                 rows.insert(label.clone(), reading).is_none(),
                 "duplicate row {label}"

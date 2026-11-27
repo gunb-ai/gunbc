@@ -1,0 +1,60 @@
+module gunbc.plans.findings_reach_a_replan
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn findings_reach_a_replan_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the repository should become, why, and done-when. Its work items are roadmap nodes that name it; they are not listed here."),
+      p(text: "**Grounding:** `gunbc.design_ruling::escalation_meeting_a_replan_criterion_owes_a_replan_decision_2026_11_27` (the operator's direction), `gunbc.design_argument::how_to_work`, `gunbc.design_argument::earliest_unjustified_boundary`, `gunbc.design_argument::continuous_generalization`, `gunbc.design_argument::plans_are_intentions`, `gunbc.design_argument::fail_closed`, `gunbc.design_argument::single_authority`."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** a contributor who learns that an assignment is wrong can say so, and what they found reaches someone who acts on it. Authors, reviewers and managers share one responsibility: once there is concrete evidence that a premise is wrong, they follow it far enough to correct it within their authority, or put it in the hands of someone who can. In the factory this is a structured part of the workflow: an escalation that meets a replan criterion owes a recorded replan decision by the node's owner before the node is attempted again."),
+    p(text: "**Why (operator, 2026-11-27):** contributors are to own the repository, not the ticket. Today the factory rewards producing a diff and closing the original item. A worker that disproves its brief has no exit but blocked or needs-context. The belt answers either one by starting another attempt on the same brief. A supervisor's plan-defect verdict stops the session, but no handoff state carries it to the node's owner. So the honest finding is replaced by a fresh worker that may force the brief through. The cost displaced is attempts spent against a known-bad plan, findings lost when their session ends, and a roadmap that drifts from the tree."),
+    p(text: "**Done when** (each is assessed against the tree unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "Every way a belt attempt can escalate is classified by one function as meeting a replan criterion or not. The escalations are a worker's blocked, needs-context or disproved-premise declaration, a supervisor's plan-defect or stuck verdict, a goal audit finding that the acceptance check can pass with the goal unmet, and an exhausted retry. The criterion is concrete evidence that the node's premise, boundary, approach, red control or acceptance command is false or insufficient for the intention it serves. A witness drives each escalation source through the classifier."),
+      li(text: "An escalation that meets the criterion never starts another attempt on the unchanged node. It records an owed replan, and the dispatcher refuses that node while the replan is owed. A witness shows today's continuation, where blocked leads to a next attempt, going red."),
+      li(text: "A replan decision is a typed record answering the escalation it cites. It is decided by the manager of the session that owns the work item, or by the operator by escalation (`gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation`). Its outcome is exactly one of: the brief is corrected (the node's fields are revised, then it is admitted again); a re-estimate or a split, the replan protocol of `gunbc.plans.planning_consolidation` section 7; the property already holds (accepted only under the existing evidence law, on the pull request that earned it); another lane owns the need (naming that node, and what this one still depends on); the need has gone (the node is retired with its reason); or the evidence does not bear on the plan (continue unchanged, with the stated reason). No other replan outcome is an acceptance."),
+      li(text: "A worker can end an attempt with a disproved-premise submission. It must carry what was established, its consequence for the goal, and the decision needed, and the decode refuses one without them. It is never a candidate and never counts as done. The rule against redefining a code-change task as analysis completed stands."),
+      li(text: "The dispatch brief and the worker guidance render that exit. They no longer ask unconditionally for the smallest change, an implementation diff plus receipts, or to make the change now when rounds are short."),
+      li(text: "`gunbc.design_argument::how_to_work` states the contributor's responsibility. Its review part carries the tells of a brief forced through against evidence the change itself contains. `gunbc.contributor_onboarding_path` gives it first-day priority. DESIGN.md is regenerated from both."),
+      li(text: "A belt criterion reviewer's approve word means no defect on its one criterion. Whether the goal is discharged is judged only by the goal audit, as `gunbc.roadmap.roadmap_review_criteria` already states."),
+      li(text: "Operator's judgement: a future worker in the position of #17120 can tell the truth, have it reach someone who acts on it, and leave the roadmap accurate."),
+    ]),
+    h2(text: "2. Observation, 2026-11-27 (origin/main at 07a623222e8)"),
+    p(text: "Read by source inspection and bounded `git grep` at that revision. What was not inspected is named."),
+    ul(items: [
+      li(text: "`gunbc.roadmap.roadmap_attempt_continuation`: a captured submission of `SubmissionBlocked` or `SubmissionNeedsContext` leads to `continuation_next_attempt`. The worker's explanation becomes the next attempt's reason, and the node is unchanged."),
+      li(text: "`gunbc.roadmap.roadmap_submission`: readiness is ready, blocked or needs-context. The comment cites the lifecycle rule that a worker may not redefine a code-change task as analysis completed."),
+      li(text: "`gunbc.harness.harness_turn`: a supervisor's `VerdictPlanDefect` stops the session. `gunbc.roadmap.roadmap_result_returned` records it as a declared frontier: a lineage ending without a candidate is owed a result that no handoff state carries."),
+      li(text: "`gunbc.roadmap.roadmap_spawner::dispatch_brief_template` asks for 'M1 smallest change'. `gunbc.roadmap.roadmap_dispatch_actuator` fills 'what comes back even if the fix does not land' with 'implementation diff plus receipts'. `gunbc.harness.harness_guidance` concludes 'Reading alone completes nothing' and, when rounds are short, 'make the change now'."),
+      li(text: "`gunbc.harness.harness_review_guidance`: approve means 'the change does what the goal states and nothing the non-goals forbid'. `gunbc.roadmap.roadmap_review_criteria` assigns that question to the goal audit alone, so the two disagree on who answers it."),
+      li(text: "`gunbc.integration_concern::unconnected_routes`: no brief is generated with the relevant concerns, and closing a session or work item does not transfer the concerns it raised."),
+      li(text: "Not inspected: how many live attempts go through the belt today; whether a harness exists that runs a belt reviewer against a fixed diff; the control plane's own dispatch and acceptance text, which is a separate repository and outside this intention."),
+    ]),
+    h2(text: "3. How this relates to existing intentions"),
+    ul(items: [
+      li(text: "`gunbc.plans.planning_consolidation` section 7 records that 'a replan has no typed handback outcome' and states an interim replan protocol (re-estimate or split). This intention owns typing that outcome and the escalation that leads to it. The re-estimate and split arms are that protocol, consumed, not restated."),
+      li(text: "PR #17167 proposes feeding declaration-linked roadmap items into author and reviewer inputs. Delivering unresolved findings to the next contributor builds on it and is not duplicated here."),
+      li(text: "GitHub pull request review prompts are outside this intention (operator, 2026-11-27: focus on the belt's review first)."),
+    ]),
+    h2(text: "4. Open questions"),
+    ul(items: [
+      li(text: "Whether the disproved-premise exit is a fourth `SubmissionReadiness` arm or a typed cause on `SubmissionBlocked`. Proposed: a fourth arm, because the owner's response differs from a blocked attempt's."),
+      li(text: "Whether the supervisor's plan-defect route and the worker's disproved-premise exit become one route to the replan. Proposed: yes, because two routes to one decision would be a fork."),
+      li(text: "Whether a replan decision is a new item-event kind or an existing one (handed_back, retired) with a typed payload. This is decided by the modeling item against `gunbc.roadmap.roadmap_event_log`."),
+    ]),
+  ]
+}
+
+data findings_reach_a_replan_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "findings-reach-a-replan",
+  title: "Findings reach a replan: an escalation that meets a replan criterion owes a recorded replan decision",
+  body: findings_reach_a_replan_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: every done-when condition holds on the tree, and the operator has accepted the judgement condition.") },
+}

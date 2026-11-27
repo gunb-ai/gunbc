@@ -22,5 +22,6 @@ fn serve_seam_direct_mode_ingress(socket_path: String) -> HttpIngressAdmission {
     read_timeout: native_serve_read_timeout,
     cpu_limit: millisecond(count: 5000),
     wall_limit: millisecond(count: 10000),
+    answered_before_evaluation: [],
   } }
 }

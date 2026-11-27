@@ -1,0 +1,38 @@
+module gunbc.rung_drop.dispatch_readback_digest_equality_withdrawn
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-11-26 WITH THE OPERATOR RULING THAT MADE THE SERVED SURFACE A FACT OF (interpreter, tree)
+// (gunbc.roadmap.roadmap_site_surface_observe roadmap_site_tree_surface_bundle). The deploy's dispatch readback
+// (gunbc.live_deploy.apply live_deploy_dispatch_readback_effect, realized by gunbc.host.host_effect_realize
+// live_deploy_dispatch_readback_verdict) used to require the served /target/roadmap-dispatch.json body to hash to
+// a dispatch digest the candidate rendered over the deploy job's own read of the event log. That expectation was
+// minted by the launcher carrier read the ruling deleted, and a carrier-free expectation cannot predict a route
+// that folds the live acceptance history, so the digest leg went with it. The readback still executes the real
+// route and refuses a curl failure or a body that is not JSON; what it no longer refuses is a well-formed dispatch
+// document that is not the fold of this tree over the event set the process read. The healthz surface still pins
+// that the process RENDERS this tree's dispatch artifact (its digest over the declared rows is one of the members
+// readiness compares, ServedSurfaceStale); the route-level bytes are what is uncovered.
+
+data dispatch_readback_digest_equality_withdrawn_population: FreeSemigroup<String> = FreeSemigroup {
+  head: "every live deploy of a roadmap dashboard instance through gunbc.live_deploy.apply: the LiveDeployDispatchReadback leg admits any well-formed dispatch document the admitted process's /target/roadmap-dispatch.json route answers, instead of exactly the document the candidate rendered",
+  tail: [],
+}
+
+data dispatch_readback_digest_equality_withdrawn: RungDrop = RungDrop {
+  identity: "dispatch_readback_digest_equality_withdrawn" as NonEmptyStr,
+  subject: "a deploy whose admitted process serves, on its dispatch route, a well-formed dispatch document that is not this tree folded over the event set the process read, is refused at the dispatch readback",
+  declared: "2026-11-26",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a dispatch readback whose expectation is derived WITHOUT a deploy-job carrier read, from the event set the serving process itself folded (for example the route publishing the content-addressed identity of that event set beside its body, so the readback can fold the same set)",
+    },
+    population: Enumerated { members: dispatch_readback_digest_equality_withdrawn_population },
+    restoration_trigger: "THE CAPABILITY: the deploy can decide, with no carrier read of its own, that the bytes the admitted process's dispatch route serves are this tree's dispatch document folded over the exact event set that process read. WHAT THAT MUST BE SUFFICIENT FOR: a route that serves a well-formed document from a different fold (a different event set, a wrong handler, a stale render) is refused at the readback, as the withdrawn digest leg refused it; re-adding a candidate-carried digest rendered over a deploy-job read of the log does not retire this row, because it restores the read the ruling deleted.",
+  } },
+}
