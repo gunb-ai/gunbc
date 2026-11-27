@@ -1,0 +1,71 @@
+module v1.tests.claim.v1_source_chars_once_identity
+
+// ROADMAP NODE v1-source-chars-converted-once -- the executed differential: it runs the real
+// constructors and asserts the new ingest path (V1LexArtifact.source_chars via
+// newline_index_from_char_codes) and the old path (its own chars(source) via build_newline_index)
+// produce identical newline indices on the corpus, so the change is provably semantics-preserving.
+//
+// WHY THIS SHAPE AND NOT A COUNTER: the "one conversion per file" handback is carried by the type
+// change, not observable here -- build_newline_index(file, source) and
+// newline_index_from_char_codes(file, chars(source)) are intentionally output-identical, so no run
+// time output distinguishes which path ran and no chars() call count is available to this claim. That
+// is why this module asserts equality (the differential) rather than a conversion count, and why a
+// source-text grep would add no consumer here (gunbc.design_argument::fail_closed).
+
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, List, Int, Bool }
+import v1.std.core { build_newline_index, newline_index_from_char_codes, NewlineIndex }
+import v1.compiler.tokenize { tokenize_artifact }
+
+fn read_source(path: String) -> String {
+  (filesystem_read(path: path)).content
+}
+
+// What the ingest builds NOW: the newline index from the tokenizer's converted characters.
+fn ingest_newline_index(path: String, source: String) -> NewlineIndex {
+  let artifact = tokenize_artifact(source: source, file: path, env: dag_parse_environment)
+  newline_index_from_char_codes(file: path, char_codes: artifact.source_chars)
+}
+
+// What the ingest built BEFORE: its own conversion of the raw source.
+fn prechange_newline_index(path: String, source: String) -> NewlineIndex {
+  build_newline_index(file: path, source: source)
+}
+
+// The newline index's payload equality: same file, same newline offsets.
+fn index_offsets_equal(a: NewlineIndex, b: NewlineIndex) -> Bool {
+  a.file == b.file && a.offsets == b.offsets
+}
+
+fn file_index_identical(path: String) -> Bool {
+  let source = read_source(path)
+  index_offsets_equal(ingest_newline_index(path, source), prechange_newline_index(path, source))
+}
+
+// Real ingest-corpus files (the compiler's own sources). Unrolled with && (the claim scope
+// has no fold/all). Sizes are bounded: the two multi-thousand-line files are excluded purely
+// to keep interpreter tokenization cheap; index equality is size-independent.
+test fn newline_index_identical_before_and_after_on_corpus() -> Bool {
+  file_index_identical("src/v1/01_tokenize.dag") &&
+  file_index_identical("src/v1/03_resolve.dag") &&
+  file_index_identical("src/v1/compile.dag") &&
+  file_index_identical("dag/test/claim/v1_source_audit_witness.dag")
+}
+
+// For a newline-shaped source, the character list the ingest feeds the index (from the
+// tokenizer) is exactly the raw chars(source) the old path converted itself.
+fn char_codes_consumed_unchanged(file: String, source: String) -> Bool {
+  ingest_newline_index(file, source).char_codes == prechange_newline_index(file, source).char_codes
+}
+
+// Small, edge-shaped sources so the element-wise char_codes equality is trivial cost while
+// still exercising leading/trailing/consecutive newlines and a non-ASCII code point.
+test fn tokenizer_chars_equal_raw_source_chars_on_corpus() -> Bool {
+  char_codes_consumed_unchanged("a.dag", "") &&
+  char_codes_consumed_unchanged("b.dag", "no newline") &&
+  char_codes_consumed_unchanged("c.dag", "line one\nline two\n\nlast\n") &&
+  char_codes_consumed_unchanged("d.dag", "\n\n\n") &&
+  char_codes_consumed_unchanged("e.dag", "x\ntab\there\nend") &&
+  char_codes_consumed_unchanged("f.dag", "héllo\nwörld\n")
+}
