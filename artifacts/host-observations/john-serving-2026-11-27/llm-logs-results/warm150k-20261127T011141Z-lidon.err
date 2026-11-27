@@ -1,0 +1,2 @@
+DONE
+2026-11-27T01:42:54Z RESULT (llama.cpp 3cf03257f, M40+P100, P100-first layer split, experts L14-23 on P100 + L33-47 on M40 + 23 layers on CPU, -ub 512, lid on, min power caps from 01:26:54Z): cold 150k prefill NOT COMPLETED after 31 min; 124928 tokens processed (~66 tok/s average, falling with depth). Operator verdict: unusable for long-context agent work; run abandoned, warm turns never reached. llama.cpp chain (ubatch test, llama.cpp clock sweep) cancelled.

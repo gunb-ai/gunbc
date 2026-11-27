@@ -1,0 +1,9 @@
+[Unit]
+Description=Hold every NVIDIA GPU at its minimum power limit (john thermal policy, operator 2026-11-27)
+After=nvidia-persistenced.service systemd-modules-load.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/gpu-power-cap.sh
+[Install]
+WantedBy=multi-user.target

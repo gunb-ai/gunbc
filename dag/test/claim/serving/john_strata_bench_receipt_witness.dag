@@ -1,0 +1,216 @@
+module test.claim.serving.john_strata_bench_receipt_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { celsius, millisecond_count, milli_tokens_per_second_count, token_count_value }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.nvidia.management_library { NvmlClocksEventHwThermalSlowdown, NvmlClocksEventSwPowerCap }
+import extdeps.bmc.supermicro_oem_fan { supermicro_fan_mode_name }
+import gunbc.fleet.fleet_host_identity { operator_host_ba61f9 }
+import gunbc.serving.router_dev_policy {
+  RowNoRenderProduces, RowMatchesRender, RowDivergesFromRender,
+  srv1_router_live_rows_2026_11_25, srv1_router_live_rows_added_2026_11_27, srv1_router_live_rows,
+  live_rows_are_accounted_for, live_rows_agree_with_the_projection,
+}
+import gunbc.serving.john_strata_bench_receipt {
+  JohnCard, BlowerCooler, PassiveHeatsink, CardTelemetry, ReasonSamples,
+  ZoneOneLogged, ZoneOneUnlogged, LongContextRun, ConcurrencySweep,
+  ColdTurnAnswered, ColdTurnAbandoned, StrataSm60Build, LlamaCppBuild, DeFactoLayout, SupersededLayout,
+  john_de_facto_serving_setup, john_long_context_runs, john_concurrency_sweeps, john_burn_runs,
+  setup_rests_on_its_runs, zone_one_held_full, zone_one_rewritten_below_full, zone_one_duty,
+  telemetry_thermally_clean, telemetry_of, card_thermal_slowdown_samples, mask_names_only_power_cap,
+  run_named, sweep_with_slots, best_aggregate, point_at,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn slowdown_is(r: LongContextRun, card: String, n: Nat) -> Bool {
+  match telemetry_of(ts: r.telemetry, name: card) {
+    Present { value: t } => card_thermal_slowdown_samples(t: t) == n
+    Absent => false
+  }
+}
+
+fn bus_of(r: LongContextRun, card: String) -> String {
+  match r.serving.filter(c => (c.name as String) == card).first() {
+    Present { value: c } => match c.pci_bus { Present { value: b } => b as String  Absent => "" }
+    Absent => ""
+  }
+}
+
+// THE DE FACTO SETUP RESTS ON ITS OWN RUNS. It is john's (host-ba61f9); its cards, by name and bus, are the
+// cards of the de facto warm run; that run is the de facto layout, its zone 1 read 0x64 on every logged sample and
+// no card thermally slowed; the sweep it names reserved its 4 slots under the same held zone. The fan mode is
+// code 4, which the Supermicro OEM table names HeavyIO -- a name the table itself carries as uncited.
+test fn john_setup_rests_on_the_de_facto_runs() -> Bool {
+  let s = john_de_facto_serving_setup
+  (s.host as String) == (operator_host_ba61f9 as String)
+    && setup_rests_on_its_runs(s: s)
+    && s.engine_slots == 4
+    && s.port == 18081
+    && s.files.length() == 6
+    && s.cards.filter(c => match c.cooling { BlowerCooler => true  PassiveHeatsink => false }).length() == 1
+    && match supermicro_fan_mode_name(mode: s.fan_mode) {
+      Present { value: n } => (n.name as String) == "HeavyIO" && match n.standing {
+        TranscribedUncited { read_obligation: _ } => true
+        CitedToAuthority { authority: _ } => false
+        ObservedByReceipt { observed: _ } => false
+      }
+      Absent => false
+    }
+}
+
+// THE WARM TURN IS A WARM READING. Unlike the R9700 receipt's rows (no prefix reuse), the de facto run's cold turn
+// answered a 150,284-token prompt in 153.6 s, and turn 2 answered the same conversation in under 2% of that time
+// with the bench reading at least 98% of every later prompt from cache; each successive prompt is longer than the
+// one before (the 2000-token tool deltas).
+test fn the_de_facto_warm_turn_reuses_the_cold_prefix() -> Bool {
+  match run_named(name: "strata3-20261127T040802Z") {
+    Absent => false
+    Present { value: r } => match r.cold {
+      ColdTurnAbandoned { tokens_processed: _, after: _, verdict: _ } => false
+      ColdTurnAnswered { prompt_tokens: p, time_to_first_token: t } =>
+        token_count_value(t: p) == 150284
+          && millisecond_count(m: t) == 153600
+          && r.turns.length() == 5
+          && r.turns.all(w => w.cache_hit_permille >= 980 && token_count_value(t: w.prompt_tokens) > token_count_value(t: p))
+          && match r.turns.filter(w => w.turn == 2).first() {
+            Present { value: w2 } => millisecond_count(m: w2.time_to_first_token) * 50 < millisecond_count(m: t)
+            Absent => false
+          }
+    }
+  }
+}
+
+// THE PASSIVE V100-32 SLOWED AT 81:00 AND NOT AT C1:00 -- AND THE COMPARISON STAYS CONFOUNDED. In the 81:00 run it
+// was in software thermal slowdown on 130 samples; in the de facto run at C1:00, on none. The 81:00 run has NO fan
+// log, so its zone cannot read as held, and the claim requires exactly that: a reader cannot take this pair as a
+// controlled slot comparison.
+test fn the_passive_v100_32_slowed_at_81_not_at_c1_with_the_fan_confound_kept() -> Bool {
+  match run_named(name: "strata3-20261127T021726Z") {
+    Absent => false
+    Present { value: at81 } => match run_named(name: "strata3-20261127T040802Z") {
+      Absent => false
+      Present { value: atc1 } =>
+        bus_of(r: at81, card: "Tesla PG500-216") == "00000000:81:00.0"
+          && bus_of(r: atc1, card: "Tesla PG500-216") == "00000000:C1:00.0"
+          && slowdown_is(r: at81, card: "Tesla PG500-216", n: 130)
+          && slowdown_is(r: atc1, card: "Tesla PG500-216", n: 0)
+          && !zone_one_held_full(z: at81.zone_one)
+          && zone_one_held_full(z: atc1.zone_one)
+          && match at81.zone_one { ZoneOneUnlogged { account: _ } => true  ZoneOneLogged { samples: _, duty_low_byte: _, duty_high_byte: _, guard_running: _ } => false }
+    }
+  }
+}
+
+// THE 4-SLOT CHOICE IS THE OPERATOR'S, NOT THE SWEEP'S MAXIMUM. At parallel 4 the best aggregate is at
+// concurrency 4 (87.31 tok/s); parallel 8 at concurrency 8 (95.19) out-produced every parallel-4 point. The setup
+// keeps 4 slots ("4 slots is fine"), so nothing here may present the sweep as having selected it.
+test fn the_four_slot_choice_is_the_operators_not_the_sweeps_maximum() -> Bool {
+  match sweep_with_slots(slots: 4) {
+    Absent => false
+    Present { value: p4 } => match sweep_with_slots(slots: 8) {
+      Absent => false
+      Present { value: p8 } =>
+        best_aggregate(s: p4) == 87310
+          && match point_at(s: p4, c: 4) { Present { value: c4 } => milli_tokens_per_second_count(r: c4.aggregate) == best_aggregate(s: p4)  Absent => false }
+          && best_aggregate(s: p8) > best_aggregate(s: p4)
+          && match point_at(s: p8, c: 8) { Present { value: c8 } => milli_tokens_per_second_count(r: c8.aggregate) == best_aggregate(s: p8)  Absent => false }
+          && john_de_facto_serving_setup.engine_slots == p4.engine_slots
+    }
+  }
+}
+
+// EVERY CONCURRENCY POINT CLOCKED DOWN FOR THE POWER CAP ONLY: each bench mask (0x4) decodes through NVML's
+// vocabulary to the software power cap and nothing else -- expected at the cards' minimum limits. The decode is
+// discriminating: a mask with the software-thermal bit (0x24) and one with a bit NVML does not name (0x204) are
+// both refused.
+test fn every_concurrency_point_clocked_down_for_power_only() -> Bool {
+  john_concurrency_sweeps.length() == 2
+    && john_concurrency_sweeps.all(s => s.points.all(p => mask_names_only_power_cap(mask: p.clocks_event_mask_seen)) && telemetry_thermally_clean(ts: s.telemetry))
+    && !mask_names_only_power_cap(mask: 36)
+    && !mask_names_only_power_cap(mask: 516)
+    && !mask_names_only_power_cap(mask: 0)
+}
+
+// THE BMC REWROTE THE HAND-SET ZONE WHERE NOTHING HELD IT. In the passive-only serving run and the burn A/B, zone 1
+// had been written 0x64 and the BMC poll read it as low as 0x39 and 0x2f: the firmware's curve, not the write. In
+// the three guarded runs the lowest byte read is 0x64. The bytes are read through the Supermicro OEM reply parser,
+// so 0x65 (101) is no duty at all and an unlogged window is never held.
+test fn the_bmc_rewrote_the_hand_set_zone_where_nothing_held_it() -> Bool {
+  match run_named(name: "strata3-20261127T035851Z") {
+    Absent => false
+    Present { value: s1 } => zone_one_rewritten_below_full(z: s1.zone_one) && !zone_one_held_full(z: s1.zone_one)
+  }
+    && john_burn_runs.any(b => (b.run as String) == "thermal/ab-20261127T034432Z" && zone_one_rewritten_below_full(z: b.zone_one))
+    && john_concurrency_sweeps.all(s => zone_one_held_full(z: s.zone_one) && !zone_one_rewritten_below_full(z: s.zone_one))
+    && match zone_one_duty(byte: "65" as NonEmptyStr) { Absent => true  Present { value: _ } => false }
+    && !zone_one_held_full(z: ZoneOneLogged { samples: 3, duty_low_byte: "39" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: true })
+    && !zone_one_held_full(z: ZoneOneLogged { samples: 0, duty_low_byte: "64" as NonEmptyStr, duty_high_byte: "64" as NonEmptyStr, guard_running: true })
+    && !zone_one_held_full(z: ZoneOneUnlogged { account: "a run nobody logged" as NonEmptyStr })
+}
+
+// A THERMAL CLAIM ASKS BOTH THERMAL COLUMNS AND REFUSES AN EMPTY SET. A card whose only event is one sample of
+// HARDWARE thermal slowdown is not clean, a power-cap-only card is, and no telemetry at all is never clean.
+test fn thermal_cleanliness_reds_on_hardware_slowdown_and_on_no_telemetry() -> Bool {
+  let hot = CardTelemetry { name: "constructed" as NonEmptyStr, samples: 10, temperature_max: celsius(count: 70), events: [ReasonSamples { reason: NvmlClocksEventHwThermalSlowdown, samples: 1 }] }
+  let capped = CardTelemetry { name: "constructed" as NonEmptyStr, samples: 10, temperature_max: celsius(count: 70), events: [ReasonSamples { reason: NvmlClocksEventSwPowerCap, samples: 9 }] }
+  !telemetry_thermally_clean(ts: [hot])
+    && telemetry_thermally_clean(ts: [capped])
+    && !telemetry_thermally_clean(ts: [])
+}
+
+// UNDER A SUSTAINED FULL BURN THE PASSIVE CARDS THROTTLE AND THE BLOWER V100 NEVER DOES: in the all-three burn both
+// passive cards slowed and the blower card did not; in burn A the P100 slowed. Neither burn's zone was held.
+test fn the_burns_throttle_the_passive_cards_and_never_the_blower() -> Bool {
+  john_burn_runs.length() == 2
+    && john_burn_runs.all(b => !zone_one_held_full(z: b.zone_one)
+      && match telemetry_of(ts: b.telemetry, name: "Tesla V100-SXM2-16GB") { Present { value: t } => card_thermal_slowdown_samples(t: t) == 0  Absent => false }
+      && match telemetry_of(ts: b.telemetry, name: "Tesla P100-PCIE-16GB") { Present { value: t } => card_thermal_slowdown_samples(t: t) > 0  Absent => false })
+    && john_burn_runs.any(b => (b.run as String) == "thermal/run-20261127T015819Z"
+      && match telemetry_of(ts: b.telemetry, name: "Tesla PG500-216") { Present { value: t } => card_thermal_slowdown_samples(t: t) > 0  Absent => false })
+}
+
+// THE ONE LAYOUT THAT NEVER ANSWERED: llama.cpp on the M40 and P100 abandoned its cold turn short of the prompt, so
+// it carries no warm turn, no rows digest and no telemetry; every Strata run answered its cold turn.
+test fn the_llama_cpp_layout_never_answered_and_every_strata_layout_did() -> Bool {
+  john_long_context_runs.length() == 6
+    && john_long_context_runs.filter(r => match r.standing { DeFactoLayout => true  SupersededLayout { why: _ } => false }).length() == 1
+    && john_long_context_runs.all(r => match r.engine {
+      StrataSm60Build { commit: _ } => match r.cold { ColdTurnAnswered { prompt_tokens: _, time_to_first_token: _ } => r.turns.length() == 5  ColdTurnAbandoned { tokens_processed: _, after: _, verdict: _ } => false }
+      LlamaCppBuild { commit: _ } => match r.cold {
+        ColdTurnAbandoned { tokens_processed: n, after: _, verdict: _ } => token_count_value(t: n) < 150000 && r.turns.length() == 0 && r.telemetry.length() == 0
+        ColdTurnAnswered { prompt_tokens: _, time_to_first_token: _ } => false
+      }
+    })
+}
+
+// JOHN IS IN THE LIVE ROUTER AS A ROW NO RENDER PRODUCES, AND THE MODEL SAYS SO. The 2026-11-27 addition is its own
+// dated list (the 2026-11-25 pass's snapshot is untouched and still holds eight rows, none of them john); its one
+// row has an account and an owner, the router projection emits no row named john (run through the projection, not
+// asserted), and the live set as last recorded has nine distinct names.
+test fn john_is_a_live_router_row_no_render_produces() -> Bool {
+  srv1_router_live_rows_added_2026_11_27.length() == 1
+    && srv1_router_live_rows_2026_11_25.length() == 8
+    && !srv1_router_live_rows_2026_11_25.any(r => (r.name as String) == "john")
+    && live_rows_are_accounted_for(rows: srv1_router_live_rows_added_2026_11_27)
+    && live_rows_agree_with_the_projection(rows: srv1_router_live_rows_added_2026_11_27)
+    && srv1_router_live_rows().length() == 9
+    && srv1_router_live_rows().all(r => srv1_router_live_rows().filter(x => (x.name as String) == (r.name as String)).length() == 1)
+    && srv1_router_live_rows_added_2026_11_27.all(r => (r.name as String) == "john" && match r.standing {
+      RowNoRenderProduces { why: _, owner: _ } => true
+      RowMatchesRender => false
+      RowDivergesFromRender { diverging_fields: _, why: _ } => false
+    })
+}
+
+// THE ROUTER'S CAP AND THE ENGINE'S SLOTS ARE TWO HAND NUMBERS, AND THEY DISAGREE: the live row admits 2 turns, the
+// de facto engine reserves 4 batch slots. The claim keeps that disagreement visible rather than letting either
+// number stand in for the other; it goes false if they are reconciled without this row being re-read.
+test fn john_router_cap_is_below_the_engines_slots_and_both_are_recorded() -> Bool {
+  srv1_router_live_rows_added_2026_11_27.any(r => (r.name as String) == "john"
+    && r.live_cap == 2 && r.live_retain == 6
+    && r.live_cap < john_de_facto_serving_setup.engine_slots)
+}

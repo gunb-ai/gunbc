@@ -1,0 +1,21 @@
+gpu2 Tesla P100-PCIE-16GB mem=15.9GiB sms=56 dtype=fp16
+gpu2 mem: 12 GiB verify mismatches=0
+gpu2 burn: t=30s tflops=5.09 checksum_mismatches=0
+gpu2 burn: t=62s tflops=5.01 checksum_mismatches=0
+gpu2 burn: t=92s tflops=4.92 checksum_mismatches=0
+gpu2 burn: t=122s tflops=4.85 checksum_mismatches=0
+gpu2 burn: t=154s tflops=4.77 checksum_mismatches=0
+gpu2 burn: t=186s tflops=4.49 checksum_mismatches=0
+gpu2 burn: t=218s tflops=4.08 checksum_mismatches=0
+gpu2 burn: t=253s tflops=3.74 checksum_mismatches=0
+gpu2 burn: t=287s tflops=3.48 checksum_mismatches=0
+gpu2 burn: t=321s tflops=3.28 checksum_mismatches=0
+gpu2 burn: t=356s tflops=3.12 checksum_mismatches=0
+gpu2 burn: t=390s tflops=2.99 checksum_mismatches=0
+gpu2 burn: t=424s tflops=2.88 checksum_mismatches=0
+gpu2 burn: t=459s tflops=2.78 checksum_mismatches=0
+gpu2 burn: t=493s tflops=2.70 checksum_mismatches=0
+gpu2 burn: t=527s tflops=2.63 checksum_mismatches=0
+gpu2 burn: t=562s tflops=2.56 checksum_mismatches=0
+gpu2 burn: t=595s tflops=2.51 checksum_mismatches=0
+gpu2 burn: DONE t=602s tflops=2.50 checksum_mismatches=0

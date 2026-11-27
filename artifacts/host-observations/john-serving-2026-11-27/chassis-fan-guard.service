@@ -1,0 +1,9 @@
+[Unit]
+Description=Hold chassis fan zone 1 at 100% (BMC curve lowers it under light load; john thermal policy, operator 2026-11-27)
+After=systemd-modules-load.service
+[Service]
+ExecStart=/usr/local/sbin/chassis-fan-guard.sh
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target

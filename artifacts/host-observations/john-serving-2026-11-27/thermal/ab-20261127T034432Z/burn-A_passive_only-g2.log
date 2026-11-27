@@ -1,0 +1,15 @@
+gpu2 Tesla PG500-216 mem=31.7GiB sms=72 dtype=fp16
+gpu2 mem: 12 GiB verify mismatches=0
+gpu2 burn: t=30s tflops=30.23 checksum_mismatches=0
+gpu2 burn: t=60s tflops=30.01 checksum_mismatches=0
+gpu2 burn: t=90s tflops=29.65 checksum_mismatches=0
+gpu2 burn: t=121s tflops=29.29 checksum_mismatches=0
+gpu2 burn: t=151s tflops=28.91 checksum_mismatches=0
+gpu2 burn: t=181s tflops=28.57 checksum_mismatches=0
+gpu2 burn: t=212s tflops=28.32 checksum_mismatches=0
+gpu2 burn: t=242s tflops=28.07 checksum_mismatches=0
+gpu2 burn: t=272s tflops=27.85 checksum_mismatches=0
+gpu2 burn: t=302s tflops=27.64 checksum_mismatches=0
+gpu2 burn: t=332s tflops=27.45 checksum_mismatches=0
+gpu2 burn: t=363s tflops=27.27 checksum_mismatches=0
+gpu2 burn: t=393s tflops=26.51 checksum_mismatches=0

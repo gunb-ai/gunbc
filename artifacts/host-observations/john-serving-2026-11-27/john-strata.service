@@ -1,0 +1,14 @@
+[Unit]
+Description=Strata Qwen3.8-Flash-Next on john: V100-16 (blower) + P100 + V100-32, auto layer split, 4 slots (operator 2026-11-27: de facto setup)
+Requires=gpu-power-cap.service
+After=gpu-power-cap.service network-online.target
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/strata-test/strata-main
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/strata-test/strata/.venv/bin/python serve/server.py --engine strata --config /home/ubuntu/strata-pool/cfg-john3.json --host 0.0.0.0 --port 18081
+Restart=on-failure
+RestartSec=10
+MemoryMax=100G
+[Install]
+WantedBy=multi-user.target

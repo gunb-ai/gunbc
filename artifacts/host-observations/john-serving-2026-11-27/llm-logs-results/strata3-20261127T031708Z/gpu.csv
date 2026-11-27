@@ -1,0 +1,598 @@
+2026/11/27 03:17:08.294, 0, Tesla V100-SXM2-16GB, 40, 24.91 W, 150.00 W, 135 MHz, 877 MHz, 0 %, 0 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:08.303, 1, Tesla PG500-216, 52, 29.23 W, 100.00 W, 135 MHz, 1107 MHz, 0 %, 0 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:09.310, 0, Tesla V100-SXM2-16GB, 40, 24.91 W, 150.00 W, 135 MHz, 877 MHz, 0 %, 0 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:09.465, 1, Tesla PG500-216, 52, 29.24 W, 100.00 W, 135 MHz, 1107 MHz, 0 %, 0 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:10.476, 0, Tesla V100-SXM2-16GB, 40, 24.91 W, 150.00 W, 135 MHz, 877 MHz, 0 %, 0 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:10.481, 1, Tesla PG500-216, 51, 29.24 W, 100.00 W, 135 MHz, 1107 MHz, 0 %, 0 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:11.494, 0, Tesla V100-SXM2-16GB, 41, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 29 %, 399 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:11.498, 1, Tesla PG500-216, 51, 29.22 W, 100.00 W, 135 MHz, 1107 MHz, 0 %, 4 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:12.505, 0, Tesla V100-SXM2-16GB, 42, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 1867 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:12.509, 1, Tesla PG500-216, 51, 29.22 W, 100.00 W, 135 MHz, 1107 MHz, 0 %, 4 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:13.521, 0, Tesla V100-SXM2-16GB, 42, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 1867 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:13.526, 1, Tesla PG500-216, 51, 29.14 W, 100.00 W, 135 MHz, 1107 MHz, 0 %, 4 MiB, 0x0000000000000001, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:14.532, 0, Tesla V100-SXM2-16GB, 42, 50.12 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 4105 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:14.537, 1, Tesla PG500-216, 52, 41.56 W, 100.00 W, 1260 MHz, 1107 MHz, 8 %, 370 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:15.543, 0, Tesla V100-SXM2-16GB, 42, 50.15 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 4105 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:15.547, 1, Tesla PG500-216, 53, 47.46 W, 100.00 W, 1380 MHz, 1107 MHz, 11 %, 626 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:16.553, 0, Tesla V100-SXM2-16GB, 43, 50.12 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 4105 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:16.556, 1, Tesla PG500-216, 53, 46.30 W, 100.00 W, 1380 MHz, 1107 MHz, 0 %, 370 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:17.561, 0, Tesla V100-SXM2-16GB, 43, 50.61 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 4547 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:17.565, 1, Tesla PG500-216, 53, 46.30 W, 100.00 W, 1380 MHz, 1107 MHz, 0 %, 2438 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:18.571, 0, Tesla V100-SXM2-16GB, 42, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 4549 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:18.576, 1, Tesla PG500-216, 53, 46.40 W, 100.00 W, 1380 MHz, 1107 MHz, 3 %, 3018 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:19.581, 0, Tesla V100-SXM2-16GB, 42, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 4993 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:19.586, 1, Tesla PG500-216, 53, 46.59 W, 100.00 W, 1380 MHz, 1107 MHz, 12 %, 3518 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:20.591, 0, Tesla V100-SXM2-16GB, 42, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 5435 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:20.596, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 3518 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:21.602, 0, Tesla V100-SXM2-16GB, 42, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 5879 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:21.607, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 3520 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:22.614, 0, Tesla V100-SXM2-16GB, 42, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 6321 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:22.619, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 3522 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:23.626, 0, Tesla V100-SXM2-16GB, 42, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 6323 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:23.630, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 3 %, 4100 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:24.636, 0, Tesla V100-SXM2-16GB, 43, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 6325 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:24.644, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 3 %, 4680 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:25.650, 0, Tesla V100-SXM2-16GB, 43, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 6327 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:25.655, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 5260 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:26.661, 0, Tesla V100-SXM2-16GB, 43, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 6329 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:26.666, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 5840 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:27.674, 0, Tesla V100-SXM2-16GB, 43, 39.95 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 6331 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:27.679, 1, Tesla PG500-216, 53, 41.85 W, 100.00 W, 1260 MHz, 1107 MHz, 6 %, 6630 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:28.686, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 7 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:28.691, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:29.699, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 11 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:29.704, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:30.711, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 11 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:30.716, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:31.725, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 11 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:31.731, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:32.737, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 12 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:32.742, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:33.748, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 11 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:33.753, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:34.759, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 12 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:34.764, 1, Tesla PG500-216, 53, 41.75 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 6668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:35.770, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:35.775, 1, Tesla PG500-216, 53, 41.36 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:36.783, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:36.788, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:37.794, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:37.799, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:38.805, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:38.810, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:39.817, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:39.822, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:40.828, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:40.833, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:41.839, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:41.844, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:42.850, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:42.855, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:43.862, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:43.867, 1, Tesla PG500-216, 53, 41.36 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:44.873, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:44.878, 1, Tesla PG500-216, 53, 41.36 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:45.884, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:45.889, 1, Tesla PG500-216, 53, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:46.895, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:46.900, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:47.906, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:47.911, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:48.917, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:48.923, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:49.931, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:49.935, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:50.942, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:50.947, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:51.955, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:51.959, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:52.965, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:52.970, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:53.979, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:53.984, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:54.990, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:54.995, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:56.003, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:56.007, 1, Tesla PG500-216, 52, 41.36 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:57.013, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:57.018, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:58.024, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:58.029, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:59.036, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:17:59.041, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:00.048, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:00.052, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:01.058, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:01.063, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:02.070, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:02.074, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:03.081, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:03.086, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:04.094, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:04.099, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:05.106, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:05.110, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:06.117, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:06.121, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:07.130, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:07.135, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:08.142, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:08.146, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:09.154, 0, Tesla V100-SXM2-16GB, 44, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:09.159, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:10.165, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:10.170, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:11.178, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:11.184, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:12.190, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:12.195, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:13.202, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:13.208, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:14.214, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:14.219, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:15.226, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:15.231, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:16.237, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:16.242, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:17.251, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:17.256, 1, Tesla PG500-216, 52, 41.26 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:18.262, 0, Tesla V100-SXM2-16GB, 44, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:18.267, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:19.275, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:19.279, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:20.286, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:20.290, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:21.299, 0, Tesla V100-SXM2-16GB, 44, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 6 %, 15445 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:21.304, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 4 %, 31240 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:22.311, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 1 %, 15499 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:22.316, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31296 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:23.323, 0, Tesla V100-SXM2-16GB, 44, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15565 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:23.328, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31368 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:24.334, 0, Tesla V100-SXM2-16GB, 43, 40.44 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15577 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:24.339, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31448 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:25.348, 0, Tesla V100-SXM2-16GB, 44, 40.41 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15653 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:25.352, 1, Tesla PG500-216, 52, 41.16 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:26.359, 0, Tesla V100-SXM2-16GB, 44, 47.24 W, 150.00 W, 1447 MHz, 877 MHz, 100 %, 15661 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:26.362, 1, Tesla PG500-216, 52, 41.16 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31668 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:27.367, 0, Tesla V100-SXM2-16GB, 45, 67.55 W, 150.00 W, 1530 MHz, 877 MHz, 69 %, 15661 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:27.374, 1, Tesla PG500-216, 53, 41.65 W, 100.00 W, 1260 MHz, 1107 MHz, 29 %, 31680 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:28.381, 0, Tesla V100-SXM2-16GB, 45, 52.55 W, 150.00 W, 1530 MHz, 877 MHz, 55 %, 15671 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:28.385, 1, Tesla PG500-216, 53, 78.40 W, 100.00 W, 1297 MHz, 1107 MHz, 27 %, 31690 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:29.395, 0, Tesla V100-SXM2-16GB, 45, 57.40 W, 150.00 W, 1530 MHz, 877 MHz, 64 %, 15687 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:29.400, 1, Tesla PG500-216, 53, 87.45 W, 100.00 W, 1260 MHz, 1107 MHz, 23 %, 31712 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:30.406, 0, Tesla V100-SXM2-16GB, 45, 56.92 W, 150.00 W, 1530 MHz, 877 MHz, 51 %, 15687 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:30.410, 1, Tesla PG500-216, 53, 43.21 W, 100.00 W, 1312 MHz, 1107 MHz, 29 %, 31712 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:31.416, 0, Tesla V100-SXM2-16GB, 45, 51.61 W, 150.00 W, 1530 MHz, 877 MHz, 3 %, 15727 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:31.420, 1, Tesla PG500-216, 53, 46.51 W, 100.00 W, 1380 MHz, 1107 MHz, 3 %, 31712 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:32.425, 0, Tesla V100-SXM2-16GB, 47, 166.45 W, 150.00 W, 1312 MHz, 877 MHz, 52 %, 15775 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:32.436, 1, Tesla PG500-216, 53, 46.67 W, 100.00 W, 1380 MHz, 1107 MHz, 0 %, 31718 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:33.441, 0, Tesla V100-SXM2-16GB, 47, 84.53 W, 150.00 W, 1312 MHz, 877 MHz, 52 %, 15775 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:33.446, 1, Tesla PG500-216, 53, 46.40 W, 100.00 W, 1380 MHz, 1107 MHz, 0 %, 31718 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:34.452, 0, Tesla V100-SXM2-16GB, 48, 54.01 W, 150.00 W, 1312 MHz, 877 MHz, 40 %, 15779 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:34.457, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31718 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:35.463, 0, Tesla V100-SXM2-16GB, 48, 55.46 W, 150.00 W, 1312 MHz, 877 MHz, 47 %, 15779 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:35.468, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31718 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:36.475, 0, Tesla V100-SXM2-16GB, 48, 61.77 W, 150.00 W, 1312 MHz, 877 MHz, 33 %, 15779 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:36.479, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31718 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:37.490, 0, Tesla V100-SXM2-16GB, 50, 87.44 W, 150.00 W, 1237 MHz, 877 MHz, 60 %, 15779 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:37.504, 1, Tesla PG500-216, 52, 41.17 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31718 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:38.518, 0, Tesla V100-SXM2-16GB, 50, 143.34 W, 150.00 W, 1132 MHz, 877 MHz, 44 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:38.531, 1, Tesla PG500-216, 56, 85.99 W, 100.00 W, 757 MHz, 1107 MHz, 100 %, 31762 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:39.537, 0, Tesla V100-SXM2-16GB, 49, 50.61 W, 150.00 W, 1312 MHz, 877 MHz, 51 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:39.568, 1, Tesla PG500-216, 56, 57.92 W, 100.00 W, 1140 MHz, 1107 MHz, 89 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:40.586, 0, Tesla V100-SXM2-16GB, 51, 177.94 W, 150.00 W, 1155 MHz, 877 MHz, 47 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:40.613, 1, Tesla PG500-216, 57, 103.67 W, 100.00 W, 847 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:41.671, 0, Tesla V100-SXM2-16GB, 52, 149.63 W, 150.00 W, 1102 MHz, 877 MHz, 51 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:41.681, 1, Tesla PG500-216, 57, 55.51 W, 100.00 W, 840 MHz, 1107 MHz, 93 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:42.738, 0, Tesla V100-SXM2-16GB, 50, 77.25 W, 150.00 W, 1312 MHz, 877 MHz, 29 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:42.742, 1, Tesla PG500-216, 57, 110.80 W, 100.00 W, 1012 MHz, 1107 MHz, 57 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:43.775, 0, Tesla V100-SXM2-16GB, 50, 129.96 W, 150.00 W, 1327 MHz, 877 MHz, 40 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:43.780, 1, Tesla PG500-216, 58, 98.72 W, 100.00 W, 862 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:44.838, 0, Tesla V100-SXM2-16GB, 52, 108.64 W, 150.00 W, 1155 MHz, 877 MHz, 68 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:44.848, 1, Tesla PG500-216, 58, 95.48 W, 100.00 W, 930 MHz, 1107 MHz, 99 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:45.887, 0, Tesla V100-SXM2-16GB, 52, 101.38 W, 150.00 W, 1312 MHz, 877 MHz, 93 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:45.892, 1, Tesla PG500-216, 58, 100.51 W, 100.00 W, 952 MHz, 1107 MHz, 99 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:46.910, 0, Tesla V100-SXM2-16GB, 52, 104.77 W, 150.00 W, 1312 MHz, 877 MHz, 67 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:46.917, 1, Tesla PG500-216, 58, 108.59 W, 100.00 W, 907 MHz, 1107 MHz, 93 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:48.027, 0, Tesla V100-SXM2-16GB, 51, 52.06 W, 150.00 W, 1515 MHz, 877 MHz, 46 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:48.048, 1, Tesla PG500-216, 58, 92.47 W, 100.00 W, 855 MHz, 1107 MHz, 99 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:49.101, 0, Tesla V100-SXM2-16GB, 50, 51.58 W, 150.00 W, 1515 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:49.107, 1, Tesla PG500-216, 58, 96.45 W, 100.00 W, 870 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:50.145, 0, Tesla V100-SXM2-16GB, 53, 138.01 W, 150.00 W, 1140 MHz, 877 MHz, 86 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:50.172, 1, Tesla PG500-216, 58, 88.02 W, 100.00 W, 975 MHz, 1107 MHz, 94 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:51.178, 0, Tesla V100-SXM2-16GB, 52, 140.92 W, 150.00 W, 1312 MHz, 877 MHz, 77 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:51.190, 1, Tesla PG500-216, 59, 94.75 W, 100.00 W, 765 MHz, 1107 MHz, 94 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:52.271, 0, Tesla V100-SXM2-16GB, 54, 86.96 W, 150.00 W, 1162 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:52.294, 1, Tesla PG500-216, 59, 96.14 W, 100.00 W, 802 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:53.345, 0, Tesla V100-SXM2-16GB, 54, 135.20 W, 150.00 W, 1215 MHz, 877 MHz, 82 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:53.374, 1, Tesla PG500-216, 59, 96.61 W, 100.00 W, 982 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:54.381, 0, Tesla V100-SXM2-16GB, 50, 44.81 W, 150.00 W, 1372 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:54.391, 1, Tesla PG500-216, 59, 102.91 W, 100.00 W, 892 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:55.427, 0, Tesla V100-SXM2-16GB, 52, 167.42 W, 150.00 W, 1215 MHz, 877 MHz, 78 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:55.449, 1, Tesla PG500-216, 60, 108.41 W, 100.00 W, 840 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:56.471, 0, Tesla V100-SXM2-16GB, 54, 141.89 W, 150.00 W, 1132 MHz, 877 MHz, 87 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:56.481, 1, Tesla PG500-216, 60, 109.75 W, 100.00 W, 922 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:57.502, 0, Tesla V100-SXM2-16GB, 54, 139.07 W, 150.00 W, 1170 MHz, 877 MHz, 70 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:57.506, 1, Tesla PG500-216, 60, 99.52 W, 100.00 W, 900 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:58.555, 0, Tesla V100-SXM2-16GB, 53, 103.32 W, 150.00 W, 1312 MHz, 877 MHz, 66 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:58.562, 1, Tesla PG500-216, 60, 81.44 W, 100.00 W, 1102 MHz, 1107 MHz, 95 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:59.568, 0, Tesla V100-SXM2-16GB, 52, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 30 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:18:59.573, 1, Tesla PG500-216, 60, 93.25 W, 100.00 W, 780 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:00.586, 0, Tesla V100-SXM2-16GB, 51, 49.18 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:00.603, 1, Tesla PG500-216, 61, 98.19 W, 100.00 W, 742 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:01.641, 0, Tesla V100-SXM2-16GB, 54, 151.08 W, 150.00 W, 1102 MHz, 877 MHz, 87 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:01.646, 1, Tesla PG500-216, 61, 86.48 W, 100.00 W, 780 MHz, 1107 MHz, 96 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:02.712, 0, Tesla V100-SXM2-16GB, 53, 118.33 W, 150.00 W, 1312 MHz, 877 MHz, 93 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:02.721, 1, Tesla PG500-216, 61, 118.42 W, 100.00 W, 892 MHz, 1107 MHz, 97 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:03.795, 0, Tesla V100-SXM2-16GB, 55, 139.07 W, 150.00 W, 1185 MHz, 877 MHz, 77 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:03.804, 1, Tesla PG500-216, 60, 112.54 W, 100.00 W, 930 MHz, 1107 MHz, 97 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:04.848, 0, Tesla V100-SXM2-16GB, 54, 198.58 W, 150.00 W, 1200 MHz, 877 MHz, 71 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:04.876, 1, Tesla PG500-216, 61, 96.92 W, 100.00 W, 930 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:05.882, 0, Tesla V100-SXM2-16GB, 51, 43.35 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:05.887, 1, Tesla PG500-216, 61, 98.43 W, 100.00 W, 787 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:06.934, 0, Tesla V100-SXM2-16GB, 50, 42.87 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:06.945, 1, Tesla PG500-216, 61, 99.81 W, 100.00 W, 847 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:07.966, 0, Tesla V100-SXM2-16GB, 54, 88.90 W, 150.00 W, 1290 MHz, 877 MHz, 98 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:07.980, 1, Tesla PG500-216, 62, 125.39 W, 100.00 W, 907 MHz, 1107 MHz, 99 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:09.044, 0, Tesla V100-SXM2-16GB, 54, 119.79 W, 150.00 W, 1417 MHz, 877 MHz, 72 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:09.054, 1, Tesla PG500-216, 61, 108.57 W, 100.00 W, 990 MHz, 1107 MHz, 93 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:10.076, 0, Tesla V100-SXM2-16GB, 54, 95.14 W, 150.00 W, 1312 MHz, 877 MHz, 72 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:10.081, 1, Tesla PG500-216, 62, 121.51 W, 100.00 W, 862 MHz, 1107 MHz, 92 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:11.134, 0, Tesla V100-SXM2-16GB, 55, 118.26 W, 150.00 W, 1072 MHz, 877 MHz, 78 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:11.155, 1, Tesla PG500-216, 62, 104.31 W, 100.00 W, 900 MHz, 1107 MHz, 96 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:12.217, 0, Tesla V100-SXM2-16GB, 52, 46.75 W, 150.00 W, 1402 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:12.222, 1, Tesla PG500-216, 62, 106.28 W, 100.00 W, 742 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:13.267, 0, Tesla V100-SXM2-16GB, 51, 46.75 W, 150.00 W, 1402 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:13.278, 1, Tesla PG500-216, 63, 104.54 W, 100.00 W, 862 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:14.336, 0, Tesla V100-SXM2-16GB, 54, 142.95 W, 150.00 W, 1147 MHz, 877 MHz, 98 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:14.355, 1, Tesla PG500-216, 62, 105.31 W, 100.00 W, 945 MHz, 1107 MHz, 98 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:15.385, 0, Tesla V100-SXM2-16GB, 54, 179.39 W, 150.00 W, 1312 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:15.398, 1, Tesla PG500-216, 62, 104.41 W, 100.00 W, 960 MHz, 1107 MHz, 97 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:16.413, 0, Tesla V100-SXM2-16GB, 55, 120.76 W, 150.00 W, 1275 MHz, 877 MHz, 67 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:16.419, 1, Tesla PG500-216, 62, 104.64 W, 100.00 W, 1050 MHz, 1107 MHz, 99 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:17.425, 0, Tesla V100-SXM2-16GB, 55, 75.80 W, 150.00 W, 1245 MHz, 877 MHz, 76 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:17.434, 1, Tesla PG500-216, 63, 101.38 W, 100.00 W, 960 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:18.474, 0, Tesla V100-SXM2-16GB, 52, 43.35 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:18.479, 1, Tesla PG500-216, 63, 107.45 W, 100.00 W, 915 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:19.532, 0, Tesla V100-SXM2-16GB, 51, 42.87 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:19.537, 1, Tesla PG500-216, 63, 84.83 W, 100.00 W, 772 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:20.570, 0, Tesla V100-SXM2-16GB, 53, 220.02 W, 150.00 W, 1260 MHz, 877 MHz, 32 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:20.589, 1, Tesla PG500-216, 63, 100.26 W, 100.00 W, 750 MHz, 1107 MHz, 89 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:21.636, 0, Tesla V100-SXM2-16GB, 54, 178.90 W, 150.00 W, 1312 MHz, 877 MHz, 61 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:21.660, 1, Tesla PG500-216, 63, 97.40 W, 100.00 W, 720 MHz, 1107 MHz, 98 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:22.698, 0, Tesla V100-SXM2-16GB, 55, 200.38 W, 150.00 W, 997 MHz, 877 MHz, 67 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:22.825, 1, Tesla PG500-216, 63, 87.64 W, 100.00 W, 802 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:23.880, 0, Tesla V100-SXM2-16GB, 54, 212.10 W, 150.00 W, 1432 MHz, 877 MHz, 82 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:23.898, 1, Tesla PG500-216, 63, 90.34 W, 100.00 W, 870 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:24.974, 0, Tesla V100-SXM2-16GB, 55, 54.98 W, 150.00 W, 1312 MHz, 877 MHz, 83 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:24.985, 1, Tesla PG500-216, 63, 97.13 W, 100.00 W, 892 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:26.004, 0, Tesla V100-SXM2-16GB, 52, 53.52 W, 150.00 W, 1522 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:26.013, 1, Tesla PG500-216, 63, 98.08 W, 100.00 W, 877 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:27.035, 0, Tesla V100-SXM2-16GB, 51, 53.03 W, 150.00 W, 1522 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:27.048, 1, Tesla PG500-216, 64, 100.58 W, 100.00 W, 907 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:28.097, 0, Tesla V100-SXM2-16GB, 54, 129.88 W, 150.00 W, 1110 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:28.122, 1, Tesla PG500-216, 65, 89.18 W, 100.00 W, 720 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:29.202, 0, Tesla V100-SXM2-16GB, 54, 73.91 W, 150.00 W, 1312 MHz, 877 MHz, 96 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:29.206, 1, Tesla PG500-216, 65, 102.31 W, 100.00 W, 727 MHz, 1107 MHz, 99 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:30.253, 0, Tesla V100-SXM2-16GB, 55, 88.41 W, 150.00 W, 1162 MHz, 877 MHz, 85 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:30.282, 1, Tesla PG500-216, 65, 99.81 W, 100.00 W, 682 MHz, 1107 MHz, 97 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:31.335, 0, Tesla V100-SXM2-16GB, 55, 88.41 W, 150.00 W, 1312 MHz, 877 MHz, 75 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:31.345, 1, Tesla PG500-216, 65, 104.33 W, 100.00 W, 937 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:32.373, 0, Tesla V100-SXM2-16GB, 53, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 1 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:32.380, 1, Tesla PG500-216, 65, 94.51 W, 100.00 W, 847 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:33.422, 0, Tesla V100-SXM2-16GB, 52, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:33.426, 1, Tesla PG500-216, 65, 102.94 W, 100.00 W, 802 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:34.476, 0, Tesla V100-SXM2-16GB, 51, 49.18 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:34.484, 1, Tesla PG500-216, 65, 95.96 W, 100.00 W, 742 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:35.530, 0, Tesla V100-SXM2-16GB, 54, 53.07 W, 150.00 W, 1447 MHz, 877 MHz, 80 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:35.542, 1, Tesla PG500-216, 65, 115.99 W, 100.00 W, 870 MHz, 1107 MHz, 95 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:36.560, 0, Tesla V100-SXM2-16GB, 55, 148.18 W, 150.00 W, 1327 MHz, 877 MHz, 61 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:36.567, 1, Tesla PG500-216, 66, 85.43 W, 100.00 W, 742 MHz, 1107 MHz, 95 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:37.607, 0, Tesla V100-SXM2-16GB, 55, 103.32 W, 150.00 W, 1312 MHz, 877 MHz, 80 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:37.631, 1, Tesla PG500-216, 66, 115.57 W, 100.00 W, 862 MHz, 1107 MHz, 88 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:38.675, 0, Tesla V100-SXM2-16GB, 57, 202.45 W, 150.00 W, 1020 MHz, 877 MHz, 74 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:38.691, 1, Tesla PG500-216, 66, 91.13 W, 100.00 W, 832 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:39.697, 0, Tesla V100-SXM2-16GB, 53, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:39.703, 1, Tesla PG500-216, 66, 97.32 W, 100.00 W, 832 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:40.743, 0, Tesla V100-SXM2-16GB, 52, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:40.747, 1, Tesla PG500-216, 65, 101.65 W, 100.00 W, 832 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:41.788, 0, Tesla V100-SXM2-16GB, 51, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:41.796, 1, Tesla PG500-216, 65, 87.93 W, 100.00 W, 855 MHz, 1107 MHz, 100 %, 31768 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:42.815, 0, Tesla V100-SXM2-16GB, 54, 148.18 W, 150.00 W, 817 MHz, 877 MHz, 96 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:42.854, 1, Tesla PG500-216, 66, 110.91 W, 100.00 W, 832 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:43.860, 0, Tesla V100-SXM2-16GB, 54, 134.63 W, 150.00 W, 1125 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:43.891, 1, Tesla PG500-216, 66, 106.38 W, 100.00 W, 870 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:44.986, 0, Tesla V100-SXM2-16GB, 55, 72.45 W, 150.00 W, 1215 MHz, 877 MHz, 87 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:44.993, 1, Tesla PG500-216, 66, 87.53 W, 100.00 W, 697 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:46.059, 0, Tesla V100-SXM2-16GB, 55, 113.97 W, 150.00 W, 1447 MHz, 877 MHz, 72 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:46.073, 1, Tesla PG500-216, 66, 102.39 W, 100.00 W, 682 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:47.184, 0, Tesla V100-SXM2-16GB, 53, 49.64 W, 150.00 W, 1447 MHz, 877 MHz, 18 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:47.190, 1, Tesla PG500-216, 66, 99.45 W, 100.00 W, 705 MHz, 1107 MHz, 99 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:48.203, 0, Tesla V100-SXM2-16GB, 52, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:48.208, 1, Tesla PG500-216, 67, 101.01 W, 100.00 W, 712 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:49.251, 0, Tesla V100-SXM2-16GB, 51, 49.18 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:49.256, 1, Tesla PG500-216, 67, 121.32 W, 100.00 W, 900 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:50.317, 0, Tesla V100-SXM2-16GB, 53, 93.69 W, 150.00 W, 1312 MHz, 877 MHz, 85 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:50.336, 1, Tesla PG500-216, 66, 102.51 W, 100.00 W, 742 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:51.413, 0, Tesla V100-SXM2-16GB, 54, 131.81 W, 150.00 W, 1312 MHz, 877 MHz, 63 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:51.418, 1, Tesla PG500-216, 67, 94.08 W, 100.00 W, 660 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:52.531, 0, Tesla V100-SXM2-16GB, 55, 138.59 W, 150.00 W, 1132 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:52.561, 1, Tesla PG500-216, 67, 113.53 W, 100.00 W, 750 MHz, 1107 MHz, 99 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:53.612, 0, Tesla V100-SXM2-16GB, 55, 83.56 W, 150.00 W, 1312 MHz, 877 MHz, 79 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:53.619, 1, Tesla PG500-216, 67, 92.94 W, 100.00 W, 802 MHz, 1107 MHz, 96 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:54.680, 0, Tesla V100-SXM2-16GB, 55, 100.47 W, 150.00 W, 1312 MHz, 877 MHz, 78 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:54.687, 1, Tesla PG500-216, 68, 64.90 W, 100.00 W, 802 MHz, 1107 MHz, 92 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:55.727, 0, Tesla V100-SXM2-16GB, 52, 49.18 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:55.737, 1, Tesla PG500-216, 67, 85.99 W, 100.00 W, 877 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:56.775, 0, Tesla V100-SXM2-16GB, 51, 48.70 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:56.793, 1, Tesla PG500-216, 68, 100.00 W, 100.00 W, 870 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:57.844, 0, Tesla V100-SXM2-16GB, 51, 48.70 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:57.852, 1, Tesla PG500-216, 68, 101.63 W, 100.00 W, 832 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:58.858, 0, Tesla V100-SXM2-16GB, 54, 136.65 W, 150.00 W, 1125 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:58.870, 1, Tesla PG500-216, 68, 102.12 W, 100.00 W, 900 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:59.901, 0, Tesla V100-SXM2-16GB, 55, 74.83 W, 150.00 W, 1177 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:19:59.920, 1, Tesla PG500-216, 68, 104.25 W, 100.00 W, 840 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:00.994, 0, Tesla V100-SXM2-16GB, 56, 161.13 W, 150.00 W, 1110 MHz, 877 MHz, 90 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:01.014, 1, Tesla PG500-216, 68, 100.76 W, 100.00 W, 697 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:02.068, 0, Tesla V100-SXM2-16GB, 56, 101.44 W, 150.00 W, 1065 MHz, 877 MHz, 66 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:02.090, 1, Tesla PG500-216, 68, 95.08 W, 100.00 W, 690 MHz, 1107 MHz, 98 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:03.131, 0, Tesla V100-SXM2-16GB, 53, 49.64 W, 150.00 W, 1447 MHz, 877 MHz, 12 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:03.135, 1, Tesla PG500-216, 68, 97.04 W, 100.00 W, 915 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:04.175, 0, Tesla V100-SXM2-16GB, 52, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:04.181, 1, Tesla PG500-216, 69, 89.58 W, 100.00 W, 877 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:05.202, 0, Tesla V100-SXM2-16GB, 51, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:05.223, 1, Tesla PG500-216, 69, 91.12 W, 100.00 W, 795 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:06.260, 0, Tesla V100-SXM2-16GB, 51, 49.18 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:06.269, 1, Tesla PG500-216, 69, 96.83 W, 100.00 W, 802 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:07.324, 0, Tesla V100-SXM2-16GB, 54, 96.60 W, 150.00 W, 1312 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:07.334, 1, Tesla PG500-216, 69, 104.44 W, 100.00 W, 667 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:08.398, 0, Tesla V100-SXM2-16GB, 54, 124.15 W, 150.00 W, 1312 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:08.408, 1, Tesla PG500-216, 69, 100.50 W, 100.00 W, 825 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:09.495, 0, Tesla V100-SXM2-16GB, 55, 88.84 W, 150.00 W, 1162 MHz, 877 MHz, 94 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:09.500, 1, Tesla PG500-216, 68, 101.38 W, 100.00 W, 690 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:10.512, 0, Tesla V100-SXM2-16GB, 56, 208.59 W, 150.00 W, 1177 MHz, 877 MHz, 76 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:10.517, 1, Tesla PG500-216, 69, 91.43 W, 100.00 W, 600 MHz, 1107 MHz, 79 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:11.559, 0, Tesla V100-SXM2-16GB, 53, 49.18 W, 150.00 W, 1432 MHz, 877 MHz, 1 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:11.564, 1, Tesla PG500-216, 69, 96.55 W, 100.00 W, 780 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:12.615, 0, Tesla V100-SXM2-16GB, 52, 48.70 W, 150.00 W, 1432 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:12.625, 1, Tesla PG500-216, 69, 121.22 W, 100.00 W, 907 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:13.631, 0, Tesla V100-SXM2-16GB, 51, 48.21 W, 150.00 W, 1432 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:13.640, 1, Tesla PG500-216, 69, 95.57 W, 100.00 W, 877 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:14.682, 0, Tesla V100-SXM2-16GB, 51, 48.21 W, 150.00 W, 1432 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:14.693, 1, Tesla PG500-216, 69, 107.06 W, 100.00 W, 772 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:15.776, 0, Tesla V100-SXM2-16GB, 54, 111.62 W, 150.00 W, 1005 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:15.801, 1, Tesla PG500-216, 70, 100.41 W, 100.00 W, 840 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:16.841, 0, Tesla V100-SXM2-16GB, 54, 107.19 W, 150.00 W, 1035 MHz, 877 MHz, 98 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:16.896, 1, Tesla PG500-216, 69, 103.18 W, 100.00 W, 720 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:18.023, 0, Tesla V100-SXM2-16GB, 56, 143.82 W, 150.00 W, 1222 MHz, 877 MHz, 92 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:18.051, 1, Tesla PG500-216, 69, 108.98 W, 100.00 W, 697 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:19.153, 0, Tesla V100-SXM2-16GB, 55, 83.08 W, 150.00 W, 1447 MHz, 877 MHz, 71 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:19.165, 1, Tesla PG500-216, 70, 93.45 W, 100.00 W, 937 MHz, 1107 MHz, 95 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:20.211, 0, Tesla V100-SXM2-16GB, 54, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 62 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:20.219, 1, Tesla PG500-216, 70, 99.71 W, 100.00 W, 892 MHz, 1107 MHz, 91 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:21.263, 0, Tesla V100-SXM2-16GB, 52, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:21.267, 1, Tesla PG500-216, 70, 104.15 W, 100.00 W, 690 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:22.314, 0, Tesla V100-SXM2-16GB, 51, 49.67 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:22.319, 1, Tesla PG500-216, 70, 98.73 W, 100.00 W, 810 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:23.330, 0, Tesla V100-SXM2-16GB, 51, 49.18 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:23.345, 1, Tesla PG500-216, 70, 100.33 W, 100.00 W, 697 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:24.391, 0, Tesla V100-SXM2-16GB, 53, 131.81 W, 150.00 W, 1102 MHz, 877 MHz, 58 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:24.400, 1, Tesla PG500-216, 70, 93.82 W, 100.00 W, 690 MHz, 1107 MHz, 80 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:25.486, 0, Tesla V100-SXM2-16GB, 53, 65.17 W, 150.00 W, 1312 MHz, 877 MHz, 61 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:25.496, 1, Tesla PG500-216, 71, 92.07 W, 100.00 W, 780 MHz, 1107 MHz, 95 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:26.519, 0, Tesla V100-SXM2-16GB, 54, 104.35 W, 150.00 W, 1312 MHz, 877 MHz, 77 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:26.530, 1, Tesla PG500-216, 71, 96.14 W, 100.00 W, 832 MHz, 1107 MHz, 92 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:27.567, 0, Tesla V100-SXM2-16GB, 56, 148.18 W, 150.00 W, 832 MHz, 877 MHz, 97 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:27.611, 1, Tesla PG500-216, 71, 103.80 W, 100.00 W, 802 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:28.716, 0, Tesla V100-SXM2-16GB, 55, 112.04 W, 150.00 W, 990 MHz, 877 MHz, 96 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:28.779, 1, Tesla PG500-216, 70, 102.11 W, 100.00 W, 682 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:29.884, 0, Tesla V100-SXM2-16GB, 52, 44.81 W, 150.00 W, 1350 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:29.893, 1, Tesla PG500-216, 71, 102.72 W, 100.00 W, 667 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:30.942, 0, Tesla V100-SXM2-16GB, 51, 44.81 W, 150.00 W, 1350 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:30.953, 1, Tesla PG500-216, 71, 96.53 W, 100.00 W, 877 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:31.994, 0, Tesla V100-SXM2-16GB, 51, 42.87 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:31.999, 1, Tesla PG500-216, 71, 100.66 W, 100.00 W, 885 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:33.009, 0, Tesla V100-SXM2-16GB, 50, 42.38 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:33.017, 1, Tesla PG500-216, 71, 102.13 W, 100.00 W, 802 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:34.072, 0, Tesla V100-SXM2-16GB, 53, 85.50 W, 150.00 W, 1207 MHz, 877 MHz, 81 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:34.088, 1, Tesla PG500-216, 71, 101.48 W, 100.00 W, 637 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:35.132, 0, Tesla V100-SXM2-16GB, 54, 93.75 W, 150.00 W, 1312 MHz, 877 MHz, 63 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:35.136, 1, Tesla PG500-216, 71, 104.62 W, 100.00 W, 922 MHz, 1107 MHz, 95 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:36.166, 0, Tesla V100-SXM2-16GB, 55, 157.75 W, 150.00 W, 840 MHz, 877 MHz, 79 %, 15785 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:36.224, 1, Tesla PG500-216, 71, 104.44 W, 100.00 W, 922 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:37.280, 0, Tesla V100-SXM2-16GB, 55, 110.10 W, 150.00 W, 1065 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:37.310, 1, Tesla PG500-216, 72, 98.25 W, 100.00 W, 787 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:38.400, 0, Tesla V100-SXM2-16GB, 55, 140.92 W, 150.00 W, 1117 MHz, 877 MHz, 100 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:38.549, 1, Tesla PG500-216, 71, 85.69 W, 100.00 W, 757 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:39.617, 0, Tesla V100-SXM2-16GB, 52, 43.35 W, 150.00 W, 1320 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:39.627, 1, Tesla PG500-216, 71, 96.74 W, 100.00 W, 637 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:40.685, 0, Tesla V100-SXM2-16GB, 51, 43.35 W, 150.00 W, 1320 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:40.690, 1, Tesla PG500-216, 72, 91.71 W, 100.00 W, 862 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:41.710, 0, Tesla V100-SXM2-16GB, 50, 43.35 W, 150.00 W, 1320 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:41.718, 1, Tesla PG500-216, 72, 90.74 W, 100.00 W, 712 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:42.765, 0, Tesla V100-SXM2-16GB, 50, 42.87 W, 150.00 W, 1320 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:42.773, 1, Tesla PG500-216, 72, 102.32 W, 100.00 W, 795 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:43.830, 0, Tesla V100-SXM2-16GB, 51, 63.23 W, 150.00 W, 1327 MHz, 877 MHz, 67 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:43.845, 1, Tesla PG500-216, 71, 106.01 W, 100.00 W, 712 MHz, 1107 MHz, 96 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:44.892, 0, Tesla V100-SXM2-16GB, 52, 76.29 W, 150.00 W, 1447 MHz, 877 MHz, 86 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:44.910, 1, Tesla PG500-216, 73, 80.69 W, 100.00 W, 772 MHz, 1107 MHz, 96 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:45.962, 0, Tesla V100-SXM2-16GB, 54, 118.33 W, 150.00 W, 1035 MHz, 877 MHz, 61 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:45.986, 1, Tesla PG500-216, 72, 112.85 W, 100.00 W, 757 MHz, 1107 MHz, 98 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:47.071, 0, Tesla V100-SXM2-16GB, 52, 51.58 W, 150.00 W, 1477 MHz, 877 MHz, 59 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:47.077, 1, Tesla PG500-216, 72, 85.51 W, 100.00 W, 712 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:48.120, 0, Tesla V100-SXM2-16GB, 51, 50.64 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:48.125, 1, Tesla PG500-216, 72, 92.86 W, 100.00 W, 667 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:49.167, 0, Tesla V100-SXM2-16GB, 50, 50.61 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:49.172, 1, Tesla PG500-216, 72, 97.51 W, 100.00 W, 907 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:50.184, 0, Tesla V100-SXM2-16GB, 50, 50.64 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:50.197, 1, Tesla PG500-216, 73, 94.91 W, 100.00 W, 795 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:51.255, 0, Tesla V100-SXM2-16GB, 50, 50.12 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:51.270, 1, Tesla PG500-216, 72, 96.84 W, 100.00 W, 660 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:52.315, 0, Tesla V100-SXM2-16GB, 50, 50.15 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:52.354, 1, Tesla PG500-216, 73, 97.81 W, 100.00 W, 645 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:53.397, 0, Tesla V100-SXM2-16GB, 49, 50.15 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:53.401, 1, Tesla PG500-216, 73, 101.65 W, 100.00 W, 1132 MHz, 1107 MHz, 88 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:54.413, 0, Tesla V100-SXM2-16GB, 49, 50.12 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:54.418, 1, Tesla PG500-216, 72, 84.74 W, 100.00 W, 652 MHz, 1107 MHz, 99 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:55.499, 0, Tesla V100-SXM2-16GB, 49, 50.15 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:55.504, 1, Tesla PG500-216, 73, 115.19 W, 100.00 W, 622 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:56.545, 0, Tesla V100-SXM2-16GB, 49, 50.15 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:56.550, 1, Tesla PG500-216, 73, 114.10 W, 100.00 W, 960 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:57.555, 0, Tesla V100-SXM2-16GB, 49, 50.15 W, 150.00 W, 1477 MHz, 877 MHz, 0 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:57.565, 1, Tesla PG500-216, 73, 84.05 W, 100.00 W, 967 MHz, 1107 MHz, 100 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:58.584, 0, Tesla V100-SXM2-16GB, 49, 53.07 W, 150.00 W, 1530 MHz, 877 MHz, 42 %, 15785 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:58.587, 1, Tesla PG500-216, 70, 49.79 W, 100.00 W, 1260 MHz, 1107 MHz, 1 %, 31770 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:59.595, 0, Tesla V100-SXM2-16GB, 49, 71.48 W, 150.00 W, 1530 MHz, 877 MHz, 42 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:20:59.606, 1, Tesla PG500-216, 72, 85.62 W, 100.00 W, 1230 MHz, 1107 MHz, 46 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:00.612, 0, Tesla V100-SXM2-16GB, 50, 74.93 W, 150.00 W, 1530 MHz, 877 MHz, 25 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:00.616, 1, Tesla PG500-216, 71, 102.23 W, 100.00 W, 1260 MHz, 1107 MHz, 30 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:01.622, 0, Tesla V100-SXM2-16GB, 50, 60.32 W, 150.00 W, 1530 MHz, 877 MHz, 44 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:01.631, 1, Tesla PG500-216, 72, 68.99 W, 100.00 W, 1230 MHz, 1107 MHz, 45 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:02.636, 0, Tesla V100-SXM2-16GB, 50, 96.18 W, 150.00 W, 1530 MHz, 877 MHz, 40 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:02.639, 1, Tesla PG500-216, 72, 85.14 W, 100.00 W, 1252 MHz, 1107 MHz, 48 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:03.657, 0, Tesla V100-SXM2-16GB, 50, 108.30 W, 150.00 W, 1530 MHz, 877 MHz, 38 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:03.668, 1, Tesla PG500-216, 73, 93.43 W, 100.00 W, 1162 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:04.673, 0, Tesla V100-SXM2-16GB, 51, 88.41 W, 150.00 W, 1530 MHz, 877 MHz, 37 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:04.682, 1, Tesla PG500-216, 73, 96.27 W, 100.00 W, 1162 MHz, 1107 MHz, 57 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:05.687, 0, Tesla V100-SXM2-16GB, 51, 67.60 W, 150.00 W, 1530 MHz, 877 MHz, 33 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:05.691, 1, Tesla PG500-216, 73, 103.91 W, 100.00 W, 1207 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:06.696, 0, Tesla V100-SXM2-16GB, 51, 109.76 W, 150.00 W, 1530 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:06.699, 1, Tesla PG500-216, 73, 100.41 W, 100.00 W, 1260 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:07.706, 0, Tesla V100-SXM2-16GB, 51, 73.42 W, 150.00 W, 1530 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:07.710, 1, Tesla PG500-216, 73, 109.03 W, 100.00 W, 1192 MHz, 1107 MHz, 58 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:08.716, 0, Tesla V100-SXM2-16GB, 51, 131.73 W, 150.00 W, 1530 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:08.721, 1, Tesla PG500-216, 73, 85.15 W, 100.00 W, 1162 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:09.726, 0, Tesla V100-SXM2-16GB, 51, 65.66 W, 150.00 W, 1530 MHz, 877 MHz, 37 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:09.734, 1, Tesla PG500-216, 73, 92.05 W, 100.00 W, 1177 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:10.740, 0, Tesla V100-SXM2-16GB, 51, 55.46 W, 150.00 W, 1530 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:10.749, 1, Tesla PG500-216, 73, 52.99 W, 100.00 W, 1260 MHz, 1107 MHz, 57 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:11.755, 0, Tesla V100-SXM2-16GB, 52, 73.91 W, 150.00 W, 1312 MHz, 877 MHz, 85 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:11.764, 1, Tesla PG500-216, 70, 49.61 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:12.772, 0, Tesla V100-SXM2-16GB, 52, 105.81 W, 150.00 W, 1357 MHz, 877 MHz, 72 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:12.777, 1, Tesla PG500-216, 70, 49.40 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:13.787, 0, Tesla V100-SXM2-16GB, 50, 48.21 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:13.804, 1, Tesla PG500-216, 72, 75.96 W, 100.00 W, 795 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:14.842, 0, Tesla V100-SXM2-16GB, 50, 48.21 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:14.853, 1, Tesla PG500-216, 73, 97.00 W, 100.00 W, 885 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:15.860, 0, Tesla V100-SXM2-16GB, 49, 48.21 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:15.865, 1, Tesla PG500-216, 74, 102.52 W, 100.00 W, 397 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:16.889, 0, Tesla V100-SXM2-16GB, 50, 86.96 W, 150.00 W, 1485 MHz, 877 MHz, 28 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:16.897, 1, Tesla PG500-216, 72, 116.88 W, 100.00 W, 1282 MHz, 1107 MHz, 48 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:17.903, 0, Tesla V100-SXM2-16GB, 51, 70.51 W, 150.00 W, 1522 MHz, 877 MHz, 31 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:17.916, 1, Tesla PG500-216, 73, 90.74 W, 100.00 W, 1192 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:18.922, 0, Tesla V100-SXM2-16GB, 51, 85.93 W, 150.00 W, 1522 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:18.926, 1, Tesla PG500-216, 73, 106.75 W, 100.00 W, 1215 MHz, 1107 MHz, 61 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:19.943, 0, Tesla V100-SXM2-16GB, 51, 86.96 W, 150.00 W, 1522 MHz, 877 MHz, 33 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:19.955, 1, Tesla PG500-216, 73, 91.57 W, 100.00 W, 1245 MHz, 1107 MHz, 68 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:20.961, 0, Tesla V100-SXM2-16GB, 51, 77.31 W, 150.00 W, 1522 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:20.966, 1, Tesla PG500-216, 74, 117.33 W, 100.00 W, 1260 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:21.972, 0, Tesla V100-SXM2-16GB, 52, 75.32 W, 150.00 W, 1530 MHz, 877 MHz, 38 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:21.976, 1, Tesla PG500-216, 74, 93.85 W, 100.00 W, 1192 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:22.994, 0, Tesla V100-SXM2-16GB, 52, 139.07 W, 150.00 W, 1530 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:23.004, 1, Tesla PG500-216, 74, 91.31 W, 100.00 W, 1177 MHz, 1107 MHz, 66 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:24.022, 0, Tesla V100-SXM2-16GB, 52, 95.14 W, 150.00 W, 1530 MHz, 877 MHz, 37 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:24.028, 1, Tesla PG500-216, 74, 100.39 W, 100.00 W, 1207 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:25.033, 0, Tesla V100-SXM2-16GB, 52, 77.25 W, 150.00 W, 1530 MHz, 877 MHz, 37 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:25.037, 1, Tesla PG500-216, 74, 111.40 W, 100.00 W, 1260 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:26.043, 0, Tesla V100-SXM2-16GB, 52, 96.11 W, 150.00 W, 1530 MHz, 877 MHz, 41 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:26.047, 1, Tesla PG500-216, 74, 108.61 W, 100.00 W, 1260 MHz, 1107 MHz, 59 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:27.053, 0, Tesla V100-SXM2-16GB, 51, 53.52 W, 150.00 W, 1530 MHz, 877 MHz, 4 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:27.059, 1, Tesla PG500-216, 72, 50.37 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:28.068, 0, Tesla V100-SXM2-16GB, 50, 53.52 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:28.073, 1, Tesla PG500-216, 71, 50.08 W, 100.00 W, 1260 MHz, 1107 MHz, 3 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:29.079, 0, Tesla V100-SXM2-16GB, 52, 156.88 W, 150.00 W, 1357 MHz, 877 MHz, 92 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:29.089, 1, Tesla PG500-216, 70, 49.40 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:30.095, 0, Tesla V100-SXM2-16GB, 53, 116.80 W, 150.00 W, 1447 MHz, 877 MHz, 63 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:30.100, 1, Tesla PG500-216, 70, 49.58 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:31.106, 0, Tesla V100-SXM2-16GB, 51, 42.87 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:31.111, 1, Tesla PG500-216, 73, 104.54 W, 100.00 W, 855 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:32.165, 0, Tesla V100-SXM2-16GB, 50, 42.38 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:32.176, 1, Tesla PG500-216, 73, 105.43 W, 100.00 W, 847 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:33.234, 0, Tesla V100-SXM2-16GB, 49, 42.38 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:33.245, 1, Tesla PG500-216, 74, 94.22 W, 100.00 W, 892 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:34.251, 0, Tesla V100-SXM2-16GB, 49, 41.90 W, 150.00 W, 1312 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:34.261, 1, Tesla PG500-216, 74, 98.47 W, 100.00 W, 907 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:35.282, 0, Tesla V100-SXM2-16GB, 49, 70.03 W, 150.00 W, 1447 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:35.291, 1, Tesla PG500-216, 72, 98.89 W, 100.00 W, 1260 MHz, 1107 MHz, 40 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:36.297, 0, Tesla V100-SXM2-16GB, 51, 86.90 W, 150.00 W, 1522 MHz, 877 MHz, 33 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:36.305, 1, Tesla PG500-216, 73, 100.49 W, 100.00 W, 1260 MHz, 1107 MHz, 68 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:37.312, 0, Tesla V100-SXM2-16GB, 51, 100.96 W, 150.00 W, 1522 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:37.317, 1, Tesla PG500-216, 74, 105.28 W, 100.00 W, 1237 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:38.323, 0, Tesla V100-SXM2-16GB, 52, 74.35 W, 150.00 W, 1522 MHz, 877 MHz, 30 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:38.328, 1, Tesla PG500-216, 74, 91.79 W, 100.00 W, 1140 MHz, 1107 MHz, 70 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:39.345, 0, Tesla V100-SXM2-16GB, 52, 112.52 W, 150.00 W, 1522 MHz, 877 MHz, 32 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:39.350, 1, Tesla PG500-216, 74, 104.09 W, 100.00 W, 1237 MHz, 1107 MHz, 67 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:40.355, 0, Tesla V100-SXM2-16GB, 52, 113.00 W, 150.00 W, 1522 MHz, 877 MHz, 32 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:40.361, 1, Tesla PG500-216, 74, 78.90 W, 100.00 W, 1192 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:41.366, 0, Tesla V100-SXM2-16GB, 52, 114.38 W, 150.00 W, 1522 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:41.371, 1, Tesla PG500-216, 75, 95.54 W, 100.00 W, 1177 MHz, 1107 MHz, 66 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:42.389, 0, Tesla V100-SXM2-16GB, 52, 114.38 W, 150.00 W, 1522 MHz, 877 MHz, 37 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:42.404, 1, Tesla PG500-216, 75, 105.31 W, 100.00 W, 1215 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:43.408, 0, Tesla V100-SXM2-16GB, 52, 127.06 W, 150.00 W, 1522 MHz, 877 MHz, 31 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:43.413, 1, Tesla PG500-216, 74, 90.16 W, 100.00 W, 1147 MHz, 1107 MHz, 70 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:44.418, 0, Tesla V100-SXM2-16GB, 52, 81.14 W, 150.00 W, 1522 MHz, 877 MHz, 33 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:44.423, 1, Tesla PG500-216, 74, 124.56 W, 100.00 W, 1177 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:45.441, 0, Tesla V100-SXM2-16GB, 52, 89.32 W, 150.00 W, 1312 MHz, 877 MHz, 65 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:45.456, 1, Tesla PG500-216, 71, 50.37 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:46.467, 0, Tesla V100-SXM2-16GB, 53, 101.93 W, 150.00 W, 1372 MHz, 877 MHz, 85 %, 15793 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:46.472, 1, Tesla PG500-216, 71, 50.07 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:47.482, 0, Tesla V100-SXM2-16GB, 51, 54.01 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:47.492, 1, Tesla PG500-216, 73, 109.75 W, 100.00 W, 945 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:48.540, 0, Tesla V100-SXM2-16GB, 51, 53.52 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:48.544, 1, Tesla PG500-216, 74, 85.51 W, 100.00 W, 502 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:49.589, 0, Tesla V100-SXM2-16GB, 50, 53.52 W, 150.00 W, 1530 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:49.593, 1, Tesla PG500-216, 74, 99.26 W, 100.00 W, 877 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:50.605, 0, Tesla V100-SXM2-16GB, 49, 42.38 W, 150.00 W, 1312 MHz, 877 MHz, 37 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:50.610, 1, Tesla PG500-216, 72, 51.33 W, 100.00 W, 1260 MHz, 1107 MHz, 2 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:51.616, 0, Tesla V100-SXM2-16GB, 51, 91.69 W, 150.00 W, 1312 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:51.628, 1, Tesla PG500-216, 74, 99.79 W, 100.00 W, 1207 MHz, 1107 MHz, 62 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:52.635, 0, Tesla V100-SXM2-16GB, 50, 61.29 W, 150.00 W, 1312 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:52.644, 1, Tesla PG500-216, 75, 85.98 W, 100.00 W, 1215 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:53.650, 0, Tesla V100-SXM2-16GB, 50, 107.19 W, 150.00 W, 1312 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:53.670, 1, Tesla PG500-216, 74, 102.89 W, 100.00 W, 1185 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:54.676, 0, Tesla V100-SXM2-16GB, 51, 63.71 W, 150.00 W, 1380 MHz, 877 MHz, 40 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:54.681, 1, Tesla PG500-216, 74, 108.74 W, 100.00 W, 1260 MHz, 1107 MHz, 66 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:55.687, 0, Tesla V100-SXM2-16GB, 51, 64.20 W, 150.00 W, 1380 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:55.697, 1, Tesla PG500-216, 75, 103.30 W, 100.00 W, 1170 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:56.712, 0, Tesla V100-SXM2-16GB, 51, 79.14 W, 150.00 W, 1380 MHz, 877 MHz, 40 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:56.724, 1, Tesla PG500-216, 75, 94.43 W, 100.00 W, 1192 MHz, 1107 MHz, 61 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:57.729, 0, Tesla V100-SXM2-16GB, 51, 102.41 W, 150.00 W, 1380 MHz, 877 MHz, 38 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:57.734, 1, Tesla PG500-216, 75, 103.57 W, 100.00 W, 1222 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:58.753, 0, Tesla V100-SXM2-16GB, 51, 86.42 W, 150.00 W, 1380 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:58.758, 1, Tesla PG500-216, 75, 103.10 W, 100.00 W, 1260 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:59.764, 0, Tesla V100-SXM2-16GB, 51, 74.88 W, 150.00 W, 1380 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:21:59.774, 1, Tesla PG500-216, 75, 100.27 W, 100.00 W, 1170 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:00.779, 0, Tesla V100-SXM2-16GB, 51, 46.75 W, 150.00 W, 1380 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:00.785, 1, Tesla PG500-216, 75, 52.31 W, 100.00 W, 1260 MHz, 1107 MHz, 61 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:01.796, 0, Tesla V100-SXM2-16GB, 50, 82.00 W, 150.00 W, 1380 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:01.800, 1, Tesla PG500-216, 72, 49.89 W, 100.00 W, 1260 MHz, 1107 MHz, 5 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:02.810, 0, Tesla V100-SXM2-16GB, 52, 81.08 W, 150.00 W, 1320 MHz, 877 MHz, 92 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:02.819, 1, Tesla PG500-216, 71, 49.60 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:03.826, 0, Tesla V100-SXM2-16GB, 52, 147.21 W, 150.00 W, 1380 MHz, 877 MHz, 63 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:03.830, 1, Tesla PG500-216, 71, 49.49 W, 100.00 W, 1260 MHz, 1107 MHz, 0 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:04.841, 0, Tesla V100-SXM2-16GB, 50, 48.70 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:04.846, 1, Tesla PG500-216, 74, 95.27 W, 100.00 W, 855 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:05.884, 0, Tesla V100-SXM2-16GB, 50, 48.21 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:05.895, 1, Tesla PG500-216, 74, 99.15 W, 100.00 W, 930 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:06.903, 0, Tesla V100-SXM2-16GB, 50, 48.21 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:06.914, 1, Tesla PG500-216, 74, 107.35 W, 100.00 W, 847 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:07.974, 0, Tesla V100-SXM2-16GB, 49, 48.21 W, 150.00 W, 1447 MHz, 877 MHz, 0 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:07.979, 1, Tesla PG500-216, 75, 83.40 W, 100.00 W, 1005 MHz, 1107 MHz, 100 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:08.997, 0, Tesla V100-SXM2-16GB, 50, 69.05 W, 150.00 W, 1530 MHz, 877 MHz, 27 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:09.004, 1, Tesla PG500-216, 74, 105.13 W, 100.00 W, 1260 MHz, 1107 MHz, 43 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:10.010, 0, Tesla V100-SXM2-16GB, 51, 112.86 W, 150.00 W, 1530 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:10.022, 1, Tesla PG500-216, 75, 101.53 W, 100.00 W, 1245 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:11.027, 0, Tesla V100-SXM2-16GB, 51, 94.66 W, 150.00 W, 1530 MHz, 877 MHz, 34 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:11.031, 1, Tesla PG500-216, 75, 77.36 W, 100.00 W, 1245 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:12.047, 0, Tesla V100-SXM2-16GB, 51, 98.54 W, 150.00 W, 1530 MHz, 877 MHz, 33 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:12.055, 1, Tesla PG500-216, 75, 90.16 W, 100.00 W, 1095 MHz, 1107 MHz, 63 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:13.060, 0, Tesla V100-SXM2-16GB, 51, 75.32 W, 150.00 W, 1530 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:13.064, 1, Tesla PG500-216, 75, 119.03 W, 100.00 W, 1252 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:14.070, 0, Tesla V100-SXM2-16GB, 52, 96.60 W, 150.00 W, 1530 MHz, 877 MHz, 33 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:14.074, 1, Tesla PG500-216, 75, 101.55 W, 100.00 W, 1230 MHz, 1107 MHz, 65 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:15.080, 0, Tesla V100-SXM2-16GB, 52, 87.87 W, 150.00 W, 1530 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:15.084, 1, Tesla PG500-216, 75, 79.73 W, 100.00 W, 1147 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:16.091, 0, Tesla V100-SXM2-16GB, 52, 65.61 W, 150.00 W, 1530 MHz, 877 MHz, 36 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:16.094, 1, Tesla PG500-216, 75, 78.91 W, 100.00 W, 1185 MHz, 1107 MHz, 64 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:17.111, 0, Tesla V100-SXM2-16GB, 52, 93.26 W, 150.00 W, 1530 MHz, 877 MHz, 35 %, 15793 MiB, 0x0000000000000000, Not Active, Not Active, Not Active, Not Active
+2026/11/27 03:22:17.119, 1, Tesla PG500-216, 76, 93.22 W, 100.00 W, 1095 MHz, 1107 MHz, 67 %, 31780 MiB, 0x0000000000000004, Active, Not Active, Not Active, Not Active
