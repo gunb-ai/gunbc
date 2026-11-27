@@ -13,6 +13,16 @@ These keys were re-recorded after a review fix that routes the key's compiler-im
 `transform_content_digest` (the single authority) rather than re-reading the executable; the census
 answer digests are unaffected by that change.
 
+After consolidating the stored-record format into a single seed authority in
+`closure_identity` (`shadow_record`/`shadow_read_prior`/`shadow_compare_and_record`, commit
+`6b2be4127d0`) the fixture was re-run on that head and stayed green: every row **relation** below
+reproduced — E1 key == E2 key (the bytes-only red), F1→F2 key move, F3 == F2 (warm hit/equal),
+D1 == D2 (cross-process determinism), G2 key moved with answer equal to G1, H refused before any
+record — and the build-stable census answer digests (`89f2a524…`, `c7820b86…`) were unchanged. The
+left-hand key hexes are build-specific (they embed the running-image identity, as noted below); the
+record-format change does not touch the key preimage, so only a rebuild that re-links the binary
+moves them, exactly as stated.
+
 Two key facts about the numbers:
 
 * The **census answer digest** (right-hand column) depends only on the compiled answer, so it is

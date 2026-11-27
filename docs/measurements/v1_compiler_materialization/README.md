@@ -77,6 +77,16 @@ warm repeat; **G** a body-only, reference-preserving edit recomputes to an equal
 duplicate module is refused before any answer; plus a determinism control (the same tree keyed in
 two separate processes gives the same key).
 
+**Which binary each scenario runs.** Every scenario re-executes the *test binary* (its
+`current_exe()`) once per step in a fresh OS process; that binary links the real v1 compiler
+library, so `compile_to_resolved` + `build_symbol_index_census` run for real on real `.dag` sources
+in each process. The running-image identity that S4 embeds is therefore the test binary's image —
+which is the right thing to hash here, because every row is compared within one consistent image and
+the experiment never feeds a stored answer back to the compiler. The production serving route that
+would key on the shipped `gunbc` binary image belongs to the serving PR, not to this fixture. The
+observer's `gunbc run` CLI hook and the newline-index question are untouched by this fixture; only
+the shared record format (in `closure_identity`) and the S4 key are exercised here.
+
 Predictions (committed before any run, left unedited) are in
 [cache-key-predictions.md](cache-key-predictions.md); the observations recorded beside them are in
 [cache-key-observed.md](cache-key-observed.md). The harness is
