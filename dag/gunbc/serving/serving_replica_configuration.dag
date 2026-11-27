@@ -26,6 +26,7 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { take_prefix }
 import std.measure { Permille, PositiveMeasureCount, PositiveMeasureCountBuild, PositiveMeasureCountBuilt, PositiveMeasureCountRefused, TokenCount, permille, positive_measure_count_from_int, positive_measure_count_nat }
 import std.integer { nat_to_int }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_host_identity {
@@ -818,3 +819,28 @@ fn h11_engine_figures() -> ReplicaFigures {
     Present { value: row } => row.figures,
   }
 }
+
+// ── FRONTIER: WHO READS THIS JOIN ────────────────────────────────────────────────────────────────
+// CONSUMPTION, classified rather than claimed (gunbc.design_argument::consumption: "For each added
+// declaration, name the consumer ... or classify it: consumed in this change; consumed by a named later
+// change (a declared frontier, with its trigger); or dangling"). review 99391 measured what this change
+// leaves unread, and the measurement is right: outside this module and its witness nothing calls
+// configuration_prefix_cache_capacity or prefix_cache_ratio_permille, and gunbc.serving.serving_replica_choice
+// -- the only module outside this one that imports ReplicaConfiguration -- reads neither concurrent_agents
+// nor prefix_cache_ratio (0 hits over that file).
+//
+// THE WIRING THAT WOULD CLOSE IT, spelled out so the frontier is a decision and not an omission: that
+// module's feasibility scan reads only the axes it funds or constrains (std.decision's
+// feasibility_unread_axes and unread_axis_gaps decide which gaps reach the answer, so a gap naming an
+// unfunded axis never does), and HardConstraint carries ONE bound_micro for a whole candidate field, not a
+// relation between two figures of one candidate. So "this candidate's observed population exceeds its own
+// host-total warm capacity" cannot be said in that vocabulary without minting a funded warm-session surplus
+// axis and re-answering that module's witnesses. Minting an axis the fleet has not funded IS a placement
+// decision, and this row refuses to take one: its out_of_scope (dag/gunbc/roadmap/roadmap_authority.dag:8516)
+// is "Any --prompt-cache value on a live host -- no tuning from here", and its boundary (:8513) says the
+// ratio is carried "so a future tuning decision reads a measurement instead of a default". The consumer sits
+// on the far side of this frontier by the row's own design; what this change owes is that the measurement is
+// there, typed, and loud when it is breached -- which is what the two red controls answer for.
+data prefix_cache_capacity_choice_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.serving.serving_replica_choice gains one funded SelectionAxis over the surplus between a candidate's host-total warm-session capacity (configuration_warm_session_capacity) and its observed admitted population (ConcurrentAgentPopulation), plus the HardConstraint putting that surplus at or above zero, with that module's witnesses re-answered for the new axis -- TRIGGERED BY the placement or tuning decision this row exists to inform: the row's boundary (dag/gunbc/roadmap/roadmap_authority.dag:8513) carries the ratio so that 'a future tuning decision reads a measurement instead of a default', and its out_of_scope (:8516) forbids taking that decision from here. SUFFICIENT FOR: a candidate whose observed population exceeds the capacity its own rows declare is refused a place by the selection instead of ranked beside one that fits, and a tuning decision reads the carried permille instead of the inherited six-checkpoint default." as NonEmptyStr,
+)
