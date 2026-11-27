@@ -30,6 +30,7 @@ import gunbc.guarantee_probe_corpus {
   active_v1_compile_probe_row,
   probe_row_expectation_holds,
   probe_expectation_is_below_floor_hole,
+  probe_observation_from_census,
   guarantee_probe_below_floor_hole_rows,
   build_v1_compile_receipt,
   receipt_joins_v1_compile_path,
@@ -167,6 +168,28 @@ fn silent_hole_holds(probe: GuaranteeProbeId, source: String) -> Bool {
 
 fn blocking_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
   census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
+}
+
+// The mechanically-correct variant of silent_hole_holds for a hole whose subject program must
+// import std to reach its shape at all (the alias-return fold resolves at the coproduct carrier
+// through std.algebra -- measured: the program compiles with 0 blocking / 164 advisory rows, all
+// advisories inside the imported std modules, so its observation today is ACCEPTED_COUNTED, not
+// ACCEPTED_CLEAN). total_row_count_is_zero partitions ALL rows by severity and can never hold for
+// such a program; probe_row_observation_holds' silent_acceptance_hole arm is observation_is_clean
+// and fails for the same reason. What can still fail in BOTH directions, and does: the census
+// must RUN (ProbeNotRunnable fails the premise -- a harness that cannot measure cannot pass), the
+// refusal count must be ZERO (any blocking row -- a MethodNotFound refusal once the wall fires,
+// or a ParseError if the subject stops parsing -- fails it), and the probe row must exist and be
+// classified below-floor. The hole-class truth it pins: accepted, zero refusals, by declaration.
+fn below_floor_hole_accepted_unblocked(probe: GuaranteeProbeId, source: String) -> Bool {
+  let observation = probe_observation_from_census(census: census_of(source: source))
+  match active_probe_row(probe: probe) {
+    Present { value: row } =>
+      probe_expectation_is_below_floor_hole(e: row.expectation)
+        && observed_is_verdict(o: observation)
+        && observation_refused_count(o: observation) == 0
+    Absent => false
+  }
 }
 
 data generic_instantiation_hole_source: String = "module probe_floor_generic_inst\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: \"not an int\" } }\n"
@@ -312,9 +335,10 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 
 // Carrier leg for the method-receiver-normalization frontier roster hole (corpus row
 // alias_return_fold_silent_hole_probe, class method_established_surface_class). It asserts ONLY
-// what is true today -- the program is accepted with zero blocking diagnostics -- exactly the
-// shape of floor_parse_list_separator_omission_is_still_silent, which is the repo's own precedent
-// for executing a below-floor hole: a firing-side assertion that FLIPS WITH THE WALL. Bounded
+// what is true today -- the program is ACCEPTED with zero refusals (accepted_counted: 0 blocking,
+// 164 advisory rows inside the imported std modules; measured, see below_floor_hole_accepted_unblocked)
+// -- the shape of floor_parse_list_separator_omission_is_still_silent adapted to a subject that
+// cannot reach its hole shape without std: a firing-side assertion that FLIPS WITH THE WALL. Bounded
 // flip trigger: when the fold/lookup side refuses this program with MethodNotFound, this leg goes
 // red with it and the corpus row moves to ExpectBlockingRefusal { diagnostic_class:
 // "MethodNotFound" } -- delete neither. The refusal side of this family is NOT asserted here; it
@@ -322,13 +346,15 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 // so no refusal weight rides on this file.
 test fn method_alias_return_fold_omission_is_still_silent() -> ProcessExit {
   census_verdict_all([
-    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: alias_return_fold_silent_hole_probe, source: method_alias_return_fold_silent_hole_source)),
+    census_premise("the probe row is declared below-floor, the census runs, and zero refusals are observed", below_floor_hole_accepted_unblocked(probe: alias_return_fold_silent_hole_probe, source: method_alias_return_fold_silent_hole_source)),
     blocking_verdict(source: method_alias_return_fold_silent_hole_source, wanted: "MethodNotFound", holds: fn(n) { n == 0 })
   ])
 }
 
-// The hole row joins the receipt machinery the same way the parse-separator hole does: the
-// observation IS the acceptance, recorded rather than laundered.
+// The hole row joins the receipt machinery the same way the parse-separator hole does, with the
+// one substitution below_floor_hole_accepted_unblocked documents: the observation IS the acceptance
+// -- accepted_counted, refusals zero -- recorded, not laundered (observation_is_clean would demand
+// zero rows of every severity, which no std-importing subject can satisfy in this harness).
 test fn method_alias_return_fold_receipt_records_acceptance_as_the_observation() -> Bool {
   match active_v1_compile_probe_row(probe: alias_return_fold_silent_hole_probe) {
     Present { value: row } =>
@@ -338,7 +364,8 @@ test fn method_alias_return_fold_receipt_records_acceptance_as_the_observation()
         subject_revision: synthetic_program_subject_revision(source: method_alias_return_fold_silent_hole_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      observation_is_clean(o: receipt.observed)
+      observed_is_verdict(o: receipt.observed)
+        && observation_refused_count(o: receipt.observed) == 0
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
     Absent => false
   }

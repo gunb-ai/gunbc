@@ -810,7 +810,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: method_established_surface_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "an alias-return receiver whose fold resolves at a coproduct carrier is accepted with zero blocking diagnostics -- fn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) } compiles clean on main (type List<element> = FreeMonoid<element>, dag/std/types.dag) -- while the row method-receiver-normalization declares this spelling must refuse with its own cause, MethodNotFound keyed at the coproduct" as NonEmptyStr,
+        invalid_state: "an alias-return receiver whose fold resolves at a coproduct carrier is accepted with zero blocking diagnostics -- fn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) } compiles on main with zero blocking rows and 164 advisory rows, all inside the imported std modules (the observation today is ACCEPTED_COUNTED, not ACCEPTED_CLEAN; measured via test.claim.guarantee_floor_class_probe_witness method_alias_return_fold_omission_is_still_silent) (type List<element> = FreeMonoid<element>, dag/std/types.dag) -- while the row method-receiver-normalization declares this spelling must refuse with its own cause, MethodNotFound keyed at the coproduct" as NonEmptyStr,
       },
     },
     GuaranteeProbeRow {
