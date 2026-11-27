@@ -186,7 +186,10 @@ fn front_end_continue_parse(
 // precondition are written on source-annotation-fold-carries-absorbed-capture-count) -- and it judges nothing:
 // no span is compared here, and the count is never
 // compared against the capture count, which would decide std.source_annotation annotation_attach_step's join
-// rule in a second place (gunbc.design_argument::single_authority). The named consumer that reads it back over
+// rule in a second place (gunbc.design_argument::single_authority). The guard that would catch an
+// attachment loss is therefore deferred, and its precondition is that fold carrying the absorbed per-row
+// count: with no per-row number there is nothing for a consumer to compare against. That deferral is
+// carried by the roadmap row named above, not by this file. The named consumer that reads it back over
 // an executing route is v2.test.claim.staged_front_end
 // staged_front_end_produces_the_authored_parse_for_an_annotated_module, positive on a commented module and zero
 // on an uncommented one.
