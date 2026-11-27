@@ -15,13 +15,15 @@ import gunbc.crate_partition {
   PolicyDerived
 }
 import v2.workflow.emitted_closure_crate_partition {
-  ClosureDependencyUnresolved,
-  ClosureEntryUndeclared,
-  ClosureFactLookupRejected,
   EmittedClosureDagRefused,
   EmittedClosurePartitionOutcome,
   EmittedClosureResolved,
-  derived_policy_partition,
+  derived_policy_partition
+}
+import v2.workflow.rust_crate_partition {
+  ClosureDependencyUnresolved,
+  ClosureEntryUndeclared,
+  ClosureFactLookupRejected,
   module_dag_from_dependency_facts
 }
 
@@ -49,7 +51,7 @@ data missing_root: String = "fixtures/emitted_closure_partition_missing"
 fn fixture_partition_at(root: String, entry: String) -> EmittedClosurePartitionOutcome {
   derived_policy_partition(
     derivation: module_dag_from_dependency_facts(
-      entry_path: root + "/" + entry,
+      entry_paths: [root + "/" + entry],
       edges: dependency_resolution_facts_live(pool_roots: [root], importer_roots: [root], exclude_substrings: []),
       declarations: module_declaration_facts_live(pool_roots: [root])
     ),

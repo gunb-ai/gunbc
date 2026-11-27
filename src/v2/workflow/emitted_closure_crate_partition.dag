@@ -23,23 +23,16 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
-  dependency_closure,
   dependency_resolution_facts_live,
   module_declaration_facts_live
 }
-import std.algebra { empty_map, map_insert }
-import v2.std.witness { map_get_checked }
-import v2.std.diagnostic { Accepted, Rejected }
-import std.optional { Absent, Optional, Present }
-import v2.std.compilers.compilation_unit { ModuleDag }
 import v2.workflow.rust_crate_partition {
-  DependencyEdgeProjectionRefusal,
-  DependencyEdgesProjected,
-  DependencyEdgesRefused,
-  ProjectedDependencyOutsideNodes,
-  ProjectedDependencyUnresolved,
-  ProjectedFactLookupRejected,
-  project_dependency_edges,
+  ClosureEntryUndeclared,
+  ModuleDagDerivation,
+  ModuleDagDerivationRefusal,
+  ModuleDagDerivationRefused,
+  ModuleDagDerived,
+  module_dag_from_dependency_facts,
   resolve_partition_outcome
 }
 
@@ -69,99 +62,8 @@ import v2.workflow.rust_crate_partition {
 
 data emitted_compiler_closure_pool_roots: List<String> = ["dag", "src/v2"]
 
-fn emitted_closure_path_set(paths: List<String>) -> Map<String, Bool> {
-  paths |> fold(init: empty_map(), f: fn(acc, path) { map_insert(acc, path, true) })
-}
-
-fn emitted_closure_module_by_path(
-  declarations: List<ModuleDeclarationFact>,
-  closure: Map<String, Bool>
-) -> Map<String, String> {
-  declarations |> fold(init: empty_map(), f: fn(acc, decl) {
-    match map_get_checked(closure, decl.path) {
-      Accepted { value: Present { value: _ }, diagnostics: _ } => map_insert(acc, decl.path, decl.module)
-      Accepted { value: Absent, diagnostics: _ } => acc
-      Rejected { diagnostics: _ } => acc
-    }
-  })
-}
-
-fn emitted_closure_module_at(by_path: Map<String, String>, path: String) -> Optional<String> {
-  match map_get_checked(by_path, path) {
-    Accepted { value: found, diagnostics: _ } => found
-    Rejected { diagnostics: _ } => Absent
-  }
-}
-
-// A DERIVED DAG IS EITHER THE WHOLE CLOSURE OR A REFUSAL. A dependency an in-closure module
-// requires but the pool does not declare is not an edge to drop: dropping it yields a SMALLER
-// graph that partitions cleanly and reads as a completed closure, which is the absorbing fallback
-// gunbc.design_argument::fail_closed forbids. So the entry must be declared, and every dependency reached from it
-// must resolve to a declared module in the closure; the first that does not is refused with its
-// importer and target. Modules of the pool the entry does not reach are never inspected.
-type ModuleDagDerivationRefusal
-  = ClosureEntryUndeclared { entry_path: String }
-  | ClosureDependencyUnresolved { importer_path: String, target_module: String }
-  | ClosureFactLookupRejected { key: String }
-
-type ModuleDagDerivation
-  = ModuleDagDerived { module_dag: ModuleDag }
-  | ModuleDagDerivationRefused { cause: ModuleDagDerivationRefusal }
-
-fn closure_entry_declared(entry_path: String, declarations: List<ModuleDeclarationFact>) -> Bool {
-  declarations |> any(decl => decl.path == entry_path)
-}
-
-// The edges are the shared projection's (v2.workflow.rust_crate_partition project_dependency_edges),
-// the one rule both fact-reading partitions call; this module supplies only its nodes, which are
-// the closure's modules under their own names. A declared target outside the closure cannot occur
-// for a closure computed from the same facts, and is reported as the unresolved dependency it
-// would be.
-fn closure_refusal_of(cause: DependencyEdgeProjectionRefusal) -> ModuleDagDerivationRefusal {
-  match cause {
-    ProjectedDependencyUnresolved { importer_path: path, target_module: target } =>
-      ClosureDependencyUnresolved { importer_path: path, target_module: target }
-    ProjectedDependencyOutsideNodes { importer_path: path, importer: _, target_module: target } =>
-      ClosureDependencyUnresolved { importer_path: path, target_module: target }
-    ProjectedFactLookupRejected { key: key } =>
-      ClosureFactLookupRejected { key: key }
-  }
-}
-
-fn module_dag_from_dependency_facts(
-  entry_path: String,
-  edges: List<ModuleDependencyEdge>,
-  declarations: List<ModuleDeclarationFact>
-) -> ModuleDagDerivation {
-  if !closure_entry_declared(entry_path: entry_path, declarations: declarations) {
-    ModuleDagDerivationRefused { cause: ClosureEntryUndeclared { entry_path: entry_path } }
-  } else {
-    let closure = emitted_closure_path_set(
-      paths: dependency_closure(entry_path: entry_path, edges: edges, nodes: declarations)
-    )
-    let by_path = emitted_closure_module_by_path(declarations: declarations, closure: closure)
-    let modules = declarations |> fold(init: [], f: fn(acc, decl) {
-      match emitted_closure_module_at(by_path: by_path, path: decl.path) {
-        Present { value: module_id } => acc |> list_push(module_id as ModuleId)
-        Absent => acc
-      }
-    })
-    let node_by_module = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, module_id as String) })
-    match project_dependency_edges(importer_node_by_path: by_path, node_by_module: node_by_module, dependencies: edges) {
-      DependencyEdgesRefused { cause: cause } => ModuleDagDerivationRefused { cause: closure_refusal_of(cause: cause) }
-      DependencyEdgesProjected { edges: projected } =>
-        ModuleDagDerived {
-          module_dag: ModuleDag {
-            modules: modules,
-            edges: projected,
-            exports: empty_map(),
-            type_definitions: empty_map(),
-          }
-        }
-    }
-  }
-}
-
+// The closure of the one entry, as a module DAG, by the rule both fact-reading partitions share:
+// v2.workflow.rust_crate_partition module_dag_from_dependency_facts, which also states its refusals.
 data emitted_compiler_closure_entry_module: String = "v2.compiler.source_root_eval"
 
 fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
@@ -171,7 +73,7 @@ fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
     ModuleFileDerived { file: file } => {
       let roots = emitted_compiler_closure_pool_roots
       module_dag_from_dependency_facts(
-        entry_path: repository_path_of_module_file(file: file),
+        entry_paths: [repository_path_of_module_file(file: file)],
         edges: dependency_resolution_facts_live(pool_roots: roots, importer_roots: roots, exclude_substrings: []),
         declarations: module_declaration_facts_live(pool_roots: roots)
       )

@@ -1,7 +1,7 @@
 module v2.test.claim.stage0_partition_rebuild_scope_witness
 
 import std.types { Bool, List, String }
-import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
+import v2.workflow.rust_crate_partition { Stage0PartitionRowsDerived, Stage0PartitionRowsRefused, stage0_partition_crate_rows }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
@@ -180,6 +180,7 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: _ } } => false
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
@@ -271,6 +272,7 @@ test fn witness_duplicate_owner_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: _ } } => false
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
@@ -293,6 +295,7 @@ test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: _ } } => false
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
@@ -315,6 +318,7 @@ test fn witness_empty_changed_set_is_nothing_to_rebuild_holds() -> Bool {
   ) {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => true
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: _ } } => false
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
@@ -337,6 +341,7 @@ test fn witness_unreached_executable_package_refuses_holds() -> Bool {
   ) {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: p, detail: _ } } => p == "v1-stage0-runtime"
+    RebuildScopeRefused { cause: PartitionRowsUnderivable { reason: _ } } => false
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
@@ -569,6 +574,22 @@ test fn witness_authority_edit_still_explains_holds() -> Bool {
   }
 }
 
+// A PARTITION MEMBER'S IMPORT-ONLY EDIT EXPLAINS A MOVE; A NON-MEMBER'S DOES NOT. The partition's
+// rows are derived from its members' dependency facts, so std.effects (a root) gaining or losing an
+// import moves the rows while the regen graph reaches no partition-generation mirror from the edit
+// and the authority file is untouched -- the bound below is exactly what that edit produces. Before
+// the member arm this was PartitionMoveUnexplained, so every ordinary import change to a seed module
+// would have needed an authority edit to land. The control: the same bound for an edit to a module
+// no root reaches (v2.workflow.required_regen lives under src/v2, outside the seed's pool) stays
+// unexplained, so the arm is not a blanket pass.
+test fn witness_partition_member_edit_explains_the_move_holds() -> Bool {
+  stage0_partition_move_explained_by_bound(changed_paths: ["dag/std/effects.dag"], bound: AffectedMirrors { edited: ["std.effects"], mirrors: [], bootstrap_products: [] })
+}
+
+test fn witness_non_member_edit_leaves_the_move_unexplained_holds() -> Bool {
+  !stage0_partition_move_explained_by_bound(changed_paths: ["src/v2/workflow/required_regen.dag"], bound: AffectedMirrors { edited: ["v2.workflow.required_regen"], mirrors: [], bootstrap_products: [] })
+}
+
 // FAIL CLOSED: a bound that refuses does not fall through to the authority path.
 test fn witness_refusing_bound_does_not_fall_through_to_authority_path_holds() -> Bool {
   match stage0_partition_authority_storage_path() {
@@ -672,14 +693,18 @@ test fn witness_unlocatable_drift_cannot_select_whole_build_holds() -> Bool {
 // module-bearing package is treated as changed here, so each package must appear in the closure that
 // is derived for it; a reader back on the snapshot loses the package whose row is only authored.
 test fn witness_today_closure_covers_every_package_the_partition_declares() -> Bool {
-  stage0_partition_crate_rows()
-    |> filter(row => (row.modules |> count) > 0)
-    |> all(row =>
-      stage0_partition_rebuild_packages_today(
-        host_shell_modules: [],
-        changed_mirrors: row.modules |> map(m => concat(m, ".rs")),
-        unlocatable: []
-      ) |> any(p => p == row.package_name))
+  match stage0_partition_crate_rows() {
+    Stage0PartitionRowsRefused { cause: _ } => false
+    Stage0PartitionRowsDerived { rows: rows } =>
+      rows
+        |> filter(row => (row.modules |> count) > 0)
+        |> all(row =>
+          stage0_partition_rebuild_packages_today(
+            host_shell_modules: [],
+            changed_mirrors: row.modules |> map(m => concat(m, ".rs")),
+            unlocatable: []
+          ) |> any(p => p == row.package_name))
+  }
 }
 
 // THE EDGES OF THE CLOSURE COME FROM THE ROWS IT IS GIVEN, NOT FROM THE SNAPSHOT.

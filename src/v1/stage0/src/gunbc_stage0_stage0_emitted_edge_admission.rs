@@ -3,6 +3,7 @@
 
 use self::Stage0EmittedEdgeAdmission::*;
 use self::Stage0EmittedModuleOwner::*;
+use self::Stage0EmittedTreePackagesDeclaration::*;
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{
     DeclaredImport, InlinePathReference, ReexportFacade, RuntimePrelude, SemanticSourceReference,
     ServiceRuntimeSurface,
@@ -28,6 +29,17 @@ pub struct Stage0EmittedTreePackages {
     pub rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     pub host_shell_package_name: String,
     pub host_shell_dependencies: Rc<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0EmittedTreePackagesDeclaration {
+    Stage0EmittedTreePackagesDeclared {
+        packages: Rc<Stage0EmittedTreePackages>,
+    },
+    Stage0EmittedTreePackagesRefused {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

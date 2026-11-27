@@ -1331,7 +1331,7 @@ fn emitted_tree_packages(
     workspace: &Path,
 ) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String>
 {
-    use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
+    use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackagesDeclaration;
     use crate::v1_interpreter::{self, str_value, ExecutionMode};
     let roots: Vec<String> = declared_partition_corpus_roots(workspace);
     let entry = roots
@@ -1410,8 +1410,12 @@ fn emitted_tree_packages(
     // is a different projection (`v2.compiler.self_host.stage0_executable_assembly`), a module
     //-adding change never moves the shell, and the sibling is named in the ledger row rather than
     // silently widened to cover it.
+    //
+    // The rows are DERIVED from the change's source tree, so the declaration is an outcome: a tree
+    // the derivation refuses (an undeclared root, an unresolved import, a module no floor covers)
+    // arrives as `Stage0EmittedTreePackagesRefused` with its reason, and this refuses with it.
     let declared_dependencies: Vec<String> = host_shell_dependencies.iter().cloned().collect();
-    let packages: Stage0EmittedTreePackages = decode_with_args(
+    let declaration: Stage0EmittedTreePackagesDeclaration = decode_with_args(
         &ctx,
         "stage0_emitted_tree_packages_as_declared",
         &[
@@ -1426,7 +1430,14 @@ fn emitted_tree_packages(
         ],
     )?;
     report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
-    Ok(Rc::new(packages))
+    match declaration {
+        Stage0EmittedTreePackagesDeclaration::Stage0EmittedTreePackagesDeclared { packages } => {
+            Ok(packages)
+        }
+        Stage0EmittedTreePackagesDeclaration::Stage0EmittedTreePackagesRefused { reason } => Err(
+            format!("refusal: the emitted tree's package graph is not derivable: {reason}"),
+        ),
+    }
 }
 
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
@@ -3805,8 +3816,8 @@ mod tests {
         // flip before #16310.
         //
         // THE FIRST TWO LINES ARE THE SHAPE THE AUTHORITY REALLY CARRIES. A partition row lists its
-        // units flat already -- `stage0_v1_infer_modules()` in src/v2/workflow/rust_crate_partition.dag
-        // enumerates "v1_compiler_parse" -- so on real rows the projection is the identity and the
+        // units flat already -- `stage0_partition_derivation` in src/v2/workflow/rust_crate_partition.dag
+        // places "v1_compiler_parse" -- so on real rows the projection is the identity and the
         // join is the row string plus the extension. That is the case the merge path exercises, and
         // it is pinned first so a change here cannot pass on dotted fixtures alone.
         assert_eq!(

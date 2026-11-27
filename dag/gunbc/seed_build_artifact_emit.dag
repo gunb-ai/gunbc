@@ -14,7 +14,11 @@ import gunbc.generated_artifact {
 import gunbc.repo.cargo_config_emit { expected_cargo_config_toml }
 import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.stage0.stage0_crate_layout_emit { expected_stage0_crate_layout_generated_dag, expected_stage0_crate_layout_generated_rs }
-import gunbc.stage0.stage0_crate_partition_emit { expected_stage0_crate_partition_generated_dag }
+import gunbc.stage0.stage0_crate_partition_emit {
+  Stage0CratePartitionGeneratedRefused,
+  Stage0CratePartitionGeneratedRendered,
+  expected_stage0_crate_partition_generated_dag
+}
 import gunbc.stage0.stage0_executable_assembly_emit {
   expected_stage0_executable_assembly_generated_dag, expected_stage0_linked_partition_crates_txt,
   LinkedPartitionCratesRendered, LinkedPartitionCratesRefused
@@ -67,7 +71,10 @@ fn seed_build_artifact_body(a: GeneratedArtifact) -> SeedBuildArtifactBody {
     CargoConfigArtifact => SeedBuildArtifactProduced { content: expected_cargo_config_toml() }
     Stage0CrateLayoutGeneratedDagArtifact => SeedBuildArtifactProduced { content: expected_stage0_crate_layout_generated_dag() }
     Stage0CrateLayoutGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_stage0_crate_layout_generated_rs() }
-    Stage0CratePartitionGeneratedDagArtifact => SeedBuildArtifactProduced { content: expected_stage0_crate_partition_generated_dag() }
+    Stage0CratePartitionGeneratedDagArtifact => match expected_stage0_crate_partition_generated_dag() {
+      Stage0CratePartitionGeneratedRendered { content } => SeedBuildArtifactProduced { content: content }
+      Stage0CratePartitionGeneratedRefused { reason } => SeedBuildArtifactRefused { reason: reason }
+    }
     Stage0ExecutableAssemblyGeneratedDagArtifact => SeedBuildArtifactProduced { content: expected_stage0_executable_assembly_generated_dag() }
     Stage0LinkedPartitionCratesArtifact => match expected_stage0_linked_partition_crates_txt() {
       LinkedPartitionCratesRendered { content } => SeedBuildArtifactProduced { content: content }

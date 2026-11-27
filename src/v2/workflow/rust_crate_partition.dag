@@ -12,7 +12,7 @@ import gunbc.crate_partition {
   SccSplit,
   UnitGraphCycle,
   PartitionFoldRefusalCause,
-  partition_provenance_hand_explicit,
+  partition_components_dependencies_first,
   partition_provenance_policy_derived,
   DerivedDepPackagesOk,
   DerivedDepPackagesUnitHasNoRow,
@@ -31,6 +31,7 @@ import gunbc.crate_partition {
   Stage0EmitCoreCrate,
   Stage0FoundationCrate,
   Stage0LayeredCoreCrate,
+  Stage0PartitionCrateKind,
   Stage0PartitionCrateRow,
   UnitDepEdge,
   assignment_owner,
@@ -45,7 +46,7 @@ import gunbc.crate_partition {
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { Empty, fold_list, length, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
+import std.algebra { Cons, Empty, fold_list, length, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push, list_sort_by_key, string_total_order }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
@@ -66,8 +67,10 @@ import gunbc.rust_emitted_edge {
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
-  dependency_resolution_facts_live,
-  module_declaration_facts_live
+  build_dependency_adjacency,
+  dependency_closure_over_adjacency,
+  dependency_resolution_facts_at_live,
+  module_declaration_facts_at_live
 }
 import std.disposition { RealizationDispatch }
 import std.types { List, String, Bool, Int, NonEmptyStr }
@@ -94,14 +97,14 @@ import v2.std.node { Node, Symbol }
 type Stage0PartitionReceiptOutcome
   = Stage0PartitionReceiptOk { units: List<CompilationUnit> }
   | Stage0PartitionReceiptResolveRefused { cause: ResolvePartitionRefusalCause }
-  | Stage0PartitionReceiptSourceRefused { cause: Stage0SourceEdgeRefusal }
+  | Stage0PartitionReceiptSourceRefused { cause: Stage0PartitionDerivationRefusal }
   | Stage0PartitionReceiptFoldRefused { cause: PartitionFoldRefusalCause }
 
 data rust_crate_partition_module_bearing_unit_target: Int = 6
 
 // R3-only emit shell crate (reexport surface, NOT a partition_fold_outcome CompilationUnit): modules list
 // is the reexport bundle for render at cutover; those modules remain owned by module-bearing units
-// in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1)
+// by stage0_partition_derivation. Physical crate count = module_bearing (6) + emit_shell (1)
 // = declared_core_target (7).
 
 data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
@@ -216,7 +219,7 @@ fn stage0_module_interface_grounding_capability() -> InterfaceGroundingCapabilit
   InterfaceGroundingCapability {
     contents_supply: stage0_module_interface_grounding_target(),
     population: DeclarationRef {
-      module_path: "v2.workflow.emitted_closure_crate_partition" as NonEmptyStr,
+      module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
       decl_name: "module_dag_from_dependency_facts" as NonEmptyStr,
       field: WholeDeclaration,
     }
@@ -240,335 +243,645 @@ fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
     Stage0ModuleDagInterfaceUngrounded { exports_map: _, type_definitions_map: _ } => true
   }
 }
-
-fn stage0_module_dag_exports_map() -> Map<ModuleId, List<Node>> {
-  stage0_all_partitioned_modules()
-    |> fold(init: empty_map(), f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), Empty)
-    })
-}
-
-fn stage0_module_dag_type_definitions_map() -> Map<ModuleId, List<ModuleTypeDefinitionRow>> {
-  stage0_all_partitioned_modules()
-    |> fold(init: empty_map(), f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), Empty)
-    })
-}
-
-fn stage0_runtime_modules() -> List<String> {
-  ["v1_rt"]
-}
-
-// std_lens_verdict WAS ON THIS LIST AND IS NOT A MODULE THE PARTITION MAY OWN.
-// stage0 lib.rs does not declare it: v2.compiler.self_host.stage0_crate_layout registers
-// it as a SeedRetainedIntrinsicRegistration with has_pub_mod false, so the monolith
-// deliberately leaves it out while every partition crate carrying the row compiled it
-// through a path include. That is one file with two compilation stories, which is the
-// divergence this list must not author. Its source module std.lens_verdict no longer
-// exists -- the live authority is v2.std.lens_verdict -- and nothing in the stage0 tree
-// names crate::std_lens_verdict, so the row was answering for a module that had already
-// stopped being one. The FILE's disposition (dead source retained under an undeclared
-// reason in v2.compiler.self_host.seed_retention_frontier) is settled separately from
-// this roster, because deleting it moves the layout authority and the retention frontier
-// and this list is not where that decision lives.
-fn stage0_std_primitive_modules() -> List<String> {
-  [
-    "std_content_hash",
-    "std_coercion",
-    // std.host_text (HostText, chars) is imported by std_coercion and by seed-mirrored modules since NAMESPACE-XL
-    // wave 1 gave chars its declared home; it imports only std.types, so it sits in this lowest tier with its importers.
-    "std_host_text",
-    "extdeps_currency_currency",
-    "std_decl_ref",
-    "std_keyed_row",
-    "std_keyed_roster",
-    "std_roster_frontier",
-    "std_dissolution",
-    "std_disposition",
-    "std_error_primitives",
-    "std_float",
-    "std_emit_model",
-    "std_measure",
-    "std_decimal",
-    "std_render_repeat_string_bootstrap",
-    "std_types",
-    "std_unicode_types"
-  ]
-}
-
-// gunbc_rust_emitted_edge is here because v1_compiler_emit_core_support (v1-infer unit) carries
-// its EmittedEdge on EmitResult, and a crate:: path from that unit resolves only into a package it
-// re-exports; the module names only std_types, so the lowest unit that reaches it is this one.
-fn stage0_std_core_modules() -> List<String> {
-  stage0_std_primitive_modules()
-    |> concat([
-      "std_optional",
-      "std_algebra",
-      "std_nat",
-      // Close the integer foundation dependency chain: constructors is a leaf;
-      // machine_constraints imports it and existing foundation modules; integer
-      // imports machine_constraints and existing std-core/runtime modules.
-      "std_constructors",
-      "std_machine_constraints",
-      "std_integer",
-      "std_node",
-      "std_syntax",
-      "std_computation",
-      "std_termination",
-      "std_checked_arithmetic",
-      "std_induction",
-      "std_graph",
-      "std_unicode_scalar",
-      "extdeps_uri",
-      "extdeps_external_authority",
-      "extdeps_posix_clock_gettime",
-      "extdeps_ietf_http_semantics",
-      "std_primitive_projection",
-      "extdeps_container_oci_digest",
-      "extdeps_units_dimensionless",
-      "extdeps_units_iec_80000_13",
-      "extdeps_units_iso8601",
-      "extdeps_units_iso_80000_3",
-      "std_occurrence_identity",
-      // std.generated_provider (generated-provider demands, acquisition step) is read by v1.compiler.infer and
-      // v1.compiler.compile; it imports std.types, std.optional, std.algebra, std.decl_ref and std.occurrence_identity.
-      "std_generated_provider",
-      "std_source_annotation",
-      "std_kernel_type_name",
-      "std_target_representation",
-      // Literal elaboration imports the shared interval and checked-construction
-      // declarations; their emitted modules belong to the same foundation unit.
-      "std_integer_interval",
-      "std_integer_width_construction",
-      "std_literal_elaboration",
-      "std_operator_realization",
-      "std_import_statement",
-      "v1_std_core",
-      "gunbc_rust_emitted_edge",
-      "gunbc_rust_emitted_crate"
-    ])
-}
-
-fn stage0_std_surface_modules() -> List<String> {
-  [
-    "std_effects",
-    "extdeps_uri_path",
-    "std_interface_summary",
-    "std_trait_derive_shape"
-  ]
-}
-
-fn stage0_extdeps_language_modules() -> List<String> {
-  [
-    "extdeps_languages_dag_emit",
-    "extdeps_languages_dag_syntax",
-    "extdeps_languages_dag_types",
-    "extdeps_languages_go_emit",
-    "extdeps_languages_go_syntax",
-    "extdeps_languages_go_types",
-    "extdeps_languages_python_emit",
-    "extdeps_languages_python_syntax",
-    "extdeps_languages_python_types",
-    "extdeps_languages_rust_capabilities",
-    "extdeps_languages_rust_emit",
-    "extdeps_languages_rust_representation",
-    "extdeps_languages_rust_syntax",
-    "extdeps_languages_rust_types"
-  ]
-}
-
-fn stage0_extdeps_modules() -> List<String> {
-  stage0_extdeps_language_modules()
-}
-
-// The corpus-owned source-to-target binding rows sit between the extdeps-languages
-// layer they cite and the coercion module that reads them, so they land in the
-// v1-infer unit: gunbc_rust_source_type_bindings references
-// extdeps_languages_rust_representation, which the extdeps-languages unit owns, and
-// is referenced by v1_compiler_coercion, which this unit owns. Named separately from
-// the v1_compiler_* pipeline modules because the layer is a different one -- the
-// grouping is physical (one crate) while the name records what the module actually is.
-fn stage0_gunbc_binding_modules() -> List<String> {
-  ["gunbc_rust_source_type_bindings", "gunbc_structural_realization_bindings"]
-}
-
-// THE INFER STAGE MOVED HERE AS ONE CRATE-INTERNAL CLOSURE. A generated mirror resolves its
-// cross-module references as crate:: paths, which resolve only within a single crate root, so a
-// module can join a partition only together with every monolith-owned module it names.
-// v1_compiler_infer -- the stage-04 root -- names the infer_* sibling stages (access, cycle,
-// lookup, method, patterns) and reaches v1_compiler_resolve (stage 03) and v1_compiler_ownership;
-// ownership in turn calls v1_compiler_emit_core_support's to_string. The regen round's
-// partition-rebuild scope refuses any changed mirror that has no owning package, so the first
-// edit to 04_infer.dag forced the whole set to take an owner together: none of them may stay
-// monolith-owned once infer is here, because the monolith is not a crate this unit may depend on.
-// emit_core_support's own references (infer_env/items/service/types in this unit, artifact and
-// languages in v1-artifact) all resolve here, so it joins as an OWNED module. The transitive
-// closure was computed over the generated mirrors and is self-contained: every crate:: reference
-// of every moved module lands in this unit or in a foundation crate it re-exports.
-//
-// v1_compiler_parse lands in this unit because v1_compiler_emit_core_support calls
-// parsed_item_carries_resource_entries on it. That module is still compiled twice from one file
-// -- now inside v1-stage0-v1-infer (owned) and inside v1-stage0-emit-core (the #[path] copy the
-// emit shell hosts rather than re-exports) -- so its reachable set is the INTERSECTION of two
-// crate roots and a name present in only one resolves in one compilation and not the other. The
-// emit-core crate's own purpose is to host that module WITHOUT COPYING SEMANTICS: the
-// alternatives were to fork the predicate into a module that cannot see the minting vocabulary it
-// is defined against, or to scatter the exclusion across the 24 call expressions in 12 functions
-// that read the emit-side type predicates. Both are the failure v1.compiler.parse's own note
-// predicts. The unit is chosen for LAYER and not convenience -- parse is a pipeline stage and
-// sits beside v1_compiler_coercion and the infer modules, not beside the artifact/languages rows
-// -- and parse is a SOURCE here: nothing in this unit is reachable from it, so the unit graph
-// gains no edge back.
-fn stage0_v1_infer_modules() -> List<String> {
-  stage0_gunbc_binding_modules()
-    |> concat([
-    "v1_compiler_parse",
-    "v1_compiler_coercion",
-    "v1_compiler_compiler_tests_rust",
-    "v1_compiler_resolve",
-    "v1_compiler_infer",
-    "v1_compiler_infer_access",
-    "v1_compiler_infer_cycle",
-    "v1_compiler_infer_emit_info",
-    "v1_compiler_infer_env",
-    "v1_compiler_infer_items",
-    "v1_compiler_infer_lookup",
-    "v1_compiler_infer_method",
-    "v1_compiler_infer_occurrence_binding",
-    "v1_compiler_infer_patterns",
-    "v1_compiler_infer_resolve",
-    "v1_compiler_infer_service",
-    "v1_compiler_infer_sigs",
-    "v1_compiler_infer_types",
-    "v1_compiler_ownership",
-    "v1_compiler_emit_core_support",
-    "v1_compiler_type_head_exposure",
-    // v1_compiler_rest_cause_text is the single declared-side authority for the RestBodyUndecodable
-    // refusal cause (read-refused / not-JSON / null-members / uninhabited). It is an emitter-produced
-    // support module (module v1.compiler.rest_cause_text, src/v1/05_rest_cause_text.dag): the emitter
-    // bakes its fixed phrases at codegen, and the interpreter will consume the same generated constants.
-    // It joins the v1-infer OWNED unit -- the same unit as its emitter-support sibling
-    // v1_compiler_emit_core_support -- because it is the only module-bearing package the host shell
-    // (v1-compiler, which hosts v1_compiler_emit_rust that references it) reaches directly. It imports
-    // no compiler module (only std String/concat), so it names no monolith-owned module.
-    "v1_compiler_rest_cause_text"
-  ])
-}
-
-fn stage0_v1_artifact_modules() -> List<String> {
-  ["v1_compiler_artifact", "v1_compiler_languages"]
-}
-
-fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
-  [
-    "gunbc_rust_emitted_crate",
-    "gunbc_rust_emitted_edge",
-    "std_unicode_scalar",
-    "v1_compiler_artifact",
-    "v1_compiler_infer_env",
-    "v1_compiler_infer_items",
-    "v1_compiler_infer_service",
-    "v1_compiler_infer_types",
-    "v1_compiler_languages",
-    "v1_compiler_parse",
-    "v1_rt",
-    "v1_std_core"
-  ]
-}
-
-fn stage0_all_partitioned_modules() -> List<String> {
-  stage0_runtime_modules()
-    |> concat(stage0_std_core_modules())
-    |> concat(stage0_std_surface_modules())
-    |> concat(stage0_extdeps_modules())
-    |> concat(stage0_v1_artifact_modules())
-    |> concat(stage0_v1_infer_modules())
-}
-
-fn stage0_assign_modules_to_unit(
-  assignment: Map<ModuleId, CompilationUnitId>,
-  modules: List<String>,
-  unit_id: CompilationUnitId
-) -> Map<ModuleId, CompilationUnitId> {
+fn stage0_module_dag_exports_map(modules: List<String>) -> Map<ModuleId, List<Node>> {
   modules
-    |> fold(init: assignment, f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), unit_id)
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
     })
 }
 
-fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
-  stage0_assign_modules_to_unit(
-    assignment: stage0_assign_modules_to_unit(
-      assignment: stage0_assign_modules_to_unit(
-        assignment: stage0_assign_modules_to_unit(
-          assignment: stage0_assign_modules_to_unit(
-            assignment: stage0_assign_modules_to_unit(
-              assignment: empty_map(),
-              modules: stage0_runtime_modules(),
-              unit_id: stage0_unit_runtime
-            ),
-            modules: stage0_std_core_modules(),
-            unit_id: stage0_unit_std_core
-          ),
-          modules: stage0_std_surface_modules(),
-          unit_id: stage0_unit_std_surface
-        ),
-        modules: stage0_extdeps_language_modules(),
-        unit_id: stage0_unit_extdeps_languages
-      ),
-      modules: stage0_v1_artifact_modules(),
-      unit_id: stage0_unit_v1_artifact
-    ),
-    modules: stage0_v1_infer_modules(),
-    unit_id: stage0_unit_v1_infer
-  )
+fn stage0_module_dag_type_definitions_map(modules: List<String>) -> Map<ModuleId, List<ModuleTypeDefinitionRow>> {
+  modules
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
 }
 
-fn stage0_interim_explicit_partition() -> ExplicitPartition {
-  ExplicitPartition { assignment: stage0_interim_explicit_assignment() }
-}
-
-fn stage0_partition_parameter() -> PartitionParameter {
-  ExplicitPartitionParam { partition: stage0_interim_explicit_partition() }
-}
-
-fn stage0_partition_provenance() -> PartitionProvenance {
-  partition_provenance_hand_explicit()
-}
-
-// THE STAGE0 SOURCE DAG IS DERIVED FROM THE SOURCES, NOT AUTHORED. Its edges were a hand list of
-// cross-unit imports, and the list had drifted to a fraction of the graph: over the partitioned
-// modules' own dependency facts at 0b1d3c70 it carried 93 rows against 211 cross-unit source edges,
-// 190 of them absent and 7 naming a dependency no source declares and no mirror references. The R4
-// verdict and the re-export derivation were judging that fraction, and the one re-export
-// divergence the ledger below carried (v1-stage0-v1-artifact) was an artifact of the missing edges,
-// not of the rows. The edges are now the partitioned modules' resolved dependency facts, read from
-// the one edge-source seam (v2.lens.module_graph dependency_resolution_facts_live, the same producer
-// v2.workflow.emitted_closure_crate_partition reads), and projected onto mirror basenames by the
-// emitter's own filename rule (gunbc.rust_emitted_edge rust_module_emit_filename), so a new import
-// is a new edge the next time this runs and there is no row to forget.
+// THE STAGE0 PARTITION IS DERIVED FROM THE SOURCES: WHICH MODULES IT HOLDS, WHERE EACH SITS, AND
+// THE EDGES BETWEEN THEM. Three facts are authored, and each is a choice rather than a fact the
+// sources already carry:
+//   stage0_partition_source_roots  the source entry points the partition is grown from;
+//   stage0_unit_order              the order of the units, each re-exporting every unit below it;
+//   stage0_unit_floors             the lowest unit a namespace (or one module) may be placed in.
+// Everything else is read from v2.lens.module_graph's dependency facts, the one edge-source seam
+// v2.workflow.emitted_closure_crate_partition also reads. The ROSTER is the roots plus every module
+// they depend on, directly or not, plus the emitter's runtime. The PLACEMENT is, per strongly
+// connected component taken dependencies first, the latest of its members' floors and of the
+// units its dependencies were placed in -- the earliest unit every crate:: path of the component
+// can resolve from, since a unit re-exports only the units below it. So a new import is a new
+// member or a raised placement the next time this runs, and no list is edited for it.
+//
+// The hand lists this replaced (stage0_runtime_modules, stage0_std_primitive_modules,
+// stage0_std_core_modules, stage0_std_surface_modules, stage0_extdeps_language_modules,
+// stage0_gunbc_binding_modules, stage0_v1_infer_modules, stage0_v1_artifact_modules) held 100
+// modules; over main at 09d6c4f9 this rule gives the same 100 modules in the same units. The
+// reasons several of them carried for a module's unit are now the floor rows below or a
+// dependency the rule reads.
 //
 // WHAT IT DOES NOT CARRY, stated so its absence is not read as a fact: the inline crate paths the
 // expression emitter writes without a source dependency (one specimen: v1_compiler_parse naming
 // std_types, whose units are joined by other edges anyway) are the stall
-// gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall, exactly as for the emitted
-// closure; the runtime edges come from the emitter's prelude rows in the merge below. The module
-// ROSTER is still the authored stage0_*_modules lists; deriving it is the next cut.
+// gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall, exactly as for the
+// emitted closure; the runtime edges come from the emitter's prelude rows in the merge below.
 data stage0_source_pool_roots: List<String> = ["dag", "src/v1"]
 
-// EVERY WAY THE DERIVATION CAN FAIL IS A REFUSAL, NEVER A SMALLER GRAPH. Dropping a dependency
-// would hand the R4 verdict a graph that partitions cleanly and reads as complete, which is the
-// absorbing fallback gunbc.design_argument::fail_closed forbids.
-type Stage0SourceEdgeRefusal
-  = Stage0PartitionedModuleUndeclared { basename: String }
-  | Stage0PartitionedModuleAmbiguous { basename: String, modules: List<String> }
-  | Stage0PartitionedDependencyUnresolved { importer_path: String, target_module: String }
-  | Stage0PartitionedDependencyOutsidePartition { importer: String, target: String }
-  | Stage0SourceLookupRejected { key: String }
+// The seed modules the stage0 crates exist to compile apart from the monolith, by module name.
+// Nothing else in the partition is named: a module is a member because one of these reaches it.
+data stage0_partition_source_roots: List<String> = [
+  "extdeps.posix.clock_gettime",
+  "std.effects",
+  "std.graph",
+  "std.source_annotation",
+  "v1.compiler.compiler_tests_rust",
+  "v1.compiler.infer",
+  "v1.compiler.parse",
+  "v1.compiler.rest_cause_text"
+]
 
-type Stage0SourceModuleDag
-  = Stage0SourceModuleDagDerived { module_dag: ModuleDag }
-  | Stage0SourceModuleDagRefused { cause: Stage0SourceEdgeRefusal }
+data stage0_unit_order: List<CompilationUnitId> = [
+  stage0_unit_runtime,
+  stage0_unit_std_core,
+  stage0_unit_std_surface,
+  stage0_unit_extdeps_languages,
+  stage0_unit_v1_artifact,
+  stage0_unit_v1_infer
+]
+
+// The lowest unit a module may sit in, keyed by a module-name prefix on whole segments; the most
+// specific prefix that matches a module is its floor. A namespace row places a layer; a row naming
+// one module raises that module above what its dependencies alone would give it, and each says why.
+type Stage0UnitFloor {
+  prefix: String
+  unit_id: CompilationUnitId
+}
+
+data stage0_unit_floors: List<Stage0UnitFloor> = [
+  Stage0UnitFloor { prefix: "std", unit_id: stage0_unit_std_core },
+  Stage0UnitFloor { prefix: "extdeps", unit_id: stage0_unit_std_core },
+  Stage0UnitFloor { prefix: "gunbc", unit_id: stage0_unit_std_core },
+  Stage0UnitFloor { prefix: "v1.std", unit_id: stage0_unit_std_core },
+  // The surface unit: the modules std.effects is built over, kept out of std-core so the core crate
+  // does not compile them.
+  Stage0UnitFloor { prefix: "extdeps.uri_path", unit_id: stage0_unit_std_surface },
+  Stage0UnitFloor { prefix: "std.interface_summary", unit_id: stage0_unit_std_surface },
+  Stage0UnitFloor { prefix: "std.trait_derive_shape", unit_id: stage0_unit_std_surface },
+  Stage0UnitFloor { prefix: "extdeps.languages", unit_id: stage0_unit_extdeps_languages },
+  Stage0UnitFloor { prefix: "v1.compiler", unit_id: stage0_unit_v1_infer },
+  Stage0UnitFloor { prefix: "v1.compiler.artifact", unit_id: stage0_unit_v1_artifact },
+  Stage0UnitFloor { prefix: "v1.compiler.languages", unit_id: stage0_unit_v1_artifact },
+  // The corpus-owned source-to-target binding rows sit between the extdeps-languages layer they
+  // cite and the coercion module that reads them: v1_compiler_coercion, in v1-infer, references
+  // them, so they are one crate with it.
+  Stage0UnitFloor { prefix: "gunbc.rust_source_type_bindings", unit_id: stage0_unit_v1_infer },
+  Stage0UnitFloor { prefix: "gunbc.structural_realization_bindings", unit_id: stage0_unit_v1_infer }
+]
+
+// EVERY WAY THE DERIVATION CAN FAIL IS A REFUSAL, NEVER A SMALLER PARTITION. Dropping a module or
+// an edge would hand the R4 verdict and every crate row a partition that resolves cleanly and reads
+// as complete, which is the absorbing fallback gunbc.design_argument::fail_closed forbids.
+type Stage0PartitionDerivationRefusal
+  = Stage0SourceRootUndeclared { module_name: String }
+  | Stage0SourceRootAmbiguous { module_name: String, paths: List<String> }
+  | Stage0SourceDependencyUnresolved { importer_path: String, target_module: String }
+  | Stage0PartitionedBasenameAmbiguous { basename: String, modules: List<String> }
+  | Stage0UnitFloorMissing { module_name: String }
+  | Stage0UnitFloorAmbiguous { module_name: String, prefix: String }
+  | Stage0UnitFloorUnranked { prefix: String, unit_id: CompilationUnitId }
+  | Stage0DerivationLookupRejected { key: String }
+
+type Stage0Placement {
+  basename: String
+  unit_id: CompilationUnitId
+}
+
+type Stage0PartitionDerivation
+  = Stage0PartitionDerived { module_dag: ModuleDag, placements: List<Stage0Placement> }
+  | Stage0PartitionDerivationRefused { cause: Stage0PartitionDerivationRefusal }
+
+fn stage0_partition_derivation_refusal_line(cause: Stage0PartitionDerivationRefusal) -> String {
+  match cause {
+    Stage0SourceRootUndeclared { module_name: m } =>
+      concat("stage0 partition: source root ", m, " is declared by no module of the pool")
+    Stage0SourceRootAmbiguous { module_name: m, paths: ps } =>
+      concat("stage0 partition: source root ", m, " is declared at more than one path: ", join(ps, ", "))
+    Stage0SourceDependencyUnresolved { importer_path: p, target_module: t } =>
+      concat("stage0 partition: ", p, " depends on ", t, ", which no module of the pool declares")
+    Stage0PartitionedBasenameAmbiguous { basename: b, modules: ms } =>
+      concat("stage0 partition: modules ", join(ms, ", "), " all emit to the mirror ", b)
+    Stage0UnitFloorMissing { module_name: m } =>
+      concat("stage0 partition: no stage0_unit_floors row covers ", m)
+    Stage0UnitFloorAmbiguous { module_name: m, prefix: p } =>
+      concat("stage0 partition: stage0_unit_floors has two rows for ", p, ", the floor of ", m)
+    Stage0UnitFloorUnranked { prefix: p, unit_id: u } =>
+      concat("stage0 partition: the floor row for ", p, " names ", u as String, ", which stage0_unit_order does not list")
+    Stage0DerivationLookupRejected { key: k } =>
+      concat("stage0 partition: a map read of ", k, " was rejected")
+  }
+}
+
+// THE CLOSURE OF A SET OF ENTRIES, AS A MODULE DAG: the one rule both fact-reading partitions call
+// (this stage0 one with its source roots, v2.workflow.emitted_closure_crate_partition with its one
+// entry). Nodes are the declared modules the entries reach, under their own names; edges are the
+// shared projection's. An undeclared entry refuses, and every dependency of a reached module must
+// resolve to a declared module, the first that does not refusing with its importer and target --
+// a closure that skipped it would be a SMALLER graph that partitions cleanly. Modules of the pool
+// no entry reaches are never inspected.
+type ModuleDagDerivationRefusal
+  = ClosureEntryUndeclared { entry_path: String }
+  | ClosureDependencyUnresolved { importer_path: String, target_module: String }
+  | ClosureFactLookupRejected { key: String }
+
+type ModuleDagDerivation
+  = ModuleDagDerived { module_dag: ModuleDag }
+  | ModuleDagDerivationRefused { cause: ModuleDagDerivationRefusal }
+
+fn closure_entry_declared(entry_path: String, declarations: List<ModuleDeclarationFact>) -> Bool {
+  declarations |> any(decl => decl.path == entry_path)
+}
+
+fn closure_refusal_of(cause: DependencyEdgeProjectionRefusal) -> ModuleDagDerivationRefusal {
+  match cause {
+    ProjectedDependencyUnresolved { importer_path: path, target_module: target } =>
+      ClosureDependencyUnresolved { importer_path: path, target_module: target }
+    ProjectedDependencyOutsideNodes { importer_path: path, importer: _, target_module: target } =>
+      ClosureDependencyUnresolved { importer_path: path, target_module: target }
+    ProjectedFactLookupRejected { key: key } =>
+      ClosureFactLookupRejected { key: key }
+  }
+}
+
+fn closure_path_set(entry_paths: List<String>, adjacency: Map<String, List<String>>) -> Map<String, Bool> {
+  entry_paths |> fold(init: empty_map(), f: fn(acc, entry) {
+    dependency_closure_over_adjacency(entry_path: entry, adjacency: adjacency)
+      |> fold(init: acc, f: fn(inner, path) { map_insert(inner, path, true) })
+  })
+}
+
+fn closure_module_by_path(declarations: List<ModuleDeclarationFact>, closure: Map<String, Bool>) -> Map<String, String> {
+  declarations |> fold(init: empty_map(), f: fn(acc, decl) {
+    match map_get_checked(closure, decl.path) {
+      Accepted { value: Present { value: _ }, diagnostics: _ } => map_insert(acc, decl.path, decl.module)
+      Accepted { value: Absent, diagnostics: _ } => acc
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
+fn closure_module_at(by_path: Map<String, String>, path: String) -> Optional<String> {
+  match map_get_checked(by_path, path) {
+    Accepted { value: found, diagnostics: _ } => found
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn module_dag_from_dependency_facts(
+  entry_paths: List<String>,
+  edges: List<ModuleDependencyEdge>,
+  declarations: List<ModuleDeclarationFact>
+) -> ModuleDagDerivation {
+  let undeclared = entry_paths |> filter(path => !closure_entry_declared(entry_path: path, declarations: declarations))
+  match undeclared {
+    Cons { head: path, tail: _ } => ModuleDagDerivationRefused { cause: ClosureEntryUndeclared { entry_path: path } }
+    Empty => {
+      let closure = closure_path_set(entry_paths: entry_paths, adjacency: build_dependency_adjacency(edges: edges, nodes: declarations))
+      let by_path = closure_module_by_path(declarations: declarations, closure: closure)
+      let modules = declarations |> fold(init: [], f: fn(acc, decl) {
+        match closure_module_at(by_path: by_path, path: decl.path) {
+          Present { value: module_id } => acc |> list_push(module_id as ModuleId)
+          Absent => acc
+        }
+      })
+      let node_by_module = modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, module_id as String) })
+      match project_dependency_edges(importer_node_by_path: by_path, node_by_module: node_by_module, dependencies: edges) {
+        DependencyEdgesRefused { cause: cause } => ModuleDagDerivationRefused { cause: closure_refusal_of(cause: cause) }
+        DependencyEdgesProjected { edges: projected } =>
+          ModuleDagDerived {
+            module_dag: ModuleDag {
+              modules: modules,
+              edges: projected,
+              exports: empty_map(),
+              type_definitions: empty_map(),
+            }
+          }
+      }
+    }
+  }
+}
+
+// The roots by module name, read to the paths the closure walks from: each must be declared exactly
+// once in the pool.
+type Stage0RootPaths
+  = Stage0RootPathsResolved { paths: List<String> }
+  | Stage0RootPathsRefused { cause: Stage0PartitionDerivationRefusal }
+
+fn stage0_root_paths(roots: List<String>, declarations: List<ModuleDeclarationFact>) -> Stage0RootPaths {
+  roots |> fold(init: Stage0RootPathsResolved { paths: [] }, f: fn(acc, root) {
+    match acc {
+      Stage0RootPathsRefused { cause: _ } => acc
+      Stage0RootPathsResolved { paths: found } => {
+        let declared = declarations |> filter(decl => decl.module == root) |> map(decl => decl.path)
+        match declared {
+          Empty => Stage0RootPathsRefused { cause: Stage0SourceRootUndeclared { module_name: root } }
+          Cons { head: path, tail: Empty } => Stage0RootPathsResolved { paths: found |> list_push(path) }
+          Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+            Stage0RootPathsRefused { cause: Stage0SourceRootAmbiguous { module_name: root, paths: declared } }
+        }
+      }
+    }
+  })
+}
+
+fn stage0_refusal_of_closure(cause: ModuleDagDerivationRefusal) -> Stage0PartitionDerivationRefusal {
+  match cause {
+    ClosureEntryUndeclared { entry_path: path } => Stage0SourceRootUndeclared { module_name: path }
+    ClosureDependencyUnresolved { importer_path: path, target_module: target } =>
+      Stage0SourceDependencyUnresolved { importer_path: path, target_module: target }
+    ClosureFactLookupRejected { key: key } => Stage0DerivationLookupRejected { key: key }
+  }
+}
+
+// Each member module's mirror basename, by the emitter's own filename rule. The runtime is the
+// emitter's prelude rather than a .dag module, so it holds its basename before any module is read,
+// and a module that would emit to the same file -- the runtime's or another module's -- refuses.
+type Stage0BasenameIndex {
+  by_module: Map<String, String>
+  module_by_basename: Map<String, String>
+  refusal: Optional<Stage0PartitionDerivationRefusal>
+}
+
+fn stage0_basename_index(modules: List<ModuleId>) -> Stage0BasenameIndex {
+  let init = Stage0BasenameIndex {
+    by_module: empty_map(),
+    module_by_basename: map_insert(empty_map(), rust_runtime_prelude_module, rust_runtime_prelude_module),
+    refusal: Absent
+  }
+  modules |> fold(init: init, f: fn(acc, module_id) {
+    match acc.refusal {
+      Present { value: _ } => acc
+      Absent => {
+        let module_name = module_id as String
+        let basename = rust_module_emit_filename(module_name: module_name)
+        match map_get_checked(acc.module_by_basename, basename) {
+          Rejected { diagnostics: _ } =>
+            Stage0BasenameIndex { by_module: acc.by_module, module_by_basename: acc.module_by_basename, refusal: Present { value: Stage0DerivationLookupRejected { key: basename } } }
+          Accepted { value: Present { value: other }, diagnostics: _ } =>
+            Stage0BasenameIndex { by_module: acc.by_module, module_by_basename: acc.module_by_basename, refusal: Present { value: Stage0PartitionedBasenameAmbiguous { basename: basename, modules: [other, module_name] } } }
+          Accepted { value: Absent, diagnostics: _ } =>
+            Stage0BasenameIndex {
+              by_module: map_insert(acc.by_module, module_name, basename),
+              module_by_basename: map_insert(acc.module_by_basename, basename, module_name),
+              refusal: Absent
+            }
+        }
+      }
+    }
+  })
+}
+
+type Stage0RankRead
+  = Stage0RankFound { rank: Int }
+  | Stage0RankRefused { cause: Stage0PartitionDerivationRefusal }
+
+fn stage0_unit_rank(order: List<CompilationUnitId>, unit_id: CompilationUnitId) -> Optional<Int> {
+  let found = order |> fold(init: Stage0RankScan { index: 0, rank: Absent }, f: fn(acc, unit) {
+    match acc.rank {
+      Present { value: _ } => acc
+      Absent =>
+        if unit == unit_id {
+          Stage0RankScan { index: acc.index + 1, rank: Present { value: acc.index } }
+        } else {
+          Stage0RankScan { index: acc.index + 1, rank: Absent }
+        }
+    }
+  })
+  found.rank
+}
+
+type Stage0RankScan {
+  index: Int
+  rank: Optional<Int>
+}
+
+fn stage0_unit_at(order: List<CompilationUnitId>, rank: Int) -> Optional<CompilationUnitId> {
+  let found = order |> fold(init: Stage0UnitScan { index: 0, unit: Absent }, f: fn(acc, unit) {
+    if acc.index == rank {
+      Stage0UnitScan { index: acc.index + 1, unit: Present { value: unit } }
+    } else {
+      Stage0UnitScan { index: acc.index + 1, unit: acc.unit }
+    }
+  })
+  found.unit
+}
+
+type Stage0UnitScan {
+  index: Int
+  unit: Optional<CompilationUnitId>
+}
+
+fn stage0_floor_covers(floor: Stage0UnitFloor, module_name: String) -> Bool {
+  module_name == floor.prefix || starts_with(s: module_name, prefix: concat(floor.prefix, "."))
+}
+
+// The most specific covering row: the covering prefixes of one module form a chain, so it is the
+// one no other covering row extends. Two rows with one prefix have no most specific member.
+fn stage0_floor_rank(module_name: String, floors: List<Stage0UnitFloor>, order: List<CompilationUnitId>) -> Stage0RankRead {
+  let covering = floors |> filter(floor => stage0_floor_covers(floor: floor, module_name: module_name))
+  let most_specific = covering |> filter(floor =>
+    !(covering |> any(other => starts_with(s: other.prefix, prefix: concat(floor.prefix, "."))))
+  )
+  match most_specific {
+    Empty => Stage0RankRefused { cause: Stage0UnitFloorMissing { module_name: module_name } }
+    Cons { head: floor, tail: Cons { head: _, tail: _ } } =>
+      Stage0RankRefused { cause: Stage0UnitFloorAmbiguous { module_name: module_name, prefix: floor.prefix } }
+    Cons { head: floor, tail: Empty } =>
+      match stage0_unit_rank(order: order, unit_id: floor.unit_id) {
+        Present { value: rank } => Stage0RankFound { rank: rank }
+        Absent => Stage0RankRefused { cause: Stage0UnitFloorUnranked { prefix: floor.prefix, unit_id: floor.unit_id } }
+      }
+  }
+}
+
+fn stage0_rank_max(acc: Stage0RankRead, next: Stage0RankRead) -> Stage0RankRead {
+  match acc {
+    Stage0RankRefused { cause: _ } => acc
+    Stage0RankFound { rank: a } =>
+      match next {
+        Stage0RankRefused { cause: _ } => next
+        Stage0RankFound { rank: b } => if b > a { next } else { acc }
+      }
+  }
+}
+
+fn stage0_placed_rank(rank_by_module: Map<String, Int>, module_name: String) -> Stage0RankRead {
+  match map_get_checked(rank_by_module, module_name) {
+    Accepted { value: Present { value: rank }, diagnostics: _ } => Stage0RankFound { rank: rank }
+    Accepted { value: Absent, diagnostics: _ } => Stage0RankRefused { cause: Stage0DerivationLookupRejected { key: module_name } }
+    Rejected { diagnostics: _ } => Stage0RankRefused { cause: Stage0DerivationLookupRejected { key: module_name } }
+  }
+}
+
+fn stage0_component_has(component: List<String>, module_name: String) -> Bool {
+  component |> any(member => member == module_name)
+}
+
+type Stage0PlacementFold {
+  rank_by_module: Map<String, Int>
+  placements: List<Stage0Placement>
+  refusal: Optional<Stage0PartitionDerivationRefusal>
+}
+
+fn stage0_placement_refused(acc: Stage0PlacementFold, cause: Stage0PartitionDerivationRefusal) -> Stage0PlacementFold {
+  Stage0PlacementFold { rank_by_module: acc.rank_by_module, placements: acc.placements, refusal: Present { value: cause } }
+}
+
+// One component, placed together: the latest of its members' floors and of the units its
+// dependencies outside it were already placed in (components arrive dependencies first, so each
+// such dependency has a rank). A cycle therefore has one unit whatever order its members are read in.
+fn stage0_place_component(
+  acc: Stage0PlacementFold,
+  component: List<String>,
+  edges: List<ModuleDagEdge>,
+  by_module: Map<String, String>,
+  floors: List<Stage0UnitFloor>,
+  order: List<CompilationUnitId>
+) -> Stage0PlacementFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => {
+      let floor_rank = component |> fold(init: Stage0RankFound { rank: 0 }, f: fn(rank, module_name) {
+        stage0_rank_max(acc: rank, next: stage0_floor_rank(module_name: module_name, floors: floors, order: order))
+      })
+      let read = edges
+        |> filter(edge => stage0_component_has(component: component, module_name: edge.from as String) && !stage0_component_has(component: component, module_name: edge.to as String))
+        |> fold(init: floor_rank, f: fn(rank, edge) {
+          stage0_rank_max(acc: rank, next: stage0_placed_rank(rank_by_module: acc.rank_by_module, module_name: edge.to as String))
+        })
+      match read {
+        Stage0RankRefused { cause: cause } => stage0_placement_refused(acc: acc, cause: cause)
+        Stage0RankFound { rank: rank } =>
+          match stage0_unit_at(order: order, rank: rank) {
+            Absent => stage0_placement_refused(acc: acc, cause: Stage0DerivationLookupRejected { key: "stage0_unit_order" })
+            Present { value: unit_id } =>
+              component |> fold(init: acc, f: fn(placed, module_name) {
+                match placed.refusal {
+                  Present { value: _ } => placed
+                  Absent =>
+                    match map_get_checked(by_module, module_name) {
+                      Accepted { value: Present { value: basename }, diagnostics: _ } =>
+                        Stage0PlacementFold {
+                          rank_by_module: map_insert(placed.rank_by_module, module_name, rank),
+                          placements: placed.placements |> list_push(Stage0Placement { basename: basename, unit_id: unit_id }),
+                          refusal: Absent
+                        }
+                      Accepted { value: Absent, diagnostics: _ } => stage0_placement_refused(acc: placed, cause: Stage0DerivationLookupRejected { key: module_name })
+                      Rejected { diagnostics: _ } => stage0_placement_refused(acc: placed, cause: Stage0DerivationLookupRejected { key: module_name })
+                    }
+                }
+              })
+          }
+      }
+    }
+  }
+}
+
+// Pure over its supplied facts and policy, so every refusal arm is drivable from a fixture; the
+// live binding below is the only caller that reads the tree. The placements are in basename order
+// -- the order the crate rows list their modules in -- and the runtime is placed in the first unit.
+fn stage0_partition_derivation_over(
+  roots: List<String>,
+  floors: List<Stage0UnitFloor>,
+  order: List<CompilationUnitId>,
+  declarations: List<ModuleDeclarationFact>,
+  dependencies: List<ModuleDependencyEdge>
+) -> Stage0PartitionDerivation {
+  match stage0_root_paths(roots: roots, declarations: declarations) {
+    Stage0RootPathsRefused { cause: cause } => Stage0PartitionDerivationRefused { cause: cause }
+    Stage0RootPathsResolved { paths: paths } =>
+      match module_dag_from_dependency_facts(entry_paths: paths, edges: dependencies, declarations: declarations) {
+        ModuleDagDerivationRefused { cause: cause } => Stage0PartitionDerivationRefused { cause: stage0_refusal_of_closure(cause: cause) }
+        ModuleDagDerived { module_dag: closure } => {
+          let index = stage0_basename_index(modules: closure.modules)
+          match index.refusal {
+            Present { value: cause } => Stage0PartitionDerivationRefused { cause: cause }
+            Absent => {
+              let placed = partition_components_dependencies_first(modules: closure.modules, edges: closure.edges)
+                |> fold(init: Stage0PlacementFold { rank_by_module: empty_map(), placements: [], refusal: Absent }, f: fn(acc, component) {
+                  stage0_place_component(acc: acc, component: component, edges: closure.edges, by_module: index.by_module, floors: floors, order: order)
+                })
+              match placed.refusal {
+                Present { value: cause } => Stage0PartitionDerivationRefused { cause: cause }
+                Absent =>
+                  match stage0_unit_at(order: order, rank: 0) {
+                    Absent => Stage0PartitionDerivationRefused { cause: Stage0DerivationLookupRejected { key: "stage0_unit_order" } }
+                    Present { value: runtime_unit } =>
+                      stage0_partition_derived(
+                        closure: closure,
+                        by_module: index.by_module,
+                        placements: list_sort_by_key(
+                          xs: placed.placements |> list_push(Stage0Placement { basename: rust_runtime_prelude_module, unit_id: runtime_unit }),
+                          key: placement => placement.basename,
+                          order: string_total_order()
+                        )
+                      )
+                  }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// The closure's DAG under mirror basenames, with the runtime as a node: the shape the resolve, the
+// fold and the emitted-edge merge take.
+fn stage0_partition_derived(
+  closure: ModuleDag,
+  by_module: Map<String, String>,
+  placements: List<Stage0Placement>
+) -> Stage0PartitionDerivation {
+  let renamed = closure.edges |> fold(init: Stage0EdgeRename { edges: [], refusal: Absent }, f: fn(acc, edge) {
+    match acc.refusal {
+      Present { value: _ } => acc
+      Absent =>
+        match stage0_basename_of(by_module: by_module, module_name: edge.from as String) {
+          Absent => Stage0EdgeRename { edges: acc.edges, refusal: Present { value: Stage0DerivationLookupRejected { key: edge.from as String } } }
+          Present { value: from } =>
+            match stage0_basename_of(by_module: by_module, module_name: edge.to as String) {
+              Absent => Stage0EdgeRename { edges: acc.edges, refusal: Present { value: Stage0DerivationLookupRejected { key: edge.to as String } } }
+              Present { value: to } =>
+                Stage0EdgeRename { edges: acc.edges |> list_push(ModuleDagEdge { from: stage0_module_id(basename: from), to: stage0_module_id(basename: to) }), refusal: Absent }
+            }
+        }
+    }
+  })
+  match renamed.refusal {
+    Present { value: cause } => Stage0PartitionDerivationRefused { cause: cause }
+    Absent => {
+      let basenames = placements |> map(placement => placement.basename)
+      Stage0PartitionDerived {
+        module_dag: ModuleDag {
+          modules: basenames |> map(basename => stage0_module_id(basename: basename)),
+          edges: renamed.edges,
+          exports: stage0_module_dag_exports_map(modules: basenames),
+          type_definitions: stage0_module_dag_type_definitions_map(modules: basenames),
+        },
+        placements: placements
+      }
+    }
+  }
+}
+
+type Stage0EdgeRename {
+  edges: List<ModuleDagEdge>
+  refusal: Optional<Stage0PartitionDerivationRefusal>
+}
+
+fn stage0_basename_of(by_module: Map<String, String>, module_name: String) -> Optional<String> {
+  match map_get_checked(by_module, module_name) {
+    Accepted { value: found, diagnostics: _ } => found
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// THE LIVE FACTS ARE READ FROM THE ROOTS OUTWARD, NOT OFF THE WHOLE POOL. The partition is about a
+// hundred modules of a pool of thousands, and the population read
+// (v2.lens.module_graph dependency_resolution_facts_live) resolves every file's references to
+// answer it: measured on the seed at b4c9972 over dag and src/v1, about 575 s, on a path heal's host
+// takes several times a round. So this walk asks the one edge producer's keyed reads for exactly the
+// modules the roots reach -- each module's declaration (module_declaration_facts_at_live) and its
+// importer edges (dependency_resolution_facts_at_live), which are the population read narrowed to
+// one key and carry the same rows -- and hands what it read to the same pure derivation. It decides
+// nothing: an undeclared root reads no declaration and an unresolved target is not followed, and
+// stage0_partition_derivation_over refuses both from the facts the walk collected.
+type Stage0FactWalk {
+  declarations: List<ModuleDeclarationFact>
+  dependencies: List<ModuleDependencyEdge>
+  seen: Map<String, Bool>
+  queue: List<String>
+}
+
+fn stage0_fact_walk_absorb(acc: Stage0FactWalk, target: String) -> Stage0FactWalk {
+  match map_get_checked(acc.seen, target) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => acc
+    Accepted { value: Absent, diagnostics: _ } =>
+      Stage0FactWalk { declarations: acc.declarations, dependencies: acc.dependencies, seen: map_insert(acc.seen, target, true), queue: acc.queue |> list_push(target) }
+    // A rejected read re-reads the target rather than skipping it: reading a module twice repeats
+    // facts the derivation deduplicates, while skipping one would shrink the closure.
+    Rejected { diagnostics: _ } =>
+      Stage0FactWalk { declarations: acc.declarations, dependencies: acc.dependencies, seen: acc.seen, queue: acc.queue |> list_push(target) }
+  }
+}
+
+fn stage0_fact_walk(state: Stage0FactWalk, pool_roots: List<String>) -> Stage0FactWalk {
+  match state.queue |> first {
+    Absent => state
+    Present { value: name } => {
+      let declared = module_declaration_facts_at_live(pool_roots: pool_roots, module_path: name)
+      let facts = declared |> flat_map(decl => dependency_resolution_facts_at_live(pool_roots: pool_roots, importer_path: decl.path, exclude_substrings: []))
+      let read = Stage0FactWalk {
+        declarations: state.declarations |> concat(declared),
+        dependencies: state.dependencies |> concat(facts),
+        seen: state.seen,
+        queue: state.queue |> skip(1)
+      }
+      stage0_fact_walk(
+        state: facts |> filter(fact => fact.target_declared) |> fold(init: read, f: fn(acc, fact) { stage0_fact_walk_absorb(acc: acc, target: fact.target_module) }),
+        pool_roots: pool_roots
+      )
+    }
+  }
+}
+
+fn stage0_partition_facts_live(roots: List<String>, pool_roots: List<String>) -> Stage0FactWalk {
+  stage0_fact_walk(
+    state: Stage0FactWalk {
+      declarations: [],
+      dependencies: [],
+      seen: roots |> fold(init: empty_map(), f: fn(acc, root) { map_insert(acc, root, true) }),
+      queue: roots
+    },
+    pool_roots: pool_roots
+  )
+}
+
+data stage0_partition_live_facts: Stage0FactWalk = stage0_partition_facts_live(
+  roots: stage0_partition_source_roots,
+  pool_roots: stage0_source_pool_roots
+)
+
+data stage0_partition_derivation: Stage0PartitionDerivation = stage0_partition_derivation_over(
+  roots: stage0_partition_source_roots,
+  floors: stage0_unit_floors,
+  order: stage0_unit_order,
+  declarations: stage0_partition_live_facts.declarations,
+  dependencies: stage0_partition_live_facts.dependencies
+)
+
+fn stage0_partition_policy_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
+    decl_name: "stage0_partition_derivation_over" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn stage0_partition_provenance() -> PartitionProvenance {
+  partition_provenance_policy_derived(policy: stage0_partition_policy_ref())
+}
+
+fn stage0_partition_assignment(placements: List<Stage0Placement>) -> Map<ModuleId, CompilationUnitId> {
+  placements |> fold(init: empty_map(), f: fn(acc, placement) {
+    map_insert(acc, stage0_module_id(basename: placement.basename), placement.unit_id)
+  })
+}
+
+fn stage0_partition_parameter(placements: List<Stage0Placement>) -> PartitionParameter {
+  ExplicitPartitionParam { partition: ExplicitPartition { assignment: stage0_partition_assignment(placements: placements) } }
+}
+
+fn stage0_unit_modules(placements: List<Stage0Placement>, unit_id: CompilationUnitId) -> List<String> {
+  placements |> filter(placement => placement.unit_id == unit_id) |> map(placement => placement.basename)
+}
 
 // THE ONE RULE FOR PROJECTING DEPENDENCY FACTS ONTO A MODULE DAG. Both partitions that read
 // v2.lens.module_graph facts -- this stage0 one and v2.workflow.emitted_closure_crate_partition's
@@ -655,138 +968,6 @@ fn project_dependency_edges(
   }
 }
 
-fn stage0_basename_set(basenames: List<String>) -> Map<String, Bool> {
-  basenames |> fold(init: empty_map(), f: fn(acc, basename) { map_insert(acc, basename, true) })
-}
-
-type Stage0KeyRead
-  = Stage0KeyPresent
-  | Stage0KeyAbsent
-  | Stage0KeyReadRejected
-
-fn stage0_key_read(set: Map<String, Bool>, key: String) -> Stage0KeyRead {
-  match map_get_checked(set, key) {
-    Accepted { value: Present { value: _ }, diagnostics: _ } => Stage0KeyPresent
-    Accepted { value: Absent, diagnostics: _ } => Stage0KeyAbsent
-    Rejected { diagnostics: _ } => Stage0KeyReadRejected
-  }
-}
-
-// The declared module each partitioned basename projects from. The runtime is not a .dag module:
-// it is the emitter's prelude, and its edges arrive through the merge, so it is the one basename
-// that needs no declaration. Every other basename must project from exactly one declared module.
-fn stage0_partitioned_declaration_refusal(
-  basenames: List<String>,
-  declarations: List<ModuleDeclarationFact>
-) -> Optional<Stage0SourceEdgeRefusal> {
-  basenames |> fold(init: Absent, f: fn(acc, basename) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if basename == rust_runtime_prelude_module {
-          Absent
-        } else {
-          let projecting = declarations
-            |> filter(decl => rust_module_emit_filename(module_name: decl.module) == basename)
-            |> map(decl => decl.module)
-          let n = projecting |> count
-          if n == 0 {
-            Present { value: Stage0PartitionedModuleUndeclared { basename: basename } }
-          } else if n > 1 {
-            Present { value: Stage0PartitionedModuleAmbiguous { basename: basename, modules: projecting } }
-          } else {
-            Absent
-          }
-        }
-    }
-  })
-}
-
-// The stage0 nodes, as the shared projection takes them: each partitioned declaration's path and
-// module name, both mapped to its mirror basename.
-type Stage0NodeIndex {
-  by_path: Map<String, String>
-  by_module: Map<String, String>
-  refusal: Optional<Stage0SourceEdgeRefusal>
-}
-
-fn stage0_partitioned_node_index(
-  partitioned: Map<String, Bool>,
-  declarations: List<ModuleDeclarationFact>
-) -> Stage0NodeIndex {
-  declarations |> fold(init: Stage0NodeIndex { by_path: empty_map(), by_module: empty_map(), refusal: Absent }, f: fn(acc, decl) {
-    match acc.refusal {
-      Present { value: _ } => acc
-      Absent => {
-        let basename = rust_module_emit_filename(module_name: decl.module)
-        match stage0_key_read(set: partitioned, key: basename) {
-          Stage0KeyPresent =>
-            Stage0NodeIndex {
-              by_path: map_insert(acc.by_path, decl.path, basename),
-              by_module: map_insert(acc.by_module, decl.module, basename),
-              refusal: Absent
-            }
-          Stage0KeyAbsent => acc
-          Stage0KeyReadRejected =>
-            Stage0NodeIndex { by_path: acc.by_path, by_module: acc.by_module, refusal: Present { value: Stage0SourceLookupRejected { key: basename } } }
-        }
-      }
-    }
-  })
-}
-
-fn stage0_source_refusal_of(cause: DependencyEdgeProjectionRefusal) -> Stage0SourceEdgeRefusal {
-  match cause {
-    ProjectedDependencyUnresolved { importer_path: path, target_module: target } =>
-      Stage0PartitionedDependencyUnresolved { importer_path: path, target_module: target }
-    ProjectedDependencyOutsideNodes { importer_path: _, importer: importer, target_module: target } =>
-      Stage0PartitionedDependencyOutsidePartition { importer: importer, target: rust_module_emit_filename(module_name: target) }
-    ProjectedFactLookupRejected { key: key } =>
-      Stage0SourceLookupRejected { key: key }
-  }
-}
-
-// Pure over its supplied facts, so the refusal arms are drivable from fixtures; the live arm below
-// is the only caller that reads the tree.
-fn stage0_source_module_dag_over(
-  basenames: List<String>,
-  declarations: List<ModuleDeclarationFact>,
-  dependencies: List<ModuleDependencyEdge>
-) -> Stage0SourceModuleDag {
-  match stage0_partitioned_declaration_refusal(basenames: basenames, declarations: declarations) {
-    Present { value: cause } => Stage0SourceModuleDagRefused { cause: cause }
-    Absent => {
-      let index = stage0_partitioned_node_index(partitioned: stage0_basename_set(basenames: basenames), declarations: declarations)
-      match index.refusal {
-        Present { value: cause } => Stage0SourceModuleDagRefused { cause: cause }
-        Absent =>
-          match project_dependency_edges(importer_node_by_path: index.by_path, node_by_module: index.by_module, dependencies: dependencies) {
-            DependencyEdgesRefused { cause: cause } => Stage0SourceModuleDagRefused { cause: stage0_source_refusal_of(cause: cause) }
-            DependencyEdgesProjected { edges: edges } =>
-              Stage0SourceModuleDagDerived {
-                module_dag: ModuleDag {
-                  modules: basenames |> map(basename => stage0_module_id(basename: basename)),
-                  edges: edges,
-                  exports: stage0_module_dag_exports_map(),
-                  type_definitions: stage0_module_dag_type_definitions_map(),
-                }
-              }
-          }
-      }
-    }
-  }
-}
-
-data stage0_source_module_dag: Stage0SourceModuleDag = stage0_source_module_dag_over(
-  basenames: stage0_all_partitioned_modules(),
-  declarations: module_declaration_facts_live(pool_roots: stage0_source_pool_roots),
-  dependencies: dependency_resolution_facts_live(
-    pool_roots: stage0_source_pool_roots,
-    importer_roots: stage0_source_pool_roots,
-    exclude_substrings: []
-  )
-)
-
 // The stage0 DAG the partition decides over is the source edges PLUS the edges the emitter writes
 // into every emitted module, read from the emitter's own row producer. The runtime edges this
 // derives were three hand rows in the old edge list -- a partial second list of a fact the emitter
@@ -850,21 +1031,22 @@ type Stage0PartitionResolve
   = Stage0PartitionResolved {
       module_dag: ModuleDag
       assignment: Map<ModuleId, CompilationUnitId>
+      placements: List<Stage0Placement>
     }
   | Stage0PartitionResolveRefused { cause: ResolvePartitionRefusalCause }
-  | Stage0PartitionSourceRefused { cause: Stage0SourceEdgeRefusal }
+  | Stage0PartitionSourceRefused { cause: Stage0PartitionDerivationRefusal }
 
-data stage0_resolve_partition_outcome: Stage0PartitionResolve = match stage0_source_module_dag {
-  Stage0SourceModuleDagRefused { cause: cause } =>
+data stage0_resolve_partition_outcome: Stage0PartitionResolve = match stage0_partition_derivation {
+  Stage0PartitionDerivationRefused { cause: cause } =>
     Stage0PartitionSourceRefused { cause: cause }
-  Stage0SourceModuleDagDerived { module_dag: source } =>
+  Stage0PartitionDerived { module_dag: source, placements: placements } =>
     match stage0_module_dag_merge_over(source: source) {
       ModuleDagEmittedRefused { cause: cause } =>
         Stage0PartitionResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
       ModuleDagEmittedMerged { module_dag: module_dag } =>
-        match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: module_dag) {
+        match resolve_partition_outcome(parameter: stage0_partition_parameter(placements: placements), module_dag: module_dag) {
           ResolvePartitionOk { assignment: assignment, provenance: _ } =>
-            Stage0PartitionResolved { module_dag: module_dag, assignment: assignment }
+            Stage0PartitionResolved { module_dag: module_dag, assignment: assignment, placements: placements }
           ResolvePartitionRefused { cause: cause } =>
             Stage0PartitionResolveRefused { cause: cause }
         }
@@ -872,7 +1054,7 @@ data stage0_resolve_partition_outcome: Stage0PartitionResolve = match stage0_sou
 }
 
 data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
-  Stage0PartitionResolved { module_dag: module_dag, assignment: assignment } =>
+  Stage0PartitionResolved { module_dag: module_dag, assignment: assignment, placements: _ } =>
     match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
       PartitionFoldOk { units: units } =>
         Stage0PartitionReceiptOk { units: units }
@@ -893,26 +1075,23 @@ fn validate_partition_r4(
   validate_partition_r4_over(edges: module_dag.edges, components: components, assignment: assignment)
 }
 
-fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
-  stage0_assign_modules_to_unit(
-    assignment: empty_map(),
-    modules: stage0_all_partitioned_modules(),
-    unit_id: stage0_unit_runtime
-  )
+fn stage0_single_crate_assignment(modules: List<String>) -> Map<ModuleId, CompilationUnitId> {
+  modules |> fold(init: empty_map(), f: fn(acc, basename) {
+    map_insert(acc, stage0_module_id(basename: basename), stage0_unit_runtime)
+  })
 }
 
-// MEMBERSHIP ONLY, SO IT READS THE ROSTER AND NO EDGES. Its one consumer compares member counts
-// against the receipt; a single unit has no cross-unit edge to fold, and reading the derived DAG
-// here would make a source-edge refusal answer a question about membership.
-fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
+// MEMBERSHIP ONLY, SO IT TAKES THE ROSTER AND NO EDGES. Its one consumer compares member counts
+// against the receipt over the same derived roster; a single unit has no cross-unit edge to fold.
+fn stage0_single_crate_fold_outcome(modules: List<String>) -> PartitionFoldOutcome {
   partition_fold_outcome(
     module_dag: ModuleDag {
-      modules: stage0_all_partitioned_modules() |> map(basename => stage0_module_id(basename: basename)),
+      modules: modules |> map(basename => stage0_module_id(basename: basename)),
       edges: [],
-      exports: stage0_module_dag_exports_map(),
-      type_definitions: stage0_module_dag_type_definitions_map(),
+      exports: stage0_module_dag_exports_map(modules: modules),
+      type_definitions: stage0_module_dag_type_definitions_map(modules: modules),
     },
-    assignment: stage0_single_crate_assignment()
+    assignment: stage0_single_crate_assignment(modules: modules)
   )
 }
 
@@ -940,44 +1119,53 @@ fn stage0_partition_member_coverage_consistent(
   }
 }
 
-fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
+// THE CRATES, WITHOUT THEIR MODULES. Which packages exist, where they live and what each re-exports
+// is authored and does not move when a module does; which modules each one owns is the derivation's
+// answer. So a consumer that needs only a crate's identity reads these specs and depends on no
+// source fact, and only a consumer that reads membership has a refusal to carry.
+type Stage0PartitionCrateSpec {
+  unit_id: CompilationUnitId
+  package_name: String
+  crate_dir: String
+  kind: Stage0PartitionCrateKind
+  reexport_packages: List<String>
+  carries_non_empty_wrappers: Bool
+}
+
+fn stage0_module_bearing_crate_specs() -> List<Stage0PartitionCrateSpec> {
   [
-    Stage0PartitionCrateRow {
+    Stage0PartitionCrateSpec {
       unit_id: stage0_unit_runtime,
       package_name: "v1-stage0-runtime",
       crate_dir: "src/v1/stage0_runtime",
       kind: Stage0FoundationCrate,
-      modules: stage0_runtime_modules(),
       reexport_packages: [],
       carries_non_empty_wrappers: true
     },
-    Stage0PartitionCrateRow {
+    Stage0PartitionCrateSpec {
       unit_id: stage0_unit_std_core,
       package_name: "v1-stage0-std-core",
       crate_dir: "src/v1/stage0_std_core",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_core_modules(),
       reexport_packages: ["v1-stage0-runtime"],
       carries_non_empty_wrappers: false
     },
-    Stage0PartitionCrateRow {
+    Stage0PartitionCrateSpec {
       unit_id: stage0_unit_std_surface,
       package_name: "v1-stage0-std-surface",
       crate_dir: "src/v1/stage0_std_surface",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_surface_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core"
       ],
       carries_non_empty_wrappers: false
     },
-    Stage0PartitionCrateRow {
+    Stage0PartitionCrateSpec {
       unit_id: stage0_unit_extdeps_languages,
       package_name: "v1-stage0-extdeps-languages",
       crate_dir: "src/v1/stage0_extdeps_languages",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_extdeps_language_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
@@ -985,12 +1173,11 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       ],
       carries_non_empty_wrappers: false
     },
-    Stage0PartitionCrateRow {
+    Stage0PartitionCrateSpec {
       unit_id: stage0_unit_v1_artifact,
       package_name: "v1-stage0-v1-artifact",
       crate_dir: "src/v1/stage0_v1_artifact",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_artifact_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
@@ -999,12 +1186,11 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       ],
       carries_non_empty_wrappers: false
     },
-    Stage0PartitionCrateRow {
+    Stage0PartitionCrateSpec {
       unit_id: stage0_unit_v1_infer,
       package_name: "v1-stage0-v1-infer",
       crate_dir: "src/v1/stage0_v1_infer",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_infer_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-core",
@@ -1017,65 +1203,125 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
   ]
 }
 
-fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
-  Stage0PartitionCrateRow {
+// THE EMIT-CORE SHELL OWNS NO MODULE; IT RE-EXPORTS ONE. It hosts v1_compiler_parse by #[path]
+// rather than copying its semantics, and this list is the public surface that hosting needs: each
+// entry becomes a pub use of the module from its owning crate. It is authored, not derived, and it
+// is checked rather than trusted -- every entry must be owned by a module-bearing crate
+// (stage0_partition_row_lookups_resolved), so a module leaving the partition reds here instead of
+// silently shrinking the surface.
+fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
+  [
+    "gunbc_rust_emitted_crate",
+    "gunbc_rust_emitted_edge",
+    "std_unicode_scalar",
+    "v1_compiler_artifact",
+    "v1_compiler_infer_env",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_types",
+    "v1_compiler_languages",
+    "v1_compiler_parse",
+    "v1_rt",
+    "v1_std_core"
+  ]
+}
+
+fn stage0_r3_emit_shell_crate_spec() -> Stage0PartitionCrateSpec {
+  Stage0PartitionCrateSpec {
     unit_id: stage0_unit_emit_core,
     package_name: "v1-stage0-emit-core",
     crate_dir: "src/v1/stage0_emit_core",
     kind: Stage0EmitCoreCrate,
-    modules: stage0_r3_emit_reexport_surface_modules(),
     reexport_packages: [],
     carries_non_empty_wrappers: false
   }
 }
 
-fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
-  stage0_module_bearing_crate_rows()
-    |> concat([stage0_r3_emit_shell_crate_row()])
+fn stage0_partition_crate_specs() -> List<Stage0PartitionCrateSpec> {
+  stage0_module_bearing_crate_specs()
+    |> concat([stage0_r3_emit_shell_crate_spec()])
+}
+
+fn stage0_crate_row_of(spec: Stage0PartitionCrateSpec, modules: List<String>) -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: spec.unit_id,
+    package_name: spec.package_name,
+    crate_dir: spec.crate_dir,
+    kind: spec.kind,
+    modules: modules,
+    reexport_packages: spec.reexport_packages,
+    carries_non_empty_wrappers: spec.carries_non_empty_wrappers
+  }
+}
+
+fn stage0_module_bearing_crate_rows_over(placements: List<Stage0Placement>) -> List<Stage0PartitionCrateRow> {
+  stage0_module_bearing_crate_specs()
+    |> map(spec => stage0_crate_row_of(spec: spec, modules: stage0_unit_modules(placements: placements, unit_id: spec.unit_id)))
+}
+
+fn stage0_partition_crate_rows_over(placements: List<Stage0Placement>) -> List<Stage0PartitionCrateRow> {
+  stage0_module_bearing_crate_rows_over(placements: placements)
+    |> concat([stage0_crate_row_of(spec: stage0_r3_emit_shell_crate_spec(), modules: stage0_r3_emit_reexport_surface_modules())])
+}
+
+// THE ROWS ARE THE DERIVATION'S, SO THEY CARRY ITS REFUSAL. There is no list to fall back to, and an
+// empty one would read as a partition owning nothing.
+type Stage0PartitionRows
+  = Stage0PartitionRowsDerived { rows: List<Stage0PartitionCrateRow> }
+  | Stage0PartitionRowsRefused { cause: Stage0PartitionDerivationRefusal }
+
+fn stage0_module_bearing_crate_rows() -> Stage0PartitionRows {
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: cause } => Stage0PartitionRowsRefused { cause: cause }
+    Stage0PartitionDerived { module_dag: _, placements: placements } =>
+      Stage0PartitionRowsDerived { rows: stage0_module_bearing_crate_rows_over(placements: placements) }
+  }
+}
+
+fn stage0_partition_crate_rows() -> Stage0PartitionRows {
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: cause } => Stage0PartitionRowsRefused { cause: cause }
+    Stage0PartitionDerived { module_dag: _, placements: placements } =>
+      Stage0PartitionRowsDerived { rows: stage0_partition_crate_rows_over(placements: placements) }
+  }
 }
 
 fn stage0_partition_package_names() -> List<String> {
-  stage0_partition_crate_rows() |> map(row => row.package_name)
+  stage0_partition_crate_specs() |> map(spec => spec.package_name)
 }
 
 fn stage0_physical_crate_count() -> Int {
-  stage0_partition_crate_rows() |> count
+  stage0_partition_crate_specs() |> count
 }
 
 fn stage0_module_bearing_unit_count() -> Int {
-  stage0_module_bearing_crate_rows() |> count
+  stage0_module_bearing_crate_specs() |> count
 }
 
-fn stage0_module_owner_resolved_in_module_bearing_rows(module_basename: String) -> Bool {
-  stage0_module_bearing_crate_rows()
-    |> any(row => row.modules |> any(m => m == module_basename))
+fn stage0_package_resolved_in_partition_specs(package_name: String) -> Bool {
+  stage0_partition_crate_specs()
+    |> any(spec => spec.package_name == package_name)
 }
 
-fn stage0_package_resolved_in_partition_rows(package_name: String) -> Bool {
-  stage0_partition_crate_rows()
-    |> any(row => row.package_name == package_name)
-}
-
+// Every re-export names a crate that exists, and every emit-shell surface entry is a module the
+// derivation placed. A refused derivation has placed nothing, so it answers false.
 fn stage0_partition_row_lookups_resolved() -> Bool {
-  let layered_ok = stage0_module_bearing_crate_rows()
-    |> fold(init: true, f: fn(ok, row) {
-      ok && row.reexport_packages
-        |> fold(init: true, f: fn(p_ok, pkg) {
-          p_ok && stage0_package_resolved_in_partition_rows(package_name: pkg)
-        })
-    })
-  let emit_shell_ok = stage0_r3_emit_reexport_surface_modules()
-    |> fold(init: true, f: fn(m_ok, module_basename) {
-      m_ok && stage0_module_owner_resolved_in_module_bearing_rows(module_basename: module_basename)
-    })
-  layered_ok && emit_shell_ok
+  let layered_ok = stage0_module_bearing_crate_specs()
+    |> all(spec => spec.reexport_packages |> all(pkg => stage0_package_resolved_in_partition_specs(package_name: pkg)))
+  match stage0_partition_derivation {
+    Stage0PartitionDerivationRefused { cause: _ } => false
+    Stage0PartitionDerived { module_dag: _, placements: placements } =>
+      layered_ok
+        && (stage0_r3_emit_reexport_surface_modules()
+          |> all(module_basename => placements |> any(placement => placement.basename == module_basename)))
+  }
 }
 
 // resolve_partition_outcome admits an assignment only through the R4 verdict, so an Ok resolve IS
 // the valid verdict; asking validate_partition_r4 again here would pay the same verdict twice.
 fn stage0_partition_r4_valid() -> Bool {
   match stage0_resolve_partition_outcome {
-    Stage0PartitionResolved { module_dag: _, assignment: _ } => true
+    Stage0PartitionResolved { module_dag: _, assignment: _, placements: _ } => true
     Stage0PartitionResolveRefused { cause: _ } => false
     Stage0PartitionSourceRefused { cause: _ } => false
   }
@@ -1168,7 +1414,7 @@ data stage0_reexport_derivation_known_divergent_packages: List<String> = []
 data stage0_reexport_derivation_repaired_divergences: List<Stage0ReexportDivergenceRepaired> = [
   Stage0ReexportDivergenceRepaired {
     package_name: "v1-stage0-v1-artifact",
-    repaired_by: "stage0_source_module_dag derived from the partitioned modules' dependency facts (v2.lens.module_graph dependency_resolution_facts_live) in place of the hand edge list"
+    repaired_by: "the stage0 source edges derived from the partitioned modules' dependency facts (v2.lens.module_graph dependency_resolution_facts_live, read today by stage0_partition_derivation) in place of the hand edge list"
   }
 ]
 
@@ -1179,7 +1425,7 @@ data stage0_reexport_derivation_repaired_divergences: List<Stage0ReexportDiverge
 // new road would be the symptom arriving in its own repair.
 type Stage0ReexportDisagreementsUnavailableCause
   = Stage0ReexportPartitionResolveRefused { cause: ResolvePartitionRefusalCause }
-  | Stage0ReexportSourceEdgesRefused { cause: Stage0SourceEdgeRefusal }
+  | Stage0ReexportSourceEdgesRefused { cause: Stage0PartitionDerivationRefusal }
   | Stage0ReexportDepUnitHasNoPackageRow { unit_id: CompilationUnitId }
 
 type Stage0ReexportDerivationDisagreements
@@ -1196,10 +1442,10 @@ fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagre
       Stage0ReexportDisagreementsUnavailable {
         cause: Stage0ReexportSourceEdgesRefused { cause: cause }
       }
-    Stage0PartitionResolved { module_dag: module_dag, assignment: assignment } =>
+    Stage0PartitionResolved { module_dag: module_dag, assignment: assignment, placements: placements } =>
       match reexport_derivation_disagreements_over(
         edges: assignment_unit_dep_edges(module_dag: module_dag, assignment: assignment),
-        rows: stage0_module_bearing_crate_rows()
+        rows: stage0_module_bearing_crate_rows_over(placements: placements)
       ) {
         ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
           Stage0ReexportDisagreementsUnavailable {
@@ -1211,7 +1457,7 @@ fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagre
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: the module ROSTER is authored (the stage0_*_modules lists) over v1 mirror basenames, and the placement of each module in a unit is authored with it. The EDGES are no longer authored: stage0_source_module_dag derives them from the partitioned modules' dependency facts (v2.lens.module_graph dependency_resolution_facts_live), which retired the hand edge list and with it the one re-export divergence the ledger carried, recorded in stage0_reexport_derivation_repaired_divergences. THE NEXT CUT is a placement rule: each module's unit derived from its dependencies' units, raised to a floor its namespace declares, so a new seed module needs no roster edit. The re-export contract stays the claim's to state (test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit) and is not restated here.")
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the stage0 partition is DERIVED (stage0_partition_derivation_over): its roster is the dependency closure of stage0_partition_source_roots plus the emitter's runtime, each module's unit is the latest of its stage0_unit_floors floor and its dependencies' units, and its edges are the dependency facts (v2.lens.module_graph dependency_resolution_facts_live). It still reaches the resolver on the explicit arm because the assignment it hands over is that rule's, not the balanced policy's. What stays authored is the rule's policy (the roots, stage0_unit_order and stage0_unit_floors), the crate specs (stage0_module_bearing_crate_specs) and the emit-core re-export surface (stage0_r3_emit_reexport_surface_modules). THE TRIGGER is the seed's crates being rendered from a partition of the emitted closure (v2.workflow.emitted_closure_crate_partition) rather than from a stage0 rule of their own; until then a new seed module needs no edit here unless it is a new root or needs a new floor. The re-export contract stays the claim's to state (test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit) and is not restated here.")
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (gunbc.design_argument::fail_closed List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
