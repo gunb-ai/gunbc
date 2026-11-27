@@ -228,7 +228,8 @@ fn parse_population_planted_named_capability_probe() -> String {
 }
 
 // ---- measurement receipts (review 98937 F4: receipts get a typed home, this witness is its
-// consumer; green by execution pending A/B/C, parses + required lane until then) ----
+// consumer; green by execution pending A/B/C; parses only — the module has no row in
+// v2.workflow.required_floor::required_gate_authored_modules, so no lane executes it) ----
 
 // GREEN half of the discriminating pair: the recorded sweep — REF + A + B + C + the instrument-check
 // leg — is publishable by the sweep's own rule (real rc 0, zero declared refusals, positive counts,
@@ -285,15 +286,16 @@ fn parse_population_receipt_count(receipts: List<ParsePopulationMeasurementRecei
 // entirely, so no edit to it reddened anything.
 test fn parse_population_receipt_measurement_shape_seal_refuses_mismatch_holds() -> Bool {
   let first_receipt = parse_population_measurement_receipts[0]
-  parse_population_receipt_measurement_shape_is_sealed(receipt: first_receipt) &&
-  !parse_population_receipt_measurement_shape_is_sealed(receipt: some(ParsePopulationMeasurementReceipt {
+  let planted_process_times_under_a = ParsePopulationMeasurementReceipt {
     cell: CellA, population: FiveLargest, runs: 1,
     measurement: ProcessTimes { utime: microsecond(count: 1), stime: microsecond(count: 1), minor_faults: 1, major_faults: 0, voluntary_ctx_switches: 0, involuntary_ctx_switches: 0 },
     peak_rss: byte_size(count: 1), modules: 1, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
     tree_sha: "0000000000000000000000000000000000000000" as CommitSha, host: "srv1" as HostIdentity,
     boot_id: "planted-boot"
-  }))
+  }
+  parse_population_receipt_measurement_shape_is_sealed(receipt: first_receipt)
+  && !parse_population_receipt_measurement_shape_is_sealed(receipt: planted_process_times_under_a)
 }
 
 // 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): every real receipt's

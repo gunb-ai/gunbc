@@ -88,8 +88,11 @@ and, over a real carrier-shaped row with one byte size mistyped, `parse_populati
 and its assertion was inverted for a refusal leg — it asserted the unreconciled count was `0`, which is false by
 construction, so as a leg it could only ever FAIL. It is now a `test fn` asserting the count is NOT zero, so every
 leg in the batch HELDs and the negative is carried by an assertion inside a held leg over a named planted input).
-Current leg set: 14 `test fn`s, zero plain-fn legs. Status for all of them: **parses + required lane**; execution
-on srv1 through the limiter is the open item. Reading the real tree and failing by name on the real 170 rows is
+Current leg set: 14 `test fn`s, zero plain-fn legs. Status for all of them: **parses only** — the module
+`test.claim.parse_population_baseline_roster_witness` has NO row in
+`v2.workflow.required_floor::required_gate_authored_modules` (verified by grep over that file: zero hits), so
+no lane executes it and none of these legs is gated; an operator ruling would be needed to enrol the module.
+Execution on srv1 through the limiter is the open item. Reading the real tree and failing by name on the real 170 rows is
 likewise open, not done here.
 
 **Route A is the merge path.** `gunbc compile --target rust` over this carrier already emits all 170 rows as
@@ -179,8 +182,8 @@ bound contract of this PR.
 `parse_population_measurement_receipts` in `dag/gunbc/parse_population_baseline_roster.dag` (one
 `ParsePopulationMeasurementReceipt` per cell: printed counters, real rc, binary sha256, tree sha, host,
 boot id), consumed by the witness legs `parse_population_measurement_receipts_record_the_sweep_holds`
-and `parse_population_receipt_publishability_refuses_planted_failed_cell_holds` (parses + required lane;
-execution pending A/B/C). `planning_has_one_home` bars this file from being a **plan** home — the plan
+and `parse_population_receipt_publishability_refuses_planted_failed_cell_holds` (parses only — the module is
+not enrolled on the required floor; execution pending A/B/C). `planning_has_one_home` bars this file from being a **plan** home — the plan
 (roadmap row, stall, route-A referent) lives in `.dag` carriers; what sits here is a measurement
 **transcript** — raw runner output no `.dag` route can produce — and per `source_annotations` the receipt
 FACTS now live typed, with this section rendering them. Retyped per review 98981: peak RSS is a
