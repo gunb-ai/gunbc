@@ -667,7 +667,7 @@ fn configuration_warm_session_capacity(c: ReplicaConfiguration) -> Optional<Warm
       if c.replica_count == 0 {
         Absent
       } else {
-        Present { value: WarmSessionCapacityFigure { value: per_engine.value * c.replica_count, basis: per_engine.basis } }
+        Present { value: WarmSessionCapacityFigure { value: per_engine.value, basis: per_engine.basis } }
       }
   }
 }
