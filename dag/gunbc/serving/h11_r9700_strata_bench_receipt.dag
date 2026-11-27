@@ -12,7 +12,6 @@ import extdeps.linux.amdgpu_hwmon {
 }
 import extdeps.hardware { Hardware }
 import extdeps.vendor { Vendor }
-import extdeps.vendor.amd { amd }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 
@@ -58,13 +57,14 @@ type R9700PowerSampling {
 }
 
 // THE POWER PROBE'S OUTCOME, typed. An instrument that cannot read reports a refusal, never an empty column
-// (gunbc.design_argument::fail_closed). The fleet is NVIDIA and AMD; a vendor-specific probe on a host of a
-// different vendor is its own arm: the binary ran (nvidia-smi exists on the host) but can never succeed because
-// the hardware is the wrong vendor -- its crash IS the non-applicability manifesting, not a runtime failure of
-// the right probe (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent: "for a probe, a host
-// where the probe does not apply is its OWN arm, distinct from both a reading and a failure"). A probe that ran
-// and failed transiently or for a hardware reason (the RIGHT probe on the right vendor, but something went wrong)
-// is a distinct arm from one that was never applicable to this vendor.
+// (gunbc.design_argument::fail_closed). The two refusal arms are distinguished by WHAT WAS OBSERVED, not by a
+// story about why (gunbc.design_argument::epistemic_humility): ProbeFailed is the arm for a probe that was
+// INVOKED AND THREW -- its evidence is the tool's own exit and stderr (gunbc.design_argument::external_upstreams).
+// ProbeAbsentOnVendor is the arm for a probe that was never invoked because it does not apply to this host's
+// vendor -- the fleet is NVIDIA AND AMD (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent:
+// "for a probe, a host where the probe does not apply is its OWN arm, distinct from both a reading and a
+// failure"). Do not put a run that crashed into ProbeAbsentOnVendor: a failed read reported as not-applicable is
+// the same class as a failed read reported as absent, and the two arms exist to keep them apart.
 type R9700PowerOutcome
   = ReadingPresent { value: R9700PowerSampling }
   | ProbeAbsentOnVendor { probe: NonEmptyStr, host_vendor: Vendor<Hardware> }
@@ -115,10 +115,15 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 2048),
     third_turn_aggregate: milli_tokens_per_second(count: 12010),
     cached_tokens_max: token_count(count: 0),
-    // The bench's GPU sampler shells out to nvidia-smi; on this AMD-only host that binary can never
-    // read the R9700 -- it is the wrong probe for this vendor (strata_bench.err.log records the
-    // per-sample crash in every run, which IS the vendor non-applicability manifesting).
-    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, host_vendor: amd },
+    // The bench's GPU sampler INVOKED nvidia-smi and it THREW, per sample, inside the sampler's background
+    // thread: strata_bench.err.log records the per-sample crash in every run. That is a failed read, so it is
+    // ProbeFailed (gunbc.design_argument::external_upstreams -- the observed fact is the tool's own crash, not
+    // a verdict about the hardware). That nvidia-smi cannot read an AMD card explains the crash; it does not
+    // move this row into ProbeAbsentOnVendor, which is the arm for a probe that was never invoked at all.
+    power: ProbeFailed {
+      probe: "nvidia-smi" as NonEmptyStr,
+      cause: "strata_bench.err.log records a per-sample crash in every run; the throw was inside the sampler's background thread and killed the thread, not the run" as NonEmptyStr,
+    },
   },
   // THE CONVERSATION-CACHE RUN WAS WORSE, AND ONE REQUEST FAILED. Agent 3's first turn returned no tokens after
   // 153 s; the third turn delivered 1536 of 2048 tokens. Its engine flags were reverted afterwards and not kept,
@@ -138,8 +143,12 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 1536),
     third_turn_aggregate: milli_tokens_per_second(count: 4770),
     cached_tokens_max: token_count(count: 0),
-    // Same vendor non-applicability: nvidia-smi can never read an AMD R9700.
-    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, host_vendor: amd },
+    // Same observation as r9700-20261112: the sampler invoked nvidia-smi and it threw per sample in every
+    // run (strata_bench.err.log), so this is the failed-read arm, not the never-invoked arm.
+    power: ProbeFailed {
+      probe: "nvidia-smi" as NonEmptyStr,
+      cause: "strata_bench.err.log records a per-sample crash in every run; the throw was inside the sampler's background thread and killed the thread, not the run" as NonEmptyStr,
+    },
   },
   R9700BenchRun {
     run: "r9700-210w" as NonEmptyStr,
