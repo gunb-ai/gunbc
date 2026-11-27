@@ -100,7 +100,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host.host_effect_realize { HostEffectTransport, FleetSsh }
-import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
+import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, RemoteStepOutcomeUnknown, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
   remote_step_sequence_failed,
@@ -350,6 +350,9 @@ fn spark_grant_install_cleanup_completed(outcome: SparkGrantInstallOutcome) -> B
       match c {
         RemoteStepCompleted { identity: _, execution: _ } => true
         RemoteStepFailed { identity: _, execution: _ } => false
+        // The cleanup rm was dispatched but its reply could not be read: whether the staging file was
+        // removed is unknown, so cleanup is NOT confirmed-complete (withhold; never claim it completed).
+        RemoteStepOutcomeUnknown { identity: _, execution: _ } => false
         RemoteStepUnattempted { identity: _ } => false
       }
   }

@@ -47,12 +47,15 @@ import gunbc.remote_operation {
   remote_operation_argv,
   remote_operation_label,
   remote_step_standing_wire,
+  remote_step_standing_of,
   RemoteOperationExecution,
   RemoteArgvExecution,
   RemoteStepStanding,
   RemoteStepUnattempted,
   RemoteStepCompleted,
   RemoteStepFailed,
+  RemoteStepOutcomeUnknown,
+  remote_step_failure_cause,
 }
 import gunbc.typed_argv_exec { TypedArgvExecOverran, TypedArgvExecRefused, TypedArgvExecWireInconsistent }
 import extdeps.ssh.session { OverrunWithoutDeadline }
@@ -207,6 +210,7 @@ test fn an_unrun_cleanup_reports_itself_unattempted() -> Bool {
     RemoteStepUnattempted { identity: id } => id as String == "cleanup-fixture"
     RemoteStepCompleted { identity: _, execution: _ } => false
     RemoteStepFailed { identity: _, execution: _ } => false
+    RemoteStepOutcomeUnknown { identity: _, execution: _ } => false
   }
 }
 
@@ -636,32 +640,46 @@ test fn a_withheld_retired_dropin_removal_does_not_read_as_converged() -> Bool {
     && contains(spark_grant_install_run_text(run: withheld), "retired-shared-dropin REMOVAL-WITHHELD would lapse gunbc-docker-inspect-glm-native-tp4")
 }
 
-// THE HALT IS WORDING-HONEST FOR A DISPATCHED-UNKNOWN STEP (#17119 review 99463). A remote step whose
-// leg was SENT but whose reply could not be read (deadline overrun / inconsistent wire) is a RemoteStepFailed
-// that HALTS the sequence (permits_continuation = false, the reviewer-approved fail-closed behavior) -- but
-// its wire label must read "unknown:", never "failed:", because calling a sent leg a definite failure invites
-// a retry that could re-run a change that already took. A genuine pre-dispatch refusal (TypedArgvExecRefused)
-// STILL labels "failed:". RED-BY-MUTATION: making remote_step_standing_wire always emit "failed:" makes the
-// overrun/wire assertions fail -> false.
-test fn a_dispatched_unknown_step_halts_but_is_never_labeled_failed() -> Bool {
-  let overrun_step = RemoteStepFailed {
-    identity: "install-sudoers" as NonEmptyStr,
+// THE DISPATCHED-UNKNOWN STEP IS ITS OWN STANDING (#17119 review 99490). The classifier
+// remote_step_standing_of decides it directly from the execution -- no Bool predicate recovers it. A
+// leg that was SENT but whose reply could not be read (deadline overrun / inconsistent wire) becomes
+// RemoteStepOutcomeUnknown: it HALTS the sequence (the sequence is not all-completed) and its wire reads
+// "unknown:" and its cause reads "dispatched, reply unreadable", never "failed"/"not applied" -- because a
+// sent leg whose effect is unknown must not be retried or reported as not having run. A genuine pre-dispatch
+// refusal is STILL RemoteStepFailed with wire "failed:". RED-BY-MUTATION: routing the Overran/WireInconsistent
+// arms of remote_step_standing_of back to RemoteStepFailed makes the OutcomeUnknown assertions fail -> false.
+test fn a_dispatched_unknown_step_is_its_own_standing_never_failed() -> Bool {
+  let id = "install-sudoers" as NonEmptyStr
+  let overrun = remote_step_standing_of(
+    identity: id,
     execution: RemoteArgvExecution { outcome: TypedArgvExecOverran { deadline: second(count: 30) } },
-  }
-  let wire_step = RemoteStepFailed {
-    identity: "install-sudoers" as NonEmptyStr,
+  )
+  let wire = remote_step_standing_of(
+    identity: id,
     execution: RemoteArgvExecution { outcome: TypedArgvExecWireInconsistent { fault: OverrunWithoutDeadline } },
-  }
-  let refused_step = RemoteStepFailed {
-    identity: "install-sudoers" as NonEmptyStr,
+  )
+  let refused = remote_step_standing_of(
+    identity: id,
     execution: RemoteArgvExecution { outcome: TypedArgvExecRefused { reason: "transport declined" } },
+  )
+  match overrun {
+    RemoteStepOutcomeUnknown { identity: _, execution: _ } =>
+      string_contains(remote_step_standing_wire(standing: overrun), "unknown:")
+        && !string_contains(remote_step_standing_wire(standing: overrun), "failed:")
+        && match remote_step_failure_cause(standing: overrun) {
+             Present { value: why } => string_contains(why, "dispatched, reply unreadable")
+             Absent => false
+           }
+    _ => false
   }
-  let overrun_wire = remote_step_standing_wire(standing: overrun_step)
-  let wire_wire = remote_step_standing_wire(standing: wire_step)
-  let refused_wire = remote_step_standing_wire(standing: refused_step)
-  string_contains(overrun_wire, "unknown:")
-    && !string_contains(overrun_wire, "failed:")
-    && string_contains(wire_wire, "unknown:")
-    && !string_contains(wire_wire, "failed:")
-    && string_contains(refused_wire, "failed:")
+    && match wire {
+      RemoteStepOutcomeUnknown { identity: _, execution: _ } =>
+        !string_contains(remote_step_standing_wire(standing: wire), "failed:")
+      _ => false
+    }
+    && match refused {
+      RemoteStepFailed { identity: _, execution: _ } =>
+        string_contains(remote_step_standing_wire(standing: refused), "failed:")
+      _ => false
+    }
 }

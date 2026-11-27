@@ -19,7 +19,9 @@ import gunbc.remote_operation {
   RemoteStepStanding,
   RemoteStepCompleted,
   RemoteStepFailed,
+  RemoteStepOutcomeUnknown,
   RemoteStepUnattempted,
+  remote_step_standing_of,
   PlannedRemoteStep,
   remote_execution_permits_continuation,
   remote_step_standing_wire,
@@ -110,20 +112,21 @@ fn remote_step_sequence_step(
     }
   } else {
     let execution = run_remote_operation(operation: step.operation, transport: transport)
-    if remote_execution_permits_continuation(execution: execution) {
-      RemoteStepSequenceAcc {
-        standings: concat(acc.standings, [
-          RemoteStepCompleted { identity: step.identity, execution: execution },
-        ]),
-        halted: false,
-      }
-    } else {
-      RemoteStepSequenceAcc {
-        standings: concat(acc.standings, [
-          RemoteStepFailed { identity: step.identity, execution: execution },
-        ]),
-        halted: true,
-      }
+    let standing = remote_step_standing_of(identity: step.identity, execution: execution)
+    // Only a Completed step lets the sequence run on. A Failed step AND an OutcomeUnknown step (the leg
+    // was sent, its reply unreadable) both halt -- fail-closed -- but they stay typed apart so no consumer
+    // retries or "not applied"s a change that may already have taken.
+    match standing {
+      RemoteStepCompleted { identity: _, execution: _ } =>
+        RemoteStepSequenceAcc {
+          standings: concat(acc.standings, [standing]),
+          halted: false,
+        }
+      _ =>
+        RemoteStepSequenceAcc {
+          standings: concat(acc.standings, [standing]),
+          halted: true,
+        }
     }
   }
 }
@@ -140,12 +143,28 @@ fn run_remote_step_sequence(
   ).standings
 }
 
+// "IS THERE A DEFINITE FAILURE" -- true only for an answered non-success or a pre-dispatch refusal. An
+// OutcomeUnknown step is NOT a failure (its effect is unknown, never "not applied"); use
+// remote_step_sequence_all_completed to decide whether the sequence may be relied upon.
 fn remote_step_sequence_failed(standings: List<RemoteStepStanding>) -> Bool {
   fold(standings, init: false, f: fn(acc, st) {
     match st {
       RemoteStepFailed { identity: _, execution: _ } => true
       RemoteStepCompleted { identity: _, execution: _ } => acc
+      RemoteStepOutcomeUnknown { identity: _, execution: _ } => acc
       RemoteStepUnattempted { identity: _ } => acc
+    }
+  })
+}
+
+// "DID EVERY STEP CLEANLY COMPLETE" -- the only standing that lets the sequence be relied upon. A halt of
+// any kind (Failed, OutcomeUnknown, or an Unattempted tail) makes this false, so a dispatched-unknown leg
+// whose effect is unknown never reads as "the sequence succeeded" and is never retried.
+fn remote_step_sequence_all_completed(standings: List<RemoteStepStanding>) -> Bool {
+  fold(standings, init: true, f: fn(acc, st) {
+    acc && match st {
+      RemoteStepCompleted { identity: _, execution: _ } => true
+      _ => false
     }
   })
 }
