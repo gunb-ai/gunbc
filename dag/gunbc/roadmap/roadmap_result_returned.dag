@@ -30,7 +30,6 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_bound_result_append,
   roadmap_events_read_all, roadmap_events_read,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, RoadmapEventsRead, EventsRead, EventsReadRefused,
-  CarrierReadAttached,
   RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused,
   CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, carrier_report_with_snapshot_close,
 }
@@ -133,6 +132,7 @@ fn result_claim_join(node_envelopes: List<RoadmapEventEnvelope>, claim: RoadmapE
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentEdited { comment: _, body: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentDeleted { comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
+        PullRequestMergedEvent { merge: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         ResultReturned { attempt: _, claim: _, outcome: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         // Said as itself rather than folded into the generic sentence: an acceptance is the record that CLOSED
         // a node, so a binding that points at one is a mistake worth reading clearly, not a shrug.
@@ -172,6 +172,7 @@ fn result_attempt_answer(envelopes: List<RoadmapEventEnvelope>, binding: Roadmap
       CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
       CommentEdited { comment: _, body: _ } => false
       CommentDeleted { comment: _ } => false
+      PullRequestMergedEvent { merge: _ } => false
     })).first()
 }
 
@@ -334,7 +335,7 @@ fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded
     DashboardObserveOnly =>
       ResultReturnPassRun { pass: ResultReturnPassWithheld { reason: join(["dashboard instance ", instance.instance_id as String, " is observe-only, so no result was appended"], "") }, closes: [] }
     DashboardActuating => {
-      let log = roadmap_events_read_all(read: CarrierReadAttached { attached: roadmap_event_carrier_layout_for_instance(instance: instance) })
+      let log = roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
       match log.result {
         AllEventsReadRefused { step, reason } => ResultReturnPassRun { pass: ResultReturnPassRefused { step: join(["events/", step], ""), reason: reason }, closes: [log.close] }
         AllEventsRead { envelopes } =>
@@ -439,6 +440,7 @@ fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envel
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentEdited { comment: _, body: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentDeleted { comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
+    PullRequestMergedEvent { merge: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     AcceptanceRecordedEvent { receipt: _, evidence: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
   }

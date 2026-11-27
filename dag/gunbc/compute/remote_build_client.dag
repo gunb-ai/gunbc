@@ -16,6 +16,7 @@ import extdeps.ssh.session {
   ssh_session_exec_wire_refusal_text,
 }
 import std.measure { Second, second_count }
+import std.retry_law { RetryHint, RetryHintNone, RetryHintDelay, RetryHintUnresolved }
 import std.nat { nat_to_decimal_string }
 import extdeps.bazel.label { render_label }
 import extdeps.bazel.target_pattern {
@@ -31,7 +32,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, known_hosts_file_rows,
   portable_remote_words, shape_fleet_ssh_exec,
-  FleetLegKind, FleetBareWordLeg, fleet_ssh_exec_key_leg,
+  FleetLegKind, FleetBareWordLeg, fleet_ssh_exec_key_leg, ServingProbeLeg, HostBuildLeg,
   OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {
@@ -48,6 +49,7 @@ import gunbc.compute.test_run {
 import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, WitnessModuleSelected, WitnessModuleNotAWitness,
 }
+import gunbc.compute.remote_build_wire { remote_build_probe_text }
 import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildWork, RemoteBuildSourceRef,
   remote_build_source_ref, remote_build_source_ref_name, remote_build_request_work, remote_build_request_words, remote_build_entry_admitted,
@@ -60,7 +62,7 @@ import gunbc.compute.remote_build {
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildOperationDecode, RemoteBuildOperationDecoded, RemoteBuildOperationRefused, remote_build_decode_gate_subject,
   remote_build_gate_word, remote_build_request_refusal_text,
-  remote_build_probe_text, remote_build_probe_from_exit, remote_build_probe_answer, remote_build_answer_from_exit,
+  remote_build_probe_from_exit, remote_build_probe_answer, remote_build_answer_from_exit,
 }
 
 // ── THE REQUESTING SIDE: A SESSION'S COMPILE OR CLAIM RUN, SERVED ON A ROSTER HOST ──────────────────
@@ -224,6 +226,35 @@ fn remote_build_client_target(host: HostIdentity) -> SshTargetResolution {
   anchored_ssh_target(host: host, principal: fleet_posix_remote_build_user.name)
 }
 
+// THE TWO KINDS THIS ROUTE DECLARES, named here rather than spelled inline at the two legs so the
+// claim can read the route's own choice off the one deadline authority instead of restating it (the
+// same reason gunbc.compute.remote_build_serving_converge names serving_door_leg_kind).
+//
+// THE PROBE IS A SERVING-CONTRACT LEG, NOT A ProbeLeg. ProbeLeg's 15 s was sized against a 0.26 s
+// `git rev-parse HEAD` on a fleet host; the far side of THIS leg cannot answer at all until the
+// serving interpreter has resolved its own closure, measured at 240 s wall on 2026-11-25 (see
+// gunbc.fleet.fleet_known_hosts_anchor serving_probe_cold_answer_read). Riding ProbeLeg would have
+// every roster host answer probe-leg-overran, which is fail-closed but serves nothing. The request leg
+// is a build, not a provisioning leg either: it fetches the pushed revision, builds it and runs the
+// work, so it takes HostBuildLeg and the ceiling derived from the receipt's own step bound.
+fn remote_build_probe_leg_kind() -> FleetLegKind {
+  ServingProbeLeg
+}
+
+fn remote_build_work_leg_kind() -> FleetLegKind {
+  HostBuildLeg
+}
+
+// THE REFUSAL A REQUEST LEG ANSWERS WHEN IT OVERRUNS ITS CEILING, named as a projection so the claim
+// can read the ceiling out of the receipt text instead of restating a number the authority owns.
+fn remote_build_work_leg_overrun_detail(deadline: Second) -> String {
+  concat(
+    "the request leg overran its ",
+    concat(nat_to_decimal_string(value: second_count(s: deadline)),
+      "s wall-clock deadline after the request was sent; the host may still be building, so the outcome is unknown and the walk stops"),
+  )
+}
+
 // One SSH leg. The words cross as portable remote words, so the forced command's
 // SSH_ORIGINAL_COMMAND is exactly their space-joined text; a word outside that alphabet sends nothing.
 fn remote_build_client_leg(kind: FleetLegKind, context: FleetSshExecutionContext, host: HostIdentity, words: List<String>) -> RemoteBuildLeg {
@@ -261,7 +292,7 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
   // so a pure projection is settled before the effect is -- not for what it does, which is nothing, but
   // so the summary stays checkable instead of incomplete.
   let words = remote_build_request_words(r: remote_build_request_work(r: request))
-  match remote_build_client_leg(kind: ProbeLeg, context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
+  match remote_build_client_leg(kind: remote_build_probe_leg_kind(), context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
     RemoteBuildLegNotSent { detail } => HostUnreachable { detail: detail }
     RemoteBuildLegRan { target: _, outcome: probe } =>
       match probe {
@@ -278,7 +309,7 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
           match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: e, stdout: o, stderr: er)) {
             Present { value: moved_on } => moved_on
             Absent =>
-              match remote_build_client_leg(kind: ProvisioningLeg, context: context, host: candidate.host, words: words) {
+              match remote_build_client_leg(kind: remote_build_work_leg_kind(), context: context, host: candidate.host, words: words) {
                 RemoteBuildLegNotSent { detail } => HostRefusedRequest { detail: detail }
                 RemoteBuildLegRan { target: _, outcome: sent } =>
                   match sent {
@@ -286,13 +317,7 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
                     // building, so the outcome is unknown and the walk STOPS -- a second host would be
                     // a second producer of one identity. Never an exit code, never a retry.
                     SessionOverran { deadline: d } =>
-                      HostOutcomeUnknown {
-                        detail: concat(
-                          "the request leg overran its ",
-                          concat(nat_to_decimal_string(value: second_count(s: d)),
-                            "s wall-clock deadline after the request was sent; the host may still be building, so the outcome is unknown and the walk stops"),
-                        )
-                      }
+                      HostOutcomeUnknown { detail: remote_build_work_leg_overrun_detail(deadline: d) }
                     SessionWireInconsistent { fault: f } =>
                       HostOutcomeUnknown { detail: ssh_session_exec_wire_refusal_text(fault: f) }
                     SessionCompleted { exit_code: e, stdout: o, stderr: er } =>
@@ -500,7 +525,7 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostServed { receipt: _ } => "served"
     HostWorkFailed { receipt: _ } => "work-failed"
     HostWorkInFlight { receipt: _ } => "work-in-flight"
-    HostCapacityFull { detail: _ } => "capacity-full"
+    HostCapacityFull { detail: _, retry: _ } => "capacity-full"
     HostCannotServe { detail: _ } => "cannot-serve"
     HostUnreachable { detail: _ } => "unreachable"
     HostRefusedRequest { detail: _ } => "request-refused"
@@ -518,7 +543,7 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostServed { receipt } => receipt
     HostWorkFailed { receipt } => receipt
     HostWorkInFlight { receipt } => receipt
-    HostCapacityFull { detail } => detail
+    HostCapacityFull { detail, retry: _ } => detail
     HostCannotServe { detail } => detail
     // The detail IS the verdict, rendered by fabric; nothing here re-describes it.
     HostExecutionClassRefused { admission: _, detail } => detail
@@ -530,12 +555,32 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
   }
 }
 
+// HOW A HOST'S RETRY ALLOWANCE READS IN THE RECEIPT: the delay it named, "none" when it named no delay
+// (retry still allowed, the caller's own backoff applies), or "unresolved" when it named an unreadable
+// count. This is the production reader of HostCapacityFull.retry -- the receipt is what CI and the
+// serving router consume, so the capacity-limited answer reaches them as "retry allowed", not a bare no.
+fn remote_build_retry_hint_word(h: RetryHint) -> String {
+  match h {
+    RetryHintNone => "none"
+    RetryHintDelay { delay: d } => concat(nat_to_decimal_string(value: second_count(s: d)), "s")
+    RetryHintUnresolved { cause: c } => concat("unresolved: ", c as String)
+  }
+}
+
 fn remote_build_attempt_json(a: RemoteBuildAttempt) -> JsonValue {
-  json_object(members: [
+  let base = [
     json_kv(key: "host", value: json_string(s: a.host as String)),
     json_kv(key: "answer", value: json_string(s: remote_build_answer_word(a: a.answer))),
     json_kv(key: "text", value: json_string(s: remote_build_answer_text(a: a.answer))),
-  ])
+  ]
+  // A capacity-limited host's retry allowance rides into the receipt so the caller sees "capacity limited,
+  // retry allowed" with the named delay -- the first step toward the serving router's RetryHint (operator
+  // direction 2026-11-26); the router node is the acting consumer that will schedule the retry.
+  let members = match a.answer {
+    HostCapacityFull { retry, detail: _ } => concat(base, [json_kv(key: "retry", value: json_string(s: remote_build_retry_hint_word(h: retry)))])
+    _ => base
+  }
+  json_object(members: members)
 }
 
 fn remote_build_operation_json(op: RemoteBuildOperation) -> JsonValue {
@@ -606,7 +651,15 @@ fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, de
 // Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
 // Optional --arg host=<host> PINS this request to one host: it must be a DISPATCH-roster host, or
 // the whole run refuses before any effect (never widened to the rest of the roster).
-fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
+//
+// WHY THE TWO OPTIONALS DECLARE `= none`. `gunbc run --arg` carries text only
+// (`cli_run::bind_cli_arg_text` inhabits a parameter from that text) and has no spelling for an absent
+// optional: `--arg host=` is Present(""), which `remote_build_host_pin` refuses as an off-roster pin
+// named "" rather than widening to the roster, and `--arg host=none` is Present("none"). So Absent is
+// reachable from argv only by OMITTING the parameter, and the interpreter refuses an omission of a
+// parameter that declares no default -- which is how ctrl's four-argument call died.
+// Executed by `test fn the_client_clis_are_callable_with_only_their_required_args`.
+fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, identity_file: String? = none, host: String? = none) -> ProcessExit {
   if !remote_build_entry_admitted(entry: entry) {
     ExitFailure { code: 2, reason: concat("gunbc remote compile: entry must be a .dag file under dag/, relative to the worktree: ", entry) }
   } else {
@@ -666,7 +719,7 @@ fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
         HostWorkFailed { receipt: _ } => GateVerdictOnCode
         HostRefusedRequest { detail: _ } => GateRequestRejected
         HostWorkInFlight { receipt: _ } => GateNoHostAdmitted
-        HostCapacityFull { detail: _ } => GateNoHostAdmitted
+        HostCapacityFull { detail: _, retry: _ } => GateNoHostAdmitted
         HostCannotServe { detail: _ } => GateNoHostAdmitted
         HostUnreachable { detail: _ } => GateNoHostAdmitted
         // A host the fleet's execution class refused never judged the code either: the work was refused
@@ -718,8 +771,9 @@ fn remote_gate_exit_code(o: RemoteGateOutcome) -> Int {
 
 // Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
 // Optional --arg host=<host> PINS this gate to one DISPATCH-roster host; any other host refuses
-// before any effect rather than falling through to the rest of the roster.
-fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
+// before any effect rather than falling through to the rest of the roster. The `= none` defaults are
+// what make those two words true from argv -- see the note on remote_compile_cli.
+fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String? = none, host: String? = none) -> ProcessExit {
   match remote_build_decode_gate_subject(words: [remote_build_gate_word as String, label], operand: label) {
     RemoteBuildOperationRefused { cause } =>
       ExitFailure { code: 2, reason: join(["gunbc remote gate: ", remote_build_request_refusal_text(cause: cause)], "") }
@@ -799,8 +853,9 @@ fn remote_not_sent_json(label: String, reason: String) -> JsonValue {
 //     --arg worktree=$PWD --arg pattern=//dag/test/claim/<package>/... --arg receipt_path=$PWD/.gunbc-test-receipt.json
 // Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
 // Optional --arg host=<host> PINS this test run to one DISPATCH-roster host; any other host refuses
-// before any effect rather than falling through to the rest of the roster.
-fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
+// before any effect rather than falling through to the rest of the roster. The `= none` defaults are
+// what make those two words true from argv -- see the note on remote_compile_cli.
+fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, identity_file: String? = none, host: String? = none) -> ProcessExit {
   match parse_target_pattern(text: pattern) {
     TargetPatternRefused { cause } => ExitFailure { code: 2, reason: concat("gunbc remote test: ", target_pattern_refusal_text(r: cause)) }
     TargetPatternParsed { pattern: parsed } =>

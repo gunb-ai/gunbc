@@ -125,15 +125,15 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // expected-red roster proves they now have an executing required-floor consumer, so
 // LegacyFrozenPathDeferral is stale evidence rather than a live exemption. Every non-colliding
 // sibling in all three partial entries remains frozen. 2026-08-25 —
-// src/v2/test/claim/enforcement_inventory_witness.dag [partial], 7 identities replaced by 1
+// dag/test/claim/enforcement_inventory_witness.dag [partial], 7 identities replaced by 1
 // executing identity: required-floor run 32794539384 safety-interrupted seven tests because each
 // independently acquired lens_enforcement_inventory_live and its whole-corpus declaration facts.
 // enforcement_inventory_global_receipt_holds acquires that immutable global inventory once and
 // folds all seven assertions over the shared value; the seven old witness declarations and frozen
 // rows delete together, while the three cheap non-inventory siblings remain frozen. 2026-08-25 — 3
-// entries (src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag [partial],
-// src/v2/test/claim/complexity/accumulator_copy_roster_gate.dag [partial],
-// src/v2/test/claim/enforcement/cost_coverage_witness.dag [partial]), 3 identities, DELETED
+// entries (dag/test/claim/complexity_accumulator_copy_roster_gate_std.dag [partial],
+// dag/test/claim/complexity_accumulator_copy_roster_gate.dag [partial],
+// dag/test/claim/enforcement_cost_coverage_witness.dag [partial]), 3 identities, DELETED
 // not migrated or exempted: required-floor run 32794539384 proved these rows never produced a
 // verdict — two called a scanner absent from the loaded execution index and one divided by zero.
 // The witness declarations delete in the same change rather than being enrolled as semantic reds,
@@ -187,7 +187,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // non-colliding siblings remain frozen. No construction wall currently refuses the route-gap/freeze
 // pair, unlike expected_red_freeze_intersection, so this join is recorded evidence rather than a
 // mechanically guarded invariant. 2026-08-24 — 3 entries
-// (src/v2/test/claim/enforcement/cost_coverage_witness.dag [partial],
+// (dag/test/claim/enforcement_cost_coverage_witness.dag [partial],
 // src/v2/test/claim/program_assembly/real_ingest.dag [partial],
 // src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag [partial]), 6 identities,
 // MIGRATED not exempted: RequiredFloorDisposition.DeclinedLiveTree was deleted and run 32730435751
@@ -438,13 +438,13 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   },
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness.dag", functions: ["commit_witness_claim_roster_holds"] },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag",
+    entry: "dag/test/claim/complexity_accumulator_copy_roster_gate_std.dag",
     functions: [
       "roster_std_change_dag_zero_suspects_within_ratchet"
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate.dag",
+    entry: "dag/test/claim/complexity_accumulator_copy_roster_gate.dag",
     functions: [
       "roster_machine_code_zero_suspects_within_ratchet",
       "roster_lens_cost_model_zero_suspects_within_ratchet",
@@ -452,7 +452,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement/cost_coverage_witness.dag",
+    entry: "dag/test/claim/enforcement_cost_coverage_witness.dag",
     functions: [
       "cost_coverage_smoke_totality_holds", "cost_coverage_smoke_recomputed_by_execution_holds",
       "cost_coverage_reject_is_typed_not_silent",
@@ -462,7 +462,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement/grammar_coverage_witness.dag",
+    entry: "dag/test/claim/enforcement_grammar_coverage_witness.dag",
     functions: [
       "grammar_coverage_smoke_totality_holds",
       "grammar_coverage_smoke_recomputed_by_execution_holds",
@@ -489,7 +489,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement_inventory_witness.dag",
+    entry: "dag/test/claim/enforcement_inventory_witness.dag",
     functions: [
       "enforcement_live_witness_exclusion_inventory_matches_frontier",
       "witness_admission_inventory_reconciles_exclusion_frontier",
@@ -497,7 +497,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement_live_witness.dag",
+    entry: "dag/test/claim/enforcement_live_witness.dag",
     functions: [
       "enforcement_consistency_gate_holds", "complexity_repo_wide_verdict_matches_roadmap",
       "roster_read_liveness_discriminates", "empty_facts_feed_reds_subjects_leg",

@@ -85,7 +85,7 @@ data equality_wall_three_site_measure_stopgap_interim: IntegrationConcern = Inte
         },
         RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "nested_structural_argument_equality_admits_at_the_use"),
-          run: "claim_batch --source-root dag --source-root src/v2 --wet --entry dag/test/claim/self_host_equality_admission_witness.dag --functions <all 80 test fns of the module>, same compiler",
+          run: "gunbc test //test/claim/self_host_equality_admission_witness --wet (the package operand: all 80 test fns of the module), same compiler",
           conclusion: "76 PASS, 4 FAIL, 6 minutes wall. The four failures are the optional/Present controls (inferred_collection_key_census_row_is_present_and_the_program_stays_accepted, explicit_present_comparison_stays_admitted, explicit_present_return_stays_admitted, present_spelled_data_initializer_stays_admitted); they fail the same way under a compiler built from origin/main and are owned by #16206, not by this change. Zero equality-admission rows in the whole run.",
         },
       ],

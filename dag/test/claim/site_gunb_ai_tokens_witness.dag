@@ -12,8 +12,7 @@ import gunbc.site.gunb_ai_tokens {
 
 // Renders-and-checks the tokens layer (gunbc.design_argument::fail_closed: a witness goes RED when the layer
 // breaks; each claim is a property of the RENDERED artifact, not of a type).
-// Consumer: claim-run — `gunbc run --source-root dag --entry
-// dag/test/claim/site_gunb_ai_tokens_witness.dag --claim-run`, alongside the other
+// Consumer: the claim route — `gunbc test //test/claim/site_gunb_ai_tokens_witness:<test fn>`, alongside the other
 // site witnesses on the compiler gate.
 //
 // No count is copied from the tree (gunbc.design_argument::fail_closed: a count equality is a change detector, not

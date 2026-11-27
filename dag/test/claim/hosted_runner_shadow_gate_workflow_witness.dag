@@ -223,3 +223,22 @@ test fn the_push_credential_reaches_only_the_client_steps() -> Bool {
   && occurrences(s: rendered, pattern: "\n    env:") == 0
   && contains(haystack: rendered, needle: shadow_gate_push_credential_header_note)
 }
+
+// #gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
+// THE HELPER KEY IS WITNESSED AS GIT'S OWN KEY, not as text that merely looks like one. Git reads a
+// config key by splitting at its FIRST and LAST dot: the section is before the first dot, the
+// variable name is after the last, the subsection is between -- and a variable name may not contain
+// '/'. The spelling this generator carried until 2026-11-26, 'credential.https://github.com/helper',
+// put the last dot inside the host, so git read the variable as 'com/helper' and refused the whole
+// GIT_CONFIG_* env with 'fatal: unable to parse command-line config': the protocol's push ran with NO
+// credential helper at all, which is run 45013976820's 'could not read Username from Terminal'. The
+// three counts are discriminating in both directions -- restore the pre-fix key and the first two
+// fall to 0 while the third rises above 0; hand-edit the generated YAML alone and the drift gate
+// (expected_hosted_runner_shadow_gate_yml, gunbc.design_argument::single_authority) goes red on the
+// bytes, and the key still lives in exactly ONE place: gunbc.witness.hosted_runner_shadow_gate_workflow::shadow_gate_push_credential_env.
+test fn the_push_credential_helper_key_is_the_spelling_git_accepts() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  occurrences(s: rendered, pattern: "GIT_CONFIG_KEY_0: credential.https://github.com/.helper") == 3
+  && occurrences(s: rendered, pattern: "GIT_CONFIG_KEY_1: credential.https://github.com/.helper") == 3
+  && occurrences(s: rendered, pattern: "credential.https://github.com/helper") == 0
+}

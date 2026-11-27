@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.posix.process { ProcessGroupLeader }
+import extdeps.posix.process { ProcessGroupLeader, SignalTargetPid }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -26,23 +26,35 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// TerminateProcess sends SIGTERM to ONE pid. The reaper's bound is at the CALLER (residual
-// reap only ever names a pid it read out of an inactive unit's own cgroup.procs, per
-// gunbc.host.host_hygiene_reaper_remediate) rather than at the signal — this service does not
-// widen to SIGKILL, does not accept an arbitrary signal name, and does not fold a process
-// group into this operation. kill(2) with a negative pid is a different POSIX form
+// TerminateProcess sends SIGTERM to ONE pid. Which pids the reaper names stays the CALLER's
+// fact (residual reap only ever names a pid it read out of an inactive unit's own cgroup.procs,
+// per gunbc.host.host_hygiene_reaper_remediate) -- this service does not widen to SIGKILL, does
+// not accept an arbitrary signal name, and does not fold a process group into this operation.
+// The input is the sealed extdeps.posix.process SignalTargetPid, minted ONLY by signal_target_pid
+// (or its text form), which refuses everything outside 2..=pid_t max. It used to be a bare
+// NonEmptyStr, so `kill -TERM -1` -- every process the caller may signal -- was one string away
+// from any caller. kill(2) with a negative pid is a different POSIX form
 // (pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html): it names a process group.
 // That form is TerminateProcessGroup, used by the harness shell-job backstop and job_kill,
 // not by the host reaper.
+//
+// THE SERVICE DOES MODEL ONE SIGKILL FORM, and it is the sibling KillProcessGroup below -- the same
+// negative-pid form carrying KILL instead of TERM. It is not a general "send any signal" verb and it is
+// not available to the polite stop paths: the one thing that authorises it is a bound the calling layer
+// IMPOSED ITSELF, on a subject that layer STARTED, whose confirming reap still answers StillRunning after
+// the caller's own grace period -- at which point the running process is that layer's own unfinished
+// cleanup, and leaving it alive is the state the bound existed to prevent (a wedged micro-VM holding a
+// guest running). See the escalation after the kill grace in
+// #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_run_bounded.
 service posix.Signal {
   operation TerminateProcess {
     requires none
-    input { pid: NonEmptyStr }
+    input { target: SignalTargetPid }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["kill", "-TERM", "{pid}"] }
+    transport shell { argv: ["kill", "-TERM", "{target.pid}"] }
     exit {
       0 => Unit
       nonzero => String "kill -TERM failed"
@@ -58,6 +70,28 @@ service posix.Signal {
   // says it exists to prevent: `kill -TERM -1` signals every process the caller may reach, and no
   // caller can build a ProcessGroupLeader for pid 1 to get there. No mock_response: nothing
   // started, nothing replayed -- the wet lane runs it against a real process group.
+  //
+  // THE NEGATIVE TARGET MUST FOLLOW A "--" SEPARATOR, OR kill(1) SIGNALS SOMEBODY ELSE. Both group
+  // operations in this service emit it -- ["kill", "-TERM", "--", "-{group.pgid}"] here and the
+  // matching KILL form on KillProcessGroup below, whose comment carries the measured census. The
+  // separator form is what was MEASURED WORKING on both instruments of one kernel (boot_id
+  // c095c0cd): srv1 2026-11-26 12:43Z, ["/bin/kill", "-TERM", "--", "-<pgid>"] against a
+  // setsid-subject whose /proc stat field 5 equalled its pid -- subject gone within 1 s, rc=0; the
+  // session container 13:48Z, same argv, same result. The BARE form is MEASURED WRONG: on srv1 at
+  // 13:49Z, in the strace-wrapped wet boot-probe escalation, argv ["kill", "-TERM", "-3971854"]
+  // and ["kill", "-KILL", "-3975026"] produced the syscalls "kill(-3, SIGTERM) = -1 ESRCH" and
+  // "kill(-3, SIGKILL) = -1 ESRCH" -- the target was parsed to 3, a group that does not exist --
+  // while the subjects (pgrp == the pid this layer had recorded at spawn) sat alive at t=0/1/3/5 s
+  // in state S, wchan do_wait / hrtimer_nanosleep, and the tool exited 0 with empty stderr. So a
+  // bare negative target is not a quieter spelling of the same thing; it is a different target.
+  // This is not an invention of a second rendering: it is the rendering this repository ALREADY
+  // declares for the same upstream tool at #extdeps.procps.kill::procps_ng_kill_term_pgid_argv --
+  // [kill_program().invocation, "-TERM", "--", concat("-", to_string(pgid))] -- and that sibling is
+  // the authority these transports now agree with: one upstream tool, one rendering
+  // (gunbc.design_argument::root_generalization), the tool itself remaining an extdeps-grade fact
+  // under gunbc.design_argument::external_upstreams. TerminateProcess above keeps its bare
+  // ["kill", "-TERM", "{pid}"]: a POSITIVE target is not re-parsed as an option, and that path was
+  // measured working on srv1 (["/bin/kill", "-TERM", "<pid>"] -- subject gone within 1 s).
   operation TerminateProcessGroup {
     requires none
     input { group: ProcessGroupLeader }
@@ -65,10 +99,66 @@ service posix.Signal {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["kill", "-TERM", "-{group.pgid}"] }
+    transport shell { argv: ["kill", "-TERM", "--", "-{group.pgid}"] }
     exit {
       0 => Unit
       nonzero => String "kill -TERM process group failed"
+    }
+  }
+
+  // THE ESCALATION A SELF-IMPOSED BOUND OWNS, and the only SIGKILL this service models. The caller is a
+  // layer that imposed its own deadline, started the subject itself, already sent TerminateProcessGroup,
+  // and whose confirming reap still answers StillRunning: the survivor is a process THIS layer created and
+  // has not managed to stop, so it finishes the job with the one signal a subject cannot catch or ignore
+  // (signal(7): "SIGKILL and SIGSTOP cannot be caught, blocked, or ignored"). Same sealed
+  // #extdeps.posix.process::ProcessGroupLeader input -- minted only by
+  // #extdeps.posix.process::process_group_leader, from a pid the caller itself spawned, refusing pid 0, 1
+  // and negatives -- which is what keeps `kill -KILL -1`, a broadcast to every process the caller may
+  // reach, unconstructible here. No mock_response: a replayed pid is a fabricated kill, so only the wet
+  // lane runs this, against a real process group. A caller may NOT use this as a first move; the term
+  // paths above are the polite ones, and this sibling exists only as their escalation.
+  //
+  // THE ANSWER IS DELIVERY, NOT TERMINATION (gunbc.design_argument::selection_precedes_convergence: an
+  // actuation return cannot mint convergence). kill(2) returns 0 when the signal has been QUEUED for the
+  // group, not when the group has gone away -- a leader blocked in an uninterruptible section, a stopped
+  // process, or a signal simply not yet dispatched all answer 0 here. So the field is `delivered`, and an
+  // exit status is never evidence that the processes are gone. AND ON THIS TRANSPORT IT IS NOT RELIABLE
+  // EVEN ABOUT QUEUEING -- MEASURED TWICE, ON TWO kill(1) BUILDS OF ONE KERNEL (boot_id c095c0cd):
+  //   (a) srv1, 2026-11-26 13:49Z, the strace-wrapped wet boot-probe escalation. The transport's argv was
+  //       captured as issued -- execve("/usr/bin/kill", ["kill", "-TERM", "-3971854"]) and
+  //       execve("/usr/bin/kill", ["kill", "-KILL", "-3975026"]) -- and what kill(1) then called was
+  //       "kill(-3, SIGTERM) = -1 ESRCH" and "kill(-3, SIGKILL) = -1 ESRCH" (two of each): the bare
+  //       negative target was parsed to target 3, a group that does not exist. The tool exited 0 with
+  //       empty stderr, and the subjects -- whose pgrp equalled the pid this layer had recorded at spawn
+  //       -- were alive at t=0/1/3/5 s, state S, wchan do_wait / hrtimer_nanosleep. A host-side control at
+  //       12:43Z on the same form agrees: rc=0, no output at all, subject alive at t=0/1/3 s.
+  //   (b) the session container on that same kernel, /usr/bin/kill sha256
+  //       390f101aa531bed0639f8637f4a1350453347b36f6a15e148f5300db8788c5d1, 67824 bytes, reporting
+  //       "kill from procps-ng 4.0.4", 2026-11-26 13:48Z: the SAME bare argv exited 1 while the group
+  //       DIED of that very signal (the kernel's own waitpid answered the death) and printed nothing.
+  // One version string, two builds, opposite statuses -- and neither status is kill(2)'s answer.
+  // `delivered` is therefore the TOOL's claim about what it ran, never the kernel's, and this
+  // repository's consumer does not gate on it -- it carries only the tool's message, where a real
+  // refusal does print an errno line. WHAT ENDED THEM is a waitpid(2) fact, and the only layer that can
+  // establish it is the one holding the pid it started: the confirmation, its bound, and the typed
+  // refusal when the confirmation never come all belong to the gunbc caller
+  // (#gunbc.runner.runner_microvm_boot_probe::boot_probe_escalate_kill), NOT in this service, so a
+  // reader of extdeps can still tell which facts are POSIX's and which are ours
+  // (gunbc.design_argument::external_upstreams). A caller that folds `delivered` into "terminated" -- or
+  // gates an outcome on it at all -- has built exactly the defect this file's header comment exists to
+  // prevent. THE TARGET FORM THAT WAS MEASURED WORKING, on both instruments, is the one below: the
+  // negative group target after a "--" separator, as argued on TerminateProcessGroup above.
+  operation KillProcessGroup {
+    requires none
+    input { group: ProcessGroupLeader }
+    output {
+      delivered: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["kill", "-KILL", "--", "-{group.pgid}"] }
+    exit {
+      0 => Unit
+      nonzero => String "kill -KILL process group failed"
     }
   }
 }

@@ -3091,6 +3091,56 @@ fn roadmap_leaf_in_flight_set(node: RoadmapNodeId, lines: List<String>) -> LeafI
   }
 }
 
+// THE SAME SET, OVER ALREADY-DECODED ENVELOPES. roadmap_leaf_in_flight_set parses the item's wire lines;
+// a surface that has already read and decoded the item's log (roadmap_events_read_all carries envelopes, not
+// the raw lines) re-derives the set here instead of opening the log a second time. The fold, the causal
+// ordering and the empty init are the ones authority's -- nothing is recomputed beside it, and an unordered
+// history refuses exactly as the lines entry does, so the two entries can never disagree.
+//
+// THE OWNERSHIP CHECK IS RUN HERE TOO, not skipped (gunb-ai/gunbc#16703 review): every envelope must be this
+// item's own event and every claimed leaf this item's own leaf, exactly the two refusals the lines entry
+// raises at its first pass. Both entries share the one judgment through roadmap_leaf_in_flight_decoded, so
+// "a foreign event" and "a foreign claimed leaf" mean the same thing on both paths (single_authority). An
+// envelope read from another item's log, or a claim naming another item's leaf, REFUSES the whole read --
+// never a silent drop, which would show an item that has held claims as one nobody claimed (fail_closed). The
+// `asked` node is the item whose log these envelopes were read from; the refusal names the foreign one.
+fn roadmap_leaf_in_flight_from_envs(node: RoadmapNodeId, envs: List<RoadmapEventEnvelope>) -> LeafInFlightRead {
+  match roadmap_leaf_in_flight_envs_owned(node: node, envs: envs, index: 0) {
+    InFlightLinesRefused { cause } => InFlightRefused { cause: cause }
+    InFlightLinesRead { envs: owned } => match roadmap_event_causal_chain(envs: owned) {
+      Absent => InFlightRefused { cause: InFlightHistoryUnordered {} }
+      Present { value: chain } => roadmap_leaf_in_flight_fold(
+        chain: chain,
+        envs: owned,
+        held: [],
+        closed: [],
+        pathless_claims: 0,
+        absorbed_claims: 0,
+        acc: roadmap_standing_acc_empty(),
+      )
+    }
+  }
+}
+
+// EVERY ENVELOPE JUDGED AGAINST THE ITEM WHOSE LOG IT WAS READ FROM, before any folding -- the envelope-side
+// mirror of roadmap_leaf_in_flight_lines, which makes the same two judgments as it decodes each text line.
+// It walks the already-decoded envelopes and runs each through roadmap_leaf_in_flight_decoded (the single
+// owner of both cross-item refusals, shared with the lines entry), refusing at the first envelope that is
+// not this item's own event or that claims a leaf belonging to another item. The index is the position in the
+// read list, so a refusal points at a real place the caller handed in.
+fn roadmap_leaf_in_flight_envs_owned(node: RoadmapNodeId, envs: List<RoadmapEventEnvelope>, index: Int) -> LeafInFlightLines {
+  match envs.first() {
+    Absent => InFlightLinesRead { envs: [] }
+    Present { value: envelope } => match roadmap_leaf_in_flight_decoded(node: node, envelope: envelope, index: index) {
+      InFlightLineRefused { cause } => InFlightLinesRefused { cause: cause }
+      InFlightLineRead { envelope: ok } => match roadmap_leaf_in_flight_envs_owned(node: node, envs: envs.skip(n: 1), index: index + 1) {
+        InFlightLinesRefused { cause } => InFlightLinesRefused { cause: cause }
+        InFlightLinesRead { envs: rest } => InFlightLinesRead { envs: concat([ok], rest) }
+      }
+    }
+  }
+}
+
 // EVERY LINE IS READ, OR THE READ REFUSES, AT THE FIRST LINE THAT CANNOT BE USED. Index-walked, so a
 // refusal can name which line of the log is the problem; an empty log is an empty set, which is the
 // honest answer for an item nobody has claimed.
