@@ -1,6 +1,6 @@
 module gunbc.live_deploy.serving_child_observations
 
-import std.types { List, Bool }
+import std.types { List, Bool, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.list { first_where }
@@ -16,18 +16,62 @@ import gunbc.fleet.fleet_host_identity { HostIdentity }
 // OOM-killed every srv3 request leg on 2026-11-26 (manager's live read: slice 25 GiB,
 // memory.events oom_kill 40, while the seats alone could account for 25 of 25 GiB).
 //
-// THE RESIDENCY IS A FACT OF THE ENGINE, AND THE ENGINE IS ONE BINARY ON EVERY HOST -- so the
-// standing figure is one measured row, not per-host transcriptions. Where a HOST has its own
-// resident read (a receipt measuring that host's serving child), it joins the override list below
-// as one row keyed by host identity; the override may only RAISE the figure, never lower it under
-// the engine's own measurement (fail-closed: a host read cannot fabricate headroom the engine has
-// already been caught taking).
+// WHAT THIS ROW IS AND WHAT IT IS NOT (review 99177, epistemic_humility). The bound below is an
+// ADMISSION FLOOR, and its standing is typed, not narrated. It is NOT a transcription of the 2026
+// "3.46 GB serve peak" -- that figure measured the roadmap deployment's serve process, a different
+// subject, and slice_bounds' own history records it going stale ("growing from 3.46 GB to ~18 GB",
+// OOM-killed at 8.1 GB on 2026-09-18, slice_bounds.dag's own account). A bound that low, used for
+// admission, is exactly the fail-open direction this module exists to close. The figures the bound
+// is set above are the engine's OWN instrumented prints -- the [pre-entry] process_cpu
+// max_rss_kib line the engine emits per run -- from serving-route dispatches:
+//   * run 45774944663, shadow-gate remote-build dispatch: max_rss_kib 3663224 (~3.5 GiB), and
+//   * run 45773631715, serving-route engine resolve: max_rss_kib 6090188 (~5.81 GiB).
+// The bound is declared at or above the WORST instrumented reading, and a claim below keeps it
+// there: an edit that drops the bound under an instrumented reading turns that claim red instead
+// of silently admitting the srv3 class again.
 
-// THE ENGINE'S MEASURED SERVING CHILD. 3.5 GiB declared against a measured serve-resident peak of
-// ~3.46 GB (the 2026-09-04 serving measurement recorded in gunbc.live_deploy.slice_bounds' own
-// history) and ~3.4 GiB (remote-build program plan, section 2) -- ROUNDED UP, the fail-closed
-// direction for an admission bound (gunbc.design_argument::fail_closed).
-data serving_child_engine_measurement: ByteSize = byte_size(3758096384)
+// THE STANDING OF A RESIDENCY FIGURE: measured readings carry the named instrument and receipt;
+// a bet says so in its type. A reader consuming a bet as fact is the defect the type prevents.
+type ServingChildBoundStanding
+  = EngineInstrument { instrument: NonEmptyStr, receipts: List<NonEmptyStr> }
+  | Bet { basis: NonEmptyStr }
+
+// THE ADMISSION FLOOR FOR THE SERVING CHILD: 6.0 GiB, declared at or above the worst instrumented
+// serving-route engine resolve (6090188 KiB, run 45773631715) with the second reading (3663224
+// KiB, run 45774944663) recorded as provenance. Standing: the engine's own pre-entry process_cpu
+// print -- the same instrument that caught srv3's child never printing a line at all.
+type ServingChildBound {
+  bytes: ByteSize
+  standing: ServingChildBoundStanding
+}
+
+data serving_child_engine_bound: ServingChildBound = ServingChildBound {
+  bytes: byte_size(6442450944),
+  standing: EngineInstrument {
+    instrument: "engine [pre-entry] process_cpu max_rss_kib print",
+    receipts: ["45773631715 (max_rss_kib 6090188)", "45774944663 (max_rss_kib 3663224)"],
+  },
+}
+
+// THE KIBIBYTE FLOOR THE BOUND MUST STAY AT OR ABOVE: the worst instrumented reading, 6090188 KiB.
+// Stated here in the module that owns the bound so the claim and the bound cannot drift apart.
+data serving_child_worst_instrumented_kib: Int = 6090188
+
+// THE INSTRUMENTED READINGS ARE KILOBYTES; THE BOUND IS BYTES. The bound never sits below the
+// worst reading it declares: 6090188 KiB is 6236352512 bytes, below the 6.0 GiB floor -- this
+// claim is the review 99177 fix turned into a change detector.
+fn serving_child_bound_covers_the_worst_instrumented_reading() -> Bool {
+  byte_size_count(b: serving_child_engine_bound.bytes) >= serving_child_worst_instrumented_kib * 1024
+}
+
+// THE BOUND'S STANDING IS AN INSTRUMENT, NOT A PLAN QUOTE -- the stale-subject class of review
+// 99177 cannot return through this row unnoticed.
+fn serving_child_bound_stands_on_the_engine_print() -> Bool {
+  match serving_child_engine_bound.standing {
+    EngineInstrument { instrument, receipts } => byte_size_count(b: serving_child_engine_bound.bytes) > 0 && instrument != "" && first_where(receipts, r => true) != Absent
+    Bet { basis } => false
+  }
+}
 
 // ONE HOST'S OWN RESIDENT READ. The row is evidence, not policy: it joins only when a receipt
 // measured that host, and it speaks for exactly one host.
@@ -36,37 +80,37 @@ type ServingChildHostOverride {
   bytes: ByteSize
 }
 
-// THE HOST ROWS ESTABLISHED SO FAR. srv14 (butch) will join here from quiet-pike-440's committed
-// serving-child observation when its receipt is recorded; until then butch is governed by the
-// engine's own figure, which is the fail-closed default, not an absence.
+// THE HOST ROWS ESTABLISHED SO FAR. srv14 (butch) joins when a receipt measures its serving
+// child -- a MemAvailable read is not a child RSS read, so none is recorded yet (quiet-pike-440,
+// 2026-11-27); until then butch is governed by the engine bound, which is the conservative
+// default, not an absence.
 data serving_child_host_overrides: List<ServingChildHostOverride> = []
 
 // THE LOOKUP OVER AN EXPLICIT ROW TABLE — pure, so a claim can hand it rows of its own.
 fn serving_child_residency_for(raised: List<ServingChildHostOverride>, host: HostIdentity) -> ByteSize {
   match first_where(raised, o => o.host == host) {
-    Present { value: o } => match byte_size_count(b: o.bytes) >= byte_size_count(b: serving_child_engine_measurement) {
+    Present { value: o } => match byte_size_count(b: o.bytes) >= byte_size_count(b: serving_child_engine_bound.bytes) {
       true => o.bytes
-      false => serving_child_engine_measurement
+      false => serving_child_engine_bound.bytes
     }
-    Absent => serving_child_engine_measurement
+    Absent => serving_child_engine_bound.bytes
   }
 }
 
-// THE RESIDENCY FOR A HOST: its own row when established and at least the engine figure, the
-// engine measurement otherwise. Total by construction -- no host is left without a bound, and no
-// host row can shrink the bound under the engine's own measurement.
+// THE RESIDENCY BOUND FOR A HOST: its own row when established and at least the engine bound, the
+// engine bound otherwise. Total by construction -- no host is left without a floor, and no host
+// row can shrink the floor under the engine's own instrument (fail-closed: a host read cannot
+// fabricate headroom the engine has already been caught taking).
 fn serving_child_residency(host: HostIdentity) -> ByteSize {
   serving_child_residency_for(raised: serving_child_host_overrides, host: host)
 }
 
-// THE ENGINE FIGURE IS A POSITIVE BOUND -- a zero residency would silently erase the uncharged
-// resident from every admission sum.
-fn serving_child_engine_measurement_is_positive() -> Bool {
-  byte_size_count(b: serving_child_engine_measurement) > 0
+// THE ENGINE BOUND IS POSITIVE — a zero bound would erase the uncharged resident from every sum.
+fn serving_child_engine_bound_is_positive() -> Bool {
+  byte_size_count(b: serving_child_engine_bound.bytes) > 0
 }
 
-// NO HOST ROW SITS UNDER THE ENGINE'S OWN MEASUREMENT. A host read may exceed it (a host that
-// measures more resident memory needs more), never undercut it.
+// NO HOST ROW SITS UNDER THE ENGINE BOUND. A host read may exceed it, never undercut it.
 fn no_serving_child_host_override_undercuts_the_engine() -> Bool {
-  first_where(serving_child_host_overrides, o => byte_size_count(b: o.bytes) < byte_size_count(b: serving_child_engine_measurement)) == Absent
+  first_where(serving_child_host_overrides, o => byte_size_count(b: o.bytes) < byte_size_count(b: serving_child_engine_bound.bytes)) == Absent
 }

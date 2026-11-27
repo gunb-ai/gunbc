@@ -551,35 +551,43 @@ fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
 // hold. Splitting the question across two authorities is what let that stand; per
 // gunbc.design_argument::single_authority the sum lives here, once.
 //
-// FOOTPRINT = the unit's MemoryMax (the grant the seat unit runs under) + the serving child's
-// residency (gunbc.live_deploy.serving_child_observations, the uncharged resident that outlives
-// boot). LEG HEADROOM is the door and census legs — the service user's own bounded CLI runs that
-// share the slice — declared once below, not re-measured per admission.
+// WHAT IS PER REQUEST AND WHAT IS PER HOST — decided by the model's own actuator shape, not
+// preference (manager ruling 2026-11-27, "settle it by fact"): the serving door's hand-off is a
+// SYNCHRONOUS effect — the door process blocks in gunbc.WitnessBin.Run until the child exits — so
+// the door is resident once PER CONCURRENT REQUEST and belongs INSIDE the footprint. The probe is
+// client-side (off-host entirely) and the census runs once per host on the converge schedule, so
+// the census is the FIXED per-slice headroom below. Each name says which it is.
 //
-// The admission reading of user_work_slice_fits is FLOOR: floor((slice_max - legs) / footprint)
+// The admission reading of user_work_slice_fits is FLOOR: floor((slice_max - headroom) / footprint)
 // concurrent requests fit. Callers pass slots and the footprint they composed; this module decides
 // nothing about who is admitted — it only refuses arithmetically what cannot fit.
 
-// THE SERVICE USER'S FIXED IN-SLICE LEGS: the serving door and the census door, each a bounded
-// `gunbc run` measured at 0.38 GiB (max_rss 391248 KiB, the front-door probe runs). The probe
-// itself runs CLIENT-side and is excluded. Declared as 0.8 GiB, the sum rounded UP — the
-// fail-closed direction (gunbc.design_argument::fail_closed): admission must reserve at least what
-// the legs take.
-data user_work_serving_leg_headroom: ByteSize = byte_size(858993460)
+// THE SERVING DOOR, PER REQUEST (0.38 GiB, the engine's own [pre-entry] process_cpu max_rss_kib
+// 391248 on the front-door runs — the same instrument that reads the child). Rounds up from the
+// measured 391248 KiB = 400586752 bytes.
+data user_work_serving_door_residency: ByteSize = byte_size(409432059)
 
-// THE FOOTPRINT OF ONE SERVED REQUEST: the unit's ceiling beside its resident child. Sum, not max:
-// the child does not run inside the unit's cgroup — it boots the engine and launches the unit.
+// THE PER-SLICE FIXED HEADROOM: the census door, one bounded `gunbc run` per host on the converge
+// schedule (same instrument class, 0.38 GiB measured), declared at 0.4 GiB rounded UP. The probe
+// is excluded — it runs on the CLIENT, not in this slice (the manager's ruling: probe and census
+// are per host; the probe leaves the host entirely).
+data user_work_serving_census_headroom: ByteSize = byte_size(429496730)
+
+// THE FOOTPRINT OF ONE SERVED REQUEST: the unit's ceiling, beside its resident child
+// (gunbc.live_deploy.serving_child_observations — the uncharged resident that outlives boot) and
+// beside the door waiting on it (resident for exactly as long as the request, per the model's
+// synchronous hand-off). Sum, not max: none of the three runs inside another's cgroup.
 fn user_work_request_footprint_of(unit_memory_max: ByteSize, child_residency: ByteSize) -> ByteSize {
-  measure_add(a: unit_memory_max, b: child_residency)
+  measure_add(a: measure_add(a: unit_memory_max, b: child_residency), b: user_work_serving_door_residency)
 }
 
-// CAN THIS SLICE HOLD `slots` concurrent footprints beside its legs? Below-floor and
-// legs-exceed-ceiling both answer false: a bound that cannot be read to hold the work does not
+// CAN THIS SLICE HOLD `slots` concurrent footprints beside its fixed headroom? Below-floor and
+// headroom-exceeds-ceiling both answer false: a bound that cannot be read to hold the work does not
 // admit it (fail_closed), and an unlimited slice never reads as unlimited here — this arithmetic
 // admits only against a finite declared ceiling, the same rule user_slice_backstop_memory_max_of
 // keeps for the backstop.
 fn user_work_slice_fits(slots: Nat, footprint: ByteSize, slice_max: ByteSize) -> Bool {
-  match measure_sub(a: slice_max, b: user_work_serving_leg_headroom) {
+  match measure_sub(a: slice_max, b: user_work_serving_census_headroom) {
     MeasureSubtrahendExceedsMinuend => slots == 0
     MeasureDifference { value: available } => match nat_compare(a: measure_fit_count_floor(capacity: available, each: footprint), b: slots) {
       Greater => true
