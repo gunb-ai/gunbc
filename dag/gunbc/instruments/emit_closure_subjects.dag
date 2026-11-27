@@ -1,0 +1,207 @@
+module gunbc.instruments.emit_closure_subjects
+
+import std.types { Bool, Int, List }
+import std.realization_measurement { AllocationCounter }
+import gunbc.allocation_observation_render { AllocationCase }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
+import gunbc.emit_state_threading_specimen { spec_build }
+import gunbc.instruments.emit_accumulator_subjects { AccRow, acc_cardinality, acc_field_read, acc_field_read_rebuilds, acc_rebuild_copies_context, acc_row_of }
+
+// THE TWO CLOSURE BUILDING BLOCKS of the accumulator family, a local closure and an escaping closure,
+// with their violating arms and their metered pairs: the bodies, the one dispatch path and the rows.
+//
+// WHY THIS MODULE IS SEPARATE, and what that costs. These five let-bound arms used to live in
+// gunbc.instruments.emit_accumulator_subjects, sharing one emitted file with the fold-step, field-read and
+// record-rebuild arms, and they VOIDED that whole family: three blocks the row must measure green were being
+// reported beside five that cannot be built at the emitter today, which is a check pointing the wrong way.
+// Separated, each family's exit varies on its own evidence, and each is its own instrument target --
+// emit-closure-observation and emit-closure-violation in gunbc.instrument_targets.
+//
+// WHAT COUNTS AS AN EXECUTED WITNESS FOR THESE BLOCKS: nothing here, today. Both closure targets refuse at
+// the emitter, and this file deliberately does not restate why -- the mechanism, the counts and the emitted
+// lines are carried by
+// dag/gunbc/rung_drop/let_bound_closure_parameters_are_emitted_without_their_declared_types.dag -- a plan-only RungDrop row authored separately, still in flight when this was
+// written, so citing it here is not a claim by this PR that the drop is merged. What lives here is the specimen and
+// its contract: these rows are declared, the family roster reports them executed=no with the reason named,
+// and a contract whose specimen never executed does not discharge the red control. The bodies stay because
+// they are the thing a fix has to make pass, and this row's per-arm probe (acq_probe_arms.sh) prints one
+// status line per arm with its error sites, so a refusal is attributed to arms rather than to a batch.
+//
+// CLOSURES ARE WRITTEN THE WAY THE CORPUS WRITES THEM: a callable is a let-bound lambda invoked
+// positionally, the spelling the corpus actually uses. This module declares no arrow type, because
+// production spellings of a function-typed formal have no corpus precedent -- borrowing one would be
+// inventing syntax, the failure this row exists to prevent. The three forces below (typed position,
+// record-field read, seed application) are the corpus spellings that were attempted, kept because they are
+// the measurement of what was tried, each attributed per arm by that probe.
+
+// THREE CANDIDATE FORCES for making a let-bound callable's parameter type determinable, each one a
+// spelling the corpus already uses. `acc_int_identity` is the typed-position force (parameter into a
+// function with a declared `Int` formal, as `gunbc.test.claim.runner.runner_group_restriction_ensure_witness::admit`
+// does); `acc_field_of_scalar` is the record-field force (parameter flows into a record and is read back
+// out, as `gunbc.test.claim.runner.runner_service_slot_start_witness::would_start` and
+// `gunbc.host.host_effect_realize::is_expected` do); and the seed application in `acc_local_closure` is
+// the force the row's manager proposed (apply the callable once to a declared value). All three are
+// scalar-cost: no Rc, no list, so none of them can move an allocation reading. The arms below carry them
+// in different combinations so ONE run attributes the cause: if the identity-only arms compile, the typed
+// position is sufficient; if only the field-read arm compiles, the record read is what Rust needed; if
+// only the seed-application arm compiles, neither body force was enough.
+fn acc_int_identity(v: Int) -> Int {
+  v
+}
+
+type AccScalar {
+  value: Int
+}
+
+fn acc_field_of_scalar(row: AccScalar) -> Int {
+  row.value
+}
+
+// A declared value the contract-arm closure is applied to once, so its parameter can be fixed at the
+// seed as well as in the body.
+data acc_closure_seed: Int = 0
+
+// THE LOCAL CLOSURE, contract arm: built, applied to every element, never retained and never escapes the
+// call. Invocation is positional, the corpus spelling. This arm carries two forces at once (typed
+// position plus the seed application); `seeded * 0` keeps the returned value identical to the arm's own
+// arithmetic, so the seed application cannot change what is claimed, only whether it compiles.
+fn acc_local_closure(xs: List<Int>) -> Int {
+  let scale = x => acc_int_identity(v: x) + 1
+  let seeded = scale(acc_closure_seed)
+  fold(xs, init: 0, f: (acc, x) => acc + scale(x)) + (seeded * 0)
+}
+
+// THE TWIN OF THE CONTRACT ARM WITHOUT THE SEED TERM, metered as a control the way `meter_empty` and
+// `meter_known_allocation` are controls of this entry (control ids, not roster blocks). The seed term is
+// multiplied by zero, which preserves the arm's ANSWER but not its METER: that application still runs, so
+// what it costs has to be read rather than assumed to be zero. This row is that reading -- ops and bytes of
+// the identity-only shape beside the seeded one, so the seed term's contribution is a visible delta and the
+// instrument's own cost is never read as the specimen's. If the identity-only arms compile, the seed term is
+// dropped from the delivery and this row retires with it.
+fn acc_local_closure_identity_only(xs: List<Int>) -> Int {
+  let scale = x => acc_int_identity(v: x) + 1
+  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
+}
+
+// THE LOCAL CLOSURE, violating arm: the same local computation, but a payload is materialized on every
+// application of the closure instead of being read once, which is the block's typed violating form
+// (PerStepAllocation) and is judged on operations and bytes. THE FIRST EXECUTED RUN MEASURED WHY THIS
+// WORDING MOVED: the row's form used to say an owning retain while the arm allocated per step, and a
+// retain judged on allocations witnesses an axis the contract does not speak about — the arm and the
+// contract must agree by name, and the roster field is the single place the form is stated.
+fn acc_local_closure_materializes_per_step(xs: List<Int>) -> Int {
+  let scale = x => acc_int_identity(v: x) + acc_materialize(rows: xs)
+  // identity force only: no seed application, so an extra per-step payload materialization is not paid to prove a type
+  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
+}
+
+// A payload materialization used as the retained object. Returns a scalar so nothing has to be stored.
+fn acc_materialize(rows: List<Int>) -> Int {
+  fold(rows, init: 0, f: (acc, x) => acc + x)
+}
+
+// THE ESCAPING CLOSURE, contract arm: the callable leaves this body and is applied by the callee; it
+// captured the two scalars it reads and nothing else.
+fn acc_escaping_closure(xs: List<Int>) -> Int {
+  let bias = acc_field_read(row: acc_row_of(n: 3))
+  let add = x => acc_int_identity(v: x) + bias
+  fold(xs, init: 0, f: (acc, x) => acc + add(x))
+}
+
+// THE ESCAPING CLOSURE, violating arm: the escaping callable reads the unchanged
+// context too, so escaping costs the whole payload rather than the scalar it returns.
+fn acc_escaping_closure_copies_context(xs: List<Int>) -> Int {
+  let row = acc_row_of(n: 3)
+  let bias = acc_rebuild_copies_context(row: row)
+  let add = x => acc_field_of_scalar(row: AccScalar { value: acc_int_identity(v: x) }) + bias + acc_field_read_rebuilds(row: row)
+  // both body forces on this arm: typed position AND the record-field read, so if only this arm compiles the record read is what Rust needed
+  fold(xs, init: 0, f: (acc, x) => acc + add(x))
+}
+
+// THE CLOSURE ARMS, one dispatch, same seed, same rows, same returned scalar. Named ClosureMeterEmpty and
+// ClosureMeterKnownAllocation because they are this module's own calibration controls, not the
+// accumulator family's -- a shared window would make the two modules one measurement, and neither could
+// then contradict the other.
+type ClosureSubject =
+    ClosureMeterEmpty
+  | ClosureMeterKnownAllocation
+  | ClosureLocalClosure
+  | ClosureLocalClosureIdentityOnly
+  | ClosureLocalClosureMaterializesPerStep
+  | ClosureEscapingClosure
+  | ClosureEscapingClosureCopiesContext
+
+fn run_closure_subject(subject: ClosureSubject, src: List<Int>) -> List<Int> {
+  let rows = spec_build(n: acc_cardinality)
+  match subject {
+    ClosureMeterEmpty => []
+    ClosureMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
+    ClosureLocalClosure => list_push([], acc_local_closure(xs: rows))
+    ClosureLocalClosureIdentityOnly => list_push([], acc_local_closure_identity_only(xs: rows))
+    ClosureLocalClosureMaterializesPerStep => list_push([], acc_local_closure_materializes_per_step(xs: rows))
+    ClosureEscapingClosure => list_push([], acc_escaping_closure(xs: rows))
+    ClosureEscapingClosureCopiesContext => list_push([], acc_escaping_closure_copies_context(xs: rows))
+  }
+}
+
+// THE SAME BRACKET as the executing family, imported rather than reimplemented, so if these arms ever
+// execute their numbers are comparable with the other arms' to the operation.
+fn closure_window(subject: ClosureSubject, src: List<Int>) -> BatteryWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let kept = run_closure_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    battery_window(kept: kept, ops_before: ops_before, ops_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after)
+  } else {
+    battery_window_unavailable(kept: run_closure_subject(subject: subject, src: src))
+  }
+}
+
+// THE DECLARED CONTRACTS. The prefix stays "accumulator" because these are the accumulator family's blocks
+// -- the roster ids are row identities in the roadmap handback, and renaming them here would move the
+// claim without changing it. None of these rows has ever printed a PASS line; the row's roster prints each
+// with executed=no and the reason above attached.
+fn closure_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let empty = closure_window(subject: ClosureMeterEmpty, src: src)
+  let empty_again = closure_window(subject: ClosureMeterEmpty, src: src)
+  let known = closure_window(subject: ClosureMeterKnownAllocation, src: src)
+  let closure = closure_window(subject: ClosureLocalClosure, src: src)
+  let closure_twin = closure_window(subject: ClosureLocalClosureIdentityOnly, src: src)
+  let closure_per_step = closure_window(subject: ClosureLocalClosureMaterializesPerStep, src: src)
+  let escaping = closure_window(subject: ClosureEscapingClosure, src: src)
+  let escaping_copied = closure_window(subject: ClosureEscapingClosureCopiesContext, src: src)
+  concat(concat([plain_row(c: availability_case(prefix: "accumulator"))],
+      calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known)),
+    concat(
+      [subject_case(prefix: "accumulator", block_id: "local_closure", own: closure), subject_case(prefix: "accumulator", block_id: "local_closure_identity_only_twin", own: closure_twin), violation_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure)],
+      [subject_case(prefix: "accumulator", block_id: "escaping_closure", own: escaping), violation_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)]))
+}
+
+// THE DECLARED VIOLATING VARIANTS: same windows, same path, judged the opposite way. These are the two ids
+// the family roster derives from this module; they are expected to be reported executed=no until the arms
+// can be compiled.
+fn closure_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let closure = closure_window(subject: ClosureLocalClosure, src: src)
+  let closure_per_step = closure_window(subject: ClosureLocalClosureMaterializesPerStep, src: src)
+  let escaping = closure_window(subject: ClosureEscapingClosure, src: src)
+  let escaping_copied = closure_window(subject: ClosureEscapingClosureCopiesContext, src: src)
+  [
+    violation_contract_holds_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure),
+    violation_contract_holds_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)
+  ]
+}
+
+// THE POSITIVES THAT WOULD HAVE TO HOLD ALONGSIDE A RED, kept so that when these arms compile the entry is
+// not a check whose exit can never vary: an empty floor and the family's own copying arm, on windows of
+// this module's own.
+fn closure_control_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let empty = closure_window(subject: ClosureMeterEmpty, src: src)
+  let empty_again = closure_window(subject: ClosureMeterEmpty, src: src)
+  let known = closure_window(subject: ClosureMeterKnownAllocation, src: src)
+  calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known)
+}

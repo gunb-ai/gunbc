@@ -17,42 +17,26 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // fold step costs in emitted Rust without reading generated code". The fold step and the rebuild are both
 // here, each with the arm that does the unnecessary work beside the arm that does not.
 //
-// CLOSURES ARE WRITTEN THE WAY THE CORPUS WRITES THEM: a callable is a let-bound lambda invoked
-// positionally, the spelling the corpus actually uses. This module declares no arrow type, because
-// production spellings of a function-typed formal have no corpus precedent -- borrowing one would be
-// inventing syntax, the failure this row exists to prevent.
+// THIS MODULE HOLDS THE THREE EXECUTING BLOCKS of the family: the Loop with a record accumulator, the
+// field read, and the record rebuild with one field changed, each with the arm that does the unnecessary
+// work beside the arm that does not. THE TWO CLOSURE BLOCKS ARE NOT HERE ANY MORE: the local closure and
+// the escaping closure, their violating variants, the three corpus forces that were attempted on them and
+// the corpus survey that chose those spellings all live in gunbc.instruments.emit_closure_subjects, as their
+// own two instrument targets. They were split out because, sharing one emitted file with the arms below,
+// they voided this family: five arms that cannot be built at the emitter today were being reported beside
+// three the row must measure green. Why they cannot be built is carried by
+// dag/gunbc/rung_drop/let_bound_closure_parameters_are_emitted_without_their_declared_types.dag -- a plan-only RungDrop row authored
+// separately, still in flight when this was written, and not restated here. This file keeps the part of the
+// survey that concerns the arms below.
 //
-// MEASURED CORRECTION TO AN EARLIER CLAIM OF THIS MODULE. The first executed run (srv1, run
-// 20261127T010439Z-71423, head 8c4162d754185eb72648fa22cbd107f7463765a5) reported the cause of this
-// family's zero executed rows as ".dag has no parameter-type annotation, so the emitted closure has no
-// inferable type". That was an absence claim with no survey behind it, and the survey says it is too
-// broad: the record-accumulator fold in this very module emitted with fully annotated parameters
-// (`|acc: Rc<AccRecord>, x: i64|` in the generated source), and the corpus greps over dag/, src/v2/ and
-// src/v1/ print these counts for fold spellings -- 8766 lines contain a `fold(` call, 4129 spell the step
-// as an inline lambda (`f: (`), 1134 spell a fold's init as a record literal (`init: <Ctor> {`), 347 have
-// a record constructor in a step body within two lines of an inline lambda, and 30 pass a named step
-// function. A record-accumulator fold is therefore common and builds; a let-bound lambda whose parameter
-// reaches only arithmetic is what does not. What actually failed was narrower and is now measured: the emitted file
-// gunbc_instruments_emit_accumulator_subjects.rs carried exactly four sites annotated
-// `|parameter: _|` -- lines 123, 130, 142 and 151, the four closure subjects below -- and the build
-// reported exactly "4 previous errors", the first being `error[E0282]: type annotations needed` at
-// 123:29. In every one of the four the parameter flowed only into bare arithmetic (`x + 1`, `x + bias`),
-// so the emitter could not pick the integer path and left the parameter undetermined.
-//
-// THE CORPUS DOES NOT SPELL CLOSURES THAT WAY. A search for a let-bound lambda written on one line
-// (`let <name> = (<params>) =>` or `let <name> = <param> =>`) over dag/ and src/v2/ finds 17 sites, 13 of
-// them outside this module, and all 13 build in the required lane: every one puts its parameter in a
-// TYPED POSITION -- `gunbc.test.claim.fleet.site_pxe_edge_converge_witness::image_at`
-// coerces it (`p as NonEmptyStr`), `gunbc.test.claim.runner.runner_group_restriction_ensure_witness::admit`
-// and `::g` pass it to a function with a declared formal, `gunbc.test.claim.runner.runner_service_slot_start_witness::would_start`
-// flows it into a record field, and `gunbc.host.host_effect_realize::is_expected` and `::is_permitted`
-// read a field off it. So the subjects below follow the corpus: each parameter flows through
-// `acc_int_identity`, a function with a declared `Int` formal, which is a scalar-to-scalar identity and
-// allocates nothing, and the closure subjects state their cost on the axis their contracts name.
-// `acc_local_closure` additionally carries the seed application (the lambda applied once to the declared
-// `acc_closure_seed`) so that one run distinguishes which of the two forces is sufficient: if the two
-// typed-flow-only subjects compile, the typed position is sufficient and the seed application is
-// redundant, which the emitted annotation will show.
+// THE FOLD AND REBUILD ARMS EMIT TYPED AND BUILD. In the same retained probe root the record-accumulator
+// fold arrived with fully annotated parameters -- `|acc: Rc<AccRecord>, x: i64|` in the generated source --
+// and the corpus agrees that this is the ordinary spelling: over dag/, src/v2/ and src/v1/, 8766 lines
+// contain a `fold(` call, 4129 spell the step as an inline lambda (`f: (`), 1134 spell a fold's init as a
+// record literal (`init: <Ctor> {`), 347 have a record constructor in a step body within two lines of an
+// inline lambda, and 30 pass a named step function. The nearest neighbour to the fold below is
+// `gunbc.product.fabric.flex_market::FlexMedianScan`. A reader who wants the cost of a fold step or a
+// rebuild in emitted Rust should read the rows this entry prints, not the generated file.
 
 data acc_cardinality: Int = 32
 
@@ -126,90 +110,6 @@ fn acc_rebuild_copies_context(row: AccRow) -> Int {
   changed.width
 }
 
-// THREE CANDIDATE FORCES for making a let-bound callable's parameter type determinable, each one a
-// spelling the corpus already uses. `acc_int_identity` is the typed-position force (parameter into a
-// function with a declared `Int` formal, as `gunbc.test.claim.runner.runner_group_restriction_ensure_witness::admit`
-// does); `acc_field_of_scalar` is the record-field force (parameter flows into a record and is read back
-// out, as `gunbc.test.claim.runner.runner_service_slot_start_witness::would_start` and
-// `gunbc.host.host_effect_realize::is_expected` do); and the seed application in `acc_local_closure` is
-// the force the row's manager proposed (apply the callable once to a declared value). All three are
-// scalar-cost: no Rc, no list, so none of them can move an allocation reading. The arms below carry them
-// in different combinations so ONE run attributes the cause: if the identity-only arms compile, the typed
-// position is sufficient; if only the field-read arm compiles, the record read is what Rust needed; if
-// only the seed-application arm compiles, neither body force was enough.
-fn acc_int_identity(v: Int) -> Int {
-  v
-}
-
-type AccScalar {
-  value: Int
-}
-
-fn acc_field_of_scalar(row: AccScalar) -> Int {
-  row.value
-}
-
-// A declared value the contract-arm closure is applied to once, so its parameter can be fixed at the
-// seed as well as in the body.
-data acc_closure_seed: Int = 0
-
-// THE LOCAL CLOSURE, contract arm: built, applied to every element, never retained and never escapes the
-// call. Invocation is positional, the corpus spelling. This arm carries two forces at once (typed
-// position plus the seed application); `seeded * 0` keeps the returned value identical to the arm's own
-// arithmetic, so the seed application cannot change what is claimed, only whether it compiles.
-fn acc_local_closure(xs: List<Int>) -> Int {
-  let scale = x => acc_int_identity(v: x) + 1
-  let seeded = scale(acc_closure_seed)
-  fold(xs, init: 0, f: (acc, x) => acc + scale(x)) + (seeded * 0)
-}
-
-// THE TWIN OF THE CONTRACT ARM WITHOUT THE SEED TERM, metered as a control the way `meter_empty` and
-// `meter_known_allocation` are controls of this entry (control ids, not roster blocks). The seed term is
-// multiplied by zero, which preserves the arm's ANSWER but not its METER: that application still runs, so
-// what it costs has to be read rather than assumed to be zero. This row is that reading -- ops and bytes of
-// the identity-only shape beside the seeded one, so the seed term's contribution is a visible delta and the
-// instrument's own cost is never read as the specimen's. If the identity-only arms compile, the seed term is
-// dropped from the delivery and this row retires with it.
-fn acc_local_closure_identity_only(xs: List<Int>) -> Int {
-  let scale = x => acc_int_identity(v: x) + 1
-  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
-}
-
-// THE LOCAL CLOSURE, violating arm: the same local computation, but a payload is materialized on every
-// application of the closure instead of being read once, which is the block's typed violating form
-// (PerStepAllocation) and is judged on operations and bytes. THE FIRST EXECUTED RUN MEASURED WHY THIS
-// WORDING MOVED: the row's form used to say an owning retain while the arm allocated per step, and a
-// retain judged on allocations witnesses an axis the contract does not speak about — the arm and the
-// contract must agree by name, and the roster field is the single place the form is stated.
-fn acc_local_closure_materializes_per_step(xs: List<Int>) -> Int {
-  let scale = x => acc_int_identity(v: x) + acc_materialize(rows: xs)
-  // identity force only: no seed application, so an extra per-step payload materialization is not paid to prove a type
-  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
-}
-
-// A payload materialization used as the retained object. Returns a scalar so nothing has to be stored.
-fn acc_materialize(rows: List<Int>) -> Int {
-  fold(rows, init: 0, f: (acc, x) => acc + x)
-}
-
-// THE ESCAPING CLOSURE, contract arm: the callable leaves this body and is applied by the callee; it
-// captured the two scalars it reads and nothing else.
-fn acc_escaping_closure(xs: List<Int>) -> Int {
-  let bias = acc_field_read(row: acc_row_of(n: 3))
-  let add = x => acc_int_identity(v: x) + bias
-  fold(xs, init: 0, f: (acc, x) => acc + add(x))
-}
-
-// THE ESCAPING CLOSURE, violating arm: the escaping callable reads the unchanged
-// context too, so escaping costs the whole payload rather than the scalar it returns.
-fn acc_escaping_closure_copies_context(xs: List<Int>) -> Int {
-  let row = acc_row_of(n: 3)
-  let bias = acc_rebuild_copies_context(row: row)
-  let add = x => acc_field_of_scalar(row: AccScalar { value: acc_int_identity(v: x) }) + bias + acc_field_read_rebuilds(row: row)
-  // both body forces on this arm: typed position AND the record-field read, so if only this arm compiles the record read is what Rust needed
-  fold(xs, init: 0, f: (acc, x) => acc + add(x))
-}
-
 fn acc_row_of(n: Int) -> AccRow {
   AccRow { label: n, width: n * 2, context: spec_build(n: n) }
 }
@@ -222,12 +122,6 @@ type AccSubject =
   | AccFieldRead
   | AccFieldReadRebuilds
   | AccRebuildOneField
-  | AccRebuildCopiesContext
-  | AccLocalClosure
-  | AccLocalClosureIdentityOnly
-  | AccLocalClosureMaterializesPerStep
-  | AccEscapingClosure
-  | AccEscapingClosureCopiesContext
 
 // ONE PATH FOR EVERY ARM: same seed, same rows, same returned scalar; a violating arm differs from its
 // contract arm only in the work it does inside the same body.
@@ -245,11 +139,6 @@ fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
     AccFieldReadRebuilds => list_push([], acc_field_read_rebuilds(row: row))
     AccRebuildOneField => list_push([], acc_rebuild_one_field(row: row))
     AccRebuildCopiesContext => list_push([], acc_rebuild_copies_context(row: row))
-    AccLocalClosure => list_push([], acc_local_closure(xs: rows))
-    AccLocalClosureIdentityOnly => list_push([], acc_local_closure_identity_only(xs: rows))
-    AccLocalClosureMaterializesPerStep => list_push([], acc_local_closure_materializes_per_step(xs: rows))
-    AccEscapingClosure => list_push([], acc_escaping_closure(xs: rows))
-    AccEscapingClosureCopiesContext => list_push([], acc_escaping_closure_copies_context(xs: rows))
   }
 }
 
@@ -282,21 +171,13 @@ fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src)
   let rebuild = acc_window(subject: AccRebuildOneField, src: src)
   let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
-  let closure = acc_window(subject: AccLocalClosure, src: src)
-  let closure_twin = acc_window(subject: AccLocalClosureIdentityOnly, src: src)
-  let closure_per_step = acc_window(subject: AccLocalClosureMaterializesPerStep, src: src)
-  let escaping = acc_window(subject: AccEscapingClosure, src: src)
-  let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
   concat(concat(concat([plain_row(c: availability_case(prefix: "accumulator"))],
       [subject_case(prefix: "accumulator", block_id: "meter_empty", own: empty), subject_case(prefix: "accumulator", block_id: "meter_known_allocation", own: known)]),
       calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known)),
-    concat(concat(concat(
+    concat(concat(
       [subject_case(prefix: "accumulator", block_id: "loop_record_accumulator", own: fold_step), violation_case(prefix: "accumulator", block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step)],
       [subject_case(prefix: "accumulator", block_id: "field_read", own: field_read), violation_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read)]),
-      concat(
-      [subject_case(prefix: "accumulator", block_id: "record_rebuild_one_field", own: rebuild), violation_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)],
-      [subject_case(prefix: "accumulator", block_id: "local_closure", own: closure), subject_case(prefix: "accumulator", block_id: "local_closure_identity_only_twin", own: closure_twin), violation_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure)])),
-      [subject_case(prefix: "accumulator", block_id: "escaping_closure", own: escaping), violation_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)]))
+      [subject_case(prefix: "accumulator", block_id: "record_rebuild_one_field", own: rebuild), violation_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)]))
 }
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way.
@@ -308,16 +189,10 @@ fn acc_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src)
   let rebuild = acc_window(subject: AccRebuildOneField, src: src)
   let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
-  let closure = acc_window(subject: AccLocalClosure, src: src)
-  let closure_per_step = acc_window(subject: AccLocalClosureMaterializesPerStep, src: src)
-  let escaping = acc_window(subject: AccEscapingClosure, src: src)
-  let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
   [
     violation_contract_holds_case(prefix: "accumulator", block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step),
     violation_contract_holds_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read),
-    violation_contract_holds_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild),
-    violation_contract_holds_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure),
-    violation_contract_holds_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)
+    violation_contract_holds_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)
   ]
 }
 
