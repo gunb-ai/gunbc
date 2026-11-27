@@ -8,6 +8,7 @@ import extdeps.github.expressions { serialize_expression }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name, fleet_converge_subject_rule_env_name }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
 import v2.workflow.bash_emit { Accepted, Rejected }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_converge_executor_subject_split {
   fleet_converge_split_precheck,
@@ -101,7 +102,7 @@ test fn the_split_gate_covers_exactly_the_subject_roster() -> Bool {
 test fn a_mode_that_names_no_subject_gets_neither_the_gate_nor_the_env() -> Bool {
   let cond = step_condition_text(step: fleet_converge_executor_subject_split_gate_step())
   !string_contains(s: cond, pattern: "'runner_host_file_observe'")
-    && env_keys(step: fleet_converge_runner_host_file_observe_step()) == [fleet_converge_expected_host_env_name]
+    && env_keys_of(step: fleet_converge_runner_host_file_observe_step()) == [fleet_converge_expected_host_env_name]
 }
 
 // (3) THE ONE GATE STEP IS TOLD THE MODE, because the refusals are per-mode rules. It cannot be a second gate
@@ -145,11 +146,11 @@ test fn the_serving_steps_carry_the_subject_and_keep_the_executor_separate() -> 
   let observe = fleet_converge_remote_build_serving_observe_step()
   let converge = fleet_converge_remote_build_serving_converge_step()
   all([observe, converge], s =>
-    env_keys(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_subject_rule_env_name]
-      && env_text(step: s, key: fleet_converge_subject_host_env_name) == concat("${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")
-      && env_text(step: s, key: fleet_converge_expected_host_env_name) == "${{ github.event.inputs.host }}"
+    env_keys_of(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_subject_rule_env_name]
+      && env_text_of(step: s, key: fleet_converge_subject_host_env_name) == concat("${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")
+      && env_text_of(step: s, key: fleet_converge_expected_host_env_name) == "${{ github.event.inputs.host }}"
   )
-    && env_text(step: observe, key: fleet_converge_subject_host_env_name) != env_text(step: observe, key: fleet_converge_expected_host_env_name)
+    && env_text_of(step: observe, key: fleet_converge_subject_host_env_name) != env_text_of(step: observe, key: fleet_converge_expected_host_env_name)
 }
 
 // (5) THE SERVING PAIR IS GROUPED ON THE MACHINE IT MUTATES, not on the lane that happens to execute it. The
@@ -360,16 +361,16 @@ test fn every_mode_step_whose_entry_reads_the_rule_carries_the_rule_its_facts_ro
   let steps = fleet_converge_job_work_steps()
   length(install_modes) > 0
     && all(install_modes, m =>
-      match first_where(xs: steps, keep: s => step_id_text(step: s) == fleet_converge_workflow_mode_wire(mode: m)) {
+      match first_where(xs: steps, keep: s => step_id_of(step: s) == fleet_converge_workflow_mode_wire(mode: m)) {
         Present { value: s } =>
-          env_text(step: s, key: fleet_converge_subject_rule_env_name)
+          env_text_of(step: s, key: fleet_converge_subject_rule_env_name)
             == fleet_converge_split_rule_wire(rule: fleet_converge_mode_facts(mode: m).subject_rule)
         Absent => false
       }
     )
     // The pair goes where a consumer reads it, and nowhere else: the observe of the same family names no
     // subject at all (claim 11), so an env carrying a rule there would be a declaration with no reader.
-    && env_text(step: fleet_converge_runner_host_file_observe_step(), key: fleet_converge_subject_rule_env_name) == ""
+    && env_text_of(step: fleet_converge_runner_host_file_observe_step(), key: fleet_converge_subject_rule_env_name) == ""
     // The entry refuses the empty rendering rather than defaulting, which is what made the hole loud
     // instead of silent -- the same refusal the run above printed.
     && match fleet_converge_install_subject_decision(rule: fleet_converge_split_rule_of_wire(wire: ""), executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
@@ -383,7 +384,7 @@ test fn every_mode_step_whose_entry_reads_the_rule_carries_the_rule_its_facts_ro
 // the gate never spoke. The list is the emitted job's own step order, so this claim is about what the
 // runner executes, not about where the source happens to mention a function.
 test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Bool {
-  let names = map(fleet_converge_job_work_steps(), s => step_id_text(step: s))
+  let names = map(fleet_converge_job_work_steps(), s => step_id_of(step: s))
   let gate = step_id_text(step: fleet_converge_executor_subject_split_gate_step())
   let gated = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   gate != ""
@@ -486,6 +487,31 @@ fn step_id_text(step: Step) -> String {
       Present { value: s } => s as String
       Absent => ""
     }
+  }
+}
+
+// The retyped fleet_converge step builders hand back Outcome<Step>; a refused emission must never read as a
+// passing claim. These unwrap the Accepted step and, on Refused, return a NON-MATCHING sentinel (never "" or
+// the empty list), so every positive equality/inequality assertion below fails closed instead of passing on
+// a default. The builders never refuse on the green path, so the sentinel arm is dead there.
+fn env_keys_of(step: Outcome<Step>) -> List<String> {
+  match outcome_accepted_value(step) {
+    Present { value: s } => env_keys(step: s)
+    Absent => []
+  }
+}
+
+fn env_text_of(step: Outcome<Step>, key: String) -> String {
+  match outcome_accepted_value(step) {
+    Present { value: s } => env_text(step: s, key: key)
+    Absent => "__GUNBC_STEP_EMISSION_REFUSED__"
+  }
+}
+
+fn step_id_of(step: Outcome<Step>) -> String {
+  match outcome_accepted_value(step) {
+    Present { value: s } => step_id_text(step: s)
+    Absent => "__GUNBC_STEP_EMISSION_REFUSED__"
   }
 }
 
