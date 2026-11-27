@@ -59,9 +59,24 @@ type RealizationJoinRefusal
   // gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission).
   | ComparisonStandingRefused { model: NonEmptyStr, refusals: List<ComparisonGrounding> }
 
+// THE JOIN, AND THE STANDING IT WAS JOINED ON. The joined arm carries every figure the numeric checks
+// decided on together with how each one is grounded (gunbc.gpu_market.comparison_standing::
+// ComparisonGrounding). This is not decoration: a board whose power ceiling its own row declares ABSENT
+// runs no ceiling check at all, and a join that dropped that fact reported the same verdict as a fully
+// cited board whose ceiling was checked and passed -- a plausible output fabricated out of a gap
+// (gunbc.design_argument::fail_closed: every path succeeds fully or fails with a typed, located
+// diagnostic). So the absence travels in the join's own text, and the consumer that selects the join sees
+// what was never compared (gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission).
 type RealizationGpuJoin
-  = RealizationGpuJoined { gpu: ObservedGpu, board: GpuBoardCatalogRow }
+  = RealizationGpuJoined { gpu: ObservedGpu, board: GpuBoardCatalogRow, carried: List<ComparisonGrounding> }
   | RealizationGpuRefused { gpu: ObservedGpu, refusal: RealizationJoinRefusal }
+
+// WHAT THE BOARD CHECK ANSWERS BEFORE THE JOIN IS BUILT: either a refusal, or a pass that says what it
+// passed on. A bare optional would let a pass mean "checked and clear" and "nothing was checkable" at the
+// same time, which is the ambiguity this node exists to close.
+type RealizationBoardCheck
+  = BoardCheckPassed { carried: List<ComparisonGrounding> }
+  | BoardCheckRefused { refusal: RealizationJoinRefusal }
 
 fn realization_catalog_boards_named(name: NonEmptyStr) -> List<GpuBoardCatalogRow> {
   gpu_catalog_board_admissions |> flat_map(a => match a {
@@ -84,11 +99,17 @@ fn realization_link_rank(l: PcieLink) -> Nat {
 // gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission). Splitting the numeric checks
 // into their own fold keeps one deciding rule in each place instead of nesting a standing read inside
 // three numeric branches.
-fn realization_check_board(gpu: ObservedGpu, board: GpuBoardCatalogRow) -> RealizationJoinRefusal? {
+fn realization_check_board(gpu: ObservedGpu, board: GpuBoardCatalogRow) -> RealizationBoardCheck {
   match board_comparison_admission(board: board) {
     ComparisonRefused { model: model, refusals: refusals } =>
-      Present { value: ComparisonStandingRefused { model: model, refusals: refusals } }
-    ComparisonAdmitted { model: _, grounds: _, absent: _ } => realization_figure_checks(gpu: gpu, board: board)
+      BoardCheckRefused { refusal: ComparisonStandingRefused { model: model, refusals: refusals } }
+    ComparisonAdmitted { model: _, grounds: grounds, absent: absent } =>
+      match realization_figure_checks(gpu: gpu, board: board) {
+        Present { value: r } => BoardCheckRefused { refusal: r }
+        // The pass carries the grounds AND the absences it decided on -- including the absent ceiling it
+        // could not check -- so the join built from it says so in its own text.
+        Absent => BoardCheckPassed { carried: append(grounds, absent) }
+      }
   }
 }
 
@@ -124,8 +145,8 @@ fn realization_gpu_join(gpu: ObservedGpu) -> RealizationGpuJoin {
     else {
       match first(boards) {
         Present { value: b } => match realization_check_board(gpu: gpu, board: b) {
-          Present { value: r } => RealizationGpuRefused { gpu: gpu, refusal: r }
-          Absent => RealizationGpuJoined { gpu: gpu, board: b }
+          BoardCheckRefused { refusal: r } => RealizationGpuRefused { gpu: gpu, refusal: r }
+          BoardCheckPassed { carried: carried } => RealizationGpuJoined { gpu: gpu, board: b, carried: carried }
         }
         Absent => RealizationGpuRefused { gpu: gpu, refusal: NoCatalogBoardForName { name: gpu.name } }
       }
@@ -147,7 +168,7 @@ fn serving_realization(cell: ServingCellIdentity) -> ServingRealization {
 }
 
 fn serving_realization_complete(r: ServingRealization) -> Bool {
-  count(r.gpus) > 0 && r.gpus |> all(j => match j { RealizationGpuJoined { gpu: _, board: _ } => true  RealizationGpuRefused { gpu: _, refusal: _ } => false })
+  count(r.gpus) > 0 && r.gpus |> all(j => match j { RealizationGpuJoined { gpu: _, board: _, carried: _ } => true  RealizationGpuRefused { gpu: _, refusal: _ } => false })
 }
 
 // ONE ACTIVE LEVEL OF AN ADMITTED RUN, ON ITS REALIZATION: the level's throughput beside the power the GPUs

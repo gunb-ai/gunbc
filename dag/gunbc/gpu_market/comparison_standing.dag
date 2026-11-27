@@ -74,7 +74,10 @@ type DecidedFigure
 //                      gunbc.design_argument::fail_closed says an absence is neither a zero nor a pass, and
 //                      the row's boundary names an absent field as something the selecting consumer must see.
 //                      So the absence travels in the admitted arm, named, while the comparison proceeds on
-//                      the figures it does have. Refusing a board for a figure the comparison never gets to
+//                      the figures it does have -- and it travels PAST that arm: the production consumer
+//                      gunbc.gpu_market.realization_join::RealizationGpuJoined carries the same list in its own
+//                      joined arm, so a board joined with no checkable ceiling never reads as a board whose
+//                      ceiling was checked and passed. Refusing a board for a figure the comparison never gets to
 //                      use would be over-generalizing the prohibition (gunbc.design_argument::epistemic_humility).
 type ComparisonGrounding
   = FigureCited { figure: DecidedFigure, authority: ExternalAuthority }

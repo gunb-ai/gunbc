@@ -51,9 +51,13 @@ import extdeps.gpu.nvidia { nvidia_rtx_2000_ada_board_catalog, nvidia_b200_sxm_b
 import gunbc.serving.serving_benchmark_run_receipt { ObservedGpu }
 import gunbc.gpu_market.realization_join {
   realization_check_board,
+  realization_gpu_join,
+  RealizationGpuJoined,
+  RealizationGpuRefused,
+  BoardCheckPassed,
+  BoardCheckRefused,
   ComparisonStandingRefused,
   MemoryAboveCatalog,
-  PowerCapAboveBoardCeiling,
 }
 import gunbc.gpu_market.comparison_standing {
   DecidedFigure,
@@ -259,14 +263,16 @@ fn no_grounding_carries_an_obligation(grounds: List<ComparisonGrounding>) -> Boo
 
 test fn cited_board_inside_limits_gets_no_verdict_from_the_fold() -> Bool {
   // The blast-radius guard as a claim: the row the current population actually exercises -- 12 GiB observed
-  // against a 16 GiB catalog figure, a 50 W cap against the board's cited 70 W ceiling -- still answers NONE.
+  // against a 16 GiB catalog figure, a 50 W cap against the board's cited 70 W ceiling -- still answers with
+  // no verdict, and the standing it passed on is two CITED figures and no carried absence.
   match rtx_2000_ada_row() {
     Present { value: row } =>
       match realization_check_board(gpu: observed_card("NVIDIA RTX 2000 Ada Generation", 12288, 50000), board: row) {
-        Absent => true
-        Present { value: ComparisonStandingRefused { model: _, refusals: _ } } => false
-        Present { value: MemoryAboveCatalog { observed: _, catalog: _ } } => false
-        Present { value: PowerCapAboveBoardCeiling { observed: _, ceiling: _ } } => false
+        BoardCheckPassed { carried: carried } =>
+          count(carried) == 2
+          && count(carried |> filter(g => match g { FigureCited { figure: _, authority: _ } => true  _ => false })) == 2
+          && count(carried |> filter(g => match g { FigureAbsent { figure: _ } => true  _ => false })) == 0
+        BoardCheckRefused { refusal: _ } => false
       }
     Absent => false
   }
@@ -330,16 +336,44 @@ test fn an_absent_figure_is_carried_visibly_and_never_refused_as_if_it_decided()
 
 test fn an_absent_ceiling_still_answers_no_power_verdict_from_the_fold() -> Bool {
   // The same row through the production fold: the absent ceiling produces no power verdict and no standing
-  // refusal -- the fold has nothing to compare -- while the cited memory figure still decides normally.
+  // refusal -- the fold has nothing to compare -- while the cited memory figure still decides normally. The
+  // pass is not silent: it carries the ceiling it could not check.
   match b200_sxm_row() {
     Present { value: row } =>
       match realization_check_board(gpu: observed_card("NVIDIA B200 SXM", 131072, 700000), board: row) {
-        Absent => true
-        Present { value: ComparisonStandingRefused { model: _, refusals: _ } } => false
-        Present { value: MemoryAboveCatalog { observed: _, catalog: _ } } => false
-        Present { value: PowerCapAboveBoardCeiling { observed: _, ceiling: _ } } => false
+        BoardCheckPassed { carried: carried } =>
+          count(carried) == 2
+          && count(carried |> filter(g => match g { FigureAbsent { figure: BoardPowerCeiling } => true  _ => false })) == 1
+          && count(carried |> filter(g => match g { FigureCited { figure: MemoryCapacity, authority: _ } => true  _ => false })) == 1
+        BoardCheckRefused { refusal: _ } => false
       }
     Absent => false
+  }
+}
+
+test fn the_join_itself_names_the_ceiling_it_never_compared() -> Bool {
+  // THE CONSUMER, not the fold beside it. This is the whole point of the change: a board joined with a
+  // ceiling its own row declares absent must not come back looking like a board whose ceiling was checked
+  // and passed. The join's own text has to say which figures it decided on and which it could not.
+  match realization_gpu_join(gpu: observed_card("NVIDIA B200", 131072, 700000)) {
+    RealizationGpuJoined { gpu: _, board: b, carried: carried } =>
+      b.facts.model == "NVIDIA B200 SXM"
+      && count(carried |> filter(g => match g { FigureAbsent { figure: BoardPowerCeiling } => true  _ => false })) == 1
+      && count(carried |> filter(g => match g { FigureCited { figure: MemoryCapacity, authority: _ } => true  _ => false })) == 1
+    RealizationGpuRefused { gpu: _, refusal: _ } => false
+  }
+}
+
+test fn a_checked_ceiling_is_distinguishable_from_an_uncheckable_one() -> Bool {
+  // The pair that makes the last claim say something: the same fold on a board that DOES state its ceiling
+  // carries that ceiling as cited and carries no absence at all. If both joins read the same way, this
+  // claim is the one that fails.
+  match realization_gpu_join(gpu: observed_card("NVIDIA RTX 2000 Ada Generation", 12288, 50000)) {
+    RealizationGpuJoined { gpu: _, board: b, carried: carried } =>
+      b.facts.model == "NVIDIA RTX 2000 Ada Generation"
+      && count(carried |> filter(g => match g { FigureAbsent { figure: _ } => true  _ => false })) == 0
+      && count(carried |> filter(g => match g { FigureCited { figure: BoardPowerCeiling, authority: _ } => true  _ => false })) == 1
+    RealizationGpuRefused { gpu: _, refusal: _ } => false
   }
 }
 
@@ -353,14 +387,13 @@ test fn standing_gate_precedes_the_numeric_verdict() -> Bool {
   match amd_r9700_row() {
     Present { value: row } =>
       match realization_check_board(gpu: observed_card("AMD Radeon AI PRO R9700", 49152, 250000), board: row) {
-        Present { value: ComparisonStandingRefused { model: m, refusals: refusals } } =>
+        BoardCheckRefused { refusal: ComparisonStandingRefused { model: m, refusals: refusals } } =>
           m == "Radeon AI PRO R9700"
             && count(refusals) == 2
             && marked_refusal_is(refusals, MemoryCapacity)
             && marked_refusal_is(refusals, BoardPowerCeiling)
-        Absent => false
-        Present { value: MemoryAboveCatalog { observed: _, catalog: _ } } => false
-        Present { value: PowerCapAboveBoardCeiling { observed: _, ceiling: _ } } => false
+        BoardCheckRefused { refusal: _ } => false
+        BoardCheckPassed { carried: _ } => false
       }
     Absent => false
   }
