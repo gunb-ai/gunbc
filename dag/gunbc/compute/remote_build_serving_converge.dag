@@ -30,6 +30,7 @@ import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, Typ
 // Increment 2 (the serving converge's recovery leg): the recovery doors' ONE declared exit mapping,
 // the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
 // shape every host-side door run shares. The leg itself decides nothing.
+import gunbc.compute.work_request { GunbcDriver, gunbc_binary_name, gunbc_cargo_package }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading, recover_catalog_unknown_leg_reason,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
@@ -705,7 +706,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // no door runs, the plan carries no recovery write, the receipt says so, and the next assessment —
   // with the checkout detached at the pin — asks the door. Never a fabricated empty census, and never
   // an unknown for a door that was simply not asked.
-  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, dispatched_revision: pin.dispatched_revision) {
+  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, serve_binary: serve_binary, dispatched_revision: pin.dispatched_revision) {
     CensusGateAsk => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
     CensusGateDefer { reason: r } => RecoverCatalogLegDeferred { reason: r }
   }
@@ -1144,7 +1145,7 @@ fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin
         )
         false => converge_bin_parent_dir(
           ConvergeDraft { writes: concat([
-            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: "gunbc", bin: "gunbc", target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary },
+            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: gunbc_cargo_package(b: GunbcDriver) as String, bin: gunbc_binary_name(b: GunbcDriver) as String, target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary },
           ], acc.writes), unhandled: acc.unhandled },
           d,
         )
@@ -1603,22 +1604,43 @@ fn converge_as_user_outcome(kind: FleetLegKind, target: SshTarget, context: Flee
 
 // Whether the census door may be asked at all, decided over the READ values so a claim exercises the
 // gate without a host (witness_one_interface: the witness supplies the reads at the boundary). The door
-// is carried by the serving checkout, so it exists only where that checkout stands AT the dispatched
-// revision; an unestablished or refused revision defers too — a checkout whose revision is not settled
-// cannot be known to carry the door. DEFER is not UNKNOWN: nothing was read and refused (fail_closed
-// reserves unknown for that), and it is never an established-empty census.
+// is carried by TWO things it must exist to be asked: the serving CHECKOUT (the door lives in the
+// checkout's dag), and the INSTALLED SERVE BINARY (the door is run through that program). So it exists
+// only where the checkout stands AT the dispatched revision AND the binary is not proven absent; an
+// unestablished or refused revision defers too — a checkout whose revision is not settled cannot be
+// known to carry the door. DEFER is not UNKNOWN: nothing was read and refused (fail_closed reserves
+// unknown for that), and it is never an established-empty census.
 type CensusGate
   = CensusGateAsk
   | CensusGateDefer { reason: String }
 
-fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, dispatched_revision: String) -> CensusGate {
-  match checkout_revision {
+fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, serve_binary: ObservationAttempt<Bool, ServingLegFailure>, dispatched_revision: String) -> CensusGate {
+  let checkout_gate = match checkout_revision {
     Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
       true => CensusGateAsk
       false => CensusGateDefer { reason: join(["the serving checkout stands at ", v, ", not the dispatched revision ", dispatched_revision, "; the recovery door lives in the checkout, so the census waits for the assessment after the checkout write detaches it"], "") }
     }
     Absent => CensusGateDefer { reason: join(["the serving checkout's revision is not established against the dispatched revision ", dispatched_revision, "; the census door is asked only from a checkout known to carry it"], "") }
     Present { value: ObservationRefused { cause: c } } => CensusGateDefer { reason: join(["the serving checkout's revision read was refused (", c.cause, "), so the census door — which that checkout carries — cannot be known to exist"], "") }
+  }
+  // THE CENSUS DOOR IS CARRIED BY THE INSTALLED SERVE BINARY AS WELL AS THE CHECKOUT. The door is run
+  // AS the account through the installed binary (converge_gunbc_door_argv runs d.serve_binary, the same
+  // program the serve route's forced command front-doors), so a host whose binary is PROVEN ABSENT — a
+  // fresh host, or one whose native build has not installed yet — has no door to ask: the exec exits 127
+  // and folds into an UNKNOWN census that indeterminate's the whole assessment and strands the very
+  // build-and-install write that carries the door (observed on ken's converge 45968626078, where the
+  // checkout stood at the pin, the binary write failed, and the re-observe answered INDETERMINATE on a
+  // census door that could not exist). DEFER exactly as an un-detached checkout defers: DEFER is not
+  // UNKNOWN (fail_closed reserves unknown for a read that was attempted and refused), and it plans no
+  // recovery write while the binary write the SAME assessment carries is what makes the door exist, so
+  // the next assessment asks it. Proven ABSENT ONLY: an unread presence still asks (a real read beats a
+  // skip nobody proved), so a binary that merely could not be stat-ed is not quietly excused from its census.
+  match checkout_gate {
+    CensusGateDefer { reason: r } => CensusGateDefer { reason: r }
+    CensusGateAsk => match serve_binary {
+      ObservationEstablished { observed: false } => CensusGateDefer { reason: "the serving serve binary is not installed, so the census door — which the installed binary carries — does not exist to ask; the build-and-install write this assessment carries is what makes it exist, and the census waits for the assessment after it" }
+      _ => CensusGateAsk
+    }
   }
 }
 
