@@ -1557,11 +1557,14 @@ fn floor_preparation_census_is_honest() -> Bool {
         floor_preparation_capture_names_a_pass(floor_preparation_capture(), claim)
           && floor_preparation_capture_names_a_pass(floor_preparation_untrimmed_capture(), claim)
       } else if cause == floor_preparation_cause_refused {
-        floor_preparation_has_exact_row(floor_preparation_untrimmed_capture(), concat(floor_preparation_fail_prefix, claim))
+        // REFUSED rows carry their cause text after the claim name (`FAIL <claim> (closure
+        // diagnostics in ...)`), so the check is a prefix check, not an exact-row equality --
+        // run9n: exact equality refused the very rows the census had just named refused.
+        floor_preparation_any_row_starts_with(floor_preparation_untrimmed_capture(), concat(floor_preparation_fail_prefix, claim))
       } else if cause == floor_preparation_cause_unobserved {
         floor_preparation_any_row_starts_with(floor_preparation_untrimmed_capture(), concat(floor_preparation_unobserved_prefix, claim))
       } else if cause == floor_preparation_cause_no_verdict {
-        floor_preparation_has_exact_row(floor_preparation_untrimmed_capture(), concat(floor_preparation_fail_prefix, claim)) == false
+        floor_preparation_any_row_starts_with(floor_preparation_untrimmed_capture(), concat(floor_preparation_fail_prefix, claim)) == false
           && floor_preparation_any_row_starts_with(floor_preparation_untrimmed_capture(), concat(floor_preparation_unobserved_prefix, claim)) == false
       } else {
         false
@@ -1578,7 +1581,11 @@ fn floor_preparation_untrimmed_covers_the_graded_population() -> Bool {
     } else if floor_preparation_row_disposition(row) != floor_preparation_graded_disposition {
       acc
     } else {
-      floor_preparation_has_exact_row(
+      // The tool prints the per-claim instrument row as `[witness] <claim>: cpu=... wall=...
+      // eval_steps=...` -- an EXACT-row comparison against `[witness] <claim>:` could match only
+      // a line the tool never prints (run9n: the coverage check refused every graded claim of
+      // every real capture; it had only ever been satisfied by a vacuous empty census).
+      floor_preparation_any_row_starts_with(
         floor_preparation_untrimmed_capture(),
         concat(floor_preparation_witness_prefix, concat(floor_preparation_row_claim(row), ":"))
       )

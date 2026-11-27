@@ -809,8 +809,15 @@ fn floor_preparation_surviving_entries(untrimmed_stdout: String) -> List<String>
   let passed = floor_preparation_pass_names(stdout_text: untrimmed_stdout)
   filter(xs: floor_preparation_population_entries(), predicate: fn(entry) {
     let claims = floor_preparation_entry_claim_names(entry: entry)
-    fold(claims, init: true, f: (acc, claim) =>
-      acc && floor_preparation_has_exact_row(rows: passed, wanted: claim)) == false
+    // A graded claim is one that printed PASS in the UNTRIMMED leg, and the census requires every
+    // graded claim to print PASS AGAIN in the graded block. So the graded leg must re-run every
+    // entry that carries AT LEAST ONE passing claim -- run9n proved the old selection (entries
+    // where NOT every claim passed, i.e. "has a failure to re-check") silently dropped fully-
+    // green entries: their graded claims appeared in the census but had no PASS row to find in
+    // the capture, so the census consumer refused on a roster the runner itself had chosen.
+    // Entries with no passing claim at all have nothing graded to measure and stay out.
+    fold(claims, init: false, f: (acc, claim) =>
+      acc || floor_preparation_has_exact_row(rows: passed, wanted: claim))
   })
 }
 
@@ -1048,12 +1055,15 @@ fn floor_preparation_render_fn_block(name: String, rows: List<String>) -> List<S
 // the census is checkable, not merely stated.
 fn floor_preparation_render_requested_row(row: FloorPreparationPopulationRow, untrimmed: List<String>) -> String {
   let pass_row = concat(floor_preparation_pass_prefix, row.claim)
-  let fail_row = concat(floor_preparation_fail_prefix, row.claim)
+  let fail_prefix_row = concat(floor_preparation_fail_prefix, row.claim)
   let head = concat(concat(row.entry, "|"), row.claim)
   if floor_preparation_has_exact_row(rows: untrimmed, wanted: pass_row) {
     concat(concat(head, "|"), concat(floor_preparation_graded_disposition, "|"))
   } else {
-    let cause = if floor_preparation_has_exact_row(rows: untrimmed, wanted: fail_row) {
+    // PREFIX check on the FAIL class: refused rows print their cause after the claim name, so
+    // exact equality silently re-labelled real refusals as no_verdict_line (run9n, the two
+    // ci_floor_batch clamp rows). PASS rows print bare and stay on exact equality.
+    let cause = if floor_preparation_any_row_starts_with(rows: untrimmed, prefix: fail_prefix_row) {
       floor_preparation_cause_refused
     } else {
       if floor_preparation_any_row_starts_with(rows: untrimmed,
