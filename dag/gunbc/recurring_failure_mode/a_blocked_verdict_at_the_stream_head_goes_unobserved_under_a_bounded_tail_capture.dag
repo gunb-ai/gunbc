@@ -2,8 +2,9 @@ module gunbc.recurring_failure_mode.a_blocked_verdict_at_the_stream_head_goes_un
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 // THE BLIND-TAIL CLASS: a witness capture that keeps only the LAST bytes of a stream, feeding a
 // classifier whose evidence lives at the HEAD. The capture itself announces the truncation
@@ -16,7 +17,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable }
 data a_blocked_verdict_at_the_stream_head_goes_unobserved_under_a_bounded_tail_capture: RecurringFailureMode = RecurringFailureMode {
   identity: "a_blocked_verdict_at_the_stream_head_goes_unobserved_under_a_bounded_tail_capture" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "the capture already self-announces: gunbc.WitnessBin.Run carries stderr_truncated, stderr_total_bytes and stderr_retained_bytes beside stderr, so the fold cannot plead missing channels. The prevention is model-local and mechanical: the classifier input list gains the flags it currently omits, and a verdict of ABSENCE-of-error-lines returned on stderr_truncated becomes a typed refusal instead of an unobserved reading" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of the verdict fold to consume the capture's own announcement: serve_entry_compile_verdict_of (and its sibling serve_command_verdict_of) taking the stderr_truncated, stderr_total_bytes and stderr_retained_bytes modelled on the same gunbc.WitnessBin.Run invocation, and refusing typed ('bounded tail cannot establish absence; retained X of Y bytes') rather than claiming Unobserved whenever an absence of error lines would be established from a truncated capture -- model-local, buildable now" } },
 
   receipts: [
     "**an observer reads a bounded TAIL while the verdict lives at the STREAM HEAD** (a run whose diagnostics are ordered errors-first, advisories-after -- the compiler's own ordering -- is classified from the last window of the stream. The retained window holds only advisory lines and the closing total; the error-prefixed lines were evicted at the head before the classifier ever saw them).",
@@ -31,7 +32,7 @@ data a_blocked_verdict_at_the_stream_head_goes_unobserved_under_a_bounded_tail_c
 
     "WHY IT SURVIVES REVIEW: the classifier is correct about the window it holds, and the detail string reads like proper fail-closed caution. Nothing on the classifier's surface shows that its input declared itself partial -- the tell is in three fields a different module carries.",
 
-    "RUNG: found at the rung MechanicallyPreventable (a real executed refusal in the wild caught it -- the diagnostic leg proved Blocked-by-2 that the fold had read Unobserved), standing AT CEILING 2: the repair is to make the fold consume the capture's own announcement -- on stderr_truncated, an absence-of-error-lines verdict must refuse typed ('bounded tail cannot establish absence; retained X of Y bytes') instead of claiming Unobserved, or the caller must re-run with an announced-complete capture before pronouncing.",
+    "RUNG, AND WHAT CATCHES IT TODAY. Found at the rung Mitigatable: today the class is contained only by expertise -- the specimen surfaced because an operator re-instrumented the claim by hand with a 128MiB capture; NO gate catches this class at rung 2 today, and the classifier's Unobserved verdict neither stops the line nor says the truth. Standing is BELOW ceiling: the ceiling is MechanicallyPreventable, and the climb is model-local and buildable now -- the fold consumes the capture's own announcement (the modelled stderr_truncated and byte counts) and refuses typed instead of establishing an absence from a bounded window. blocker: ClimbableButUnbuilt -- nothing awaits a grounding or an authority; the fields exist and no writer consumes them, so this row ranks for climbing rather than stalling.",
 
     "REVIEW TELL: a classifier over captured stream text that claims an ABSENCE while stderr_truncated is true, or while stderr_retained_bytes is below stderr_total_bytes. Ask whether the absence can be established from the retained window alone, and what in the artifact says the window was complete.",
   ],
