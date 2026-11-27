@@ -2134,7 +2134,7 @@ fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
           Present { value: j } =>
             match map_lookup(m: groups, key: j) {
               Absent => []
-              Present { value: lower } => map(lower, u => OccurrenceEdge { from: u.path, to: o.path })
+              Present { value: lower } => map(filter(lower, u => nat_to_int(n: u.path.member) == nat_to_int(n: o.path.member)), u => OccurrenceEdge { from: u.path, to: o.path })
             }
         }
     }
