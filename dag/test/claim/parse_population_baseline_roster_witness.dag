@@ -1,0 +1,316 @@
+module test.claim.parse_population_baseline_roster_witness
+
+import std.types { Bool, Int, String, List, CommitSha }
+import std.algebra { string_contains, fold_list }
+import std.list { distinct_by_key }
+import std.measure { byte_size, microsecond }
+import std.content_hash { Sha256Digest }
+import product.host_identity { HostIdentity }
+import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
+import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall { parse_population_carrier_reader_beside_grammar_stall }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.parse_population_baseline_roster {
+  parse_population_cardinality_accepts_real,
+  parse_population_cardinality_refuses_planted_extra_row,
+  parse_population_partition_is_consistent,
+  parse_population_zero_byte_row_count,
+  parse_population_is_unique,
+  parse_population_duplicate_refuses_with_trivial_eq,
+  parse_population_rows_ordered_descending,
+  parse_population_ordering_accepts_descending,
+  parse_population_ordering_refuses_ascending,
+  parse_population_reconcile_accepts_correct_slice,
+  parse_population_reconcile_refuses_mistyped_slice,
+  parse_population_unreconciled_row_count,
+  parse_population_mistyped_real_row_slice,
+  parse_population_correct_real_row_slice,
+  parse_population_roster_is_selected_sorted,
+  parse_population_top_n_excludes_overflow,
+  parse_population_top_n_accepts_full_window,
+  parse_population_top_n_breaks_tie_by_path,
+  parse_population_selection_refuses_misordered_tie,
+  parse_population_carrier_reader_beside_grammar_stall_capability,
+  parse_population_stall_next_rung_capability,
+  ParsePopulationMeasurementReceipt,
+  ParsePopulationCellMeasurement,
+  WallCell, ParsePopulationSampleShape,
+  CellREF, CellA, CellB, CellC,
+  FiveLargest, Sample165SizeTail, FullRootsReference,
+  parse_population_measurement_receipts,
+  parse_population_receipts_are_publishable,
+  parse_population_srv1_receipt_count,
+  parse_population_receipt_durations_are_ordered,
+  parse_population_measurement_cell_render,
+  parse_population_sample_shape_render,
+}
+
+// THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
+// (Five Largest and 165-Sample) of roadmap row emission-real-consumer-profiles. It does not restate
+// the selection rule (that is the carrier's single home, gunbc.design_argument::planning_has_one_home);
+// it EXECUTES the carrier and refuses if the roster silently lost or gained a member, or if a byte
+// total moved, so a claim that reads an empty or short roster cannot pass
+// (gunbc.design_argument::fail_closed — a check standing where construction was available must
+// actually measure). NONZERO by construction: every count is asserted EQUAL to a positive figure,
+// so a 0 roster fails, not passes, and the named negative control proves the discrimination
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+
+// Whole-roster cardinality: the 170 members the row fixes (5 + 165).
+test fn parse_population_baseline_roster_cardinality_holds() -> Bool {
+  // review 98328 + warm-fox rule: a cardinality claim must be discriminating, not a constant
+  // readback. The former ==5 / ==165 conjuncts only read the constants back (fail_closed); the real
+  // check is the fixed benchmark size, and it is PAIRED with a planted-row refusal in this same leg
+  // so it can actually fail for the reason it claims: the ACCEPT arm (real roster is exactly the
+  // expected 170 = 5 largest + 165 sample) AND the REFUSE arm (a roster with one planted extra row
+  // must be refused). Both arms run in this one witness so the negative fails in the same run.
+  parse_population_cardinality_accepts_real()
+    && parse_population_cardinality_refuses_planted_extra_row()
+}
+
+// Byte totals per fixed population and combined, compared IN the ByteSize measure (no bare-Int
+// re-representation; gunbc.design_argument::single_authority).
+// Non-circular byte invariants: the two populations are a disjoint cover of the roster and no row is
+// zero. These are derived from the roster's own rows, NOT compared against literals copied from the
+// same tree read (fail_closed: "a count copied from the current tree is a change detector"). The
+// absolute measured totals live in the measurement report as the recorded baseline, with the pinned
+// sha and the producer command, so they are reproducible there; asserting them here would only restate
+// the roster against itself.
+test fn parse_population_baseline_roster_byte_invariants_hold() -> Bool {
+  parse_population_partition_is_consistent()
+    && parse_population_zero_byte_row_count() == 0
+}
+
+// The selection rule's ordering invariant, executed: the roster is non-increasing in byte size
+// along list order, so the two fixed populations really are the largest blobs at the pinned sha.
+test fn parse_population_baseline_rows_ordered_descending_holds() -> Bool {
+  parse_population_rows_ordered_descending()
+}
+
+// DISCRIMINATION (both arms shown). The ACCEPT arm: a descending synthetic list is accepted.
+test fn parse_population_ordering_accepts_descending_holds() -> Bool {
+  parse_population_ordering_accepts_descending()
+}
+
+// The REFUSE arm: an ascending synthetic list (a smaller file before a larger one) is refused by
+// the same fold. If the fold passed everything, this FAILs — so the invariant cannot be vacuous.
+test fn parse_population_ordering_refuses_ascending_holds() -> Bool {
+  parse_population_ordering_refuses_ascending()
+}
+
+// THE SELECTION RULE AS A TYPED ALGORITHM (review 98809 F1; review 98986 F3 reworded). The rule "top N
+// by blob size descending, then path ascending for the tiebreak" was once an unchecked comment plus a
+// shell sort. It now lives in the carrier and is EXECUTED here — the sole authority for the rule. The
+// shell runner that once applied it as transport was WITHDRAWN from this PR (review 98836, route B
+// declined) and ships in no merge; nothing in this diff or tree shells out to read the roster.
+test fn parse_population_selection_rule_is_modelled_holds() -> Bool {
+  parse_population_roster_is_selected_sorted()
+}
+
+// DISCRIMINATING PAIR for the top-N window: [30,20,10] top-2 leaves exactly one row outside, top-3
+// leaves none. A window that always said "inside" fails the first; "always outside" fails the second
+// (executed_red_control_names_its_failing_commit).
+test fn parse_population_top_n_window_discriminates_holds() -> Bool {
+  parse_population_top_n_excludes_overflow()
+    && parse_population_top_n_accepts_full_window()
+}
+
+// TIEBREAK IS MODELLED, not just size: at equal blob size the smaller path wins the slot. The
+// size-only ordering check above cannot distinguish two equal sizes; this claim proves the path
+// component of the comparator is real, so a stored order that breaks the path tiebreak turns red.
+test fn parse_population_selection_breaks_tie_by_path_holds() -> Bool {
+  parse_population_top_n_breaks_tie_by_path()
+    && parse_population_selection_refuses_misordered_tie()
+}
+
+// Disjointness/uniqueness over the whole roster via keyed_roster_build's Built arm.
+test fn parse_population_baseline_roster_is_unique_holds() -> Bool {
+  parse_population_is_unique()
+}
+
+// NAMED NEGATIVE CONTROL. The same fold over the same 170 rows with a trivial always-equal key_eq
+// MUST land on DuplicateKey. This is the leg that proves the uniqueness verdict above is a real
+// discrimination and not a fold that ignores its key: if this ever PASSed as Built, the roster
+// check would be green by vacancy. Run in the same claim_batch, so the green and the red leg share
+// a run.
+test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
+  parse_population_duplicate_refuses_with_trivial_eq()
+}
+
+// CARRIER <-> TREE comparison predicate, BOTH arms (review 98443). ACCEPT: the correct real-row slice
+// reconciles fully (zero unreconciled rows). REFUSE: the same slice with one REAL row's byte size mistyped
+// is NOT fully reconciled — a real wrong row drives the refusal. This claim_batch test exercises ONLY the
+// comparison predicate against hand-built reference row-sets; it does NOT itself read `git ls-tree` and does
+// NOT read the 170-row roster (no filesystem in the language). The reconciliation of ALL 170 rows against
+// `git ls-tree -r -l <pinned_sha>` is NOT executed in this merge: the awk/grep/sed shell runner that did it
+// was withdrawn (warm-fox-517 split ruling; review 98809), a `.dag` function cannot read the tree, and
+// gunbc CI executes no claims — so no lane runs it. That full reconciliation is declared WITHDRAWN pending
+// route A in parse_population_carrier_reader_rung_drop. What THIS claim judges is exactly its name: the
+// predicate refuses one bad row.
+test fn parse_population_reconcile_predicate_refuses_bad_row_holds() -> Bool {
+  parse_population_reconcile_accepts_correct_slice()
+    && parse_population_reconcile_refuses_mistyped_slice()
+}
+
+// REAL-WRONG-ROW REFUSAL, REWRITTEN AS A HELD LEG (warm-fox F5; review 98443 lineage). The former
+// parse_population_roster_red_control_mistyped_row_fails was a plain fn with ZERO call sites -- the claim
+// route selects test fns, so it was a comment, not a control -- and its polarity was inverted for a refusal
+// leg: it asserted the mistyped slice reconciles FULLY (== 0), which is false by construction, so as a leg
+// it could only ever FAIL and its FAIL could not be told apart from a genuine bug. Now the refusal is what
+// HELDs: over the named planted input (the mistyped real-row slice), the unreconciled count is NOT zero.
+// Every leg in this batch now HELDs; the negative is an assertion inside a held leg over a named planted
+// input (design_argument::fail_closed).
+test fn parse_population_cardinality_refuses_mistyped_real_row_holds() -> Bool {
+  parse_population_unreconciled_row_count(
+    declared: parse_population_mistyped_real_row_slice(),
+    tree: parse_population_correct_real_row_slice()) != 0
+}
+
+
+// THE STALL GUARD IS DISCRIMINATING, NOT A DECORATION (review 98901 F1; design_argument::fail_closed: "a
+// discriminating input that goes red when the behavior is wrong"). Review 99025 F2: the first form hunted the
+// uppercase token "CAPABILITY", which the carrier never emits (0 occurrences in both files, lowercase
+// capability = 3 and 8 as the non-vacuous control) -- false on every input. Review 99088 F2: the second form
+// read a ledger LINE string whose only consumer was this substring check -- a string builder with a test as
+// its only consumer is a decoration; the ledger-line function is deleted from the carrier, and with it the
+// leg's old name (it named that deleted artefact; the tsv join dag/gunbc/witness/witness_row_cost_basis.tsv
+// carries no parse_population rows -- 0 hits -- so the rename breaks no join). Review point (warm-fox, final
+// head, 8f213df09bd): an equality whose right side is DEFINED as its left side -- the beside-grammar
+// reader is one line calling the extraction -- is f(x) == f(x) wearing a wrapper and cannot fail in any
+// world, so that conjunct is DELETED rather than dressed up; the leg keeps only the two arms that can
+// actually fail. Tampering demonstration (executed at the acquisition, not argued): swap a planted stall
+// into the rostered binding -> the labelled negative control "planted" (0 occurrences in the authority
+// file) fires and the leg prints DID NOT HOLD. Editing the AUTHORITY's prose cannot redden this leg --
+// it reads the authority through the carrier and asserts no literal, which is the point: the truth is
+// derived, not copied. WHAT THIS LEG DOES NOT CARRY, stated honestly: it does not assert the capability's CONTENT --
+// "emitted, declared route" now lives in exactly one place, the authority file
+// dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag, guarded by no leg;
+// the leg carries non-emptiness (stall_trigger_admission refuses an empty trigger) and the no-planted-leak
+// control only. Value-sensitivity of the extraction itself lives in the planted pair below.
+test fn parse_population_stall_trigger_capability_declared_holds() -> Bool {
+  parse_population_carrier_reader_beside_grammar_stall_capability() != "" && !string_contains(s: parse_population_carrier_reader_beside_grammar_stall_capability(), pattern: "planted")
+}
+
+// THE EXTRACTION, TESTED THROUGH THE CARRIER'S OWN FUNCTION (review 99025 F1: no local copy -- a witness that
+// re-implements the thing it guards can only ever test its own copy). The red is AUTHORABLE as a changed
+// capability VALUE: gunbc.guarantee_stall declares NextRungTrigger as a single record type, so a "bare record
+// outside the declared constructors" is not a representable forbidden state, and the earlier leg asserting the
+// planted row extracted to "" failed in the correct world. The two planted stalls below are the same
+// GuaranteeStall shape the declared constructor climbs_when_awaiting builds; they differ ONLY in the
+// capability value. Correct world: HELD (empty extracts to "", named extracts to its text, and the two are
+// distinguishable). Broken world -- an extraction that ignores the trigger's value (returns a constant or
+// reaches past the field): FAILED, because the two probes collapse or the empty one yields text.
+test fn parse_population_stall_capability_extraction_distinguishes_planted_values_holds() -> Bool {
+  parse_population_planted_empty_capability_probe() == "" && parse_population_planted_named_capability_probe() == "CAPABILITY: planted text the typed accessor must return" && parse_population_planted_empty_capability_probe() != parse_population_planted_named_capability_probe()
+}
+
+data parse_population_planted_empty_capability_stall: GuaranteeStall = GuaranteeStall {
+  subject: "planted: stall whose next-rung capability is empty",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["planted member"] },
+  next_rung_trigger: NextRungTrigger { capability: "", awaiting: [] }
+}
+
+data parse_population_planted_named_capability_stall: GuaranteeStall = GuaranteeStall {
+  subject: "planted: stall whose next-rung capability names the capability",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["planted member"] },
+  next_rung_trigger: NextRungTrigger { capability: "CAPABILITY: planted text the typed accessor must return", awaiting: [] }
+}
+
+fn parse_population_planted_empty_capability_probe() -> String {
+  parse_population_stall_next_rung_capability(stall: parse_population_planted_empty_capability_stall)
+}
+
+fn parse_population_planted_named_capability_probe() -> String {
+  parse_population_stall_next_rung_capability(stall: parse_population_planted_named_capability_stall)
+}
+
+// ---- measurement receipts (review 98937 F4: receipts get a typed home, this witness is its
+// consumer; green by execution pending A/B/C; parses only — the module has no row in
+// v2.workflow.required_floor::required_gate_authored_modules, so no lane executes it) ----
+
+// GREEN half of the discriminating pair: the recorded sweep — REF + A + B + C + the instrument-check
+// leg — is publishable by the sweep's own rule (real rc 0, zero declared refusals, positive counts,
+// srv1 host) and is exactly five cells.
+test fn parse_population_measurement_receipts_record_the_sweep_holds() -> Bool {
+  parse_population_receipts_are_publishable(receipts: parse_population_measurement_receipts)
+    && parse_population_receipt_durations_are_ordered(receipts: parse_population_measurement_receipts)
+    && parse_population_receipt_count(receipts: parse_population_measurement_receipts) == 5
+}
+
+// RED half for the duration typing (review 98981): a WallStat whose min exceeds its max — the
+// representable forbidden state of a statistic recorded from the wrong end of the run list — must be
+// REFUSED by the ordering predicate. A String wall_seconds could not express this state at all
+// (anemic modeling); the typed triple makes it expressible AND refused.
+data parse_population_planted_reversed_stat_receipt: ParsePopulationMeasurementReceipt =
+  ParsePopulationMeasurementReceipt { population: FiveLargest, runs: 3,
+    measurement: WallStat { cell: CellA, min_wall: microsecond(count: 23300000),
+      median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 20160000) },
+    peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: "srv1" as HostIdentity,
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" }
+
+test fn parse_population_duration_ordering_refuses_reversed_triple_holds() -> Bool {
+  !parse_population_receipt_durations_are_ordered(receipts: [parse_population_planted_reversed_stat_receipt])
+}
+
+// RED half (fail_closed): a planted receipt with a nonzero rc — the representable forbidden state of
+// a cell whose command failed but whose number was recorded anyway — must be REFUSED by the same
+// predicate. If publishability ever degrades to a constant readback, this leg goes red by name.
+data parse_population_planted_failed_receipt: ParsePopulationMeasurementReceipt =
+  ParsePopulationMeasurementReceipt { population: Sample165SizeTail, runs: 1,
+    measurement: WallStat { cell: CellB, min_wall: microsecond(count: 1000000),
+      median_wall: microsecond(count: 1000000), max_wall: microsecond(count: 1000000) },
+    peak_rss: byte_size(count: 1024), modules: 1, declared_refusals: 0, rc: 1,
+    binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
+    tree_sha: "0000000000000000000000000000000000000000" as CommitSha,
+    host: "srv1" as HostIdentity,
+    boot_id: "00000000-0000-0000-0000-000000000000" }
+
+test fn parse_population_receipt_publishability_refuses_planted_failed_cell_holds() -> Bool {
+  !parse_population_receipts_are_publishable(receipts: [parse_population_planted_failed_receipt])
+}
+
+fn parse_population_receipt_count(receipts: List<ParsePopulationMeasurementReceipt>) -> Int {
+  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
+}
+
+// 18. THE BAD PAIRING HAS NO CONSTRUCTOR (review 99218, fail_closed + guarantee_ladder: construction
+// over validation). The cell tag lives INSIDE the measurement coproduct: WallStat names a WallCell,
+// ProcessTimes names none, so { cell: CellE, measurement: WallStat } cannot be written and the
+// five-arm seal predicate is deleted rather than trusted. What the leg EXECUTES is the observable of
+// that construction: the five real receipts render exactly one label per cell — the complete set
+// REF, A, B, C, E with no duplicates, and E rendered by exactly the one ProcessTimes receipt. Edit
+// any arm of the render (collapse two, or drop E) and this leg goes DID NOT HOLD.
+test fn parse_population_cell_measurement_pairing_is_constructed_not_checked_holds() -> Bool {
+  let labels = map(parse_population_measurement_receipts, r => parse_population_measurement_cell_render(measurement: r.measurement))
+  count(labels) == 5
+  && count(distinct_by_key(xs: labels, key: l => l)) == 5
+  && any(labels, l => l == "REF") && any(labels, l => l == "A")
+  && any(labels, l => l == "B") && any(labels, l => l == "C")
+  && any(labels, l => l == "E")
+  && count(filter(labels, l => l == "E")) == 1
+}
+
+// 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): the five real receipts
+// render pairwise-distinct labels of which exactly one is REF (the reference cell's rendering), every
+// receipt carries the srv1 host identity, and the population renderings distinguish the two fixed
+// samples -- collapse any arm of parse_population_measurement_cell_render onto another and the
+// distinctness count goes DID NOT HOLD. The report and the roster read these renderings; they copy
+// nothing. All reads go through list combinators: `xs[i]` yields an Optional in this grammar and
+// feeding it to a Product parameter is what the FORM3 pre-check refused by name on srv1 (rc 2,
+// "produced 'Optional<Product(ParsePopulationMeasurementReceipt)>'").
+test fn parse_population_cell_renderings_are_distinct_holds() -> Bool {
+  let labels = map(parse_population_measurement_receipts, r => parse_population_measurement_cell_render(measurement: r.measurement))
+  count(labels) == 5
+  && count(distinct_by_key(xs: labels, key: l => l)) == 5
+  && count(filter(labels, l => l == "REF")) == 1
+  && parse_population_srv1_receipt_count(receipts: parse_population_measurement_receipts) == 5
+  && parse_population_sample_shape_render(shape: FiveLargest) != parse_population_sample_shape_render(shape: Sample165SizeTail)
+}

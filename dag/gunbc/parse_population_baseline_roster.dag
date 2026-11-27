@@ -1,0 +1,827 @@
+module gunbc.parse_population_baseline_roster
+
+import std.types { Bool, Int, List, String, CommitSha }
+import std.content_hash { Sha256Digest }
+import std.measure { ByteSize, Microsecond, byte_size, microsecond, measure_add, measure_le }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
+import std.algebra { count_where, fold_list, list_push, string_contains }
+import gunbc.guarantee_stall { NextRungTrigger, GuaranteeStall }
+import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall {
+  parse_population_carrier_reader_beside_grammar_stall,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import product.host_identity { HostIdentity, host_identity_eq }
+
+// THE PARSE-POPULATION BASELINE ROSTER: the single typed authority for the two fixed parse
+// populations named by roadmap row emission-real-consumer-profiles first_slice ("the 5 largest dag
+// modules and a 165-module sample"). The markdown under docs/plans/ records the measured cells only and
+// points here; it holds no copy of the rule (gunbc.design_argument::planning_has_one_home).
+//
+// MODELLED ONCE (gunbc.design_argument::minimize_redundancy): each member stores ONLY its path and byte
+// size, in list order; its population rank is its 1-based position and its membership is DERIVED from
+// rank (first parse_population_five_largest_count rows = FiveLargest, the rest = OneHundredSixtyFive).
+//
+// SELECTION RULE (regenerable, deterministic): every .dag under dag/ and src/v2/ at the pinned sha, taken
+// by BLOB SIZE from the tree objects (git ls-tree -r -l <sha> -- dag src/v2), sorted DESCENDING by size
+// then ASCENDING by path for a stable tiebreak. Positions 1..5 = FiveLargest; 6..170 = OneHundredSixtyFive.
+//
+// THE TREE TIE IS NOT ESTABLISHED IN THIS MERGE (gunbc.design_argument::guarantee_ladder (no untracked stall):
+// the reported rung equals the rung established by executed evidence). NO EXECUTED READER of these 170 rows
+// ships here -- a `.dag` function cannot read the tree and CI executes no claims -- so the rows are declared
+// at rung 1 (mitigatable): the typed predicates below model and DISCRIMINATE the selection order over
+// hand-built slices; the reconciliation against `git ls-tree -r -l <pinned_sha> -- dag src/v2` (path AND blob
+// byte size per row, where a single mistyped row must turn it red BY NAME) is a declared GAP on the stall row
+// gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall, whose next-rung trigger names
+// the capability that closes it. A shell reader beside the grammar was drafted and WITHDRAWN (review 98836).
+// This header claims no executed reconciliation and no green diff. Authorization, review history and the
+// acquisition record live in the PR body and its comments, not in this header
+// (gunbc.design_argument::source_annotations).
+// The tree sha the populations were selected and measured over (origin/main at baseline time).
+data parse_population_baseline_pinned_sha: String =
+  "65230868362de3efc0ddfeeaeef5d83eeb2fa385"
+
+// How many of the leading rows form the Five Largest population. Membership is DERIVED from this
+// and the row's position; it is not stored per row.
+data parse_population_five_largest_count: Int = 5
+
+// The fixed benchmark size the two populations must have, asserted by the cardinality predicate
+// (consumed by parse_population_cardinality_accepts_real / _refuses_planted_extra_row, so not dead
+// data). It is the row's two fixed populations: 5 largest + a 165-module sample = 170. Paired with a
+// planted-row refusal so the count is discriminating, not a constant readback (warm-fox rule: a check
+// must prove it measured; review 98328).
+data parse_population_expected_total_count: Int = 170
+
+
+// DECLARED DEPARTURE (gunbc.design_argument::epistemic_humility): the row calls the second population
+// "a 165-module sample"; as SELECTED it is NOT a uniform/stratified sample — it is the NEXT 165 files by
+// DESCENDING blob size (ranks 6..170 of the size sort), a SIZE-TAIL sample. Both populations therefore sit
+// in the heavy tail; the per-byte figures are a tail-vs-tail comparison and assert nothing about the corpus
+// size mix. The size-descending selection is enforced executably by parse_population_check_rows_ordered_descending
+// and the 170-size by the cardinality probes; a representative sample would need a seeded sampling rule
+// over the full population (a re-measurement, not this slice). The substantive checks are executable, not
+// asserted as deduced.
+// One roster member: its repo-relative path and its blob byte size. Rank and population follow from
+// position in parse_population_baseline_rows().
+type ParsePopulationRow {
+  path: String
+  bytes: ByteSize
+}
+
+// The 170 members in population order: rank == 1-based index, membership derived from rank.
+data parse_population_baseline_rows: List<ParsePopulationRow> = [
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_authority.dag", bytes: byte_size(count: 1421761) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", bytes: byte_size(count: 947773) },
+  ParsePopulationRow { path: "dag/product/p4261/e1_receipt_markings.dag", bytes: byte_size(count: 750634) },
+  ParsePopulationRow { path: "dag/extdeps/wikipedia/list_of_nvidia_graphics_processing_units.dag", bytes: byte_size(count: 748625) },
+  ParsePopulationRow { path: "src/v2/workflow/floor_grandfathered_roster.dag", bytes: byte_size(count: 706670) },
+  ParsePopulationRow { path: "src/v2/compiler/body_lowering_fold.dag", bytes: byte_size(count: 662404) },
+  ParsePopulationRow { path: "src/v2/std/compilers/target_model.dag", bytes: byte_size(count: 648213) },
+  ParsePopulationRow { path: "dag/gunbc/host/host_effect_realize.dag", bytes: byte_size(count: 642229) },
+  ParsePopulationRow { path: "src/v2/compiler/infer.dag", bytes: byte_size(count: 631378) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/fleet_converge_workflow.dag", bytes: byte_size(count: 597494) },
+  ParsePopulationRow { path: "dag/extdeps/wikipedia/list_of_amd_graphics_processing_units.dag", bytes: byte_size(count: 571378) },
+  ParsePopulationRow { path: "dag/gunbc/recurring_failure_mode/bare_name_resolved_by_proximity_standing_in_for_resolution.dag", bytes: byte_size(count: 560090) },
+  ParsePopulationRow { path: "dag/extdeps/nvidia/linux_driver_supported_chips.dag", bytes: byte_size(count: 528365) },
+  ParsePopulationRow { path: "dag/product/p4261/e1_b.dag", bytes: byte_size(count: 496502) },
+  ParsePopulationRow { path: "dag/product/p4261/e1_board_sightings.dag", bytes: byte_size(count: 437107) },
+  ParsePopulationRow { path: "src/v2/extdeps/languages/dag.dag", bytes: byte_size(count: 375922) },
+  ParsePopulationRow { path: "src/v2/workflow/roster_import_sweep.dag", bytes: byte_size(count: 368266) },
+  ParsePopulationRow { path: "dag/gunbc/runner/runner_host_file_converge.dag", bytes: byte_size(count: 357665) },
+  ParsePopulationRow { path: "dag/test/claim/ubuntu_autoinstall_seed_witness.dag", bytes: byte_size(count: 345680) },
+  ParsePopulationRow { path: "dag/gunbc/ci/ci_layer_roots.dag", bytes: byte_size(count: 329294) },
+  ParsePopulationRow { path: "src/v2/compiler/resolve.dag", bytes: byte_size(count: 321770) },
+  ParsePopulationRow { path: "src/v2/compiler/source_root_eval.dag", bytes: byte_size(count: 321632) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/bmc_recovery_route.dag", bytes: byte_size(count: 321452) },
+  ParsePopulationRow { path: "dag/extdeps/cpu/ampere_altra_package_table4_raw.dag", bytes: byte_size(count: 315112) },
+  ParsePopulationRow { path: "dag/gunbc/design_ruling.dag", bytes: byte_size(count: 308544) },
+  ParsePopulationRow { path: "dag/gunbc/compute/work_provider_local.dag", bytes: byte_size(count: 303095) },
+  ParsePopulationRow { path: "dag/gunbc/provisioning/ubuntu_autoinstall_seed.dag", bytes: byte_size(count: 297544) },
+  ParsePopulationRow { path: "src/v2/workflow/local_repo_wet_terminal.dag", bytes: byte_size(count: 292814) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/bmc_secure.dag", bytes: byte_size(count: 291271) },
+  ParsePopulationRow { path: "dag/gunbc/scm/repository_envelope.dag", bytes: byte_size(count: 278925) },
+  ParsePopulationRow { path: "dag/gunbc/live_deploy/srv1_residue_rehearsal.dag", bytes: byte_size(count: 272046) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_dashboard_instance.dag", bytes: byte_size(count: 238709) },
+  ParsePopulationRow { path: "dag/test/claim/product/p4261_carrier_layout_witness.dag", bytes: byte_size(count: 236738) },
+  ParsePopulationRow { path: "dag/gunbc/spark/arm_memory_fit.dag", bytes: byte_size(count: 236386) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag", bytes: byte_size(count: 230901) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/megarac_boot_diagnostic_bundle.dag", bytes: byte_size(count: 228849) },
+  ParsePopulationRow { path: "dag/gunbc/runner/runner_gpu_container_toolchain.dag", bytes: byte_size(count: 218906) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/site_pxe_edge_converge.dag", bytes: byte_size(count: 217939) },
+  ParsePopulationRow { path: "src/v2/compiler/parse.dag", bytes: byte_size(count: 215655) },
+  ParsePopulationRow { path: "dag/test/claim/firmware_network_boot_standing_witness.dag", bytes: byte_size(count: 214558) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_page.dag", bytes: byte_size(count: 213007) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag", bytes: byte_size(count: 211221) },
+  ParsePopulationRow { path: "dag/test/claim/long/roadmap_page_witness.dag", bytes: byte_size(count: 204619) },
+  ParsePopulationRow { path: "src/v2/extdeps/languages/rust.dag", bytes: byte_size(count: 201833) },
+  ParsePopulationRow { path: "src/v2/workflow/floor_route_gap.dag", bytes: byte_size(count: 201652) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/fleet_converge_plan.dag", bytes: byte_size(count: 193318) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_event_log.dag", bytes: byte_size(count: 192268) },
+  ParsePopulationRow { path: "dag/gunbc/firmware_network_boot_standing.dag", bytes: byte_size(count: 192156) },
+  ParsePopulationRow { path: "dag/gunbc/compute/remote_build_serving_converge.dag", bytes: byte_size(count: 190608) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_component.dag", bytes: byte_size(count: 187914) },
+  ParsePopulationRow { path: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag", bytes: byte_size(count: 186139) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix.dag", bytes: byte_size(count: 183407) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/bmc_first_contact_reading.dag", bytes: byte_size(count: 181414) },
+  ParsePopulationRow { path: "src/v2/workflow/required_floor.dag", bytes: byte_size(count: 181053) },
+  ParsePopulationRow { path: "dag/gunbc/serving/srv1_serving_replica_layout.dag", bytes: byte_size(count: 180757) },
+  ParsePopulationRow { path: "dag/gunbc/auth/privileged_effect_registry.dag", bytes: byte_size(count: 177226) },
+  ParsePopulationRow { path: "dag/gunbc/runner/runner_slot_allocation.dag", bytes: byte_size(count: 176113) },
+  ParsePopulationRow { path: "dag/gunbc/fabric/engram_materialization.dag", bytes: byte_size(count: 174168) },
+  ParsePopulationRow { path: "dag/gunbc/spark/pair_serving_authority_log.dag", bytes: byte_size(count: 171535) },
+  ParsePopulationRow { path: "dag/gunbc/instruments/known_red_derivation.dag", bytes: byte_size(count: 169348) },
+  ParsePopulationRow { path: "dag/gunbc/witness/witness_floor_workflow.dag", bytes: byte_size(count: 166853) },
+  ParsePopulationRow { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag", bytes: byte_size(count: 166629) },
+  ParsePopulationRow { path: "src/v2/extdeps/languages/rust_fixtures.dag", bytes: byte_size(count: 162998) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/megarac_media_attach.dag", bytes: byte_size(count: 161158) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_serve.dag", bytes: byte_size(count: 160464) },
+  ParsePopulationRow { path: "src/v2/workflow/floor_pure_producer_share.dag", bytes: byte_size(count: 158795) },
+  ParsePopulationRow { path: "dag/product/p4261/e1_photographs.dag", bytes: byte_size(count: 158710) },
+  ParsePopulationRow { path: "dag/test/claim/deployment_gate_operator_steps_witness.dag", bytes: byte_size(count: 158493) },
+  ParsePopulationRow { path: "dag/test/claim/fleet/fleet_converge_plan_witness.dag", bytes: byte_size(count: 158356) },
+  ParsePopulationRow { path: "dag/test/claim/compute/remote_build_serving_converge_witness.dag", bytes: byte_size(count: 157785) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_session_placement.dag", bytes: byte_size(count: 157446) },
+  ParsePopulationRow { path: "dag/extdeps/realization/materialization_store_local.dag", bytes: byte_size(count: 155814) },
+  ParsePopulationRow { path: "src/v2/compiler/eval.dag", bytes: byte_size(count: 152188) },
+  ParsePopulationRow { path: "dag/gunbc/harness/harness_turn.dag", bytes: byte_size(count: 151441) },
+  ParsePopulationRow { path: "dag/test/claim/fleet/site_pxe_edge_converge_witness.dag", bytes: byte_size(count: 151208) },
+  ParsePopulationRow { path: "dag/test/claim/runner/runner_host_file_converge_witness.dag", bytes: byte_size(count: 151123) },
+  ParsePopulationRow { path: "dag/gunbc/live_deploy/emit.dag", bytes: byte_size(count: 150577) },
+  ParsePopulationRow { path: "src/v2/std/grammar.dag", bytes: byte_size(count: 150025) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/fleet_release_bins_key.dag", bytes: byte_size(count: 149175) },
+  ParsePopulationRow { path: "src/v2/std/node.dag", bytes: byte_size(count: 148257) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag", bytes: byte_size(count: 147953) },
+  ParsePopulationRow { path: "dag/gunbc/spark/runtime_architecture_registry_reading.dag", bytes: byte_size(count: 146355) },
+  ParsePopulationRow { path: "dag/gunbc/auth/deployment_gate_authorization.dag", bytes: byte_size(count: 146143) },
+  ParsePopulationRow { path: "dag/test/claim/spark/engram_materialization_witness.dag", bytes: byte_size(count: 143044) },
+  ParsePopulationRow { path: "src/v2/extdeps/languages/bash.dag", bytes: byte_size(count: 142480) },
+  ParsePopulationRow { path: "dag/gunbc/harness/harness_seat.dag", bytes: byte_size(count: 141986) },
+  ParsePopulationRow { path: "dag/gunbc/live_deploy/apply_legs.dag", bytes: byte_size(count: 140540) },
+  ParsePopulationRow { path: "dag/extdeps/git.dag", bytes: byte_size(count: 138686) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/machine_intake_arrival_converge_witness.dag", bytes: byte_size(count: 137370) },
+  ParsePopulationRow { path: "dag/std/materialization_provider.dag", bytes: byte_size(count: 135855) },
+  ParsePopulationRow { path: "dag/gunbc/commit_workflow.dag", bytes: byte_size(count: 135557) },
+  ParsePopulationRow { path: "dag/gunbc/package_delivery.dag", bytes: byte_size(count: 135040) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_decomposition.dag", bytes: byte_size(count: 132233) },
+  ParsePopulationRow { path: "dag/test/claim/roadmap/session_placement_wet_witness.dag", bytes: byte_size(count: 130660) },
+  ParsePopulationRow { path: "dag/gunbc/auth/gcp_iam_bootstrap.dag", bytes: byte_size(count: 130529) },
+  ParsePopulationRow { path: "dag/test/claim/runner/runner_host_cap_bracket_witness.dag", bytes: byte_size(count: 129692) },
+  ParsePopulationRow { path: "dag/extdeps/electronic_component/intel_10cx085f672_boundary_scan.dag", bytes: byte_size(count: 127454) },
+  ParsePopulationRow { path: "src/v2/workflow/floor_cost_debt.dag", bytes: byte_size(count: 127408) },
+  ParsePopulationRow { path: "dag/gunbc/plans/demand_engine_program.dag", bytes: byte_size(count: 126710) },
+  ParsePopulationRow { path: "src/v2/std/compilers/semantic_decl_emission.dag", bytes: byte_size(count: 126241) },
+  ParsePopulationRow { path: "src/v2/workflow/reference_migration.dag", bytes: byte_size(count: 125288) },
+  ParsePopulationRow { path: "dag/gunbc/floor/floor_demand.dag", bytes: byte_size(count: 125238) },
+  ParsePopulationRow { path: "dag/gunbc/self_host_compile_phase_frontier.dag", bytes: byte_size(count: 124833) },
+  ParsePopulationRow { path: "src/v2/compiler/module_acquisition.dag", bytes: byte_size(count: 124487) },
+  ParsePopulationRow { path: "dag/test/claim/roadmap/roadmap_presentation_witness.dag", bytes: byte_size(count: 123443) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/host_credential_custody_converge.dag", bytes: byte_size(count: 123021) },
+  ParsePopulationRow { path: "dag/gunbc/scm/object_store.dag", bytes: byte_size(count: 122956) },
+  ParsePopulationRow { path: "dag/gunbc/compute/remote_build_serving_setup.dag", bytes: byte_size(count: 122819) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag", bytes: byte_size(count: 122136) },
+  ParsePopulationRow { path: "src/v2/extdeps/languages/typescript.dag", bytes: byte_size(count: 121638) },
+  ParsePopulationRow { path: "dag/gunbc/witness/compiler_gate_contract_stamp.dag", bytes: byte_size(count: 121508) },
+  ParsePopulationRow { path: "dag/gunbc/site/web_fonts.dag", bytes: byte_size(count: 120416) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_presentation.dag", bytes: byte_size(count: 118672) },
+  ParsePopulationRow { path: "dag/std/occurrence_binding_candidates.dag", bytes: byte_size(count: 116098) },
+  ParsePopulationRow { path: "dag/gunbc/instruments/router_proxy_falsifier.dag", bytes: byte_size(count: 115465) },
+  ParsePopulationRow { path: "dag/gunbc/design_document.dag", bytes: byte_size(count: 113274) },
+  ParsePopulationRow { path: "dag/gunbc/emit_subject_clean_frontier.dag", bytes: byte_size(count: 113019) },
+  ParsePopulationRow { path: "dag/test/claim/roadmap/roadmap_authority.dag", bytes: byte_size(count: 112625) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/mtcollins1_boot_run_witness.dag", bytes: byte_size(count: 112316) },
+  ParsePopulationRow { path: "dag/test/claim/gunbc_instruments_known_red_derivation_witness.dag", bytes: byte_size(count: 112277) },
+  ParsePopulationRow { path: "src/v2/workflow/floor_expected_red.dag", bytes: byte_size(count: 111533) },
+  ParsePopulationRow { path: "dag/test/claim/scm/scm_repository_envelope_witness.dag", bytes: byte_size(count: 111530) },
+  ParsePopulationRow { path: "dag/product/printed_chassis/card_cooling_route.dag", bytes: byte_size(count: 111396) },
+  ParsePopulationRow { path: "dag/gunbc/live_deploy/spec.dag", bytes: byte_size(count: 111262) },
+  ParsePopulationRow { path: "dag/test/claim/review_sheet_converge_witness.dag", bytes: byte_size(count: 110449) },
+  ParsePopulationRow { path: "dag/gunbc/spark/serving_arm.dag", bytes: byte_size(count: 110125) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/mtcollins1_ui_status_asset_observation_witness.dag", bytes: byte_size(count: 108099) },
+  ParsePopulationRow { path: "dag/test/claim/dispatch_credential_acquisition_witness.dag", bytes: byte_size(count: 107422) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/arrival_converge.dag", bytes: byte_size(count: 107398) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/megarac_media_convergence_witness.dag", bytes: byte_size(count: 107238) },
+  ParsePopulationRow { path: "dag/gunbc/floor_cost_distribution.dag", bytes: byte_size(count: 106297) },
+  ParsePopulationRow { path: "src/v2/compiler/target_serialize.dag", bytes: byte_size(count: 105968) },
+  ParsePopulationRow { path: "dag/gunbc/live_deploy/apply.dag", bytes: byte_size(count: 105835) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_effort_estimate.dag", bytes: byte_size(count: 105301) },
+  ParsePopulationRow { path: "dag/gunbc/runner/runner_host_cap_bracket.dag", bytes: byte_size(count: 104727) },
+  ParsePopulationRow { path: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag", bytes: byte_size(count: 102662) },
+  ParsePopulationRow { path: "dag/test/claim/host/host_name_resolution_witness.dag", bytes: byte_size(count: 102639) },
+  ParsePopulationRow { path: "dag/gunbc/github_app_acquisition.dag", bytes: byte_size(count: 102596) },
+  ParsePopulationRow { path: "dag/gunbc/recurring_failure_mode/accepted_source_emits_uncompilable_target.dag", bytes: byte_size(count: 102421) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", bytes: byte_size(count: 102271) },
+  ParsePopulationRow { path: "dag/test/claim/roadmap/worker_dedicated_account_witness.dag", bytes: byte_size(count: 102155) },
+  ParsePopulationRow { path: "dag/test/claim/fleet/runtime_identity_match_witness.dag", bytes: byte_size(count: 101858) },
+  ParsePopulationRow { path: "dag/gunbc/machine_intake/prior_life_boundary.dag", bytes: byte_size(count: 101327) },
+  ParsePopulationRow { path: "src/v2/compiler/translate.dag", bytes: byte_size(count: 100867) },
+  ParsePopulationRow { path: "dag/test/claim/github_app_manifest_witness.dag", bytes: byte_size(count: 98992) },
+  ParsePopulationRow { path: "dag/test/claim/floor_cost_distribution_witness.dag", bytes: byte_size(count: 98389) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/megarac_boot_diagnostic_bundle_witness.dag", bytes: byte_size(count: 98304) },
+  ParsePopulationRow { path: "dag/gunbc/explicit_witness_admission.dag", bytes: byte_size(count: 98271) },
+  ParsePopulationRow { path: "dag/product/printed_chassis/gpu_duct.dag", bytes: byte_size(count: 97965) },
+  ParsePopulationRow { path: "dag/gunbc/serving/router_dev_policy.dag", bytes: byte_size(count: 97728) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/megarac_boot_record_mapping_witness.dag", bytes: byte_size(count: 97506) },
+  ParsePopulationRow { path: "dag/gunbc/fleet/fleet_known_hosts_anchor.dag", bytes: byte_size(count: 97431) },
+  ParsePopulationRow { path: "dag/test/claim/deployment_gate_authorization_witness.dag", bytes: byte_size(count: 97158) },
+  ParsePopulationRow { path: "dag/test/claim/live_deploy/emit.dag", bytes: byte_size(count: 96976) },
+  ParsePopulationRow { path: "src/v2/compiler/source_authority.dag", bytes: byte_size(count: 96945) },
+  ParsePopulationRow { path: "dag/test/claim/host/approval_broker_tree_install_witness.dag", bytes: byte_size(count: 96430) },
+  ParsePopulationRow { path: "dag/gunbc/site/element/build_meter.dag", bytes: byte_size(count: 95650) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_event_carrier.dag", bytes: byte_size(count: 95582) },
+  ParsePopulationRow { path: "dag/test/claim/network_boot_delivery_join_witness.dag", bytes: byte_size(count: 95568) },
+  ParsePopulationRow { path: "dag/std/algebra.dag", bytes: byte_size(count: 95247) },
+  ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_style.dag", bytes: byte_size(count: 95210) },
+  ParsePopulationRow { path: "src/v2/test/claim/native_route_progress_guard_witness.dag", bytes: byte_size(count: 94832) },
+  ParsePopulationRow { path: "src/v2/workflow/native_route_progress_guard.dag", bytes: byte_size(count: 94159) },
+  ParsePopulationRow { path: "dag/gunbc/compute/host_capacity.dag", bytes: byte_size(count: 94155) },
+  ParsePopulationRow { path: "dag/std/measure.dag", bytes: byte_size(count: 94133) },
+  ParsePopulationRow { path: "dag/test/claim/machine_intake/bmc_first_contact_reading_witness.dag", bytes: byte_size(count: 94001) },
+  ParsePopulationRow { path: "dag/test/claim/spark/pair_serving_authority_log_witness.dag", bytes: byte_size(count: 93103) },
+  ParsePopulationRow { path: "dag/gunbc/v1/v1_interpreter_primitive_surface.dag", bytes: byte_size(count: 92781) },
+  ParsePopulationRow { path: "dag/gunbc/site/gunb_ai_css.dag", bytes: byte_size(count: 92614) },
+  ParsePopulationRow { path: "src/v2/extdeps/languages/swift.dag", bytes: byte_size(count: 92576) },
+]
+
+// ---- measurement receipts (typed home; review 98937 F4; retyped per review 98981) ----
+
+// One srv1 cell of the fixed-workload baseline sweep. Units live in TYPES, not field names
+// (gunbc.design_argument::minimize_redundancy): peak RSS is a ByteSize, every duration a std.measure
+// Microsecond (printed seconds x 1_000_000, exact at the printed 2 decimals), and the two kinds of
+// measurement — repeated wall-clock runs vs one getrusage capture — are separate variants with named
+// parts, not prose in a String (review 98981: "A String leaf hiding named parts is anemic
+// modeling"; cell E no longer repeats the RSS fact that peak_rss already carries).
+// THE CELL IS CARRIED INSIDE THE MEASUREMENT COPRODUCT, not stored beside it (review 99218): a separate
+// cell tag next to the measurement let `{ cell: CellE, measurement: WallStat }` be written, and only a
+// five-arm predicate rejected it. gunbc.design_argument::fail_closed asks for unwritable, not checkable,
+// and gunbc.design_argument::guarantee_ladder puts construction above validation. The wall-clock cells
+// name their cell in the WallStat arm; the single getrusage cell (E) needs no tag because only
+// ProcessTimes can be written where a wall receipt cannot. The population stays a declared coproduct:
+// membership is the ROSTER'S OWN derivation (rank from position in the 170-row size-descending binding),
+// never a free-text label. FullRootsReference is the unfiltered run.
+type WallCell = CellREF | CellA | CellB | CellC
+
+type ParsePopulationSampleShape = FiveLargest | Sample165SizeTail | VerdictOnly165Reuse | InstrumentCheckPop5 | FullRootsReference
+
+fn parse_population_measurement_cell_render(measurement: ParsePopulationCellMeasurement) -> String {
+  match measurement {
+    WallStat { cell: CellREF, min_wall: _, median_wall: _, max_wall: _ } => "REF"
+    WallStat { cell: CellA, min_wall: _, median_wall: _, max_wall: _ } => "A"
+    WallStat { cell: CellB, min_wall: _, median_wall: _, max_wall: _ } => "B"
+    WallStat { cell: CellC, min_wall: _, median_wall: _, max_wall: _ } => "C"
+    ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _, voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => "E"
+  }
+}
+
+fn parse_population_sample_shape_render(shape: ParsePopulationSampleShape) -> String {
+  match shape {
+    FiveLargest => "Five Largest (5)"
+    Sample165SizeTail => "165-Sample (size tail)"
+    VerdictOnly165Reuse => "165-Sample verdict-only (--reuse-from)"
+    InstrumentCheckPop5 => "instrument-check, roots_pop5 (getrusage, not perf)"
+    FullRootsReference => "full dag+src/v2 roots"
+  }
+}
+
+type ParsePopulationMeasurementReceipt {
+  population: ParsePopulationSampleShape
+  runs: Int
+  measurement: ParsePopulationCellMeasurement
+  peak_rss: ByteSize
+  modules: Int
+  declared_refusals: Int
+  rc: Int
+  binary_sha256: Sha256Digest
+  tree_sha: CommitSha
+  host: HostIdentity
+  boot_id: String
+}
+
+// The cell's timing kind: A/B/C/REF are repeated wall-clock runs of the verb; E is a single
+// getrusage capture (/usr/bin/time -v) proving the non-perf counters are present (perf sampling is
+// refused on the host, report §2). Each fact is named once.
+type ParsePopulationCellMeasurement
+  = WallStat { cell: WallCell, min_wall: Microsecond, median_wall: Microsecond, max_wall: Microsecond }
+  | ProcessTimes { utime: Microsecond, stime: Microsecond, minor_faults: Int, major_faults: Int,
+                   voluntary_ctx_switches: Int, involuntary_ctx_switches: Int }
+
+// The printed counters as published by the run, in their units; rc is the command's own exit status
+// (RC=$? immediately after the run, never a pipe); provenance is the binary sha read from disk, the
+// tree sha built, host and boot id. The markdown report renders these rows for humans; THIS binding
+// is their one typed home (gunbc.design_argument::source_annotations). Consumer:
+// test.claim.parse_population_baseline_roster_witness (publishability + refusal legs, and the
+// duration-ordering discriminator), green by execution pending (A/B/C).
+data parse_population_measurement_receipts: List<ParsePopulationMeasurementReceipt> = [
+  ParsePopulationMeasurementReceipt { population: FullRootsReference, runs: 1,
+    measurement: WallStat { cell: CellREF, min_wall: microsecond(count: 563940000),
+      median_wall: microsecond(count: 563940000), max_wall: microsecond(count: 563940000) },
+    peak_rss: byte_size(count: 673443840), modules: 10567, declared_refusals: 0, rc: 0,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: operator_host_srv1,
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { population: FiveLargest, runs: 3,
+    measurement: WallStat { cell: CellA, min_wall: microsecond(count: 20160000),
+      median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 23300000) },
+    peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: operator_host_srv1,
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { population: Sample165SizeTail, runs: 3,
+    measurement: WallStat { cell: CellB, min_wall: microsecond(count: 132190000),
+      median_wall: microsecond(count: 132510000), max_wall: microsecond(count: 143840000) },
+    peak_rss: byte_size(count: 503054336), modules: 166, declared_refusals: 0, rc: 0,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: operator_host_srv1,
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { population: VerdictOnly165Reuse, runs: 1,
+    measurement: WallStat { cell: CellC, min_wall: microsecond(count: 136660000),
+      median_wall: microsecond(count: 136660000), max_wall: microsecond(count: 136660000) },
+    peak_rss: byte_size(count: 500129792), modules: 166, declared_refusals: 0, rc: 0,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: operator_host_srv1,
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+  ParsePopulationMeasurementReceipt { population: InstrumentCheckPop5, runs: 1,
+    measurement: ProcessTimes { utime: microsecond(count: 28920000), stime: microsecond(count: 610000),
+      minor_faults: 160128, major_faults: 0, voluntary_ctx_switches: 2, involuntary_ctx_switches: 212 },
+    peak_rss: byte_size(count: 668962816), modules: 5, declared_refusals: 0, rc: 0,
+    binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
+    tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
+    host: operator_host_srv1,
+    boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" },
+]
+
+// Publishability, the sweep's own rule in types: every cell real rc 0 (from the command, not a pipe),
+// zero declared refusals (comparability with the reference run), positive runs / modules / peak RSS
+// (compared IN the ByteSize measure, no bare-scalar read of a quantity), srv1 host tag. Built for the
+// list parameter, not the binding, so the witness can plant a bad receipt and watch this refuse
+// (gunbc.design_argument::fail_closed).
+fn parse_population_receipts_are_publishable(receipts: List<ParsePopulationMeasurementReceipt>) -> Bool {
+  fold_list(xs: receipts, empty: true, cons: fn(acc, r) {
+    acc && r.rc == 0 && r.declared_refusals == 0 && r.runs > 0 && r.modules > 0
+      && measure_le(a: byte_size(count: 0), b: r.peak_rss)
+      && !measure_le(a: r.peak_rss, b: byte_size(count: 0))
+      && host_identity_eq(a: r.host, b: operator_host_srv1)
+  })
+}
+
+// Count of receipts carrying the operator's srv1 host identity. This call shape (host_identity_eq
+// directly inside a fold_list cons, compared to the operator_host_srv1 binding) is the one the
+// effect checker establishes a callee for: the same call in a test.claim module's fold was refused
+// by the --target rust gate (error[...] "no established callee identity", a8e40c3e run), so the
+// count lives here beside parse_population_receipts_are_publishable and the witness imports it.
+fn parse_population_srv1_receipt_count(receipts: List<ParsePopulationMeasurementReceipt>) -> Int {
+  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) {
+    if host_identity_eq(a: r.host, b: operator_host_srv1) { acc + 1 } else { acc }
+  })
+}
+
+fn parse_population_receipt_durations_are_ordered(receipts: List<ParsePopulationMeasurementReceipt>) -> Bool {
+  fold_list(xs: receipts, empty: true, cons: fn(acc, r) {
+    acc && match r.measurement {
+      WallStat { min_wall: lo, median_wall: med, max_wall: hi } =>
+        measure_le(a: lo, b: med) && measure_le(a: med, b: hi),
+      ProcessTimes { utime: _, stime: _, minor_faults: _, major_faults: _,
+                     voluntary_ctx_switches: _, involuntary_ctx_switches: _ } => true
+    }
+  })
+}
+
+// ---- derived queries (rank from position, membership from rank) ----
+
+// Whole-roster byte total, summed IN the ByteSize measure the rows already carry. The count is
+// unwrapped only where a ByteSize is rendered for display in the measurement record, so no bare Int
+// re-represents a byte quantity the model already types (gunbc.design_argument::minimize_redundancy,
+// gunbc.design_argument::single_authority).
+fn parse_population_total_byte_total() -> ByteSize {
+  fold_list(xs: parse_population_baseline_rows, empty: byte_size(count: 0), cons: fn(acc, row) {
+    measure_add(acc, row.bytes)
+  })
+}
+
+// Whole-roster cardinality.
+fn parse_population_total_count_of(rows: List<ParsePopulationRow>) -> Int {
+  count_where(xs: rows, predicate: fn(_row) { true })
+}
+
+
+// Cardinality predicate over an ARBITRARY roster (arg-taking so BOTH arms are exercised, mirroring
+// the ordering probes): true iff the roster has exactly the expected benchmark size. Feeds the
+// discriminating cardinality leg (warm-fox rule: a check must prove it measured by a named negative
+// failing in the same run; review 98328 -- a claim that asserts only total==170 is one number and
+// cannot fail on its own; the planted-row refusal below is what makes it discriminate).
+fn parse_population_cardinality_predicate(rows: List<ParsePopulationRow>) -> Bool {
+  parse_population_total_count_of(rows) == parse_population_expected_total_count
+}
+
+// ACCEPT arm: the real benchmark roster must satisfy the predicate (its count is exactly 170).
+fn parse_population_cardinality_accepts_real() -> Bool {
+  parse_population_cardinality_predicate(parse_population_baseline_rows) == true
+}
+
+// A roster with one row PLANTED: a NEW-path member (probe/planted_extra.dag, count 1) pushed onto the
+// real roster. Not a duplicated path -- the leg discriminates on the COUNT, which the new member
+// pushes from 170 to 171, so a fresh path is what the roster below actually builds. Same fold +
+// same predicate, one extra member -- so its count is 171 and the predicate must REFUSE it.
+fn parse_population_planted_extra_row() -> List<ParsePopulationRow> {
+  list_push(xs: parse_population_baseline_rows,
+    item: ParsePopulationRow { path: "probe/planted_extra.dag", bytes: byte_size(count: 1) })
+}
+
+// REFUSE arm: the predicate must say FALSE on the planted-extra roster. If count_where were broken
+// to always return 170, accepts_real would still pass but refuses_planted would FAIL; if it always
+// returned the true count, both arms hold only when the roster is genuinely 170. Together the two
+// arms make the cardinality leg discriminating (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+fn parse_population_cardinality_refuses_planted_extra_row() -> Bool {
+  parse_population_cardinality_predicate(parse_population_planted_extra_row()) == false
+}
+
+// b when the 1-based position is a FiveLargest slot, else the zero measure. Call-free branches so
+// the block parses.
+fn parse_population_select_five(position: Int, b: ByteSize) -> ByteSize {
+  if position <= parse_population_five_largest_count { b } else { byte_size(count: 0) }
+}
+
+fn parse_population_select_rest(position: Int, b: ByteSize) -> ByteSize {
+  if position <= parse_population_five_largest_count { byte_size(count: 0) } else { b }
+}
+
+// Scan accumulator carrying the 1-based position while summing the two population byte totals, both
+// held in the ByteSize measure. The FiveLargest "is the largest five" property is NOT re-checked here:
+// parse_population_check_rows_ordered_descending already enforces row.bytes <= prev on every adjacent
+// pair, so the first five positions are the largest five by construction. Re-checking a boundary size
+// would be a second representation of that constraint (gunbc.design_argument::fail_closed: "a check
+// restating a constraint the model already carries").
+type ParsePopulationScan {
+  position: Int
+  five_bytes: ByteSize
+  rest_bytes: ByteSize
+}
+
+fn parse_population_scan(rows: List<ParsePopulationRow>) -> ParsePopulationScan {
+  fold_list(xs: rows,
+    empty: ParsePopulationScan {
+      position: 0, five_bytes: byte_size(count: 0), rest_bytes: byte_size(count: 0),
+    },
+    cons: fn(acc, row) {
+      let next: Int = acc.position + 1
+      ParsePopulationScan {
+        position: next,
+        five_bytes: measure_add(acc.five_bytes, parse_population_select_five(next, row.bytes)),
+        rest_bytes: measure_add(acc.rest_bytes, parse_population_select_rest(next, row.bytes)),
+      }
+    })
+}
+
+// No row may have a zero byte count: a roster that silently collapsed to empty or zeroed rows fails,
+// so a 0 population is reported as a refusal rather than a pass.
+fn parse_population_zero_byte_row_count() -> Int {
+  count_where(xs: parse_population_baseline_rows, predicate: fn(row) { row.bytes == byte_size(count: 0) })
+}
+
+// The two populations are a disjoint cover of the roster: the FiveLargest total plus the remaining
+// total equals the whole-roster total. Derived from the roster, not copied from a tree read, so it is
+// a real check rather than the fail_closed "count copied from the current tree" change detector. It
+// catches an off-by-one in the position-based split (select_five/select_rest disagreeing on a row).
+fn parse_population_partition_is_consistent() -> Bool {
+  measure_add(parse_population_five_largest_byte_total(), parse_population_one_hundred_sixty_five_byte_total())
+    == parse_population_total_byte_total()
+}
+
+fn parse_population_five_largest_byte_total() -> ByteSize {
+  parse_population_scan(parse_population_baseline_rows).five_bytes
+}
+
+fn parse_population_one_hundred_sixty_five_byte_total() -> ByteSize {
+  parse_population_scan(parse_population_baseline_rows).rest_bytes
+}
+
+// The selection rule, EXECUTED not only commented (gunbc.design_argument::source_annotations: a
+// fact that must survive belongs in a typed carrier; nothing may depend on a comment for
+// correctness). The load-bearing invariant of "the 5 largest ... and a 165-module sample, taken by
+// blob size descending" is that the roster is NON-INCREASING in byte size along list order: every
+// member's size is <= its predecessor's. A byte count edited out of order, or a member swapped so a
+// smaller file precedes a larger one, fails this. The comparison uses std.measure::measure_le over
+// the ByteSize the rows carry (no Int unwrap). The byte-exact extraction of the 170 largest `.dag`
+// blobs at the pinned sha is the external producer (the reproduce command), which can be diffed
+// against these rows at that sha; the ordering invariant below is what the interpreter can judge.
+type ParseOrderScan {
+  started: Bool
+  prev: ByteSize
+  ok: Bool
+}
+
+// General ordering check (arg-taking, so BOTH arms can be exercised, not just the fixed roster):
+// the list must be non-increasing in byte size along position. Returns false the first time a
+// member is larger than its predecessor.
+fn parse_population_check_rows_ordered_descending(rows: List<ParsePopulationRow>) -> Bool {
+  let step = fold_list(xs: rows,
+    empty: ParseOrderScan { started: false, prev: byte_size(count: 0), ok: true },
+    cons: fn(acc, row) {
+      let le: Bool = measure_le(a: row.bytes, b: acc.prev)
+      let step_ok: Bool = if acc.started == false { true } else { le }
+      ParseOrderScan { started: true, prev: row.bytes, ok: acc.ok && step_ok }
+    })
+  step.ok
+}
+
+// The fixed roster, ordered descending (the ACCEPT arm on the real population).
+fn parse_population_rows_ordered_descending() -> Bool {
+  parse_population_check_rows_ordered_descending(parse_population_baseline_rows)
+}
+
+// DISCRIMINATION PROBES. A check that only ever sees already-sorted rows passes whatever the
+// emitter does (the leg-lifecycle failure mode: green on a wrong compiler). These feed the SAME fold
+// synthetic rows so it must actually refuse a bad order and accept a good one.
+//   accepts_descending: 30,20,10 (non-increasing) -> the check must say true.
+//   refuses_ascending:  10,20,30 (an ascending step) -> the check must say false.
+// If the fold were broken to always return true, refuses_ascending would FAIL; if always false,
+// accepts_descending would FAIL. Together they prove the invariant is discriminating, not vacuous
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+fn parse_population_rows_descending() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/large.dag", bytes: byte_size(count: 30) },
+    ParsePopulationRow { path: "probe/middle.dag", bytes: byte_size(count: 20) },
+    ParsePopulationRow { path: "probe/small.dag", bytes: byte_size(count: 10) },
+  ]
+}
+
+fn parse_population_rows_ascending() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/small.dag", bytes: byte_size(count: 10) },
+    ParsePopulationRow { path: "probe/middle.dag", bytes: byte_size(count: 20) },
+    ParsePopulationRow { path: "probe/large.dag", bytes: byte_size(count: 30) },
+  ]
+}
+
+fn parse_population_ordering_accepts_descending() -> Bool {
+  parse_population_check_rows_ordered_descending(parse_population_rows_descending()) == true
+}
+
+fn parse_population_ordering_refuses_ascending() -> Bool {
+  parse_population_check_rows_ordered_descending(parse_population_rows_ascending()) == false
+}
+
+// ---- THE SELECTION RULE AS A TYPED ALGORITHM (review 98809 F1) ----
+// The rule "top N .dag blobs by BLOB SIZE descending, then PATH ascending for a stable tiebreak"
+// was an unchecked comment plus a shell `sort -k1,1nr -k2,2 | head`. That made the shell the
+// authority for the rule (how_to_work: "raw shell implementing semantics expressible in .dag").
+// The rule's ALGORITHM now lives here and is checked with a discriminating pair; the shell runner is
+// reduced to transport that hands over tree-derived (path, bytes) and applies this modelled order.
+// The comparator: a precedes b in the selection order iff a is strictly larger, or they tie and
+// a.path sorts first. measure_le gives ByteSize <=; String < gives the canonical path order (the same
+// order std.algebra string_compare_canonical declares). Int < bounds the top-N window.
+
+fn parse_population_selection_precedes(a: ParsePopulationRow, b: ParsePopulationRow) -> Bool {
+  let strictly_larger: Bool = measure_le(a: b.bytes, b: a.bytes) && (a.bytes == b.bytes) == false
+  let tie_earlier_path: Bool = (a.bytes == b.bytes) && (a.path < b.path)
+  strictly_larger || tie_earlier_path
+}
+
+// RANK BY POSITION, not by counting preceders (review 98986 F2, how_to_work: "a proven cost-shape
+// defect — a copied accumulator, a quadratic fold — is always fixed, regardless of realized n"). The
+// previous formulation ran a count_where over the whole list per row — O(n^2) — and its stated
+// subject was the 170-row reconciliation. The roster's home invariant is that it is STORED in
+// selection order (parse_population_rows_sorted_by_selection_rule, adjacent-pair, linear); under that
+// precondition rank IS position, exactly the semantics of `sort ... | head n`, and both queries below
+// are one linear scan (or a length subtraction after the linear sorted check).
+
+type ParsePopulationRankScan { found: Bool, rank: Int, pos: Int }
+
+fn parse_population_row_rank(row: ParsePopulationRow, all: List<ParsePopulationRow>) -> Int {
+  let scan = fold_list(xs: all,
+    empty: ParsePopulationRankScan { found: false, rank: 0, pos: 0 }, cons: fn(acc, r) {
+    if acc.found == true { acc }
+    else if r == row {
+      ParsePopulationRankScan { found: true, rank: acc.pos + 1, pos: acc.pos + 1 }
+    }
+    else { ParsePopulationRankScan { found: false, rank: 0, pos: acc.pos + 1 } }
+  })
+  if scan.found == true { scan.rank } else { parse_population_list_length(xs: all) + 1 }
+}
+
+// Membership is checked first (a row absent from the list has rank length+1 and is never inside),
+// then the window test is the position rule rank <= n.
+fn parse_population_row_in_top_n(
+    row: ParsePopulationRow, all: List<ParsePopulationRow>, n: Int) -> Bool {
+  if parse_population_row_rank(row: row, all: all) > parse_population_list_length(xs: all) { false }
+  else { parse_population_row_rank(row: row, all: all) <= n }
+}
+
+// Outside-top-N of a list stored IN selection order is exactly its suffix past n: linear sorted
+// check plus one subtraction. A list that is not in selection order REFUSES with -1: no outside-count
+// is claimed from unordered input (fail_closed), and -1 is distinguishable from the lawful 0 of a
+// window that covers the whole list, so a mis-sorted roster can never be silently certified.
+fn parse_population_rows_outside_top_n(
+    all: List<ParsePopulationRow>, n: Int) -> Int {
+  if parse_population_rows_sorted_by_selection_rule(rows: all) == false { -1 }
+  else if parse_population_list_length(xs: all) <= n { 0 }
+  else { parse_population_list_length(xs: all) - n }
+}
+
+fn parse_population_list_length(xs: List<ParsePopulationRow>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, r) { acc + 1 })
+}
+
+// The roster-side full-rule ordering: adjacent pairs must satisfy the comparator, so a stored order
+// that breaks the PATH tiebreak (two equal sizes stored path-descending) turns red -- something the
+// size-only check_rows_ordered_descending cannot catch, because it ignores path.
+type ParseSelectedScan {
+  started: Bool
+  prev: ParsePopulationRow
+  ok: Bool
+}
+
+fn parse_population_rows_sorted_by_selection_rule(rows: List<ParsePopulationRow>) -> Bool {
+  let step = fold_list(xs: rows,
+    empty: ParseSelectedScan {
+      started: false, prev: ParsePopulationRow { path: "", bytes: byte_size(count: 0) }, ok: true,
+    },
+    cons: fn(acc, row) {
+      let in_order: Bool = if acc.started == false { true } else {
+        parse_population_selection_precedes(a: acc.prev, b: row)
+      }
+      ParseSelectedScan { started: true, prev: row, ok: acc.ok && in_order }
+    })
+  step.ok
+}
+
+fn parse_population_roster_is_selected_sorted() -> Bool {
+  parse_population_rows_sorted_by_selection_rule(parse_population_baseline_rows) == true
+}
+
+// DISCRIMINATORS. A top-N that always says "inside" or always "outside" is vacuous; these pins make
+// the algorithm itself fail if it degenerates (executed_red_control_names_its_failing_commit).
+//   top_n_excludes_overflow: [30,20,10] top-2 must leave exactly the smallest row outside -> 1.
+//   top_n_accepts_full_window: the same list top-3 leaves nothing outside -> 0.
+// A broken "everything is in" returns 0 for both (first pin fails); "everything is out" returns 3
+// for the second (second pin fails). Together they are discriminating, not a constant readback.
+fn parse_population_top_n_excludes_overflow() -> Bool {
+  parse_population_rows_outside_top_n(all: parse_population_rows_descending(), n: 2) == 1
+}
+
+fn parse_population_top_n_accepts_full_window() -> Bool {
+  parse_population_rows_outside_top_n(all: parse_population_rows_descending(), n: 3) == 0
+}
+
+// TIEBREAK DISCRIMINATOR. Two equal-size rows; the selection order keeps the smaller path. top-1
+// must keep "tie_a.dag" and drop "tie_b.dag"; a comparator that ignored path (the size-only check)
+// could not distinguish them.
+fn parse_population_tie_rows() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/tie_a.dag", bytes: byte_size(count: 30) },
+    ParsePopulationRow { path: "probe/tie_b.dag", bytes: byte_size(count: 30) },
+  ]
+}
+
+fn parse_population_top_n_breaks_tie_by_path() -> Bool {
+  parse_population_row_in_top_n(
+    row: ParsePopulationRow { path: "probe/tie_a.dag", bytes: byte_size(count: 30) },
+    all: parse_population_tie_rows(), n: 1) == true
+    && parse_population_row_in_top_n(
+      row: ParsePopulationRow { path: "probe/tie_b.dag", bytes: byte_size(count: 30) },
+      all: parse_population_tie_rows(), n: 1) == false
+}
+
+// The full-rule sorted check must REFUSE a stored order that breaks the path tiebreak (b before a at
+// equal size), which the size-only ordering check would wrongly accept.
+fn parse_population_tie_rows_misordered() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/tie_b.dag", bytes: byte_size(count: 30) },
+    ParsePopulationRow { path: "probe/tie_a.dag", bytes: byte_size(count: 30) },
+  ]
+}
+
+fn parse_population_selection_refuses_misordered_tie() -> Bool {
+  parse_population_rows_sorted_by_selection_rule(parse_population_tie_rows_misordered()) == false
+}
+
+
+
+
+// Path uniqueness CHECK: map each member to a KeyedRow keyed by its own path (the single stored
+// path) and build through std.keyed_roster, which refuses a repeated key. True only for the Built
+// arm, so a roster that silently gained a duplicate path turns red rather than under-reporting.
+fn parse_population_to_keyed(rows: List<ParsePopulationRow>) -> List<KeyedRow<String, ParsePopulationRow>> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, row) {
+    list_push(xs: acc, item: KeyedRow { row_key: row.path, value: row })
+  })
+}
+
+fn parse_population_is_unique() -> Bool {
+  match keyed_roster_build(incomings: parse_population_to_keyed(parse_population_baseline_rows), key_eq: fn(a, b) { a == b }) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+// The negative control: the SAME build over the SAME rows with a trivial always-equal key_eq must
+// land on DuplicateKey (the second row collides with the first). If this ever returned Built the
+// uniqueness verdict would be vacuous. Proven by the executed red control
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+fn parse_population_duplicate_refuses_with_trivial_eq() -> Bool {
+  match keyed_roster_build(incomings: parse_population_to_keyed(parse_population_baseline_rows), key_eq: fn(a, b) { true }) {
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}
+
+// ---- carrier <-> tree reconciliation: the load-bearing instrument (the report's reconciliation leg
+// applies parse_population_reconcile_* to all 170 rows against git ls-tree at the pinned sha; review 98443) ----
+
+// True iff a declared row appears in the given tree row-set with the SAME path AND the SAME byte size.
+fn parse_population_row_in_tree(row: ParsePopulationRow, tree: List<ParsePopulationRow>) -> Bool {
+  count_where(xs: tree, predicate: fn(t) { t.path == row.path && t.bytes == row.bytes }) >= 1
+}
+
+// How many declared rows are NOT reconciled by a matching (path, byte size) in the tree row-set. Zero
+// means every declared row is backed by the tree; a mistyped path or byte size leaves one unreconciled.
+fn parse_population_unreconciled_row_count(
+  declared: List<ParsePopulationRow>, tree: List<ParsePopulationRow>) -> Int {
+  count_where(xs: declared, predicate: fn(r) { parse_population_row_in_tree(row: r, tree: tree) == false })
+}
+
+// A 3-row slice of the REAL roster with ONE row's byte size mistyped by one digit (roadmap_belt_actuate
+// 947773 -> 947772): a real row transcribed wrong, the discriminating red control, not a planted constant.
+fn parse_population_mistyped_real_row_slice() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_authority.dag", bytes: byte_size(count: 1421761) },
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", bytes: byte_size(count: 947772) },
+    ParsePopulationRow { path: "dag/product/p4261/e1_receipt_markings.dag", bytes: byte_size(count: 750634) },
+  ]
+}
+
+// The same real 3-row slice with the byte size correct (roadmap_belt_actuate 947773).
+fn parse_population_correct_real_row_slice() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_authority.dag", bytes: byte_size(count: 1421761) },
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", bytes: byte_size(count: 947773) },
+    ParsePopulationRow { path: "dag/product/p4261/e1_receipt_markings.dag", bytes: byte_size(count: 750634) },
+  ]
+}
+
+// These two arms exercise ONLY the comparison predicate over a HAND-BUILT reference row-set. They do not
+// read the tree (no filesystem in the language) and do not read the 170-row roster: they prove the predicate
+// DISCRIMINATES (accepts when declared == reference, refuses when one byte size is off). The real comparison
+// of all 170 rows against `git ls-tree` at the pinned sha is NOT executed in this merge: the shell runner
+// that did it was withdrawn (warm-fox-517 split ruling; review 98809), a `.dag` function cannot read the tree
+// and CI runs no claims. That 170-to-tree reconciliation is declared withdrawn pending route A in
+// gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall; these arms only prove the
+// comparison PREDICATE discriminates.
+// ACCEPT arm: the predicate reports zero unreconciled rows when declared equals the reference row-set.
+fn parse_population_reconcile_accepts_correct_slice() -> Bool {
+  parse_population_unreconciled_row_count(
+    declared: parse_population_correct_real_row_slice(),
+    tree: parse_population_correct_real_row_slice()) == 0
+}
+
+// REFUSE arm: the predicate leaves exactly the mistyped byte-size row unreconciled when one declared byte
+// size differs from the reference. A real wrong row drives the refusal (review 98443), not a planted constant.
+fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
+  parse_population_unreconciled_row_count(
+    declared: parse_population_mistyped_real_row_slice(),
+    tree: parse_population_correct_real_row_slice()) >= 1
+}
+
+// THE EXTRACTION THE WITNESS AND THE TYPED ACCESSOR SHARE: the next-rung trigger's capability is readable ONLY
+// through the declared NextRungTrigger constructor (gunbc.guarantee_stall declares it as a single record, and
+// climbs_when_awaiting is the declared constructor), so the extraction is declared as a function over a
+// stall that pattern-matches that shape. The WITNESS PLANTS STALLS AND CALLS THIS (review 99025 F1: a witness
+// that re-implements the thing it guards can only test its own copy), including a planted empty-capability
+// stall -- the authorable red is a changed CAPABILITY VALUE, never a bare record "outside the declared
+// constructors", which NextRungTrigger cannot represent. The extraction must not gain an unconditional or
+// field-bypassing arm: the planted empty stays "" only while it honours the declared shape.
+fn parse_population_stall_next_rung_capability(stall: GuaranteeStall) -> String {
+  match stall.next_rung_trigger {
+    NextRungTrigger { capability: c, awaiting: _ } => c
+  }
+}
+
+fn parse_population_carrier_reader_beside_grammar_stall_capability() -> String {
+  parse_population_stall_next_rung_capability(stall: parse_population_carrier_reader_beside_grammar_stall)
+}
+
+// DECLARED STALL -- ROSTERED, NOT A LOCAL STRING (review 98937 F2: this class was first written as a rung
+// DROP with previous: StructurallyGuaranteed, and that rung was NEVER HELD -- recording a wanted rung as a
+// previous one is rung inflation in reverse. The honest record per gunbc.design_argument::guarantee_ladder
+// (no untracked stall) is a class below its ceiling with a named next-rung trigger). The row is the FILE
+// dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag (single authority):
+// current rung 1 mitigatable -- typed predicates discriminate the selection order over hand-built slices,
+// no executable reader of the real 170 rows; ceiling 4 structurally guaranteed -- the one grammar route reads
+// a data binding; blocker ClimbableButUnbuilt. The route-A tracking row is labelled honestly: a PLANNED row
+// in DRAFT plan PR #17116, not on main at this head. Background (warm-fox-517 split ruling, review 98836):
+// the shell scaffolds, their awk/grep/sed reader and the hand reconciliation are OUT of this merge -- a
+// second parser beside the grammar could mis-parse a field without changing its line count. The witness
+// guards the stall's honesty through the carrier's extraction parse_population_stall_next_rung_capability,
+// with a discriminating pair (red when the extraction stops honoring the declared trigger shape). Bounded:
+// climbs when the STAFFED capability lands, not on an open-ended future capability and not on the plan row
+// reaching done.
+//
+// NO LEDGER-LINE FUNCTION (review 99088 F2): an earlier parse_population_carrier_reader_rung_drop_ledger_line()
+// built a string whose only caller was a witness substring check -- a string builder with a test as its only
+// consumer is a decoration, not a consumer (gunbc.design_argument::consumption). It is deleted, not stubbed:
+// the stall's honesty is asserted through the typed accessor parse_population_carrier_reader_beside_grammar_stall_capability
+// over the rostered row, and the row's identity is carried by the named binding itself, not by a string that
+// repeats it.

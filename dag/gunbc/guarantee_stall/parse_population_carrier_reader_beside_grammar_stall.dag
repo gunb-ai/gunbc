@@ -1,0 +1,44 @@
+module gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when_awaiting }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+
+// DECLARED 2026-11-26 (PR #17037, review 98937 F2). This class was first recorded as a RUNG DROP with
+// previous: StructurallyGuaranteed -- and the reviewer caught the inflation: that rung was NEVER HELD, so
+// the ledger would have shown a regression from a state that never existed. The honest record per
+// gunbc.design_argument::guarantee_ladder (no untracked stall) is a class standing BELOW its ceiling with a
+// named next-rung trigger: nothing FELL here; the capability has never been built. The subject: the 170-row
+// binding gunbc.parse_population_baseline_roster::parse_population_baseline_rows must be reconciled to
+// `git ls-tree -r -l <pinned sha> -- dag src/v2` (path AND blob byte size per row). A `.dag` function
+// cannot read the tree (no filesystem) and CI executes no claims, so no executable route reads the 170 rows
+// at all in this merge: the carrier's typed predicates model and discriminate the selection order over
+// hand-built slices only. A shell reader beside the grammar (awk/grep/sed over the `.dag` source) was
+// drafted and WITHDRAWN (lane-manager split ruling, review 98836): a second parser beside the one grammar
+// can mis-parse a field without changing its line count, so a count guard catches a dropped row but not a
+// wrong field. CURRENT RUNG 1 (mitigatable): typed comparison predicates with a discriminating pair exist
+// and are witnessed, over hand-built slices. CEILING 4 (structurally guaranteed): the one total decision
+// procedure -- the compiler/grammar -- reads the binding, so a misparsed field is unrepresentable and a
+// mistyped row turns the reconciliation red by name.
+
+data parse_population_carrier_reader_beside_grammar_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the 170-row parse_population_baseline_rows binding is reconciled to git ls-tree at the pinned sha through the one grammar route; no executable reader of the rows exists in this merge",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+    "gunbc.parse_population_baseline_roster.parse_population_baseline_rows reconciled to `git ls-tree -r -l <pinned sha> -- dag src/v2` (the single 170-row benchmark population this carrier is made of)"
+  ] },
+  next_rung_trigger: climbs_when_awaiting(
+    capability: "an emitted, declared route evaluates a named `.dag` data binding and returns its rows typed (a call, not a text parse), such that this carrier's 170-to-tree reconciliation consumes that route's output and a misparsed field becomes unrepresentable; the reconciliation must refuse a mistyped row BY NAME on the real 170 rows and carry the discriminating pair in one run -- the correct path accepted, the decoy dag/test/claim/roadmap/roadmap_authority.dag refused (a substring reader conflates it with dag/gunbc/roadmap/roadmap_authority.dag). The staffed route fires this trigger, not the plan: a cited planning row that was never built changes nothing.",
+    awaiting: [dashboard_work_item_referent(node: "rn_VDAPYQNAW2T3U26OZ5JUHRBVC6" as RoadmapNodeId)]
+  )
+}
+
+// THE AWAITED REFERENT IS TRACKING, NOT AUTHORITY. It is a PLANNED row -- named-data-binding-reads-go-through-a-
+// declared-route-not-a-shell-reader, carried in DRAFT plan PR #17116 and NOT on main at head bb358abbc54:
+// a reader following the id today finds zero files at origin/main. The capability above stands on its own
+// (gunbc.design_argument::guarantee_ladder (no untracked stall)); the referent names who was asked and is never
+// evidence that the climb happened.
