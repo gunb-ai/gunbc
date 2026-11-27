@@ -367,6 +367,17 @@ fn parse_population_receipts_are_publishable(receipts: List<ParsePopulationMeasu
   })
 }
 
+// Count of receipts carrying the operator's srv1 host identity. This call shape (host_identity_eq
+// directly inside a fold_list cons, compared to the operator_host_srv1 binding) is the one the
+// effect checker establishes a callee for: the same call in a test.claim module's fold was refused
+// by the --target rust gate (error[...] "no established callee identity", a8e40c3e run), so the
+// count lives here beside parse_population_receipts_are_publishable and the witness imports it.
+fn parse_population_srv1_receipt_count(receipts: List<ParsePopulationMeasurementReceipt>) -> Int {
+  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) {
+    if host_identity_eq(a: r.host, b: operator_host_srv1) { acc + 1 } else { acc }
+  })
+}
+
 fn parse_population_receipt_durations_are_ordered(receipts: List<ParsePopulationMeasurementReceipt>) -> Bool {
   fold_list(xs: receipts, empty: true, cons: fn(acc, r) {
     acc && match r.measurement {

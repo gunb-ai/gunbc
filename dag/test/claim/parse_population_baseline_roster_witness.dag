@@ -5,6 +5,7 @@ import std.algebra { string_contains, fold_list }
 import std.list { distinct_by_key }
 import std.measure { byte_size, microsecond }
 import std.content_hash { Sha256Digest }
+import product.host_identity { HostIdentity }
 import gunbc.guarantee_stall { GuaranteeStall, NextRungTrigger, BoundedPopulation }
 import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall { parse_population_carrier_reader_beside_grammar_stall }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
@@ -38,6 +39,7 @@ import gunbc.parse_population_baseline_roster {
   FiveLargest, Sample165SizeTail, FullRootsReference,
   parse_population_measurement_receipts,
   parse_population_receipts_are_publishable,
+  parse_population_srv1_receipt_count,
   parse_population_receipt_durations_are_ordered,
   parse_population_measurement_cell_render,
   parse_population_sample_shape_render,
@@ -304,21 +306,11 @@ test fn parse_population_cell_measurement_pairing_is_constructed_not_checked_hol
 // nothing. All reads go through list combinators: `xs[i]` yields an Optional in this grammar and
 // feeding it to a Product parameter is what the FORM3 pre-check refused by name on srv1 (rc 2,
 // "produced 'Optional<Product(ParsePopulationMeasurementReceipt)>'").
-// Host equality is counted through fold_list, NOT a filter lambda: the gate refused the lambda form
-// by name (error[...:313:31] "call to 'host_identity_eq' ... calls through a function value ... has
-// no established callee identity") while the direct call inside a fold_list cons — the shape the
-// carrier's parse_population_receipts_are_publishable already uses — resolves its callee.
-fn parse_population_srv1_host_count(receipts: List<ParsePopulationMeasurementReceipt>) -> Int {
-  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) {
-    if host_identity_eq(a: r.host, b: "srv1" as HostIdentity) { acc + 1 } else { acc }
-  })
-}
-
 test fn parse_population_cell_renderings_are_distinct_holds() -> Bool {
   let labels = map(parse_population_measurement_receipts, r => parse_population_measurement_cell_render(measurement: r.measurement))
   count(labels) == 5
   && count(distinct_by_key(xs: labels, key: l => l)) == 5
   && count(filter(labels, l => l == "REF")) == 1
-  && parse_population_srv1_host_count(receipts: parse_population_measurement_receipts) == 5
+  && parse_population_srv1_receipt_count(receipts: parse_population_measurement_receipts) == 5
   && parse_population_sample_shape_render(shape: FiveLargest) != parse_population_sample_shape_render(shape: Sample165SizeTail)
 }
