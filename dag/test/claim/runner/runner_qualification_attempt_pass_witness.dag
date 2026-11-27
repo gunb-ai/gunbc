@@ -56,6 +56,7 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_dispatch_subject_over, qualification_revision_dispatch_input,
 }
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_revision_guard_step }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.runner.runner_qualification_attempt_pass {
   QualificationAttemptPass, AttemptPinRefused, AttemptPassed,
   QualificationAttemptRun, AttemptNotMinted, AttemptSubjectRefused, AttemptDispatchRefused, AttemptDispatchAmbiguous,
@@ -154,13 +155,18 @@ fn floor_job() -> Job {
     name: Present { value: "qualification floor" },
     runner: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}" },
     environment: none,
-    steps: [
-      qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input),
-      RunStep {
+    steps: concat(
+      match outcome_accepted_value(qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input)) {
+        // The guard step is total for this well-formed pinned input, so Absent is unreachable; if it ever refuses,
+        // the fixture drops the guard and this witness's assertions that the floor is guarded go RED -- fail-closed.
+        Present { value: guard } => [guard]
+        Absent => []
+      },
+      [RunStep {
         name: Present { value: "run the floor" }, id: none, run: "claim_executor --required-ci",
         shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
-      },
-    ],
+      }],
+    ),
     needs: [],
     env: none,
     outputs: none,
