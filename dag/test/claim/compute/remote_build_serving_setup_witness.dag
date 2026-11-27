@@ -10,6 +10,7 @@ module test.claim.compute.remote_build_serving_setup_witness
 // not collapsed real drift into indeterminate either. Run:
 //   gunbc test //test/claim/compute/remote_build_serving_setup_witness:<test fn>   (one operand per test fn)
 
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { Bool, String, FilePath }
 import std.optional { Present, Absent }
 import std.algebra { count_where, non_empty_to_list }
@@ -42,7 +43,7 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_gid, fleet_posix_operator_user,
 }
-
+import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
 // remote_build_serving_candidate_hosts moved to this module on 2026-11-20, beside the live dispatch gate.
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_host_is_serving_candidate, remote_build_serving_candidate_hosts }
@@ -1931,5 +1932,88 @@ test fn an_unreadable_rustup_presence_with_a_refused_listing_stays_unknown_under
         }
       }
     }
+  }
+}
+
+// ProcessExit door over EVERY test fn in this module (roster GENERATED from the module's own
+// `test fn` declarations when written). Hermetic discovery remains the completeness authority;
+// this door exists to post a receipt.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { return "" }
+  return concat(name, "\n")
+}
+
+fn run_remote_build_serving_setup_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "srv1_desired_account_is_the_declared_principal", held: srv1_desired_account_is_the_declared_principal()),
+    check_or_name(name: "the_serving_account_is_not_root", held: the_serving_account_is_not_root()),
+    check_or_name(name: "srv1_ledger_is_shared_with_its_service_user", held: srv1_ledger_is_shared_with_its_service_user()),
+    check_or_name(name: "the_two_ledger_areas_are_service_user_shared_with_the_compute_group", held: the_two_ledger_areas_are_service_user_shared_with_the_compute_group()),
+    check_or_name(name: "srv1_serving_paths_match_the_serving_instance", held: srv1_serving_paths_match_the_serving_instance()),
+    check_or_name(name: "every_pr5_candidate_host_renders_a_forced_command", held: every_pr5_candidate_host_renders_a_forced_command()),
+    check_or_name(name: "a_host_outside_the_candidate_row_has_no_forced_command", held: a_host_outside_the_candidate_row_has_no_forced_command()),
+    check_or_name(name: "srv14_is_an_admitted_candidate_and_renders_its_forced_command", held: srv14_is_an_admitted_candidate_and_renders_its_forced_command()),
+    check_or_name(name: "an_empty_ledger_refuses_a_service_user_rather_than_fabricating_one", held: an_empty_ledger_refuses_a_service_user_rather_than_fabricating_one()),
+    check_or_name(name: "a_matching_host_is_adopted_as_a_settled_assessment", held: a_matching_host_is_adopted_as_a_settled_assessment()),
+    check_or_name(name: "a_just_converged_host_observed_from_a_newer_head_reports_no_drift_yet_the_converge_still_advances", held: a_just_converged_host_observed_from_a_newer_head_reports_no_drift_yet_the_converge_still_advances()),
+    check_or_name(name: "a_checkout_moved_off_its_settled_revision_still_drifts_under_readiness", held: a_checkout_moved_off_its_settled_revision_still_drifts_under_readiness()),
+    check_or_name(name: "a_binary_that_no_longer_matches_its_sidecar_still_drifts_under_readiness", held: a_binary_that_no_longer_matches_its_sidecar_still_drifts_under_readiness()),
+    check_or_name(name: "a_present_binary_with_no_sidecar_is_not_read_ready_under_readiness", held: a_present_binary_with_no_sidecar_is_not_read_ready_under_readiness()),
+    check_or_name(name: "wrong_uid_diverges_the_account", held: wrong_uid_diverges_the_account()),
+    check_or_name(name: "group_without_the_account_diverges", held: group_without_the_account_diverges()),
+    check_or_name(name: "authorized_keys_with_a_stray_key_diverges", held: authorized_keys_with_a_stray_key_diverges()),
+    check_or_name(name: "confirmed_absent_authorized_keys_is_drift_not_indeterminate", held: confirmed_absent_authorized_keys_is_drift_not_indeterminate()),
+    check_or_name(name: "confirmed_absent_store_dir_is_drift_not_indeterminate", held: confirmed_absent_store_dir_is_drift_not_indeterminate()),
+    check_or_name(name: "an_unreadable_passwd_is_indeterminate_not_drift", held: an_unreadable_passwd_is_indeterminate_not_drift()),
+    check_or_name(name: "an_unreadable_store_leg_is_indeterminate", held: an_unreadable_store_leg_is_indeterminate()),
+    check_or_name(name: "the_receipt_names_indeterminate_never_drift_for_an_unread_leg", held: the_receipt_names_indeterminate_never_drift_for_an_unread_leg()),
+    check_or_name(name: "a_host_outside_the_candidate_row_refuses_the_assessment", held: a_host_outside_the_candidate_row_refuses_the_assessment()),
+    check_or_name(name: "a_not_yet_rostered_candidate_still_renders_a_forced_command", held: a_not_yet_rostered_candidate_still_renders_a_forced_command()),
+    check_or_name(name: "wrong_serve_binary_sha_is_a_drift", held: wrong_serve_binary_sha_is_a_drift()),
+    check_or_name(name: "wrong_checkout_revision_is_a_drift", held: wrong_checkout_revision_is_a_drift()),
+    check_or_name(name: "wrong_target_arch_is_a_drift", held: wrong_target_arch_is_a_drift()),
+    check_or_name(name: "unread_serve_binary_sha_is_indeterminate_not_drift", held: unread_serve_binary_sha_is_indeterminate_not_drift()),
+    check_or_name(name: "unread_checkout_revision_is_indeterminate_not_drift", held: unread_checkout_revision_is_indeterminate_not_drift()),
+    check_or_name(name: "unread_target_arch_is_indeterminate_not_drift", held: unread_target_arch_is_indeterminate_not_drift()),
+    check_or_name(name: "ledger_fully_matched_adds_no_ledger_deviation", held: ledger_fully_matched_adds_no_ledger_deviation()),
+    check_or_name(name: "confirmed_absent_ledger_area_is_a_drift", held: confirmed_absent_ledger_area_is_a_drift()),
+    check_or_name(name: "unread_ledger_field_is_indeterminate_not_drift", held: unread_ledger_field_is_indeterminate_not_drift()),
+    check_or_name(name: "an_unread_ledger_row_is_unknown_not_absent", held: an_unread_ledger_row_is_unknown_not_absent()),
+    check_or_name(name: "wrong_ledger_group_is_a_drift", held: wrong_ledger_group_is_a_drift()),
+    check_or_name(name: "wrong_ledger_mode_is_a_drift", held: wrong_ledger_mode_is_a_drift()),
+    check_or_name(name: "root_mode_leading_zero_is_not_spurious_drift", held: root_mode_leading_zero_is_not_spurious_drift()),
+    check_or_name(name: "converged_host_has_both_groups_at_declared_gids", held: converged_host_has_both_groups_at_declared_gids()),
+    check_or_name(name: "account_group_at_wrong_gid_diverges", held: account_group_at_wrong_gid_diverges()),
+    check_or_name(name: "ledger_group_gid_taken_by_another_name_diverges", held: ledger_group_gid_taken_by_another_name_diverges()),
+    check_or_name(name: "fresh_host_reports_both_required_groups_absent", held: fresh_host_reports_both_required_groups_absent()),
+    check_or_name(name: "refused_elevation_is_indeterminate_never_drift", held: refused_elevation_is_indeterminate_never_drift()),
+    check_or_name(name: "refused_elevation_beats_a_real_drift", held: refused_elevation_beats_a_real_drift()),
+    check_or_name(name: "established_elevation_still_reports_store_drift", held: established_elevation_still_reports_store_drift()),
+    check_or_name(name: "fresh_host_with_confirmed_absent_subjects_is_diverged_and_runnable", held: fresh_host_with_confirmed_absent_subjects_is_diverged_and_runnable()),
+    check_or_name(name: "rustup_home_with_wrong_channel_is_a_toolchain_deviation", held: rustup_home_with_wrong_channel_is_a_toolchain_deviation()),
+    check_or_name(name: "pinned_channel_present_is_settled_on_toolchain", held: pinned_channel_present_is_settled_on_toolchain()),
+    check_or_name(name: "rustup_leg_unreadable_is_an_unknown", held: rustup_leg_unreadable_is_an_unknown()),
+    check_or_name(name: "toolchain_channel_matcher_is_prefix_red", held: toolchain_channel_matcher_is_prefix_red()),
+    check_or_name(name: "installed_but_hash_unreadable_is_indeterminate", held: installed_but_hash_unreadable_is_indeterminate()),
+    check_or_name(name: "unread_subject_presence_leaves_the_value_leg_unread", held: unread_subject_presence_leaves_the_value_leg_unread()),
+    check_or_name(name: "present_subject_with_never_read_value_is_indeterminate", held: present_subject_with_never_read_value_is_indeterminate()),
+    check_or_name(name: "world_writable_authorized_keys_with_right_line_is_a_drift", held: world_writable_authorized_keys_with_right_line_is_a_drift()),
+    check_or_name(name: "world_writable_serve_binary_with_right_hash_is_a_drift", held: world_writable_serve_binary_with_right_hash_is_a_drift()),
+    check_or_name(name: "declared_spellings_of_the_same_file_mode_are_settled", held: declared_spellings_of_the_same_file_mode_are_settled()),
+    check_or_name(name: "unreadable_file_mode_under_present_subject_is_indeterminate", held: unreadable_file_mode_under_present_subject_is_indeterminate()),
+    check_or_name(name: "candidate_host_serving_ledger_rows_equal_the_admitted_host_capacity_rows", held: candidate_host_serving_ledger_rows_equal_the_admitted_host_capacity_rows()),
+    check_or_name(name: "pre_admission_ledger_posture_is_not_the_serving_posture", held: pre_admission_ledger_posture_is_not_the_serving_posture()),
+    check_or_name(name: "ken_candidate_row_does_not_admit_to_roster_or_dispatch", held: ken_candidate_row_does_not_admit_to_roster_or_dispatch()),
+    check_or_name(name: "fresh_host_group_members_are_a_single_converge_ensured_principal", held: fresh_host_group_members_are_a_single_converge_ensured_principal()),
+    check_or_name(name: "fresh_host_deduped_desired_settles_against_the_single_observed_member", held: fresh_host_deduped_desired_settles_against_the_single_observed_member()),
+    check_or_name(name: "a_undeduped_second_member_diverges_at_plan_time", held: a_undeduped_second_member_diverges_at_plan_time()),
+    check_or_name(name: "a_fresh_accounts_refused_toolchain_read_is_drift_not_indeterminate", held: a_fresh_accounts_refused_toolchain_read_is_drift_not_indeterminate()),
+    check_or_name(name: "a_present_but_failing_rustup_listing_stays_unknown_under_readiness", held: a_present_but_failing_rustup_listing_stays_unknown_under_readiness()),
+    check_or_name(name: "an_unreadable_rustup_presence_with_a_refused_listing_stays_unknown_under_readiness", held: an_unreadable_rustup_presence_with_a_refused_listing_stays_unknown_under_readiness()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("run_remote_build_serving_setup_witness claims red: ", red) }
   }
 }

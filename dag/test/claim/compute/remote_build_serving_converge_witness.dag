@@ -1,5 +1,7 @@
 module test.claim.compute.remote_build_serving_converge_witness
 
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
 // PR 5(a): the read-only observe arm's receipt COMPOSITION. It lives in the converge module
 // so importing it forces the whole observe entry (the fleet-converge workflow --function) to
 // type-check; the cells prove the receipt carries the host/probe header and the terminal
@@ -2947,4 +2949,110 @@ test fn the_census_unknown_reason_names_the_census_not_the_transport() -> Bool {
     && read.success
     && string_contains(s: read.content, pattern: "recover_catalog_unknown_leg_reason(stdout: r.stdout)")
     && !string_contains(s: read.content, pattern: "the census door answered unknown: ")
+}
+
+// ProcessExit door over EVERY test fn in this module (roster GENERATED from the module's own
+// `test fn` declarations when written). Hermetic discovery remains the completeness authority;
+// this door exists to post a receipt.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { return "" }
+  return concat(name, "\n")
+}
+
+fn run_remote_build_serving_converge_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "the_receipt_body_names_the_host_and_the_drift", held: the_receipt_body_names_the_host_and_the_drift()),
+    check_or_name(name: "the_receipt_body_leaks_no_forced_command_material", held: the_receipt_body_leaks_no_forced_command_material()),
+    check_or_name(name: "a_converged_host_receipt_reports_settled", held: a_converged_host_receipt_reports_settled()),
+    check_or_name(name: "diverged_store_plans_a_matching_write", held: diverged_store_plans_a_matching_write()),
+    check_or_name(name: "unread_leg_plans_nothing_and_refuses", held: unread_leg_plans_nothing_and_refuses()),
+    check_or_name(name: "host_arch_mismatch_is_unhandled_not_written", held: host_arch_mismatch_is_unhandled_not_written()),
+    check_or_name(name: "fresh_host_plans_the_verified_rustup_bootstrap", held: fresh_host_plans_the_verified_rustup_bootstrap()),
+    check_or_name(name: "fresh_host_on_an_unpublished_machine_is_unhandled", held: fresh_host_on_an_unpublished_machine_is_unhandled()),
+    check_or_name(name: "present_rustup_plans_the_toolchain_and_no_bootstrap", held: present_rustup_plans_the_toolchain_and_no_bootstrap()),
+    check_or_name(name: "fresh_host_writes_are_ordered_by_action_kind_and_deduped", held: fresh_host_writes_are_ordered_by_action_kind_and_deduped()),
+    check_or_name(name: "uid_mismatch_is_unhandled_not_planned_as_useradd", held: uid_mismatch_is_unhandled_not_planned_as_useradd()),
+    check_or_name(name: "refused_elevation_plans_nothing_and_refuses", held: refused_elevation_plans_nothing_and_refuses()),
+    check_or_name(name: "a_refusal_or_unhandled_divergence_carries_nothing_to_execute", held: a_refusal_or_unhandled_divergence_carries_nothing_to_execute()),
+    check_or_name(name: "store_mode_drift_plans_ensure_directory_at_declared_mode", held: store_mode_drift_plans_ensure_directory_at_declared_mode()),
+    check_or_name(name: "store_mode_matched_plans_no_store_directory", held: store_mode_matched_plans_no_store_directory()),
+    check_or_name(name: "the_scratch_root_is_the_provider_s_own_compute_root", held: the_scratch_root_is_the_provider_s_own_compute_root()),
+    check_or_name(name: "a_missing_scratch_root_plans_one_account_owned_write", held: a_missing_scratch_root_plans_one_account_owned_write()),
+    check_or_name(name: "scratch_root_present_at_declared_mode_plans_nothing", held: scratch_root_present_at_declared_mode_plans_nothing()),
+    check_or_name(name: "scratch_root_mode_drift_plans_the_same_write_at_the_declared_mode", held: scratch_root_mode_drift_plans_the_same_write_at_the_declared_mode()),
+    check_or_name(name: "an_unread_scratch_root_leg_writes_nothing_and_refuses", held: an_unread_scratch_root_leg_writes_nothing_and_refuses()),
+    check_or_name(name: "wrong_shell_on_existing_account_is_unhandled", held: wrong_shell_on_existing_account_is_unhandled()),
+    check_or_name(name: "declared_shell_on_existing_account_is_settled", held: declared_shell_on_existing_account_is_settled()),
+    check_or_name(name: "planned_useradd_carries_the_model_shell", held: planned_useradd_carries_the_model_shell()),
+    check_or_name(name: "planned_useradd_shell_is_the_model_value_not_empty", held: planned_useradd_shell_is_the_model_value_not_empty()),
+    check_or_name(name: "checkout_cause_names_the_fetch_only_when_it_blocked_the_detach", held: checkout_cause_names_the_fetch_only_when_it_blocked_the_detach()),
+    check_or_name(name: "fresh_host_plans_the_pinned_toolchain_after_checkout_before_binary", held: fresh_host_plans_the_pinned_toolchain_after_checkout_before_binary()),
+    check_or_name(name: "fresh_host_plans_the_parents_before_the_installs_they_parent", held: fresh_host_plans_the_parents_before_the_installs_they_parent()),
+    check_or_name(name: "execution_stops_at_first_failure_and_skips_the_dependents", held: execution_stops_at_first_failure_and_skips_the_dependents()),
+    check_or_name(name: "execution_with_no_failure_attempts_everything", held: execution_with_no_failure_attempts_everything()),
+    check_or_name(name: "the_apply_receipt_names_the_failed_write_and_its_cause", held: the_apply_receipt_names_the_failed_write_and_its_cause()),
+    check_or_name(name: "the_apply_receipt_names_applied_arms_then_the_refusal", held: the_apply_receipt_names_applied_arms_then_the_refusal()),
+    check_or_name(name: "a_refusal_with_no_applied_arm_is_a_different_receipt", held: a_refusal_with_no_applied_arm_is_a_different_receipt()),
+    check_or_name(name: "ledger_group_extra_member_is_unhandled_not_planned", held: ledger_group_extra_member_is_unhandled_not_planned()),
+    check_or_name(name: "uncapped_slice_plans_exactly_one_install_leg", held: uncapped_slice_plans_exactly_one_install_leg()),
+    check_or_name(name: "install_slice_names_the_readers_unit", held: install_slice_names_the_readers_unit()),
+    check_or_name(name: "install_slice_carries_ceiling_swap_floor_and_unit", held: install_slice_carries_ceiling_swap_floor_and_unit()),
+    check_or_name(name: "install_slice_sorts_before_serve_binary", held: install_slice_sorts_before_serve_binary()),
+    check_or_name(name: "refused_slice_max_plans_no_install_leg", held: refused_slice_max_plans_no_install_leg()),
+    check_or_name(name: "install_slice_reloads_then_starts_the_reader_unit", held: install_slice_reloads_then_starts_the_reader_unit()),
+    check_or_name(name: "not_lingering_plans_exactly_one_enable_leg", held: not_lingering_plans_exactly_one_enable_leg()),
+    check_or_name(name: "install_linger_sorts_before_slice", held: install_linger_sorts_before_slice()),
+    check_or_name(name: "refused_linger_writes_no_enable_leg", held: refused_linger_writes_no_enable_leg()),
+    check_or_name(name: "fresh_host_with_absent_account_plans_enable_not_refused", held: fresh_host_with_absent_account_plans_enable_not_refused()),
+    check_or_name(name: "the_recorded_identity_is_the_documented_two_member_object", held: the_recorded_identity_is_the_documented_two_member_object()),
+    check_or_name(name: "the_identity_is_ranked_after_the_binary_install", held: the_identity_is_ranked_after_the_binary_install()),
+    check_or_name(name: "the_identity_key_is_distinct_from_the_binary_key", held: the_identity_key_is_distinct_from_the_binary_key()),
+    check_or_name(name: "the_declared_ceiling_read_back_settles_the_slice", held: the_declared_ceiling_read_back_settles_the_slice()),
+    check_or_name(name: "an_infinity_ceiling_read_back_is_uncapped_not_unread", held: an_infinity_ceiling_read_back_is_uncapped_not_unread()),
+    check_or_name(name: "an_unreachable_manager_reads_uncapped_never_unknown", held: an_unreachable_manager_reads_uncapped_never_unknown()),
+    check_or_name(name: "the_property_value_maps_every_unbounded_spelling", held: the_property_value_maps_every_unbounded_spelling()),
+    check_or_name(name: "a_non_zero_read_is_classified_by_stderr_not_the_exit_code", held: a_non_zero_read_is_classified_by_stderr_not_the_exit_code()),
+    check_or_name(name: "the_slice_readback_shows_the_units_declared_properties", held: the_slice_readback_shows_the_units_declared_properties()),
+    check_or_name(name: "the_slice_leg_orders_install_reload_start_then_readback", held: the_slice_leg_orders_install_reload_start_then_readback()),
+    check_or_name(name: "a_missing_sidecar_records_the_identity_alone", held: a_missing_sidecar_records_the_identity_alone()),
+    check_or_name(name: "a_stale_sha_sidecar_re_records_the_identity", held: a_stale_sha_sidecar_re_records_the_identity()),
+    check_or_name(name: "a_matching_sha_sidecar_is_a_no_op_regardless_of_revision", held: a_matching_sha_sidecar_is_a_no_op_regardless_of_revision()),
+    check_or_name(name: "a_malformed_sidecar_re_records_the_identity", held: a_malformed_sidecar_re_records_the_identity()),
+    check_or_name(name: "a_refused_sidecar_read_writes_nothing", held: a_refused_sidecar_read_writes_nothing()),
+    check_or_name(name: "an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op", held: an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op()),
+    check_or_name(name: "a_stale_native_revision_rebuilds_rather_than_rerecords", held: a_stale_native_revision_rebuilds_rather_than_rerecords()),
+    check_or_name(name: "a_native_revision_matching_the_pin_settles", held: a_native_revision_matching_the_pin_settles()),
+    check_or_name(name: "a_missing_native_sidecar_rebuilds_not_rerecords", held: a_missing_native_sidecar_rebuilds_not_rerecords()),
+    check_or_name(name: "the_native_build_carries_the_single_cargo_package_authority", held: the_native_build_carries_the_single_cargo_package_authority()),
+    check_or_name(name: "a_stale_seat_plans_the_recovery_when_identity_is_met", held: a_stale_seat_plans_the_recovery_when_identity_is_met()),
+    check_or_name(name: "a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery", held: a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery()),
+    check_or_name(name: "the_census_gate_asks_only_at_the_dispatched_revision", held: the_census_gate_asks_only_at_the_dispatched_revision()),
+    check_or_name(name: "a_legitimately_held_seat_plans_nothing", held: a_legitimately_held_seat_plans_nothing()),
+    check_or_name(name: "an_unreadable_seat_census_refuses_the_plan", held: an_unreadable_seat_census_refuses_the_plan()),
+    check_or_name(name: "a_stale_seat_with_an_unmet_identity_defers_the_recovery", held: a_stale_seat_with_an_unmet_identity_defers_the_recovery()),
+    check_or_name(name: "the_recovery_door_argv_binds_the_accounts_own_user_session", held: the_recovery_door_argv_binds_the_accounts_own_user_session()),
+    check_or_name(name: "the_recovery_door_legs_ride_the_door_ceiling", held: the_recovery_door_legs_ride_the_door_ceiling()),
+    check_or_name(name: "converge_order_preserves_every_action_kind", held: converge_order_preserves_every_action_kind()),
+    check_or_name(name: "native_build_and_upload_collapse_on_one_path", held: native_build_and_upload_collapse_on_one_path()),
+    check_or_name(name: "native_build_ranks_after_its_checkout_and_toolchain", held: native_build_ranks_after_its_checkout_and_toolchain()),
+    check_or_name(name: "unread_host_architecture_refuses_never_uploads", held: unread_host_architecture_refuses_never_uploads()),
+    check_or_name(name: "fresh_host_proven_absent_slice_plans_useradd_before_slice_install", held: fresh_host_proven_absent_slice_plans_useradd_before_slice_install()),
+    check_or_name(name: "the_proven_absent_slice_read_is_established_and_the_refused_read_is_refused", held: the_proven_absent_slice_read_is_established_and_the_refused_read_is_refused()),
+    check_or_name(name: "all_slice_controls_refused_with_account_present_is_indeterminate", held: all_slice_controls_refused_with_account_present_is_indeterminate()),
+    check_or_name(name: "refused_passwd_read_is_indeterminate_not_a_fabricated_install", held: refused_passwd_read_is_indeterminate_not_a_fabricated_install()),
+    check_or_name(name: "slice_gate_established_false_picks_the_proven_absent_cap", held: slice_gate_established_false_picks_the_proven_absent_cap()),
+    check_or_name(name: "slice_gate_established_true_picks_the_systemd_read", held: slice_gate_established_true_picks_the_systemd_read()),
+    check_or_name(name: "slice_gate_refused_passwd_picks_the_systemd_read", held: slice_gate_refused_passwd_picks_the_systemd_read()),
+    check_or_name(name: "fresh_host_passwd_read_drives_the_gate_to_the_proven_absent_cap", held: fresh_host_passwd_read_drives_the_gate_to_the_proven_absent_cap()),
+    check_or_name(name: "present_account_passwd_read_drives_the_gate_to_the_systemd_read", held: present_account_passwd_read_drives_the_gate_to_the_systemd_read()),
+    check_or_name(name: "refused_passwd_read_drives_the_gate_to_the_systemd_read", held: refused_passwd_read_drives_the_gate_to_the_systemd_read()),
+    check_or_name(name: "a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap", held: a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap()),
+    check_or_name(name: "every_converge_write_principal_is_grounded_on_every_candidate_host", held: every_converge_write_principal_is_grounded_on_every_candidate_host()),
+    check_or_name(name: "the_census_unknown_reason_names_the_census_not_the_transport", held: the_census_unknown_reason_names_the_census_not_the_transport()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("remote_build_serving_converge_witness claims red: ", red) }
+  }
 }
