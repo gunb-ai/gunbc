@@ -3,9 +3,9 @@ module gunbc.instruments.emit_carrier_subjects
 import std.types { Bool, Int, List }
 import std.optional { Optional, Present, Absent }
 import std.realization_measurement { AllocationCounter }
-import gunbc.allocation_observation_render { AllocationCase, operations_above }
-import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_is_applicable }
-import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
+import gunbc.allocation_observation_render { AllocationCase, operations_above, is_observed, count_text }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_is_applicable, retaining_rows_on_block }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row, violation_visible, readings }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CARRIER SUBJECTS of the building-block battery (roadmap row
@@ -21,7 +21,9 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // ordinary collections a .dag specimen can reach share by reference-count bump and copy wholesale on
 // update. So the measured reading for the persistent-carrier rows is expected to DISAGREE with the
 // applicability verdict, and that disagreement is this battery's finding rather than a specimen defect. It
-// is carried as a ROW, not as prose: `carrier_disagreement_row` in gunbc.instruments.emit_carrier_subjects.
+// is carried as ROWS, not as prose: `carrier_sequence_snapshot_retained_on_its_own_axis` and
+// `carrier_map_snapshot_copied_on_its_own_axis` in gunbc.instruments.emit_carrier_subjects, one per carrier, each
+// judged only on the axis its own typed violating_form names.
 // The reported state for any leg that comes back the other way -- a persistent carrier measured CHEAP
 // where the reading says wholesale copy, or refused where the vocabulary says realized -- is a stop and
 // report, not a specimen edit, and that row going red is how it is noticed.
@@ -91,15 +93,19 @@ fn car_traversal(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + x)
 }
 
-// Violating: the sequence is REBUILT on every step of the traversal. The first version of this arm
-// carried that comment above `inner + (y * 0)`, which is arithmetic on an accumulator, so it built no sequence,
-// allocated nothing and kept no handle -- a second traversal wearing a rebuild's name. The lane manager ruled the
-// arm defective (the sibling arms of this same entry are held, and this family's meter reads 2/624/24 against an
-// empty floor of 1/80/0, so the counter demonstrably is not blind), and the fix is at the specimen, not at the
-// judgement. Each step now folds the whole source into a NEW list with list_push, which is the allocation the
-// block's declared violating form (PerStepAllocation) says the emitter would have to do. At car_cardinality = 24
-// that is 24 rebuilds of 24 pushes, so the operations counter must sit in the hundreds against the contract arm's
-// single pass, the same register its sibling index_build_remade is read at (909/141090 against 122/19434).
+// Violating: the sequence is REBUILT, AS A FRESH SEQUENCE, on every step of the traversal. WHY THIS ARM WAS
+// REWRITTEN, measured rather than assumed: the first executed run read the previous version as identical to its
+// contract arm on all three axes at once (violating_ops=1 contract_arm_ops=1, violating_bytes=80
+// contract_arm_bytes=80, violating_kept=1 contract_arm_kept=1, detected_on=none) in BOTH the observation entry and
+// the red entry, where a red row that HOLDS is a leg that can never fire. The reason is visible in the old body: its
+// inner step was `inner + (y * 0)`, which is arithmetic on an accumulator, so it built no sequence, allocated nothing
+// and kept no handle -- a second traversal wearing a rebuild's name. The lane manager ruled the arm defective (the
+// sibling arms of this same entry are held, and this family's meter reads 2/624/24 against an empty floor of 1/80/0,
+// so the counter demonstrably is not blind), and the fix is at the specimen, not at the judgement.
+// Each step now folds the whole source into a NEW list with list_push, which is the allocation the block's declared
+// violating form (PerStepAllocation) says the emitter would have to do. At car_cardinality = 24 that is 24 rebuilds of
+// 24 pushes, so the operations counter must sit in the hundreds against the contract arm's single pass, the same
+// register its sibling index_build_remade is read at (909/141090 against 122/19434).
 fn car_traversal_rebuilds_per_step(xs: List<Int>) -> Int {
   count(fold(xs, init: [], f: (acc, x) => fold(xs, init: [], f: (fresh, y) => list_push(fresh, y + x))))
 }
@@ -266,14 +272,69 @@ fn car_window(subject: CarSubject, src: List<Int>) -> BatteryWindow uses counter
   }
 }
 
-// THE FINDING, as a row rather than as prose: the vocabulary calls the persistent carriers realized and
-// applicable while the measurement reads retaining a version as a wholesale copy. The row holds while
-// those two statements disagree, both sides read from their own authority -- the reading from the meter,
-// the verdict from the carrier through `contract_is_applicable` in gunbc.emit_building_block_contracts. If
-// either side moves the row goes red by name, which is the stop-and-report the header promises: a
-// vocabulary that stopped calling these carriers realized has to be reconciled with this battery, not
-// quietly contradicted by it.
-fn carrier_disagreement_row(seq_snapshot: BatteryWindow, seq_snapshot_retained: BatteryWindow, index_snapshot: BatteryWindow, index_snapshot_copied: BatteryWindow) -> AllocationCase {
+// THE TWO CARRIER CLAIMS, one per carrier, each judged ONLY on the axis its own typed violating_form names.
+//
+// WHAT REPLACED THEM, and why the old row is recorded rather than deleted: the previous single row
+// (carrier_persistent_carriers_read_wholesale_copy_while_the_vocabulary_calls_them_realized) conjoined a
+// wholesale-copy test on BOTH persistent carriers with the vocabulary's own applicability verdict, and it printed
+//     case carrier_persistent_carriers_read_wholesale_copy_while_the_vocabulary_calls_them_realized not_held
+//       observed=measured_wholesale_copy=false vocabulary_applicable=true carriers=persistent_sequence;persistent_map
+// at tree_sha 8c4162d754185eb72648fa22cbd107f7463765a5. That printed line is the SUPERSEDED-MALFORMED witness and is
+// kept in the run log. The row was malformed, not red: its measurement clause demanded an operations-axis wholesale
+// copy from persistent_sequence_carrier_snapshot, which this roster itself types
+// OwningRetainAddedToObservation -- a retained snapshot that DID add a wholesale copy would contradict its own
+// contract -- so no correct emission could ever have turned it green. Measured that way the sequence pair read
+// 3 ops / 704 bytes / 3 kept against 3 ops / 704 bytes / 1 kept, i.e. operations_above false on a block whose whole
+// claim is that it adds a handle instead of a copy. It was not the vocabulary over-claiming (both blocks are
+// CaseApplicable and each discriminating row holds on the axis its own form names) and not the counter being blind
+// (the same counter read the retain on handles and the copy at 159 ops / 23520 bytes against 123 / 17830, and
+// carrier_meter_known_allocation_reading_taken at 2/624/24 against the empty floor 1/80/0 sits in this same entry).
+//
+// Each row below takes its axis from the roster through the SAME helper the battery's own red rows use,
+// `retaining_rows_on_block`, so the axis is never restated here. FALSIFIABLE EDIT FOR BOTH ROWS: change that block's
+// `violating_form` in gunbc.emit_building_block_contracts (the sequence row's from OwningRetainAddedToObservation to
+// CopyOfUnchangedContext, the map row's the other way) and the row must REFUSE, because the axis it is judged on
+// stops being the axis the violation lives on -- which is exactly how the row stops being decorative.
+fn carrier_sequence_snapshot_retained_on_its_own_axis(seq_snapshot: BatteryWindow, seq_snapshot_retained: BatteryWindow) -> AllocationCase {
+  let block_id = "persistent_sequence_carrier_snapshot"
+  let judged_on_handles = retaining_rows_on_block(block_id: block_id) > 0
+  let axis = concat("judged_on_retained_handles=", to_string(value: judged_on_handles))
+  let vocab = concat("vocabulary_applicable=", to_string(value: block_is_applicable(block_id: block_id)))
+  let pair = readings(a_label: "retained", a: seq_snapshot_retained.observation, b_label: "contract_arm", b: seq_snapshot.observation)
+  let kept_a = count_text(label: "retained_kept", n: seq_snapshot_retained.kept_len)
+  let kept_b = count_text(label: "contract_arm_kept", n: seq_snapshot.kept_len)
+  let left = concat(concat(pair, " "), kept_a)
+  let right = concat(concat(kept_b, " "), axis)
+  let observed_text = concat(concat(left, " "), right)
+  AllocationCase {
+    identity: "carrier_persistent_sequence_snapshot_is_retained_on_the_axis_its_form_names",
+    held: is_observed(o: seq_snapshot_retained.observation) && violation_visible(viol: seq_snapshot_retained, arm: seq_snapshot, judged_on_retained_handles: judged_on_handles) && block_is_applicable(block_id: block_id),
+    observed: concat(observed_text, vocab)
+  }
+}
+
+fn carrier_map_snapshot_copied_on_its_own_axis(index_snapshot: BatteryWindow, index_snapshot_copied: BatteryWindow) -> AllocationCase {
+  let block_id = "persistent_map_carrier_snapshot"
+  let judged_on_handles = retaining_rows_on_block(block_id: block_id) > 0
+  let axis = concat("judged_on_retained_handles=", to_string(value: judged_on_handles))
+  let vocab = concat("vocabulary_applicable=", to_string(value: block_is_applicable(block_id: block_id)))
+  let pair = readings(a_label: "copied", a: index_snapshot_copied.observation, b_label: "contract_arm", b: index_snapshot.observation)
+  let kept_a = count_text(label: "copied_kept", n: index_snapshot_copied.kept_len)
+  let kept_b = count_text(label: "contract_arm_kept", n: index_snapshot.kept_len)
+  let left = concat(concat(pair, " "), kept_a)
+  let right = concat(concat(kept_b, " "), axis)
+  let observed_text = concat(concat(left, " "), right)
+  AllocationCase {
+    identity: "carrier_persistent_map_snapshot_is_copied_on_the_axis_its_form_names",
+    held: is_observed(o: index_snapshot_copied.observation) && violation_visible(viol: index_snapshot_copied, arm: index_snapshot, judged_on_retained_handles: judged_on_handles) && block_is_applicable(block_id: block_id),
+    observed: concat(observed_text, vocab)
+  }
+}
+
+// SUPERSEDED-MALFORMED, kept readable on purpose. The lane manager's ruling was that the next reader should be able
+// to see that this row was asked, answered not_held, and understood, so the definition stays here with the reason in
+// one line: it demanded a wholesale copy from a block the roster types as an owning retain. Nothing calls it.
+fn carrier_disagreement_row_superseded_malformed(seq_snapshot: BatteryWindow, seq_snapshot_retained: BatteryWindow, index_snapshot: BatteryWindow, index_snapshot_copied: BatteryWindow) -> AllocationCase {
   let reads_wholesale_copy = operations_above(a: seq_snapshot_retained.observation, b: seq_snapshot.observation) && operations_above(a: index_snapshot_copied.observation, b: index_snapshot.observation)
   let vocabulary_calls_them_realized = block_is_applicable(block_id: "persistent_sequence_carrier_snapshot") && block_is_applicable(block_id: "persistent_map_carrier_snapshot")
   AllocationCase {
@@ -334,7 +395,7 @@ fn car_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "carrier", block_id: "index_traversal", own: index_traversal), violation_case(prefix: "carrier", block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal)],
       concat(
       [subject_case(prefix: "carrier", block_id: "persistent_map_carrier_snapshot", own: index_snapshot), violation_case(prefix: "carrier", block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)],
-      [plain_row(c: carrier_disagreement_row(seq_snapshot: seq_snapshot, seq_snapshot_retained: seq_snapshot_retained, index_snapshot: index_snapshot, index_snapshot_copied: index_snapshot_copied))])))))))))))
+      [plain_row(c: carrier_sequence_snapshot_retained_on_its_own_axis(seq_snapshot: seq_snapshot, seq_snapshot_retained: seq_snapshot_retained)), plain_row(c: carrier_map_snapshot_copied_on_its_own_axis(index_snapshot: index_snapshot, index_snapshot_copied: index_snapshot_copied))])))))))))))
 }
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Every block's violating
