@@ -656,7 +656,7 @@ fn binary_presence_from(listing: ProcessCaptureOutcome, entry_name: String, pare
     ProcessCaptured { outcome: ProcessOutputPresent { text: t } } =>
       if listing_contains_entry(stdout: t, name: entry_name) {
         match probe {
-          ProcessCaptured { outcome: observed } => BinaryPresenceKnown { present: process_outcome_admitted(captured: observed) }
+          ProcessCaptured { outcome: observed } => BinaryPresenceKnown { present: process_outcome_admitted(outcome: observed) }
           ProcessCaptureNotSpawned { program: p, cause: why } => BinaryPresenceUnreadable { cause: join(["the entry is listed but the regular-file probe never spawned (", p, ": ", why, ")"], "") }
         }
       } else { BinaryPresenceKnown { present: false } }

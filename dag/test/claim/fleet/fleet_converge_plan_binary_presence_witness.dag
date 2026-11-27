@@ -24,6 +24,19 @@ import gunbc.fleet.fleet_converge_plan_cli {
   BinaryPresence, BinaryPresenceKnown, BinaryPresenceUnreadable, binary_presence_of,
 }
 import gunbc.command_runner { run_shell_command_capture, process_capture_admitted, LocalExec }
+import extdeps.exec.command { argv_command }
+import extdeps.exec.program { uncataloged_program }
+
+// THE WITNESS'S OWN SCRATCH-SEEDING ROUTE: mkdir -p over the same admitted capture entry every
+// other child in this file rides (chmod, and the module under test's own lookups). The Filesystem
+// primitive exposes no recursive-create method, and inventing one here would be a method surface
+// the receiver does not establish -- so the directory arrives through a real child, admitted or the
+// claim returns false. Admitted effect: one mkdir under this claim's own mktemp directory.
+fn witness_mkdir_p(path: String) -> Bool {
+  process_capture_admitted(captured: run_shell_command_capture(
+    command: argv_command(program: uncataloged_program(invocation: "mkdir" as NonEmptyStr), arguments: ["-p" as String, path]),
+    transport: LocalExec))
+}
 
 // AN INACCESSIBLE BINARY IS NEVER "NOT PRESENT" (the demonstrated fabrication): the binary
 // stands, its PARENT is mode-000, so `test -f` exits 1 with empty stderr exactly as a missing
@@ -36,7 +49,7 @@ test fn an_inaccessible_binary_reports_unreadable_never_not_present() -> Bool {
   let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-a.XXXXXX").path as String
   let bin = join([home, "/sbin"], "")
   let sudo_path = join([bin, "/sudo"], "")
-  if !Filesystem.CreateDirectoryAll(path: bin).success { return false }
+  if !witness_mkdir_p(path: bin) { return false }
   if !Filesystem.WriteCreateNew(path: sudo_path, content: "#!/bin/sh\nexit 0\n").success { return false }
   if !process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "000" as NonEmptyStr, path: bin), transport: LocalExec)) { return false }
   match binary_presence_of(program: sudo_path) {
@@ -53,7 +66,7 @@ test fn an_inaccessible_binary_reports_unreadable_never_not_present() -> Bool {
 // the old fold produced for EVERY nonzero exit; here it must come only from positive readings.
 test fn a_positively_absent_binary_still_answers_known_false() -> Bool {
   let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-b.XXXXXX").path as String
-  if !Filesystem.CreateDirectoryAll(path: home).success { return false }
+  if !witness_mkdir_p(path: home) { return false }
   match binary_presence_of(program: join([home, "/nowhere/sudo"], "")) {
     BinaryPresenceKnown { present: p } => p == false
     BinaryPresenceUnreadable { cause: _ } => false
@@ -68,7 +81,7 @@ test fn a_standing_regular_file_answers_known_true() -> Bool {
   let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-c.XXXXXX").path as String
   let bin = join([home, "/sbin"], "")
   let sudo_path = join([bin, "/sudo"], "")
-  if !Filesystem.CreateDirectoryAll(path: bin).success { return false }
+  if !witness_mkdir_p(path: bin) { return false }
   if !Filesystem.WriteCreateNew(path: sudo_path, content: "#!/bin/sh\nexit 0\n").success { return false }
   if !process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "755" as NonEmptyStr, path: sudo_path), transport: LocalExec)) { return false }
   match binary_presence_of(program: sudo_path) {
@@ -85,7 +98,7 @@ test fn a_standing_regular_file_answers_known_true() -> Bool {
 test fn a_binary_behind_a_regular_file_parent_is_unreadable_not_absent() -> Bool {
   let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-d.XXXXXX").path as String
   let decoy = join([home, "/sbin"], "")
-  if !Filesystem.CreateDirectoryAll(path: home).success { return false }
+  if !witness_mkdir_p(path: home) { return false }
   if !Filesystem.WriteCreateNew(path: decoy, content: "not a directory").success { return false }
   match binary_presence_of(program: join([decoy, "/sudo"], "")) {
     BinaryPresenceUnreadable { cause: c } =>
