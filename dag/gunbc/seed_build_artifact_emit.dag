@@ -1,9 +1,9 @@
 module gunbc.seed_build_artifact_emit
 
 import std.types { List, String }
-import gunbc.generated_artifact { GeneratedArtifact }
-import gunbc.generated_artifact_production { GeneratedArtifactProduction }
-import extdeps.filesystem.rust_realization { file_transport_realization_generated_rs_artifact_production }
+import gunbc.generated_artifact { GeneratedArtifact, FileTransportRealizationGeneratedRsArtifact }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.evaluation_budget_consequence_emit { evaluation_budget_consequence_generated_rs_artifact_production }
 import gunbc.instruments.instrument_registry_emit { instrument_registry_generated_rs_artifact_production }
 import gunbc.native_route_seed_boundary_emit { native_route_seed_boundary_generated_rs_artifact_production }
@@ -14,6 +14,17 @@ import gunbc.stage0.stage0_crate_layout_emit { stage0_crate_layout_generated_dag
 import gunbc.stage0.stage0_crate_partition_emit { stage0_crate_partition_generated_dag_artifact_production }
 import gunbc.stage0.stage0_executable_assembly_emit { stage0_executable_assembly_generated_dag_artifact_production, stage0_linked_partition_crates_artifact_production }
 import gunbc.v1.v1_interpreter_dispatch_emit { v1_interpreter_dispatch_generated_rs_artifact_production }
+
+fn file_transport_realization_generated_rs_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_gunbc_file_transport_generated_rs() }
+}
+
+data file_transport_realization_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: FileTransportRealizationGeneratedRsArtifact,
+  generate: file_transport_realization_generated_rs_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
+}
 
 fn seed_build_productions() -> List<GeneratedArtifactProduction> {
   [
