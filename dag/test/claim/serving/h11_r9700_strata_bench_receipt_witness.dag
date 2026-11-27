@@ -78,7 +78,7 @@ test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
     && match run_named(name: "r9700-210w") {
       Present { value: r } =>
         match r.power {
-          ReadingPresent { .. } => true
+          ReadingPresent { value: _ } => true
           _ => false
         }
       Absent => false
@@ -86,7 +86,7 @@ test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
     && match run_named(name: "r9700-300w-measured") {
       Present { value: r } =>
         match r.power {
-          ReadingPresent { .. } => true
+          ReadingPresent { value: _ } => true
           _ => false
         }
       Absent => false
