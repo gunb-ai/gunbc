@@ -746,18 +746,26 @@ fn count_starting(rows: List<String>, needle: String) -> Int {
   fold(rows, init:  0, f: (acc, line) => if row_starts(line, needle) { acc + 1 } else { acc })
 }
 
-fn provenance_named(rows: List<String>, key: String) -> String {
-  let hits = filter(rows, r => row_starts(r, key))
+// THE RUNNER WRITES PROVENANCE AS ONE LINE WITH MANY key=value TOKENS:
+// "[capture-provenance] leg=<x> binary_sha256=<hex> binary_bytes=<n> head_sha=<hex> tree_sha=<hex>
+// rc=<n> kept_rows=<n>". The OLD helpers here were unsatisfiable by any file the runner writes --
+// provenance_named matched rows BEGINNING with the key (no row ever begins with 'binary_sha256=';
+// every row begins with '[capture-provenance] leg='), and after_equals returned the segment between
+// the FIRST TWO '=' of the whole line -- for these rows that is the text 'untrimmed binary_sha256',
+// not any key's value. All five provenance conjuncts of committed_capture_is_measured therefore decided false on every run of main, whatever
+// the leg did (run9o leg b; the replica of their exact semantics returns named='' for all four
+// keys). Same broken-gate class as the clean-bit suppression and the "untrimmed" closing-section
+// check: reported as a finding about the CHECKS, not tuned away. The replacement reads the key at
+// whatever position it holds inside a line and returns the characters after THAT key's '='.
+fn provenance_value(rows: List<String>, key: String) -> String {
+  let hits = fold(rows, init: [], f: (acc, row) =>
+    concat(acc, filter(split(s: row, delimiter: " "), t => row_starts(t, key))))
   match hits.first() {
-    Present { value: v } => v
-    Absent {} => ""
-  }
-}
-
-fn after_equals(row: String) -> String {
-  let parts = split(s: row, delimiter: "=")
-  match parts.skip(n: 1).first() {
-    Present { value: v } => v
+    Present { value: t } =>
+      match split(s: t, delimiter: "=").skip(n: 1).first() {
+        Present { value: v } => v
+        Absent {} => ""
+      }
     Absent {} => ""
   }
 }
@@ -801,11 +809,11 @@ fn committed_capture_is_measured() -> Bool {
     // presence (phase, resolve, PASS rows, provenance identities), not instrument emission.
     && opt_ms_present(floor_preparation_split_total_ms(capture))
     && opt_ms_present(floor_preparation_split_total_ms(untrimmed))
-    && sha_hex_shape_ok(after_equals(provenance_named(prov, "binary_sha256=")))
-    && after_equals(provenance_named(prov, "binary_bytes=")) != ""
-    && after_equals(provenance_named(prov, "head_sha=")) != ""
-    && after_equals(provenance_named(prov, "tree_sha=")) != ""
-    && sha_hex_shape_ok(after_equals(provenance_named(uprov, "binary_sha256=")))
+    && sha_hex_shape_ok(provenance_value(prov, "binary_sha256="))
+    && provenance_value(prov, "binary_bytes=") != ""
+    && provenance_value(prov, "head_sha=") != ""
+    && provenance_value(prov, "tree_sha=") != ""
+    && sha_hex_shape_ok(provenance_value(uprov, "binary_sha256="))
     && floor_preparation_graded_row_count() <= floor_preparation_requested_row_count()
     && floor_preparation_graded_row_count() > 0
     // the GRADED block is green by construction: a FAIL or UNOBSERVED row belongs to the untrimmed
@@ -890,7 +898,22 @@ fn retained_bump(acc: FloorPreparationRetainedCount, line: String) -> FloorPrepa
 
 fn retained_step(acc: FloorPreparationRetainedCount, line: String) -> FloorPreparationRetainedCount {
   if line == "SECTION graded" {
-    retained_empty("graded")
+    // THE UNTRIMMED TALLIES MUST SURVIVE THE SECTION SWITCH. The old branch used
+    // retained_empty("graded"), which zeroes EVERY field -- including the untrimmed counts the fold
+    // had just accumulated, because the body contract puts SECTION untrimmed FIRST. The cache
+    // witness then compared state.untrimmed_rows == length(untrimmed_capture()) forever after a
+    // silent reset to 0: unsatisfiable on every file the runner writes (run9o dbg: untrimmed_rows=0
+    // while the section is "graded" and the graded tallies are correct). This is the third
+    // never-passable check found in this module (after the clean-bit suppression and the
+    // "untrimmed" closing-section name), each reported as a finding rather than tuned away.
+    // Mirror the SECTION untrimmed branch: reset only what this section will recount.
+    FloorPreparationRetainedCount {
+      section: "graded",
+      graded_rows: 0, graded_phase: 0, graded_resolve: 0, graded_pass: 0, graded_fill: 0,
+      untrimmed_rows: acc.untrimmed_rows, untrimmed_phase: acc.untrimmed_phase,
+      untrimmed_resolve: acc.untrimmed_resolve, untrimmed_pass: acc.untrimmed_pass,
+      untrimmed_fill: acc.untrimmed_fill
+    }
   } else if line == "SECTION untrimmed" {
     FloorPreparationRetainedCount {
       section: "untrimmed",
