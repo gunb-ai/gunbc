@@ -4318,7 +4318,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 // (gunbc.design_argument::single_authority; minimize_redundancy: "a concept is modeled once and every
 // use derived from it"). The pairing of an authorization arm to its word lives in the one match that
 // renders it; what the WORDS are lives only here.
-type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String }
+type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String, unknown_header: String }
 
 fn recover_catalog_words() -> RecoverCatalogWords {
   let prefix = "recover-catalog"
@@ -4330,6 +4330,12 @@ fn recover_catalog_words() -> RecoverCatalogWords {
     refused: "refused",
     never_charged: "never-charged",
     established_header: join([prefix, " established"], ""),
+    // THE DECLARED UNKNOWN LINE. compute_recover_catalog_cli prints exactly this word onto STDOUT at
+    // exit 2 (the census's own account of what it could not establish); the reader below must READ it
+    // as the census's answer -- an unknown REASON is the census speaking, never the transport's stderr.
+    // The word carries no trailing space: the reader matches it after trim, where a trailing space
+    // would vanish and the match would fail.
+    unknown_header: join([prefix, " unknown:", ""], ""),
   }
 }
 
@@ -4429,7 +4435,15 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
   match list_at_optional(xs: lines, index: 0) {
     Absent => RecoverCatalogLegUnknown { detail: "the census answered with nothing to read" }
     Present { value: header } =>
-      if trim(s: header) != recover_catalog_words().established_header {
+      if starts_with(s: trim(s: header), prefix: recover_catalog_words().unknown_header) {
+        // THE DECLARED UNKNOWN LINE, READ AS THE CENSUS'S OWN ANSWER: exit 2 carries
+        // "<line_prefix> unknown: <detail>" on stdout, and its text IS the door's reason -- never any
+        // stderr, which belongs to the transport (the user-work-scope trampoline's pre-wrap diagnostics
+        // print there; once one of them was logged as a cause of the census itself refusing, run
+        // 45762320308: "observed-bound arm did not admit (chain-unbounded)" while the census had in
+        // fact answered in full).
+        RecoverCatalogLegUnknown { detail: recover_catalog_unknown_detail(header: trim(s: header)) }
+      } else if trim(s: header) != recover_catalog_words().established_header {
         RecoverCatalogLegUnknown { detail: join(["the census answer is not one this door established (first line: ", trim(s: header), ")"], "") }
       } else {
         let body = skip(xs: lines, n: 1)
@@ -4449,6 +4463,31 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
         }
       }
   }
+}
+
+// THE UNKNOWN LINE'S DETAIL, taken from the census's own rendering: everything after the declared
+// word, re-joined whole (a detail that itself quotes the word stays verbatim). An empty detail is
+// still an unknown, named as such -- never a silent nothing.
+fn recover_catalog_unknown_detail(header: String) -> String {
+  let w = recover_catalog_words()
+  let parts = split(s: header, delimiter: w.unknown_header)
+  let rest = match list_at_optional(xs: parts, index: 0) {
+    Present { value: head } => if head == "" { join(skip(xs: parts, n: 1), w.unknown_header) } else { header }
+    Absent => header
+  }
+  let detail = trim(s: rest)
+  if detail == "" {
+    "the census answered unknown with no detail"
+  } else {
+    detail
+  }
+}
+
+// THE DOOR'S UNKNOWN REASON, ONE ARMY'S WORTH OF CODE: the census leg renders its exit-2 answer from
+// STDOUT ALONE. The signature takes no stderr -- whatever the transport printed there cannot become
+// the census's answer, structurally and not by convention.
+fn recover_catalog_unknown_leg_reason(stdout: String) -> RecoverCatalogLegReading {
+  recover_catalog_leg_reading(text: stdout)
 }
 
 // THE CENSUS DOOR, OVER THE PROCESS WIRE -- a READ: no slot is written, no lease is touched, nothing is
@@ -4480,7 +4519,7 @@ recover_catalog_response(instance: instance)
 fn recover_catalog_response(instance: HostDashboardInstance) -> CliWireResponse {
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
-          CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
+          CliWirePrintable { bytes: join([recover_catalog_words().unknown_header, " ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
         RecoverCatalogEstablished { entries } =>
           CliWirePrintable {
             bytes: concat(join([recover_catalog_words().established_header, "\n"], ""), fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),
