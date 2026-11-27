@@ -9,7 +9,6 @@ import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
 import std.algebra { list_snoc_item, length }
 import std.source_annotation { source_annotation_graph_rows }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.compilers.lexing { LexArtifact, lex_artifact_semantic_tokens, token_stream_remaining_count }
 import v2.std.language_model { LanguageModel }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -183,25 +182,14 @@ fn front_end_continue_parse(
 // authored_parse_semantic, plus the annotation half ONCE, as a receipt quantity: annotation_count is
 // length(xs:) over the fold's emitted rows (source_annotation_graph_rows of authored_parse_annotations), the
 // same idiom as the lex stage's token_count. It is a RECEIPT number reported by the stage, NOT the fold's
-// per-row absorbed-capture count and NOT the count that discharges gunbc roadmap node
-// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A -- and it judges nothing: no span is compared here, and the count is never
+// per-row absorbed-capture count (that quantity is a roadmap row's, not this one's: the deferral and its
+// precondition are written on source-annotation-fold-carries-absorbed-capture-count) -- and it judges nothing:
+// no span is compared here, and the count is never
 // compared against the capture count, which would decide std.source_annotation annotation_attach_step's join
 // rule in a second place (gunbc.design_argument::single_authority). The named consumer that reads it back over
 // an executing route is v2.test.claim.staged_front_end
 // staged_front_end_produces_the_authored_parse_for_an_annotated_module, positive on a commented module and zero
 // on an uncommented one.
-// ANNOTATION-ATTACHMENT LOSS IS NOT CHECKED HERE, OR ANYWHERE ELSE. A guard for it stood in this module and
-// then in its test module, where its only consumers were tests of itself; it was deleted rather than left
-// asserting its own existence, and the hole it covered is tracked by the gunbc roadmap node
-// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count), whose carrier is
-// dag/std/source_annotation.dag. The guard's cost shape -- captures x rows calls to the borrowed
-// std.source_annotation::region_contains, a proven defect gunbc.design_argument::how_to_work does not allow to
-// ship -- was MOVED OFF THE PARSE PATH, NOT FIXED. The concrete precondition for a loss check landing anywhere
-// is the fold carrying the absorbed capture count, so the check costs one integer per row instead of a cross
-// product; naming that precondition is what makes the deferral bounded rather than a wish.
-// The row itself asks for no production refusal; its handback is "A production route calls
-// parse_module_authored -- fn front_end_parse_step in v2.compiler.staged_front_end -- and its consumer claim
-// staged_front_end_produces_the_authored_parse_for_an_annotated_module passes by name."
 // `annotation_text` is .dag's delimiter stripping, named at the .dag entry above (run_front_end_to
 // already calls dag_language_model()); the parse itself names no annotation syntax.
 fn front_end_parse_step(
@@ -235,21 +223,6 @@ fn front_end_parse_step(
       )
   }
 }
-
-// THE DECLARED MOMENT TO GATE THE PLACEMENT HALF, carried as a typed row rather than as a promise in a comment.
-// It is UNBOUND because nothing in the tree fires it: the runner that judged this floor was deleted and no
-// workflow passes a --required flag, so binding it to a declaration today would be a trigger that can never
-// fire beside a control that is never run. ITS CONSUMER IS THE CLAIM ACROSS THE GATE, not a test written beside
-// this row: v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
-// probe_pair_rung_agrees_with_the_floors_own_admission reads this row against required_gate_admits, which the
-// floor computes from its OWN selector rosters, so the carrier and the roster are forced to move together --
-// binding this row while no roster row enrols the control, or enrolling a roster row and leaving this row
-// unbound, turns that claim red. A test in this module asserting that this constant is unbound could only
-// change value when an author edits this very row, which is a check green by construction and later cited as
-// coverage (gunbc.design_argument::guarantee_ladder); the claim that used to sit here asserted exactly that
-// constant, and it is deleted.
-data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, the agreement control stays manual and ungated, attachment loss is checked by nothing in the tree, and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
-
 
 
 fn front_end_continue_normalize(

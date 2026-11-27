@@ -94,7 +94,8 @@ data agreement_control_module_name: String = "v2.test.claim.manual.annotation_ga
 // `probe_pair_rung_agrees_with_the_floors_own_admission`, so raising it without a roster row, or enrolling a
 // row without raising it, refuses. Admitting a required-gate row is an operator act on a recorded ruling
 // (gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling), and the moment this rung may rise is
-// declared once as `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`.
+// declared once as `v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair`
+// `front_end_placement_control_next_rung`.
 data agreement_control_rung: AgreementControlRung = ManualUngated
 
 fn row_text(row: SourceAnnotationDebt) -> String {
