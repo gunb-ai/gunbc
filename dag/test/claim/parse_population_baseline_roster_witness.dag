@@ -39,6 +39,8 @@ import gunbc.parse_population_baseline_roster {
   parse_population_receipts_are_publishable,
   parse_population_receipt_durations_are_ordered,
   parse_population_receipt_measurement_shape_is_sealed,
+  parse_population_measurement_cell_kind_render,
+  parse_population_sample_shape_render,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -242,13 +244,13 @@ test fn parse_population_measurement_receipts_record_the_sweep_holds() -> Bool {
 // REFUSED by the ordering predicate. A String wall_seconds could not express this state at all
 // (anemic modeling); the typed triple makes it expressible AND refused.
 data parse_population_planted_reversed_stat_receipt: ParsePopulationMeasurementReceipt =
-  ParsePopulationMeasurementReceipt { cell: "PLANTED", population: "planted: min/max recorded swapped", runs: 3,
+  ParsePopulationMeasurementReceipt { cell: CellA, population: FiveLargest, runs: 3,
     measurement: WallStat { min_wall: microsecond(count: 23300000),
       median_wall: microsecond(count: 22790000), max_wall: microsecond(count: 20160000) },
     peak_rss: byte_size(count: 669093888), modules: 5, declared_refusals: 0, rc: 0,
     binary_sha256: Sha256Digest { hex: "530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150" },
     tree_sha: "65230868362de3efc0ddfeeaeef5d83eeb2fa385" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: "srv1" as HostIdentity,
     boot_id: "c095c0cd-1eaa-4bc7-861d-2bd9756c2bc4" }
 
 test fn parse_population_duration_ordering_refuses_reversed_triple_holds() -> Bool {
@@ -259,13 +261,13 @@ test fn parse_population_duration_ordering_refuses_reversed_triple_holds() -> Bo
 // a cell whose command failed but whose number was recorded anyway — must be REFUSED by the same
 // predicate. If publishability ever degrades to a constant readback, this leg goes red by name.
 data parse_population_planted_failed_receipt: ParsePopulationMeasurementReceipt =
-  ParsePopulationMeasurementReceipt { cell: "PLANTED", population: "planted: rc nonzero recorded anyway", runs: 1,
+  ParsePopulationMeasurementReceipt { cell: CellB, population: Sample165SizeTail, runs: 1,
     measurement: WallStat { min_wall: microsecond(count: 1000000),
       median_wall: microsecond(count: 1000000), max_wall: microsecond(count: 1000000) },
     peak_rss: byte_size(count: 1024), modules: 1, declared_refusals: 0, rc: 1,
     binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
     tree_sha: "0000000000000000000000000000000000000000" as CommitSha,
-    host: "srv1.tailecbe08.ts.net",
+    host: "srv1" as HostIdentity,
     boot_id: "00000000-0000-0000-0000-000000000000" }
 
 test fn parse_population_receipt_publishability_refuses_planted_failed_cell_holds() -> Bool {
@@ -282,15 +284,16 @@ fn parse_population_receipt_count(receipts: List<ParsePopulationMeasurementRecei
 // ProcessTimes under A and the second arm goes DID NOT HOLD -- the old fold skipped the question
 // entirely, so no edit to it reddened anything.
 test fn parse_population_receipt_measurement_shape_seal_refuses_mismatch_holds() -> Bool {
-  parse_population_receipt_measurement_shape_is_sealed(receipt: parse_population_measurement_receipts[0]) &&
-  !parse_population_receipt_measurement_shape_is_sealed(receipt: ParsePopulationMeasurementReceipt {
+  let first_receipt = parse_population_measurement_receipts[0]
+  parse_population_receipt_measurement_shape_is_sealed(receipt: first_receipt) &&
+  !parse_population_receipt_measurement_shape_is_sealed(receipt: some(ParsePopulationMeasurementReceipt {
     cell: CellA, population: FiveLargest, runs: 1,
     measurement: ProcessTimes { utime: microsecond(count: 1), stime: microsecond(count: 1), minor_faults: 1, major_faults: 0, voluntary_ctx_switches: 0, involuntary_ctx_switches: 0 },
     peak_rss: byte_size(count: 1), modules: 1, declared_refusals: 0, rc: 0,
-    binary_sha256: sha256_digest(digest_hex: "0000000000000000000000000000000000000000000000000000000000000000"),
-    tree_sha: "planted", host: operator_host_srv1, boot_id: "planted-boot",
-    fault_injection: "none", note: "ProcessTimes under A: the shape seal must refuse this"
-  })
+    binary_sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
+    tree_sha: "0000000000000000000000000000000000000000" as CommitSha, host: "srv1" as HostIdentity,
+    boot_id: "planted-boot"
+  }))
 }
 
 // 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): every real receipt's
@@ -298,7 +301,8 @@ test fn parse_population_receipt_measurement_shape_seal_refuses_mismatch_holds()
 // parse_population_measurement_cell_kind_render onto another and this leg goes DID NOT HOLD. The
 // report and the roster read these renderings; they copy nothing.
 test fn parse_population_cell_renderings_are_distinct_holds() -> Bool {
-  host_identity_eq(a: parse_population_measurement_receipts[0].host, b: operator_host_srv1)
+  let r0 = parse_population_measurement_receipts[0]
+  host_identity_eq(a: r0.host, b: "srv1" as HostIdentity)
   && string_contains(s: parse_population_measurement_cell_kind_render(cell: CellREF), pattern: "REF")
   && parse_population_measurement_cell_kind_render(cell: CellREF) != parse_population_measurement_cell_kind_render(cell: CellA)
   && parse_population_measurement_cell_kind_render(cell: CellA) != parse_population_measurement_cell_kind_render(cell: CellB)
