@@ -181,10 +181,11 @@ fn crate_v1_write_create_new(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 // ---------------------------------------------------------------------------
 
 fn compiler_image() -> Fingerprint {
-    let exe = std::env::current_exe().expect("current executable");
-    let bytes = fs::read(exe).expect("read running binary");
+    // The image identity comes from the seed's single compiler-identity authority
+    // (`closure_identity::transform_content_digest`), not a second `/proc/self/exe` read in
+    // the test — that path would go stale once a cargo build re-links the binary.
     let mut hash = Sha256::new();
-    hash.update(&bytes);
+    hash.update(v1_compiler::closure_identity::transform_content_digest().as_bytes());
     hash.finalize().into()
 }
 

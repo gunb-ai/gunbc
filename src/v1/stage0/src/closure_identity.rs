@@ -161,29 +161,13 @@ fn census_key_field(hash: &mut sha2::Sha256, bytes: &[u8]) {
     hash.update(bytes);
 }
 
-fn running_compiler_image_sha256() -> String {
-    // THE RUNNING IMAGE, not the path it was started from — the same reason `transform_content_digest`
-    // reads `/proc/self/exe`: a cargo relink replaces the directory entry behind `current_exe()`.
-    let exe = if cfg!(target_os = "linux") {
-        std::path::PathBuf::from("/proc/self/exe")
-    } else {
-        std::env::current_exe().unwrap_or_else(|e| {
-            panic!("census key: cannot locate the running compiler to address its image: {e}")
-        })
-    };
-    let bytes = fs::read(&exe)
-        .unwrap_or_else(|e| panic!("census key: cannot read running compiler {exe:?}: {e}"));
-    let mut hash = sha2::Sha256::new();
-    hash.update(&bytes);
-    hex::encode(hash.finalize())
-}
-
 /// THE cache key for a reusable `v1.symbol.index::build_symbol_index_census` answer.
 ///
 /// Preimage, length-framed (each field is its byte length then its bytes), in this order:
-///   schema tag, question tag, running compiler image SHA-256, the pool entry count, the closure
-///   roster count, each closure module path (sorted), then each `(module path, source bytes)` of
-///   the pool (sorted by module path).
+///   schema tag, question tag, the compiler-image identity digest consumed from
+///   `transform_content_digest` (the single authority — this does NOT re-read or re-hash the
+///   executable), the pool entry count, the closure roster count, each closure module path
+///   (sorted), then each `(module path, source bytes)` of the pool (sorted by module path).
 ///
 /// The closure roster is load-bearing: the census is built over the ENTRY'S CLOSURE module set,
 /// not the whole pool. Two different entries over the same pool but different closures produce a
@@ -201,7 +185,7 @@ fn running_compiler_image_sha256() -> String {
 /// newline index and the resolved graph are derived from these bytes and must NOT enter the
 /// preimage.
 pub fn symbol_census_key(modules: &[(String, String)], closure_roster: &[String]) -> String {
-    let image = running_compiler_image_sha256();
+    let image = transform_content_digest();
     let mut sorted: Vec<(&String, &String)> = modules.iter().map(|(m, c)| (m, c)).collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     let mut roster: Vec<&String> = closure_roster.iter().collect();
