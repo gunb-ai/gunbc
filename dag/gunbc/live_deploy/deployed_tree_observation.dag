@@ -26,6 +26,9 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome,
   RunArgvTransportObserved,
   RunArgvTransportRefused,
+  RunArgvTransportUnanswered,
+  TransportUnansweredOverran,
+  TransportUnansweredWireInconsistent,
   run_argv_over_host_effect_transport_preserving_overrun,
   HostEffectArgvOutcome,
   HostEffectArgvObserved,
@@ -314,6 +317,12 @@ type DeployedTreeLegOutcome
   // not known. It is neither not-attempted (the host WAS asked) nor an overrun (no deadline tripped),
   // so it keeps its own arm; the cause carries the kind of wire failure, not a hard-coded "deadline".
   | DeployedTreeLegWireInconsistent { cause: String }
+  // The leg was DISPATCHED and ran past its wall-clock deadline before the host answered, so the effect
+  // is not known. Distinct from the wire arm: the timeout kind of the dispatched-unknown class, and the
+  // transport-runner path carries no deadline VALUE (only the reason string), so it cannot be
+  // DeployedTreeLegOverran (needs a Second). Naming the kind keeps a timeout from being reported as a
+  // malformed reply -- review 99144.
+  | DeployedTreeLegUnansweredOverrun { reason: String }
 
 // THE HOST STRING A DEADLINE RECEIPT NAMES. Derived from the locus's own resolved target, so the host a
 // leg overran on is spelled the one way it can be; the local arm has no ssh target to name, and naming
@@ -334,7 +343,11 @@ fn deployed_tree_leg_outcome_of(observed: RunArgvTransportOutcome) -> DeployedTr
     RunArgvTransportRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
     // Dispatched, reply unreadable: the deploy-tree leg ran on the host but its result is unknown, so it
     // is a wire-inconsistent leg, not "not attempted".
-    RunArgvTransportUnanswered { cause: _, reason: r } => DeployedTreeLegWireInconsistent { cause: r }
+    RunArgvTransportUnanswered { cause: c, reason: r } =>
+      match c {
+        TransportUnansweredOverran => DeployedTreeLegUnansweredOverrun { reason: r }
+        TransportUnansweredWireInconsistent => DeployedTreeLegWireInconsistent { cause: r }
+      }
   }
 }
 
@@ -403,6 +416,9 @@ type DeployedTreeUnobservableCause
   // answer came back) nor a deadline overrun (nothing tripped a wall). The cause carries the kind of
   // wire failure rather than reusing the overrun sentence.
   | TreeLegWireInconsistent { leg: String, host: String, cause: String }
+  // The leg was DISPATCHED and ran past its wall-clock deadline before the host answered, so whether it
+  // took effect is not known. Rendered from its own sentence, never the malformed-reply one (review 99144).
+  | TreeLegUnansweredOverrun { leg: String, host: String, reason: String }
   | TreeRevisionUndecodable { text: String }
   | TreeStatusUnreadable { detail: String }
 
@@ -427,6 +443,10 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
     TreeLegWireInconsistent { leg: leg, host: host, cause: c } =>
       join([
         "the ", leg, " leg on host ", host, " was DISPATCHED but its reply arrived in an inconsistent wire shape, so whether it took effect is not known: ", c,
+      ], "")
+    TreeLegUnansweredOverrun { leg: leg, host: host, reason: r } =>
+      join([
+        "the ", leg, " leg on host ", host, " was DISPATCHED but ran past its wall-clock deadline before the host answered, so whether it took effect is not known: ", r,
       ], "")
     TreeRevisionUndecodable { text: t } =>
       join(["the revision was read but is not a decodable git object id: ", t], "")
@@ -454,6 +474,15 @@ fn deployed_tree_leg_wire_inconsistent_cause(
   cause: String,
 ) -> DeployedTreeUnobservableCause {
   TreeLegWireInconsistent { leg: leg, host: host, cause: cause }
+}
+
+// The ONE construction of the unanswered-overrun cause, mirroring the wire one.
+fn deployed_tree_leg_unanswered_overrun_cause(
+  leg: String,
+  host: String,
+  reason: String,
+) -> DeployedTreeUnobservableCause {
+  TreeLegUnansweredOverrun { leg: leg, host: host, reason: reason }
 }
 
 // MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
@@ -571,6 +600,7 @@ fn deployed_tree_discard_index(
     DeployedTreeLegRan { result: _ } => verdict
     DeployedTreeLegOverran { deadline: _ } => verdict
     DeployedTreeLegWireInconsistent { cause: _ } => verdict
+    DeployedTreeLegUnansweredOverrun { reason: _ } => verdict
     DeployedTreeLegNotAttempted { reason: _ } => verdict
   }
 }
@@ -605,6 +635,14 @@ fn observe_deployed_tree_owned(
             cause: c,
           ),
       }
+    DeployedTreeLegUnansweredOverrun { reason: r } =>
+      DeployedTreeUnobservable {
+        cause: deployed_tree_leg_unanswered_overrun_cause(
+            leg: "revision",
+            host: deployed_tree_locus_host_text(locus: locus),
+            reason: r,
+          ),
+      }
     DeployedTreeLegRan { result: rev } =>
       if rev.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -636,6 +674,14 @@ fn observe_deployed_tree_owned(
                       leg: "root tree",
                       host: deployed_tree_locus_host_text(locus: locus),
                       cause: c,
+                    ),
+                }
+              DeployedTreeLegUnansweredOverrun { reason: r } =>
+                DeployedTreeUnobservable {
+                  cause: deployed_tree_leg_unanswered_overrun_cause(
+                      leg: "root tree",
+                      host: deployed_tree_locus_host_text(locus: locus),
+                      reason: r,
                     ),
                 }
               DeployedTreeLegRan { result: tr } =>
@@ -702,6 +748,14 @@ fn observe_deployed_tree_against_revision(
             cause: c,
           ),
       }
+    DeployedTreeLegUnansweredOverrun { reason: r } =>
+      DeployedTreeUnobservable {
+        cause: deployed_tree_leg_unanswered_overrun_cause(
+            leg: "index materialization",
+            host: deployed_tree_locus_host_text(locus: locus),
+            reason: r,
+          ),
+      }
     DeployedTreeLegRan { result: rt } =>
       if rt.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -736,6 +790,14 @@ fn observe_deployed_tree_against_revision(
                   cause: c,
                 ),
             }
+          DeployedTreeLegUnansweredOverrun { reason: r } =>
+            DeployedTreeUnobservable {
+              cause: deployed_tree_leg_unanswered_overrun_cause(
+                  leg: "worktree comparison",
+                  host: deployed_tree_locus_host_text(locus: locus),
+                  reason: r,
+                ),
+            }
           DeployedTreeLegRan { result: st } =>
             if st.exit_code != 0 {
               DeployedTreeUnobservable {
@@ -768,6 +830,14 @@ fn observe_deployed_tree_against_revision(
                         leg: "ignored deployed paths",
                         host: deployed_tree_locus_host_text(locus: locus),
                         cause: c,
+                      ),
+                  }
+                DeployedTreeLegUnansweredOverrun { reason: r } =>
+                  DeployedTreeUnobservable {
+                    cause: deployed_tree_leg_unanswered_overrun_cause(
+                        leg: "ignored deployed paths",
+                        host: deployed_tree_locus_host_text(locus: locus),
+                        reason: r,
                       ),
                   }
                 DeployedTreeLegRan { result: ig } =>

@@ -32,6 +32,9 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome,
   RunArgvTransportObserved,
   RunArgvTransportRefused,
+  RunArgvTransportUnanswered,
+  TransportUnansweredOverran,
+  TransportUnansweredWireInconsistent,
   HostEffectArgvWireInconsistent,
   ShellExecObserved,
 }
@@ -52,6 +55,8 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeLegNotAttempted,
   DeployedTreeLegOverran,
   DeployedTreeLegWireInconsistent,
+  DeployedTreeLegUnansweredOverrun,
+  TreeLegUnansweredOverrun,
   deployed_tree_leg_outcome_of,
   deployed_tree_leg_outcome_of_preserving,
   deployed_tree_unobservable_text,
@@ -236,4 +241,61 @@ test fn witness_a_wire_inconsistent_cause_says_effect_not_known() -> Bool {
   string_contains(s: text, pattern: "DISPATCHED")
     && string_contains(s: text, pattern: "not known")
     && !string_contains(s: text, pattern: "never attempted")
+}
+
+// REVIEW 99144 -- the transport-runner path (deployed_tree_leg_outcome_of) collapsed BOTH kinds of
+// RunArgvTransportUnanswered into the wire arm, so a leg that merely ran past its deadline was reported
+// as a malformed reply. The typed cause -- never the reason string -- must pick which dispatched-unknown
+// kind it is, and the prose must name the right one.
+
+// A DEADLINE overrun of a dispatched deploy-tree leg is carried as the unanswered-OVERRUN kind and its
+// prose says it ran past the deadline, never that the reply arrived in an inconsistent wire shape.
+test fn a_dispatched_overrun_is_carried_as_overrun_not_wire_shape() -> Bool {
+  let outcome = deployed_tree_leg_outcome_of(
+    observed: RunArgvTransportUnanswered { cause: TransportUnansweredOverran, reason: "wall clock 900s tripped" },
+  )
+  match outcome {
+    DeployedTreeLegUnansweredOverrun { reason: r } => string_contains(s: r, pattern: "900s")
+    DeployedTreeLegWireInconsistent { cause: _ } => false
+    DeployedTreeLegRan { result: _ } => false
+    DeployedTreeLegNotAttempted { reason: _ } => false
+    DeployedTreeLegOverran { deadline: _ } => false
+  }
+}
+
+// Its rendered prose names a deadline overrun and is not the malformed-reply sentence.
+test fn a_dispatched_overrun_prose_never_says_inconsistent_wire_shape() -> Bool {
+  let outcome = deployed_tree_leg_outcome_of(
+    observed: RunArgvTransportUnanswered { cause: TransportUnansweredOverran, reason: "wall clock 900s tripped" },
+  )
+  match outcome {
+    DeployedTreeLegUnansweredOverrun { reason: r } => {
+      let text = deployed_tree_unobservable_text(
+        cause: TreeLegUnansweredOverrun { leg: "revision", host: "srv9", reason: r },
+      )
+      string_contains(s: text, pattern: "DISPATCHED")
+        && string_contains(s: text, pattern: "ran past its wall-clock deadline")
+        && !string_contains(s: text, pattern: "inconsistent wire shape")
+    }
+    DeployedTreeLegWireInconsistent { cause: _ } => false
+    DeployedTreeLegRan { result: _ } => false
+    DeployedTreeLegNotAttempted { reason: _ } => false
+    DeployedTreeLegOverran { deadline: _ } => false
+  }
+}
+
+// A malformed (inconsistent-wire) reply of a dispatched leg is carried as the WIRE kind -- its prose names
+// the wire shape -- and is never the deadline sentence. The two kinds are not interchangeable.
+test fn a_wire_fault_is_carried_as_wire_shape_not_deadline() -> Bool {
+  let outcome = deployed_tree_leg_outcome_of(
+    observed: RunArgvTransportUnanswered { cause: TransportUnansweredWireInconsistent, reason: "echoed a deadline but overran=false" },
+  )
+  match outcome {
+    DeployedTreeLegWireInconsistent { cause: c } =>
+      string_contains(s: c, pattern: "overran=false") && !string_contains(s: c, pattern: "wall-clock deadline")
+    DeployedTreeLegUnansweredOverrun { reason: _ } => false
+    DeployedTreeLegRan { result: _ } => false
+    DeployedTreeLegNotAttempted { reason: _ } => false
+    DeployedTreeLegOverran { deadline: _ } => false
+  }
 }
