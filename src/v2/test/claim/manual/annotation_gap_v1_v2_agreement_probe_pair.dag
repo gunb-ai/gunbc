@@ -1,10 +1,12 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
 
 import v2.test.claim.manual.annotation_gap_v1_v2_agreement {
-  AgreementControlRung, ManualUngated, GatedRow,
+  ManualUngated, GatedRow,
   agreement_control_module_name, agreement_control_rung
 }
 import v2.workflow.required_floor { required_gate_admits }
+import std.dissolution { dissolution_is_bound }
+import v2.compiler.staged_front_end { front_end_placement_control_next_rung }
 
 // THE ONE CLAIM THAT REACHES OUTSIDE THIS FILE, and why it survives. This module used to carry its own receipt
 // -- the kind of probe, the ref the broken tree is durable on, the two commits where the control was observed
@@ -29,8 +31,11 @@ import v2.workflow.required_floor { required_gate_admits }
 // edit on the other side can turn it red: the control's declared rung, matched against `required_gate_admits`,
 // which the floor computes from its own selector rosters. Enrolling this control without restating its rung, or
 // raising the rung while no roster names it, refuses. Admitting a required-gate row is an operator act on a
-// recorded ruling (gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling), and the moment this rung
-// may rise is declared once as `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`.
+// recorded ruling (gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling). The carrier of the moment
+// this rung may rise lives in ANOTHER module -- `v2.compiler.staged_front_end`
+// `front_end_placement_control_next_rung` -- and the claim below READS it beside the floor's own admission,
+// which is what keeps that carrier from being a promise nobody collects. A claim in the declaring module
+// checking its own constant could only move when its own author edited it.
 //
 // WHERE THE EXECUTIONS ARE, since they are deliberately NOT stored here: no predicate in this language
 // observes a process or a filesystem, so a Bool or a commit-sha string beside a run certifies nothing about
@@ -55,11 +60,17 @@ import v2.workflow.required_floor { required_gate_admits }
 // (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow passes `--required-floor`
 // (witnessed in the negative by dag.test.claim.witness_floor_workflow_consolidation_witness). An arm whose
 // predicate was the same admission question would let the rung be raised on an admission alone, which is an
-// inflated rung passing; the variant and its arm are added together with the authority that could decide them,
-// and `v2.compiler.staged_front_end` `front_end_placement_control_next_rung` declares when.
+// inflated rung passing; the variant and its arm are added together with the authority that could decide them.
+// WHEN that moment is, is carried by `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`,
+// and this claim reads that carrier too: it must stay unbound exactly while the floor admits nothing.
 test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
-  match agreement_control_rung {
-    ManualUngated => !required_gate_admits(module_path: agreement_control_module_name)
-    GatedRow => required_gate_admits(module_path: agreement_control_module_name)
+  // Admission is computed by the floor; the rung is published by the control; the trigger is declared by the
+  // production front end. All three must say the same thing about the same moment, and each of the three
+  // sentences is written in a different module, so an edit to any one of them can turn this claim red.
+  let admits = required_gate_admits(module_path: agreement_control_module_name)
+  let rung_agrees = match agreement_control_rung {
+    ManualUngated => !admits
+    GatedRow => admits
   }
+  rung_agrees && (dissolution_is_bound(condition: front_end_placement_control_next_rung) == admits)
 }

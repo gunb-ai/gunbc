@@ -1,20 +1,8 @@
 module v2.test.claim.staged_front_end
 
-import std.types { List, SourceSpan }
-import std.algebra { fold_list, length, string_contains }
-import std.source_annotation {
-  LeadingAfterLineIndent,
-  NormalizedAnnotationCapture,
-  SourceAnnotationGraph,
-  attach_annotations,
-  region_contains,
-  SourceAnnotationDebt,
-  source_annotation_graph_rows,
-}
-import std.list { first_where }
-import v2.std.compilers.lexing { UnboundSourceAnnotation }
+import std.types { List }
+import std.algebra { fold_list }
 import v2.std.node { Symbol }
-import v2.compiler.parse { authored_normalized_capture }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
   FrontEndParse,
@@ -32,7 +20,7 @@ import v2.compiler.staged_front_end {
   run_front_end,
   run_front_end_to,
 }
-import v2.std.diagnostic { Accepted, DeclarerRefused, Diagnostic, Unavailable, invariant_port_locus }
+import v2.std.diagnostic { Accepted, DeclarerRefused, Diagnostic, Unavailable }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -188,7 +176,7 @@ fn parse_stage_passed_with_nodes(run: FrontEndRun) -> Bool {
 // WHAT IT DOES NOT PROVE, SAID RATHER THAN LEFT TO BE ASSUMED: the count comes from the fold and is only
 // counted here, so it shows the fold emitted rows for the capture -- not WHICH gap a capture landed in
 // (placement is the v1/v2 agreement control's question), and not that an interior loss inside a joined block is
-// caught. Deciding coverage is the guard below, executed by name.
+// caught.
 fn parse_stage_annotation_count(run: FrontEndRun) -> Int {
   fold(run.steps, init: 0, f: fn(acc, step) {
     match step {

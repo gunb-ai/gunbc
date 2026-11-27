@@ -239,13 +239,15 @@ fn front_end_parse_step(
 // THE DECLARED MOMENT TO GATE THE PLACEMENT HALF, carried as a typed row rather than as a promise in a comment.
 // It is UNBOUND because nothing in the tree fires it: the runner that judged this floor was deleted and no
 // workflow passes a --required flag, so binding it to a declaration today would be a trigger that can never
-// fire beside a control that is never run. NOTHING CLAIMS IT. A test asserting that this constant is unbound
-// can only change value when an author edits this very row, which is a check green by construction and later
-// cited as coverage (gunbc.design_argument::guarantee_ladder); the claim that used to sit here asserted that
-// constant and is deleted, and the row stands on its own as the declaration. For what a rung claim has to
-// look like to earn its keep, see v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair, whose
-// surviving claim compares the control's published rung against required_gate_admits, which the floor
-// computes from its own selector rosters -- an edit on the OTHER side can turn that one red.
+// fire beside a control that is never run. ITS CONSUMER IS THE CLAIM ACROSS THE GATE, not a test written beside
+// this row: v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
+// probe_pair_rung_agrees_with_the_floors_own_admission reads this row against required_gate_admits, which the
+// floor computes from its OWN selector rosters, so the carrier and the roster are forced to move together --
+// binding this row while no roster row enrols the control, or enrolling a roster row and leaving this row
+// unbound, turns that claim red. A test in this module asserting that this constant is unbound could only
+// change value when an author edits this very row, which is a check green by construction and later cited as
+// coverage (gunbc.design_argument::guarantee_ladder); the claim that used to sit here asserted exactly that
+// constant, and it is deleted.
 data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, the agreement control stays manual and ungated, attachment loss is checked by nothing in the tree, and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
 
 
