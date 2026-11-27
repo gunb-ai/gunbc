@@ -21,6 +21,7 @@ import gunbc.ci.ci_run_step_target {
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.fleet_converge_plan_cli",
@@ -93,7 +94,7 @@ data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = gunbc_r
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
 // obligation instead of carrying it, and an unbound condition whose subject no longer exists can
 // never report itself fired.
-fn gunbc_ci_fleet_converge_plan_invoke() -> String {
+fn gunbc_ci_fleet_converge_plan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_plan_target,
@@ -101,7 +102,7 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
+fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_launch_environment_plan_target,
@@ -109,7 +110,7 @@ fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
+fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_allocation_store_plan_target,
@@ -117,7 +118,7 @@ fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> String {
+fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
@@ -139,7 +140,7 @@ fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
   ]
 }
 
-fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
+fn gunbc_ci_fleet_converge_plan_revision_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_plan_revision_target,
@@ -147,7 +148,7 @@ fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
+fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_checkout_verify_target,
@@ -155,7 +156,7 @@ fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
   )
 }
 
-fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
+fn gunbc_ci_admit_plan_run_pointer_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_admit_plan_run_pointer_target,
@@ -163,7 +164,7 @@ fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
   )
 }
 
-fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
+fn gunbc_ci_admit_apply_run_pointer_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_admit_apply_run_pointer_target,
@@ -171,7 +172,7 @@ fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
   )
 }
 
-fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
+fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_admit_dashboard_deploy_inputs_target,
@@ -179,7 +180,7 @@ fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
   )
 }
 
-fn gunbc_ci_fleet_converge_apply_invoke() -> String {
+fn gunbc_ci_fleet_converge_apply_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
     source_roots: witness_layer_roots,
@@ -193,7 +194,7 @@ data gunbc_ci_workspace_allocation_plan_target: GunbcRunStepTarget = gunbc_run_s
   function: "fleet_converge_workspace_allocation_plan_wet",
 )
 
-fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
+fn gunbc_ci_workspace_allocation_plan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(source_roots: witness_layer_roots, target: gunbc_ci_workspace_allocation_plan_target,
   receipt_rel: none)
 }

@@ -3,7 +3,7 @@ module gunbc.bmc.bmc_fan_converge
 import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { trim }
+import std.algebra { Cons, Empty, trim, FreeSemigroup }
 import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
@@ -254,29 +254,52 @@ fn bmc_fan_cooling_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
   )
 }
 
+// tach_sensors is carried by std.algebra::FreeSemigroup — the canonical
+// nonempty sequence (no empty inhabitant), so the empty-roster state is
+// unwritable at this boundary rather than checked for at read time
+// (gunbc.design_argument::fail_closed: making a wrong state unwritable beats
+// catching it). The single refusal lives where the roster is built: an empty
+// projection.required_tach_inputs is refused once, with a typed cause, by
+// bmc_fan_typed_observation_plan below.
 type BmcFanTypedObservationPlan {
   config_path: NonEmptyStr
   controller_service: NonEmptyStr
   controller_zone_path: NonEmptyStr
-  tach_sensors: List<NonEmptyStr>
+  tach_sensors: FreeSemigroup<NonEmptyStr>
   temperature_sensors: List<NonEmptyStr>
   controller_machine: NonEmptyStr
 }
 
+type BmcFanTypedObservationPlanBuild
+  = BmcFanTypedObservationPlanBuilt { plan: BmcFanTypedObservationPlan }
+  | BmcFanTypedObservationPlanRefused { reason: NonEmptyStr }
+
 fn bmc_fan_typed_observation_plan(
   projection: BmcFanPolicyProjectionCapability,
   intent: BmcControlPlaneIntent,
-) -> BmcFanTypedObservationPlan {
-  BmcFanTypedObservationPlan {
-    config_path: projection.config_path,
-    controller_service: projection.controller_service,
-    controller_zone_path: projection.controller_zone_path,
-    tach_sensors: projection.required_tach_inputs,
-    temperature_sensors: append(
-      ["TEMP_SOC"],
-      items: intent.fan_policy.thermal_guard.required_component_sensors,
-    ),
-    controller_machine: projection.controller_machine,
+) -> BmcFanTypedObservationPlanBuild {
+  match projection.required_tach_inputs.first() {
+    Absent =>
+      BmcFanTypedObservationPlanRefused {
+        reason: "BMC fan convergence refused: projection required_tach_inputs is empty; a typed observation plan needs a nonempty tach roster",
+      }
+    Present { value: first_tach } =>
+      BmcFanTypedObservationPlanBuilt {
+        plan: BmcFanTypedObservationPlan {
+          config_path: projection.config_path,
+          controller_service: projection.controller_service,
+          controller_zone_path: projection.controller_zone_path,
+          tach_sensors: FreeSemigroup {
+            head: first_tach,
+            tail: projection.required_tach_inputs.skip(n: 1),
+          },
+          temperature_sensors: append(
+            ["TEMP_SOC"],
+            items: intent.fan_policy.thermal_guard.required_component_sensors,
+          ),
+          controller_machine: projection.controller_machine,
+        },
+      }
   }
 }
 
@@ -834,28 +857,36 @@ type BmcFanTachHealthListResult
 
 fn bmc_fan_observe_tach_health_rec(
   session: PasswordSshSession,
-  sensors: List<NonEmptyStr>,
+  sensors: FreeSemigroup<NonEmptyStr>,
   built: List<OpenBmcTachHealth>,
 ) -> BmcFanTachHealthListResult {
-  match sensors.first() {
-    Absent => BmcFanTachHealthListObserved { values: built }
-    Present { value: sensor } =>
-    match openbmc_tach_health(session: session, sensor: sensor) {
-      OpenBmcTachHealthRefused { reason } =>
-        BmcFanTachHealthListRefused { reason: reason }
-      OpenBmcTachHealthObserved { health } =>
-        bmc_fan_observe_tach_health_rec(
-          session: session,
-          sensors: sensors.skip(n: 1),
-          built: append(built, items: [health]),
-        )
-    }
+  match openbmc_tach_health(session: session, sensor: sensors.head) {
+    OpenBmcTachHealthRefused { reason } =>
+      BmcFanTachHealthListRefused { reason: reason }
+    OpenBmcTachHealthObserved { health } =>
+      match sensors.tail {
+        Empty =>
+          BmcFanTachHealthListObserved { values: append(built, items: [health]) }
+        Cons { head: next, tail: rest } =>
+          bmc_fan_observe_tach_health_rec(
+            session: session,
+            sensors: FreeSemigroup { head: next, tail: rest },
+            built: append(built, items: [health]),
+          )
+      }
   }
 }
 
+// The roster arrives as std.algebra::FreeSemigroup (std.algebra): a sequence
+// with no empty inhabitant, so this boundary has no empty case to guard — the
+// guarantee is at the carrier, not a validation check (the
+// gunbc.design_argument::guarantee_ladder ceiling for this domain). The only
+// refusal this fold can produce is a per-sensor observation refusal from
+// openbmc_tach_health, lifted by bmc_fan_observe_typed_parts to
+// BmcFanObservedPartsRefused.
 fn bmc_fan_observe_tach_health(
   session: PasswordSshSession,
-  sensors: List<NonEmptyStr>,
+  sensors: FreeSemigroup<NonEmptyStr>,
 ) -> BmcFanTachHealthListResult {
   bmc_fan_observe_tach_health_rec(
     session: session,
@@ -1217,66 +1248,48 @@ fn bmc_fan_tach_health_for_sensor(
   }
 }
 
-// THE ELIMINATION THE HEAD-OF-LIST WALK OWES, for the two required-sensor folds below. Both took
-// `required.first()` -- a `NonEmptyStr?` -- and reached the name with `as String` inside the receipt
-// text they build, which does not eliminate the absence: a caller reaching those arms with an empty
-// roster would have written `required tach health is absent: Present { value: fan0 }` into the
-// converge receipt, the same wrapper leak `gunbc.clock_read` `probed_at_word` was minted for. The
-// compiler now refuses that cast. The Absent word is loud rather than plausible for the reason
-// `probed_at_word` states: a receipt reader scanning a sensor column must not read the failure as a
-// sensor name. It is unreachable in both callers, which refuse an empty roster one line above, and
-// eliminating here additionally stops an OPTIONAL being handed to the `sensor:` parameters below,
-// which are declared `NonEmptyStr`.
-fn bmc_fan_required_head(required: List<NonEmptyStr>) -> NonEmptyStr {
-  match required.first() {
-    Present { value: sensor } => sensor
-    Absent => "required-sensor-roster-empty" as NonEmptyStr
-  }
-}
-
 fn bmc_fan_first_unhealthy_tach(
   health: List<OpenBmcTachHealth>,
   required: List<NonEmptyStr>,
 ) -> String? {
-  if required.length() == 0 {
-    none
-  } else {
-    let tach = bmc_fan_required_head(required: required)
-    match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
-      Absent =>
-        Present {
-          value: join(["required tach health is absent: ", tach as String], ""),
-        }
-      Present { value: observed } =>
-        match observed {
-          OpenBmcTachThresholdUnstated { sensor: _, reason } =>
+  match required {
+    Empty => none
+    Cons { head: tach, tail: _ } =>
+      match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
+        Absent =>
+          Present {
+            value: join(["required tach health is absent: ", tach as String], ""),
+          }
+        Present { value: observed } =>
+          match observed {
+            OpenBmcTachThresholdUnstated { sensor: _, reason } =>
+              Present {
+                value: join(
+                  ["required tach threshold is unstated: ", tach as String, ": ", reason],
+                  "",
+                ),
+              }
+            OpenBmcTachBelowThreshold { sensor: _, reading_rpm, minimum_rpm, source: _ } =>
             Present {
               value: join(
-                ["required tach threshold is unstated: ", tach as String, ": ", reason],
+                [
+                  "required tach is below its OpenBMC threshold: ",
+                  tach as String,
+                  "=",
+                  to_string(rpm_count(reading_rpm)),
+                  " < ",
+                  to_string(rpm_count(minimum_rpm)),
+                ],
                 "",
               ),
             }
-          OpenBmcTachBelowThreshold { sensor: _, reading_rpm, minimum_rpm, source: _ } =>
-          Present {
-            value: join(
-              [
-                "required tach is below its OpenBMC threshold: ",
-                tach as String,
-                "=",
-                to_string(rpm_count(reading_rpm)),
-                " < ",
-                to_string(rpm_count(minimum_rpm)),
-              ],
-              "",
-            ),
+            OpenBmcTachAtOrAboveThreshold { sensor: _, reading_rpm: _, minimum_rpm: _, source: _ } =>
+              bmc_fan_first_unhealthy_tach(
+                health: health,
+                required: required.skip(n: 1),
+              )
           }
-          OpenBmcTachAtOrAboveThreshold { sensor: _, reading_rpm: _, minimum_rpm: _, source: _ } =>
-            bmc_fan_first_unhealthy_tach(
-              health: health,
-              required: required.skip(n: 1),
-            )
-        }
-    }
+      }
   }
 }
 
@@ -1285,53 +1298,52 @@ fn bmc_fan_first_unhealthy_component(
   required: List<NonEmptyStr>,
   rollback_temperature: Celsius,
 ) -> String? {
-  if required.length() == 0 {
-    none
-  } else {
-    let sensor = bmc_fan_required_head(required: required)
-    match bmc_fan_temperature_for_sensor(
-      temperatures: temperatures,
-      sensor: sensor,
-    ) {
-      Absent =>
-        Present {
-          value: join(["required component temperature is absent: ", sensor as String], ""),
-        }
-      Present { value: BmcFanTemperatureAbsent } =>
-        Present {
-          value: join(["required component temperature is absent: ", sensor as String], ""),
-        }
-      Present { value: BmcFanTemperatureRefused { reason } } =>
-        Present {
-          value: join(
-            ["required component temperature was refused: ", sensor as String, ": ", reason],
-            "",
-          ),
-        }
-      Present { value: BmcFanTemperatureObserved { value: temperature } } =>
-          if celsius_count(temperature) >= celsius_count(rollback_temperature) {
-            Present {
-              value: join(
-                [
-                  "component reached rollback temperature: ",
-                  sensor as String,
-                  "=",
-                  to_string(celsius_count(temperature)),
-                  "C >= ",
-                  to_string(celsius_count(rollback_temperature)),
-                  "C",
-                ],
-                "",
-              ),
-            }
-          } else {
-            bmc_fan_first_unhealthy_component(
-              temperatures: temperatures,
-              required: required.skip(n: 1),
-              rollback_temperature: rollback_temperature,
-            )
+  match required {
+    Empty => none
+    Cons { head: sensor, tail: _ } =>
+      match bmc_fan_temperature_for_sensor(
+        temperatures: temperatures,
+        sensor: sensor,
+      ) {
+        Absent =>
+          Present {
+            value: join(["required component temperature is absent: ", sensor as String], ""),
           }
-    }
+        Present { value: BmcFanTemperatureAbsent } =>
+          Present {
+            value: join(["required component temperature is absent: ", sensor as String], ""),
+          }
+        Present { value: BmcFanTemperatureRefused { reason } } =>
+          Present {
+            value: join(
+              ["required component temperature was refused: ", sensor as String, ": ", reason],
+              "",
+            ),
+          }
+        Present { value: BmcFanTemperatureObserved { value: temperature } } =>
+            if celsius_count(temperature) >= celsius_count(rollback_temperature) {
+              Present {
+                value: join(
+                  [
+                    "component reached rollback temperature: ",
+                    sensor as String,
+                    "=",
+                    to_string(celsius_count(temperature)),
+                    "C >= ",
+                    to_string(celsius_count(rollback_temperature)),
+                    "C",
+                  ],
+                  "",
+                ),
+              }
+            } else {
+              bmc_fan_first_unhealthy_component(
+                temperatures: temperatures,
+                required: required.skip(n: 1),
+                rollback_temperature: rollback_temperature,
+              )
+            }
+      }
   }
 }
 
@@ -1557,12 +1569,16 @@ fn bmc_fan_observe_with_credential(
                         ),
                       }
                     } else {
+                      match bmc_fan_typed_observation_plan(
+                        projection: projection,
+                        intent: fleet_bmc_valid_state,
+                      ) {
+                        BmcFanTypedObservationPlanRefused { reason: reason } =>
+                          BmcFanLiveObservationRefused { reason: reason as String }
+                        BmcFanTypedObservationPlanBuilt { plan: plan } =>
                       match bmc_fan_observe_typed_parts(
                         session: session,
-                        plan: bmc_fan_typed_observation_plan(
-                          projection: projection,
-                          intent: fleet_bmc_valid_state,
-                        ),
+                        plan: plan,
                       ) {
                         BmcFanObservedPartsRefused { reason: reason } =>
                           BmcFanLiveObservationRefused { reason: reason }
@@ -1602,6 +1618,7 @@ fn bmc_fan_observe_with_credential(
                             temperatures: temperatures,
                             controller_machine: projection.controller_machine,
                           )
+                      }
                       }
                     }
                 }

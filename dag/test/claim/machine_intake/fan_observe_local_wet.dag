@@ -58,7 +58,11 @@ test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
     credential,
     concat(credential, mtcollins1_fan_credential_fetch_status_suffix),
   ]
-  let prelude = gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false)
+  let probe_stmts = match gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true) { Accepted { value: v, diagnostics: _ } => v  Rejected { diagnostics: _ } => [] }
+  let prelude = match gunbc_ci_bash_rendered(stmts: probe_stmts, set_e: false) {
+    Accepted { diagnostics: _, value: t } => t
+    Rejected { diagnostics: _ } => ""
+  }
   let written = Filesystem.Write(path: spec_path, content: prelude)
   let planted = planted_paths |> all(p => Filesystem.Write(path: p, content: "planted-eh810-not-a-secret").success)
   let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", concat(concat(concat("env -u WIF_ACCESS_TOKEN RUNNER_TEMP='.' bash '"), spec_path), "'")])
@@ -86,7 +90,10 @@ fn fan_boot_phase_tail_outcome(stem: String, receipt: String) -> FanTailOutcome 
 fn fan_boot_phase_tail_run(stem: String, receipt: String, plant: Bool, from_yml: Bool) -> FanTailOutcome {
   let spec_path = concat(stem, ".sh")
   let out_path = concat(stem, "-output")
-  let tail = gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false)
+  let tail = match gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false) {
+    Accepted { diagnostics: _, value: t } => t
+    Rejected { diagnostics: _ } => ""
+  }
   let _ = if from_yml {
     shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["{ echo 'set -euo pipefail'; sed -n '/--function mtcollins1_fan_observe_boot_phase_wet/,/^        env:/p' .github/workflows/fleet-converge.yml | sed '1d;$d' | sed 's/^          //'; } > '", spec_path, "'"], "")]).exit_code == 0
   } else {

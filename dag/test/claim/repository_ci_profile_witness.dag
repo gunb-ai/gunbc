@@ -7,7 +7,7 @@ import gunbc.heal_publisher_workflow {
   heal_publisher_candidate_directory, HealPublisherPolicy, heal_publisher_resolved_steps,
   heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, outcome_accepted }
 import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
@@ -416,7 +416,7 @@ fn shape_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Bool
         // (gunbc's own drift watch is the opposite shape: it exists to poll, and its emitter refuses a
         // row with no cadence.)
         cron: Absent,
-        check: DagInvocation { entry: "dag/claim/projections.dag", function: "projection_check" },
+        check: outcome_accepted(value: DagInvocation { entry: "dag/claim/projections.dag", function: "projection_check" }),
         seal: if seal {
           Present {
             value: HealSeal {
@@ -445,8 +445,8 @@ fn shape_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Bool
           runner: github_hosted_publisher_runner_target(),
           timeout: minute(45),
           trigger_workflow: "projection-drift",
-          admit_invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" },
-          publish_invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" },
+          admit_invocation: outcome_accepted(value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" }),
+          publish_invocation: outcome_accepted(value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" }),
           // The fixture borrows the public federation rather than inventing a provider path: the claim is
           // about the SHAPE the emitter accepts, and a made-up provider string here would be a fact the
           // witness does not own.
