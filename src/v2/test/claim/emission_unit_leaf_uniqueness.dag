@@ -1,0 +1,89 @@
+module v2.test.claim.emission_unit_leaf_uniqueness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
+import std.types { List, Bool }
+import v2.std.artifact { Artifact, GeneratedSource }
+import v2.std.compilers.emission_unit {
+  EmissionUnit,
+  LeafSpelled,
+  PathSpelled,
+  emission_unit
+}
+import v2.std.compilers.target_model { ModuleScopedPath }
+import v2.std.diagnostic { Accepted, Locus, DeclarationLocus, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EMISSION UNIT'S OWN INVARIANT, AT ONE INTERFACE (DESIGN section 3: supplied values). The inputs
+// are declaration paths of the shape resolution emits; the claims say nothing about the translate
+// fold, which does not consume the unit yet. RED + positive controls, stated per subject:
+//   control  two distinct leaves, LeafSpelled           -> accepted
+//   control  one declaration referenced twice           -> accepted (a repeat is not a collision)
+//   RED      same leaf, two modules, LeafSpelled        -> refused, reason + both module paths
+//   control  the RED's own references under PathSpelled -> accepted (the obligation is leaf-only)
+
+data eu_artifact: Artifact = Artifact { kind: GeneratedSource, id: ^eu_protocol_swift, file_path: "Protocol.swift" }
+
+fn eu_path(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
+fn eu_distinct() -> List<QualifiedName> {
+  [eu_path(dotted: "a.wire.Challenge"), eu_path(dotted: "b.wire.Response")]
+}
+
+fn eu_repeat() -> List<QualifiedName> {
+  [eu_path(dotted: "a.wire.Challenge"), eu_path(dotted: "a.wire.Challenge")]
+}
+
+fn eu_collide() -> List<QualifiedName> {
+  [eu_path(dotted: "a.wire.Challenge"), eu_path(dotted: "b.wire.Challenge")]
+}
+
+fn eu_accepted(o: Outcome<EmissionUnit>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn eu_locus_path(at: Locus) -> String {
+  match at {
+    DeclarationLocus { declaration: q } => qualified_name_to_dotted_string(qn: q)
+    _ => ""
+  }
+}
+
+test fn a_leaf_file_with_two_distinct_leaves_is_accepted_holds() -> Bool {
+  eu_accepted(o: emission_unit(artifact: eu_artifact, spelling: LeafSpelled, referenced: eu_distinct()))
+}
+
+test fn a_leaf_file_referencing_one_declaration_twice_is_accepted_holds() -> Bool {
+  eu_accepted(o: emission_unit(artifact: eu_artifact, spelling: LeafSpelled, referenced: eu_repeat()))
+}
+
+test fn a_leaf_file_with_a_shared_leaf_refuses_naming_both_modules_holds() -> Bool {
+  match emission_unit(artifact: eu_artifact, spelling: LeafSpelled, referenced: eu_collide()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^emission_unit_leaf_collision
+        && eu_locus_path(at: d.head.at) == "a.wire.Challenge"
+        && length(xs: d.tail) == 1
+        && fold(d.tail, init: "", f: fn(acc, x) { eu_locus_path(at: x.at) }) == "b.wire.Challenge"
+  }
+}
+
+test fn the_same_references_under_a_path_spelled_file_are_accepted_holds() -> Bool {
+  eu_accepted(
+    o: emission_unit(
+      artifact: eu_artifact,
+      spelling: PathSpelled {
+        form: ModuleScopedPath { root_text: "Gunbc", scope_separator_text: ".", module_segment_joiner: "." }
+      },
+      referenced: eu_collide()
+    )
+  )
+}
