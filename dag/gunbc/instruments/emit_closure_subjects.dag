@@ -1,11 +1,11 @@
 module gunbc.instruments.emit_closure_subjects
 
-import std.types { Bool, Int, List }
+import std.types { Int, List }
 import std.realization_measurement { AllocationCounter }
 import gunbc.allocation_observation_render { AllocationCase }
 import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
 import gunbc.emit_state_threading_specimen { spec_build }
-import gunbc.instruments.emit_accumulator_subjects { AccRow, acc_cardinality, acc_field_read, acc_field_read_rebuilds, acc_rebuild_copies_context, acc_row_of }
+import gunbc.instruments.emit_accumulator_subjects { acc_cardinality, acc_field_read, acc_field_read_rebuilds, acc_rebuild_copies_context, acc_row_of }
 
 // THE TWO CLOSURE BUILDING BLOCKS the ticket names -- a local closure and an escaping closure -- with their
 // violating arms and their metered pairs: the bodies, the one dispatch path and the rows. They are their own
