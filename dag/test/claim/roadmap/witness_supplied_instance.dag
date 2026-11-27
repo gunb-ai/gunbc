@@ -266,45 +266,82 @@ fn wet_out_verbatim(command: ArgvCommand) -> String {
   }
 }
 
-// THE UNOBSERVABLE CAPTURE SENTINEL. A value no tool can print and no path can spell (it has
-// spaces, so no `is_under` comparison against a run root ever matches it, and every admission
-// that consumes a captured path either compares bytes or refuses on it). A capture that cannot
-// be trusted says THIS, and the claim goes red beside it -- the fail-closed rule: an
-// unobservable answer is a refusal with a name, never an empty string that reads as absence.
-fn witness_capture_unobservable() -> String {
-  "__witness_capture_unobservable__"
+// THE TYPED CAPTURE RESULT (round 10, fail-closed): a refusal is a VARIANT, never a string.
+// A fabricated sentinel string would be exactly the value DESIGN forbids -- a stand-in where
+// a typed answer belongs: guards can collide with it, `is_under` accepts two equal failures as
+// ancestry, and a failed create capture can reach `rm -r` as a path. Comparison, write and
+// cleanup run ONLY on `ObservedPath`; every refusal carries its cause, and callers branch on
+// the variant rather than on a magic spelling.
+type CaptureResult
+  = ObservedPath { path: String }
+  | CaptureRefused { cause: NonEmptyStr }
+
+// THE TYPED LISTING: zero entries is a POSITIVE observation (exit 0, and the tool printed no
+// names), never a shape a refusal may wear. A count is credited only against `Listed`.
+type ChildListing
+  = Listed { names: List<String> }
+  | ListingRefused { cause: NonEmptyStr }
+
+// THE HOST'S LOSSY DECODE LEAVES A TRACE, AND THE TRACE IS THE REFUSAL: the RunArgv drain
+// renders bytes that are not valid UTF-8 as U+FFFD (`String::from_utf8_lossy`,
+// src/v1/stage0/src/bounded_shell_host_drain.rs), so a capture CONTAINING U+FFFD is a name
+// whose bytes the transport already substituted away -- unobservable, refused. The -z family
+// terminates with NUL (realpath(1), ls(1)); U+FFFD is never part of a path a claim may use.
+fn witness_capture_has_replacement(text: String) -> Bool {
+  string_contains(s: text, pattern: "\u{FFFD}")
 }
 
-// ONE TRAILING NUL, STRIPPED AS THE TERMINATOR IT IS. The -z family (realpath -m -z,
-// ls --zero; realpath(1), ls(1), GNU coreutils) terminates each answer line with exactly one
-// NUL and no newline; the host drain's trailing-whitespace trim cannot touch a NUL, so the
-// bytes of a printed path arrive intact. This helper is the whole capture contract: ACCEPT
-// exactly the shape `<one non-empty piece><one NUL>` and return the piece; every other shape
-// -- no terminator, a doubled terminator, an embedded NUL, an empty piece, no output -- is
-// UNOBSERVABLE and returns the sentinel, which the guards below refuse. Nothing here trims,
-// strips, or coerces anything else.
-fn witness_strip_one_nul_terminator(text: String) -> String {
-  let parts = split(s: text, delimiter: "\u0000")
-  match list_head(xs: parts) {
-    Present { value: first } =>
-      if count(parts) == 2 && ends_with(s: text, suffix: "\u0000") && first != "" {
-        first
-      } else {
-        witness_capture_unobservable()
-      }
-    Absent => witness_capture_unobservable()
+// ONE TRAILING NUL, STRIPPED AS THE TERMINATOR IT IS. The -z family terminates each answer
+// with exactly one NUL and no newline; the host drain's trailing-whitespace trim cannot touch
+// a NUL, so the bytes of a printed path arrive intact. The whole capture contract: ACCEPT
+// exactly `<one non-empty piece><one NUL>` and observe the piece; every other shape -- no
+// terminator, a doubled terminator, an embedded NUL, an empty piece, a replacement character,
+// no output -- is `CaptureRefused` with a cause. Nothing here trims, strips, or coerces.
+fn witness_decode_one_nul_terminated(text: String) -> CaptureResult {
+  if witness_capture_has_replacement(text: text) {
+    CaptureRefused { cause: "the capture contains U+FFFD: the host substituted the replacement character for bytes it could not decode, so the path's own bytes are lost" }
+  } else {
+    let parts = split(s: text, delimiter: "\u{0}")
+    match list_head(xs: parts) {
+      Present { value: first } =>
+        if count(parts) == 2 && ends_with(s: text, suffix: "\u{0}") && first != "" {
+          ObservedPath { path: first }
+        } else {
+          CaptureRefused { cause: "the capture is not one non-empty piece terminated by exactly one NUL" }
+        }
+      Absent => CaptureRefused { cause: "the capture has no piece at all" }
+    }
   }
 }
 
 // THE PATH-VALUED CAPTURE. Same RunArgv route as `wet_out_verbatim`, for commands of the -z
-// family: the answer's bytes are kept and only the one NUL terminator is removed. A refused
-// or absent process is UNOBSERVABLE (sentinel), never an empty answer: `realpath -m` refusing
-// an unrecognized option on old coreutils must not read as "resolved to nothing".
-fn wet_out_zero(command: ArgvCommand) -> String {
+// family: the answer's bytes are kept and only the one NUL terminator is removed. A refused or
+// absent process is `CaptureRefused`, never an empty answer: `realpath -m` refusing an
+// unrecognized option on old coreutils must not read as "resolved to nothing".
+fn wet_out_zero(command: ArgvCommand) -> CaptureResult {
   match wet(command: command) {
-    ProcessOutputPresent { text: text } => witness_strip_one_nul_terminator(text: text)
-    ProcessOutputAbsent => witness_capture_unobservable()
-    ProcessRefused { exit_code: _, stderr: _ } => witness_capture_unobservable()
+    ProcessOutputPresent { text: text } => witness_decode_one_nul_terminated(text: text)
+    ProcessOutputAbsent => CaptureRefused { cause: "the process produced no observable output" }
+    ProcessRefused { exit_code: _, stderr: _ } => CaptureRefused { cause: "the process refused" }
+  }
+}
+
+// UNWRAP ONLY AN OBSERVATION, and only where the caller has ALREADY branched on the variant
+// (`capture_was_refused`): the string a claim body carries exists solely in the
+// `ObservedPath` arm's world; a refusal yields the inert empty string that no rm, tee, mkdir
+// or is_under comparison can mistake for a path -- and the typed conjunct has already turned
+// the claim red before any write is reached.
+fn observed_path(capture: CaptureResult) -> String {
+  match capture {
+    ObservedPath { path: path } => path
+    CaptureRefused { cause: _ } => ""
+  }
+}
+
+fn capture_was_refused(capture: CaptureResult) -> Bool {
+  match capture {
+    ObservedPath { path: _ } => false
+    CaptureRefused { cause: _ } => true
   }
 }
 
@@ -312,38 +349,51 @@ fn wet_out_zero(command: ArgvCommand) -> String {
 // the template from [A-Za-z0-9] (mktemp(1), GNU coreutils), so a CREATED name can never end in
 // whitespace and the host's trailing-whitespace trim has nothing to take -- that argument is a
 // property of the template at each call site, which is why it lives beside this helper rather
-// than being assumed of the transport. On top of it, the capture is CHECKED: the captured
-// spelling must pass `witness_path_is_directory` -- the typed `stat -c %F` reading -- for the
-// name to be returned at all. Anything else (a name whose trailing bytes were lost, so the
-// stat refuses; a non-directory; no output) yields the unobservable sentinel, and every
-// downstream admission refuses it.
-fn wet_out_created_directory(command: ArgvCommand) -> String {
+// than being assumed of the transport. On top of it, the capture is CHECKED: it must carry no
+// replacement character and must pass `witness_path_is_directory` -- the typed `stat -c %F`
+// reading -- for the name to be observed at all. A refusal never reaches a caller's writes or
+// cleanup: it is a `CaptureRefused` with a cause, and the claim branches on it.
+fn wet_out_created_directory(command: ArgvCommand) -> CaptureResult {
   let captured = wet_out_verbatim(command: command)
-  if captured == "" || captured == witness_capture_unobservable() {
-    witness_capture_unobservable()
+  if captured == "" {
+    CaptureRefused { cause: "the create printed nothing it could be held to" }
+  } else if witness_capture_has_replacement(text: captured) {
+    CaptureRefused { cause: "the create answer contains U+FFFD: the host substituted the replacement character for bytes it could not decode" }
+  } else if !witness_path_is_directory(candidate: captured) {
+    CaptureRefused { cause: "the captured create answer does not positively stat as a directory under that exact spelling" }
   } else {
-    if witness_path_is_directory(candidate: captured) {
-      captured
+    ObservedPath { path: captured }
+  }
+}
+
+// ENTRIES AS A TYPED LISTING: `ls_child_names_command` prints each entry name terminated by
+// one NUL (ls -A --zero; ls(1)). Decode ZERO OR MORE NUL-terminated entries; a failed listing,
+// a refusal, a replacement character, a missing or doubled terminator, or an empty entry is
+// `ListingRefused` -- NEVER a zero count, which is reserved for `Listed` with no names (exit 0
+// and no output). The split is on NUL, so no name can forge a boundary the way a
+// newline-in-name forged one through the old newline split (round 6 P2).
+fn witness_decode_nul_entries(text: String) -> ChildListing {
+  if witness_capture_has_replacement(text: text) {
+    ListingRefused { cause: "the listing contains U+FFFD: the host substituted the replacement character for bytes it could not decode" }
+  } else if text == "" {
+    Listed { names: list_init(xs: []) }
+  } else if !ends_with(s: text, suffix: "\u{0}") {
+    ListingRefused { cause: "a listing entry was not NUL-terminated" }
+  } else {
+    let parts = split(s: text, delimiter: "\u{0}")
+    if count(filter(parts, e => e == "")) == 1 {
+      Listed { names: filter(parts, e => e != "") }
     } else {
-      witness_capture_unobservable()
+      ListingRefused { cause: "the listing carries an empty entry or a doubled terminator" }
     }
   }
 }
 
-// CHILD NAMES AS A LIST, SPLIT WHERE THE TOOL ENDED THEM: `ls_child_names_command` prints each
-// entry name terminated by one NUL (ls -A --zero; ls(1)); the capture keeps the bytes and
-// removes that terminator, and the split is on NUL, so no name can forge a boundary the way a
-// newline-in-name forged one through the old newline split (round 6 P2). A capture that is not
-// one NUL-terminated shape yields no entries at all -- listing-unobservable is a refusal, and
-// callers that need emptiness prove it with exit 0 and zero entries separately.
-fn wet_out_child_names(path: String) -> List<String> {
-  let out = wet_out_zero(command: ls_child_names_command(path: path))
-  if out == witness_capture_unobservable() {
-    list_init(xs: [])
-  } else if out == "" {
-    list_init(xs: [])
-  } else {
-    split(s: out, delimiter: "\u0000")
+fn wet_out_child_names(path: String) -> ChildListing {
+  match wet(command: ls_child_names_command(path: path)) {
+    ProcessOutputPresent { text: text } => witness_decode_nul_entries(text: text)
+    ProcessOutputAbsent => ListingRefused { cause: "the listing produced no observable output" }
+    ProcessRefused { exit_code: _, stderr: _ } => ListingRefused { cause: "the listing process refused" }
   }
 }
 
@@ -647,19 +697,29 @@ fn witness_path_spelling_is_refused(candidate: String) -> Bool {
 // sibling of a run base, named the base plus one space, resolved EQUAL to the base and passed the under-base
 // admission while the writer still appended to the UNTRIMMED spelling: guard and write differed by exactly
 // what the trim erased. A capture whose trailing bytes are content strips terminators, never whitespace.
-fn witness_resolved_path(candidate: String) -> String {
+fn witness_resolved_path(candidate: String) -> CaptureResult {
   wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: candidate))
 }
 
+// EITHER SIDE UNANSWERED REFUSES. A `CaptureRefused` on the candidate or on the prefix is a
+// refusal of the root -- never a comparison, never a pass: the variants are branched on
+// BEFORE `is_under` sees anything, so two failed resolutions can no more grant ancestry than a
+// failed reading can grant possession.
 fn witness_resolved_root_is_refused(candidate: String) -> Bool {
   let resolved = witness_resolved_path(candidate: candidate)
   let resolved_prefix = witness_resolved_path(candidate: witness_scratch_prefix as String)
-  resolved == ""
-    || resolved_prefix == ""
-    || is_under(text: resolved, root: srv1_dashboard_lab_provision_parent as String)
-    || is_under(text: resolved, root: srv1_dashboard_lab_root as String)
-    || is_under(text: resolved, root: host_capacity_home_root as String)
-    || !is_under(text: resolved, root: resolved_prefix)
+  match resolved {
+    CaptureRefused { cause: _ } => true
+    ObservedPath { path: text } =>
+      match resolved_prefix {
+        CaptureRefused { cause: _ } => true
+        ObservedPath { path: prefix_path } =>
+          is_under(text: text, root: srv1_dashboard_lab_provision_parent as String)
+            || is_under(text: text, root: srv1_dashboard_lab_root as String)
+            || is_under(text: text, root: host_capacity_home_root as String)
+            || !is_under(text: text, root: prefix_path)
+      }
+  }
 }
 
 // A PREFIX TEST, NOT A SUBSTRING TEST, and the direction matters twice over. A substring test would accept
@@ -681,7 +741,14 @@ fn is_under(text: String, root: String) -> Bool {
 fn witness_path_resolves_under(candidate: String, base: String) -> Bool {
   let resolved = witness_resolved_path(candidate: candidate)
   let resolved_base = witness_resolved_path(candidate: base)
-  resolved != "" && resolved_base != "" && is_under(text: resolved, root: resolved_base)
+  match resolved {
+    ObservedPath { path: text } =>
+      match resolved_base {
+        ObservedPath { path: base_text } => is_under(text: text, root: base_text)
+        CaptureRefused { cause: _ } => false
+      }
+    CaptureRefused { cause: _ } => false
+  }
 }
 
 // WHAT THE NAME AT A BASE ACTUALLY IS, AND WHETHER THIS RUN CAN EXCLUSIVELY POSSESS IT -- the two readings

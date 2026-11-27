@@ -111,7 +111,8 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_refused_instance, witness_unnameable_principal,
   witness_supplied_credstore_dir, witness_supplied_credential_source, witness_supplied_credential_is_confined,
   wet_ok, wet_out, wet_out_zero, wet_out_created_directory,
-  wet_out_child_names, witness_capture_unobservable,
+  wet_out_child_names, observed_path, capture_was_refused,
+  CaptureResult, ObservedPath, CaptureRefused, ChildListing, Listed, ListingRefused,
   wet_argv_ok, wet_argv_out,
   witness_path_spelling_is_refused, witness_resolved_root_is_refused, witness_resolved_path,
   witness_claim_helper_locus, witness_locus_dir_text, witness_locus_dag_dir,
@@ -392,18 +393,27 @@ fn wet_claim_root_under(base: String, tag: NonEmptyStr) -> String {
   if witness_supplied_root_is_refused(candidate: base) {
     ""
   } else {
-    let made = wet_out_created_directory(
+    let made_obs = wet_out_created_directory(
       command: mktemp_directory_command(
         template: join([base, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
       ),
     )
-    if made != "" && witness_supplied_root_is_refused(candidate: made) {
-      let _ = wet_stage(stage: "made-root-refused", ok: wet_ok(
-        command: rm_recursive_force_command(path: made),
-      ))
-      ""
-    } else {
-      made
+    match made_obs {
+      ObservedPath { path: made } =>
+        if witness_supplied_root_is_refused(candidate: made) {
+          let _ = wet_stage(stage: "made-root-refused", ok: wet_ok(
+            command: rm_recursive_force_command(path: made),
+          ))
+          ""
+        } else {
+          made
+        }
+      // A refusal is never a path and never a made root: nothing is removed (there is nothing
+      // to remove -- the create was not observed), nothing is returned, and the stage records
+      // WHY, with the variant's own cause.
+      CaptureRefused { cause: cause } =>
+        let _ = wet_stage(stage: join(["made-root-unobservable:", cause], ""), ok: false)
+        ""
     }
   }
 }
@@ -501,13 +511,14 @@ fn wet_plant_guest_sources(instance: HostDashboardInstance) -> Bool {
 // `source/dag` they had never created (4ffbdfcc, stern), and the hand-made `.git` that left every
 // launching leg unable to name a commit (74683828, stern).
 fn wet_plant_guest_sources_sized(instance: HostDashboardInstance, subdirs: List<String>) -> Bool {
-  let checkout = wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: "."))
+  let checkout_obs = wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: "."))
+  let checkout = observed_path(capture: checkout_obs)
   let repo = instance.repo_root as String
   // THE CHECKOUT IS HOST-SAID, NOT ASSUMED. `realpath -m -z .` (realpath(1)) answers the
   // batch's own working directory in canonical spelling, NUL-terminated so the host drain's
   // trailing-whitespace trim cannot touch it; an unobservable reading refuses the plant rather
   // than copying a guessed path.
-  checkout != ""
+  !capture_was_refused(capture: checkout_obs)
     // `repo` itself has to exist before the copy can put a tree in it -- the first attempt missed
     // this and the copy refused on a missing parent, which is the difference between a plant and
     // an intention. The copy is the fleet's OWN route, `shell.Copy.Recursive` (extdeps/shell.dag,
@@ -2560,57 +2571,112 @@ fn reading_is_refused(reading: SandboxTouchReading) -> Bool {
 // HOW MANY ROOTS A CREATE ROUTE ACTUALLY MADE UNDER `base`. The behavioural half of the two
 // before-the-create claims: a refusal is only proven by the ABSENCE of the directory that would have
 // been made, and `mktemp -d` under a base that exists does make one — so removing the guard turns
-// this count from 0 into 1, on a host with no live install root anywhere.
+// this count from 0 into 1, on a host with no live install root anywhere. `-1` is the TYPED REFUSAL of the
+// reading (`ListingRefused`): a listing that failed is never credited as the zero that means
+// "nothing was made", and every expectation here is an equality against 0 or 1 that a refusal
+// cannot satisfy.
 fn wet_names_under(base: String, prefix: NonEmptyStr) -> Int {
   if base == "" {
     0
   } else {
-    count(filter(
-      wet_out_child_names(path: base),
-      e => starts_with(s: e, prefix: prefix as String)
-    ))
+    match wet_out_child_names(path: base) {
+      Listed { names: names } =>
+        count(filter(names, e => starts_with(s: e, prefix: prefix as String)))
+      ListingRefused { cause: _ } => -1
+    }
   }
 }
+
+// TEMPORARY INSTRUMENT (removed before the freeze commit): stages each conjunct of the
+// traversal claim, counting assertions first, so a RED run is attributable from the trail.
 
 test fn the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create() -> Bool {
   let root = wet_claim_root(tag: "sandbox-base-traversal" as NonEmptyStr)
   let parent = join([root, "/admit"], "")
   let made_parent = wet_ok(command: mkdir_parents_command(path: parent))
+  let _ = wet_stage(stage: join(["made-parent:", if made_parent { "ok" } else { "FAILED" }], ""), ok: made_parent)
   // A base that EXISTS, sits under the admitted prefix, and reaches its own directory only through
   // `..`; and the live install root spelled the same way, named rather than approximated. Every
   // string test ever written admits both. The ordinary path beside them is admitted, so this cannot
   // be satisfied by a rule that refuses everything — that is the pair-binding.
   let by_traversal = join([parent, "/../admit"], "")
   let live_spelling = join(["/tmp/../", srv1_dashboard_lab_root as String], "")
-  let refusals_hold = witness_path_spelling_is_refused(candidate: by_traversal)
-    && witness_path_spelling_is_refused(candidate: live_spelling)
-    && witness_supplied_root_is_refused(candidate: live_spelling)
-    && !witness_path_spelling_is_refused(candidate: parent)
+  let refusal_traversal = witness_path_spelling_is_refused(candidate: by_traversal)
+  let _ = wet_stage(stage: join(["refusal-traversal:", if refusal_traversal { "ok" } else { "FAILED" }], ""), ok: refusal_traversal)
+  let refusal_live = witness_path_spelling_is_refused(candidate: live_spelling)
+  let _ = wet_stage(stage: join(["refusal-live:", if refusal_live { "ok" } else { "FAILED" }], ""), ok: refusal_live)
+  let refusal_supplied = witness_supplied_root_is_refused(candidate: live_spelling)
+  let _ = wet_stage(stage: join(["refusal-supplied:", if refusal_supplied { "ok" } else { "FAILED" }], ""), ok: refusal_supplied)
+  let admission_plain = !witness_path_spelling_is_refused(candidate: parent)
+  let _ = wet_stage(stage: join(["admission-plain:", if admission_plain { "ok" } else { "FAILED" }], ""), ok: admission_plain)
   // THE ORDERING, BEHAVIOURALLY. `parent` is a real directory, so an unguarded `mktemp -d` under it
   // succeeds: with the guard removed the answer below is a path and the count is 1, and this claim is
   // the RED that the review asked for. What a refusal must look like is the empty string — the same
   // `Absent` every caller of `wet_claim_root` already turns into a refusal — and nothing anywhere
   // under the base may have been created to produce it.
   let answer = wet_claim_root_under(base: by_traversal, tag: "traversal-probe" as NonEmptyStr)
+  let answer_refused = answer == ""
+  let _ = wet_stage(stage: join(["answer-refused:", if answer_refused { "ok" } else { "FAILED" }], ""), ok: answer_refused)
+  // THE POSITIVE SIDE OF THE SAME READING, so `nothing_made` cannot be satisfied by a counting
+  // route that always says zero: plant exactly two children under `parent`, one wearing the
+  // counted prefix, and the SAME helper must report one. A listing that fails is `-1`
+  // (`ListingRefused`), which no expectation here can mistake for 0 or 1.
+  let two_prefixed = join([parent, "/gunbc-twoentries-two"], "")
+  let one_plain = join([parent, "/matched-name"], "")
+  let locked = join([parent, "/locked"], "")
+  let plant_two_made = wet_ok(command: mkdir_parents_command(path: two_prefixed))
+  let _ = wet_stage(stage: join(["plant-two-made:", if plant_two_made { "ok" } else { "FAILED" }], ""), ok: plant_two_made)
+  let plant_plain_made = wet_ok(command: mkdir_parents_command(path: one_plain))
+  let _ = wet_stage(stage: join(["plant-plain-made:", if plant_plain_made { "ok" } else { "FAILED" }], ""), ok: plant_plain_made)
+  let plant_locked_made = wet_ok(command: mkdir_parents_command(path: locked))
+  let _ = wet_stage(stage: join(["plant-locked-made:", if plant_locked_made { "ok" } else { "FAILED" }], ""), ok: plant_locked_made)
+  let locked_sealed = shell.Chmod.NotSearchableDirectory(path: locked as FilePath).success
+  let _ = wet_stage(stage: join(["locked-sealed:", if locked_sealed { "ok" } else { "FAILED" }], ""), ok: locked_sealed)
+  let two_count = wet_names_under(base: parent, prefix: "gunbc-twoentries-" as NonEmptyStr)
+  let _ = wet_stage(stage: join(["two-count:", if two_count == 1 { "ok" } else { "FAILED" }], ""), ok: two_count == 1)
+  let locked_count = wet_names_under(base: locked, prefix: "gunbc-twoentries-" as NonEmptyStr)
+  let _ = wet_stage(stage: join(["locked-count:", if locked_count == -1 { "ok" } else { "FAILED" }], ""), ok: locked_count == -1)
+  // RESTORE THE MODE BEFORE THE READBACK WIPES THE ROOT: a recursive removal cannot descend a
+  // directory its owner cannot read, so the probe must leave every mode it can still fix. The
+  // probe above already saw the unsearchable answer; keeping it is worth nothing here.
+  let locked_restored = shell.Chmod.OwnerOnlyDirectory(path: locked as FilePath).success
+  let _ = wet_stage(stage: join(["locked-restored:", if locked_restored { "ok" } else { "FAILED" }], ""), ok: locked_restored)
+  let planted_two = plant_two_made && plant_plain_made && plant_locked_made && locked_sealed
+    && two_count == 1 && locked_count == -1 && locked_restored
+  // NOTHING-MADE RUNS AFTER THE PLANTING, DELIBERATELY ORDERED THROUGH STAGED BINDINGS. The
+  // `&&` fold does not fix the order of its operands: the earlier fold read the count mid-plant,
+  // saw the plant's own children under the run prefix, and reported a false `nothing_made` --
+  // the staged trail named it while every other conjunct read ok. An effectful reading never
+  // sits inside a fold beside effects it can observe; bindings fix the order, folds do not.
   let nothing_made = wet_names_under(base: parent, prefix: "gunbc-sandbox-" as NonEmptyStr) == 0
+  let _ = wet_stage(stage: join(["nothing-made-after-plant:", if nothing_made { "ok" } else { "FAILED" }], ""), ok: nothing_made)
+  // THE CONFINEMENT READING COMES LAST, BEHAVIOURALLY: `witness_supplied_roots_are_off_the_live_host`
+  // INSPECTS the instance's scratch layout, and until the effects above have run that layout
+  // does not exist -- an inspection that cannot observe the fixture answers false, not absent.
+  // Binding it through a staged `let` fixes its position in the evaluation after every effect
+  // above; a fold that scheduled it earlier would observe a half-built fixture.
+  let confined = wet_claim_is_confined(
+    instance: wet_supplied_lab_instance(scratch_parent: root),
+    root: root,
+  )
+  let _ = wet_stage(stage: join(["confined:", if confined { "ok" } else { "FAILED" }], ""), ok: confined)
   wet_claim_verdict_with_root_readback(
-    verdict: wet_claim_is_confined(
-      instance: wet_supplied_lab_instance(scratch_parent: root),
-      root: root,
-    )
-      && root != "" && made_parent && refusals_hold && answer == "" && nothing_made,
+    verdict: root != "" && made_parent && planted_two && refusal_traversal && refusal_live
+      && refusal_supplied && admission_plain && answer_refused && nothing_made && confined,
     root: root as NonEmptyStr,
   )
 }
+
 
 test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused() -> Bool {
   let root = wet_claim_root(tag: "sandbox-base-symlink" as NonEmptyStr)
   // A DISPOSABLE DESTINATION, as the review asked. `/var/tmp` is outside the declared scratch prefix
   // `/tmp`, so this is a real escape and not a rename of somewhere already admitted; the claim owns
   // the directory and hands it to the same root readback that removes its own root.
-  let away = wet_out_created_directory(command: mktemp_directory_command(
+  let away_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-alias-target-XXXXXX" as NonEmptyStr,
   ))
+  let away = observed_path(capture: away_obs)
   let link = join([root, "/alias"], "")
   let linked = wet_ok(command: ln_symbolic_force_command(target: away, link_name: link))
   // THE DISCRIMINATING PAIR, and it is the whole claim. The lexical arm ADMITS this path — it is
@@ -2630,7 +2696,7 @@ test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is
       instance: wet_supplied_lab_instance(scratch_parent: root),
       root: root,
     )
-      && root != "" && away != "" && linked && arms_split && answer == "" && nothing_escapes,
+      && root != "" && !capture_was_refused(capture: away_obs) && linked && arms_split && answer == "" && nothing_escapes,
     roots: [root as NonEmptyStr, away as NonEmptyStr],
   )
 }
@@ -2722,9 +2788,10 @@ test fn a_failed_unit_listing_is_never_read_as_a_successful_retirement() -> Bool
 test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_the_supplied_tree() -> Bool {
   let root = wet_claim_root(tag: "stage-trail-symlink" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let away = wet_out_created_directory(command: mktemp_directory_command(
+  let away_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-trail-escape-XXXXXX" as NonEmptyStr,
   ))
+  let away = observed_path(capture: away_obs)
   let green_line = "trail-ownership-control-probe"
   let trail = wet_stage_trail_path()
   let green = trail != ""
@@ -2733,7 +2800,7 @@ test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_t
     && wet_stage_trail_contains(needle: green_line)
   let kept = wet_file_text(path: trail)
   let outside = join([away, "/gunbc-witness-stages.log"], "")
-  let planted = away != ""
+  let planted = !capture_was_refused(capture: away_obs)
     && wet_ok(command: rm_force_command(path: trail))
     && wet_ok(command: ln_symbolic_force_command(target: outside, link_name: trail))
   let arms_split = planted
@@ -2750,7 +2817,7 @@ test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_t
     && wet_stage_trail_contains(needle: green_line)
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && away != "" && green && arms_split && refused && nothing_outside && restored,
+      && root != "" && !capture_was_refused(capture: away_obs) && green && arms_split && refused && nothing_outside && restored,
     roots: [root as NonEmptyStr, away as NonEmptyStr],
   )
 }
@@ -2772,15 +2839,16 @@ test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_t
 test fn a_trail_base_the_run_cannot_exclusively_possess_records_nothing() -> Bool {
   let root = wet_claim_root(tag: "trail-base-ownership" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let ours = wet_out_created_directory(command: mktemp_directory_command(
+  let ours_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/run-owned-XXXXXX"], "") as NonEmptyStr,
   ))
+  let ours = observed_path(capture: ours_obs)
   let ours_trail = join([ours, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
   let shared = "/tmp"
   let shared_trail = join([shared, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
   let shared_before = wet_file_text(path: shared_trail)
   let line = "trail-base-ownership-probe"
-  let admitted = ours != ""
+  let admitted = !capture_was_refused(capture: ours_obs)
     && wet_stage_trail_dir_under(base: ours) == ours
     && wet_stage_trail_path_under(base: ours) == ours_trail
     && wet_stage_under(base: ours, stage: line, ok: true)
@@ -2794,7 +2862,7 @@ test fn a_trail_base_the_run_cannot_exclusively_possess_records_nothing() -> Boo
     && !wet_stage_under(base: "", stage: "trail-base-ownership-escape", ok: true)
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && ours != "" && admitted && foreign_refused && nameless_refused,
+      && root != "" && !capture_was_refused(capture: ours_obs) && admitted && foreign_refused && nameless_refused,
     roots: [root as NonEmptyStr],
   )
 }
@@ -2811,17 +2879,19 @@ test fn a_trail_base_the_run_cannot_exclusively_possess_records_nothing() -> Boo
 test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bool {
   let root = wet_claim_root(tag: "trail-cross-run-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let run_a = wet_out_created_directory(command: mktemp_directory_command(
+  let run_a_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/run-A-XXXXXX"], "") as NonEmptyStr,
   ))
-  let run_b = wet_out_created_directory(command: mktemp_directory_command(
+  let run_a = observed_path(capture: run_a_obs)
+  let run_b_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/run-B-XXXXXX"], "") as NonEmptyStr,
   ))
+  let run_b = observed_path(capture: run_b_obs)
   let a_trail = join([run_a, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
   let b_trail = join([run_b, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
   let line_b = "cross-run-link-probe-in-B"
   let line_a = "cross-run-link-escape-in-A"
-  let admitted = run_a != "" && run_b != ""
+  let admitted = !capture_was_refused(capture: run_a_obs) && !capture_was_refused(capture: run_b_obs)
     && wet_stage_trail_dir_under(base: run_a) == run_a
     && wet_stage_trail_dir_under(base: run_b) == run_b
     && wet_stage_trail_path_under(base: run_a) == a_trail
@@ -2864,25 +2934,32 @@ test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bo
 test fn a_sibling_named_the_base_plus_one_space_never_shares_its_admissions() -> Bool {
   let root = wet_claim_root(tag: "trail-whitespace-sibling" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let run_dir = wet_out_created_directory(command: mktemp_directory_command(
+  let run_dir_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/run-XXXXXX"], "") as NonEmptyStr,
   ))
+  let run_dir = observed_path(capture: run_dir_obs)
   let sibling = join([run_dir, " "], "")
   let run_trail = join([run_dir, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
   let marker = "sibling-pre-existing-marker"
+  // ONE PAYLOAD, BOUND ONCE: what is planted through the tee payload is byte-for-byte what the
+  // readback compares against -- the write and the assertion cannot drift apart by a terminator.
+  let marker_payload = join([marker, "\n"], "")
   let marker_probe = tee_append_command(path: sibling)
-  let staged = run_dir != "" && run_dir != witness_capture_unobservable()
+  let staged = !capture_was_refused(capture: run_dir_obs)
     && shell.Exec.RunArgvStdin(
       program: marker_probe.program.invocation as String,
       arguments: marker_probe.arguments,
-      stdin_payload: join([marker, "\n"], ""),
+      stdin_payload: marker_payload,
     ).exit_code == 0
-  let sibling_resolves_as_itself = witness_resolved_path(candidate: sibling) == sibling
+  let sibling_resolves_as_itself = match witness_resolved_path(candidate: sibling) {
+    ObservedPath { path: text } => text == sibling
+    CaptureRefused { cause: _ } => false
+  }
   let sibling_never_under_base = !witness_path_resolves_under(candidate: sibling, base: run_dir)
   let attack_planted = wet_ok(command: rm_force_command(path: run_trail))
     && wet_ok(command: ln_symbolic_force_command(target: sibling, link_name: run_trail))
   let refused = !wet_stage_under(base: run_dir, stage: "whitespace-sibling-escape", ok: true)
-    && wet_file_text(path: sibling) == marker
+    && wet_file_text(path: sibling) == marker_payload
   let removed = wet_ok(command: rm_force_command(path: run_trail))
   let re_admitted = wet_stage_trail_path_under(base: run_dir) == run_trail
     && wet_stage_under(base: run_dir, stage: "ordinary-after-removal", ok: true)
@@ -2894,6 +2971,90 @@ test fn a_sibling_named_the_base_plus_one_space_never_shares_its_admissions() ->
     roots: [root as NonEmptyStr],
   )
 }
+
+// THE HOST'S LOSSY DECODE REFUSES RATHER THAN FABRICATES. The RunArgv drain renders bytes it
+// cannot decode as U+FFFD (`String::from_utf8_lossy`, bounded_shell_host_drain.rs), and a name
+// carrying the replacement character is NOT any file's name -- it is the transport's own
+// substitution standing where bytes were lost. Observing such a capture would hand a claim a
+// fabricated path: comparisons run against it, admissions grant under bases to it, cleanup rm
+// walks toward it. So the capture contract refuses it: `witness_resolved_path` answers
+// `CaptureRefused`, the staging seam admits nothing, and the child keeps its own bytes only
+// under its own name. The replacement CHARACTER is planted in the name because modeled argv
+// cannot carry raw invalid bytes -- and the decoder sees the host's substitution either way,
+// which is exactly the string the host would hand back. Mutant `mut_fffd_observed` drops the
+// replacement-character guard and goes RED here, because the child then resolves through a
+// reading the transport already corrupted.
+test fn a_capture_the_host_could_not_decode_is_refused_not_fabricated() -> Bool {
+  let root = wet_claim_root(tag: "fffd-capture" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let child = join([root, "/name-\u{FFFD}-with-replacement"], "")
+  let child_payload = "fffd-probe"
+  let child_probe = tee_append_command(path: child)
+  let planted = shell.Exec.RunArgvStdin(
+    program: child_probe.program.invocation as String,
+    arguments: child_probe.arguments,
+    stdin_payload: child_payload,
+  ).exit_code == 0
+  let refused_capture = match witness_resolved_path(candidate: child) {
+    CaptureRefused { cause: _ } => true
+    ObservedPath { path: _ } => false
+  }
+  // The child really IS under the base -- on any sane reading it would be admitted. The refusal
+  // below is therefore about the capture, not about the geometry: the guard refuses even a
+  // path whose every lexical and physical reading says "inside".
+  let nothing_admitted = wet_stage_trail_dir_under(base: child) == ""
+    && !wet_stage_under(base: child, stage: "fffd-probe-stage", ok: true)
+  let bytes_intact = wet_file_text(path: child) == child_payload
+  // WHAT -m PRINTS WHEN IT SHOULD NOT -- AND WHY THE ADMITTED SET IS THE OBSERVED PATHS, NOT
+  // THE STRINGS. Host-verified (coreutils 9.7): `realpath -m` exits 0 on EVERYTHING the kernel
+  // can spell -- a missing component, a regular file mid-path, even a SYMBOLIC LOOP all print
+  // a path. So `-m` never hands the guards a refusal; it hands them text, and the text can lie:
+  // the link below sits under the base and names an OUTSIDE tree, so the candidate string is
+  // "inside" while the resolved path -- the one the guards read -- is outside. The typed
+  // discipline is what turns that around: `is_under` is consulted ONLY against `ObservedPath`,
+  // and the string reading never reaches it. Mutant `mut_string_ancestry` hands `is_under` the
+  // candidate STRING when the resolution is refused (and a refused resolution is now always
+  // suspect, since -m refuses nothing), and `mut_capture_refused_passes` shows the refusal arm
+  // itself is live by forcing one: the REDs are these two assertions.
+  let outside = "/tmp/gunbc-fffd-outside-tree"
+  let outside_probe = tee_append_command(path: join([outside, "/marker"], ""))
+  let outside_ready = wet_ok(command: mkdir_parents_command(path: outside))
+    && shell.Exec.RunArgvStdin(
+      program: outside_probe.program.invocation as String,
+      arguments: outside_probe.arguments,
+      stdin_payload: "outside",
+    ).exit_code == 0
+  let alias_link = join([root, "/alias-to-outside"], "")
+  let alias_made = wet_ok(command: ln_symbolic_force_command(target: outside, link_name: alias_link))
+  let via_alias = join([alias_link, "/payload"], "")
+  let resolved_goes_outside = match witness_resolved_path(candidate: via_alias) {
+    ObservedPath { path: text } => text == join([outside, "/payload"], "")
+    CaptureRefused { cause: _ } => false
+  }
+  let alias_unadmitted = !witness_path_resolves_under(candidate: via_alias, base: root)
+    && wet_stage_trail_dir_under(base: via_alias) == ""
+    && !wet_stage_under(base: via_alias, stage: "alias-probe-stage", ok: true)
+    && wet_claim_root_under(base: via_alias, tag: "alias-probe" as NonEmptyStr) == ""
+  // THE ONE INPUT THAT MAKES -m REFUSE ANYTHING: an empty operand (host-verified: exit 1), so
+  // the `CaptureRefused` arm of the resolution is LIVE, not decorative -- and it is live on the
+  // transport, never on a missing component. Mutant `mut_capture_refused_passes` fabricates an
+  // `ObservedPath` from the candidate string on any refused resolution and goes RED here.
+  let empty_refused = match witness_resolved_path(candidate: "") {
+    CaptureRefused { cause: _ } => true
+    ObservedPath { path: _ } => false
+  }
+  let outside_cleaned = wet_ok(command: rm_recursive_force_command(path: outside))
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && planted && refused_capture && nothing_admitted && bytes_intact
+      && outside_ready && alias_made && resolved_goes_outside && alias_unadmitted
+      && empty_refused && outside_cleaned,
+    roots: [root as NonEmptyStr],
+  )
+}
+
+// TEMPORARY INSTRUMENT (removed before the freeze commit): stages every conjunct of the
+// capture-refusal claim so a RED run can be attributed to its conjunct from the trail.
 
 // THE TRAILING SEPARATOR THAT TURNED EVERY NO-FOLLOW READING INTO A FOLLOWING ONE. The base below is not a
 // directory at all -- it is a symbolic link at ANOTHER RUN's 0700 directory, and it is spelled with a trailing
@@ -2907,14 +3068,15 @@ test fn a_sibling_named_the_base_plus_one_space_never_shares_its_admissions() ->
 test fn a_trailing_slash_on_a_linked_trail_base_records_nothing() -> Bool {
   let root = wet_claim_root(tag: "trail-trailing-slash-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let run_b = wet_out_created_directory(command: mktemp_directory_command(
+  let run_b_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/run-B-XXXXXX"], "") as NonEmptyStr,
   ))
+  let run_b = observed_path(capture: run_b_obs)
   let b_trail = join([run_b, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
   let run_a_link = join([root, "/run-A-link"], "")
   let line_b = "trailing-slash-probe-in-B"
   let line_a = "trailing-slash-escape-into-B"
-  let owned_ok = run_b != ""
+  let owned_ok = !capture_was_refused(capture: run_b_obs)
     && wet_stage_trail_dir_under(base: run_b) == run_b
     && wet_stage_trail_dir_under(base: join([run_b, "/"], "")) == run_b
     && wet_stage_trail_dir_under(base: join([run_b, "//"], "")) == run_b
@@ -2954,12 +3116,14 @@ test fn a_trailing_slash_on_a_linked_trail_base_records_nothing() -> Bool {
 test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
   let root = wet_claim_root(tag: "locus-fold-plan-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let away = wet_out_created_directory(command: mktemp_directory_command(
+  let away_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-fold-escape-XXXXXX" as NonEmptyStr,
   ))
-  let away_deep = wet_out_created_directory(command: mktemp_directory_command(
+  let away = observed_path(capture: away_obs)
+  let away_deep_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-fold-escape-deep-XXXXXX" as NonEmptyStr,
   ))
+  let away_deep = observed_path(capture: away_deep_obs)
   let planted = wet_plant_guest_sources(instance: inst)
   let revision = witness_guest_tree_revision(instance: inst)
   let plan_cause = witness_locus_fold_plan_refused_cause as String
@@ -2969,8 +3133,8 @@ test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
   )
   let clean_admitted = planted
     && revision != ""
-    && away != ""
-    && away_deep != ""
+    && !capture_was_refused(capture: away_obs)
+    && !capture_was_refused(capture: away_deep_obs)
     && !string_contains(s: clean_cause, pattern: plan_cause)
   let src_key = "fold-plan-src-link"
   let src_locus = witness_locus_dir_text(instance: inst, locus_key: src_key as NonEmptyStr)
@@ -3283,9 +3447,10 @@ test fn the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link() -> Boo
   let root = wet_claim_root(tag: "fold-destination-link" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let repo = inst.repo_root as String
-  let escape = wet_out_created_directory(command: mktemp_directory_command(
+  let escape_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/escape-XXXXXX"], "") as NonEmptyStr,
   ))
+  let escape = observed_path(capture: escape_obs)
   let deep_file = join([repo, "/src/v2/workflow/local_repo_wet_terminal.dag"], "")
   let nested_file = join([repo, "/dag/extdeps/tools/findutils.dag"], "")
   let clean_planted = wet_plant_guest_sources_sized(instance: inst, subdirs: ["dag", "src/v2"])
@@ -3316,7 +3481,7 @@ test fn the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link() -> Boo
     && wet_path_exists(path: nested_file)
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && escape != "" && clean_planted
+      && root != "" && !capture_was_refused(capture: escape_obs) && clean_planted
       && top_removed && top_linked && top_refused && top_restored
       && nested_removed && nested_linked && nested_refused && nested_restored,
     roots: [root as NonEmptyStr],
@@ -3337,13 +3502,14 @@ test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let repo = inst.repo_root as String
   let source = join([root, "/source-probe"], "")
-  let escape = wet_out_created_directory(command: mktemp_directory_command(
+  let escape_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: join([root, "/escape-XXXXXX"], "") as NonEmptyStr,
   ))
+  let escape = observed_path(capture: escape_obs)
   let built = wet_ok(command: mkdir_parents_command(path: join([source, "/nested"], "")))
     && Filesystem.Write(path: join([source, "/nested/file.dag"], ""), content: "x" as NonEmptyStr).success
   let good_dest = join([repo, "/probe-good"], "")
-  let admitted = built && escape != ""
+  let admitted = built && !capture_was_refused(capture: escape_obs)
     && witness_tree_install_into_supplied_tree(
       source: source, destination: good_dest, parent: repo, root: repo)
     && wet_path_exists(path: join([good_dest, "/nested/file.dag"], ""))
@@ -3400,9 +3566,10 @@ test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
 test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect() -> Bool {
   let root = wet_claim_root(tag: "locus-destination-symlink" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let away = wet_out_created_directory(command: mktemp_directory_command(
+  let away_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-locus-escape-XXXXXX" as NonEmptyStr,
   ))
+  let away = observed_path(capture: away_obs)
   let named = wet_environment_value(name: wet_served_binary_env_var)
   let planted_tree = wet_plant_confined_tree(instance: inst)
   let staged_ready = planted_tree && named != "" && witness_stage_release_binary(instance: inst, image: named)
@@ -3417,7 +3584,7 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
   let planted_key = "planted-descendant"
   let planted_dir = witness_locus_dir_text(instance: inst, locus_key: planted_key as NonEmptyStr)
   let linked = wet_ok(command: ln_symbolic_force_command(target: away, link_name: planted_dir))
-  let arms_split = away != ""
+  let arms_split = !capture_was_refused(capture: away_obs)
     && linked
     && !witness_path_spelling_is_refused(candidate: planted_dir)
     && witness_resolved_root_is_refused(candidate: planted_dir)
@@ -3425,7 +3592,7 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
     && !witness_locus_destinations_are_admitted(instance: inst, locus_key: planted_key)
   // THE ROUTE REFUSES, AND THE EFFECT DOES NOT HAPPEN ANYWHERE ELSE.
   let route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: planted_key, image: named)
-  let escape_stayed_empty = away != "" && witness_directory_listing_is_provably_empty(path: away)
+  let escape_stayed_empty = !capture_was_refused(capture: away_obs) && witness_directory_listing_is_provably_empty(path: away)
   // THE STAGING NAME ITSELF, PLANTED. The receipt writer stages under the admitted instance root at a name
   // built from the stage key, and "that is under the root, so it is safe" is exactly the reasoning the base
   // guard could never carry: a link standing at that name takes the receipt's bytes out of the supplied tree
@@ -3433,17 +3600,18 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
   // writer admitting its own staging path before it writes it: the predicate refuses the name, the route
   // refuses, and the planted target stays empty.
   let staged_key = "staged-link"
-  let stage_away = wet_out_created_directory(command: mktemp_directory_command(
+  let stage_away_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-locus-stage-escape-XXXXXX" as NonEmptyStr,
   ))
+  let stage_away = observed_path(capture: stage_away_obs)
   let stage_name = join([inst.instance_root as String, "/.gunbc-locus-write-hand-receipt-", staged_key], "")
   let stage_linked = wet_ok(command: ln_symbolic_force_command(target: stage_away, link_name: stage_name))
-  let stage_arms_split = stage_away != ""
+  let stage_arms_split = !capture_was_refused(capture: stage_away_obs)
     && stage_linked
     && witness_locus_destinations_are_admitted(instance: inst, locus_key: staged_key)
     && !witness_locus_destination_is_admitted(candidate: stage_name)
   let stage_route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: staged_key, image: named)
-  let stage_escape_stayed_empty = stage_away != ""
+  let stage_escape_stayed_empty = !capture_was_refused(capture: stage_away_obs)
     && witness_directory_listing_is_provably_empty(path: stage_away)
   let recorded = wet_stage_trail_contains(
       needle: join([witness_locus_destination_refused_stage as String, planted_key], ""),
@@ -3473,9 +3641,10 @@ test fn a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse() -
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let claim = "a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse"
   let unit_key = "locus-order-probe"
-  let away = wet_out_created_directory(command: mktemp_directory_command(
+  let away_obs = wet_out_created_directory(command: mktemp_directory_command(
     template: "/var/tmp/gunbc-witness-locus-order-XXXXXX" as NonEmptyStr,
   ))
+  let away = observed_path(capture: away_obs)
   let planted_dir = witness_locus_dir_text(instance: inst, locus_key: unit_key as NonEmptyStr)
   let linked = wet_ok(command: ln_symbolic_force_command(target: away, link_name: planted_dir))
   let outcome = wet_worker_unit_start(
@@ -3506,10 +3675,10 @@ test fn a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse() -
   let locus_refusal_recorded = wet_stage_trail_contains(
     needle: join(["claim-locus-refused:", unit_key], ""),
   )
-  let escape_stayed_empty = away != "" && witness_directory_listing_is_provably_empty(path: away)
+  let escape_stayed_empty = !capture_was_refused(capture: away_obs) && witness_directory_listing_is_provably_empty(path: away)
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && away != "" && linked && named_the_locus && no_launcher_excuse
+      && root != "" && !capture_was_refused(capture: away_obs) && linked && named_the_locus && no_launcher_excuse
       && locus_refusal_recorded && escape_stayed_empty,
     roots: [root as NonEmptyStr, away as NonEmptyStr],
   )
@@ -3537,8 +3706,13 @@ test fn the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_
   // against a guard that simply always refuses: `realpath -m` is asked, and it answers with the live
   // install root -- so a fold handed a directory derived from this base would have installed its
   // root-owned helper tree inside the host's own lab root.
-  let resolved_escape = wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: by_traversal))
-  let lands_in_the_live_root = starts_with(s: resolved_escape, prefix: srv1_dashboard_lab_root as String)
+  let lands_in_the_live_root = match wet_out_zero(
+    command: realpath_canonicalize_missing_zero_command(path: by_traversal),
+  ) {
+    ObservedPath { path: resolved_escape } =>
+      starts_with(s: resolved_escape, prefix: srv1_dashboard_lab_root as String)
+    CaptureRefused { cause: _ } => false
+  }
   let admitted_base = witness_batch_locus_base(instance: inst)
   let fold_target = witness_locus_dir_text(instance: inst, locus_key: "regression-key" as NonEmptyStr)
   let target_follows_the_base = !witness_supplied_root_is_refused(candidate: admitted_base)
@@ -3569,10 +3743,9 @@ test fn the_guard_refuses_a_path_it_cannot_resolve() -> Bool {
   let blocked = join([root, "/blocked"], "")
   let made = Filesystem.Write(path: blocked, content: "not a directory" as NonEmptyStr).success
   let beneath = join([blocked, "/gunbc-sandbox-probe-abc123"], "")
-  let tool_answered = wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: beneath))
-    != ""
-    && wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: beneath))
-    != witness_capture_unobservable()
+  let tool_answered = !capture_was_refused(
+    capture: wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: beneath)),
+  )
   let refuses_silence = witness_resolved_root_is_refused(candidate: "")
     && witness_supplied_root_is_refused(candidate: "")
   let admitted = !witness_supplied_root_is_refused(candidate: root)
@@ -3931,7 +4104,8 @@ test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
   // legs go with it.
   let root = wet_claim_root(tag: "plant" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
-  let checkout = wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: "."))
+  let checkout_obs = wet_out_zero(command: realpath_canonicalize_missing_zero_command(path: "."))
+  let checkout = observed_path(capture: checkout_obs)
   // The launcher is handed `wet_witness_entry(instance: inst)` -- an accessor over the row, so
   // if the row's repo_root derivation changes this leg moves with it instead of passing on a
   // restated literal.
@@ -3943,7 +4117,7 @@ test fn the_planted_guest_inputs_reach_the_paths_the_row_derives() -> Bool {
     // path present and the leg vacuous, so the planted entry is compared against the checkout the
     // host reports it was copied from. An EMPTY read is refused too -- both sides unreadable would
     // otherwise compare equal and pass.
-    && checkout != ""
+    && !capture_was_refused(capture: checkout_obs)
     && wet_file_text(path: entry) != ""
     && wet_file_text(path: entry)
          == wet_file_text(path: join([checkout, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], ""))
