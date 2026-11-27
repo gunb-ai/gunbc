@@ -77,6 +77,7 @@ import gunbc.compute.work_provider_local {
   ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
   compute_recover_attempt,
   compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
+  recover_catalog_leg_reading, RecoverCatalogLegUnknown, recover_catalog_unknown_leg_reason, recover_catalog_words,
   compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
   compute_open_attempt, compute_settle_attempt, compute_recover_attempt_resolved,
   compute_seat_exit_spool_dir, ComputeSeatExitSpoolDirResolved, ComputeSeatExitSpoolDirUidUnreadable,
@@ -593,6 +594,59 @@ test fn a_terminal_slot_with_an_unconsultable_ledger_stays_unknown() -> Bool {
   terminal_slot_with_unconsultable_ledger_stays_unknown()
 }
 
+// THE DECLARED UNKNOWN LINE, READ AS THE CENSUS ANSWERING (the red control for the census-unknown-
+// reason node): exit 2's stdout "<line_prefix> unknown: <detail>" is the census's own account, and the
+// door's reason carries THOSE WORDS -- not the "not one this door established" fallback, and never
+// anything from stderr. Run 45762320308 logged "user_work_scope: observed-bound arm did not admit
+// (chain-unbounded)" -- a transport note printed before a SUCCESSFUL wrap -- as the census's cause;
+// that conflation is what these claims make unwritable.
+fn unknown_wire_line_is_read_as_the_census_answering() -> Bool {
+  let w = recover_catalog_words()
+  let detail = "2c56092770fe88b27a6fb4c2baf546a5520ab42518314397904d2f0bd744b346#1: the attempt is already terminal:recovered, so the seat stays charged"
+  match recover_catalog_leg_reading(text: join([w.unknown_header, " ", detail, "\n"], "")) {
+    RecoverCatalogLegUnknown { detail: d } =>
+      string_contains(s: d, pattern: "2c56092770fe88b27a6fb4c2baf546a5520ab42518314397904d2f0bd744b346#1")
+        && string_contains(s: d, pattern: "the seat stays charged")
+        && !string_contains(s: d, pattern: "not one this door established")
+    _ => false
+  }
+}
+
+fn an_unknown_wire_line_with_no_detail_still_names_the_census() -> Bool {
+  let w = recover_catalog_words()
+  match recover_catalog_leg_reading(text: join([w.unknown_header, " \n"], "")) {
+    RecoverCatalogLegUnknown { detail: d } => string_contains(s: d, pattern: "no detail")
+    _ => false
+  }
+}
+
+// A detail that itself QUOTES the declared word survives the read whole -- the door's reason is the
+// census's sentence, not a reconstruction.
+fn an_unknown_detail_quoting_the_census_word_stays_whole() -> Bool {
+  let w = recover_catalog_words()
+  let quoted = join(["the census said ", w.unknown_header, " twice and kept its meaning"], "")
+  match recover_catalog_leg_reading(text: join([w.unknown_header, " ", quoted, "\n"], "")) {
+    RecoverCatalogLegUnknown { detail: d } =>
+      string_contains(s: d, pattern: "twice and kept its meaning") && string_contains(s: d, pattern: w.unknown_header)
+    _ => false
+  }
+}
+
+// THE UNKNOWN ARM IS UNKNOWN-ONLY (review 99119): a stdout that would render an established census
+// beside an exit-2 door is the mismatch itself -- a mis-wired door or a partial write -- and must be
+// named as such, never promoted to knowledge. The exit outranks the rendering in BOTH directions.
+fn an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch() -> Bool {
+  let w = recover_catalog_words()
+  let established = join([w.established_header, "\n", w.line_prefix, " hold 011dfdd6994daf46de8174964505717cd12cb8a80d4c577aa9b4890f1ceb0448#1\n"], "")
+  match recover_catalog_unknown_leg_reason(stdout: established) {
+    RecoverCatalogLegUnknown { detail: d } =>
+      string_contains(s: d, pattern: "exited unknown")
+        && string_contains(s: d, pattern: "established census")
+        && !string_contains(s: d, pattern: "hold")
+    _ => false
+  }
+}
+
 fn run_compute_recover_catalog_witness() -> ProcessExit {
   let red = join([
     check_or_name(name: "an_empty_seat_contributes_no_reference_to_a_plan", held: census_of_an_empty_seat_names_no_reference()),
@@ -620,6 +674,10 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "a_refused_reservation_is_censused_never_charged", held: refused_reservation_censuses_never_charged()),
     check_or_name(name: "the_recovery_write_on_a_never_charged_slot_says_nothing_is_held", held: refused_reservation_door_says_nothing_is_held()),
     check_or_name(name: "a_terminal_slot_with_an_unconsultable_ledger_stays_unknown", held: terminal_slot_with_unconsultable_ledger_stays_unknown()),
+    check_or_name(name: "unknown_wire_line_is_read_as_the_census_answering", held: unknown_wire_line_is_read_as_the_census_answering()),
+    check_or_name(name: "an_unknown_wire_line_with_no_detail_still_names_the_census", held: an_unknown_wire_line_with_no_detail_still_names_the_census()),
+    check_or_name(name: "an_unknown_detail_quoting_the_census_word_stays_whole", held: an_unknown_detail_quoting_the_census_word_stays_whole()),
+    check_or_name(name: "an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch", held: an_exit_two_stdout_rendering_established_reads_as_a_named_mismatch()),
   ], "")
   if red == "" {
     ExitSuccess

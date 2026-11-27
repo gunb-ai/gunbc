@@ -10,7 +10,6 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_events_branch, roadmap_events_decode_reads, EventFileRead, EventFileContent, EventFileUnreadable, RoadmapEventsRead, EventsRead, EventsReadRefused,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, roadmap_all_events_of_reads,
   CarrierExecOk, CarrierExecFailed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
-  SnapshotCloseVerificationFailed, CarrierCloseVerification, CloseVerifyRegistrationPersists, CloseVerifyRegistrationPresenceUnobservable, CloseVerifyDirectoryPersists, CloseVerifyDirectoryPresenceUnobservable, carrier_close_verification_reason,
   carrier_snapshot_close_of, carrier_snapshot_close_failure, carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
   roadmap_event_parent_admitted,
 }
@@ -113,9 +112,8 @@ test fn a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree() -
     SnapshotCloseFailed { worktree, exit_code, stderr: _ } => (worktree as String) == (private.worktree as String) && exit_code == 128
     SnapshotClosed => false
     SnapshotNotOpened => false
-    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false
   }
-  let closed_is_closed = match closed { SnapshotClosed => true  SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false  SnapshotNotOpened => false  SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false }
+  let closed_is_closed = match closed { SnapshotClosed => true  SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false  SnapshotNotOpened => false }
   let sentence = match carrier_snapshot_close_failure(close: failed) {
     Present { value: line } => string_contains(s: line, pattern: "/tmp/tmp.snap/roadmap-events") && string_contains(s: line, pattern: "exit 128") && string_contains(s: line, pattern: "cannot remove working tree")
     Absent => false
@@ -125,49 +123,6 @@ test fn a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree() -
   failed_is_named && closed_is_closed && sentence && silent
     && count(carrier_snapshot_close_failures(closes: [closed, failed, SnapshotNotOpened, failed])) == 2
     && count(carrier_snapshot_close_failures(closes: [closed, SnapshotNotOpened])) == 0
-}
-
-// A CLOSE VERIFICATION FAILURE IS A FAILURE, NOT A CLOSED SNAPSHOT AND NOT A FABRICATED EXIT 0. The
-// close verdict comes from OBSERVATIONS, not a command exit; when cleanliness is not established the
-// standing must (a) fail toward the leak -- never SnapshotClosed, never the exit_code:0 fabrication the
-// old code printed -- (b) name the worktree, (c) be counted as a failure beside a command failure, and
-// (d) carry its own typed cause, so an unobservable absence is distinguishable from a persistence. The
-// red each assertion flips: a verification standing reported as closed, as an exit code, or as silent.
-test fn a_close_verification_failure_fails_toward_the_leak_and_names_its_cause() -> Bool {
-  let reg = SnapshotCloseVerificationFailed { worktree: "/tmp/tmp.lease/roadmap-events" as FilePath, verification: CloseVerifyRegistrationPersists }
-  let dir = SnapshotCloseVerificationFailed { worktree: "/tmp/tmp.lease/roadmap-events" as FilePath, verification: CloseVerifyDirectoryPersists }
-  let unknown = SnapshotCloseVerificationFailed { worktree: "/tmp/tmp.lease/roadmap-events" as FilePath, verification: CloseVerifyDirectoryPresenceUnobservable { reason: "the parent listing failed with a permission error" } }
-  let reg_unobs = SnapshotCloseVerificationFailed { worktree: "/tmp/tmp.lease/roadmap-events" as FilePath, verification: CloseVerifyRegistrationPresenceUnobservable { reason: "the listing exited 128: index.lock" } }
-  let named = match carrier_snapshot_close_failure(close: reg) {
-    Present { value: line } => string_contains(s: line, pattern: "/tmp/tmp.lease/roadmap-events") && string_contains(s: line, pattern: "could not be verified clean") && string_contains(s: line, pattern: "worktree list")
-    Absent => false
-  }
-  let dir_named = match carrier_snapshot_close_failure(close: dir) {
-    Present { value: line } => string_contains(s: line, pattern: "scratch directory is still present")
-    Absent => false
-  }
-  let unobservable_named = match carrier_snapshot_close_failure(close: unknown) {
-    Present { value: line } => string_contains(s: line, pattern: "absence is not established") && string_contains(s: line, pattern: "permission error")
-    Absent => false
-  }
-  // A failed listing is its OWN standing: it names the listing's failure, not a persistence.
-  let reg_unobs_named = match carrier_snapshot_close_failure(close: reg_unobs) {
-    Present { value: line } => string_contains(s: line, pattern: "registration") && string_contains(s: line, pattern: "absence is not established") && string_contains(s: line, pattern: "index.lock")
-    Absent => false
-  }
-  // None of the three carries a fabricated exit code: the standing is not a SnapshotCloseFailed at all.
-  let is_not_an_exit_code = match reg {
-    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
-    SnapshotClosed => false
-    SnapshotNotOpened => false
-    SnapshotCloseVerificationFailed { worktree, verification } => (worktree as String) == "/tmp/tmp.lease/roadmap-events"
-  }
-  // Counted as a failure alongside a real command failure; closed/never-opened stay silent. Four verification causes.
-  let counted = count(carrier_snapshot_close_failures(closes: [reg, dir, unknown, reg_unobs, SnapshotClosed, SnapshotNotOpened])) == 4
-  // Distinct causes: neither unobservable reads collapses into a persistence.
-  let causes_distinct = carrier_close_verification_reason(verification: CloseVerifyDirectoryPresenceUnobservable { reason: "r" }) != carrier_close_verification_reason(verification: CloseVerifyDirectoryPersists)
-    && carrier_close_verification_reason(verification: CloseVerifyRegistrationPresenceUnobservable { reason: "r" }) != carrier_close_verification_reason(verification: CloseVerifyRegistrationPersists)
-  named && dir_named && unobservable_named && reg_unobs_named && is_not_an_exit_code && counted && causes_distinct
 }
 
 // A REPORT STATES THE LEAK AFTER ITS OWN ANSWER AND IS OTHERWISE UNTOUCHED: with a closed snapshot

@@ -81,6 +81,7 @@ import gunbc.compute.attempt_lifecycle {
   compute_pre_launch_ceiling_seconds,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.compute.seat_cgroup_absence { SeatCgroupEndProof, SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable, observe_seat_cgroup_end_proof }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -1556,6 +1557,24 @@ fn unit_lifecycle_by_wait(population: UnitPopulation, missing: String) -> UnitLi
   }
 }
 
+// THE THIRD ADMISSIBLE ACCOUNT FOR RECOVERY, consulted only beside the manager's not-found reading
+// and the hook's silence (gunbc.compute.seat_cgroup_absence states why ENOENT on the unit's own cgroup
+// is a kernel-level end proof, and the two guards that keep a wrong spelling from releasing a live
+// seat). Recovery holds no wait account, so today this arm can only answer Unknown and the seat stays
+// charged forever unless the operator rules seat by seat -- srv1's 011dfdd class and srv3's two seats
+// were all this shape. A PRESERVE or UNOBSERVABLE reading falls back to exactly the old answer, with
+// what the cgroup said added to the reason: fail_closed, a located diagnostic and never a release.
+fn seat_cgroup_or_wait(proof: SeatCgroupEndProof, population: UnitPopulation, missing: String) -> UnitLifecycle {
+  match proof {
+    SeatCgroupEnded { detail: d } =>
+      UnitTerminatedCauseUnknown { detail: join([missing, "; the end is nonetheless established by the kernel: ", d], "") }
+    SeatCgroupPreserve { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup still holds processes: ", d], ""))
+    SeatCgroupUnobservable { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup says nothing: ", d], ""))
+  }
+}
+
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
       // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
       // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
@@ -1609,6 +1628,13 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
 // unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
 type UnitLifecycleObservations {
   load_state: UnitPropertyReading
+  // THE SEAT'S OWN CGROUP, observed through gunbc.compute.seat_cgroup_absence: the kernel's answer to
+  // "can anything this unit launched still run". Consulted at exactly ONE arm below -- the manager's
+  // not-found reading beside the hook's silence -- where today the seat can only stay unknown; every
+  // other reading either outranks it (occupied processes) or outranks IT (the manager refusing the
+  // question, the hook's own record). Witness test.claim.compute.seat_cgroup_absence_witness claims
+  // each of those orderings with supplied values.
+  seat_cgroup: SeatCgroupEndProof
   // THE SEAT'S OWN RECORD, for the same reason the termination fold carries it: the two folds must agree
   // about what a manager's absence is worth, and they can only agree if they are deciding on the same
   // reading. test.claim.compute.manager_unaskable_wet_witness asserts that agreement as a relation.
@@ -1665,7 +1691,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
           SeatStopRecordFound { invocation_id, end } =>
             UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
           SeatStopRecordNone =>
-            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
+            // Without the record the manager itself ran, the manager can only say it does not LIST the
+            // unit -- and the seat's own wait, which used to be the only other admissible account here,
+            // is exactly what fails for a seat launched before the hook existed. The kernel's own account
+            // of the unit's cgroup is consulted third (seat_cgroup_or_wait); what it cannot say falls back
+            // to the old, refusing answer.
+            seat_cgroup_or_wait(proof: o.seat_cgroup, population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
           SeatStopRecordUnreadable { cause } =>
             unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and its exit spool could not be read, so the hook says nothing: ", cause], ""))
           SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
@@ -1702,11 +1733,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
 fn observe_unit_lifecycle(unit: NonEmptyStr, stop_record: SeatStopRecord) -> UnitLifecycle {
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_lifecycle_decide(o: UnitLifecycleObservations {
-    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
+    stop_record: stop_record,
     active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
     result: read_user_unit_property(unit: unit, property: unit_result_property),
     population: unit_population(control_group: cg, events: read_cgroup_events(control_group: cg)),
+    seat_cgroup: observe_seat_cgroup_end_proof(unit: unit),
   })
 }
 
@@ -4318,7 +4350,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 // (gunbc.design_argument::single_authority; minimize_redundancy: "a concept is modeled once and every
 // use derived from it"). The pairing of an authorization arm to its word lives in the one match that
 // renders it; what the WORDS are lives only here.
-type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String }
+type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String, unknown_header: String }
 
 fn recover_catalog_words() -> RecoverCatalogWords {
   let prefix = "recover-catalog"
@@ -4330,6 +4362,12 @@ fn recover_catalog_words() -> RecoverCatalogWords {
     refused: "refused",
     never_charged: "never-charged",
     established_header: join([prefix, " established"], ""),
+    // THE DECLARED UNKNOWN LINE. compute_recover_catalog_cli prints exactly this word onto STDOUT at
+    // exit 2 (the census's own account of what it could not establish); the reader below must READ it
+    // as the census's answer -- an unknown REASON is the census speaking, never the transport's stderr.
+    // The word carries no trailing space: the reader matches it after trim, where a trailing space
+    // would vanish and the match would fail.
+    unknown_header: join([prefix, " unknown:", ""], ""),
   }
 }
 
@@ -4429,7 +4467,15 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
   match list_at_optional(xs: lines, index: 0) {
     Absent => RecoverCatalogLegUnknown { detail: "the census answered with nothing to read" }
     Present { value: header } =>
-      if trim(s: header) != recover_catalog_words().established_header {
+      if starts_with(s: trim(s: header), prefix: recover_catalog_words().unknown_header) {
+        // THE DECLARED UNKNOWN LINE, READ AS THE CENSUS'S OWN ANSWER: exit 2 carries
+        // "<line_prefix> unknown: <detail>" on stdout, and its text IS the door's reason -- never any
+        // stderr, which belongs to the transport (the user-work-scope trampoline's pre-wrap diagnostics
+        // print there; once one of them was logged as a cause of the census itself refusing, run
+        // 45762320308: "observed-bound arm did not admit (chain-unbounded)" while the census had in
+        // fact answered in full).
+        RecoverCatalogLegUnknown { detail: recover_catalog_unknown_detail(header: trim(s: header)) }
+      } else if trim(s: header) != recover_catalog_words().established_header {
         RecoverCatalogLegUnknown { detail: join(["the census answer is not one this door established (first line: ", trim(s: header), ")"], "") }
       } else {
         let body = skip(xs: lines, n: 1)
@@ -4448,6 +4494,43 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
           }
         }
       }
+  }
+}
+
+// THE UNKNOWN LINE'S DETAIL, taken from the census's own rendering: everything after the declared
+// word, re-joined whole (a detail that itself quotes the word stays verbatim). An empty detail is
+// still an unknown, named as such -- never a silent nothing.
+fn recover_catalog_unknown_detail(header: String) -> String {
+  let w = recover_catalog_words()
+  let parts = split(s: header, delimiter: w.unknown_header)
+  let rest = match list_at_optional(xs: parts, index: 0) {
+    Present { value: head } => if head == "" { join(skip(xs: parts, n: 1), w.unknown_header) } else { header }
+    Absent => header
+  }
+  let detail = trim(s: rest)
+  if detail == "" {
+    "the census answered unknown with no detail"
+  } else {
+    detail
+  }
+}
+
+// THE DOOR'S UNKNOWN REASON, ONE ARMY'S WORTH OF CODE: the census leg renders its exit-2 answer from
+// STDOUT ALONE. The signature takes no stderr -- whatever the transport printed there cannot become
+// the census's answer, structurally and not by convention -- and the contract is UNKNOWN-ONLY: a
+// stdout that would render an established census is itself the mismatch (a mis-wired door, a partial
+// write), named as one, never promoted to knowledge. The exit still outranks the rendering (review
+// 99119): this arm runs only when the declared table speaks 2, and nothing it returns can read as a
+// settled census.
+fn recover_catalog_unknown_leg_reason(stdout: String) -> RecoverCatalogLegReading {
+  match recover_catalog_leg_reading(text: stdout) {
+    RecoverCatalogLegUnknown { detail: d } => RecoverCatalogLegUnknown { detail: d }
+    RecoverCatalogLegEstablished { entries: es } => RecoverCatalogLegUnknown {
+      detail: join(["the door exited unknown while its stdout renders an established census of ", to_string(value: count(es)), " seats; which account speaks for the census cannot be established"], "")
+    }
+    RecoverCatalogLegDeferred { reason: r } => RecoverCatalogLegUnknown {
+      detail: join(["the door exited unknown while its stdout reads deferred: ", r], "")
+    }
   }
 }
 
@@ -4480,7 +4563,7 @@ recover_catalog_response(instance: instance)
 fn recover_catalog_response(instance: HostDashboardInstance) -> CliWireResponse {
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
-          CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
+          CliWirePrintable { bytes: join([recover_catalog_words().unknown_header, " ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
         RecoverCatalogEstablished { entries } =>
           CliWirePrintable {
             bytes: concat(join([recover_catalog_words().established_header, "\n"], ""), fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),

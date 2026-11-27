@@ -3,7 +3,7 @@ module gunbc.runner.runner_capacity_plan
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { list_push }
 import std.measure { measure_fit_count_floor }
-import gunbc.runner.runner_slot_desired { host_build_pool_reservation, gunbc_runner_slot_memory_max }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation_from_ci_width, gunbc_runner_slot_memory_max }
 import std.nat { Nat, nat_range_inclusive }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
@@ -449,6 +449,16 @@ fn addition_actions(
 // review 96009 objected to before the rule existed here. Converting instead of re-deciding is also what stops the
 // two readers disagreeing about one host: if the carve is due both see it, and if it is not, neither does.
 //
+// WHERE A RULING RULES THE POOL, CI HOLDS BACK NOTHING. A host whose CI width is a ruled zero
+// (gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths) and whose build pool a ruling released from
+// retired serving memory (gunbc.runner.runner_slot_desired::ruled_build_pool_reservations) has no CI width to
+// carve from at all. This file therefore converts THE CARVED PORTION ONLY
+// (gunbc.runner.runner_slot_desired::host_build_pool_reservation_from_ci_width), so a ruled host contributes
+// zero held slots over a zero committed population instead of tripping ReservationExceedsCommittedWidth below
+// over a slot that never existed. The holders of memory -- compute.host_capacity::host_capacity_build_seat,
+// the user-work slice ceiling, and the envelope's build-pool charge -- still read the FULL reservation, ruled
+// or carved: the ruled bytes are held ONCE, on the ledger side; they were simply never CI's to give.
+//
 // ken (gunbc.fleet.fleet_host_identity::operator_host_e2d4b7) is not on that roster, so he derives zero slots today
 // and his spendable ceiling is exactly his committed population. His pending join is NOT recorded here as an entry:
 // it lives in gunbc.integration_concern::h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home, which is
@@ -458,10 +468,17 @@ fn addition_actions(
 // SLOTS HELD FOR THE BUILD POOL = HOW MANY SLOT-SIZED CARVES THE HOST HAS. The divisor is not a magic number: it is
 // the same constant the carve is made of (runner_slot_desired::gunbc_runner_slot_memory_max), so a due carve is one
 // slot, an absent carve is zero, and if the ruling ever sets aside two slots' worth of memory the plan sees two
-// rather than one.
+// rather than one. THE CONVERSION READS THE CARVED PORTION ONLY (runner_slot_desired::
+// host_build_pool_reservation_from_ci_width): a ruled pool -- a host whose CI width a ruling took to zero and whose
+// pool a ruling then released to it from retired serving memory -- was never CI's to give, so it holds back zero
+// slots from a committed population that is itself a ruled zero. Feeding a ruled amount through the slot conversion
+// here would ask this plan to hold back seven slots from a host with none, and the admission would refuse on
+// ReservationExceedsCommittedWidth -- a reservation refused for want of a carved runner slot on a host that has no
+// runners BY RULING, which is the wrong fact told loudly (the red control of the regroup plan row
+// serving-build-pool-for-zero-ci-host; test.claim.runner.runner_capacity_plan_witness pins both halves).
 fn remote_build_pool_slot_reservation(host: HostIdentity) -> Int {
   measure_fit_count_floor(
-    capacity: host_build_pool_reservation(host: host),
+    capacity: host_build_pool_reservation_from_ci_width(host: host),
     each: gunbc_runner_slot_memory_max)
 }
 

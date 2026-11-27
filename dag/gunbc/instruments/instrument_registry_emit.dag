@@ -11,8 +11,8 @@ module gunbc.instruments.instrument_registry_emit
 // refuses, because the authority it mirrors is never consulted. This module renders the table FROM
 // the authority, so the subject is named once and the host reads it.
 //
-// WHAT MOVES THROUGH HERE AND WHAT DOES NOT. The label, the producer variant and the payload strings
-// (entry, function, verb word) come from the binding rows and nothing else; the source-root lists are
+// WHAT MOVES THROUGH HERE AND WHAT DOES NOT. The label, the producer variant and its subject come from the binding row. A CliWire row
+// identifies a declaration and source layout derives its entry. The source-root lists are
 // the instruments' own facts in the same module. Deliberately NOT rendered: the `NativeServeProbe` and
 // the `Millisecond` deadline, which the host already reads from `gunbc.instrument_targets` AT SPAWN
 // (`native_serve_probe_if_entry`, `native_claim_deadline_if_entry`) — baking them into a committed
@@ -25,6 +25,9 @@ module gunbc.instruments.instrument_registry_emit
 
 import extdeps.bazel.label { PackageName }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target_entry_path }
+import std.optional { Present, Absent }
+import std.decl_ref { WholeDeclaration }
 import gunbc.instrument_targets {
   InstrumentSourceRootsRow,
   bare_reference_channel_source_roots,
@@ -46,8 +49,9 @@ type InstrumentRegistryGeneration
   | InstrumentRegistryGenerationRefused { reason: String }
 
 // A SENTINEL, NOT A RENDERING. It never appears in a committed table because no binding row uses the
-// two arms that produce it; if one ever does, the emission refuses above and, if the refusal were
-// bypassed, the host fails to compile a variant named `__GUNBC_INSTRUMENT_ARM_UNRENDERABLE`.
+// unsupported arms or a CliWire declaration without an entry. The writer refuses these markers
+// before publication, and they cannot compile as a host producer.
+data instrument_target_unrenderable_sentinel: String = "TargetProducer::__GUNBC_INSTRUMENT_TARGET_UNRENDERABLE"
 data instrument_arm_unrenderable_sentinel: String = "TargetProducer::__GUNBC_INSTRUMENT_ARM_UNRENDERABLE"
 
 // THE GENERATED FILE'S TEXT, RENDERED FROM THE BINDING ROWS. `Label` and `TargetProducer` are the
@@ -118,13 +122,20 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
       "TargetProducer::NativeServeProgram \{\n                entry: ",
       concat(rust_string_literal(value: entry), ",\n            }"),
     )
-    CliWireProgramProducer { entry, function } => concat(
-      "TargetProducer::CliWireProgram \{\n                entry: ",
-      concat(
-        rust_string_literal(value: entry),
-        concat(",\n                function: ", concat(rust_string_literal(value: function), ",\n            }")),
-      ),
-    )
+    CliWireProgramProducer { target } => if target.declaration.field != WholeDeclaration {
+      instrument_target_unrenderable_sentinel
+    } else {
+      match gunbc_run_step_target_entry_path(target: target) {
+        Absent => instrument_target_unrenderable_sentinel
+        Present { value: entry } => concat(
+          "TargetProducer::CliWireProgram \{\n                entry: ",
+          concat(
+            rust_string_literal(value: entry),
+            concat(",\n                function: ", concat(rust_string_literal(value: target.declaration.decl_name as String), ",\n            }")),
+          ),
+        )
+      }
+    }
     RequiredFloorProducer => instrument_arm_unrenderable_sentinel
     BazelProducer => instrument_arm_unrenderable_sentinel
   }
@@ -164,16 +175,23 @@ fn source_roots_fn_rust(row: InstrumentSourceRootsRow) -> String {
   )
 }
 
-fn expected_instrument_registry_generated_rs() -> InstrumentRegistryGeneration {
-  let rows = instrument_source_roots_rows()
-  let table = instrument_registry_generated_rs(bindings: instrument_bindings())
-  if table.contains(instrument_arm_unrenderable_sentinel) {
+fn instrument_registry_generation(bindings: List<TargetBinding>, rows: List<InstrumentSourceRootsRow>) -> InstrumentRegistryGeneration {
+  let table = instrument_registry_generated_rs(bindings: bindings)
+  if table.contains(instrument_target_unrenderable_sentinel) {
+    InstrumentRegistryGenerationRefused {
+      reason: "CliWire instrument binding must name a whole declaration with a repository source path",
+    }
+  } else if table.contains(instrument_arm_unrenderable_sentinel) {
     InstrumentRegistryGenerationRefused {
       reason: "gunbc.instruments.instrument_registry_emit cannot render a producer arm that has no host variant; the binding row names an arm the host TargetProducer does not carry",
     }
   } else {
     InstrumentRegistryGenerated { content: concat(table, instrument_source_roots_generated_rs(rows: rows)) }
   }
+}
+
+fn expected_instrument_registry_generated_rs() -> InstrumentRegistryGeneration {
+  instrument_registry_generation(bindings: instrument_bindings(), rows: instrument_source_roots_rows())
 }
 
 // THE RENDERED TEXT FOR THE TOOLING THAT WRITES THE FILE. `gunbc run` prints a String value, so the
