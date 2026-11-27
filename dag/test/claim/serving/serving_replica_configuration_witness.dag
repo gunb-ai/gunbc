@@ -22,11 +22,12 @@ import extdeps.external_authority { TranscribedUncited }
 import gunbc.serving.serving_replica_configuration {
   ReplicaConfiguration, configuration_expert_rungs, configuration_figures_refusal,
   configuration_figures_resolved, configuration_host_charges, configuration_run_identity,
-  configuration_prefix_cache_capacity, configuration_warm_agent_capacity,
-  host_configurations, prefix_cache_capacity_against, prefix_cache_ratio_denominator, prefix_cache_ratio_permille,
+  configuration_prefix_cache_capacity, configuration_warm_session_capacity,
+  host_configurations, prefix_cache_capacity_against, prefix_cache_pass_ratio, prefix_cache_ratio_denominator,
+  prefix_cache_ratio_permille,
   replica_configuration_field, h11_pass_prefix_cache_ratio,
   CapacityExceededByPopulation, CapacityFromAssumedRung, CapacityFromReadRung, CapacityHoldsPopulation,
-  CapacityUndetermined, WarmAgentCapacityFigure,
+  CapacityUndetermined, WarmSessionCapacityFigure,
   PopulationObserved, PopulationUnread, RatioEmptyOnPass, RatioObserved, RatioUnread,
   srv1_pair_l1_l2_configuration, srv1_pair_l1_only_configuration, srv1_tp2_l1_l2_configuration,
   srv3_batch8_ram_only_configuration, srv3_batch1_slotfile_configuration, srv4_batch1_slotfile_configuration,
@@ -191,19 +192,19 @@ test fn candidates_carry_their_hosts_expert_placement() -> Bool {
 
 // THE CAPACITY IS STATED IN AGENTS, FROM THE ROWS THAT ALREADY CARRY CACHE BYTES AND SLOTS: h11's engine
 // row parks a conversation at 750 MiB plus 10 KiB per token, holds 8192 MiB and 6 slots, and at the fleet's
-// 229376-token window that is two agents per engine -- four engines eight, two engines four.
+// 229376-token window that is two warm sessions per engine -- four engines eight, two engines four.
 // THE FIGURE TRAVELS WITH ITS BASIS. h11's cache figure is a ServingMemoryRead whose provenance names one
 // bus's config file and the script that set that value on every bus -- which is a generalization over
 // buses nobody read, and the capacity says so instead of reporting a bare 8.
-test fn the_warm_agent_capacity_is_read_from_the_rows() -> Bool {
-  match configuration_warm_agent_capacity(c: h11_four_engines_configuration) {
+test fn the_warm_session_capacity_is_read_from_the_rows() -> Bool {
+  match configuration_warm_session_capacity(c: h11_four_engines_configuration) {
     Present { value: four } => four.value == 8
       && match four.basis {
         CapacityFromReadRung { provenance: provenance } =>
           string_contains(s: provenance as String, pattern: "cfg-87.json" as String)
         CapacityFromAssumedRung { reason: _ } => false
       }
-      && match configuration_warm_agent_capacity(c: h11_two_engines_configuration) {
+      && match configuration_warm_session_capacity(c: h11_two_engines_configuration) {
         Present { value: two } => two.value == 4
         Absent => false
       }
@@ -211,7 +212,8 @@ test fn the_warm_agent_capacity_is_read_from_the_rows() -> Bool {
   }
 }
 
-// THE JOIN ON SUPPLIED NUMBERS, WHICH IS WHERE THE RED CONTROL LIVES: five agents against a cache that
+// THE JOIN ON SUPPLIED NUMBERS, WHICH IS WHERE THE RED CONTROL LIVES: five admitted sessions against a
+// cache that
 // holds four warm is Exceeded and says both numbers out loud; four against four is not exceeded, because
 // the capacity is a count of what fits, not a margin.
 // THE STANDINGS GO THROUGH THE JOIN, NOT AROUND IT. The numbers here are witness-supplied -- a count this
@@ -219,13 +221,13 @@ test fn the_warm_agent_capacity_is_read_from_the_rows() -> Bool {
 // a decided arm cannot be produced by quietly dropping the provenance on the way in.
 test fn an_over_capacity_population_refuses_and_names_both_numbers() -> Bool {
   let supplied_standing = TranscribedUncited { read_obligation: "witness-supplied: a population this claim invented to exercise the join" as NonEmptyStr }
-  let supplied_capacity = WarmAgentCapacityFigure {
+  let supplied_capacity = WarmSessionCapacityFigure {
     value: 4,
     basis: CapacityFromAssumedRung { reason: "witness-supplied: an allowance, not a reading" as NonEmptyStr },
   }
-  match prefix_cache_capacity_against(agents: 5, population_standing: supplied_standing, capacity: supplied_capacity) {
-    CapacityExceededByPopulation { agents: agents_held, warm_agents: warm_held, population_standing: standing_held, capacity_basis: basis_held } =>
-      agents_held == 5 && warm_held == 4
+  match prefix_cache_capacity_against(sessions_admitted: 5, population_standing: supplied_standing, capacity: supplied_capacity) {
+    CapacityExceededByPopulation { sessions_admitted: admitted_held, warm_sessions: warm_held, population_standing: standing_held, capacity_basis: basis_held } =>
+      admitted_held == 5 && warm_held == 4
         && match standing_held {
           TranscribedUncited { read_obligation: why } => string_contains(s: why as String, pattern: "witness-supplied" as String)
           _ => false
@@ -236,9 +238,9 @@ test fn an_over_capacity_population_refuses_and_names_both_numbers() -> Bool {
         }
     _ => false
   }
-    && match prefix_cache_capacity_against(agents: 4, population_standing: supplied_standing, capacity: supplied_capacity) {
-      CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held, population_standing: _, capacity_basis: _ } =>
-        agents_held == 4 && warm_held == 4
+    && match prefix_cache_capacity_against(sessions_admitted: 4, population_standing: supplied_standing, capacity: supplied_capacity) {
+      CapacityHoldsPopulation { sessions_admitted: admitted_held, warm_sessions: warm_held, population_standing: _, capacity_basis: _ } =>
+        admitted_held == 4 && warm_held == 4
       _ => false
     }
 }
@@ -253,8 +255,8 @@ test fn an_over_capacity_population_refuses_and_names_both_numbers() -> Bool {
 // point: the bet is typed, not prose (gunbc.design_argument::epistemic_humility).
 test fn the_field_joins_where_it_can_and_refuses_where_it_cannot() -> Bool {
   match configuration_prefix_cache_capacity(c: h11_four_engines_configuration) {
-    CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held, population_standing: standing_held, capacity_basis: basis_held } =>
-      agents_held == 4 && warm_held == 8
+    CapacityHoldsPopulation { sessions_admitted: admitted_held, warm_sessions: warm_held, population_standing: standing_held, capacity_basis: basis_held } =>
+      admitted_held == 4 && warm_held == 8
         && match standing_held {
           TranscribedUncited { read_obligation: why } => string_contains(s: why as String, pattern: "2026-11-21" as String)
           _ => false
@@ -282,7 +284,7 @@ test fn the_field_joins_where_it_can_and_refuses_where_it_cannot() -> Bool {
 test fn the_population_is_a_standing_on_every_candidate() -> Bool {
   let unread = filter(replica_configuration_field, c => match c.concurrent_agents {
     PopulationUnread { obligation: _ } => true
-    PopulationObserved { agents: _, standing: _ } => false
+    PopulationObserved { admitted_sessions: _, standing: _ } => false
   })
   replica_configuration_field.length() == 9 && unread.length() == 8
 }
@@ -290,14 +292,14 @@ test fn the_population_is_a_standing_on_every_candidate() -> Bool {
 // AN UN-RUN CONFIGURATION DOES NOT INHERIT ANOTHER PASS'S OBSERVATION. h11's two-engine candidate shares the
 // host and the engine rows of the four-engine pass, and its own provenance says it was never served; so it
 // carries the unread verdict on both sides, each obligation naming the four-engine pass as where the only read
-// on that host lives. Its capacity in agents is still stated -- four warm agents, half of the four-engine
+// on that host lives. Its capacity in sessions is still stated -- four warm sessions, half of the four-engine
 // configuration's eight -- which is exactly why the refusal matters: the capacity is decidable while the
 // population is not, and the join refuses rather than filling the gap with the other configuration's count.
 test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
   match h11_two_engines_configuration.concurrent_agents {
     PopulationUnread { obligation: obligation } =>
       string_contains(s: obligation as String, pattern: "four-engine" as String)
-    PopulationObserved { agents: _, standing: _ } => false
+    PopulationObserved { admitted_sessions: _, standing: _ } => false
   }
     && match h11_two_engines_configuration.prefix_cache_ratio {
       RatioUnread { obligation: obligation } =>
@@ -306,21 +308,21 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
       RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
     }
     && match configuration_prefix_cache_capacity(c: h11_two_engines_configuration) {
-      // One obligation, and it is the population's: the capacity side resolves (four warm agents), so the
+      // One obligation, and it is the population's: the capacity side resolves (four warm sessions), so the
       // only thing missing is the count this configuration never produced.
       CapacityUndetermined { obligations: obligations } =>
         obligations.length() == 1
           && filter(obligations, o => string_contains(s: o as String, pattern: "four-engine" as String)).length() == 1
-      CapacityHoldsPopulation { agents: _, warm_agents: _, population_standing: _, capacity_basis: _ } => false
-      CapacityExceededByPopulation { agents: _, warm_agents: _, population_standing: _, capacity_basis: _ } => false
+      CapacityHoldsPopulation { sessions_admitted: _, warm_sessions: _, population_standing: _, capacity_basis: _ } => false
+      CapacityExceededByPopulation { sessions_admitted: _, warm_sessions: _, population_standing: _, capacity_basis: _ } => false
     }
-    && match configuration_warm_agent_capacity(c: h11_two_engines_configuration) {
+    && match configuration_warm_session_capacity(c: h11_two_engines_configuration) {
       Present { value: two } => two.value == 4
       Absent => false
     }
     // And the pass itself is not lost: the configuration that ran still carries it, once.
     && match h11_four_engines_configuration.concurrent_agents {
-      PopulationObserved { agents: agents, standing: _ } => agents == 4
+      PopulationObserved { admitted_sessions: sessions, standing: _ } => sessions == 4
       PopulationUnread { obligation: _ } => false
     }
 }
@@ -371,19 +373,19 @@ test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
 }
 
 // THE OTHER HOSTS STATE THEIR CAPACITY IN AGENTS TOO, whether or not anyone has counted their population:
-// srv3's 64 GiB RAM tier over its own 1240 MiB plus 10 KiB-per-token snapshot is 18 agents against 24
-// declared slots, and srv4's two candidates differ by their ladder -- 43 agents with the parked disk tier,
+// srv3's 64 GiB RAM tier over its own 1240 MiB plus 10 KiB-per-token snapshot is 18 warm sessions against
+// its 24 declared slots, and srv4's two candidates differ by their ladder -- 43 with the parked disk tier,
 // 5 with the RAM tier alone. The ladder, not the prose, is what moves the number.
-test fn the_capacity_of_the_other_hosts_is_stated_in_agents_too() -> Bool {
-  match configuration_warm_agent_capacity(c: srv3_batch8_ram_only_configuration) {
+test fn the_capacity_of_the_other_hosts_is_stated_in_sessions_too() -> Bool {
+  match configuration_warm_session_capacity(c: srv3_batch8_ram_only_configuration) {
     Present { value: n } => n.value == 18
     Absent => false
   }
-    && match configuration_warm_agent_capacity(c: srv4_batch8_ram_only_configuration) {
+    && match configuration_warm_session_capacity(c: srv4_batch8_ram_only_configuration) {
       Present { value: n } => n.value == 5
       Absent => false
     }
-    && match configuration_warm_agent_capacity(c: srv4_batch1_slotfile_configuration) {
+    && match configuration_warm_session_capacity(c: srv4_batch1_slotfile_configuration) {
       Present { value: n } => n.value == 43
       Absent => false
     }
@@ -420,25 +422,52 @@ test fn an_empty_pass_column_is_not_the_same_verdict_as_no_producer() -> Bool {
     }
     && match srv3_batch8_ram_only_configuration.concurrent_agents {
       PopulationUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "fleet_host_truth_read" as String)
-      PopulationObserved { agents: _, standing: _ } => false
+      PopulationObserved { admitted_sessions: _, standing: _ } => false
     }
 }
 
-// THE TYPE ITSELF REFUSES THE EMPTY COLUMN. RatioObserved carries its denominator as a
-// #std.measure::PositiveMeasureCount, whose only constructor is a successor, so there is no spelling of a zero
-// denominator to write: the empty pass belongs to RatioEmptyOnPass and nowhere else. What this claim
-// observes is the one row that carries a ratio -- its denominator is the sum of its counters, and that sum
-// is not zero -- beside the constructor's refusal for a pair of zeroes.
+// THE TYPE ITSELF REFUSES THE EMPTY COLUMN, AND THE CONSTRUCTOR OWNS THE TOTAL. RatioObserved carries its
+// denominator as a #std.measure::PositiveMeasureCount, whose only constructor is a successor, so there is
+// no spelling of a zero denominator to write: the empty pass belongs to RatioEmptyOnPass and nowhere else.
+// And the total is not a field a row types in beside its counts -- prefix_cache_pass_ratio computes it from
+// hits + misses, so a row that disagreed with itself cannot be written, and the identity below is checked
+// over EVERY row that carries a ratio rather than over the one real row.
 test fn an_empty_column_cannot_be_written_as_an_observed_ratio() -> Bool {
-  match h11_pass_prefix_cache_ratio {
-    RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
-      positive_measure_count_nat(count: denominator) == hits + misses
-        && positive_measure_count_nat(count: denominator) == 53
+  let carrying_a_ratio = filter(replica_configuration_field, c => match c.prefix_cache_ratio {
+    RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => true
     RatioEmptyOnPass { pass: _, obligation: _ } => false
     RatioUnread { obligation: _ } => false
-  }
+  })
+  let total_matches_its_counts = filter(replica_configuration_field, c => match c.prefix_cache_ratio {
+    RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
+      positive_measure_count_nat(count: denominator) == hits + misses
+    RatioEmptyOnPass { pass: _, obligation: _ } => true
+    RatioUnread { obligation: _ } => true
+  })
+  carrying_a_ratio.length() == 1 && total_matches_its_counts.length() == replica_configuration_field.length()
+    && match h11_pass_prefix_cache_ratio {
+      RatioObserved { hits: hits, misses: misses, denominator: denominator, standing: _ } =>
+        positive_measure_count_nat(count: denominator) == hits + misses
+          && positive_measure_count_nat(count: denominator) == 53
+      RatioEmptyOnPass { pass: _, obligation: _ } => false
+      RatioUnread { obligation: _ } => false
+    }
     && match prefix_cache_ratio_denominator(hits: 0, misses: 0) {
       PositiveMeasureCountRefused { cause: PositiveMeasureCountNonPositive { observed: observed } } => observed == 0
       PositiveMeasureCountBuilt { count: _ } => false
+    }
+    // THE CONSTRUCTOR, NOT A VALIDATOR STANDING AFTER CONSTRUCTION: a pair of zeroes does not yield an
+    // observation with a hidden zero inside it. It yields the empty-pass verdict, which is the row's RED
+    // case named in the type.
+    && match prefix_cache_pass_ratio(
+      hits: 0,
+      misses: 0,
+      pass_label: "witness-supplied: a completed pass whose hit column came back empty" as NonEmptyStr,
+      empty_column_obligation: "read the engine's prefix counters over a named interval" as NonEmptyStr,
+      standing: TranscribedUncited { read_obligation: "witness-supplied: no counters at all" as NonEmptyStr },
+    ) {
+      RatioEmptyOnPass { pass: pass_text, obligation: _ } => string_contains(s: pass_text as String, pattern: "empty" as String)
+      RatioObserved { hits: _, misses: _, denominator: _, standing: _ } => false
+      RatioUnread { obligation: _ } => false
     }
 }

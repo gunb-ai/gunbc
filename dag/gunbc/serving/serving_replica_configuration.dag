@@ -15,7 +15,8 @@
 // would be quoted on, and the CONCURRENT-AGENT POPULATION it serves against the cache that serves it. Charges
 // come from gunbc.serving.serving_replica_profile's own rules (one authority for what a rung and an expert
 // hold cost), figures resolve through its run-identity keying (one authority for what a reading may price),
-// and the cache capacity in agents comes from serving_host_memory's own fold of cache bytes against slots
+// and the cache capacity in resident sessions comes from serving_host_memory's own fold of cache bytes
+// against slots
 // (one authority for what a warm store holds). Nothing here restates a byte, a millisecond or a token rate.
 module gunbc.serving.serving_replica_configuration
 
@@ -23,7 +24,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.algebra { take_prefix }
-import std.measure { Permille, PositiveMeasureCount, PositiveMeasureCountBuild, TokenCount, permille, positive_measure_count, positive_measure_count_from_int, positive_measure_count_nat }
+import std.measure { Permille, PositiveMeasureCount, PositiveMeasureCountBuild, PositiveMeasureCountBuilt, PositiveMeasureCountRefused, TokenCount, permille, positive_measure_count_from_int, positive_measure_count_nat }
 import std.integer { nat_to_int }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import product.host_identity { host_identity_eq }
@@ -126,7 +127,7 @@ type ReplicaConfiguration {
 // THE UNIT IS THE WORKLOAD'S, NOT THE ENGINE'S. serving_host_memory already folds an engine's cache BYTES
 // and slot COUNT into the sessions it can keep warm (serving_warm_sessions_within), and the selector
 // already places by that figure -- without ever asking how many agents are inside those slots. So the
-// capacity is restated here in agents and joined to the population, and the join refuses rather than
+// capacity is restated here in resident sessions and joined to the population, and the join refuses
 // degrading (gunbc.design_argument::fail_closed): the alternative is a latency a reader attributes to the
 // model or the network, which is what the 2026-11-21 finding on h11 actually was.
 //
@@ -156,8 +157,17 @@ type ReplicaConfiguration {
 // The population, as a standing: a count someone observed with the standing of that observation, or the
 // read that has not happened. Assumed is deliberately absent: a population is a count of what a host
 // carries, and a declared allowance for it is not a count of it.
+//
+// WHICH COUNT, PINNED, because the fleet already keeps two counts apart and this one is the number a
+// cache is sized against. #gunbc.econ.llm_attempt_receipt::ConcurrencyObservation carries
+// admitted_sessions and active_sequences as separate facts and says reporting either as the other makes a
+// concurrency sweep unreadable -- sixteen agents do not decode at once, so a host sustaining four active
+// sequences can admit considerably more than four sessions. The warm store holds CONVERSATIONS, and a
+// session keeps its conversation resident whether or not a turn of it is in flight right now, so the
+// count that belongs against a cache is admitted_sessions. active_sequences is not modelled here and is
+// not what this field means; a future row that wants it adds it beside this one rather than reusing it.
 type ConcurrentAgentPopulation
-  = PopulationObserved { agents: Nat, standing: CitedFigureStanding }
+  = PopulationObserved { admitted_sessions: Nat, standing: CitedFigureStanding }
   | PopulationUnread { obligation: NonEmptyStr }
 
 // What a serving pass left behind. Counts, never a pre-chewed ratio: a ratio without its denominator is
@@ -173,6 +183,13 @@ type ConcurrentAgentPopulation
 // separate instrument that can print an empty column -- a pass that seated nobody is a measurement of zero,
 // while a pass that seated agents and reported no occupancy has no producer for that figure, which is the
 // unread arm's meaning.
+// THE TOTAL IS CARRIED BUT NEVER TYPED IN BESIDE THE COUNTS. denominator is the sum of hits and misses,
+// and the only way to write this arm is prefix_cache_pass_ratio, which computes it. A total stored and
+// independently written is gunbc.design_argument::single_authority's fork -- a second place that decides
+// the same fact -- and prefix_cache_ratio_permille divides by the stored total without reading misses, so a
+// row that disagreed with itself would print a believable wrong rate. The witness checks the identity over
+// every row that carries a ratio, not one, and construction is what stops the disagreement being written.
+//
 // THE DENOMINATOR IS POSITIVE BY CONSTRUCTION, and that is the whole point of carrying it. An observed
 // ratio names its denominator as #std.measure::PositiveMeasureCount, whose ONLY constructor is a
 // successor, so zero has no spelling as a value: an empty hit column cannot be written as an observation,
@@ -201,13 +218,13 @@ type PrefixCachePassRatio
 // allowance with a reason. Those are different claims about the world, and a capacity that kept only the
 // number would promote the allowance into the reading. Unread has no arm here: it is refused upstream, and
 // handing it a basis would be the quiet zero this module refuses everywhere else.
-type WarmAgentCapacityBasis
+type WarmSessionCapacityBasis
   = CapacityFromReadRung { provenance: NonEmptyStr }
   | CapacityFromAssumedRung { reason: NonEmptyStr }
 
-// A capacity in agents WITH the basis under it, so the fold carries the widest rung's basis alongside the
+// A capacity in resident sessions WITH the basis under it, so the fold carries the widest rung's basis
 // widest rung's number. A figure and the reading it rests on travel together or the figure does not travel.
-type WarmAgentCapacityFigure { value: Nat, basis: WarmAgentCapacityBasis }
+type WarmSessionCapacityFigure { value: Nat, basis: WarmSessionCapacityBasis }
 
 // THE JOIN'S VERDICT. Exceeded carries both numbers so the refusal is actionable without opening the
 // model; Undetermined carries the obligations that say which figure is missing, and it is what an
@@ -219,8 +236,8 @@ type WarmAgentCapacityFigure { value: Nat, basis: WarmAgentCapacityBasis }
 // the join throwing the standings away at exactly this point. A reader who wants an instrument-grade
 // capacity has to go and read one; the verdict says what it was built from instead of implying it.
 type PrefixCacheCapacityVerdict
-  = CapacityHoldsPopulation { agents: Nat, warm_agents: Nat, population_standing: CitedFigureStanding, capacity_basis: WarmAgentCapacityBasis }
-  | CapacityExceededByPopulation { agents: Nat, warm_agents: Nat, population_standing: CitedFigureStanding, capacity_basis: WarmAgentCapacityBasis }
+  = CapacityHoldsPopulation { sessions_admitted: Nat, warm_sessions: Nat, population_standing: CitedFigureStanding, capacity_basis: WarmSessionCapacityBasis }
+  | CapacityExceededByPopulation { sessions_admitted: Nat, warm_sessions: Nat, population_standing: CitedFigureStanding, capacity_basis: WarmSessionCapacityBasis }
   | CapacityUndetermined { obligations: List<NonEmptyStr> }
 
 // WHAT IS MISSING WHERE NOTHING HAS COUNTED: one obligation per side, carried by every candidate whose
@@ -248,17 +265,18 @@ data h11_pass_ratio_standing: CitedFigureStanding = TranscribedUncited {
 // so they are written here a single time and the configuration the pass ran on refers to them instead of
 // spelling the literals again (gunbc.design_argument::single_authority). A configuration on the same host
 // that the pass did not run carries the unread verdict below instead.
-data h11_pass_concurrent_agents: ConcurrentAgentPopulation = PopulationObserved { agents: 4, standing: h11_pass_population_standing }
+data h11_pass_concurrent_agents: ConcurrentAgentPopulation = PopulationObserved { admitted_sessions: 4, standing: h11_pass_population_standing }
 
-data h11_pass_prefix_cache_ratio: PrefixCachePassRatio = RatioObserved {
+data h11_pass_prefix_cache_ratio: PrefixCachePassRatio = prefix_cache_pass_ratio(
   hits: 3,
   misses: 50,
-  // 53 = 3 + 50, that pass's own denominator, spelled as the successor of 52 because a successor is the
-  // only constructor PositiveMeasureCount has. The witness asserts denominator == hits + misses on this
-  // row; the arithmetic in this comment is not the authority.
-  denominator: positive_measure_count(predecessor: 52),
+  // No total is written here. The constructor sums the counts through the checked positivity constructor,
+  // so 53 is derived and this row cannot disagree with itself. The obligation below is only reached if the
+  // hit column had come back empty, which it did not: 3 and 50 are what the relay carried.
+  pass_label: "the 2026-11-21 serving pass on this host, whose printed counters the operator's report relayed" as NonEmptyStr,
+  empty_column_obligation: ratio_unread_obligation,
   standing: h11_pass_ratio_standing,
-}
+)
 
 // THE UN-RUN CONFIGURATION'S OWN OBLIGATIONS, each naming where the only read on this host lives, so the gap
 // cannot be read as an absence of data nor the pass be mistaken for this configuration's.
@@ -477,7 +495,7 @@ data h11_two_engines_configuration: ReplicaConfiguration = ReplicaConfiguration 
   engine_memory: h11_engine_memory(),
   figures: h11_engine_figures(),
   // NEVER SERVED, SO NOTHING IS OBSERVED HERE: the host's only population read and the host's only counters
-  // belong to the four-engine pass, and this configuration refuses to borrow them. Its capacity in agents is
+  // belong to the four-engine pass, and this configuration refuses to borrow them. Its capacity in sessions is
   // still stated (four engines' worth of cache halved), which is what makes the refusal worth reading.
   concurrent_agents: PopulationUnread { obligation: h11_two_engine_population_unread_obligation },
   prefix_cache_ratio: RatioUnread { obligation: h11_two_engine_ratio_unread_obligation },
@@ -571,7 +589,7 @@ fn configuration_expert_rungs(c: ReplicaConfiguration) -> List<ReplicaExpertRung
 
 // The basis of a capacity figure, read off the rung's own cache reading. Unread refuses rather than
 // minting a basis.
-fn warm_agent_capacity_basis(r: ServingMemoryReading) -> Optional<WarmAgentCapacityBasis> {
+fn warm_session_capacity_basis(r: ServingMemoryReading) -> Optional<WarmSessionCapacityBasis> {
   match r {
     ServingMemoryRead { bytes: _, provenance: provenance } => Present { value: CapacityFromReadRung { provenance: provenance } }
     ServingMemoryAssumed { bytes: _, reason: reason } => Present { value: CapacityFromAssumedRung { reason: reason } }
@@ -579,16 +597,16 @@ fn warm_agent_capacity_basis(r: ServingMemoryReading) -> Optional<WarmAgentCapac
   }
 }
 
-// The agents ONE ENGINE can keep warm on one rung, at the fleet's window, PAIRED WITH THE BASIS of that
+// The sessions ONE ENGINE can keep warm on one rung, at the fleet's window, PAIRED WITH THE BASIS of that
 // number. An unread cache contributes nothing here -- and the obligation below is what says why, rather
 // than a zero that would promise room nobody read.
-fn rung_warm_agents(rung: ServingWarmSwap, context: TokenCount) -> Optional<WarmAgentCapacityFigure> {
+fn rung_warm_sessions(rung: ServingWarmSwap, context: TokenCount) -> Optional<WarmSessionCapacityFigure> {
   match rung {
-    WarmSwapRestores { cache: cache, slots: slots, cost: cost } => match warm_agent_capacity_basis(r: cache) {
+    WarmSwapRestores { cache: cache, slots: slots, cost: cost } => match warm_session_capacity_basis(r: cache) {
       Absent => Absent
       Present { value: basis } => match serving_warm_store(cache: cache, slots: slots, cost: cost, context: context) {
         WarmStoreKeeps { conversations: conversations } => Present {
-          value: WarmAgentCapacityFigure { value: conversations, basis: basis },
+          value: WarmSessionCapacityFigure { value: conversations, basis: basis },
         }
         WarmStoreUnread { obligation: _ } => Absent
       }
@@ -601,8 +619,8 @@ fn rung_warm_agents(rung: ServingWarmSwap, context: TokenCount) -> Optional<Warm
 // THE LADDER FOLDS INCLUSIVE, exactly as the save axis does: a conversation the router parked may still sit
 // in the hotter tier, so the tiers are nested and the WIDEST one bounds how many agents the engine holds
 // warm. Absent when no rung read its cache -- which is a refusal, not a capacity of zero.
-fn configuration_engine_warm_agents(c: ReplicaConfiguration) -> Optional<WarmAgentCapacityFigure> {
-  fold(c.warm_ladder, init: Absent, f: (acc, rung) => match rung_warm_agents(rung: rung, context: serving_fleet_context_cap) {
+fn configuration_engine_warm_sessions(c: ReplicaConfiguration) -> Optional<WarmSessionCapacityFigure> {
+  fold(c.warm_ladder, init: Absent, f: (acc, rung) => match rung_warm_sessions(rung: rung, context: serving_fleet_context_cap) {
     Absent => acc
     Present { value: rung_figure } => match acc {
       Absent => Present { value: rung_figure }
@@ -617,14 +635,14 @@ fn configuration_engine_warm_agents(c: ReplicaConfiguration) -> Optional<WarmAge
 // one bus's config file generalized to buses never read, so the scaled figure is as unread as that row.
 // The scaling keeps the rung's basis rather than minting a new one: a generalized reading scaled across
 // engines is still a generalized reading, and the verdict below is what makes a reader see that.
-fn configuration_warm_agent_capacity(c: ReplicaConfiguration) -> Optional<WarmAgentCapacityFigure> {
-  match configuration_engine_warm_agents(c: c) {
+fn configuration_warm_session_capacity(c: ReplicaConfiguration) -> Optional<WarmSessionCapacityFigure> {
+  match configuration_engine_warm_sessions(c: c) {
     Absent => Absent
     Present { value: per_engine } =>
       if c.replica_count == 0 {
         Absent
       } else {
-        Present { value: WarmAgentCapacityFigure { value: per_engine.value * c.replica_count, basis: per_engine.basis } }
+        Present { value: WarmSessionCapacityFigure { value: per_engine.value * c.replica_count, basis: per_engine.basis } }
       }
   }
 }
@@ -643,24 +661,24 @@ fn configuration_capacity_obligations(c: ReplicaConfiguration) -> List<NonEmptyS
   if unread_rungs.length() > 0 {
     unread_rungs
   } else {
-    match configuration_engine_warm_agents(c: c) {
+    match configuration_engine_warm_sessions(c: c) {
       Present { value: _ } => [] as List<NonEmptyStr>
       Absent => [
-        concat(concat("no rung of ", c.label), " states cache bytes, so its cache capacity in agents is unstated") as NonEmptyStr,
+        concat(concat("no rung of ", c.label), " states cache bytes, so its cache capacity in resident sessions is unstated") as NonEmptyStr,
       ] as List<NonEmptyStr>
     }
   }
 }
 
-// THE JOIN ON SUPPLIED NUMBERS, which is where the row's red control lives: more agents than the cache
+// THE JOIN ON SUPPLIED NUMBERS, which is where the row's red control lives: more admitted sessions than
 // holds warm is Exceeded, and the refusal carries both numbers. Equal is not exceeded -- the capacity is a
 // count of what fits, not a margin -- and the ratio observation, not this arithmetic, is what says whether
 // a cache that arithmetically fits was actually adequate.
-fn prefix_cache_capacity_against(agents: Nat, population_standing: CitedFigureStanding, capacity: WarmAgentCapacityFigure) -> PrefixCacheCapacityVerdict {
-  if agents > capacity.value {
-    CapacityExceededByPopulation { agents: agents, warm_agents: capacity.value, population_standing: population_standing, capacity_basis: capacity.basis }
+fn prefix_cache_capacity_against(sessions_admitted: Nat, population_standing: CitedFigureStanding, capacity: WarmSessionCapacityFigure) -> PrefixCacheCapacityVerdict {
+  if sessions_admitted > capacity.value {
+    CapacityExceededByPopulation { sessions_admitted: sessions_admitted, warm_sessions: capacity.value, population_standing: population_standing, capacity_basis: capacity.basis }
   } else {
-    CapacityHoldsPopulation { agents: agents, warm_agents: capacity.value, population_standing: population_standing, capacity_basis: capacity.basis }
+    CapacityHoldsPopulation { sessions_admitted: sessions_admitted, warm_sessions: capacity.value, population_standing: population_standing, capacity_basis: capacity.basis }
   }
 }
 
@@ -670,18 +688,18 @@ fn configuration_prefix_cache_capacity(c: ReplicaConfiguration) -> PrefixCacheCa
   let missing = configuration_capacity_obligations(c: c)
   let population_obligation = match c.concurrent_agents {
     PopulationUnread { obligation: obligation } => [obligation] as List<NonEmptyStr>
-    PopulationObserved { agents: _, standing: _ } => [] as List<NonEmptyStr>
+    PopulationObserved { admitted_sessions: _, standing: _ } => [] as List<NonEmptyStr>
   }
   let undetermined = concat(missing, population_obligation)
   if undetermined.length() > 0 {
     CapacityUndetermined { obligations: undetermined }
   } else {
-    match configuration_warm_agent_capacity(c: c) {
+    match configuration_warm_session_capacity(c: c) {
       Absent => CapacityUndetermined {
-        obligations: [concat(concat("the cache of ", c.label), " is read but its capacity in agents did not resolve") as NonEmptyStr],
+        obligations: [concat(concat("the cache of ", c.label), " is read but its capacity in resident sessions did not resolve") as NonEmptyStr],
       }
       Present { value: capacity } => match c.concurrent_agents {
-        PopulationObserved { agents: agents, standing: standing } => prefix_cache_capacity_against(agents: agents, population_standing: standing, capacity: capacity)
+        PopulationObserved { admitted_sessions: sessions, standing: standing } => prefix_cache_capacity_against(sessions_admitted: sessions, population_standing: standing, capacity: capacity)
         PopulationUnread { obligation: obligation } => CapacityUndetermined { obligations: [obligation] as List<NonEmptyStr> }
       }
     }
@@ -696,6 +714,20 @@ fn configuration_prefix_cache_capacity(c: ReplicaConfiguration) -> PrefixCacheCa
 // which is the fact worth printing.
 fn prefix_cache_ratio_denominator(hits: Nat, misses: Nat) -> PositiveMeasureCountBuild {
   positive_measure_count_from_int(count: nat_to_int(n: hits + misses))
+}
+
+// THE ONLY WAY TO WRITE A PASS RATIO, and the reason no row types its own total. The total is computed
+// from the counts by the checked constructor above, so hits, misses and the total cannot disagree -- a
+// second place that independently decides the same sum is gunbc.design_argument::single_authority's fork,
+// and prefix_cache_ratio_permille divides by that total without reading misses, so a self-contradicting
+// row would print a believable wrong rate. And because the constructor is the checked one, an empty column
+// cannot be written as an observation through this path either: 0 and 0 come back as RatioEmptyOnPass,
+// which is the row's RED case named in the type rather than a ratio with a hidden zero inside it.
+fn prefix_cache_pass_ratio(hits: Nat, misses: Nat, pass_label: NonEmptyStr, empty_column_obligation: NonEmptyStr, standing: CitedFigureStanding) -> PrefixCachePassRatio {
+  match prefix_cache_ratio_denominator(hits: hits, misses: misses) {
+    PositiveMeasureCountBuilt { count: count } => RatioObserved { hits: hits, misses: misses, denominator: count, standing: standing }
+    PositiveMeasureCountRefused { cause: _ } => RatioEmptyOnPass { pass: pass_label, obligation: empty_column_obligation }
+  }
 }
 
 // THE RATIO THE PASS LEFT, in thousandths, from the counts it carried: hits over the denominator it
