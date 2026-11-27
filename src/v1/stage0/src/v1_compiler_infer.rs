@@ -11716,55 +11716,42 @@ pub fn direct_call_formal_has_unbound_type_variable_at(n: Rc<Node>, depth: i64) 
 }
 
 pub fn element_demand_direct_call_argument_formal_is_unbound(n: Rc<Node>) -> bool {
-    element_demand_direct_call_argument_formal_is_unbound_at(n, 0)
-}
-
-pub fn element_demand_direct_call_argument_formal_is_unbound_at(n: Rc<Node>, depth: i64) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (depth.clone() >= 16) {
-            false
-        } else {
-            {
-                let here = match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::TypeVariable { id: _, .. }) => true,
-                    Some(InferredNode::Resolved { node: resolved, .. }) => {
-                        if ((n.children.clone().len() as i64) > 0) {
-                            false
-                        } else {
-                            element_demand_direct_call_argument_formal_is_unbound_at(
-                                resolved.clone(),
-                                v1_rt::int_add(depth.clone(), 1),
-                            )
-                        }
+        {
+            let here = match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                Some(InferredNode::Resolved { node: resolved, .. }) => {
+                    if ((n.children.clone().len() as i64) > 0) {
+                        false
+                    } else {
+                        element_demand_direct_call_argument_formal_is_unbound(resolved.clone())
                     }
-                    _ => false,
-                };
-                ((here.clone() || {
-                    let mut __found = false;
-                    for ch in n.children.clone().iter().cloned() {
-                        if element_demand_direct_call_argument_formal_is_unbound_at(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                            v1_rt::int_add(depth.clone(), 1),
-                        ) {
-                            __found = true;
-                            break;
-                        }
+                }
+                _ => false,
+            };
+            ((here.clone() || {
+                let mut __found = false;
+                for ch in n.children.clone().iter().cloned() {
+                    if element_demand_direct_call_argument_formal_is_unbound(
+                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                    ) {
+                        __found = true;
+                        break;
                     }
-                    __found
-                }) || {
-                    let mut __found = false;
-                    for p in n.params.clone().iter().cloned() {
-                        if element_demand_direct_call_argument_formal_is_unbound_at(
-                            crate::v1_std_core::param_node_type_expr(p.clone()),
-                            v1_rt::int_add(depth.clone(), 1),
-                        ) {
-                            __found = true;
-                            break;
-                        }
+                }
+                __found
+            }) || {
+                let mut __found = false;
+                for p in n.params.clone().iter().cloned() {
+                    if element_demand_direct_call_argument_formal_is_unbound(
+                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                    ) {
+                        __found = true;
+                        break;
                     }
-                    __found
-                })
-            }
+                }
+                __found
+            })
         }
     })
 }

@@ -8136,25 +8136,52 @@ fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool 
 // still answer true, because only the Resolved arm is declined; `here`, `children` and `params` keep
 // walking. Applied nodes are judged by what was actually passed; only a bare leaf, whose fact lives in
 // its `inferred`, is allowed to follow its resolution.
+// THE WALK HAS NO DEPTH LIMIT, and needs none -- review 99438 blocked on the ceiling this used to
+// carry, and it was right. A ceiling answering `false` here does not degrade the answer, it REVERSES it:
+// `false` releases the pair as `UndecidableGenericFormal`, so an unsolved variable sitting below the
+// ceiling would have walked past the wall with no diagnostic at all -- the silent widen
+// #gunbc.design_argument::fail_closed forbids ("a failure arm refuses, never widens"), at a literal with no
+// stated basis, which §5 rejects separately. The bound is the input, not a number: a Node is a finite
+// acyclic value (#gunbc.design_argument::closed_grounded_substrate: cyclic relations are encoded acyclically, never
+// as cyclic values), and this walk descends only through `children`, `params`, and the `Resolved` arm of
+// a node with NO children -- no name lookup, no re-expansion, no growth -- so the recursion is bounded
+// by the size of what it was handed. The sibling walk in this file beside #callable_generic_names states
+// the same ground and the same consequence: "A depth cutoff answering `false` would accept every
+// mismatch below it -- the absorbing fallback gunbc.design_argument::fail_closed forbids." The shared predicate
+// above keeps its own ceiling and its nine consumers untouched; this one is seam-local, and the emitted
+// seed mirror in src/v1/stage0/src/v1_compiler_infer.rs is threaded the same way and wraps the body in
+// `stacker::maybe_grow`, so deep-but-finite trees grow the stack instead of the answer.
+// THE POSITION'S OWN ANSWER, NOT THE SHARED PREDICATE'S, because the shared one is used at three
+// sites with no way to say "this one only": element_demand_direct_call_argument_type_mismatch
+// (where a true answer must abstain, not refuse), instrument_census_probe (advisory), and
+// direct_call_arg_type_mismatch (where the refusal is already sound). Flipping the shared predicate
+// was measured: FALSE_TO_TRUE=0 over 41,463 formal positions -- none of them needed it -- and the
+// refusal still would not fire, because a true answer there means abstain.
+//
+// THE WALK IS THE STRUCTURE. A type node's shape is finite and acyclic -- `Node` carries no
+// reference back to a type it builds, so a chain of Resolved nodes cannot loop -- and the walk
+// covers each node's children and parameter declarations exactly once. The stack is grown
+// cooperatively (stacker::maybe_grow) rather than an arbitrary depth being answered `false`: an
+// unsolved variable that deep is still unsolved, and answering "no unbound variable" because the
+// walk stopped early would be the silent widen this wall exists to close (gunbc.design_argument::
+// fail_closed -- "A failure arm refuses, never widens, and every degradation is typed, located and
+// countable").
 fn element_demand_direct_call_argument_formal_is_unbound(n: Node) -> Bool {
-  element_demand_direct_call_argument_formal_is_unbound_at(n: n, depth: 0)
-}
-
-fn element_demand_direct_call_argument_formal_is_unbound_at(n: Node, depth: Int) -> Bool {
-  if depth >= 16 { false } else {
-  let here = match n.inferred {
-    Present { value: TypeVariable { id: _ } } => true
-    Present { value: Resolved { node: resolved } } => if (n.children |> count) > 0 {
-      false
-    } else {
-      element_demand_direct_call_argument_formal_is_unbound_at(n: resolved, depth: depth + 1)
+  let here = if is_unsolved_type_variable(n: n) {
+    true
+  } else {
+    match n.inferred {
+      Present { value: Resolved { node: resolved } } => if (n.children |> count) > 0 {
+        false
+      } else {
+        element_demand_direct_call_argument_formal_is_unbound(n: resolved)
+      }
+      _ => false
     }
-    _ => false
   }
   here
-    || (n.children |> any(ch => element_demand_direct_call_argument_formal_is_unbound_at(n: child_type_node(ch: ch), depth: depth + 1)))
-    || (n.params |> any(p => element_demand_direct_call_argument_formal_is_unbound_at(n: param_node_type_expr(n: p), depth: depth + 1)))
-  }
+    || (n.children |> any(ch => element_demand_direct_call_argument_formal_is_unbound(n: child_type_node(ch: ch))))
+    || (n.params |> any(p => element_demand_direct_call_argument_formal_is_unbound(n: param_node_type_expr(n: p))))
 }
 
 // A FUNCTION VALUE STANDING WHERE A FUNCTION TYPE IS DECLARED is judged, not waved through, and so
