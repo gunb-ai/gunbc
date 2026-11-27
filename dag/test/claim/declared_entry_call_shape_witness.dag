@@ -20,7 +20,7 @@ module test.claim.declared_entry_call_shape_witness
 // (w_import_lines), because a check enrolled in CI under a budget stops being a check the moment someone
 // imports a hub into it.
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, Int }
 import std.algebra { string_contains }
 import std.list { list_member }
 import gunbc.instruments.declared_entry_call_shape {
@@ -309,6 +309,12 @@ fn w_step_field(step: Step, field: String) -> String {
   }
 }
 
+// How many lines of the rendered script contain `needle`. Occurrence counting, not presence: a step whose
+// two refusal arms lost one annotation still "has" the annotation, which is not the claim.
+fn w_count_lines(hay: String, needle: String) -> Int {
+  count(filter(xs: split(s: hay, delimiter: "\n"), predicate: fn(l) { w_has(hay: l, needle: needle) }))
+}
+
 // THE STEP IS ENROLLED, ON THE EVENTS THAT CARRY A BASE AND ON NOTHING ELSE. The two diff-carrying events
 // are named; push and schedule are deliberately not policed (they carry no base -- see the step's header),
 // and the alternative to that condition is a step that reports a green on a run with no diff.
@@ -338,10 +344,41 @@ test fn the_step_computes_its_diff_from_the_events_base_and_refuses_without_it()
 // the common path reads as one that did not run -- and every other exit is a refusal.
 test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
   let run = w_step_run(step: w_step())
-  w_has(hay: run, needle: "skipped: no .dag change in this diff")
-    && w_has(hay: run, needle: "skipped: this event carries no base commit")
+  w_has(hay: run, needle: "::notice title=declared entry call shape::skipped: no .dag change in this diff, scope empty")
+    && w_has(hay: run, needle: "::notice title=declared entry call shape::skipped: event ")
     && w_has(hay: run, needle: join(["if [ ! -s \"", shn("changed"), "\" ]; then"], ""))
     && w_has(hay: run, needle: "  exit 1")
+    // A skip that only prints is a green nobody can count. Both skip arms carry a runner annotation, and
+    // the two refusal arms carry ::error, so the degradations are visible in the run rather than in text
+    // someone has to scroll (gunbc.design_argument::fail_closed: typed, located and countable).
+    && w_count_lines(hay: run, needle: "::error title=declared entry call shape::") == 2
+    && w_count_lines(hay: run, needle: "::notice title=declared entry call shape::skipped:") == 2
+}
+
+// THE SHELL IS MARKED AS SHELL. What remains in bash is the git facts the model cannot reach under the
+// budget (base resolution, the fetch, the diff, the `git grep` narrowing); the marker names the capability
+// that retires it, and it must be the FIRST line of the emitted script so the committed YAML carries the
+// obligation and a reader of witnesses.yml finds it before any command does.
+test fn the_shell_carrier_names_its_dissolution_on_the_first_line() -> Bool {
+  let run = w_step_run(step: w_step())
+  let first = match split(s: run, delimiter: "\n").first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+  starts_with(s: first, prefix: "# dissolve-on: declared_entry_call_shape_scope_lines")
+    && w_has(hay: first, needle: "v2.extdeps.languages.bash_build")
+}
+
+// THE SEARCH KEYS COME FROM THE MODEL. Which module a changed path declares is the instrument's rule, so the
+// step asks its entry for the keys; the step must not spell the path-to-module rule a second time in shell.
+// This is the fix for a duplicated rule whose disagreement was silently available: an empty stem set made
+// `git grep` match nothing, the scope came back as only the changed files, and the run passed.
+test fn the_step_asks_the_instrument_for_its_search_keys() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "--function declared_entry_call_shape_stems_emit")
+    && w_has(hay: run, needle: join(["--arg stems_file=", shn("dir"), "/stems.txt"], ""))
+    && w_has(hay: run, needle: join(["git grep -l -F -f \"", shn("stems"), "\" -- '*.dag'"], ""))
+    && !w_has(hay: run, needle: "sed -E")
 }
 
 // THE REVERSE PASS IS THERE, AND IT IS THE WIDEST READING OF THE NAME. This is the arm that catches the
@@ -350,7 +387,6 @@ test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
 test fn the_step_widens_to_reverse_importers_and_bounds_its_scope_above_only() -> Bool {
   let run = w_step_run(step: w_step())
   w_has(hay: run, needle: join(["git grep -l -F -f \"", shn("stems"), "\" -- '*.dag'"], ""))
-    && w_has(hay: run, needle: "s|/|.|g")
     && w_has(hay: run, needle: "-gt " + declared_entry_call_shape_line_ceiling)
     && w_has(hay: run, needle: "lines=$(xargs -r -a ")
     && !w_has(hay: run, needle: "-lt ")
@@ -382,7 +418,8 @@ fn w_step_module_imports() -> List<String> {
 
 test fn the_step_module_names_only_the_cli_leaf_and_the_actions_shape() -> Bool {
   let lines = w_step_module_imports()
-  length(xs: lines) == 4
+  length(xs: lines) == 5
+    && list_member(xs: lines, x: "import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }", eq: w_str_eq)
     && list_member(xs: lines, x: "import std.types { List, String }", eq: w_str_eq)
     && list_member(xs: lines, x: "import std.optional { Present }", eq: w_str_eq)
     && list_member(xs: lines, x: "import extdeps.github.actions { Step, RunStep }", eq: w_str_eq)

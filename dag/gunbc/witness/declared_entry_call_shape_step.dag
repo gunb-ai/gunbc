@@ -78,6 +78,7 @@ module gunbc.witness.declared_entry_call_shape_step
 
 import std.types { List, String }
 import std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.github.actions { Step, RunStep }
 import v2.cli.parse_verdict_invocation {
   ParseVerdictInvocationArg,
@@ -154,6 +155,14 @@ data declared_entry_changed_arg: String = "changed_paths_file"
 
 data declared_entry_candidates_arg: String = "candidate_importers_file"
 
+data declared_entry_stems_arg: String = "stems_file"
+
+data declared_entry_call_shape_stems_function: String = "declared_entry_call_shape_stems_emit"
+
+// The event that produced the run, as GitHub renders it into the script. A skip must name its own cause
+// in the annotation, and which event arrived is the fact that decided it.
+data declared_entry_event_name_expression: String = "${{ github.event_name }}"
+
 // A shell variable reference, assembled. See the header.
 fn sh(name: String) -> String {
   join(["$", "{", name, "}"], "")
@@ -165,6 +174,9 @@ data declared_entry_changed_path: String =
 
 data declared_entry_candidate_path: String =
   join(["/", declared_entry_call_shape_candidate_name], "")
+
+data declared_entry_stems_path: String =
+  join(["/", declared_entry_call_shape_stems_name], "")
 
 // A brace-wrapped word, assembled for the same reason: the medium reads a bare {name} as a reference too,
 // and `git cat-file -e $base^{commit}` is the git idiom worth keeping whole.
@@ -204,16 +216,53 @@ fn declared_entry_call_shape_command(
   )
 }
 
+// THE INDEX KEYS, ASKED FOR FROM THE MODEL. The step's reverse-import search needs each changed file's
+// MODULE NAME, and that mapping is the instrument's rule (cs_module_of_file). Spelling it a second time
+// in shell is what made a disagreement possible: a stem set `sed` produced that `git grep` matched nothing
+// for gave an empty candidate list, an empty scope, and a green run that had judged nothing. So the keys
+// are written by declared_entry_call_shape_stems_emit, whose only other refusal arm is the empty key set.
+fn declared_entry_stems_command(
+  bin: String,
+  source_roots: List<String>
+) -> String {
+  parse_verdict_invocation_command(
+    bin: bin,
+    verb: declared_entry_call_shape_verb,
+    args: concat(
+      parse_verdict_invocation_source_root_args(roots: source_roots),
+      [
+        ParseVerdictInvocationArg { option: declared_entry_option_entry, value: declared_entry_call_shape_instrument_entry },
+        ParseVerdictInvocationArg { option: declared_entry_option_function, value: declared_entry_call_shape_stems_function },
+        ParseVerdictInvocationArg {
+          option: declared_entry_option_arg,
+          value: join([declared_entry_changed_arg, "=", sh("dir"), declared_entry_changed_path], "")
+        },
+        ParseVerdictInvocationArg {
+          option: declared_entry_option_arg,
+          value: join([declared_entry_stems_arg, "=", sh("dir"), declared_entry_stems_path], "")
+        }
+      ]
+    )
+  )
+}
+
 // THE SCOPE, as shell lines. Each line is one fact the step asserts about the diff, in the order it
 // must be true: resolve the base, refuse without it, take the changed set, skip if empty, widen to
 // reverse importers, refuse a scope that cannot be this run's, and only then name the scope it is
 // handing the instrument.
-fn declared_entry_scope_lines() -> List<String> {
+fn declared_entry_scope_lines(bin: String, source_roots: List<String>) -> List<String> {
   [
     "set -euo pipefail",
     join(["base='", declared_entry_base_sha_expression, "'"], ""),
     join(["if [ -z \"", sh("base"), "\" ]; then"], ""),
-    "  echo 'skipped: this event carries no base commit to diff against, so this run changed nothing for the check to judge'",
+    // A SKIP IS TYPED, NOT A LINE OF LOG TEXT. Both skips exit 0 on a required job, so each one also
+    // writes a runner annotation naming what was not judged: a green with an unjudged scope has to be
+    // countable from the run, not recovered from scrollback (gunbc.design_argument::fail_closed: every
+    // degradation is typed, located and countable). The event name rides in the annotation, because
+    // which event arrived is the fact that decided the skip.
+    join([
+      "  echo \"::notice title=declared entry call shape::skipped: event ", declared_entry_event_name_expression, " carries no base commit, so nothing was judged\""
+    ], ""),
     "  exit 0",
     "fi",
     "dir=$(mktemp -d)",
@@ -226,7 +275,7 @@ fn declared_entry_scope_lines() -> List<String> {
       "git cat-file -e \"", sh("base"), "^", braces("commit"), "\" 2>/dev/null || git fetch --no-tags --depth=1 origin \"", sh("base"), "\" >/dev/null 2>&1 || {"
     ], ""),
     join([
-      "  echo \"the event base commit ", sh("base"), " is not in this checkout and could not be fetched: refusing to guess a scope\" 1>&2"
+      "  echo \"::error title=declared entry call shape::the event base commit ", sh("base"), " is not in this checkout and could not be fetched: refusing to guess a scope\" 1>&2"
     ], ""),
     "  exit 1",
     "}",
@@ -234,17 +283,18 @@ fn declared_entry_scope_lines() -> List<String> {
       "git diff --name-only \"", sh("base"), "...HEAD\" -- '*.dag' > \"", sh("changed"), "\""
     ], ""),
     join(["if [ ! -s \"", sh("changed"), "\" ]; then"], ""),
-    "  echo 'skipped: no .dag change in this diff'",
+    // The one skip that is a true judgement (this diff touches no .dag, so there is nothing for this
+    // instrument to read) still says so in a channel a dashboard can count, not only in the log.
+    join([
+      "  echo \"::notice title=declared entry call shape::skipped: no .dag change in this diff, scope empty\""
+    ], ""),
     "  exit 0",
     "fi",
     join(["stems=\"", sh("dir"), "/", declared_entry_call_shape_stems_name, "\""], ""),
-    // A changed file's MODULE NAME is what an importer writes, so the stem is the path with its
-    // source root and extension removed and its separators dotted. A path outside either root keeps
-    // its first directory: an odd stem over-includes candidates, which the instrument narrows, and
-    // an over-narrow stem would lose an importer, which is the direction that must not be reachable.
-    join([
-      "sed -E 's|^dag/||; s|^src/v2/||; s|\\.dag$||; s|/|.|g' \"", sh("changed"), "\" | sed '/^$/d' > \"", sh("stems"), "\""
-    ], ""),
+    // A changed file's MODULE NAME is what an importer writes, and that mapping is the instrument's rule,
+    // so the step asks the instrument for the keys rather than reimplementing the root rule in shell beside
+    // it. The entry refuses its own empty key set; a non-zero here is the step's refusal, not a skip.
+    join([declared_entry_stems_command(bin: bin, source_roots: source_roots)], ""),
     join([": > \"", sh("candidates"), "\""], ""),
     join(["if [ -s \"", sh("stems"), "\" ]; then"], ""),
     // git grep exits 1 on 'no match', which is a normal answer here, and >=2 on a real error, which
@@ -270,7 +320,7 @@ fn declared_entry_scope_lines() -> List<String> {
     ], ""),
     join(["if [ \"", sh("lines"), "\" -gt ", declared_entry_call_shape_line_ceiling, " ]; then"], ""),
     join([
-      "  echo \"scope of ", sh("scope"), " .dag files / ", sh("lines"), " lines is above the budget of ", declared_entry_call_shape_line_ceiling, " lines: this is not this run's diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body\" 1>&2"
+      "  echo \"::error title=declared entry call shape::scope of ", sh("scope"), " .dag files / ", sh("lines"), " lines is above the budget of ", declared_entry_call_shape_line_ceiling, " lines: this is not this run's diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body\" 1>&2"
     ], ""),
     "  exit 1",
     "fi",
@@ -287,6 +337,29 @@ fn declared_entry_scope_lines() -> List<String> {
 // defect this row exists to retire: enrolled, green, and never actually running. The gunbc binary,
 // the source-root pair and the memory envelope come from the job that embeds it, so the resolve is
 // accounted in the job's cgroup like the walks beside it.
+// THE SCAFFOLD MARKER, in the form the fleet's other shell carriers use (a sibling of
+// gunbc.witness.compiler_gate_contract_stamp's compiler_gate_contract_stamp_shell_emit_dissolution_trigger):
+// one DissolutionCondition naming what this carrier is, and the capability that retires it, and the marker
+// line it puts on the first line of the emitted script so the committed YAML carries the obligation too.
+//
+// WHAT IS SHELL AND WHY: this carrier runs `git` -- resolve the event's base commit, fetch it when the
+// checkout does not hold it, take the changed .dag set, and ask `git grep -l -F` which tracked files
+// mention a changed module. The model has no whole-tree content search under a required-job budget: the
+// same narrowing done by reading every tracked .dag through the effect machine measured 5 m 18 s before it
+// printed anything (recorded in gunbc.instruments.declared_entry_call_shape's own header), which is more
+// than the break it prevents costs, and an instrument that costs more than the defect it prevents gets
+// disabled. WHAT IS NOT SHELL: which module a path declares, whether a grep hit is a real importer, and
+// whether a call passes a label the attributed declaration does not name -- all of it is .dag's, in
+// gunbc.instruments.declared_entry_call_shape, including the key list the grep is given.
+data declared_entry_call_shape_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_entry_call_shape_scope_lines -- bash carrier of the git facts a CI step needs (base-commit resolution and fetch, the changed .dag diff, and a `git grep -l -F` narrowing for the reverse-import pass); dissolves when v2.extdeps.languages.bash_build carries git invocation AND a model-owned whole-tree content search exists that fits the required-job budget, at which point the scope lines retire into the instrument and this file keeps only the Step record.")
+
+// THE MARKER, first line of the emitted script, as a comment so it costs the runner nothing and changes
+// no behaviour. Checked by test.claim.declared_entry_call_shape_witness on the rendered step, so a later
+// refactor that drops it reddens a claim rather than quietly un-marking a scaffold.
+fn declared_entry_call_shape_marker_line() -> String {
+  concat("# ", concat(dissolution_description(condition: declared_entry_call_shape_shell_emit_dissolution_trigger), "\n"))
+}
+
 fn declared_entry_call_shape_step(
   bin: String,
   source_roots: List<String>
@@ -294,7 +367,9 @@ fn declared_entry_call_shape_step(
   RunStep {
     name: Present { value: declared_entry_call_shape_step_name },
     id: Present { value: declared_entry_call_shape_step_id },
-    run: join(concat(declared_entry_scope_lines(), [declared_entry_call_shape_command(bin: bin, source_roots: source_roots)]), "\n"),
+    run: concat(declared_entry_call_shape_marker_line(),
+             join(concat(declared_entry_scope_lines(bin: bin, source_roots: source_roots),
+                        [declared_entry_call_shape_command(bin: bin, source_roots: source_roots)]), "\n")),
     shell: none,
     // NO ENVELOPE INPUT, ON PURPOSE. The envelope requirement this job sets on its subject steps
     // (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot) is read by the TEST route -- v1_compiler.cli_run.target_invocation_host

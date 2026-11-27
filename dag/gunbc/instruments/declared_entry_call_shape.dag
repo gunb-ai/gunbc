@@ -914,3 +914,32 @@ fn run_declared_entry_call_shape(changed_paths_file: String, candidate_importers
 fn declared_entry_call_shape_changed_modules(changed_paths_file: String) -> String {
   join(cs_changed_modules(changed: cs_changed(paths: cs_read(path: changed_paths_file))), "\n")
 }
+
+// THE SAME KEYS, WRITTEN TO A FILE FOR THE STEP'S SEARCH. Which module a changed file declares is
+// cs_module_of_file's rule and has exactly one author, so the step asks HERE for the keys it hands to
+// `git grep -l -F` instead of spelling the root-and-extension rule again in shell next to it. The first
+// version did spell it in shell, and the two spellings had a silent disagreement available: a stem set
+// the grep found nothing for, an empty candidate file, and a run that passed having judged nothing. So
+// keys are written here, and no keys over a non-empty changed set is a refusal rather than a green.
+fn declared_entry_call_shape_stems_emit(
+  changed_paths_file: String,
+  stems_file: String
+) -> ProcessExit {
+  let changed = cs_changed(paths: cs_read(path: changed_paths_file))
+  let stems = cs_changed_modules(changed: changed)
+  if count(stems) == 0 {
+    exit_failure(reason: join([
+      "declared-entry call shape: ", count(changed),
+      " changed .dag paths name no module, so the reverse-import search would run with no keys and find nothing; refusing to call that a pass"
+    ], ""))
+  } else {
+    let w = Filesystem.Write(path: stems_file, content: concat(join(stems, "\n"), "\n"))
+    if w.success {
+      ExitSuccess
+    } else {
+      exit_failure(reason: join([
+        "declared-entry call shape: the stems file ", stems_file, " is not writable: ", w.error
+      ], ""))
+    }
+  }
+}

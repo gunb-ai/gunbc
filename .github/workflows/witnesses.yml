@@ -755,26 +755,27 @@ jobs:
       - name: Declared entry call shape
         id: declared-entry-call-shape
         run: |-
+          # dissolve-on: declared_entry_call_shape_scope_lines -- bash carrier of the git facts a CI step needs (base-commit resolution and fetch, the changed .dag diff, and a `git grep -l -F` narrowing for the reverse-import pass); dissolves when v2.extdeps.languages.bash_build carries git invocation AND a model-owned whole-tree content search exists that fits the required-job budget, at which point the scope lines retire into the instrument and this file keeps only the Step record.
           set -euo pipefail
           base='${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}'
           if [ -z "${base}" ]; then
-            echo 'skipped: this event carries no base commit to diff against, so this run changed nothing for the check to judge'
+            echo "::notice title=declared entry call shape::skipped: event ${{ github.event_name }} carries no base commit, so nothing was judged"
             exit 0
           fi
           dir=$(mktemp -d)
           changed="${dir}/changed.txt"
           candidates="${dir}/candidates.txt"
           git cat-file -e "${base}^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "${base}" >/dev/null 2>&1 || {
-            echo "the event base commit ${base} is not in this checkout and could not be fetched: refusing to guess a scope" 1>&2
+            echo "::error title=declared entry call shape::the event base commit ${base} is not in this checkout and could not be fetched: refusing to guess a scope" 1>&2
             exit 1
           }
           git diff --name-only "${base}...HEAD" -- '*.dag' > "${changed}"
           if [ ! -s "${changed}" ]; then
-            echo 'skipped: no .dag change in this diff'
+            echo "::notice title=declared entry call shape::skipped: no .dag change in this diff, scope empty"
             exit 0
           fi
           stems="${dir}/stems.txt"
-          sed -E 's|^dag/||; s|^src/v2/||; s|\.dag$||; s|/|.|g' "${changed}" | sed '/^$/d' > "${stems}"
+          ${{ steps.fast_lane.outputs.skip == 'true' && './gunbc-fast-lane-native-cli' || format('{0}/v2-native-cli-gen-one', runner.temp) }} run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/declared_entry_call_shape.dag --function declared_entry_call_shape_stems_emit --arg changed_paths_file=${dir}/changed.txt --arg stems_file=${dir}/stems.txt
           : > "${candidates}"
           if [ -s "${stems}" ]; then
             rc=0; git grep -l -F -f "${stems}" -- '*.dag' > "${candidates}.grep" || rc=$?
@@ -785,7 +786,7 @@ jobs:
           scope=$(wc -l < "${candidates}" | tr -d ' ')
           lines=$(xargs -r -a "${candidates}" cat 2>/dev/null | wc -l | tr -d ' ')
           if [ "${lines}" -gt 250000 ]; then
-            echo "scope of ${scope} .dag files / ${lines} lines is above the budget of 250000 lines: this is not this run's diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body" 1>&2
+            echo "::error title=declared entry call shape::scope of ${scope} .dag files / ${lines} lines is above the budget of 250000 lines: this is not this run's diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body" 1>&2
             exit 1
           fi
           echo "scope: ${scope} .dag files, ${lines} lines (changed plus reverse importers, diffed against ${base}, budget 250000)"
