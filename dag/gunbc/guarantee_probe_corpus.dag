@@ -28,7 +28,7 @@ import gunbc.guarantee_measurement {
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
 import std.algebra { fold_list }
-import v2.std.node { Symbol, Node, content_hash }
+import v2.std.node { Symbol, Node, content_hash, symbol_lexeme }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -184,6 +184,7 @@ data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through
 data floor_generic_instantiation_class: GuaranteeClassId = "floor-generic-instantiation-inhabitance" as GuaranteeClassId
 data floor_parse_list_separator_class: GuaranteeClassId = "floor-parse-list-separator" as GuaranteeClassId
 data floor_record_field_completeness_class: GuaranteeClassId = "floor-record-field-completeness" as GuaranteeClassId
+data floor_cardinality_seam_class: GuaranteeClassId = "floor-cardinality-seam" as GuaranteeClassId
 
 // APPLIED-GENERIC ALIAS AT A DIRECT-CALL FORMAL: an alias whose right-hand side is a generic
 // application (`type PConfigPatch = PatchRecord<PConfig>`) standing at a formal declared with that
@@ -227,6 +228,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     floor_parse_list_separator_class,
     floor_record_field_completeness_class,
     applied_generic_alias_at_formal_class,
+    floor_cardinality_seam_class,
     method_established_surface_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
@@ -302,6 +304,27 @@ data floor_record_completeness_red_probe: GuaranteeProbeId = "floor-record-field
 data floor_record_completeness_zero_field_product_control_probe: GuaranteeProbeId = "floor-record-field-completeness-zero-field-product-empty-braces-control" as GuaranteeProbeId
 data floor_record_completeness_zero_field_variant_control_probe: GuaranteeProbeId = "floor-record-field-completeness-zero-field-variant-empty-braces-hole" as GuaranteeProbeId
 data floor_record_completeness_bare_name_control_probe: GuaranteeProbeId = "floor-record-field-completeness-bare-name-no-literal-hole" as GuaranteeProbeId
+
+// Cardinality seam: field projection through an optional-typed declared field.
+// The hole: `l.parent.id` reads a field THROUGH an optional field (parent: Level?), producing the
+// field type through the optional at the projection; the projection position admits it silently
+// (zero diagnostics) although the field may be absent and absent carries no `id` field.
+// The green control: the required-field read (l.id) compiles with zero diagnostics, so the pair
+// differs on ONE axis -- the dot-after-optional projection -- and the hole is the projection, not
+// optionals in general.
+// The call-argument control: the same optional value at a direct call argument IS refused
+// (DeclaredTypeNotInhabited), proving the inhabittance check runs -- the hole is position-specific.
+// WHAT THIS ENROLMENT DOES NOT CLOSE, cited by identity so the carriers stay in the plan:
+// #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes partitions
+// every row on v1_compile_rust_path_id over three arms, and the six-class floor_* probes belong to none of
+// them. Both defects here -- that missing partition coverage, and the fixture population beside it -- are
+// rostered roadmap rows: rn_RNY67KVQ3FG5GVXYZX75DGSH6L
+// (floor-class-probes-have-no-dark-suite-migration-disposition) and rn_BXTBZQ7JL4H5AIXPPQ7JNG2GZD
+// (guarantee-probe-corpus-fixtures-exercise-no-flat-map-and-no-service). Their counts, owners, status and
+// dispatch are carried by those rows, not restated in this file.
+data floor_cardinality_seam_hole_probe: GuaranteeProbeId = "floor-cardinality-seam-field-projection-through-optional-hole" as GuaranteeProbeId
+data floor_cardinality_seam_green_probe: GuaranteeProbeId = "floor-cardinality-seam-required-field-read-green" as GuaranteeProbeId
+data floor_cardinality_seam_call_arg_control_probe: GuaranteeProbeId = "floor-cardinality-seam-call-argument-refusal-control" as GuaranteeProbeId
 
 data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
 data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
@@ -782,6 +805,26 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
     },
     GuaranteeProbeRow {
+      probe: floor_cardinality_seam_hole_probe,
+      class: floor_cardinality_seam_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a field read THROUGH an optional-typed declared field (l.parent.id where parent: Level?) is admitted with zero diagnostics, although the field may be absent and absent carries no id field; the same optional value at a direct call-argument position IS refused (DeclaredTypeNotInhabited), proving the inhabittance check is live and the hole is projection-position-specific" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_cardinality_seam_green_probe,
+      class: floor_cardinality_seam_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_cardinality_seam_call_arg_control_probe,
+      class: floor_cardinality_seam_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "DeclaredTypeNotInhabited" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: method_green_probe,
       class: method_established_surface_class,
       path: v1_compile_rust_path_id,
@@ -999,7 +1042,7 @@ fn probe_observation_from_accepted_infer_diagnostics(diagnostics: Diagnostics) -
     None => AcceptedClean
     Some { diagnostics: nes } =>
       AcceptedCounted {
-        diagnostic_class: nes.head.reason as NonEmptyStr,
+        diagnostic_class: symbol_lexeme(sym: nes.head.reason) as NonEmptyStr,
         count: non_empty_diagnostics_count_reason(nes: nes, reason: nes.head.reason),
       }
   }

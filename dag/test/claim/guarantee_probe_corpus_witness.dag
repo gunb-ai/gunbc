@@ -2,7 +2,7 @@ module test.claim.guarantee_probe_corpus_witness
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit }
-import gunbc.compile_census_probe { any_class_census, blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
+import gunbc.compile_census_probe { any_class_census, blocking_class_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
 import std.materialization_ladder { string_list_contains }
 import gunbc.guarantee_probe_corpus {
   guarantee_probe_corpus_charter_note,
@@ -40,13 +40,13 @@ import gunbc.guarantee_probe_corpus {
   sole_ctor_cast_red_probe,
   sole_ctor_unadmitted_caller_red_probe,
   sole_ctor_admitted_caller_green_probe,
-  v2_frontier_red_probe,
-  v2_frontier_green_probe,
   applied_alias_admits_wrong_instantiation_probe,
   applied_alias_at_matching_formal_probe,
   aliased_both_sides_different_instantiation_probe,
   applied_form_spelled_directly_probe,
   unparameterized_alias_at_target_formal_probe,
+  v2_frontier_red_probe,
+  v2_frontier_green_probe,
   ProbeExpectation,
   ExpectBlockingRefusal,
   ExpectZeroDiagnostics,
@@ -87,6 +87,7 @@ import gunbc.guarantee_measurement {
   MeasurementRevision, ContentFingerprint, GitRevision,
   guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
   probe_set_digest,
+  distinct_string_count,
 }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
@@ -100,6 +101,8 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
+import test.claim.guarantee_floor_class_probe_witness { floor_class_executed_v1_compile_probe_ids }
+import test.claim.infer_record_field_completeness_zero_field_witness { record_completeness_executed_v1_compile_probe_ids }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -129,6 +132,90 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
+}
+
+// The ids in THIS module's arm of the partition: the v1-compile probes whose executed leg is in this
+// file. The other two arms' entries come from the roster fn of the module that executes them, so this
+// is the only hand-authored piece of the arm and it is consumed by
+// #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes and by its
+// naming face #test.claim.guarantee_probe_corpus_witness::dark_suite_partition_names_the_uncovered_rows.
+fn dag_native_here_probe_ids() -> List<String> {
+  [
+    bare_none_collection_red_probe as String,
+    bare_none_green_probe as String,
+    bare_none_scalar_red_probe as String,
+    direct_call_arg_type_ordinary_module_red_probe as String,
+    direct_call_arg_type_v2_green_control_probe as String,
+    direct_call_arg_type_v2_module_red_probe as String,
+    sole_ctor_admitted_caller_green_probe as String,
+    sole_ctor_cast_red_probe as String,
+    sole_ctor_unadmitted_caller_red_probe as String,
+  ]
+}
+
+// THE SINGLE AUTHORITY for the arm's membership. Both the Bool partition leg and its naming face read THIS,
+// so the two cannot disagree about what they cover: a mutation that removes one roster from the arm reds both,
+// and the naming face is the one that prints which ids it then cannot place.
+fn v1_compile_arm_membership() -> List<String> {
+  concat(
+    concat(
+      concat(dag_native_here_probe_ids(), floor_class_executed_v1_compile_probe_ids()),
+      record_completeness_executed_v1_compile_probe_ids()
+    ),
+    // The applied-generic-alias-at-formal rows are dag-native and their executed leg is in
+    // #test.claim.applied_generic_alias_at_formal_witness, which publishes no roster fn, so this is the
+    // one hand-authored piece of the arm besides dag_native_here_probe_ids(). It stays HERE because this
+    // fn is the arm's only authority; when that module grows a roster fn, move these five ids there and
+    // delete this piece — listing them in two places is exactly the fork this fn exists to prevent.
+    [
+      applied_alias_admits_wrong_instantiation_probe as String,
+      applied_alias_at_matching_formal_probe as String,
+      aliased_both_sides_different_instantiation_probe as String,
+      applied_form_spelled_directly_probe as String,
+      unparameterized_alias_at_target_formal_probe as String,
+    ]
+  )
+}
+
+// THE SINGLE AUTHORITY for the hand-authored migration-gap allowlist. Both faces of the partition check
+// call this; adding a gap anywhere else is not a declaration, it is a fork. Its one entry and the reason
+// it is allowed to exist are in the note above the partition check.
+fn known_v1_migration_gap_ids() -> List<String> {
+  [sole_ctor_mint_fn_hole_probe as String]
+}
+
+// THE SINGLE AUTHORITY for the .dag probes the dark-suite dispositions already cover, projected from the
+// typed dispositions once. The Bool leg needs the identities to resolve them; the membership law below
+// needs only their Strings, and that projection exists here alone.
+fn disposition_dag_probe_ids() -> List<GuaranteeProbeId> {
+  guarantee_probe_dark_suite_dispositions()
+    |> flat_map(d => match d {
+      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
+    })
+}
+
+fn disposition_probe_ids() -> List<String> {
+  disposition_dag_probe_ids() |> map(p => p as String)
+}
+
+// THE POPULATION the partition quantifies over, projected once: the ids of every row enrolled on the
+// v1-compile path. Both faces read this, so "what is there to cover" cannot differ between them.
+fn v1_compile_row_ids() -> List<String> {
+  guarantee_probe_rows()
+    |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
+    |> map(row => row.probe as String)
+}
+
+// THE MEMBERSHIP LAW, written once: an enrolled v1-compile id is uncovered iff none of the three arms
+// holds it. The Bool leg asserts this list is empty; the naming face renders it. One law, two faces.
+fn uncovered_v1_compile_row_ids() -> List<String> {
+  let disposition_ids = disposition_probe_ids()
+  let gap_ids = known_v1_migration_gap_ids()
+  let arm_c_ids = v1_compile_arm_membership()
+  v1_compile_row_ids()
+    |> filter(id => !string_list_contains(xs: disposition_ids, wanted: id)
+      && !string_list_contains(xs: gap_ids, wanted: id)
+      && !string_list_contains(xs: arm_c_ids, wanted: id))
 }
 
 fn measured_harness_source_material(paths: List<String>) -> NonEmptyStr {
@@ -897,18 +984,15 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 // witness that must be disposed; these do not, so disposing them would assert a migration that
 // never happened and listing them as gaps a hole that is not there — rung inflation in miniature,
 // one in each direction, so they get their own arm. Membership is not an exemption from evidence:
-// each row still carries a discriminating RED or a positive control executed by a test in this
-// file, or in the witness module that carries its class (the applied-generic-alias-at-formal rows:
-// test.claim.applied_generic_alias_at_formal_witness, which runs each row against its own compile
-// census and pins the pair-agreement invariant). The three arms must partition, or a row could
-// claim two contradictory standings at once.
+// each row still carries a discriminating RED or a positive control, executed by a test in the
+// module that owns the leg — this file, the witness module whose roster fn lists that id below, or
+// test.claim.applied_generic_alias_at_formal_witness, whose five rows are named in
+// #test.claim.guarantee_probe_corpus_witness::v1_compile_arm_membership because that module publishes no
+// roster fn yet. The three arms must partition, or a row could claim two contradictory standings at once.
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = guarantee_probe_dark_suite_dispositions()
-  let disposition_probes: List<GuaranteeProbeId> = dispositions
-    |> flat_map(d => match d {
-      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
-    })
-  let disposition_probe_ids: List<String> = disposition_probes |> map(p => p as String)
+  let disposition_probes: List<GuaranteeProbeId> = disposition_dag_probe_ids()
+  let disposition_ids: List<String> = disposition_probe_ids()
   let dispositions_name_the_finite_classification_gate = dispositions
     |> all(d => match d {
       MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: _, rust_retained_until: gate } =>
@@ -921,46 +1005,63 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
       ProbeRowDuplicate { wanted: _, matches: _ } => false
     })
   let disposed_ids_have_no_internal_duplicates =
-    distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
-  let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
-  let dag_native_v1_compile_probe_ids: List<String> = [
-    // The applied-generic-alias-at-formal rows are dag-native: their subject is .dag source through
-    // the compile census, there is no Rust dark-suite witness behind them, and no migration is being
-    // claimed. Their evidence is executed in test.claim.applied_generic_alias_at_formal_witness.
-    applied_alias_admits_wrong_instantiation_probe as String,
-    applied_alias_at_matching_formal_probe as String,
-    aliased_both_sides_different_instantiation_probe as String,
-    applied_form_spelled_directly_probe as String,
-    unparameterized_alias_at_target_formal_probe as String,
-    bare_none_collection_red_probe as String,
-    bare_none_green_probe as String,
-    bare_none_scalar_red_probe as String,
-    direct_call_arg_type_ordinary_module_red_probe as String,
-    direct_call_arg_type_v2_green_control_probe as String,
-    direct_call_arg_type_v2_module_red_probe as String,
-    sole_ctor_admitted_caller_green_probe as String,
-    sole_ctor_cast_red_probe as String,
-    sole_ctor_unadmitted_caller_red_probe as String,
-  ]
-  let known_gaps_are_not_disposed = known_v1_migration_gap_ids
-    |> all(gap => !string_list_contains(xs: disposition_probe_ids, wanted: gap))
-  let every_v1_compile_probe_is_disposed_or_a_named_gap = guarantee_probe_rows()
-    |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
-    |> all(row => {
-      let id = row.probe as String
-      string_list_contains(xs: disposition_probe_ids, wanted: id)
-        || string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
-        || string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
-    })
+    distinct_string_count(values: disposition_ids) == count(disposition_ids)
+  // MEMBERSHIP IS DERIVED, not asserted: this list holds only the ids whose leg runs in THIS module, and
+  // each remaining entry comes from the roster fn of the module that executes it —
+  // #test.claim.guarantee_floor_class_probe_witness::floor_class_executed_v1_compile_probe_ids and
+  // #test.claim.infer_record_field_completeness_zero_field_witness::record_completeness_executed_v1_compile_probe_ids.
+  // The conjuncts carry the arm, not this note: a probe executed in a witness and not rostered there reds
+  // dark_suite_dispositions_cover_migrated_v1_probes through uncovered_v1_compile_row_ids(), and an id
+  // listed in any roster without a registered v1-compile row reds
+  // arm_c_ids_are_registered_v1_compile_rows.
+  let dag_native_v1_compile_probe_ids: List<String> = v1_compile_arm_membership()
+  let known_gaps_are_not_disposed = known_v1_migration_gap_ids()
+    |> all(gap => !string_list_contains(xs: disposition_ids, wanted: gap))
+  // THE MEMBERSHIP LAW IS NOT RESTATED HERE: the coverage conjunct is the shared law's own list being
+  // empty, so the face that names offenders and this assertion cannot drift apart.
+  let every_v1_compile_row_is_covered = count(uncovered_v1_compile_row_ids()) == 0
   let dag_native_ids_are_not_disposed_or_gaps = dag_native_v1_compile_probe_ids
-    |> all(id => !string_list_contains(xs: disposition_probe_ids, wanted: id)
-      && !string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
+    |> all(id => !string_list_contains(xs: disposition_ids, wanted: id)
+      && !string_list_contains(xs: known_v1_migration_gap_ids(), wanted: id))
+  let arm_c_ids_are_registered_v1_compile_rows = dag_native_v1_compile_probe_ids
+    |> all(id => (v1_compile_row_ids() |> filter(registered => registered == id) |> count) == 1)
+  let arm_c_has_no_duplicates = dag_native_v1_compile_probe_ids
+    |> all(id => (dag_native_v1_compile_probe_ids |> filter(other => other == id) |> count) == 1)
   disposed_ids_are_sound
     && disposed_ids_have_no_internal_duplicates
     && dispositions_name_the_finite_classification_gate
     && known_gaps_are_not_disposed
     && dag_native_ids_are_not_disposed_or_gaps
-    && every_v1_compile_probe_is_disposed_or_a_named_gap
+    && arm_c_ids_are_registered_v1_compile_rows
+    && arm_c_has_no_duplicates
+    && every_v1_compile_row_is_covered
+}
+
+// THE NAMING FACE OF THE PARTITION CHECK ABOVE. The Bool leg can only say that some row is
+// unaccounted; it printed FAIL with no reason at all, which is not evidence of a measurement — a check
+// that cannot name what it rejected has not shown what it looked at. It shares every authority with the
+// leg above: the population, the arms, and the membership law are all read from the module-level fns, so
+// the only thing this face owns is presentation - want/got counts and the offending ids in the label.
+test fn dark_suite_partition_names_the_uncovered_rows() -> ProcessExit {
+  // No arm, no population, no predicate is written here. This face only RENDERS what the shared law
+  // returns, which is the only way it can stay honest while the Bool leg asserts the same law.
+  let uncovered = uncovered_v1_compile_row_ids()
+  let wanted = count(v1_compile_row_ids())
+  let rendered = fold_list(
+    xs: uncovered,
+    empty: "",
+    cons: fn(acc, id) { concat(concat(acc, id), "; ") }
+  )
+  census_exit(census_premise(
+    name: concat(
+      "v1-compile rows covered by the three arms: want ",
+      concat(
+        census_int_text(n: wanted),
+        concat(", got ", concat(census_int_text(n: wanted - count(uncovered)), concat("; uncovered rows: ", rendered)))
+      )
+    ),
+    holds: count(uncovered) == 0
+  ))
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {
