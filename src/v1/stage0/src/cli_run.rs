@@ -94,7 +94,6 @@ pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod materialization_shadow;
 mod native_lane_runner;
-mod materialization_shadow;
 mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;

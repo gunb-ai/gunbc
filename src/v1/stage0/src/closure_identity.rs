@@ -17,6 +17,8 @@ use std::fs;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
+use sha2::Digest;
+
 use crate::v1_compiler_compile::SourceFile;
 use crate::v1_rt::{self, Hash};
 
@@ -138,4 +140,82 @@ pub fn witness_work_subject_key(closure_subject_digest: &str, function: &str) ->
         v1_rt::atom_identity_hash(closure_subject_digest.to_string()),
         v1_rt::atom_identity_hash(function.to_string()),
     )
+}
+
+// --- census-reuse key (the v1 compiler reuse experiment) -------------------------------
+//
+// The existing `hash_combine` chain above is FNV-16-hex and is preserved byte-for-byte so the
+// keys already carried by receipts stay stable. A reusable `build_symbol_index_census` answer,
+// however, is addressed in `std.fabric_blob`, which requires a 64-hex lower-case SHA-256. This
+// is the single authority for that key: the fixture and the production serving path call the
+// same declaration, so there is one definition. It is keying, not caching — it never supplies an
+// answer to the compiler.
+
+const CENSUS_KEY_SCHEMA: &[u8] = b"symbol-census-key-v1";
+const CENSUS_QUESTION: &[u8] = b"v1.symbol.index::build_symbol_index_census";
+
+fn census_key_field(hash: &mut sha2::Sha256, bytes: &[u8]) {
+    hash.update((bytes.len() as u64).to_le_bytes());
+    hash.update(bytes);
+}
+
+fn running_compiler_image_sha256() -> String {
+    // THE RUNNING IMAGE, not the path it was started from — the same reason `transform_content_digest`
+    // reads `/proc/self/exe`: a cargo relink replaces the directory entry behind `current_exe()`.
+    let exe = if cfg!(target_os = "linux") {
+        std::path::PathBuf::from("/proc/self/exe")
+    } else {
+        std::env::current_exe().unwrap_or_else(|e| {
+            panic!("census key: cannot locate the running compiler to address its image: {e}")
+        })
+    };
+    let bytes = fs::read(&exe)
+        .unwrap_or_else(|e| panic!("census key: cannot read running compiler {exe:?}: {e}"));
+    let mut hash = sha2::Sha256::new();
+    hash.update(&bytes);
+    hex::encode(hash.finalize())
+}
+
+/// THE cache key for a reusable `v1.symbol.index::build_symbol_index_census` answer.
+///
+/// Preimage, length-framed (each field is its byte length then its bytes), in this order:
+///   schema tag, question tag, running compiler image SHA-256, the pool entry count, the closure
+///   roster count, each closure module path (sorted), then each `(module path, source bytes)` of
+///   the pool (sorted by module path).
+///
+/// The closure roster is load-bearing: the census is built over the ENTRY'S CLOSURE module set,
+/// not the whole pool. Two different entries over the same pool but different closures produce a
+/// different `SymbolIndex`, so a pool-only key would omit a declared input the answer depends on.
+///
+/// Guarantees required by the reuse contract:
+///   * returns a 64-hex lower-case SHA-256;
+///   * both the pool and the closure roster are sorted, so the same tree keyed in separate
+///     processes is identical (never a `HashSet`/`HashMap` iteration order);
+///   * it is sensitive to a newly added provider module (a new entry changes the set and key);
+///   * the preimage contains no host file path, mtime or locator — only module paths and bytes.
+///
+/// Callers pass the process-shared module pool as `(module path, source bytes)` pairs plus the
+/// sorted closure roster of authored module paths the census consumed. File paths, the per-file
+/// newline index and the resolved graph are derived from these bytes and must NOT enter the
+/// preimage.
+pub fn symbol_census_key(modules: &[(String, String)], closure_roster: &[String]) -> String {
+    let image = running_compiler_image_sha256();
+    let mut sorted: Vec<(&String, &String)> = modules.iter().map(|(m, c)| (m, c)).collect();
+    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    let mut roster: Vec<&String> = closure_roster.iter().collect();
+    roster.sort();
+    let mut hash = sha2::Sha256::new();
+    census_key_field(&mut hash, CENSUS_KEY_SCHEMA);
+    census_key_field(&mut hash, CENSUS_QUESTION);
+    census_key_field(&mut hash, image.as_bytes());
+    census_key_field(&mut hash, &(sorted.len() as u64).to_le_bytes());
+    census_key_field(&mut hash, &(roster.len() as u64).to_le_bytes());
+    for module in roster {
+        census_key_field(&mut hash, module.as_bytes());
+    }
+    for (module, content) in sorted {
+        census_key_field(&mut hash, module.as_bytes());
+        census_key_field(&mut hash, content.as_bytes());
+    }
+    hex::encode(hash.finalize())
 }
