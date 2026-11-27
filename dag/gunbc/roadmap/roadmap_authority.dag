@@ -8537,9 +8537,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     // gunbc.design_argument::fail_closed treats as the line-stop signal, and unmarked text is never a reference
     // (gunbc.design_argument::source_annotations), so a dropped marker outlives the defect as an untraceable
     // citation. What happened under this heading falls under two classes already enrolled --
-    // #gunbc.recurring_failure_mode.authored_quotation_terminates_the_string_it_is_authored_in::authored_quotation_terminates_the_string_it_is_authored_in
+    // gunbc.recurring_failure_mode.authored_quotation_terminates_the_string_it_is_authored_in::authored_quotation_terminates_the_string_it_is_authored_in
     // (the unclosed paragraph that made a refusal correct) and
-    // #gunbc.recurring_failure_mode.positional_citation::positional_citation (the file:line pointers this PR
+    // gunbc.recurring_failure_mode.positional_citation::positional_citation (the file:line pointers this PR
     // replaced with symbol citations) -- and their receipts belong on those rows, not in this comment.
     // The container this plan's rows are members of: a level node, never dispatched, met only through its members.
     roadmap_node(
