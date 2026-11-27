@@ -18,6 +18,10 @@ import gunbc.serving.serving_benchmark_run_receipt {
   ServingBenchmarkRunRefused, ServingLevelResult, LevelTelemetry, WallPowerReading,
 }
 import gunbc.gpu_market.catalog_boards { gpu_catalog_board_admissions }
+import gunbc.gpu_market.comparison_standing {
+  BoardComparisonAdmission, ComparisonAdmitted, ComparisonRefused, ComparisonGrounding,
+  board_comparison_admission,
+}
 
 // A BENCHMARK RECEIPT JOINED TO THE HARDWARE IT RAN ON, AT THE GRAIN IT RAN AT. A serving-benchmark run
 // receipt (gunbc.serving.serving_benchmark_run_receipt) records each GPU as its driver reports it at the
@@ -45,6 +49,15 @@ type RealizationJoinRefusal
   | MemoryAboveCatalog { observed: Mebibyte, catalog: ByteSize }
   | PowerCapAboveBoardCeiling { cap: Milliwatt, ceiling: Milliwatt }
   | LinkAboveBoardEndpoint { observed: PcieLink, endpoint: PcieLink }
+  // THE STANDING REFUSED ENTRY, not the numbers: one of the figures this fold decides on arrived marked by
+  // its own row (a transcription nobody has grounded) or stated with nothing grounding it. It is ordered
+  // BEFORE the numeric comparisons on purpose -- there is no honest answer to "is the observed card over
+  // the ceiling?" when the ceiling is a transcription: the comparison cannot be evaluated, so it is not
+  // evaluated. The refusal carries per figure what the declaring module said (gunbc.gpu_market.
+  // comparison_standing::ComparisonGrounding), so the standing is in this verdict's own text rather than
+  // dropped at the boundary (gunbc.design_argument::epistemic_humility;
+  // gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission).
+  | ComparisonStandingRefused { model: NonEmptyStr, refusals: List<ComparisonGrounding> }
 
 type RealizationGpuJoin
   = RealizationGpuJoined { gpu: ObservedGpu, board: GpuBoardCatalogRow }
@@ -64,7 +77,22 @@ fn realization_link_rank(l: PcieLink) -> Nat {
   bandwidth_count(b: pcie_generation_per_lane_bandwidth(g: l.generation)) * l.lane_count
 }
 
+// THE COMPARISON ITSELF, with the standing gate in front of the numbers. A board enters the numeric
+// checks only when EVERY figure those checks decide on arrived cited to the authority that states it; a
+// marked or ungrounded figure is refused before the comparison is evaluated, carrying what the declaring
+// module said about it (gunbc.gpu_market.comparison_standing;
+// gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission). Splitting the numeric checks
+// into their own fold keeps one deciding rule in each place instead of nesting a standing read inside
+// three numeric branches.
 fn realization_check_board(gpu: ObservedGpu, board: GpuBoardCatalogRow) -> RealizationJoinRefusal? {
+  match board_comparison_admission(board: board) {
+    ComparisonRefused { model: model, refusals: refusals } =>
+      Present { value: ComparisonStandingRefused { model: model, refusals: refusals } }
+    ComparisonAdmitted { model: _, grounds: _ } => realization_figure_checks(gpu: gpu, board: board)
+  }
+}
+
+fn realization_figure_checks(gpu: ObservedGpu, board: GpuBoardCatalogRow) -> RealizationJoinRefusal? {
   let f = board.facts
   if mebibyte_count(m: gpu.memory) * 1048576 > byte_size_count(b: f.gpu.memory.capacity) {
     Present { value: MemoryAboveCatalog { observed: gpu.memory, catalog: f.gpu.memory.capacity } }
