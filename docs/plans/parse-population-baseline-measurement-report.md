@@ -88,11 +88,10 @@ and, over a real carrier-shaped row with one byte size mistyped, `parse_populati
 and its assertion was inverted for a refusal leg — it asserted the unreconciled count was `0`, which is false by
 construction, so as a leg it could only ever FAIL. It is now a `test fn` asserting the count is NOT zero, so every
 leg in the batch HELDs and the negative is carried by an assertion inside a held leg over a named planted input).
-Current leg set: 14 `test fn`s, zero plain-fn legs. Status for all of them: **parses only** — the module
-`test.claim.parse_population_baseline_roster_witness` has NO row in
+Leg set (count stated BY METHOD, not as a copied literal — a bare count drifted here once): `grep -c '^test fn ' dag/test/claim/parse_population_baseline_roster_witness.dag` outputs `19`; zero plain-fn legs. Execution status: **green by execution** for all 19 legs in run `pp_batch2` (srv1, BOOT c095c0cd, heavy-slot 11/12 acquired by bright-hawk-891 at 2026-11-27T11:15:06Z, instrument sha256 5aafd4fb6bc9e92bc4722c8fd85407351f9f7f235fc269f84d2afad90a86420e built-from-head 0d77469ccb92dc56de9b79c93b608adda4ab804b, claim route, one process, 19 operands one-per-operand: `19 claim(s): 19 held, 0 did not hold, 0 unobserved`; acquisition log /home/briansrls/tmp-bright-hawk-891/pp_batch2.log). The module still has NO row in
 `v2.workflow.required_floor::required_gate_authored_modules` (verified by grep over that file: zero hits), so
 no lane executes it and none of these legs is gated; an operator ruling would be needed to enrol the module.
-Execution on srv1 through the limiter is the open item. Reading the real tree and failing by name on the real 170 rows is
+Reading the real tree and failing by name on the real 170 rows is
 likewise open, not done here.
 
 **Route A is the merge path.** `gunbc compile --target rust` over this carrier already emits all 170 rows as
