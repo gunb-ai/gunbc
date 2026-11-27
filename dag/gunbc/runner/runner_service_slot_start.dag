@@ -26,7 +26,7 @@ import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed, fleet_converge_subject_host_env_name }
 import gunbc.host.host_effect { HostEffectTransport }
-import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused }
+import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, RunArgvTransportUnanswered, run_argv_transport_unanswered_cause_phrase }
 import gunbc.host.anchored_host_transport { AnchoredBindingBound, anchored_host_binding_refusal_reason }
 import gunbc.runner.runner_initialization { runner_host_pinned_binding }
 import extdeps.shell.credentials { env_credential }
