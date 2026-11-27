@@ -829,7 +829,7 @@ fn real_rows_fixture_or_contract_leg(rows: List<DeclPhase1Row>) -> Bool {
 
 data real_resolver_rows: Outcome<List<DeclPhase1Row>> =
   bind_outcome(
-    o: native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"]),
+    o: native_lane_census_ingest(source_roots: ["dag", "src/v2"]),
     f: fn(ingest) {
       bind_outcome(
         o: native_test_context_from_ingest(ingest: ingest),
@@ -851,7 +851,7 @@ data real_resolver_rows: Outcome<List<DeclPhase1Row>> =
 // stage gets its own individually-named claim so the LABEL is the diagnostic (ruling 4): the refusal
 // is observed at its stage boundary rather than reported as a bare Bool several layers away.
 data real_rows_probe_ingest: Outcome<SourceRootIngest> =
-  native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"])
+  native_lane_census_ingest(source_roots: ["dag", "src/v2"])
 
 data real_rows_probe_context: Outcome<NativeTestContext> =
   bind_outcome(
@@ -1066,8 +1066,11 @@ test fn filesystem_contract_identity_grain_is_duplicate_free() -> Bool {
 // own import binding rows. The arriving side is NEVER built from the roster, and the roster side is
 // never built from the arriving side (review 98562 finding 1; gunbc.design_argument::guarantee_ladder:
 // a check whose forbidden state is expressible nowhere it runs is a decoration). The forbidden state IS
-// expressible here: author a new `uses` row anywhere under dag/, src/v1 or src/v2 and the hold arm goes
-// red by naming it; delete a retained row's uses clause and the blindness arm goes red by naming it.
+// expressible here: author a new `uses` row anywhere under the governed census roots (dag/ or
+// src/v2 -- v2.cli.repository_layout governs exactly these two trees for the roots API, and the
+// arriving side enumerates them) and the hold arm goes red by naming it; delete a retained row's uses
+// clause and the blindness arm goes red by naming it. Rows under a non-governed directory are outside
+// the arriving population, so the wall does not claim them.
 // =============================================================================================
 
 // THE ARRIVING PRODUCER: parse the corpus, read the uses clauses. A `uses` entry parses to a node
@@ -1278,7 +1281,7 @@ fn corpus_rows_for_witness(w: DagSourceReadWitness) -> Outcome<List<DemandRestat
 
 data corpus_restatement_arriving: Outcome<List<DemandRestatementRowIdentity>> =
   bind_outcome(
-    o: native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"]),
+    o: native_lane_census_ingest(source_roots: ["dag", "src/v2"]),
     f: fn(ingest) {
       fold_list(
         xs: ingest,
