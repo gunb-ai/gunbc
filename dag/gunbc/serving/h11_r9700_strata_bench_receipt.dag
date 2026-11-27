@@ -12,6 +12,7 @@ import extdeps.linux.amdgpu_hwmon {
 }
 import extdeps.hardware { Hardware }
 import extdeps.vendor { Vendor }
+import extdeps.vendor.amd { amd }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 
@@ -115,14 +116,14 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 2048),
     third_turn_aggregate: milli_tokens_per_second(count: 12010),
     cached_tokens_max: token_count(count: 0),
-    // The bench's GPU sampler INVOKED nvidia-smi and it THREW, per sample, inside the sampler's background
-    // thread: strata_bench.err.log records the per-sample crash in every run. That is a failed read, so it is
-    // ProbeFailed (gunbc.design_argument::external_upstreams -- the observed fact is the tool's own crash, not
-    // a verdict about the hardware). That nvidia-smi cannot read an AMD card explains the crash; it does not
-    // move this row into ProbeAbsentOnVendor, which is the arm for a probe that was never invoked at all.
-    power: ProbeFailed {
+    // RED-CONTROL PLANT (refs/red-control only, never a PR): the instrument ran and threw per sample
+    // (strata_bench.err.log), and this row files that crashed read under the never-invoked arm anyway --
+    // the conflation this type's comment forbids, and the row's red_control verbatim: an absent
+    // measurement read as not-applicable instead of a refusal naming the failure
+    // (gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent).
+    power: ProbeAbsentOnVendor {
       probe: "nvidia-smi" as NonEmptyStr,
-      cause: "strata_bench.err.log records a per-sample crash in every run; the throw was inside the sampler's background thread and killed the thread, not the run" as NonEmptyStr,
+      host_vendor: amd,
     },
   },
   // THE CONVERSATION-CACHE RUN WAS WORSE, AND ONE REQUEST FAILED. Agent 3's first turn returned no tokens after
@@ -143,11 +144,12 @@ data h11_r9700_bench_runs: List<R9700BenchRun> = [
     third_turn_tokens: token_count(count: 1536),
     third_turn_aggregate: milli_tokens_per_second(count: 4770),
     cached_tokens_max: token_count(count: 0),
-    // Same observation as r9700-20261112: the sampler invoked nvidia-smi and it threw per sample in every
-    // run (strata_bench.err.log), so this is the failed-read arm, not the never-invoked arm.
-    power: ProbeFailed {
+    // RED-CONTROL PLANT (same conflation as r9700-20261112): the sampler invoked nvidia-smi and it threw
+    // per sample in every run; filing it here as not-applicable-on-this-vendor reports a failed read as
+    // never-applicable -- the row's RED case, not a legitimate model.
+    power: ProbeAbsentOnVendor {
       probe: "nvidia-smi" as NonEmptyStr,
-      cause: "strata_bench.err.log records a per-sample crash in every run; the throw was inside the sampler's background thread and killed the thread, not the run" as NonEmptyStr,
+      host_vendor: amd,
     },
   },
   R9700BenchRun {
