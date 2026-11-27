@@ -133,6 +133,10 @@ type HttpIngressBinding {
   read_timeout: Millisecond
   cpu_limit: Millisecond
   wall_limit: Millisecond
+  // RESPONSES THE BINDING FIXES FOR THE PROCESS'S LIFE, answered from the table the host renders once at
+  // startup (http_ingress_pre_evaluation_routes) without entering the evaluator. Empty unless the entry
+  // supplies them through http_ingress_answering_before_evaluation.
+  answered_before_evaluation: List<HttpIngressPreEvaluationRoute>
 }
 
 // What a binding constructor answers. A refused binding binds nothing: the host prints the reason
@@ -183,6 +187,7 @@ fn http_ingress_binding(
                 read_timeout: native_serve_read_timeout,
                 cpu_limit: cpu,
                 wall_limit: wall,
+                answered_before_evaluation: [],
               } }
             }
         }
@@ -376,18 +381,72 @@ type HttpIngressPreEvaluationRoute {
 }
 
 fn http_ingress_pre_evaluation_routes(b: HttpIngressBinding, bound_host: String, bound_port: Int) -> List<HttpIngressPreEvaluationRoute> {
-  [
-    HttpIngressPreEvaluationRoute {
-      method: "GET",
-      target: serve_liveness_path as String,
-      response: ServeWireResponse {
-        status: 200,
-        content_type_label: native_serve_application_json,
-        body: serve_liveness_document(revision: b.release_revision, entry_function: http_ingress_handler_name(b: b), bound_host: bound_host, bound_port: bound_port),
-        headers: [],
-      },
+  concat([http_ingress_liveness_route(b: b, bound_host: bound_host, bound_port: bound_port)], b.answered_before_evaluation)
+}
+
+fn http_ingress_liveness_route(b: HttpIngressBinding, bound_host: String, bound_port: Int) -> HttpIngressPreEvaluationRoute {
+  HttpIngressPreEvaluationRoute {
+    method: "GET",
+    target: serve_liveness_path as String,
+    response: ServeWireResponse {
+      status: 200,
+      content_type_label: native_serve_application_json,
+      body: serve_liveness_document(revision: b.release_revision, entry_function: http_ingress_handler_name(b: b), bound_host: bound_host, bound_port: bound_port),
+      headers: [],
     },
-  ]
+  }
+}
+
+// A BINDING MAY FIX MORE RESPONSES FOR THE PROCESS'S LIFE, and this is the one way it does. A response
+// qualifies only when its bytes are a pure function of what the process was launched with -- the loaded
+// program and the binding -- so rendering it once at startup answers every request exactly as evaluating the
+// handler per request would. The first consumer is gunbc.roadmap.roadmap_ingress, whose /healthz document is
+// the tree's surface plus the release revision (operator ruling 2026-11-26): re-rendering it per probe spent
+// the evaluator on a value fixed at launch. A supplied route that claims the liveness target, or a method and
+// target another supplied route already claims, refuses the binding: two answers for one request line is a
+// fork the host would settle by table order. A refused admission passes through unchanged.
+fn http_ingress_answering_before_evaluation(admission: HttpIngressAdmission, routes: List<HttpIngressPreEvaluationRoute>) -> HttpIngressAdmission {
+  match admission {
+    HttpIngressRefused { reason: r } => HttpIngressRefused { reason: r }
+    HttpIngressBound { binding: b } =>
+      match http_ingress_pre_evaluation_collision(
+        seen: concat([http_ingress_route_key(method: "GET", target: serve_liveness_path as String)], map(b.answered_before_evaluation, r => http_ingress_route_key(method: r.method, target: r.target))),
+        routes: routes,
+      ) {
+        Present { value: why } => HttpIngressRefused { reason: why }
+        Absent => HttpIngressBound { binding: HttpIngressBinding {
+          handler: b.handler,
+          listener: b.listener,
+          release_revision: b.release_revision,
+          head_limit: b.head_limit,
+          body_limit: b.body_limit,
+          read_timeout: b.read_timeout,
+          cpu_limit: b.cpu_limit,
+          wall_limit: b.wall_limit,
+          answered_before_evaluation: concat(b.answered_before_evaluation, routes),
+        } }
+      }
+  }
+}
+
+fn http_ingress_route_key(method: String, target: String) -> String {
+  concat(method, concat(" ", target))
+}
+
+// THE FIRST REQUEST LINE TWO ANSWERS WOULD CLAIM, or none. `seen` starts with the liveness route and the
+// binding's own supplied routes.
+fn http_ingress_pre_evaluation_collision(seen: List<String>, routes: List<HttpIngressPreEvaluationRoute>) -> String? {
+  match routes {
+    Empty => none
+    Cons { head: r, tail: rest } => {
+      let key = http_ingress_route_key(method: r.method, target: r.target)
+      if fold(seen, init: false, f: (hit, k) => if hit { true } else { k == key }) {
+        Present { value: concat("two pre-evaluation answers claim the request line ", key) }
+      } else {
+        http_ingress_pre_evaluation_collision(seen: seen |> list_push(key), routes: rest)
+      }
+    }
+  }
 }
 
 // ── THE HANDLER'S ARGUMENTS ─────────────────────────────────────────────────────────────────
@@ -671,6 +730,21 @@ fn http_ingress_shape_refusal(declared: List<HttpIngressDeclaredParameter>, fact
   }
 }
 
+// THE NATIVE DOOR ANSWERS BEFORE EVALUATION ONLY WHAT gunbc.native_serve native_serve_route ANSWERS (/livez). A
+// binding that supplied more (http_ingress_answering_before_evaluation) is refused here rather than started with
+// those answers silently dropped onto the handler path: the native door has no table for them yet.
+fn http_ingress_native_listener_or_pre_evaluation_refusal(b: HttpIngressBinding) -> String? {
+  match http_ingress_listener_refusal(listener: b.listener) {
+    Present { value: why } => Present { value: why }
+    Absent =>
+      match b.answered_before_evaluation {
+        Empty => none
+        Cons { head: r, tail: _ } =>
+          Present { value: concat("the native door does not realize a binding's pre-evaluation answers; this binding supplies ", http_ingress_route_key(method: r.method, target: r.target)) }
+      }
+  }
+}
+
 // THE START A NATIVE PROCESS SERVES UNDER. A refused binding binds nothing. A bound binding must name
 // the handler the program descriptor names -- compared as declaration references, so a homonym in
 // another module, or another handler of the same module, is refused -- because the handler compiled
@@ -689,7 +763,7 @@ fn http_ingress_native_contract(admission: HttpIngressAdmission, program: Native
       if !declaration_ref_eq(a: b.handler, b: program.handler) {
         HttpIngressNativeRefused { reason: concat("the binding names handler ", concat(http_ingress_handler_identity(b: b), concat(" but this binary realizes ", concat(program.handler.module_path as String, concat(".", program.handler.decl_name as String))))) }
       } else {
-        match http_ingress_listener_refusal(listener: b.listener) {
+        match http_ingress_native_listener_or_pre_evaluation_refusal(b: b) {
           Present { value: why } => HttpIngressNativeRefused { reason: why }
           Absent =>
         match http_ingress_fact_plan(b: b, declared: declared |> map(d => d.name)) {

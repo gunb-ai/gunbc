@@ -169,7 +169,7 @@ import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunningLeftUnmasked, drain_runner_slot_under_over, NeverMaskARunningUnit, slot_drain_pending_cause_wire,
   read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused,
-  activate_runner_slot_over, drain_and_mask_runner_slot_over,
+  activate_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
   slot_actuation_show_properties, slot_actuation_reading_of, SlotActuationReading, SlotReadingTyped,
   SlotReadingUnknownWord, slot_task_count_of_show, SlotTasks, SlotCgroupAbsent, SlotTasksUnread,
@@ -3116,7 +3116,7 @@ fn converge_runner_slot_tree(
       // stopped and then masked; a busy or stopping one is left untouched and unmasked for a later run. The
       // MaskWhileRunning drain this fold used before masked twelve busy srv4 slots on 2026-11-04 (run
       // 41861708547); the mask's reload stripped their cap drop-ins and slice mid-job.
-      match drain_runner_slot_under_over(target: subject.target, context: context, unit: unit, admission: NeverMaskARunningUnit) {
+      match drain_runner_slot_under_over(target: subject.target, context: context, unit: unit, admission: NeverMaskARunningUnit {}) {
         SlotDrainPending { unit: _, cause: c } => RunnerSlotTreePending { unit: unit, cause: join(["not drained: ", slot_drain_pending_cause_wire(c: c), "; the rebuild waits for a later run"], "") as NonEmptyStr }
         SlotActuationRefused { unit: _, step: st, reason: why } => RunnerSlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
         SlotActivated { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
@@ -3125,8 +3125,8 @@ fn converge_runner_slot_tree(
         // over the sum: a unit this host is not allowed to start may not have its tree rebuilt and activated.
         SlotActivationHeldByWithdrawal { unit: _, cause: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the activation leg is held by the withdrawn record" as NonEmptyStr }
         SlotNotInstalled { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the slot's unit is not installed, so there is no drained slot whose tree this run may remove" as NonEmptyStr }
-        // drain_and_mask_runner_slot_over answers Noop only for DrainAlreadyMasked: an earlier run masked
-        // the slot while a job ran, and it has since stopped. That is the pending drain settling, so the
+        // drain_runner_slot_under_over answers Noop only for DrainAlreadyMasked: an earlier pass masked the
+        // slot once it was read stopped, and it has since settled. That is the pending drain settling, so the
         // slot is as drained as SlotDrainedAndMasked and its tree is rebuilt.
         SlotActuationNoop { unit: _, state: _ } => rebuild_runner_slot_tree(subject: subject, context: context, target: target)
         SlotDrainedAndMasked { unit: _ } => rebuild_runner_slot_tree(subject: subject, context: context, target: target)
@@ -3976,9 +3976,23 @@ fn runner_host_manager_reload_step(
   }
 }
 
+// THE FABRIC/RETIREE DRAIN LEG'S PER-UNIT ACTUATION, NAMED SO IT IS A ROUTE A CLAIM CAN DRIVE. This is
+// behavior-preserving wiring only -- same call order, same arguments, no policy of its own: it forwards to
+// gunbc.runner.runner_slot_actuation drain_runner_slot_under_over with the ONE admission there,
+// NeverMaskARunningUnit (gunbc.design_argument::fail_closed). A candidate this leg drains is therefore
+// stopped before it is masked, and a unit with a job in flight is left running AND UNMASKED for a later
+// pass; the mask-while-running entry it used to call (drain_and_mask_runner_slot_over) is deleted, so no
+// route constructs mask-of-running (roadmap node fleet-no-route-masks-a-running-unit, class
+// gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload).
+fn runner_host_drain_leg_actuate(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+{
+  drain_runner_slot_under_over(target: target, context: context, unit: unit, admission: NeverMaskARunningUnit {})
+}
+
 // THE SLOT POPULATION IS BROUGHT TO THE COMMITTED WIDTH BEFORE ITS CPU CEILING IS WRITTEN. Apply mode
 // activates every desired runner slot (gunbc.runner.runner_slot_actuation activate_runner_slot_over) and
-// drains and masks every fabric member and required retiree (drain_and_mask_runner_slot_over) over the
+// drains every fabric member and required retiree (runner_host_drain_leg_actuate, which stops before it
+// masks and never masks a unit that is still running) over the
 // same administrator edge; observe mode actuates nothing. The per-slot quota divides the host by the
 // committed width, so writing it while fewer slots run would hold the live runners to a share sized
 // for slots that are not there -- the CPU drop-in is withheld until every actuation settled.
@@ -4049,7 +4063,7 @@ fn runner_host_slot_actuations(
               runner_host_drain_leg_decided(subject: subject, population: population, readback: retirement),
               step =>
                 match step {
-                  DrainNow { unit: u } => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)
+                  DrainNow { unit: u } => runner_host_drain_leg_actuate(target: subject.target, context: context, unit: u)
                   DrainHeld { unit: u, cause: why } => SlotRetirementWithheld { unit: u, cause: why }
                   DrainRefusedByStanding { unit: u, cause: why } => SlotRetirementRefused { unit: u, cause: why }
                   // THE GATE NEVER SPOKE ABOUT THIS CANDIDATE: nobody drains it. A drain leg whose gate was

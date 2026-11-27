@@ -165,7 +165,7 @@ import gunbc.roadmap.roadmap_component {
 }
 import gunbc.roadmap.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
-  roadmap_site_healthz_body_for_release_over,
+  roadmap_site_healthz_body_for_release,
 }
 import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
@@ -180,7 +180,6 @@ import gunbc.roadmap.roadmap_served_observation {
 }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout,
-  CarrierReadAttached,
   roadmap_event_carrier_layout_for_instance,
   roadmap_events_read,
   roadmap_event_append,
@@ -188,7 +187,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
   AllEventsRead, AllEventsReadRefused,
   RoadmapEventsRead, RoadmapAllEventsRead, RoadmapEventAppend,
-  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
+  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
@@ -911,7 +910,7 @@ fn serve_issue_detail_response_over(
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
-        let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
+        let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
         let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
         let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
         let attempts = match observed {
@@ -975,7 +974,7 @@ fn serve_issue_assignment_context_over(
           EventsReadRefused { node: _, step, reason } =>
             serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["Cannot load assignment history at ", step, ": ", reason], ""))
           EventsRead { node: _, envelopes } =>
-            let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
+            let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
               AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events)
               AllEventsReadRefused { step: _, reason: _ } => []
             }
@@ -1724,6 +1723,20 @@ fn dashboard_instance_json_members(instance: HostDashboardInstance) -> List<Json
 // -- while this table is still mounting them for rollback (side-chat HOLD item 3: port identity is
 // not writer authority, and roadmap route code may stay only if its store effects are gated by the
 // same authority).
+// THE /healthz RESPONSE, ONE PRODUCER FOR BOTH ROUTES TO IT. The document is the tree's surface plus the release
+// revision (gunbc.roadmap.roadmap_static_site roadmap_site_healthz_body_for_release), a pure function of what the
+// process was launched with, so it does not read the plan any handler of this table is handed. The HealthzHandler
+// arm below answers with it per request; gunbc.roadmap.roadmap_ingress renders the same response once at startup
+// into the ingress binding's pre-evaluation table (gunbc.http_ingress http_ingress_answering_before_evaluation),
+// which answers GET /healthz without entering the evaluator. Both are this function, so they cannot drift.
+fn roadmap_serve_healthz_response(release_revision: CommitSha) -> ServeHttpResponse {
+  serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
+}
+
+fn roadmap_serve_healthz_wire_response(release_revision: CommitSha) -> ServeWireResponse {
+  serve_wire_response(r: roadmap_serve_healthz_response(release_revision: release_revision))
+}
+
 fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
   plan: fn() -> RoadmapAuthorityProjection,
@@ -1769,7 +1782,7 @@ fn roadmap_serve_invoke_over(
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
     SpecimenPageHandler => serve_page_response(page: specimen_page())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
-    HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release_over(plan: plan(), release_revision: release_revision))
+    HealthzHandler => roadmap_serve_healthz_response(release_revision: release_revision)
     DashboardInstanceHandler =>
       serve_text_response(
         status: 200,
@@ -2744,7 +2757,6 @@ fn serve_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) ->
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
-    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -2753,7 +2765,6 @@ fn serve_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRea
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
-    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -2762,6 +2773,5 @@ fn serve_append_after_snapshot_close(appended: CarrierClosed<RoadmapEventAppend>
     SnapshotNotOpened => appended.result
     SnapshotClosed => appended.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => appended.result
-    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => appended.result
   }
 }
