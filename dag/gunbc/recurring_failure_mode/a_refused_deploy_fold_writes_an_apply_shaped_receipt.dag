@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.a_refused_deploy_fold_writes_an_apply_shaped_receipt
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+// THE WRONG-SHAPE-DOCUMENT CLASS: a deploy fold that REFUSES still writes a receipt, and writes it
+// in the APPLY shape. The receipt directory then holds an apply-shaped live_deploy_receipt.json
+// whose own schema asserts the step succeeded, produced by a run that exited 1. The downstream
+// exactly-one-receipt assertion pairs document shape with step conclusion and refuses the mismatch
+// by name -- the pairing IS the mechanical prevention; without it the refused transaction would
+// have left a success-shaped artifact in the upload, which is fail-open by document.
+
+data a_refused_deploy_fold_writes_an_apply_shaped_receipt: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refused_deploy_fold_writes_an_apply_shaped_receipt" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable at the assert: the downstream 'Assert exactly one live-deploy receipt' step (dag/gunbc/live_deploy/apply_receipt.dag fn assert_dashboard_deploy_receipts, verdict text dashboard_receipt_assert_verdict_text arm AssertConclusionMismatch) pairs receipt shape with the step conclusion and refuses the mismatch by name; the fold's refusal arms already have a refusal-shaped writer (dag/gunbc/live_deploy/apply.dag fn live_deploy_transaction_refused) and every arm that exits 1 before an apply has been observed must route the document through it" } },
+
+  receipts: [
+    "**a deploy fold that refuses writes an apply-shaped receipt** (the fold whose plan could not be derived from the host serializes an apply-shaped live_deploy_receipt.json -- decodable by live_deploy_apply_receipt_decode -- while returning exit 1; an apply receipt means the step succeeded, so the document asserts the opposite of the run that produced it).",
+
+    "INVALID STATE: dag/gunbc/live_deploy/apply.dag fn live_deploy_receipted_decided (the admitted arm) maps a NotConverged outcome to LiveDeployApplyNotConverged { reason } and still calls live_deploy_write_apply_receipt (fn at apply.dag:1672; artifact path built by dag/gunbc/live_deploy/apply_receipt.dag:135) with exit: live_deploy_reconciliation_exit -- a failure exit. The fold carried a refusal through the APPLY-shape writer instead of the transaction-refusal writer (dag/gunbc/live_deploy/apply.dag fn live_deploy_transaction_refused at :1699, which writes the schema-tagged refusal document), so the receipt directory gained an apply-shaped document from a refusing run.",
+
+    "HARM: the receipt directory is populated as though the deploy had decided, and the upload step ships it -- artifact live-deploy-srv1-live-receipt, the 1559-byte live_deploy_receipt.json written 08:11:34Z. Any reader that trusts receipt presence and shape before the assert step runs, or that reads the artifact alone after the run, sees an apply receipt where the transaction refused. The transaction that decided nothing leaves a success-shaped document in the evidence store.",
+
+    "RECEIPT (what caught it; the rung is read from this): the downstream 'Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)' step refused the pair -- raw: an apply receipt paired with deploy-step conclusion 'failure'; an apply receipt means the step succeeded and a refusal means it failed -- one of the two (fleet-converge run 45957504303, step 16, 2026-11-27T08:12:18Z). The guard exists and it fired; the class is caught, not silent, which is why the standing is read at the assert.",
+
+    "RECEIPT (the fold's own refusal, same run, step 15): live_deploy: the deployment plan could not be derived from the host: tree-publication: refused -- could not observe the host: index materialization failed: fatal: unable to read tree a6159f2a (2026-11-27T08:11:33.9679523Z, exit 1). Producers, by symbol: dag/gunbc/live_deploy/apply.dag:388 turns EffectsRefused into NotConverged with that reason; dag/gunbc/live_deploy/member_identity.dag:73 renders TreePublication as tree-publication; dag/gunbc/live_deploy/member_observe.dag:626 fn read_tree_leg names the leg index materialization.",
+
+    "DISTINGUISHING FACTS, and the NOT-THIS-CLASS sentence: the nearest row is gunbc.recurring_failure_mode.a_refused_secondary_read_aborts_an_observer_before_its_receipt, and it is the INVERSE: there a refused secondary read SUPPRESSES the receipt (the observer writes nothing and the zero-receipt arm fires); here the refusal still writes a document, but in the apply shape, and the wrong-shape arm fires. Zero document is that class; wrong-shape document is this one.",
+
+    "SOURCE READ -- can the fold construct both arms? YES, both writers live in one module. Printed hits at b07fd2aac723: dag/gunbc/live_deploy/apply.dag contains live_deploy_transaction_refused( 11 times (fn at :1699; call sites :1825 :1846 :1854 :1863 :1885 :1891 :1897 :1903 :1909 :1938) and live_deploy_write_apply_receipt( 4 times (fn at :1672; call sites :1785 :1794 :1806), and all three call sites pass an exit that can be a failure (live_deploy_reconciliation_exit of an unconverged preflight, an explicit exit_failure, and live_deploy_reconciliation_exit of the applied result). The pre-apply arms route refusals through the refusal writer; the admitted-path NotConverged arm routes through the apply-shape writer while exiting 1 -- that arm is the instance of this class.",
+
+    "RULE: at every arm that exits failure before an apply has been observed, the fold's document goes through live_deploy_transaction_refused, so the receipt directory holds a refusal-shaped named artifact and the assert admits it; the assert step remains the mechanical backstop that turns a wrong-shape document into a named refusal rather than a silent success-shaped upload.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_write_apply_receipt"),
+    decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_refused"),
+    decl_ref(module_path: "gunbc.live_deploy.apply_receipt", decl_name: "assert_dashboard_deploy_receipts"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_refused_secondary_read_aborts_an_observer_before_its_receipt", decl_name: "a_refused_secondary_read_aborts_an_observer_before_its_receipt"),
+  ],
+}
