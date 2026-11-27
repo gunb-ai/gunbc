@@ -405,13 +405,16 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // TWO-seat srv4 pool at FOUR runners (measured 15 -> 11 on the pre-#17186 tree, review
     // 99338), not the promised -2 -- and the
     // card was decided on the fold's own numbers, not an author's reading: measured at this head
-    // (engine sha256 6ec8c202...), ONE seat costs srv4 ONE runner (the committed width fold lands
-    // at 14, against srv3's ruled -2 landing at 11 -- well inside the card's ceiling of two), so
-    // the "1 seat" branch is live and the "0 seats for now" branch is not. The count is the
+    // (engine sha256 6ec8c202...), ONE seat costs srv4 within the card's ceiling of two, so the
+    // "1 seat" branch is live and the "0 seats for now" branch is not. The count is the
     // card's own word, kept untouched; the pool behind it is NOT written here -- it resolves as
     // 1 x footprint + census headroom through ruled_seats_driven_pool, the same authority as
-    // every seat-driven row. The width witness (runner_slot_allocation_witness) pins the fold's
-    // derived 14 and the pool equality; this row carries no bytes and no width.
+    // every seat-driven row. THE WIDTH IS NOT RESTATED HERE: it is the fold's derived
+    // RunnerWidthDerived, pinned once in
+    // test.claim.runner.runner_slot_allocation_witness (the srv4 clauses of
+    // runner_slot_allocation_memory_admissions_differ_by_host_class and
+    // runner_slot_allocation_committed_widths_are_the_minimum_over_axes, with the pool equality
+    // against ruled_seats_driven_pool); this row carries no bytes and no width.
     ruling: remote_build_capacity_ruling_srv4_seat_card_default_approved_2026_11_27.reference,
     size: RuledSeatsNamed { seats: Succ { prev: Zero } },
   },
