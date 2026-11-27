@@ -154,14 +154,14 @@ type BrokerBoundStep {
 fn branch_run_grant_broker_bound_steps() -> List<BrokerBoundStep> {
   [
     BrokerBoundStep { step: outcome_accepted(value: branch_run_grant_broker_checkout_step()), role: capability_neutral, step_name: "Checkout the default branch this broker runs from" },
-    BrokerBoundStep { step: outcome_accepted(value: toolchain_home_isolation_step()), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    BrokerBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
     BrokerBoundStep {
       step: outcome_accepted(value: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
       step_name: "Install Rust toolchain",
     },
     BrokerBoundStep {
-      step: outcome_accepted(value: toolchain_pin_rustup_default_step()),
+      step: toolchain_pin_rustup_default_step(),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },

@@ -71,7 +71,7 @@ import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   BracketQuoted,
@@ -233,6 +233,26 @@ fn compiler_gate_checkout_step() -> Step {
   }
 }
 
+// THE UNWRAP IS SAFE: the orch-emitted pipelines are fixed command sequences the emitter always renders.
+// If they refuse, the generation gate refuses the whole workflow via the renderability check.
+fn compiler_gate_unwrap_orch_step(o: Outcome<Step>) -> Step {
+  match o {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => RunStep { name: none, id: none, run: "", shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
+  }
+}
+
+fn compiler_gate_orch_steps_are_renderable() -> Bool {
+  match toolchain_home_isolation_step() {
+    Accepted { value: _, diagnostics: _ } =>
+      match toolchain_pin_rustup_default_step() {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 type CompilerGateBoundStep {
   step: Step
   role: StepCapabilityRole
@@ -247,7 +267,7 @@ fn compiler_gate_hosted_build_prelude_bound_steps() -> List<CompilerGateBoundSte
       step_name: "Checkout",
     },
     CompilerGateBoundStep {
-      step: toolchain_home_isolation_step(),
+      step: compiler_gate_unwrap_orch_step(toolchain_home_isolation_step()),
       role: capability_neutral,
       step_name: "Isolate toolchain homes",
     },
@@ -257,7 +277,7 @@ fn compiler_gate_hosted_build_prelude_bound_steps() -> List<CompilerGateBoundSte
       step_name: "Install Rust toolchain",
     },
     CompilerGateBoundStep {
-      step: toolchain_pin_rustup_default_step(),
+      step: compiler_gate_unwrap_orch_step(toolchain_pin_rustup_default_step()),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
@@ -580,7 +600,7 @@ fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> 
 fn compiler_gate_fleet_toolchain_bound_steps() -> List<CompilerGateBoundStep> {
   [
     CompilerGateBoundStep {
-      step: toolchain_home_isolation_step(),
+      step: compiler_gate_unwrap_orch_step(toolchain_home_isolation_step()),
       role: capability_neutral,
       step_name: "Isolate toolchain homes",
     },
@@ -590,7 +610,7 @@ fn compiler_gate_fleet_toolchain_bound_steps() -> List<CompilerGateBoundStep> {
       step_name: "Install Rust toolchain",
     },
     CompilerGateBoundStep {
-      step: toolchain_pin_rustup_default_step(),
+      step: compiler_gate_unwrap_orch_step(toolchain_pin_rustup_default_step()),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
@@ -1425,6 +1445,16 @@ fn compiler_gate_generation_gate_first_failure(profile: RepositoryCiProfile, wor
     CompilerGateGenerationGate {
       name: "compiler_gate_compose_caller_script_is_renderable (the called form's compose step cannot be built as nodes, or lost its marker or refusal)",
       holds: compiler_gate_compose_caller_script_is_renderable()
+    },
+    // The orch-emitted prelude steps (Isolate toolchain homes, Pin rustup default) return an
+    // Outcome<Step> after v2.workflow.ci_workflow_run_emit was retyped off the __GUNBC_ORCH_EMIT_REFUSED__
+    // poison (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved). The
+    // unwrap helper falls through to an empty RunStep on Reject so the byte-for-byte shape of the
+    // committed workflow is unchanged; THIS gate is what turns a rejection into a refusal rather than
+    // a silently-committed empty step -- the empty step is a shape only this gate path can produce.
+    CompilerGateGenerationGate {
+      name: "compiler_gate_orch_steps_are_renderable (the toolchain-home isolation or pin-rustup-default orch pipeline refused to render)",
+      holds: compiler_gate_orch_steps_are_renderable()
     }
   ]
   let first_false = list_find_first(xs: gates, predicate: fn(g) { !g.holds })

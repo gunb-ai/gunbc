@@ -328,14 +328,19 @@ fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherP
 // then ran -- the ordinary case, since most runs seal an empty candidate -- and in a hosted pool of
 // 20 that cost is what queued real repairs for hours. The gate is the consumers' own condition, so
 // the build cannot be skipped on a run whose candidate a consumer would read.
-fn heal_publisher_only_when_repair_owed(step: Step) -> Step {
-  let owed = heal_publisher_candidate_has_entries_expression()
-  match step {
-    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
-      RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
-    UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
-      UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
-  }
+fn heal_publisher_only_when_repair_owed(step: Outcome<Step>) -> Outcome<Step> {
+  bind_outcome(
+    o: step,
+    f: fn(s) {
+      let owed = heal_publisher_candidate_has_entries_expression()
+      outcome_accepted(value: match s {
+        RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
+          RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
+        UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
+          UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
+      })
+    }
+  )
 }
 
 fn heal_publisher_condition_and(existing: String?, owed: Expression) -> String {
@@ -346,7 +351,7 @@ fn heal_publisher_condition_and(existing: String?, owed: Expression) -> String {
 }
 
 type HealPublisherBoundStep {
-  step: Step
+  step: Outcome<Step>
   role: StepCapabilityRole
 }
 
@@ -366,7 +371,7 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
             role: capability_neutral,
           },
           HealPublisherBoundStep {
-            step: heal_publisher_only_when_repair_owed(step: witness_floor_toolchain_step()),
+            step: heal_publisher_only_when_repair_owed(step: outcome_accepted(value: witness_floor_toolchain_step())),
             role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
           },
           HealPublisherBoundStep {
@@ -375,10 +380,10 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
           },
           HealPublisherBoundStep {
             step: heal_publisher_only_when_repair_owed(
-              step: witness_floor_build_step(
+              step: outcome_accepted(value: witness_floor_build_step(
                 step_name: heal_publisher_build_step_name,
                 build_script: repo_self_build_command(bins: list_map(xs: bins, f: fn(b) { b as String }))
-              )
+              ))
             ),
             role: consumes_only(capabilities: [CargoCapability]),
           }
@@ -431,11 +436,11 @@ fn heal_publisher_bound_steps(
               concat(
                 [
                   HealPublisherBoundStep {
-                    step: heal_publisher_checkout_step(),
+                    step: outcome_accepted(value: heal_publisher_checkout_step()),
                     role: capability_neutral,
                   },
                   HealPublisherBoundStep {
-                    step: heal_publisher_download_step(),
+                    step: outcome_accepted(value: heal_publisher_download_step()),
                     role: capability_neutral,
                   }
                 ],
@@ -453,12 +458,19 @@ fn heal_publisher_bound_steps(
   )
 }
 
+fn step_display_name_outcome(s: Outcome<Step>) -> String {
+  match s {
+    Accepted { value: step, diagnostics: _ } => step_display_name(s: step)
+    Rejected { diagnostics: _ } => "refused-step"
+  }
+}
+
 fn heal_publisher_capability_closure_holds(steps: List<HealPublisherBoundStep>) -> Bool {
   capability_closure_is_closed(
     v: workflow_job_capability_closure(
       steps: list_map(
         xs: steps,
-        f: fn(b) { CapabilityAnnotatedStep { step_name: step_display_name(s: b.step), role: b.role } }
+        f: fn(b) { CapabilityAnnotatedStep { step_name: step_display_name_outcome(s: b.step), role: b.role } }
       )
     )
   )
@@ -495,17 +507,16 @@ fn heal_publisher_job(
   job: HealPublisherPolicy,
   steps: List<HealPublisherBoundStep>,
   needs: List<String>
-) -> Job {
-  Job {
-    id: job.job_id as String,
-    name: none,
-    // THE RUNNER IS A TARGET, PROJECTED. Stating the machine class here as a label was a third place that
-    // had to know the publisher runs on a hosted runner - beside the profile row and the federation
-    // condition that requires runner_environment == github-hosted. Selecting the target keeps the label,
-    // the memory regime and the federation premise coming from one row.
-    runner: ci_runner_target_spec(target: job.runner),
-    environment: none,
-    steps: list_map(xs: steps, f: fn(b) { b.step }),
+) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: list_map(xs: steps, f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(resolved_steps) {
+      outcome_accepted(value: Job {
+        id: job.job_id as String,
+        name: none,
+        runner: ci_runner_target_spec(target: job.runner),
+        environment: none,
+        steps: resolved_steps,
     // The seed route's checkout names the seed-pin verifier's declared output, so the publisher waits on
     // the job that proves the pin; the own-checkout route needs nobody and says so with an empty list.
     needs: needs,
@@ -516,7 +527,9 @@ fn heal_publisher_job(
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: heal_publisher_job_permissions(pull_requests: job.pull_requests) }
-  }
+      })
+    }
+  )
 }
 
 // THE CENSUS' VIEW OF A DECLARED PUBLISHER, for the one reader that enumerates a repository's own committed
@@ -546,7 +559,10 @@ fn heal_publisher_census_workflow(profile: RepositoryCiProfile) -> Optional<Work
               match heal_publisher_verifier_job(source: source, job: job) {
                 Rejected { diagnostics: _ } => Absent {  }
                 Accepted { value: verifier_job, diagnostics: _ } =>
-                  Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job) }
+                  match heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job) {
+                    Accepted { value: wf, diagnostics: _ } => Present { value: wf }
+                    Rejected { diagnostics: _ } => Absent {  }
+                  }
               }
           }
       }
@@ -558,17 +574,23 @@ fn heal_publisher_workflow_of(
   job: HealPublisherPolicy,
   steps: List<HealPublisherBoundStep>,
   verifier_job: Optional<Job>
-) -> Workflow {
-  Workflow {
+) -> Outcome<Workflow> {
+  bind_outcome(
+    o: heal_publisher_job(
+      profile: profile,
+      job: job,
+      steps: steps,
+      needs: match verifier_job {
+        Present { value: v } => [v.id]
+        Absent {  } => []
+      }
+    ),
+    f: fn(publisher_job) {
+    outcome_accepted(value: Workflow {
   name: job.workflow_name as String,
   run_name: none,
   on: [
     WorkflowRunTriggered {
-      // THE WORKFLOW THAT SEALS THE CANDIDATE THIS JOB PUBLISHES, named by the profile rather than
-      // imported from the heal emitter: workflow_run fires on a NAME, and a name the profile does not
-      // declare is a publisher that never runs. The profile admits that pairing
-      // (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared), so the trigger and the
-      // sealing job cannot drift apart silently.
       workflows: [job.trigger_workflow as String],
       branches: heal_publisher_triggering_branches,
       activity: WorkflowRunCompletedActivity
@@ -586,19 +608,11 @@ fn heal_publisher_workflow_of(
       Present { value: v } => [v]
       Absent {  } => []
     },
-    [
-      heal_publisher_job(
-        profile: profile,
-        job: job,
-        steps: steps,
-        needs: match verifier_job {
-          Present { value: v } => [v.id]
-          Absent {  } => []
-        }
-      )
-    ]
+    [publisher_job]
   )
-}
+})
+  }
+  )
 }
 
 // ── The isolation invariant, asked of both emitted jobs ──────────────────────────────────────
@@ -626,7 +640,10 @@ fn checkout_step_names_another_subject(step: Step) -> Bool {
 fn publisher_job_executes_candidate_code(steps: List<HealPublisherBoundStep>, profile: RepositoryCiProfile) -> Bool {
   any(
     steps,
-    b => checkout_step_names_another_subject(step: b.step)
+    b => match b.step {
+      Accepted { value: step, diagnostics: _ } => checkout_step_names_another_subject(step: step)
+      Rejected { diagnostics: _ } => false
+    }
   )
 }
 
@@ -738,7 +755,9 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
       match heal_publisher_verifier_job(source: source, job: job) {
         Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
         Accepted { value: verifier_job, diagnostics: _ } =>
-      let publisher_workflow = heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job)
+      match heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job) {
+        Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
+        Accepted { value: publisher_workflow, diagnostics: _ } =>
       match admit_workflow_checkout_refs(
         workflow: publisher_workflow,
         declared: heal_publisher_declared_ref_expressions(source: source)
@@ -761,6 +780,7 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
         }
       }
       }
+  }
   }
   }
   }

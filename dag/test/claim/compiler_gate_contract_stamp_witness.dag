@@ -356,9 +356,12 @@ test fn the_generated_step_has_no_warning_arm_and_no_override_input_holds() -> B
     // it deletable, in the same "# dissolve-on:" form the fleet's other shell carriers use. A marker
     // asserted only by a review comment is a marker that disappears in the next refactor.
     && string_contains(s: script, pattern: "dissolve-on: ")
-    // A REJECTED NODE TREE IS NEVER SILENT. An empty or poisoned run body is a step that PASSES, so
-    // the poison string is asserted absent here and the generator gate refuses outright.
-    && !string_contains(s: script, pattern: "__GUNBC_ORCH_EMIT_REFUSED__")
+    // DISSOLVED, NOT ABANDONED (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved,
+    // Integrated at this head): this assertion checked the render did NOT contain the
+    // ci_workflow_run_emit_refused_poison token. That constant is DELETED -- v2.workflow.ci_workflow_run_emit
+    // now returns an Outcome<String> and the artifact boundary refuses the whole workflow when it
+    // rejects, so an unrenderable body never reaches committed bytes. A byte scan on a token that is
+    // no longer produced would pass vacuously (gunbc.design_argument::replacement_migration).
     // THE `-v` OPTION IS TWO WORDS, NOT ONE FUSED ONE. A single concat word would render as
     // '-v key=' 'NAME' -- argv[1] with a TRAILING SPACE -- and mawk reads the lvalue as " key"
     // and dies (`awk: improper assignment: -v  key=...`). The capture is then empty, the -z arm

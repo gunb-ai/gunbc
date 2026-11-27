@@ -1,5 +1,6 @@
 module v2.workflow.ci_workflow_run_emit
 
+import std.algebra { Cons, Empty, FreeMonoid }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
@@ -18,11 +19,24 @@ import v2.std.orchestration {
   StrEq
 }
 import std.optional { Absent }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  DeclarationLocus,
+  Locus,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  UserInputBoundary,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { symbol_intern_lexeme }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)\n"
 
 data ci_isolate_rm_rustup_cargo_command: String = "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\""
 
@@ -87,14 +101,14 @@ fn ci_workflow_do(command: String) -> PipelineStep {
   Do { run: ci_workflow_run(command: command) }
 }
 
-fn ci_workflow_run_emit_pipeline(p: Pipeline) -> String {
+fn ci_workflow_run_emit_pipeline(p: Pipeline) -> Outcome<String> {
   match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried
-        Some { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+        None => outcome_accepted(value: source.carried)
+        Some { diagnostics: ds } => outcome_rejected(d: ds.head)
       }
-    Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+    Rejected { diagnostics: ds } => outcome_rejected(d: ds.head)
   }
 }
 
@@ -125,10 +139,15 @@ fn ci_toolchain_home_isolation_intent() -> Pipeline {
   }
 }
 
-fn ci_toolchain_home_isolation_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_toolchain_home_isolation_shell_emit_dissolution_trigger), "\n")),
-    ci_workflow_run_emit_pipeline(p: ci_toolchain_home_isolation_intent())
+fn ci_toolchain_home_isolation_script() -> Outcome<String> {
+  bind_outcome(
+    o: ci_workflow_run_emit_pipeline(p: ci_toolchain_home_isolation_intent()),
+    f: fn(body) {
+      outcome_accepted(value: concat(
+        concat("# ", concat(dissolution_description(condition: ci_toolchain_home_isolation_shell_emit_dissolution_trigger), "\n")),
+        body
+      ))
+    }
   )
 }
 
@@ -188,10 +207,15 @@ fn ci_native_cache_root_intent() -> Pipeline {
   }
 }
 
-fn ci_native_cache_root_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_native_cache_root_shell_emit_dissolution_trigger), "\n")),
-    ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
+fn ci_native_cache_root_script() -> Outcome<String> {
+  bind_outcome(
+    o: ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent()),
+    f: fn(body) {
+      outcome_accepted(value: concat(
+        concat("# ", concat(dissolution_description(condition: ci_native_cache_root_shell_emit_dissolution_trigger), "\n")),
+        body
+      ))
+    }
   )
 }
 
@@ -235,9 +259,14 @@ fn ci_pin_rustup_default_intent() -> Pipeline {
   }
 }
 
-fn ci_pin_rustup_default_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_pin_rustup_default_shell_emit_dissolution_trigger), "\n")),
-    ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+fn ci_pin_rustup_default_script() -> Outcome<String> {
+  bind_outcome(
+    o: ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent()),
+    f: fn(body) {
+      outcome_accepted(value: concat(
+        concat("# ", concat(dissolution_description(condition: ci_pin_rustup_default_shell_emit_dissolution_trigger), "\n")),
+        body
+      ))
+    }
   )
 }

@@ -1393,7 +1393,7 @@ data fleet_converge_deploy_slot_runner_expression: String = join([
 // visible as such rather than silently costing the prelude allowance.
 fn fleet_converge_build_job_steps() -> List<Outcome<Step>> {
 concat(
-    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_build_checkout_step(), exact_head_preflight: [])),
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_build_checkout_step(), exact_head_preflight: []),
     fleet_converge_build_job_own_steps(),
   )
 }
@@ -1719,7 +1719,7 @@ fn fleet_converge_checkout_verify_step(if_condition: String?) -> Outcome<Step> {
 
 fn fleet_converge_plan_revision_steps() -> List<Outcome<Step>> {
 concat(
-    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
     [
     outcome_accepted(value: fleet_converge_plan_revision_pair_build_step()),
     fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if),
@@ -6986,7 +6986,7 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
 
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Outcome<Step>, boot_step: Outcome<Step>) -> List<Outcome<Step>> {
 concat(
-    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
     concat(
     concat(
     [
@@ -7749,7 +7749,7 @@ fn fleet_converge_branch_run_grant_wait_if() -> String {
 
 fn fleet_converge_branch_run_grant_await_steps() -> List<Outcome<Step>> {
 concat(
-    lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
     [
     outcome_accepted(value: fleet_converge_branch_run_grant_await_build_step()),
     fleet_converge_branch_run_grant_await_step(),
@@ -8288,7 +8288,7 @@ fn fleet_converge_fleet_keypair_mint_job() -> Outcome<Job> {
   bind_outcome(
     o: sequence_outcome(
       xs: concat(
-        lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+        ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
         concat(
           [
             outcome_accepted(value: fleet_converge_hosted_gunbc_build_step(purpose: "the fleet keypair mint")),
@@ -9644,7 +9644,7 @@ fn fleet_converge_review_sheet_writer_token_step() -> Step {
 fn fleet_converge_review_sheet_converge_job() -> Outcome<Job> {
   bind_outcome(
       o: sequence_outcome(xs: concat(
-          lift_steps(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: [])),
+          ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
           [
           outcome_accepted(value: fleet_converge_in_job_compiler_pair_build_step(name: "Build the compiler pair this converge runs (claim_executor + gunbc)")),
           outcome_accepted(value: fleet_converge_review_sheet_writer_token_step()),
