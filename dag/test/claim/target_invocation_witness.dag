@@ -130,6 +130,7 @@ import gunbc.discovery_census {
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
+import std.measure { millisecond }
 
 // EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
 // so. Without the declaration the floor's fail-closed default reads the module as live-tree
