@@ -2,12 +2,14 @@ module test.claim.compute.remote_build_serve_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import product.host_identity { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { Kibibyte, kibibyte, second, second_count }
 import std.nat { nat_to_decimal_string }
 import std.retry_law { RetryHintDelay }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_null_sha1_object_id }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import gunbc.compute.remote_build_client { remote_build_answer_word }
 import gunbc.compute.work_request {
@@ -519,6 +521,52 @@ test fn the_wall_bound_is_on_the_granted_unit_not_the_answer_printer() -> Bool {
   }
 }
 
+// THE ROSTER'S OWN IDENTITY JOIN. The door's roster is a call list the module cannot enumerate at
+// runtime, and a hand-kept list beside the thing it lists is the second authority gunbc.design_argument::single_authority
+// refuses, and exactly how review 99270 caught the door vouching for 33 of 34 claims. So completeness
+// is not a count anyone eyeballs: THIS claim reads the module's own source -- the same repo-file read
+// test.claim.heal_publication_boundary_witness does of its production file -- extracts the set of
+// `test fn` declarations and the set of rostered calls, and they must agree name-for-name in both
+// directions. Add a claim without rostering it, roster a name that is not a claim, or rename either
+// side: this claim goes red and the door refuses to exit 0.
+//
+// BOUNDED DEBT, NAMED (the reviewer's alternative, taken as well as the check): the one deletion this
+// join cannot catch from inside is deleting THIS claim together with its roster line -- a module that
+// stops checking says nothing about what it stopped checking. Its trigger is named where the fix lives:
+// when gunbc.workflow.local_repo_wet_terminal local_repo_wet_schedule lands a runner and every claim in
+// this module rides it row-per-row (today: three rows, no runner), the door, the roster and this claim
+// all delete -- the manual receipt goes away and the schedule lane is the only execution route.
+fn door_source_lines() -> List<String> {
+  let src = Filesystem.Read(path: "dag/test/claim/compute/remote_build_serve_witness.dag")
+  if !src.success { return [] }
+  return split(s: src.content, delimiter: "\n")
+}
+
+fn door_test_fn_name(line: String) -> String {
+  let t = trim(line)
+  if !starts_with(s: t, prefix: "test fn ") { return "" }
+  let after = substring(s: t, start: length("test fn "), end: length(t))
+  return match after |> split(s: after, delimiter: "(") |> first { Present { value: v } => v  Absent => "" }
+}
+
+fn door_roster_name(line: String) -> String {
+  let t = trim(line)
+  if !starts_with(s: t, prefix: "check_or_name(name: \"") { return "" }
+  return match t |> split(s: t, delimiter: "\"") |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+}
+
+test fn the_door_roster_lists_every_test_fn_and_nothing_else() -> Bool {
+  let lines = door_source_lines()
+  let fns = filter(map(lines, door_test_fn_name), n => n != "")
+  let rostered = filter(map(lines, door_roster_name), n => n != "")
+  // THE JOIN BOTH WAYS: every declaration called, every call a declaration -- an identity join, not a
+  // count equality (gunbc.design_argument::fail_closed). And it must have parsed SOMETHING: a module
+  // that reads empty proves nothing.
+  length(fns) > 0
+    && !any(fns, n => first_where(rostered, r => r == n) == Absent)
+    && !any(rostered, r => first_where(fns, n => n == r) == Absent)
+}
+
 // THE WITNESS DOOR, the aggregate manual-receipt entry -- the same shape as
 // test.claim.compute.compute_recover_catalog_witness. Three of these claims (the probe-decode set this
 // program added) are ALSO enrolled one-per-row in gunbc.workflow.local_repo_wet_terminal
@@ -534,6 +582,7 @@ fn check_or_name(name: String, held: Bool) -> String {
 
 fn run_remote_build_serve_witness() -> ProcessExit {
   let red = join([
+    check_or_name(name: "the_door_roster_lists_every_test_fn_and_nothing_else", held: the_door_roster_lists_every_test_fn_and_nothing_else()),
     check_or_name(name: "a_doubled_space_refuses_as_an_empty_word", held: a_doubled_space_refuses_as_an_empty_word()),
     check_or_name(name: "every_ending_reads_back_as_its_own_answer", held: every_ending_reads_back_as_its_own_answer()),
     check_or_name(name: "only_a_full_or_unready_host_moves_the_request_on", held: only_a_full_or_unready_host_moves_the_request_on()),
