@@ -1,11 +1,10 @@
 module gunbc.runner.runner_slot_desired
 
 import std.types { Bool, Int, String, List }
-import std.nat { Succ, Zero }
+import std.nat { Nat, Succ, Zero, nat_mul }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import std.optional { Present, Absent }
 import std.list { first_where }
-import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
@@ -419,11 +418,11 @@ fn ruled_seats_driven_pool(host: HostIdentity, seats: Nat) -> ByteSize {
     unit_memory_max: compute_build_memory_ceiling_default,
     child_residency: serving_child_residency(host: host),
   )
-  let bytes = byte_size_count(b: footprint) * seats
-  match checked_int_to_nat(n: bytes) {
-    Present { value: pool_bytes } => measure_add(a: byte_size(count: pool_bytes), b: user_work_serving_census_headroom)
-    Absent => byte_size(0)
-  }
+  // Nat throughout (byte_size_count returns Nat, std.nat nat_mul is Nat-closed), so the product
+  // needs no checked crossing: byte_size takes a Nat count directly. The census headroom joins
+  // through the typed sum, once per slice.
+  let product = nat_mul(a: byte_size_count(b: footprint), b: seats)
+  measure_add(a: byte_size(count: product), b: user_work_serving_census_headroom)
 }
 
 // THE ONE LOOKUP: the ruled amount for a host, if a ruling rules one. Absent is NOT zero -- it says this

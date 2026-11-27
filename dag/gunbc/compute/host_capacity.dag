@@ -587,21 +587,20 @@ fn ruled_pool_seat_count_from_footprint(host: HostIdentity, reservation: ByteSiz
   }
 }
 
-// THE FLOOR ITSELF, one checked crossing. Quotient and one-seat guard on Int (the language's
-// arithmetic domain), crossing to Nat exactly once through the checked conversion -- the
-// gunbc.fleet.vast_ai_guest crossing. Both counts are Nat, so the quotient is non-negative, the
-// guard keeps it positive, and the Absent arm is unreachable; it names one seat, so no arm can
-// widen.
+// THE FLOOR ITSELF, closed on Nat throughout (std.measure byte_size_count returns Nat, std.nat
+// divides Nat by Nat -- no crossing needed, so none is faked): the quotient is the floor, and the
+// zero divisor... there is none (the footprint is a positive sum of positive authority rows), and
+// a zero QUOTIENT -- a pool smaller than one footprint -- answers ONE faithful seat, never zero,
+// so a ruled host always has its one seat (seat = pool in the caller's arithmetic).
 fn ruled_pool_seat_floor(host: HostIdentity, available: ByteSize) -> Nat {
   let footprint = user_work_request_footprint_of(
     unit_memory_max: compute_build_memory_ceiling_default,
     child_residency: serving_child_residency(host: host),
   )
-  let quotient = byte_size_count(b: available) / byte_size_count(b: footprint)
-  let floored = if quotient > 0 { quotient } else { 1 }
-  match checked_int_to_nat(n: floored) {
-    Present { value: seats } => seats
-    Absent => Succ { prev: Zero }
+  if byte_size_count(b: available) / byte_size_count(b: footprint) > 0 {
+    byte_size_count(b: available) / byte_size_count(b: footprint)
+  } else {
+    Succ { prev: Zero }
   }
 }
 
