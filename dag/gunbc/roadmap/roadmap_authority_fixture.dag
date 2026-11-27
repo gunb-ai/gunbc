@@ -274,9 +274,9 @@ fn roadmap_authority_fixture_acceptance_kind(s: RoadmapAuthorityFixtureScenario)
 }
 
 // ── The five files, each as one event ───────────────────────────────────────
-// THE TABLE IS THE ROSTER, ONE ROW PER FILE. Each of these functions is what a roster row's producer
-// declaration names (gunbc.generated_artifact artifact_producer), so "what the committed bytes are" has exactly
-// one home. The witness reads the same functions and compares them to Filesystem.Read.
+// THE TABLE IS THE ROSTER, ONE ROW PER FILE. Each of these functions is what that file's production in this
+// module (gunbc.generated_artifact_production GeneratedArtifactProduction) generates, so "what the committed
+// bytes are" has exactly one home. The witness reads the same functions and compares them to Filesystem.Read.
 
 // The accepted row: one acceptance, which is what puts it on the active frontier at all.
 fn expected_roadmap_authority_accepted_scenario_acceptance_json() -> String {
