@@ -29,6 +29,16 @@ type BatteryWindow {
 
 // THE BRACKET, once. The subject runs between the two counter reads; the kept list is what the subject
 // returned, passed in by the caller's own call so the work is not re-executed after the span closes.
+//
+// feature:battery-window-raw-counter-pair -- dissolve-on: std.realization_measurement::allocation_span_observation
+// retakes bytes_before and bytes_after on std.measure's ByteSize instead of bare Int. The byte fact keeps
+// exactly one measured representation in this module: ByteSize lives inside AllocationObservation, which
+// span_at_least already consumes. This window forwards a counter reading, not a quantity -- the counter is a
+// signed running total whose backwards run is what AllocationBytesRequestedRanBackwards detects -- so the
+// bare Int is not minted here: it is the std boundary's own shape at
+// dag/std/realization_measurement.dag:130, the earliest boundary of the producer-to-consumer slice where the
+// signed reading legitimately exists. Retyping it belongs to that boundary, not to a consumer above it.
+// Lane: v2 self-host and native emission, row emission-building-block-realization; named by review 38602.
 fn battery_window(kept: List<Int>, ops_before: Int, ops_after: Int, bytes_before: Int, bytes_after: Int) -> BatteryWindow {
   BatteryWindow {
     kept: kept,
