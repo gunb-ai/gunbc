@@ -18,13 +18,15 @@ import gunbc.serving.serving_capacity_anchor { ServingWarmSwap, SwapTierDisk, Sw
 import gunbc.serving.serving_replica_profile {
   FiguresUnmeasured, ServingReplicaProfile, srv1_vllm_replica_0_profile,
 }
+import extdeps.external_authority { TranscribedUncited }
 import gunbc.serving.serving_replica_configuration {
   ReplicaConfiguration, configuration_expert_rungs, configuration_figures_refusal,
   configuration_figures_resolved, configuration_host_charges, configuration_run_identity,
   configuration_prefix_cache_capacity, configuration_warm_agent_capacity,
   host_configurations, prefix_cache_capacity_against, prefix_cache_ratio_denominator, prefix_cache_ratio_permille,
   replica_configuration_field, h11_pass_prefix_cache_ratio,
-  CapacityExceededByPopulation, CapacityHoldsPopulation, CapacityUndetermined,
+  CapacityExceededByPopulation, CapacityFromAssumedRung, CapacityFromReadRung, CapacityHoldsPopulation,
+  CapacityUndetermined, WarmAgentCapacityFigure,
   PopulationObserved, PopulationUnread, RatioEmptyOnPass, RatioObserved, RatioUnread,
   srv1_pair_l1_l2_configuration, srv1_pair_l1_only_configuration, srv1_tp2_l1_l2_configuration,
   srv3_batch8_ram_only_configuration, srv3_batch1_slotfile_configuration, srv4_batch1_slotfile_configuration,
@@ -190,11 +192,19 @@ test fn candidates_carry_their_hosts_expert_placement() -> Bool {
 // THE CAPACITY IS STATED IN AGENTS, FROM THE ROWS THAT ALREADY CARRY CACHE BYTES AND SLOTS: h11's engine
 // row parks a conversation at 750 MiB plus 10 KiB per token, holds 8192 MiB and 6 slots, and at the fleet's
 // 229376-token window that is two agents per engine -- four engines eight, two engines four.
+// THE FIGURE TRAVELS WITH ITS BASIS. h11's cache figure is a ServingMemoryRead whose provenance names one
+// bus's config file and the script that set that value on every bus -- which is a generalization over
+// buses nobody read, and the capacity says so instead of reporting a bare 8.
 test fn the_warm_agent_capacity_is_read_from_the_rows() -> Bool {
   match configuration_warm_agent_capacity(c: h11_four_engines_configuration) {
-    Present { value: four } => four == 8
+    Present { value: four } => four.value == 8
+      && match four.basis {
+        CapacityFromReadRung { provenance: provenance } =>
+          string_contains(s: provenance as String, pattern: "cfg-87.json" as String)
+        CapacityFromAssumedRung { reason: _ } => false
+      }
       && match configuration_warm_agent_capacity(c: h11_two_engines_configuration) {
-        Present { value: two } => two == 4
+        Present { value: two } => two.value == 4
         Absent => false
       }
     Absent => false
@@ -204,14 +214,30 @@ test fn the_warm_agent_capacity_is_read_from_the_rows() -> Bool {
 // THE JOIN ON SUPPLIED NUMBERS, WHICH IS WHERE THE RED CONTROL LIVES: five agents against a cache that
 // holds four warm is Exceeded and says both numbers out loud; four against four is not exceeded, because
 // the capacity is a count of what fits, not a margin.
+// THE STANDINGS GO THROUGH THE JOIN, NOT AROUND IT. The numbers here are witness-supplied -- a count this
+// claim made up to exercise the arithmetic -- and the verdict still carries the standing it was handed, so
+// a decided arm cannot be produced by quietly dropping the provenance on the way in.
 test fn an_over_capacity_population_refuses_and_names_both_numbers() -> Bool {
-  match prefix_cache_capacity_against(agents: 5, warm_agents: 4) {
-    CapacityExceededByPopulation { agents: agents_held, warm_agents: warm_held } =>
+  let supplied_standing = TranscribedUncited { read_obligation: "witness-supplied: a population this claim invented to exercise the join" as NonEmptyStr }
+  let supplied_capacity = WarmAgentCapacityFigure {
+    value: 4,
+    basis: CapacityFromAssumedRung { reason: "witness-supplied: an allowance, not a reading" as NonEmptyStr },
+  }
+  match prefix_cache_capacity_against(agents: 5, population_standing: supplied_standing, capacity: supplied_capacity) {
+    CapacityExceededByPopulation { agents: agents_held, warm_agents: warm_held, population_standing: standing_held, capacity_basis: basis_held } =>
       agents_held == 5 && warm_held == 4
+        && match standing_held {
+          TranscribedUncited { read_obligation: why } => string_contains(s: why as String, pattern: "witness-supplied" as String)
+          _ => false
+        }
+        && match basis_held {
+          CapacityFromAssumedRung { reason: _ } => true
+          CapacityFromReadRung { provenance: _ } => false
+        }
     _ => false
   }
-    && match prefix_cache_capacity_against(agents: 4, warm_agents: 4) {
-      CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held } =>
+    && match prefix_cache_capacity_against(agents: 4, population_standing: supplied_standing, capacity: supplied_capacity) {
+      CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held, population_standing: _, capacity_basis: _ } =>
         agents_held == 4 && warm_held == 4
       _ => false
     }
@@ -221,10 +247,22 @@ test fn an_over_capacity_population_refuses_and_names_both_numbers() -> Bool {
 // (four concurrent agents) against the cache its engine rows state, so it lands on a decided arm. Every
 // host nobody counted lands on Undetermined carrying an obligation -- which is the fail-closed direction,
 // not a pass: an uncounted population never becomes a Fits.
+// AND THE DECIDED ARM SAYS WHAT IT WAS BUILT FROM. h11's Holds carries the population's standing (a relay's
+// counters from the operator's report of 2026-11-21) and the capacity's basis (one bus's config file,
+// generalized across engines). A Holds whose provenance was dropped at the join fails here, which is the
+// point: the bet is typed, not prose (gunbc.design_argument::epistemic_humility).
 test fn the_field_joins_where_it_can_and_refuses_where_it_cannot() -> Bool {
   match configuration_prefix_cache_capacity(c: h11_four_engines_configuration) {
-    CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held } =>
+    CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held, population_standing: standing_held, capacity_basis: basis_held } =>
       agents_held == 4 && warm_held == 8
+        && match standing_held {
+          TranscribedUncited { read_obligation: why } => string_contains(s: why as String, pattern: "2026-11-21" as String)
+          _ => false
+        }
+        && match basis_held {
+          CapacityFromReadRung { provenance: provenance } => string_contains(s: provenance as String, pattern: "conversation-cache-mib" as String)
+          CapacityFromAssumedRung { reason: _ } => false
+        }
     _ => false
   }
     && match configuration_prefix_cache_capacity(c: srv3_batch8_ram_only_configuration) {
@@ -273,11 +311,11 @@ test fn an_unrun_configuration_refuses_the_other_passes_observation() -> Bool {
       CapacityUndetermined { obligations: obligations } =>
         obligations.length() == 1
           && filter(obligations, o => string_contains(s: o as String, pattern: "four-engine" as String)).length() == 1
-      CapacityHoldsPopulation { agents: _, warm_agents: _ } => false
-      CapacityExceededByPopulation { agents: _, warm_agents: _ } => false
+      CapacityHoldsPopulation { agents: _, warm_agents: _, population_standing: _, capacity_basis: _ } => false
+      CapacityExceededByPopulation { agents: _, warm_agents: _, population_standing: _, capacity_basis: _ } => false
     }
     && match configuration_warm_agent_capacity(c: h11_two_engines_configuration) {
-      Present { value: two } => two == 4
+      Present { value: two } => two.value == 4
       Absent => false
     }
     // And the pass itself is not lost: the configuration that ran still carries it, once.
@@ -338,15 +376,15 @@ test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
 // 5 with the RAM tier alone. The ladder, not the prose, is what moves the number.
 test fn the_capacity_of_the_other_hosts_is_stated_in_agents_too() -> Bool {
   match configuration_warm_agent_capacity(c: srv3_batch8_ram_only_configuration) {
-    Present { value: n } => n == 18
+    Present { value: n } => n.value == 18
     Absent => false
   }
     && match configuration_warm_agent_capacity(c: srv4_batch8_ram_only_configuration) {
-      Present { value: n } => n == 5
+      Present { value: n } => n.value == 5
       Absent => false
     }
     && match configuration_warm_agent_capacity(c: srv4_batch1_slotfile_configuration) {
-      Present { value: n } => n == 43
+      Present { value: n } => n.value == 43
       Absent => false
     }
 }
@@ -386,8 +424,8 @@ test fn an_empty_pass_column_is_not_the_same_verdict_as_no_producer() -> Bool {
     }
 }
 
-// THE TYPE ITSELF REFUSES THE EMPTY COLUMN. RatioObserved carries its denominator as a PositiveMeasureCount,
-// whose only constructor is a successor (std.measure:754-755), so there is no spelling of a zero
+// THE TYPE ITSELF REFUSES THE EMPTY COLUMN. RatioObserved carries its denominator as a
+// #std.measure::PositiveMeasureCount, whose only constructor is a successor, so there is no spelling of a zero
 // denominator to write: the empty pass belongs to RatioEmptyOnPass and nowhere else. What this claim
 // observes is the one row that carries a ratio -- its denominator is the sum of its counters, and that sum
 // is not zero -- beside the constructor's refusal for a pair of zeroes.
