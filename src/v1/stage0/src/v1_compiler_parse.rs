@@ -18988,10 +18988,6 @@ pub fn parse_expr_list_until_acc(
                                     continue;
                                 }
                             } else {
-                                let found = match token_stream_first(next.clone()) {
-                                    Some(t) => token_display_name(t.clone()),
-                                    std::option::Option::None => "EOF".to_string(),
-                                };
                                 {
                                     let __tco_0 = next.clone();
                                     let __tco_1 =
