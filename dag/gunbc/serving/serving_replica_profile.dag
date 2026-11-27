@@ -1231,20 +1231,14 @@ fn strata_parking_read_obligation(
 // exists only at the presentation edge, in strata_parking_agreement_sentence below. Until 2026-11-26 these
 // verdicts were filled by string concatenation and the figures lived inside the English (review 99034).
 type ParkingNeedsReadingCause
-  // The argv WAS read and names neither flag: the build is deciding a policy no author named. `held`, `live`
-  // and `beyond` say how much that omission can cost; `stated_parked_by_a_row` carries another row's figure
-  // as the EVIDENCE it is -- a capacity read off a bus, never authority to agree.
-  = LaunchNamesNothing {
-      held: Nat,
-      live: Nat,
-      beyond: Nat,
-      stated_parked_by_a_row: Optional<Nat>,
-      estimate_is_inflated: Bool,
-    }
   // Nobody has read the launch, so the model does not know whether the pair is in it. `beyond` is Absent
   // exactly when the live slot count is unread too, and `why` is the row's own account of what has not been
-  // read.
-  | LaunchNeverRead {
+  // read. THE LAUNCH WAS READ AND NAMED NEITHER FLAG IS NOT HERE: that is
+  // `ParkedConversationsLeftToTheBuild`, which carries these same fields -- the argv has been read, so
+  // nothing about it needs reading, and what is owed is a launch line, not a read. Carrying that case here
+  // too was a second constructor for one meaning, unreachable because the judgement already sent it
+  // elsewhere (review 99122; gunbc.design_argument::single_authority, ::consumption).
+  = LaunchNeverRead {
       held: Nat,
       beyond: Optional<Nat>,
       stated_parked_by_a_row: Optional<Nat>,
@@ -1296,9 +1290,11 @@ type StrataParkingAgreement
       live: Nat,
       estimate_is_inflated: Bool,
     }
-  // Nothing may be agreed and something specific is owed. The CAUSE says which way the record falls short --
-  // and the two silences are typed apart, because "the argv names nothing" is a launch's omission and
-  // "nobody looked" is this repository's. Every cause is fed its discriminating input by
+  // Nothing may be agreed and something specific is owed, and the CAUSE names which way the record falls
+  // short. THE TWO SILENCES ARE TYPED APART ACROSS THIS TYPE: "the argv names neither flag" is the LAUNCH's
+  // omission and lands on `ParkedConversationsLeftToTheBuild` -- the argv was read, so nothing about it needs
+  // reading, and what is owed is a line in the launch -- while "nobody looked at the argv" is THIS
+  // REPOSITORY'S and lands here, owed a read. Every cause is fed its discriminating input by
   // test.claim.serving.strata_conversation_cache_parking_witness.
   | ParkingNeedsReading { cause: ParkingNeedsReadingCause }
 
@@ -1322,12 +1318,6 @@ fn strata_parking_agreement_sentence(agreement: StrataParkingAgreement) -> Strin
         held: h, live: l, beyond: b, parked: n,
         source: "this launch's own --conversation-cache-slots " + to_string(n),
       ) + parking_estimate_note(estimate_is_inflated: e)
-    ParkingNeedsReading { cause: LaunchNamesNothing { held: h, live: l, beyond: b, stated_parked_by_a_row: row, estimate_is_inflated: e } } =>
-      parking_beyond_live_slots_sentence(
-        held: h, live: l, beyond: b,
-        policy: "neither --conversation-cache-mib nor --conversation-cache-slots is in its argv",
-      ) + parking_row_evidence(stated_parked_by_a_row: row) + " "
-        + strata_parking_fleet_read_obligation() + parking_estimate_note(estimate_is_inflated: e)
     ParkingNeedsReading { cause: LaunchNeverRead { held: h, beyond: b, stated_parked_by_a_row: row, estimate_is_inflated: e, why: w } } =>
       ("the layout grants this replica " + to_string(h) + " conversations warm")
         + (match b {

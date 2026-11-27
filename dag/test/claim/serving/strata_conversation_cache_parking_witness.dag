@@ -51,7 +51,7 @@ import gunbc.serving.serving_replica_profile {
   LaunchParametersUnread, LaunchTurnsZero,
   ParkedConversationsAgreed, ParkedConversationsRefusedByTheLaunch,
   ParkedConversationsLeftToTheBuild, ParkedConversationsShortOfTheGrant, ParkingNeedsReading,
-  ParkingNeedsReadingCause, LaunchNamesNothing, LaunchNeverRead, NotAStrataLaunch,
+  ParkingNeedsReadingCause, LaunchNeverRead, NotAStrataLaunch,
   StrataDeployedBuildObservation, strata_deployed_build_precedes_the_auto_size,
   strata_parking_read_obligation, strata_parking_agreement_sentence,
   strata_launch_parking_agreement, replica_parking_agreement, replica_parked_conversations,
