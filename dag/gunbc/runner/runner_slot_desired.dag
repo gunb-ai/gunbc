@@ -357,14 +357,14 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     host: operator_host_e2d4b7,
     ruling: ken_build_pool_one_seat_default_approved_2026_11_26.reference,
     // 22 GiB = one seat of the fleet per-build ceiling
-    // (gunbc.compute.roadmap_dashboard_instance::compute_build_memory_ceiling_default),
+    // (gunbc.roadmap.roadmap_dashboard_instance::compute_build_memory_ceiling_default),
     // the ruling's option A -- approved BY DEFAULT on operator escalation
     // msg_5ffaed22-4d67-49a3-ace8-5fa55008c5a2, not by an operator answer. The pool
     // lives beside the RUNNING ken-strata engine (~69 GiB RSS of 125 GiB at the
     // 2026-11-26 14:18Z read); one ceiling-sized seat fits the measured 18.2 GiB
     // build peak, and only one build fits. Fires only once the roster admits ken.
     // THE CEILING, READ FROM ITS OWN ROW -- not a copy: one seat of
-    // gunbc.compute.roadmap_dashboard_instance::compute_build_memory_ceiling_default. If the fleet
+    // gunbc.roadmap.roadmap_dashboard_instance::compute_build_memory_ceiling_default. If the fleet
     // ceiling moves, ken's ruled pool moves with it; a literal here would be a second source.
     reservation: compute_build_memory_ceiling_default,
     seats: Present { value: 1 },
