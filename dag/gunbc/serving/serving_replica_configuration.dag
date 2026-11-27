@@ -776,7 +776,7 @@ fn prefix_cache_ratio_permille(ratio: PrefixCachePassRatio) -> Optional<Permille
     // Neither absence produces a ratio. The arms stay distinguishable to the caller; what they share is
     // only this: no number.
     RatioUnread { obligation: _ } => Absent
-    RatioEmptyOnPass { pass: _, obligation: _ } => Absent
+    RatioEmptyOnPass { pass: _, obligation: _ } => Present { value: permille(count: 0) }
     RatioObserved { counts: counts, standing: _ } =>
       Present { value: permille(count: counts.hits * 1000 / positive_measure_count_nat(count: counts.total)) }
   }
