@@ -345,7 +345,26 @@ fn stage0_std_core_modules() -> List<String> {
       "std_import_statement",
       "v1_std_core",
       "gunbc_rust_emitted_edge",
-      "gunbc_rust_emitted_crate"
+      "gunbc_rust_emitted_crate",
+      // stage0-crate-partition-covers-every-emitted-module: the exec/posix/tools/filesystem/access
+      // leaf tier and its three std support modules, rostered in this foundation unit beside their
+      // sibling extdeps leaves (extdeps_posix_clock_gettime, extdeps_uri, extdeps_external_authority,
+      // extdeps_units_*). Each joins with every module it imports, so every crate:: reference of a
+      // generated mirror resolves in this unit or in the std_primitive tier it folds in; the cross-unit
+      // import edges are derived from each rostered module's dependency facts (stage0_source_module_dag
+      // over v2.lens.module_graph dependency_resolution_facts_live, #17123), not authored in this file.
+      "extdeps_exec_program",
+      "extdeps_exec_command",
+      "extdeps_tools_env",
+      "extdeps_tools_ls",
+      "extdeps_posix_shell_command_language",
+      "extdeps_posix_process",
+      "extdeps_access_posix",
+      "extdeps_filesystem_filesystem_io",
+      "gunbc_remote_shell_command",
+      "std_env_binding",
+      "std_operation_argv",
+      "std_template"
     ])
 }
 
