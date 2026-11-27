@@ -10,7 +10,6 @@ import extdeps.docker { BindMount }
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel,
   StrataKvQ4_0, StrataKvResidentWindow, StrataBatchGroupsAuto, StrataSplitStages, StrataLayerSplitAt, StrataExpertsPrivate,
-  StrataConversationCacheUnread,
 }
 import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact, ServingArtifactFile, ServingTopology }
 import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, EngineImagePending, KitImagePending }
@@ -53,12 +52,18 @@ data srv3_strata_launch_parameters: StrataLaunchParameters = StrataLaunchParamet
   // answers the question, because a launch this repository has not read cannot be agreed with a row read off
   // the machine (gunbc.recurring_failure_mode::
   // a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build).
+  // ABSENT IS THIS ROW'S OWN COVERAGE STATE, NOT A STRATA FACT: the cell's in-image argv has never been
+  // read -- this plan's engine image is EngineImagePending (no rootless Docker on srv3 yet), so no container
+  // has run these flags -- and a missing observation is a downstream obligation, never an arm of the upstream
+  // module (gunbc.design_argument::external_upstreams). srv3's live strata-pool.service carries the pair (64
+  // GiB in 24 slots, read 2026-11-08) and gunbc.serving.serving_host_memory srv3_strata_engine_memory is the
+  // single authority for that figure, which the agreement carries as EVIDENCE in its ask -- never as the
+  // answer.
   // NOTE FOR THE NEXT RUNG: when this cell's image is pinned by digest, its in-image argv must NAME the
-  // pair, and this arm becomes the budget the image carries -- a serving launch does not render `Unread`
-  // (strata_conversation_cache_words answers it with nothing, which is the build deciding again).
-  conversation_cache: StrataConversationCacheUnread {
-    detail: "the cell's in-image argv has never been read: this plan's engine image is EngineImagePending (no rootless Docker on srv3 yet), so no container has run these flags; srv3's live strata-pool.service carries the pair (64 GiB in 24 slots, read 2026-11-08) and gunbc.serving.serving_host_memory srv3_strata_engine_memory is the single authority for that figure" as NonEmptyStr,
-  },
+  // pair and this field becomes `Present { value: StrataConversationCacheBudget { ... } }` -- the budget the
+  // image carries. A serving launch does not stay absent: strata_launch_conversation_cache_words renders
+  // nothing for it, which is the build deciding again.
+  conversation_cache: Absent,
 }
 
 // THE BENCHMARK CELL'S OWN FLAGS: here, and only here, the slot count is written by hand, because in a

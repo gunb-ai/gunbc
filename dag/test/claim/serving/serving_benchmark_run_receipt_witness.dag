@@ -137,9 +137,11 @@ fn fx_flags(pool_workers: Nat?) -> StrataServeFlags {
       // OMITTED the pair would read as a launch that parks nothing (extdeps.strata.serve_flags
       // strata_conversation_cache_words), which is the fail-open default this class is about, so the fixture
       // states a budget. 1024 MiB across the same slot count the cell runs.
-      conversation_cache: StrataConversationCacheBudget {
-        budget: strata_conversation_cache_mebibytes(count: positive_measure_count(predecessor: 1023)),
-        slots: positive_slot_count(count: positive_measure_count(predecessor: 7)),
+      conversation_cache: Present {
+        value: StrataConversationCacheBudget {
+          budget: strata_conversation_cache_mebibytes(count: positive_measure_count(predecessor: 1023)),
+          slots: positive_slot_count(count: positive_measure_count(predecessor: 7)),
+        },
       },
     },
     parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),

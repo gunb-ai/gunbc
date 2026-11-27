@@ -11,7 +11,7 @@ import std.measure {
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 
 // THE STRATA ENGINE'S SERVING FLAGS, as the upstream documents them at commit
 // 8183c6b67162340c09b67360860177c577a65f2e of https://github.com/Niko1221/Strata (README.md "Good to
@@ -188,15 +188,22 @@ type StrataConversationCache
   // The argv as READ carries neither flag, so this build's default decides and this row does not claim
   // to know what that default is. This is a transcription of someone else's argv, never a policy a plan
   // picks; `detail` names the argv and the read. READ IS NOT SILENCE: a launch whose argv nobody has read
-  // is the arm below, not this one (gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked
-  // is the same confusion on the reading side, and the two arms are what keeps them apart here).
+  // is not this arm either -- it is the absent case of the `Optional` on
+  // `StrataLaunchParameters.conversation_cache`, one type up, where this repository's coverage state lives
+  // (gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked is the same confusion on the
+  // reading side, and keeping the two apart is what the `Optional` beside this type is for).
   | StrataConversationCacheUnset { detail: NonEmptyStr }
-  // The argv has NEVER BEEN READ, so this row holds no claim about whether the pair is in it: the launch may
-  // carry a budget, and nothing has looked. `detail` names what would settle it -- for a cell that has never
-  // run, whose image is still pending, that is the argv it will be launched with. It renders no word, like
-  // the arm above, and the two differ only where a judgement is asked: silence is the build deciding a policy
-  // nobody stated, unread is this repository not knowing yet.
-  | StrataConversationCacheUnread { detail: NonEmptyStr }
+
+// THE THREE ARMS ARE ALL THE UPSTREAM DOCUMENTS, and that is the line this type does not cross
+// (gunbc.design_argument::external_upstreams: "observations this repository makes are receipts in the
+// observing layer, never facts of the upstream"; "a missing observation is a downstream coverage
+// obligation, never an `Unobserved` property inside the upstream module"). Whether a launch's argv has been
+// READ AT ALL is therefore NOT an arm here -- it is this repository's coverage state, and the consuming layer
+// carries it as the `Optional` on `StrataLaunchParameters.conversation_cache` below, supplied by whoever
+// writes the row. The arm that was here until 2026-11-26 (`StrataConversationCacheUnread`) was this
+// repository's own not-yet-read state filed as a fact of Strata, and the fleet facts that stood beside it
+// (a host, a deployed build, the operator's report) have moved to the same consuming layer
+// (gunbc.serving.serving_replica_profile::strata_deployed_build_precedes_the_auto_size).
 
 // THE LAUNCHABLE RECORD: the flag list held ONCE (StrataLaunchParameters, below) plus the batch-slot
 // count. The nine fields were spelled twice before 2026-11-25 -- here and again in StrataLaunchParameters,
@@ -245,10 +252,13 @@ type StrataLaunchParameters {
   experts: StrataExpertResidency
   // `--vram-reserve-mib N` (docs/DETAILS.md)
   vram_reserve: Mebibyte?
-  // `--conversation-cache-mib N --conversation-cache-slots K` (docs/DETAILS.md). REQUIRED, not an
-  // optional beside the others: its absence is not "no opinion", it is the build's default deciding a
-  // policy -- see StrataConversationCache above.
-  conversation_cache: StrataConversationCache
+  // `--conversation-cache-mib N --conversation-cache-slots K` (docs/DETAILS.md). REQUIRED, not a maybe
+  // beside the others: leaving the FIELD out is not "no opinion", it is the build's default deciding a
+  // policy -- see StrataConversationCache above. The `Optional` around it is NOT that maybe: `present(v)`
+  // is what a read argv says, and `absent()` is the row's AUTHOR declaring that this repository has not
+  // read that launch's argv yet. The absence is the consumer's coverage state in std's own absence carrier,
+  // which is why the flag type needed no "unread" arm (gunbc.design_argument::external_upstreams).
+  conversation_cache: Optional<StrataConversationCache>
 }
 
 // WHAT THE DOCUMENTATION SAYS THE ENGINE DOES WHEN THE PAIR IS UNSET, with the release it says it for.
@@ -258,54 +268,16 @@ data strata_conversation_cache_unset_standing: CitedFigureStanding = CitedToAuth
   authority: extdeps_external_authority_anchor,
 }
 
-// The same question for a build this repository has NOT read the release notes of: the fleet's h11 engines
-// run Strata 0.1.38 (HIP build), which PREDATES the auto-sizing the anchor commit's docs describe for
-// 0.2.3. The operator reported on 2026-11-24 that with the pair unset those engines kept only the live
-// conversation warm (both were 0% prompt-cache warm, and both went warm after the pair was added by hand
-// -- the measurement is the operator's ad-hoc read, not an instrument of this repository, so it is carried
-// as a transcription with its read obligation and never as a deduced default).
+// The same question at the releases BEFORE 0.2.3, which the anchor commit's docs do not answer: the
+// auto-sizing above arrived at release 0.2.3 (its PR #3493), and the releases before it document no
+// auto-sizing -- on those an absent budget left no conversations parked. That is a fact of the upstream and
+// its own tags, so it is stated HERE; which build a host actually runs is an observation of ours and lives
+// in the consuming layer (gunbc.serving.serving_replica_profile::strata_deployed_build_precedes_the_auto_size),
+// never here (gunbc.design_argument::external_upstreams).
 data strata_conversation_cache_unset_standing_pre_0_2_3: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "read what Strata 0.1.38 (the HIP build on h11) does with --conversation-cache-mib unset: its own docs/CHANGELOG at that tag, or the engine log line the docs promise names the budget it chose; the operator's 2026-11-24 report (0% warm with the pair unset, warm within minutes of setting it) is consistent with off and is the only evidence held today" as NonEmptyStr,
+  read_obligation: "read Strata's own release notes / CHANGELOG at the tags before 0.2.3, and the engine log line docs/DETAILS.md promises names the budget it chose, for what an absent --conversation-cache-mib did on those releases; this module holds no reading of them, so nothing beyond the statement that no auto-sizing is documented there may be asserted from here" as NonEmptyStr,
 }
 
-// WHAT TO TELL SOMETHING THAT ASKS WHAT AN UNNAMED PAIR PARKS. Both standings above are READ here, by the
-// serving agreement that asks (gunbc.serving.serving_replica_profile::strata_launch_parking_agreement): a
-// consumer cannot know which release the engine is, so it is given the cited answer for the release the docs
-// cover and the open read for a build this repository has not read. The standings are the policy the build
-// chose, carried as standings and never as a figure a verdict could compute from
-// (gunbc.design_argument::epistemic_humility: what is only transcribed never enters as a number).
-//
-// THE STANDING IS AN ARGUMENT, NOT A CONSTANT MATCHED. Until 2026-11-26 this function matched the two
-// module-level standing rows themselves -- fixed data -- so the `TranscribedUncited` and `ObservedByReceipt`
-// arms and one `Absent` arm could never run: one fixed sentence dressed as a decision on a value, and a branch
-// no input can reach cannot be given the discriminating input gunbc.design_argument::fail_closed asks for.
-// Both branches that remain DO run at the two calls below -- the cited row answers `Absent` (nothing open: it
-// is cited), the transcription answers `Present` (it carries the read that would settle it) -- so the wording
-// really does follow the standing. The pair of inputs that goes red when that stops being true is
-// test.claim.serving.strata_conversation_cache_parking_witness::witness_the_ask_wording_follows_the_standing_it_is_given.
-fn strata_conversation_cache_standing_sentence(question: String, standing: CitedFigureStanding) -> String {
-  match cited_figure_read_obligation(standing: standing) {
-    Present { value: o } =>
-      question + " this repository has not read it; the open read that would settle it is: " + o
-    Absent =>
-      question + " it is cited to this module's own upstream citation, and nothing may be assumed beyond the" +
-        " release that citation covers"
-  }
-}
-
-fn strata_conversation_cache_unset_ask() -> String {
-  let cited = strata_conversation_cache_standing_sentence(
-    question: "For the release this module's citation covers the answer is stated there, and",
-    standing: strata_conversation_cache_unset_standing,
-  )
-  let not_read = strata_conversation_cache_standing_sentence(
-    question: "For a build this repository has not read the release notes of -- which is every build whose" +
-      " launched argv it has not read either --",
-    standing: strata_conversation_cache_unset_standing_pre_0_2_3,
-  )
-  "what a build whose argv names neither cache flag parks is that build's own policy, not a fact of this" +
-    " repository. " + cited + ". " + not_read
-}
 // THE ONE BRIDGE FROM PARAMETERS TO A FULL FLAG RECORD. It receives the slot count as an argument, so
 // no construction puts a `parallel` into a record from anywhere but the caller's authority: a
 // benchmark cell passes the concurrency it means to measure; a production replica's slots come from
@@ -352,10 +324,22 @@ fn strata_conversation_cache_words(cache: StrataConversationCache) -> List<Strin
     StrataConversationCacheBudget { budget: n, slots: k } =>
       ["--conversation-cache-mib", to_string(strata_conversation_cache_mebibytes_value(budget: n)), "--conversation-cache-slots", to_string(positive_slot_count_value(slots: k))]
     StrataConversationCacheOff { reason: _ } => ["--conversation-cache-mib", "0"]
-    // Neither silence nor unread renders a word: to emit one would be to write an argv nobody launched
-    // (gunbc.design_argument::fail_closed -- no plausible text for a fact never read).
+    // Silence renders no word: to emit one would be to write an argv nobody launched
+    // (gunbc.design_argument::fail_closed -- no plausible text for a fact never read). Whether the argv was
+    // read at all is not this type's question -- that is the `Optional` on the record below.
     StrataConversationCacheUnset { detail: _ } => [] as List<String>
-    StrataConversationCacheUnread { detail: _ } => [] as List<String>
+  }
+}
+
+// THE CACHE WORDS OF A LAUNCH RECORD, whose cache may never have been read. An unread launch renders no
+// cache word beside the rest -- nothing is invented for a launch nobody has looked at. Rendering is not
+// where that state is refused (a rendered argv is not what a host installs from this module); the refusal
+// lives with the agreement that counts a launch as parked, in
+// gunbc.serving.serving_replica_profile::parking_judgement_for_launch.
+fn strata_launch_conversation_cache_words(read: Optional<StrataConversationCache>) -> List<String> {
+  match read {
+    Present { value: cache } => strata_conversation_cache_words(cache: cache)
+    Absent => [] as List<String>
   }
 }
 
@@ -395,5 +379,5 @@ fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
     stages),
     experts),
     reserve),
-    strata_conversation_cache_words(cache: flags.launch.conversation_cache))
+    strata_launch_conversation_cache_words(read: flags.launch.conversation_cache))
 }
