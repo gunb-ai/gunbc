@@ -12,7 +12,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
+import v2.std.diagnostic { Accepted, BinderUseExplicitnessRequired, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
@@ -286,6 +286,7 @@ test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Boo
                   && rcf_names_type(correction_node: c, name: ^n, expected: integer_int_type_node())
                   && rcf_names_type(correction_node: c, name: ^inhabitance_produced_type, expected: bool_node())
               Unavailable { reason: _ } => false
+              BinderUseExplicitnessRequired { binder: _ } => false
             })
       }
   }
@@ -372,6 +373,7 @@ test fn rcf_a_missing_field_refuses_and_is_named_holds() -> Bool {
           rcf_names_record(correction_node: c, dotted: "v2.test.rcf_missing.ArB")
             && rcf_names_type(correction_node: c, name: ^m, expected: integer_int_type_node())
         Unavailable { reason: _ } => false
+        BinderUseExplicitnessRequired { binder: _ } => false
       }
   }
 }
@@ -388,6 +390,7 @@ test fn rcf_an_undeclared_field_refuses_and_is_named_holds() -> Bool {
             && (match d.correction {
               Suggested { node: c } => rcf_names_record(correction_node: c, dotted: "v2.test.rcf_unknown.ArB")
               Unavailable { reason: _ } => false
+              BinderUseExplicitnessRequired { binder: _ } => false
             })
       }
   }

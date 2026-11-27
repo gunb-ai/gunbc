@@ -13,6 +13,7 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic {
+  BinderUseExplicitnessRequired,
   Accepted,
   NodeLocus,
   Textual,
@@ -235,6 +236,7 @@ fn dr_fatal_declarer(v: NativeModuleResolveVerdict) -> String {
     Present { value: d } =>
       match diagnostics_fatal(d: d).correction {
         Suggested { node: _ } => "other"
+        BinderUseExplicitnessRequired { binder: _ } => "other"
         Unavailable { reason: r } =>
           match r {
             DeclarerRefused { declarer: q } => qualified_name_to_dotted_string(qn: q)

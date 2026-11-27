@@ -350,6 +350,7 @@ import v2.std.integer {
   Int,
 }
 import v2.std.diagnostic {
+  BinderUseExplicitnessRequired,
   UserInputBoundary,
   AmbiguousIntent,
   CorrectionNotModeled,
@@ -3887,6 +3888,7 @@ fn native_census_cause_groups_add_chains_by_chain(
 fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
   match c {
     Suggested { node: _ } => optional_absent()
+    BinderUseExplicitnessRequired { binder: _ } => optional_absent()
     Unavailable { reason: r } =>
       match r {
         DeclarerRefused { declarer: q } => optional_present(value: q)

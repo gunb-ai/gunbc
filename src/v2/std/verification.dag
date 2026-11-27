@@ -5,6 +5,7 @@ import std.algebra { Empty, list_append, list_snoc_item, fold_list }
 import v2.std.node { node_same_occurrence, Node, Symbol, node_subtree_nodes }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
+  BinderUseExplicitnessRequired,
   Accepted,
   Correction,
   DeclarationLocus,
@@ -241,6 +242,7 @@ fn locus_evaluation_nodes(at: Locus) -> List<Node> {
 fn correction_evaluation_nodes(c: Correction) -> List<Node> {
   match c {
     Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
+    BinderUseExplicitnessRequired { binder: _ } => Empty
     Unavailable { reason: _ } => Empty
   }
 }

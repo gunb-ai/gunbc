@@ -7,6 +7,7 @@ import v2.std.lens_verdict { Holds, LensVerdict, Violation }
 import std.algebra { list_snoc_item, contains, length }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
+  BinderUseExplicitnessRequired,
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
@@ -202,6 +203,10 @@ fn graph_reach_apply_suggested_correction(root: Node, repaired: Node) -> Outcome
 fn graph_reach_apply_diagnostic_correction(root: Node, d: Diagnostic) -> Outcome<Node> {
   match d.correction {
     Suggested { node: repaired } => graph_reach_apply_suggested_correction(root: root, repaired: repaired)
+    BinderUseExplicitnessRequired { binder: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: d)
+      }
     Unavailable { reason: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(d: d)

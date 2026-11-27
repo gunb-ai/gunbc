@@ -56,9 +56,24 @@ type NoCorrectionReason
   // of the same requested QualifiedName.
   | RequestedModuleMissing { requested: FreeMonoid<Symbol> }
 
+// THE BINDER KINDS THE NAMED-BINDING-USE RULE REFUSES UNDER (operator ruling 2026-11-23,
+// gunbc.design_ruling::value_disposition_and_named_binding_use_are_explicit_2026_11_23). Pattern-
+// field bindings are NOT in this vocabulary: the plan carve-out of 2026-11-26 sends that case to
+// its carrier, gunbc.recurring_failure_mode::accepted_source_emits_uncompilable_target, and the
+// variant is added when THAT row dissolves -- a variant no path constructs is a dead arm.
+type AuthoredBinderKind
+  = LetBinder
+  | ParameterBinder
+  | LambdaParameterBinder
+
 type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
+  // THE NAMED-BINDING-USE CORRECTION (same ruling): an authored binder with no resolved use owes
+  // the explicit spelling -- re-spell the binder `_` (the wildcard spelling the language already
+  // has) or move the value into a binder that is read. The binder kind rides as data, never as a
+  // string; the refusal itself is located at the binder.
+  | BinderUseExplicitnessRequired { binder: AuthoredBinderKind }
 type Diagnostic {
   reason: Symbol
   at: Locus
@@ -254,10 +269,17 @@ fn correction_eq(a: Correction, b: Correction) -> Bool {
     Suggested { node: na } => match b {
       Suggested { node: nb } => node_equal_ignoring_provenance(a: na, b: nb)
       Unavailable { reason: _ } => false
+      BinderUseExplicitnessRequired { binder: _ } => false
     }
     Unavailable { reason: ra } => match b {
       Suggested { node: _ } => false
       Unavailable { reason: rb } => ra == rb
+      BinderUseExplicitnessRequired { binder: _ } => false
+    }
+    BinderUseExplicitnessRequired { binder: ka } => match b {
+      Suggested { node: _ } => false
+      Unavailable { reason: _ } => false
+      BinderUseExplicitnessRequired { binder: kb } => ka == kb
     }
   }
 }

@@ -18,16 +18,16 @@ import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
-import v2.std.diagnostic { AmbiguousIntent, Correction, CorrectionNotModeled, DeclarerRefused, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
+import v2.std.diagnostic { AmbiguousIntent, AuthoredBinderKind, BinderUseExplicitnessRequired, Correction, CorrectionNotModeled, DeclarerRefused, Diagnostic, LambdaParameterBinder, LetBinder, ParameterBinder, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
 import v2.compiler.primitive_authority { primitive_authority_path, primitive_authority_row_names_head }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
 import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { symbol_index_candidate_category, ExcludedCandidate, symbol_index_enclosing_declaration_paths, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
-import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot_in_arity, match_positional_slot, node_child_slots }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, arrow_named_edge_is_metadata, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot_in_arity, match_positional_slot, node_child_slots }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of, type_param_order }
-import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
+import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
 import std.types { List, Map }
@@ -1388,6 +1388,9 @@ type ResolveRefusalReason
   | ResolveTypeParameterShadowsVisibleName
   | ResolveDeclarerRefused
   | ResolveGeneratedReferenceDeclarationAbsent
+  // ONE label for the named-binding-use rule; the binder kind rides as data on the correction
+  // (v2.std.diagnostic AuthoredBinderKind), never as four reason names and never as a string.
+  | ResolveAuthoredBinderUnread
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
@@ -1403,6 +1406,7 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
     ResolveDeclarerRefused => ^resolve_reason_declarer_refused
     ResolveGeneratedReferenceDeclarationAbsent => ^resolve_reason_generated_reference_declaration_absent
+    ResolveAuthoredBinderUnread => ^resolve_reason_authored_binder_unread
   }
 }
 
@@ -4250,6 +4254,149 @@ fn resolve_binder_site_read(site: NodeOccurrenceIdentity, bindings: List<Occurre
   })
 }
 
+// THE NAMED-BINDING-USE RULE FOR AUTHORED VALUE BINDERS (operator ruling 2026-11-23,
+// gunbc.design_ruling::value_disposition_and_named_binding_use_are_explicit_2026_11_23, plan row
+// discarded-bool-result-wall): a named let, fn-parameter or lambda-parameter binder has a resolved
+// use or the program refuses with ONE label, resolve_reason_authored_binder_unread, located at the
+// binder and carrying its kind as data (v2.std.diagnostic AuthoredBinderKind); the correction names
+// the explicit spellings the ruling offers -- re-spell the binder `_`, or move the value into a
+// binder that is read. Pattern-field bindings are NOT refused here: the plan carve-out of 2026-11-26
+// sends them to their carrier gunbc.recurring_failure_mode::accepted_source_emits_uncompilable_target,
+// whose workaround at the field arm of resolve_catch_all_binder_read_gate stays that row's. A
+// wildcard binder binds nothing nameable -- its pattern form is lowered to the wildcard pattern
+// identity, while a let binder keeps the `_` spelling itself (the fold's lowering covers pattern
+// forms, not a statement let's name), so the gate skips both grains -- and an anonymous-slot binder
+// is not authored text: none of these is ever refused by this gate.
+// USE IS DECIDED BY BINDING IDENTITY, NOT IDENTIFIER TEXT. A read counts for a binder only when the
+// entry it minted binds THAT binder: a let binder answers at its atom occurrence (resolve_binder_site_read,
+// the same question the catch-all gate asks); an fn-parameter binder answers at its indexed path (the
+// ParameterFrame route mints BoundToParameter for every read of it, at any depth); a lambda-parameter
+// binder answers at its Arrow's binder site, and within that one shared site the authored spelling AT
+// THE READ distinguishes one parameter's read from another's. The match never crosses sites, so a
+// same-spelled binder elsewhere is a different binder and never answers here.
+fn resolve_authored_binder_unread_diagnostic(site: Node, kind: AuthoredBinderKind) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_authored_binder_unread,
+    at: node_locus(node: site),
+    correction: BinderUseExplicitnessRequired { binder: kind }
+  }
+}
+
+fn resolve_gate_authored_let_binder_read(n: Node, walk: ResolveNodeWalk) -> ResolveNodeWalk {
+  match walk {
+    ResolveWalkRefused { first: _first, rest: _, observation: _, partial: _ } => walk
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: bindings } =>
+      match bind_binder(n: n) {
+        Present { value: b } =>
+          if is_wildcard_pattern_identity(sym: b.name) || (b.name == pattern_wildcard_name()) || is_anonymous_param_label(sym: b.name) {
+            walk
+          } else if resolve_binder_site_read(site: b.atom.occurrence_id, bindings: bindings) {
+            walk
+          } else {
+            resolve_walk_refused_one(
+              chain: diagnostics_singleton(d: resolve_authored_binder_unread_diagnostic(site: b.atom, kind: LetBinder))
+            )
+          }
+        Absent => walk
+      }
+  }
+}
+
+// Scan accumulator: children are consumed left to right carrying their true ordinals, so every child
+// is classified by the slot table at the same ordinal the walker itself would pass.
+type ArrowBodySlotScan {
+  found: Bool
+  ordinal: Int
+}
+
+// WHICH ARROW CHILDREN ARE WALKED AS A BODY: exactly the slot table's ArrowBodyOrNamedSlot answer.
+// THE CLASSIFICATION IS OWNED by v2.compiler.lexical_scope::arrow_slot -- the same decision resolve
+// itself makes when it walks an Arrow (resolve_arrow_node_admitted); repeating the exclusions here
+// would fork that authority (review 99442, DESIGN.md 'Single authority': "a second place that
+// independently decides it is a fork"), so this asks the slot table instead. A signature with no body
+// slot -- a required or abstract declaration -- binds parameters no body could read, and the rule asks
+// only of binders a body could have read: no body slot, no obligation.
+fn arrow_has_modeled_body(n: Node) -> Bool {
+  let scan = fold(n.children, init: ArrowBodySlotScan { found: false, ordinal: 0 }, f: fn(acc, e) {
+    ArrowBodySlotScan {
+      found: acc.found || arrow_slot(e: e, ordinal: acc.ordinal) == ArrowBodyOrNamedSlot,
+      ordinal: acc.ordinal + 1
+    }
+  })
+  scan.found
+}
+
+// DOES THIS PARAMETER HAVE A RESOLVED USE? The two frames answer from their own entry kinds.
+// DeclaringAt (a declared fn's domain): every read of this parameter mints BoundToParameter with the
+// parameter's indexed path (resolve_frame_bound_reference), at any nesting depth; the binder IS that
+// path. Otherwise (lambda domain, spine-declared frame): the read's entry bound this Arrow's binder
+// site, and the authored spelling at the read names which sibling was read.
+fn arrow_parameter_read(ctx: ResolveContext, n: Node, name: Symbol, bindings: List<OccurrenceResolutionEntry>) -> Bool {
+  match ctx.declaring {
+    DeclaringAt { path: path } =>
+      any(xs: bindings, predicate: fn(e) {
+        match e.record.binding {
+          BoundToParameter { path: p } => p == qualified_name_snoc(qn: path, segment: name)
+          _ => false
+        }
+      })
+    DeclaringInSpine { path: _, body: _ } => lambda_binder_read(n: n, name: name, bindings: bindings)
+    NotDeclaring => lambda_binder_read(n: n, name: name, bindings: bindings)
+  }
+}
+
+fn lambda_binder_read(n: Node, name: Symbol, bindings: List<OccurrenceResolutionEntry>) -> Bool {
+  any(xs: bindings, predicate: fn(e) {
+    match e.record.binding {
+      BoundByLexicalBinder { binding: lb } =>
+        (lb.binder_site == n.occurrence_id)
+          && match e.record.authored {
+               Present { value: qn } => match qualified_name_last_segment(qn: qn) {
+                 Present { value: leaf } => leaf == name
+                 Absent => false
+               }
+               Absent => false
+             }
+      _ => false
+    }
+  })
+}
+
+fn resolve_gate_authored_parameter_read(ctx: ResolveContext, n: Node, walk: ResolveNodeWalk) -> ResolveNodeWalk {
+  match walk {
+    ResolveWalkRefused { first: _first, rest: _, observation: _, partial: _ } => walk
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: bindings } =>
+      if !(arrow_has_modeled_body(n: n)) {
+        walk
+      } else {
+        match fold(arrow_domain_binders(n: n), init: optional_absent(), f: fn(acc, b) {
+          if is_wildcard_pattern_identity(sym: b.name) || is_anonymous_param_label(sym: b.name) {
+            acc
+          } else if arrow_parameter_read(ctx: ctx, n: n, name: b.name, bindings: bindings) {
+            acc
+          } else {
+            let d = resolve_authored_binder_unread_diagnostic(
+              site: b.edge.target,
+              kind: match ctx.declaring {
+                DeclaringAt { path: _ } => ParameterBinder
+                DeclaringInSpine { path: _, body: _ } => LambdaParameterBinder
+                NotDeclaring => LambdaParameterBinder
+              }
+            )
+            match acc {
+              Absent => optional_present(value: NonEmptyDiagnostics { head: d, tail: Empty })
+              Present { value: c } =>
+                optional_present(value: NonEmptyDiagnostics { head: c.head, tail: list_snoc_item(xs: c.tail, item: d) })
+            }
+          }
+        }) {
+          Absent => walk
+          Present { value: chain } => resolve_walk_refused_one(chain: chain)
+        }
+      }
+  }
+}
+
 // The key a binding entry carries for an occurrence: its own minted or projected id, exactly as the
 // entries are recorded (occurrence_resolution_entries), so the pattern's own occurrence is excluded by the
 // same key it was recorded under.
@@ -5409,10 +5556,14 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 // to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
 // invented by that refusal.
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  resolve_arrow_node_in(
-    outer_ctx: ctx,
-    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope, declaring: ctx.declaring)),
-    n: n
+  resolve_gate_authored_parameter_read(
+    ctx: ctx,
+    n: n,
+    walk: resolve_arrow_node_in(
+      outer_ctx: ctx,
+      ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope, declaring: ctx.declaring)),
+      n: n
+    )
   )
 }
 
@@ -5822,12 +5973,15 @@ fn resolve_bind_node(
     match gate_value_binders(names: bind_binder_name_list(n: n), outer: ctx.scope, at: n) {
       BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
       BinderGateAdmitted =>
-        child_walk_node(n: n, w: resolve_bind_edges(
-          ctx: ctx,
-          edges: n.children,
-          scope_outer: ctx.scope,
-          scope_inner: lexical_frame(fb: bind_frame_binders(n: n), outer: ctx.scope)
-        ))
+        resolve_gate_authored_let_binder_read(
+          n: n,
+          walk: child_walk_node(n: n, w: resolve_bind_edges(
+            ctx: ctx,
+            edges: n.children,
+            scope_outer: ctx.scope,
+            scope_inner: lexical_frame(fb: bind_frame_binders(n: n), outer: ctx.scope)
+          ))
+        )
     }
   } else if positional_child_count(children: n.children) == 2 {
     // THE BINDER-ABSENT Bind: the statement Bind the lowering produces for a non-binding statement followed
