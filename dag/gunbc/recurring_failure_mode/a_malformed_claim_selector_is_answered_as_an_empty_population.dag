@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_malformed_claim_selector_is_answered_as_an_empty_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE SELECTOR-GRAIN CLASS OF VACUOUS ZERO ANSWERS: a claim selection whose label names a package
+// that does not exist is answered with exactly the output a well-formed selection over an existing
+// package with no claims produces. The tool COULD distinguish the two -- the same label model
+// already returns a typed refusal for a malformed shape -- but package existence is never checked,
+// so 'no such package' is not an answer the selector can give. This row is the record; it claims
+// no rung beyond what the receipts below state.
+
+data a_malformed_claim_selector_is_answered_as_an_empty_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_malformed_claim_selector_is_answered_as_an_empty_population" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of a claim selector to return a typed NO_SUCH_PACKAGE outcome, distinct from the zero-claims-over-an-existing-package outcome, verified against the on-disk package inventory at selection time -- the same refusal machinery the label model already applies to malformed shapes (extdeps.bazel.label::MultipleColonSeparators), extended to package existence" } },
+
+  receipts: [
+    "INVALID STATE: a selection that never reached any population is reported as a population that is empty. A claim selector whose package segment names no existing package parses successfully and the batch answers with the zero-claim print, exit code, and absence of diagnostic that a real empty module produces. The reader cannot tell, from the answer, whether the tool looked at an empty shelf or at a shelf that does not exist.",
+
+    "MECHANISM, as read by zesty-koi (relayed by lane manager sleek-fox-889 on Manager B's brief msg_8c228294): a no-colon selector is parsed by the bazel label model (extdeps.bazel.label::parse_label), whose trailing path segment becomes the package name. A no-colon selector over a package that does not exist is a WELL-FORMED label, so nothing refuses; the batch then finds no claims under it and prints the empty-population answer, rc 2. The contrast is inside the same model: a label carrying more than one colon separator IS refused, typed (extdeps.bazel.label::MultipleColonSeparators). Typed shape refusal exists where it has been spelled; package existence has never been spelled as a shape.",
+
+    "SPECIMENS, recorded by the content owner eager-koi-371 (two zero-selection runs) and by zesty-koi (control PRECHECK_A: rc 2, zero claims printed), relayed through the lane-manager brief; the run receipts are held by those sessions and are the primary record for the printed text. The specimen shape: a selector whose package segment is malformed, asked of the claim batch, answered identically in output, exit code, and silence to the same selector corrected to an existing package holding no claims.",
+
+    "DISCRIMINATING RED, which is what keeps this row separate from both neighbours. Against gunbc.recurring_failure_mode::a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim: that class is constructed by BREAKING THE SOURCE -- a claim whose source is damaged reads as a wrong label or a failing claim; it cannot see this invalid state, because here every source is healthy and the failure is in the selection itself. Against gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked: that row is the general rule (an absence read as an answer); this row is the selector-grain instance where the instrument holds the facts needed to distinguish and does not -- the distinction is not hard, the model already refuses shapes it dislikes. The repair sentences differ too: that neighbour is repaired by making a reading non-vacuous, this row by adding one typed outcome to the selector.",
+
+    "THE HARM: a worker reads the zero answer as 'there is nothing here to run', and either reports a vacuous green over a population that was never reached, or burns a cycle re-deriving why nothing ran when the selector was wrong the whole time. The class is mitigated today only by a habit: re-derive any zero answer from an independent listing of the package's claims before reporting it. That habit is a prose rule, not a mechanism, which is exactly what MITIGABLE records.",
+
+    "REVIEW TELL: a run whose output says zero claims and prints no claim-name list; a selection whose package segment appears in no package listing anywhere else in the repo; a green or a 'nothing to run' reported from a module path no other row or roster names.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.bazel.label", decl_name: "parse_label"),
+    decl_ref(module_path: "extdeps.bazel.label", decl_name: "MultipleColonSeparators"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim", decl_name: "a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked", decl_name: "absent_reads_identically_to_never_looked"),
+  ],
+}
