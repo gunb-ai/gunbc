@@ -46,7 +46,10 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 //      cli_run/claim_execution.rs to build the receipt), but no declaration a claim module can call
 //      returns a subject's steps. Measured 2026-11-27 in this worktree at origin/main
 //      6052ff4a8e4771cff9ac8109bc685f329039411d, three ways: the quantity's two constructors are
-//      declared only in dag/std/measure.dag:495, :1518 and :1522; EVERY call site of
+//      declared only in dag/std/measure.dag -- the type EvalStepCount beside its two functions
+//      eval_step_count and eval_step_count_value (cited by SYMBOL, per gunbc.design_argument::single_authority;
+//      no line positions are given, because they move with every edit to that file and a stale position reads
+//      as evidence when it is only a hint); EVERY call site of
 //      eval_step_count in dag hands it a number someone wrote -- test.claim.floor_eval_step_budget_witness
 //      tier_probe_steps returns the literal 150000, test.claim.floor_cost_distribution_witness
 //      builds its rows from 9000, 4000, 900, 4400 and 163840 -- and not one of them reads a run;
