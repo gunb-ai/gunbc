@@ -296,22 +296,20 @@ test fn parse_population_cell_measurement_pairing_is_constructed_not_checked_hol
   && count(filter(labels, l => l == "E")) == 1
 }
 
-// 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): the renderings over the
-// real receipts' measurements are pairwise distinct and the population renderings distinguish the two
-// fixed samples -- collapse any arm of parse_population_measurement_cell_render onto another and this
-// leg goes DID NOT HOLD. The report and the roster read these renderings; they copy nothing.
+// 19. THE CELL RENDERINGS ARE THE ONE HOME FOR THE LABELS (single_authority): the five real receipts
+// render pairwise-distinct labels of which exactly one is REF (the reference cell's rendering), every
+// receipt carries the srv1 host identity, and the population renderings distinguish the two fixed
+// samples -- collapse any arm of parse_population_measurement_cell_render onto another and the
+// distinctness count goes DID NOT HOLD. The report and the roster read these renderings; they copy
+// nothing. All reads go through list combinators: `xs[i]` yields an Optional in this grammar and
+// feeding it to a Product parameter is what the FORM3 pre-check refused by name on srv1 (rc 2,
+// "produced 'Optional<Product(ParsePopulationMeasurementReceipt)>'").
 test fn parse_population_cell_renderings_are_distinct_holds() -> Bool {
-  let r0 = parse_population_measurement_receipts[0]
-  let m0 = r0.measurement
-  let m1 = parse_population_measurement_receipts[1].measurement
-  let m2 = parse_population_measurement_receipts[2].measurement
-  let m3 = parse_population_measurement_receipts[3].measurement
-  let m4 = parse_population_measurement_receipts[4].measurement
-  host_identity_eq(a: r0.host, b: "srv1" as HostIdentity)
-  && string_contains(s: parse_population_measurement_cell_render(measurement: m0), pattern: "REF")
-  && parse_population_measurement_cell_render(measurement: m0) != parse_population_measurement_cell_render(measurement: m1)
-  && parse_population_measurement_cell_render(measurement: m1) != parse_population_measurement_cell_render(measurement: m2)
-  && parse_population_measurement_cell_render(measurement: m2) != parse_population_measurement_cell_render(measurement: m3)
-  && parse_population_measurement_cell_render(measurement: m3) != parse_population_measurement_cell_render(measurement: m4)
+  let labels = map(parse_population_measurement_receipts, r => parse_population_measurement_cell_render(measurement: r.measurement))
+  let hosts = map(parse_population_measurement_receipts, r => r.host)
+  count(labels) == 5
+  && count(distinct_by_key(xs: labels, key: l => l)) == 5
+  && count(filter(labels, l => l == "REF")) == 1
+  && count(filter(hosts, h => host_identity_eq(a: h, b: "srv1" as HostIdentity))) == 5
   && parse_population_sample_shape_render(shape: FiveLargest) != parse_population_sample_shape_render(shape: Sample165SizeTail)
 }

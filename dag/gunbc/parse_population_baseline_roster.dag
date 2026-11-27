@@ -258,7 +258,7 @@ data parse_population_baseline_rows: List<ParsePopulationRow> = [
 // ProcessTimes can be written where a wall receipt cannot. The population stays a declared coproduct:
 // membership is the ROSTER'S OWN derivation (rank from position in the 170-row size-descending binding),
 // never a free-text label. FullRootsReference is the unfiltered run.
-data WallCell = CellREF | CellA | CellB | CellC
+type WallCell = CellREF | CellA | CellB | CellC
 
 type ParsePopulationSampleShape = FiveLargest | Sample165SizeTail | VerdictOnly165Reuse | InstrumentCheckPop5 | FullRootsReference
 
