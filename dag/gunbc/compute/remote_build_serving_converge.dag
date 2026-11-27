@@ -31,7 +31,7 @@ import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, Typ
 // the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
 // shape every host-side door run shares. The leg itself decides nothing.
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading, recover_catalog_unknown_leg_reason,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
@@ -1656,7 +1656,14 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
             TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
               RecoverDoorSettled => recover_catalog_leg_reading(text: r.stdout)
               RecoverDoorDeclined => RecoverCatalogLegUnknown { detail: "the census door declined at exit 1, which its contract does not speak" }
-              RecoverDoorUnknown => RecoverCatalogLegUnknown { detail: join(["the census door answered unknown: ", trim(s: r.stderr)], "") }
+              // The unknown reason is the census's OWN declared stdout words -- never its stderr. The
+              // trampoline's pre-wrap diagnostic ("user_work_scope: observed-bound arm did not admit
+              // (chain-unbounded)") prints on stderr of EVERY census leg that must wrap into the capped
+              // slice; when this arm quoted raw stderr as its reason, a transport note masqueraded as
+              // the census's answer and was logged as a census cause (run 45762320308: the door's
+              // "unread" line quoted only the trampoline, while the census had answered in full). The
+              // exit is still honored first -- this arm runs only when the declared table speaks 2.
+              RecoverDoorUnknown => recover_catalog_unknown_leg_reason(stdout: r.stdout)
               RecoverDoorUnmapped { code: c } => RecoverCatalogLegUnknown { detail: join(["the census door exited ", to_string(c), ", outside the declared mapping (0/2)"], "") }
             }
           }
