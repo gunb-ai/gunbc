@@ -375,15 +375,9 @@ fn host_access_admission(
     AccessRefused {
       host: host,
       out_of_roster: out_of_roster,
-      cause: if host_accounts_keys_declares_gap(standing: standing) {
-        OutOfRosterKeyUndecidableOnUndeclaredAccounts
-      } else {
-        OutOfRosterKeyAgainstRelayedAccounts
-      },
+      cause: OutOfRosterKeyAgainstRelayedAccounts,
       accounts_keys: standing,
     }
-  } else if host_accounts_keys_declares_gap(standing: standing) {
-    AccessDowngraded { host: host, rostered: host_keys_in_roster(observed: observed), accounts_keys: standing }
   } else {
     AccessAdmitted { host: host, rostered: host_keys_in_roster(observed: observed), accounts_keys: standing }
   }
