@@ -539,4 +539,3 @@ fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
     },
   ]
 }
-
