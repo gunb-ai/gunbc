@@ -69,6 +69,7 @@ import gunbc.fleet.fleet_host_truth_read {
   HostTruthComparison,
   fleet_host_truth_verdict_for_host,
   host_truth_axes_match, host_truth_axis_rule, host_truth_read_cause_explains, host_truth_host_text,
+  host_truth_axis_remedy, host_truth_remedy_says,
 }
 import gunbc.fleet.fleet_host_truth_sources {
   host_truth_cap_read, host_truth_leaf_swap_read,
@@ -195,7 +196,14 @@ fn host_truth_observe_verdict_text(verdict: HostTruthVerdict) -> String {
 }
 
 // ONE COMPARISON AS TEXT. Enough to name the axis and, for a refusal, that it was unread -- the receipt names
-// the refused axes without re-deciding what they mean (that stays in gunbc.fleet.fleet_host_truth_read).
+// the refused axes without re-deciding what they mean (that stays in gunbc.fleet.fleet_host_truth_read). For a
+// DIVERGENCE the line also carries the axis's remedy, printed from
+// gunbc.fleet.fleet_host_truth_read::host_truth_remedy_says and keyed by host_truth_axis_remedy: the receipt is
+// the one artifact a human or a lane reads per host on the converge route, and a divergence that says what
+// differs but not which of five remedies applies is a divergence the reader has to interpret somewhere else.
+// This module does not decide the remedy, it prints the one the read module decided (single authority), and it
+// prints it for divergences only -- an axis that was never read has no remedy against the machine, only a probe
+// to repair, which is what the cause text already says.
 fn host_truth_comparison_text(comparison: HostTruthComparison) -> String {
   match comparison {
     TruthAgrees { host: _, axis: a, at_run: _, receipt: _ } =>
@@ -203,7 +211,8 @@ fn host_truth_comparison_text(comparison: HostTruthComparison) -> String {
     TruthDivergent { host: _, axis: a, observed: o, expected: e, declared_by: d } =>
       join([
         "  ", host_truth_axis_rule(axis: a), " -- DIVERGENT: observed ", host_truth_value_text(value: o),
-        ", expected ", host_truth_value_text(value: e), " (declared by ", d, ")\n",
+        ", expected ", host_truth_value_text(value: e), " (declared by ", d, ")",
+        "; remedy: ", host_truth_remedy_says(remedy: host_truth_axis_remedy(axis: a)), "\n",
       ], "")
     TruthUnread { host: _, axis: a, cause: c } =>
       join(["  ", host_truth_axis_rule(axis: a), " -- unread (refused): ", host_truth_read_cause_explains(cause: c), "\n"], "")

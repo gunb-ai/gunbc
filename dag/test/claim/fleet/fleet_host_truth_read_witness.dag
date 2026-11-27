@@ -436,9 +436,14 @@ test fn a_divergence_says_which_rule_it_broke_on_which_host() -> Bool {
     expectation: declared(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: truth_size(56), by: "the serving grant's slot"),
   )
   let text = host_truth_divergence_locator(comparison: comparison)
-  text == host_truth_axis_rule(axis: TruthCapBindsDeclaredWorkingSet) + " -- host srv4 carries a cap below the working set the serving grant's slot declares for the role it runs"
+  // the remedy is part of the line now: the row's red_control is that the five arms stay separate because
+  // their remedies are separate, and a line that named only the drift would leave the choice of remedy to the
+  // reader. This expected string is this file's own words for the cap axis's remedy -- the same oracle the two
+  // RED_ remedy claims use, not a read-back of host_truth_remedy_says.
+  text == host_truth_axis_rule(axis: TruthCapBindsDeclaredWorkingSet) + " -- host srv4 carries a cap below the working set the serving grant's slot declares for the role it runs; remedy: refuse the placement whose binding cap sits under the working set the role declares"
     && string_contains(s: text, pattern: "srv4")
     && string_contains(s: text, pattern: "the serving grant's slot")
+    && string_contains(s: text, pattern: "refuse the placement")
     // the quantities ride on the arm as quantities, not only as text in the line: whoever refuses the host
     // can act on the cap it found, and "40 GiB" is one size however the cgroup file spelled it.
     && match comparison {
@@ -737,4 +742,30 @@ test fn the_cap_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
 test fn the_swap_backing_axis_divergence_alone_keeps_the_host_off_admission() -> Bool {
   axis_admits(host: planted_divergence_host(axis: TruthSlotSwapBackingDeclared), axis: TruthSlotSwapBackingDeclared, read: agreeing_read(axis: TruthSlotSwapBackingDeclared))
     && axis_admits(host: planted_divergence_host(axis: TruthSlotSwapBackingDeclared), axis: TruthSlotSwapBackingDeclared, read: planted_divergence_read(axis: TruthSlotSwapBackingDeclared)) == false
+}
+
+// A REFUSAL CARRIES NO REMEDY. A read that did not happen establishes nothing about the machine, so what it
+// owes is the probe repaired or the host reached -- not a judgment about hardware, units, keys, caps or
+// backing. Printing a machine remedy on an unread axis would attach a remedy to a fact nobody read, which is
+// the fabricated located cause gunbc.design_argument::fail_closed refuses, and it is the same discipline that
+// keeps host_truth_read_cause_explains from naming WHICH kind of "no" a cgroup property gave. So: the cause is
+// the loud half of a refusal, the remedy is the loud half of a divergence, and neither stands in for the other.
+test fn a_refusal_names_its_cause_and_invents_no_remedy() -> Bool {
+  let line = host_truth_divergence_locator(comparison: host_truth_compare(
+    read: refused(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, cause: HostTruthProbeAbsent { probe: "the per-host PCI class count" }),
+    expectation: declared(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, expected: truth_count(4), by: "the serving layout's pool row"),
+  ))
+  string_contains(s: line, pattern: "the probe this axis needs is not on that host")
+    && string_contains(s: line, pattern: "remedy:") == false
+}
+
+// EACH REMEDY MARKER APPEARS ON EXACTLY ONE AXIS LINE. Five markers, five axes, one axis each: a fold that
+// merged two axes into one remedy would leave a marker missing from one line and present on two, and this
+// counts it rather than trusting that the fold was written carefully.
+test fn each_remedy_marker_appears_on_exactly_one_axis_line() -> Bool {
+  host_truth_axes().all(axis =>
+    host_truth_axes()
+      .filter(other => string_contains(s: planted_divergence_line(axis: other), pattern: remedy_marker(axis: axis)))
+      .length() == 1
+  )
 }

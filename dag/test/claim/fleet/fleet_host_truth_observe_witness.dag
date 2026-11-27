@@ -16,6 +16,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { ByteSize, byte_size }
+import std.algebra { string_contains }
 import extdeps.systemd { SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthRead, HostTruthObserved, HostTruthReadBlank, HostTruthReadRefused, HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
@@ -28,7 +29,7 @@ import gunbc.fleet.fleet_host_truth_observe {
   host_truth_observe_reads, host_truth_observe_expectations, host_truth_observe_verdict,
   host_truth_observe_cap_expectation,
   host_truth_observe_identity_refusal, host_truth_observe_pci_refusal, host_truth_observe_unit_refusal,
-  host_truth_observe_exit,
+  host_truth_observe_exit, host_truth_observe_verdict_text,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -229,5 +230,46 @@ fn host_truth_read_axis(read: HostTruthRead) -> HostTruthAxis {
     HostTruthObserved { host: _, axis: a, at_run: _, observed: _, receipt: _ } => a
     HostTruthReadBlank { host: _, axis: a } => a
     HostTruthReadRefused { host: _, axis: a, cause: _ } => a
+  }
+}
+
+// THE RECEIPT NAMES THE REMEDY FOR THE AXIS THAT DIVERGED. This is the production consumer of the remedy
+// authority: the per-host receipt the host_truth_read_observe step writes on the converge route prints the axis
+// rule, the two quantities, and now which of the row's five remedies applies -- here, the swap-backing remedy
+// for a slot cgroup backing 1 GiB against an envelope that declares none. The words below are this claim's own
+// referent (the row's parenthesised remedy list, "provision backing"), not host_truth_remedy_says read back to
+// itself; the observe module prints the authority, it does not decide it.
+test fn the_receipt_names_the_remedy_for_the_axis_that_diverged() -> Bool {
+  let verdict = host_truth_observe_verdict(
+    host: "srv2" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitBytes { bytes: byte_size(count: 1073741824) },
+  )
+  let text = host_truth_observe_verdict_text(verdict: verdict)
+  match verdict {
+    HostTruthDiverges { host: _, divergences: ds } =>
+      ds.length() == 1
+        && string_contains(s: text, pattern: "; remedy: ")
+        && string_contains(s: text, pattern: "provision")
+    _ => false
+  }
+}
+
+// AND THE RECEIPT INVENTS NO REMEDY FOR AN AXIS IT NEVER READ. The three refused axes carry their cause, not a
+// remedy against a machine that was not looked at.
+test fn the_receipt_carries_no_remedy_for_an_axis_that_was_never_read() -> Bool {
+  let verdict = host_truth_observe_verdict(
+    host: "srv1" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max },
+  )
+  let text = host_truth_observe_verdict_text(verdict: verdict)
+  match verdict {
+    // three unread axes outrank nothing here: no axis diverged, so the verdict is a refusal, and a refusal
+    // line carries a cause and no remedy.
+    HostTruthRefused { host: _, refusals: rs } => rs.length() == 3 && string_contains(s: text, pattern: "remedy:") == false
+    _ => false
   }
 }
