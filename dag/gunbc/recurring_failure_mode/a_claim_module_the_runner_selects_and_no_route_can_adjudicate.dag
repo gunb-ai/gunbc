@@ -1,0 +1,60 @@
+module gunbc.recurring_failure_mode.a_claim_module_the_runner_selects_and_no_route_can_adjudicate
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE SIBLINGS, AND WHY THIS IS NOT AN INSTANCE OF EITHER. a_v1_unit_test_red_on_main_runs_in_no_required_lane
+// is a test nothing SCHEDULES; witness_module_absent_from_the_executed_set is a correct witness enrolled in no
+// roster. This row is the third shape: the runner IS asked for the claim by its exact label, it SELECTS the
+// claim (its own summary counts it), and it then answers UNOBSERVED for every legitimate route the tool
+// admits -- so every signal a reader consults says the claim exists, was selected, and was measured, while no
+// verdict was ever produced. Filed by loyal-deer-143 on node://egress-numeric-bit-sealed-carrier, 2026-11-27,
+// while executing the executed-red-control probe Manager B required (msg_31baaf35).
+
+data a_claim_module_the_runner_selects_and_no_route_can_adjudicate: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_claim_module_the_runner_selects_and_no_route_can_adjudicate" as NonEmptyStr,
+
+  // FOUND SILENTLY WRONG, SO BELOW THE LADDER. Eighty-two claims stand in one file and none of them can
+  // adjudicate; the runner returns status 2 for them exactly as it does for a mistyped label, so nothing in
+  // the printed record separates an unadjudicable module from a typo or from an honestly empty module. The
+  // ceiling is MechanicallyPreventable: a claim route that populates the resolve pool its per-claim binder
+  // reads (or a refusal that names the cause instead of sharing status 2 with a typo) removes the state.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of the claim route to populate the module closure its own per-claim resolver reads before resolving, SUFFICIENT FOR a claim module that declares no imports to reach a Pass or a Failed verdict rather than ClosureDiagnostics -- measured on the live route at b07fd2aac723; the fallback that keeps the state visible is a distinct exit status and a distinct summary line for UNOBSERVED-for-cause, which the route does not have today"
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** A claim module whose claims the runner SELECTS and then cannot adjudicate. The specimen declares 82 test fns (`dag/test/claim/machine_word_witness.dag`, module `test.claim.machine_word_witness`) and, measured at origin/main b07fd2aac7231a3064abf41453f851a9f030d0f5 with a binary built from that same sha, EVERY shape the tool admits returns `UNOBSERVED outcome=ClosureDiagnostics` with the module's own unresolved names listed: exact label grain (`gunbc test //test/claim/machine_word_witness:base64_encode_refuses_an_out_of_range_octet_holds`, SELECTED=1, rc 2), the same with explicit `--source-root dag --source-root src/v2`, a three-label batch wet (SELECTED=3, all three unobserved), the batch POOLED with claims from import-bearing siblings whose own verdicts print `HELD outcome=Pass` in the same run (so the route is demonstrably alive and the pool is demonstrably not widened for the unadjudicable one), and the widest patterns the grammar admits (`:all` and `//test/...`, both refused as selections; the `//test/claim/...` census did not complete inside 900 s). Its header states the invariant that produces the state, at file lines 1-2: no import of std.integer in this file, nothing here may name the admission fold's own vocabulary -- and the three names that need it (`base64_octets`, `uint8_octets_of_ints`, `qualified_octets`) are bound by an `import std.integer { ... }` written INSIDE one test fn at line 443, which the per-module binder never sees.",
+
+    "**MECHANISM, READ FROM SOURCE RATHER THAN GUESSED.** `src/v1/stage0/src/target_invocation_host.rs`: the claim route builds targets, calls `compile_corpus_package`, receives `CorpusCompileOutcome::NeedsPopulate` whose populate set is the modules with a demand edge FROM THE SELECTED CLAIMS (2668-2671), re-selects (2701), and resolves each claim per module; bare names bind against the claim modules plus the populated pool (4579-4586). With no populated pool nothing binds; pooling sibling CLAIMS does not add the modules the unadjudicable claim needs, which is what the H/H2/H3/H4 shapes measured. The interpreter route (`gunbc run --entry ... --function ...`) reaches `demand_acquired_modules=5` and then refuses with `function base64_octets not found in scope` -- narrower, and still a refusal. The era instrument cannot stand in: `claim_batch` was deleted from main by gunb-ai/gunbc#16872 (ad5c67a316f), and the file the old green leg ran, `dag/test/claim/machine_word_witness_test.dag`, does not exist at b07fd2aac723 nor at 31bbd220f9d909cff53f91ce03d1b9e0e73293c3.",
+
+    "**WHY IT READS AS COVERAGE.** An unadjudicable claim and a mistyped label print the SAME status: rc 2. A mistyped label also prints `0 claim(s)`, and an unadjudicable one prints a count with an UNOBSERVED arm, so the two readings a careful lane manager applies -- selected-count and exit status -- separate them only if the reader knows the module in advance. The historic reading here was the opposite one: a main-side census printed `PASS=0 FAIL=82` for this file on a route that no longer exists, which was recorded as a regression when the file had simply never been executable by it. Both readings -- zero-selected and all-failed -- were downstream of the same instrument being dead.",
+
+    "**MEASUREMENT, NOT REASONING.** Receipt: `instrument_matrix_packet.txt`, sha256 720547846908e5cf42b507ecfd3bd1bb83fa0c52d4812204c3583e48e1bed64c (srv1 `~/scratch/loyal-deer-143/logs/`), containing every invocation verbatim with the runner's own summary lines and its own exit statuses, the import-bearing positive controls that fire in the same run (`//test/claim/machine_width_range_witness:unsigned_eight_admits_zero_through_255_and_nothing_beside` HELD rc 0; `//test/claim/ascii_decode_octets_witness:ascii_octets_decode_exactly_including_nul` HELD rc 0), and the bogus-name control (`0 claim(s)`, rc 2) that shows selection is non-vacuous. The claim this row replaces stood in for a real one in a recorded red/green pair, which is why it is a finding and not a curiosity.",
+
+    "**ONE GUARD THAT DOES WORK, RECORDED HERE BECAUSE IT IS THE CEILING'S NEIGHBOUR.** The same runner REFUSES a binary whose dep-info names another worktree: `gunbc test: REFUSED cause=BinaryFreshnessUndecided -- ... its dep-info names an input outside this worktree ... it was built from another checkout, so nothing here says whether it answers for this one`. That is the shape this row's missing guard should take -- a typed refusal with a named cause, printed instead of a status shared with a typo.",
+
+    "**WHAT IS NOT CLAIMED.** Only this module is established; no census of other unadjudicable claim modules is filed here (gunbc.design_argument::how_to_work, retire census by default), and nothing here says the module's assertions are wrong -- the substituted witness for the same property (`//test/claim/base16_rfc4648_witness:the_encoder_helper_refuses_an_out_of_range_vector`, which imports what it names) is HELD at b07fd2aac723 and FAILED by behaviour at the red-control plant, so the property is checkable and was checked; only THIS file's 82 claims have no route.",
+
+    "**CONSUMPTION.** Read by the derived `recurring_failure_mode_roster`; builds no step. Owner: the claim route's pool population, with the compiler authority; the lane-side mitigation until then is the claim-leg standard every leg already prints -- DECLARED from the same grep that yields the names, beside the runner's own SELECTED count and its summary line -- because that pair is the only place this state becomes visible in a log.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "test.claim.machine_word_witness", decl_name: "base64_encode_refuses_an_out_of_range_octet_holds"),
+    decl_ref(module_path: "test.claim.machine_word_witness", decl_name: "uint8_octets_of_ints_names_the_first_out_of_range_member_holds"),
+    decl_ref(module_path: "test.claim.base16_rfc4648_witness", decl_name: "the_encoder_helper_refuses_an_out_of_range_vector"),
+    decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
+    decl_ref(module_path: "std.integer", decl_name: "qualified_octets"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.witness_module_absent_from_the_executed_set", decl_name: "witness_module_absent_from_the_executed_set"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_v1_unit_test_red_on_main_runs_in_no_required_lane", decl_name: "a_v1_unit_test_red_on_main_runs_in_no_required_lane"),
+  ],
+}
