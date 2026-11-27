@@ -91,9 +91,17 @@ fn car_traversal(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + x)
 }
 
-// Violating: the sequence is rebuilt on every step of the traversal.
+// Violating: the sequence is REBUILT on every step of the traversal. The first version of this arm
+// carried that comment above `inner + (y * 0)`, which is arithmetic on an accumulator, so it built no sequence,
+// allocated nothing and kept no handle -- a second traversal wearing a rebuild's name. The lane manager ruled the
+// arm defective (the sibling arms of this same entry are held, and this family's meter reads 2/624/24 against an
+// empty floor of 1/80/0, so the counter demonstrably is not blind), and the fix is at the specimen, not at the
+// judgement. Each step now folds the whole source into a NEW list with list_push, which is the allocation the
+// block's declared violating form (PerStepAllocation) says the emitter would have to do. At car_cardinality = 24
+// that is 24 rebuilds of 24 pushes, so the operations counter must sit in the hundreds against the contract arm's
+// single pass, the same register its sibling index_build_remade is read at (909/141090 against 122/19434).
 fn car_traversal_rebuilds_per_step(xs: List<Int>) -> Int {
-  fold(xs, init: 0, f: (acc, x) => acc + (fold(xs, init: 0, f: (inner, y) => inner + (y * 0)) + x))
+  count(fold(xs, init: [], f: (acc, x) => fold(xs, init: [], f: (fresh, y) => list_push(fresh, y + x))))
 }
 
 // ── PERSISTENT SEQUENCE CARRIER: RETAINED SNAPSHOT ────────────────────────────────────────────────
