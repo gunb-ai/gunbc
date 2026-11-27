@@ -32,7 +32,7 @@ import std.optional { Present, Absent }
 import std.measure { second, second_count, minute, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
-import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, fleet_converge_autonomous_job_rows, FleetConvergeAutonomousJobRow, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
+import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_refusals, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, fleet_converge_autonomous_job_rows, FleetConvergeAutonomousJobRow, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name, gunbc_roster_gate }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
@@ -293,6 +293,16 @@ test fn the_census_domain_is_explained_and_reads_the_authorities() -> Bool {
   fleet_census_domain_is_explained()
     && length(fleet_workflow_census_rows()) > 0
     && length(fleet_workflow_census_omissions()) > 0
+    // THE REFUSAL LEDGER IS READ, NOT JUST DECLARED (gunbc.design_argument::consumption): no committed
+    // workflow's run-step emission refuses today, so the ledger is empty; if a producer starts refusing,
+    // this claim names the census and the typed, located refused arm turns it red
+    // (gunbc.design_argument::fail_closed -- every degradation is typed, located and countable).
+    && length(fleet_workflow_census_refusals()) == 0
+    && all(fleet_workflow_census_refusals(), r => length(r.reason) > 0)
+    && all(
+      fleet_workflow_census_refusals(),
+      r => all(fleet_workflow_census_rows(), w => !artifact_eq(a: r.artifact, b: w.artifact))
+    )
     // A row and an omission can never name the same artifact: the domain is a partition.
     && all(
       fleet_workflow_census_rows(),
