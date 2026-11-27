@@ -319,6 +319,15 @@ fn stage0_std_core_modules() -> List<String> {
       "std_induction",
       "std_graph",
       "std_unicode_scalar",
+      // std.unicode.char_class is reached by dag/std/source_annotation.dag's declared-code-point bridge
+      // (advance_line_prefix_indent_only_text maps its code points through
+      // #std.unicode.char_class::unicode_char_code_point rather than pouring a run of Int into a run of
+      // Char). It lands in this unit beside `std_unicode_scalar`, the same unit that already holds
+      // `std_source_annotation`, so the import between them is intra-unit; the source edge itself is not
+      // declared here any more, it is projected from the dependency facts by
+      // `project_dependency_edge_step`, so this row is the only thing this module is owed. Its own import,
+      // std.types, sits lower in this unit.
+      "std_unicode_char_class",
       "extdeps_uri",
       "extdeps_external_authority",
       "extdeps_posix_clock_gettime",
