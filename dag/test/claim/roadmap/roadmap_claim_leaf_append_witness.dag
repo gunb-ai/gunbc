@@ -1,0 +1,324 @@
+module test.claim.roadmap.roadmap_claim_leaf_append_witness
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE APPEND-ADMISSION WITNESS for node://roadmap-claim-names-leaf. The parser and the guard already
+//  exist (gunbc.roadmap.roadmap_event_log roadmap_claim_grain_parse reads the leaf coordinates;
+//  gunbc.roadmap.roadmap_decomposition roadmap_claimed_grain_admissible consumes the carrier's own leaf
+//  authority, decomposition_has_leaf_path), and both Claimed producers -- gunbc.roadmap.roadmap_event_cli
+//  and gunbc.roadmap.roadmap_serve -- evaluate the guard BEFORE appending. What no claim executed was the
+//  append itself: one REAL decomposition leaf path admitted all the way into a committed log, and one
+//  PLANTED path the decomposition does not have refused AT APPEND with the log unchanged. This witness
+//  closes that residual by EXECUTION, over a scratch event carrier stood up and torn down by the shared
+//  fixture, through the producer-faithful pipeline: roadmap_claim_grain_parse ->
+//  roadmap_claimed_grain_admissible -> (only on Admitted) gunbc.roadmap.roadmap_issue_command
+//  issue_command_apply, the only writer. It re-spells NOTHING of the leaf check (red_control: the refusal
+//  must come from the carrier's existing claim, not a second copy of the rule here): the only leaf facts
+//  this file states are the coordinate STRINGS it feeds the parser and the typed verdict it asserts back.
+//
+//  THE DECOMPOSITION IT LEANS ON (dag/gunbc/roadmap/roadmap_decomposition.dag, node "emitter-produces-main-rs"):
+//    stage 0: [ leaf(...) ]            -> the decomposition's own spelling of its one leaf is 0/0/0
+//    stage 1: [ findings_family(...) ] -> a FindingsOf population carries no count until produced/read,
+//                                         so 1/0/0 is WELL-FORMED but names NO leaf -- the planted path
+//  DISCRIMINATING by construction: the admitted append and the planted append are the same command shape
+//  with the same principal, node and coordinate arity, differing only in the stage index -- so the ONLY
+//  thing that can tell them apart is the carrier's leaf claim. And the planted case runs against a log
+//  that already holds the accepted claim, so "unchanged" is measured against a non-empty log, byte for
+//  byte (event ids and wire text), not against an empty one.
+//
+//  RUN (wet, srv1; LIVE route, binary built in the tested checkout):
+//    gunbc test //test/claim/roadmap/roadmap_claim_leaf_append_witness:append_admits_real_decomposition_leaf_end_to_end --wet
+//    gunbc test //test/claim/roadmap/roadmap_claim_leaf_append_witness:append_refuses_planted_nonexistent_leaf_with_log_unchanged --wet
+//  The route's own tally must show SELECTED == DECLARED == 1 for each selector; a selector that selects
+//  nothing is VOID (a non-observation), never a pass.
+// ─────────────────────────────────────────────────────────────────────────────
+
+data witness_note: String = "WET append-admission witness for roadmap-claim-names-leaf: one real decomposition leaf path (0/0/0 of emitter-produces-main-rs) admitted into a committed scratch log, one planted nonexistent path (1/0/0, a FindingsOf family with no declared count) refused AT the guard with the log unchanged by id and wire-text equality. Not enrolled. srv1 recipe: build gunbc in the tested checkout; gunbc test //test/claim/roadmap/roadmap_claim_leaf_append_witness:<fn> --wet."
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, AtPath, Pathless }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, Claimed, EventPrincipal, EventPrincipalAuthenticated,
+  Parsed, Malformed, roadmap_claim_grain_parse, roadmap_event_envelope, roadmap_event_wire_text,
+}
+import gunbc.roadmap.roadmap_decomposition {
+  roadmap_claimed_grain_admissible, ClaimedGrainVerdict, Admitted, Refused, ClaimedGrainRefusal,
+  LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
+  roadmap_claimed_grain_refusal_text,
+}
+import gunbc.roadmap.roadmap_issue_command { AssignIssue, IssueCommandSubject, issue_command_apply }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read,
+  EventsRead, EventsReadRefused, CarrierClosed, carrier_snapshot_close_failures,
+  EventAppended, EventAlreadyPresent, EventAppendRefused,
+}
+import test.claim.roadmap.roadmap_event_carrier_fixture {
+  RoadmapEventCarrierReady, RoadmapEventCarrierRefused, RoadmapEventCarrierScratch,
+  roadmap_event_carrier_provision, roadmap_event_carrier_run_scoped,
+  RoadmapCarrierScopedMintRefused, RoadmapCarrierScopedRan,
+}
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
+
+// The witness voice: a named assertion, checked by its own line. DECLARED here, in the module that
+// calls it, because the effect analysis refuses a call whose callee identity it cannot establish.
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+// THE ITEM THE CLAIMS NAME: a real decomposition with exactly one stage-0 leaf and a stage-1
+// FindingsOf family, so 0/0/0 is the decomposition's own spelling of a leaf and 1/0/0 is well-formed
+// but names no leaf. Same facts roadmap_claim_grain_witness pins hermetically; this file runs them.
+fn item() -> RoadmapNodeId {
+  "emitter-produces-main-rs" as NonEmptyStr as RoadmapNodeId
+}
+
+fn witness_principal() -> EventPrincipal {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr,
+    namespace: "accounts" as NonEmptyStr,
+    subject: "cool-moth-146-claim-leaf-append-witness" as NonEmptyStr } }
+}
+
+fn recorded_at() -> String { "2026-11-27T00:00:00Z" }
+
+// A refusal as the RULED name, never a bool a caller could invert. No wildcard arm: a new refusal
+// variant would fail to typecheck here before it could be ignored downstream.
+fn refusal_reason_tag(reason: ClaimedGrainRefusal) -> String {
+  match reason {
+    LeafPathUnknown { path: _ } => "leaf-path-unknown"
+    LeafWrongItem { path: _, expected: _ } => "leaf-wrong-item"
+    PathlessOnDecomposed { node: _ } => "pathless-on-decomposed"
+    DecompositionAmbiguous { node: _, count: _ } => "decomposition-ambiguous"
+  }
+}
+
+// WHAT ONE CLAIM RECORDING ROUTE ANSWERS WITH. The arms are the producer's decision points in order:
+// the parser, the guard, then -- only past an Admitted verdict -- the writer. A planted path that
+// reaches WriterAppended is the ticket's red: append admission not enforced.
+type ClaimRoute
+  = GuardRefused { tag: String, reason_text: String }
+  | ParserMalformed { field: String, why: String }
+  | WriterAppended { id: RoadmapEventId, close_lines: List<String> }
+  | WriterAlreadyPresent { id: RoadmapEventId, close_lines: List<String> }
+  | WriterRefused { step: String, reason: String, close_lines: List<String> }
+
+// THE PRODUCER PIPELINE, composed exactly as both producers compose it (roadmap_event_cli's record
+// route and roadmap_serve's assignment route: parse, guard, append only on Admitted). The guard's
+// Refused arm never reaches the writer -- that is the AT-APPEND refusal, one block before any write.
+fn record_claimed_through_the_guard_route(
+  layout: RoadmapEventCarrierLayout,
+  node: RoadmapNodeId,
+  leaf_stage: String,
+  leaf_piece: String,
+  leaf_member: String,
+  operation: String,
+) -> ClaimRoute {
+  match roadmap_claim_grain_parse(node: node, leaf_stage: leaf_stage, leaf_piece: leaf_piece, leaf_member: leaf_member) {
+    Malformed { field, why } => ParserMalformed { field: field, why: why }
+    Parsed { grain } => match roadmap_claimed_grain_admissible(node: node, grain: grain) {
+      Refused { reason } => GuardRefused {
+        tag: refusal_reason_tag(reason: reason),
+        reason_text: roadmap_claimed_grain_refusal_text(reason: reason),
+      }
+      Admitted { grain: admitted } => match issue_command_apply(layout: layout,
+        command: AssignIssue {
+          subject: IssueCommandSubject { node: node, author: witness_principal(),
+            operation: operation as NonEmptyStr, expected: none },
+          assignee: witness_principal(), return_to: witness_principal(), grain: admitted },
+        recorded_at: recorded_at()) {
+        CarrierClosed { result: EventAppended { id: id, published_as: _ }, close: close } =>
+          WriterAppended { id: id, close_lines: carrier_snapshot_close_failures(closes: [close]) }
+        CarrierClosed { result: EventAlreadyPresent { id: id }, close: close } =>
+          WriterAlreadyPresent { id: id, close_lines: carrier_snapshot_close_failures(closes: [close]) }
+        CarrierClosed { result: EventAppendRefused { id: _, step: step, reason: reason }, close: close } =>
+          WriterRefused { step: step, reason: reason, close_lines: carrier_snapshot_close_failures(closes: [close]) }
+      }
+    }
+  }
+}
+
+// THE LOG, AS THE READER SEES IT: how many events, their ids, and the committed wire text -- the
+// bytes a later fold would read. Two snapshots being equal in all three IS "the log unchanged".
+type LogSnapshot
+  = Observed { events: Int, ids_joined: String, wire_joined: String, envelopes: List<RoadmapEventEnvelope> }
+  | Unreadable { step: String, reason: String }
+
+fn read_log_snapshot(layout: RoadmapEventCarrierLayout) -> LogSnapshot {
+  match roadmap_events_read(layout: layout, node: item()) {
+    CarrierClosed { result: EventsRead { node: _, envelopes: envelopes }, close: _ } => Observed {
+      events: count(envelopes),
+      ids_joined: join(map(envelopes, e => e.id as String), "|"),
+      wire_joined: join(map(envelopes, e => roadmap_event_wire_text(env: e)), "|"),
+      envelopes: envelopes,
+    }
+    CarrierClosed { result: EventsReadRefused { node: _, step: step, reason: reason }, close: _ } =>
+      Unreadable { step: step, reason: reason }
+  }
+}
+
+type LedgerRun {
+  result: Bool
+  swept: Bool
+}
+
+// Stand a ledger up, judge over it, and let the sweep's verdict count: a scenario left behind in /tmp
+// fails the claim, the way the provision witness does it.
+fn ledger_owned(fn_with: fn(RoadmapEventCarrierLayout) -> Bool) -> LedgerRun {
+  match roadmap_event_carrier_run_scoped(
+    template: "/tmp/gunbc_claim_leaf_append_witness.XXXXXX" as NonEmptyStr,
+    body: fn(scratch) { ledger_judgement(fn_with: fn_with, scratch: scratch) }) {
+    RoadmapCarrierScopedMintRefused { detail: d } => {
+      let _unjudged = claim("the scratch ledger could not be minted: " + d, false)
+      LedgerRun { result: false, swept: true }
+    }
+    RoadmapCarrierScopedRan { judged: judged, sweep: _, root: _, torn_down: torn_down } =>
+      LedgerRun { result: judged, swept: torn_down }
+  }
+}
+
+fn ledger_judgement(fn_with: fn(RoadmapEventCarrierLayout) -> Bool, scratch: RoadmapEventCarrierScratch) -> Bool {
+  let instance: HostDashboardInstance = fabric_fixture_instance(root: scratch.path)
+  match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+    RoadmapEventCarrierRefused { step: step, detail: detail } => claim(
+      "the scratch event carrier could not be stood up at " + step + ": " + detail, false)
+    RoadmapEventCarrierReady { instance: provisioned, layout: layout } =>
+      fn_with(roadmap_event_carrier_layout_for_instance(instance: provisioned))
+  }
+}
+
+// The id the WRITER would mint for the planted claim, computed over the same event fields the writer
+// builds (same node, author, parent, recorded_at, and the planted grain). If this id ever appears in
+// the log, the planted claim was written -- the red the ticket forbids.
+fn planted_envelope_id() -> RoadmapEventId {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: item(), author: witness_principal(), parent: none,
+    kind: Claimed { assignee: witness_principal(), return_to: witness_principal(),
+      grain: AtPath { path: LeafPath { item: item(), stage: 1, piece: 0, member: 0 } } },
+    recorded_at: recorded_at() }).id
+}
+
+// ── CLAIM 1: ONE REAL DECOMPOSITION PATH ADMITTED, end to end ──────────────────────────────────
+// The decomposition's own leaf spelling 0/0/0 travels parse -> guard -> writer and LANDS: the append
+// answers EventAppended with a clean snapshot close, the log grows from zero events to exactly one,
+// the committed wire carries the leaf object, and the envelope the reader decodes is a Claimed whose
+// grain names the leaf the claim named.
+test fn append_admits_real_decomposition_leaf_end_to_end() -> Bool {
+  let run = ledger_owned(fn_with: fn(layout) { admitted_leaf_claims(layout: layout) })
+  run.result && run.swept
+}
+
+fn admitted_leaf_claims(layout: RoadmapEventCarrierLayout) -> Bool {
+  let before = read_log_snapshot(layout: layout)
+  let starts_empty = match before {
+    Observed { events: events, ids_joined: _, wire_joined: _, envelopes: _ } =>
+      claim("the fresh ledger starts with no events for the item", events == 0)
+    Unreadable { step: step, reason: reason } =>
+      claim("the fresh ledger could not be read (" + step + ": " + reason + ") -- nothing can be judged unchanged", false)
+  }
+  let route = record_claimed_through_the_guard_route(
+    layout: layout, node: item(), leaf_stage: "0", leaf_piece: "0", leaf_member: "0",
+    operation: "op-cool-moth-146-real-leaf-000")
+  match route {
+    ParserMalformed { field: field, why: why } => claim(
+      "the parser refused the decomposition's own leaf spelling 0/0/0 at field '" + field + "': " + why, false)
+    GuardRefused { tag: tag, reason_text: reason_text } => claim(
+      "the guard refused the REAL leaf 0/0/0 of the decomposition (" + tag + ": " + reason_text + ") -- it must admit it", false)
+    WriterAlreadyPresent { id: _, close_lines: _ } => claim(
+      "a fresh ledger answered the first append as already present -- nothing was written", false)
+    WriterRefused { step: step, reason: reason, close_lines: _ } => claim(
+      "the writer refused the real leaf append at " + step + ": " + reason, false)
+    WriterAppended { id: id, close_lines: close_lines } =>
+      claim("the real leaf claim appended and its snapshot closed cleanly", count(close_lines) == 0)
+        && match read_log_snapshot(layout: layout) {
+            Observed { events: events, ids_joined: ids_joined, wire_joined: wire_joined, envelopes: envelopes } =>
+              claim("the append changed the log: exactly one event now stands for the item", events == 1)
+                && claim("the log holds the event the append answered with", ids_joined == (id as String))
+                && claim("the committed bytes carry the leaf the claim named",
+                     string_contains(s: wire_joined, pattern: "leaf")
+                       && string_contains(s: wire_joined, pattern: "stage")
+                       && string_contains(s: wire_joined, pattern: "piece")
+                       && string_contains(s: wire_joined, pattern: "member"))
+                && (let first = match envelopes.first() {
+                     Present { value: env } => match env.event.kind {
+                       Claimed { grain } => match grain {
+                         AtPath { path } => claim("the reader decodes a Claimed whose grain names item/stage/piece/member the claim named",
+                           path.item == item() && path.stage == 0 && path.piece == 0 && path.member == 0)
+                         Pathless => claim("the reader decoded a PATHLESS grain where the claim named 0/0/0 -- the wire lost the leaf", false)
+                       }
+                       _ => claim("the reader decoded a kind other than Claimed", false)
+                     }
+                     Absent => claim("the read back no envelopes", false)
+                   }
+                   first)
+            }
+            Unreadable { step: step, reason: reason } => claim(
+              "the log could not be read back after the append (" + step + ": " + reason + ")", false)
+          }
+  }
+}
+
+// ── CLAIM 2: ONE PLANTED NONEXISTENT PATH REFUSED AT APPEND, LOG UNCHANGED ─────────────────────
+// THE RED CONTROL. A log already holding the accepted real claim is offered the SAME command shape
+// with the stage index planted at 1 -- a well-formed path the decomposition does not have (a
+// FindingsOf family member with no declared count). It must refuse at the guard, by consuming the
+// carrier's existing leaf claim (typed leaf-path-unknown, the guard's rendered reason naming the
+// planted path), the writer must never be reached, and the log must be unchanged: same count, same
+// ids, same committed bytes, and the writer's own id for the planted event nowhere on the log.
+test fn append_refuses_planted_nonexistent_leaf_with_log_unchanged() -> Bool {
+  let run = ledger_owned(fn_with: fn(layout) { planted_refusal_claims(layout: layout) })
+  run.result && run.swept
+}
+
+fn planted_refusal_claims(layout: RoadmapEventCarrierLayout) -> Bool {
+  let seed = record_claimed_through_the_guard_route(
+    layout: layout, node: item(), leaf_stage: "0", leaf_piece: "0", leaf_member: "0",
+    operation: "op-cool-moth-146-seed-000")
+  match seed {
+    WriterAppended { id: seed_id, close_lines: seed_close } => match read_log_snapshot(layout: layout) {
+      Observed { events: seed_events, ids_joined: seed_ids, wire_joined: seed_wire, envelopes: _ } =>
+        claim("the accepted real claim is on the log (clean close, one event), so 'unchanged' is measured against a non-empty log",
+          count(seed_close) == 0 && seed_events == 1 && seed_ids == (seed_id as String))
+          && (let planted_id = planted_envelope_id()
+              let route = record_claimed_through_the_guard_route(
+                layout: layout, node: item(), leaf_stage: "1", leaf_piece: "0", leaf_member: "0",
+                operation: "op-cool-moth-146-planted-100")
+              match route {
+                GuardRefused { tag: tag, reason_text: reason_text } =>
+                  claim("the planted path 1/0/0 refused BEFORE any write, by the carrier's own leaf claim, typed leaf-path-unknown",
+                    tag == "leaf-path-unknown")
+                    && claim("the refusal is the carrier's rendered text, naming the planted path",
+                         string_contains(s: reason_text, pattern: "1/0/0")
+                           && string_contains(s: reason_text, pattern: "not a leaf"))
+                    && match read_log_snapshot(layout: layout) {
+                         Observed { events: after_events, ids_joined: after_ids, wire_joined: after_wire, envelopes: _ } =>
+                           claim("the refused append left the log unchanged: same event count", after_events == 1)
+                             && claim("same event ids", after_ids == seed_ids)
+                             && claim("same committed bytes, wire for wire", after_wire == seed_wire)
+                             && claim("the planted claim is nowhere on the log -- the writer never ran",
+                                  !string_contains(s: after_ids, pattern: planted_id as String))
+                         Unreadable { step: step, reason: reason } => claim(
+                           "the log could not be read back after the refusal (" + step + ": " + reason + ")", false)
+                       }
+                WriterAppended { id: planted, close_lines: _ } => claim(
+                  "RED: the planted nonexistent leaf 1/0/0 was WRITTEN (event " + (planted as String) + ") -- append admission is not enforced", false)
+                WriterAlreadyPresent { id: _, close_lines: _ } => claim(
+                  "RED: the planted path answered as already-present -- it reached the writer, which is the same failure", false)
+                WriterRefused { step: step, reason: reason, close_lines: _ } => claim(
+                  "the planted path reached the WRITER and died at " + step + " (" + reason + ") -- it must refuse at the guard, before any write", false)
+                ParserMalformed { field: field, why: why } => claim(
+                  "the planted path was refused as MALFORMED at field '" + field + "' (" + why + ") -- it must be well-formed and still not a leaf", false)
+              })
+      Unreadable { step: step, reason: reason } => claim(
+        "the log could not be read after seeding (" + step + ": " + reason + ")", false)
+    }
+    WriterAlreadyPresent { id: _, close_lines: _ } => claim(
+      "the seed append answered as already present on a fresh ledger -- the planted case has no baseline to be unchanged against", false)
+    WriterRefused { step: step, reason: reason, close_lines: _ } => claim(
+      "the seed append was refused at " + step + ": " + reason + " -- the planted case cannot run without it", false)
+    GuardRefused { tag: tag, reason_text: reason_text } => claim(
+      "the seed (real leaf 0/0/0) refused at the guard (" + tag + ": " + reason_text + ") -- claim 1 already covers the admission; here it is a precondition", false)
+    ParserMalformed { field: field, why: why } => claim(
+      "the seed's coordinates were refused as malformed at '" + field + "' (" + why + ")", false)
+  }
+}
