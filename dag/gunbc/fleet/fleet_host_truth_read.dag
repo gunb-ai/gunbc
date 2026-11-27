@@ -137,7 +137,7 @@ fn host_truth_axis_remedy(axis: HostTruthAxis) -> HostTruthRemedy {
     TruthEnabledUnitHasItsHardware => TruthRetireEnabledUnit
     TruthIdentityAnchoredNotAddressed => TruthReanchorHostKey
     TruthCapBindsDeclaredWorkingSet => TruthRefusePlacement
-    TruthSlotSwapBackingDeclared => TruthProvisionSlotBacking
+    TruthSlotSwapBackingDeclared => TruthRefusePlacement
   }
 }
 
