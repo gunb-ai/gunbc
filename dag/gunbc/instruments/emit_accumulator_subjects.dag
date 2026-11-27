@@ -163,6 +163,18 @@ fn acc_local_closure(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + scale(x)) + (seeded * 0)
 }
 
+// THE TWIN OF THE CONTRACT ARM WITHOUT THE SEED TERM, metered as a control the way `meter_empty` and
+// `meter_known_allocation` are controls of this entry (control ids, not roster blocks). The seed term is
+// multiplied by zero, which preserves the arm's ANSWER but not its METER: that application still runs, so
+// what it costs has to be read rather than assumed to be zero. This row is that reading -- ops and bytes of
+// the identity-only shape beside the seeded one, so the seed term's contribution is a visible delta and the
+// instrument's own cost is never read as the specimen's. If the identity-only arms compile, the seed term is
+// dropped from the delivery and this row retires with it.
+fn acc_local_closure_identity_only(xs: List<Int>) -> Int {
+  let scale = x => acc_int_identity(v: x) + 1
+  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
+}
+
 // THE LOCAL CLOSURE, violating arm: the same local computation, but a payload is materialized on every
 // application of the closure instead of being read once, which is the block's typed violating form
 // (PerStepAllocation) and is judged on operations and bytes. THE FIRST EXECUTED RUN MEASURED WHY THIS
@@ -212,6 +224,7 @@ type AccSubject =
   | AccRebuildOneField
   | AccRebuildCopiesContext
   | AccLocalClosure
+  | AccLocalClosureIdentityOnly
   | AccLocalClosureMaterializesPerStep
   | AccEscapingClosure
   | AccEscapingClosureCopiesContext
@@ -233,6 +246,7 @@ fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
     AccRebuildOneField => list_push([], acc_rebuild_one_field(row: row))
     AccRebuildCopiesContext => list_push([], acc_rebuild_copies_context(row: row))
     AccLocalClosure => list_push([], acc_local_closure(xs: rows))
+    AccLocalClosureIdentityOnly => list_push([], acc_local_closure_identity_only(xs: rows))
     AccLocalClosureMaterializesPerStep => list_push([], acc_local_closure_materializes_per_step(xs: rows))
     AccEscapingClosure => list_push([], acc_escaping_closure(xs: rows))
     AccEscapingClosureCopiesContext => list_push([], acc_escaping_closure_copies_context(xs: rows))
@@ -269,6 +283,7 @@ fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let rebuild = acc_window(subject: AccRebuildOneField, src: src)
   let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
   let closure = acc_window(subject: AccLocalClosure, src: src)
+  let closure_twin = acc_window(subject: AccLocalClosureIdentityOnly, src: src)
   let closure_per_step = acc_window(subject: AccLocalClosureMaterializesPerStep, src: src)
   let escaping = acc_window(subject: AccEscapingClosure, src: src)
   let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
@@ -280,7 +295,7 @@ fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "accumulator", block_id: "field_read", own: field_read), violation_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read)]),
       concat(
       [subject_case(prefix: "accumulator", block_id: "record_rebuild_one_field", own: rebuild), violation_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)],
-      [subject_case(prefix: "accumulator", block_id: "local_closure", own: closure), violation_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure)])),
+      [subject_case(prefix: "accumulator", block_id: "local_closure", own: closure), subject_case(prefix: "accumulator", block_id: "local_closure_identity_only_twin", own: closure_twin), violation_case(prefix: "accumulator", block_id: "local_closure", viol: closure_per_step, contract_arm: closure)])),
       [subject_case(prefix: "accumulator", block_id: "escaping_closure", own: escaping), violation_case(prefix: "accumulator", block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)]))
 }
 
