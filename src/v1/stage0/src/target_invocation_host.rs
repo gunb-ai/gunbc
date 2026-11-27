@@ -2227,32 +2227,12 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     )
 }
 
-/// WHY A PACKAGE-WIDE `:all` / `:*` IS REFUSED *INSIDE* THE CLAIM UNIVERSE (distinct from
-/// `test_operand_set_form_refusal_rendered`, which is for a set form outside every universe). Here the
-/// population is real -- it is the claims of one package -- but `:all` is not a claim selection: the route
-/// runs claims named exactly by label, or a whole package/subtree by their own forms. The typed cause names
-/// the contract (the operand's doc, the generated help, and
-/// `gunbc.design_ruling::claim_execution_has_one_v1_entrypoint`) so the refusal says why, not just that.
-fn claim_route_all_refusal_rendered(operand: &str) -> String {
-    let package = operand
-        .strip_suffix(":all")
-        .or_else(|| operand.strip_suffix(":*"))
-        .unwrap_or(operand);
-    format!(
-        "gunbc test: {operand} names a package-wide target set (`:all`/`:*`), which is not a claim selection on the claim route; cause: ClaimRouteAllNotAClaimSelection -- name each claim by its exact label, or take every claim under the package with `{package}/...`; `:all` is refused here so one entrypoint keeps one selection rule"
-    )
-}
-
-/// What an empty claim selection says when an operand was a single label. A bare `//test/claim/x` is
-/// bazel shorthand for the one claim `//test/claim/x:x`, so reading it as "the module's claims" selects
-/// nothing; the note names the subtree form that does select the module, so the refusal carries the
-/// correction instead of leaving the reader to find it.
 fn claim_route_empty_selection_note(patterns: &[TargetPattern]) -> String {
     let subtrees: Vec<String> = patterns
         .iter()
         .filter_map(|pattern| match pattern {
             TargetPattern::SingleTarget(label) => {
-                Some(format!("`//{}/...`", label.package_segments.join("/")))
+                Some(format!("`//{}:all`", label.package_segments.join("/")))
             }
             TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => None,
         })
@@ -3707,25 +3687,7 @@ fn classify_test_operands(
         if target_pattern_within(&pattern, native_universe) {
             native.push(pattern);
         } else if target_pattern_within(&pattern, claim_universe) {
-            match pattern {
-                // A package-wide set form (`:all`, `:*`) is NOT a claim selection on the claim route.
-                // The operand's own doc (gunbc_cli_dispatch_surface `CliClaimNameOperand`), the generated
-                // help (gunbc_cli_dispatch_generated), and
-                // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint all refuse it here; a route
-                // that silently expanded `:all` into the package's claims was the defect. A claim is named
-                // exactly by label, or a whole package/subtree is taken by its own form -- never `:all`.
-                // `PackageTargets` is exactly the `:all`/`:*` spelling (parse_target_pattern strips those
-                // suffixes into it), so this refuses `:all` while leaving a single label (SingleTarget; a bare
-                // `//test/claim/x` is bazel shorthand for `//test/claim/x:x`, not the module) and a subtree
-                // (`/...`, SubtreeTargets, which does take the module) admitted, as the operand doc says.
-                TargetPattern::PackageTargets(_) => {
-                    return Err(InvocationOutcome {
-                        termination: Termination::Refused,
-                        message: claim_route_all_refusal_rendered(operand),
-                    })
-                }
-                admitted => claim.push(admitted),
-            }
+            claim.push(pattern);
         } else {
             match pattern {
                 // An exact label outside both universes is the registry's to answer (an instrument
@@ -5992,48 +5954,31 @@ mod test_batch_admission_controls {
         assert_eq!(classes.claim.len(), 2);
     }
 
-    /// A PACKAGE-WIDE `:all` (`:*` likewise) IS NOT A CLAIM SELECTION ON THE CLAIM ROUTE. It names a real
-    /// population (a package's claims), so it is not the "outside every universe" refusal; it is refused
-    /// because one entrypoint keeps one selection rule, per the operand doc, the generated help, and
-    /// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint. The typed cause is named so the refusal
-    /// says why, and it names the subtree form that does take the package. A single label and a subtree
-    /// (`/...`) remain admissible; only `:all`/`:*` refuses.
     #[test]
-    fn a_package_wide_all_refuses_on_the_claim_route() {
-        let all = refused(&["//test/claim/x:all"]);
-        assert_eq!(all.termination, Termination::Refused);
-        assert!(
-            all.message.contains("`//test/claim/x/...`"),
-            "{}",
-            all.message
-        );
-        assert!(
-            all.message.contains("ClaimRouteAllNotAClaimSelection"),
-            "{}",
-            all.message
-        );
-        assert!(
-            all.message.contains("not a claim selection"),
-            "{}",
-            all.message
-        );
-        let colon_star = refused(&["//test/claim/x:*"]);
-        assert_eq!(colon_star.termination, Termination::Refused);
-        // A subtree over the same package stays admitted (the operand doc permits it).
+    fn a_package_wide_all_selects_the_package_on_the_claim_route() {
+        for operand in ["//test/claim/x:all", "//test/claim/x:*"] {
+            let all = admitted(&[operand]);
+            assert_eq!(all.claim.len(), 1, "{operand}");
+            assert_eq!(
+                all.claim[0],
+                TargetPattern::PackageTargets(vec![
+                    "test".to_string(),
+                    "claim".to_string(),
+                    "x".to_string()
+                ]),
+                "{operand}"
+            );
+        }
         let subtree = admitted(&["//test/claim/x/..."]);
         assert_eq!(subtree.claim.len(), 1);
     }
 
-    /// AN EMPTY SELECTION FROM A SINGLE LABEL NAMES THE FORM THAT TAKES THE MODULE. A bare
-    /// `//test/claim/a/b` is the one claim `b` of module `a/b`; when it selects nothing the note says so
-    /// and names `//test/claim/a/b/...`, while a selection made only of subtrees keeps the plain note.
-    /// The plain phrase stays in both, because `claim_batch_unobserved_exit_witness` reads it.
     #[test]
-    fn an_empty_single_label_selection_names_the_subtree_form() {
+    fn an_empty_single_label_selection_names_the_module_form() {
         let bare = parse_target_pattern("//test/claim/a/b").expect("a bare label parses");
         let note = claim_route_empty_selection_note(&[bare]);
         assert!(note.contains("selected no discovered claim"), "{note}");
-        assert!(note.contains("`//test/claim/a/b/...`"), "{note}");
+        assert!(note.contains("`//test/claim/a/b:all`"), "{note}");
         let subtree = parse_target_pattern("//test/claim/a/b/...").expect("a subtree parses");
         let plain = claim_route_empty_selection_note(&[subtree]);
         assert_eq!(plain, " — the pattern selected no discovered claim");

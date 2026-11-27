@@ -3446,7 +3446,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Running a claim and landing a planning change take minutes, not hours",
           boundary: "The friction one planning change met on 2026-11-26 (gunbc#17167): six claim files verified by exact label took about 80 minutes, a 2-claim file took 981 seconds, a branch build took 14 minutes, and the help text named selection forms that select nothing. Members are the frictions no node owned. Those already owned stay there: the per-process whole-tree front end with claim-route-loads-by-layout-demand, and claims absent from the required check with required-check-named-witnesses-runs-no-claim-module.",
-          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
+          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), test-everything-runs-what-changed (the goal: bazel test //... behavior), one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
           red_control: "A member that makes a slow step cheaper to repeat (a cache, a wider pool, a timeout) without removing the repeated work is not payoff, by gunbc.design_argument minimize_redundancy.",
           displaced_cost: "Slow verification is why claims stopped being run regularly: authors and agents batch, wait, or skip, and the wait is where defects accumulate unseen.",
           handback: "Per member: the step's before and after on the same instrument, and the surplus work deleted rather than cached."
@@ -3460,13 +3460,29 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/cli_dispatch_surface.dag"),
       line: ticket(t: fields(
           headline: "gunbc test's help and refusals name the claim selection forms that work",
-          boundary: "The test operand doc promised labels under //dag/test/claim and that a bare //dag/test/claim/x selects a package. Labels have no dag/ prefix, and a bare label is bazel shorthand for the one claim x:x, so it selected nothing after the whole-tree index was paid. The verb doc said set forms run only on the native route, while //pkg/... runs on the claim route. The help now states the working forms, the :all refusal names the operand's /... form, and an empty selection from a single label names the subtree form.",
+          boundary: "The test operand doc promised labels under //dag/test/claim and that a bare //dag/test/claim/x selects a package. Labels have no dag/ prefix, and a bare label is bazel shorthand for the one claim x:x, so it selected nothing after the whole-tree index was paid. The verb doc said set forms run only on the native route, while //pkg/... runs on the claim route. The help now states the working forms; //pkg:all selects one module's claims as in bazel (gunbc.design_ruling::claim_selection_follows_bazel_target_patterns_2026_11_27), and an empty selection from a single label names the module's :all form.",
           displaced_cost: "Each wrong form cost a run of minutes before it reported nothing, and every agent that reads the help repeats it.",
-          red_control: "target_invocation_host unit tests: the :all refusal names //test/claim/x/...; an empty single-label selection names //test/claim/a/b/... while a subtree-only selection keeps the plain note that claim_batch_unobserved_exit_witness reads.",
-          out_of_scope: "Changing the grammar: :all stays refused under gunbc.design_ruling::claim_execution_has_one_v1_entrypoint, and a bare label keeps its bazel meaning.",
+          red_control: "gunbc_test_clap_surface_witness a_package_wide_all_runs_the_package_on_the_route runs the fixture module's claim through :all; target_invocation_host unit tests admit :all and :* as the one module, and an empty single-label selection names its :all form while a subtree-only selection keeps the plain note that claim_batch_unobserved_exit_witness reads.",
+          out_of_scope: "Selecting only the claims a change affects (gunbc test //... running the affected set), and :all-targets, which stays refused.",
           handback: "Landed by gunbc#17167."
         )),
       parent: in_project(project: "claim-loop-is-tight", contribution: "A reader of the help selects the claims they meant on the first run."),
+    ),
+    roadmap_node(
+      identity: "rn_FWOZ7G3NZTELT6P437IH6QPWWM",
+      id: "test-everything-runs-what-changed",
+      owner: "harness",
+      carriers: carrier(path: "src/v1/stage0/src/target_invocation_host.rs"),
+      line: ticket(t: fields(
+          headline: "gunbc test //... runs the claims a change affects, quickly, as bazel test //... does",
+          boundary: "Operator goal 2026-11-27: \"bazel like behavior like bazel // ... and it would just quickly run your affected tests\". A claim's verdict is a product of what its evaluation read; it stays valid while that read set is unchanged and is re-run otherwise, so //... over a change runs only the claims whose read set it touched and reports the rest from their recorded verdicts, each marked as such. The read-set authority is read-set-convergence's and the demand keys are demand-engine's; this member is the claim route consuming them.",
+          displaced_cost: "Today a whole-repository claim run pays the front end per process and re-evaluates every claim, so nobody runs it; a change's real blast radius is unknown until CI or a later author finds it.",
+          first_slice: "Record each claim's read set (the closure it resolved and the files it read) beside its verdict on the claim route, and report for a diff which claims that read set says are affected, before running anything.",
+          red_control: "Editing a file one claim reads re-runs that claim and not an unrelated one; a recorded verdict whose read set cannot be established is re-run, never reported as held.",
+          out_of_scope: "The per-process front end (claim-route-loads-by-layout-demand) and the label grammar (claim-selection-forms-are-stated).",
+          handback: "gunbc test //... on a one-file change running only the affected claims, with the before and after wall time."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Running every test is cheap because only the affected ones run."),
     ),
     roadmap_node(
       identity: "rn_YCI5MTHYVH4H3TMLMH4Z3746ZU",
@@ -9722,6 +9738,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // which namespace-legacy-choice-retirement names among the mechanisms it removes, so it waits on both.
     edge(child: "namespace-legacy-choice-retirement", parent: "claim-route-loads-by-layout-demand"),
     edge(child: "namespace-legacy-choice-retirement", parent: "interpreter-evaluates-the-resolved-call-target"),
+    edge(child: "test-everything-runs-what-changed", parent: "read-set-convergence"),
+    edge(child: "test-everything-runs-what-changed", parent: "claim-route-loads-by-layout-demand"),
   ], guarantee_ladder_edges())
 }
 

@@ -102,18 +102,19 @@ pub enum Commands {
     },
     /// Run a target named by an absolute label or a bazel-style target PATTERN, and
     /// report the standing its own producer answers in. An exact label routes to
-    /// its bound producer. Under `//test/claim` a subtree (`//pkg/...`) runs every
-    /// claim it contains, and `//pkg:all` or `//pkg:*` is refused. Outside it a set
-    /// form runs only through the native test route, or is refused with status 2.
+    /// its bound producer. Under `//test/claim` patterns mean what they mean in
+    /// bazel: `//pkg:all` runs one module's claims and `//pkg/...` runs it and every
+    /// module beneath it. Outside it a set form runs only through the native test
+    /// route, or is refused with status 2.
     /// A form the pattern grammar does not admit, or an unbound or unknown target,
     /// refuses rather than reporting a pass.
     Test {
-        /// Names of the claims to run: an exact label (`//test/claim/x:the_claim`), or
-        /// every claim of a module or directory (`//test/claim/x/...`). A bare
-        /// `//test/claim/x` is bazel shorthand for the one claim `//test/claim/x:x`.
-        /// Several operands run exactly the claims they denote, together in ONE
-        /// process; an identity two operands both denote is selected once.
-        /// `:all` is not a claim selection here -- it is refused on the claim route.
+        /// Names of the claims to run: an exact label (`//test/claim/x:the_claim`),
+        /// every claim of one module (`//test/claim/x:all`), or a module and everything
+        /// beneath it (`//test/claim/x/...`). A bare `//test/claim/x` is bazel shorthand
+        /// for the one claim `//test/claim/x:x`. Several operands run exactly the claims
+        /// they denote, together in ONE process; an identity two operands both denote
+        /// is selected once.
         #[arg(value_name = "TARGET_PATTERN", num_args = 1..)]
         operands: Vec<String>,
         /// Hermetic execution (the default): no clock, entropy, random, wall time,
