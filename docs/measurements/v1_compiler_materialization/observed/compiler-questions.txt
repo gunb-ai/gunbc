@@ -1,0 +1,7 @@
+Production stage0, two-module caller returning helper::answer(). Baseline helper returns Int 1.
+1. Repeated identical input: both checked item vectors, helper interface summary, and per-module Rust bytes equal.
+2. Only 1 -> 2 within helper: no hard diagnostics; helper exported interface equal; caller checked items equal; helper checked items differ; caller emitted Rust equal; helper emitted Rust differs.
+3. Change helper return to String and value to "x" leaving caller source unchanged: different helper exported interface, hard TypeMismatch at caller.dag, expected Int, got String.
+4. Repair caller's return type after 3: no hard diagnostics, changed caller Rust vs baseline.
+
+The first run matched 12 of 13 assertions. The missing match concerned the spelling of a located caller type error. The prediction had required expected="Int" and got="String". The observed CompilerDiagnostic::TypeMismatch carried expected="Primitive(Int)", got="Primitive(String)", at caller.dag [72, 78). The corrected run matched all 13 including that diagnostic. The other 12 assertions were held fixed across the two runs.
