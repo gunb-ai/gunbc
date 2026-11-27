@@ -94,6 +94,45 @@ no lane executes it and none of these legs is gated; an operator ruling would be
 Reading the real tree and failing by name on the real 170 rows is
 likewise open, not done here.
 
+### 5a. Red controls on the witness (claimed-verdict falsifiability)
+
+Both controls follow the same shape: one acquisition each, a baseline leg over the unmutated tree and
+a mutated leg, both in-slot as separate logs, each rc on its own line. The verdict is **derived** as the
+set difference of per-label verdict maps built from the runner's own per-label lines (19/19 labels
+required on both sides, baseline all-HELD enforced, empty label symmetric difference), compared to a
+PRE-NAMED expected set by exact equality — a larger or smaller set is a finding, never absorbed, and no
+token grep decides anything. The file swap is a printed `sed -i` with line-numbered read-back, with the
+mutated file's sha256 required to differ from the committed sha256 and `git diff --name-only` printed at
+the moment the mutated batch is invoked; restore is `git checkout --` with sha256-after == sha256-before
+and porcelain back to zero lines. Instrument identical to the `pp_batch2` batch; the runner's own
+freshness line renders `inputs=268` beside `inputs=268` on every leg, so the provenance claim
+(binary built-from-0d77469ccb92, executed at b0fff7396d2, `dag/` byte-identical between them — full delta
+one `.md` file, printed in-log) is backed by a number rather than prose.
+
+* **Mutation A** — plant `planted` into the stall row's `capability` string
+  (`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag`, line 35).
+  Pre-named expected flip set: {`parse_population_stall_trigger_capability_declared_holds`}.
+  Observed flip set: equal (baseline `19 held, 0 did not hold, 0 unobserved` rc 0; mutated
+  `18 held, 1 did not hold, 0 unobserved` rc 1). The sibling
+  `parse_population_stall_capability_extraction_distinguishes_planted_values_holds` stayed HELD on both
+  sides — the flip is specific to the leg that reads the module's capability, which is the claim under
+  test. `VERDICT_MUTATION_A=DID_NOT_HOLD_FIRED_SPECIFICALLY` (run `pp_mutA3`, acquisition
+  2026-11-27T13:34:36Z, srv1 BOOT c095c0cd, logs `/home/briansrls/tmp-bright-hawk-891/pp_mutA3.log`
+  and `mutA_out3/`; superseded attempts with broken observers retained as
+  `pp_mutA.log.attempt1_unexpected` / `pp_mutA.log.attempt2_grepverdict`, never counted).
+* **Mutation B** — reverse the roster's CellA `WallStat` triple in the REAL receipt data
+  (`dag/gunbc/parse_population_baseline_roster.dag`, three `sed` expressions: min 20160000 → 23300000,
+  max 23300000 → 20160000, so `min_wall > max_wall`; sha256 before 2bc74aef…, during a6e0843e…, after
+  2bc74aef…). Pre-named expected flip set: {`parse_population_measurement_receipts_record_the_sweep_holds`}
+  — the only leg feeding real receipts through `parse_population_receipt_durations_are_ordered`.
+  Observed flip set: equal (rc 0 / rc 1, same summary shape). `VERDICT_MUTATION_B=DID_NOT_HOLD_FIRED_SPECIFICALLY`
+  (run `pp_mutB1`, acquisition 2026-11-27T14:20:14Z after six correct STAND_DOWNs including one at
+  load1=50.54, logs `pp_mutB1.log` and `mutB_out/`). The immunity of the two named negatives was
+  **printed, not asserted**: the reversed-triple and failed-cell legs consume their own planted receipts
+  (`parse_population_planted_reversed_stat_receipt`, `parse_population_planted_failed_receipt`, printed
+  from disk with their values beside the mutated roster lines), and the render legs match
+  `min_wall/median_wall/max_wall` with `_` patterns, so none of them can see the swap — and none did.
+
 **Route A is the merge path.** `gunbc compile --target rust` over this carrier already emits all 170 rows as
 typed Rust literals to `src/v1/stage0/src/gunbc_parse_population_baseline_roster.rs` (reproduced in §4b), so the
 tree reconciliation can be driven from **compiler output** rather than a regex reader beside the grammar — no new
