@@ -4,11 +4,12 @@
 // rungs), and cannot silently borrow a rate (an unmeasured candidate names the reading it needs).
 module test.claim.serving.serving_replica_configuration_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { string_contains }
-import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, token_count_value }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, permille_count, token_count_value }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_identity }
+import extdeps.external_authority { TranscribedUncited }
 import gunbc.fleet.fleet_host_identity { HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import product.host_identity { host_identity_eq }
 import gunbc.serving.serving_capacity_anchor { ServingWarmSwap, SwapTierDisk, SwapTierHostRam, WarmSwapRestores }
@@ -17,8 +18,12 @@ import gunbc.serving.serving_replica_profile {
 }
 import gunbc.serving.serving_replica_configuration {
   ReplicaConfiguration, configuration_expert_rungs, configuration_figures_refusal,
-  configuration_figures_resolved, configuration_host_charges, configuration_run_identity, host_configurations,
+  configuration_figures_resolved, configuration_host_charges, configuration_run_identity,
+  configuration_prefix_cache_capacity, configuration_warm_agent_capacity,
+  host_configurations, prefix_cache_capacity_against, prefix_cache_ratio_permille,
   replica_configuration_field,
+  CapacityExceededByPopulation, CapacityHoldsPopulation, CapacityUndetermined,
+  PopulationObserved, PopulationUnread, RatioEmptyOnPass, RatioObserved, RatioUnread,
   srv1_pair_l1_l2_configuration, srv1_pair_l1_only_configuration, srv1_tp2_l1_l2_configuration,
   srv3_batch8_ram_only_configuration, srv3_batch1_slotfile_configuration, srv4_batch1_slotfile_configuration,
   srv4_batch8_ram_only_configuration, h11_four_engines_configuration, h11_two_engines_configuration,
@@ -169,4 +174,157 @@ test fn candidates_carry_their_hosts_expert_placement() -> Bool {
   configuration_expert_rungs(c: srv4_batch1_slotfile_configuration).length() == 3
     && configuration_expert_rungs(c: h11_four_engines_configuration).length() == 1
     && configuration_expert_rungs(c: srv1_pair_l1_l2_configuration).length() == 0
+}
+
+// ── THE CACHE CAPACITY AGAINST THE POPULATION, AND THE RATIO A PASS LEAVES ──────────────────────
+//
+// RED CONTROL, planted before the carrier grew the fields
+// (gunbc.recurring_failure_mode::a_capacity_default_sized_for_one_workload_shape_inherited_by_another):
+// a configuration serving more concurrent agents than its own cache rows can hold warm must read a refusal
+// that carries BOTH numbers, and a pass that printed no hit ratio must read a refusal rather than a fine.
+// Every arm below is reachable because the join's boundary takes supplied numbers; the field's rows supply
+// the rest. An empty population here would be VOID, not green, so each claim names the rows it counted.
+
+// THE CAPACITY IS STATED IN AGENTS, FROM THE ROWS THAT ALREADY CARRY CACHE BYTES AND SLOTS: h11's engine
+// row parks a conversation at 750 MiB plus 10 KiB per token, holds 8192 MiB and 6 slots, and at the fleet's
+// 229376-token window that is two agents per engine -- four engines eight, two engines four.
+test fn the_warm_agent_capacity_is_read_from_the_rows() -> Bool {
+  match configuration_warm_agent_capacity(c: h11_four_engines_configuration) {
+    Present { value: four } => four == 8
+      && match configuration_warm_agent_capacity(c: h11_two_engines_configuration) {
+        Present { value: two } => two == 4
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE JOIN ON SUPPLIED NUMBERS, WHICH IS WHERE THE RED CONTROL LIVES: five agents against a cache that
+// holds four warm is Exceeded and says both numbers out loud; four against four is not exceeded, because
+// the capacity is a count of what fits, not a margin.
+test fn an_over_capacity_population_refuses_and_names_both_numbers() -> Bool {
+  match prefix_cache_capacity_against(agents: 5, warm_agents: 4) {
+    CapacityExceededByPopulation { agents: agents_held, warm_agents: warm_held } =>
+      agents_held == 5 && warm_held == 4
+    _ => false
+  }
+    && match prefix_cache_capacity_against(agents: 4, warm_agents: 4) {
+      CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held } =>
+        agents_held == 4 && warm_held == 4
+      _ => false
+    }
+}
+
+// THE FIELD'S OWN ROWS JOIN THE SAME WAY. h11 carries the population the 2026-11-21 pass reported there
+// (four concurrent agents) against the cache its engine rows state, so it lands on a decided arm. Every
+// host nobody counted lands on Undetermined carrying an obligation -- which is the fail-closed direction,
+// not a pass: an uncounted population never becomes a Fits.
+test fn the_field_joins_where_it_can_and_refuses_where_it_cannot() -> Bool {
+  match configuration_prefix_cache_capacity(c: h11_four_engines_configuration) {
+    CapacityHoldsPopulation { agents: agents_held, warm_agents: warm_held } =>
+      agents_held == 4 && warm_held == 8
+    _ => false
+  }
+    && match configuration_prefix_cache_capacity(c: srv3_batch8_ram_only_configuration) {
+      CapacityUndetermined { obligations: obligations } => obligations.length() > 0
+      _ => false
+    }
+    && match configuration_prefix_cache_capacity(c: srv4_batch1_slotfile_configuration) {
+      CapacityUndetermined { obligations: obligations } => obligations.length() > 0
+      _ => false
+    }
+}
+
+// THE POPULATION IS A STANDING ON THE ROW, NEVER A DEFAULT. Exactly the two h11 candidates carry an
+// observed count; the other seven say nobody counted them. A field that defaulted the population to one
+// would be the failure mode written into the model: the capacity would stay right for a workload shape
+// that no longer exists.
+test fn the_population_is_a_standing_on_every_candidate() -> Bool {
+  let unread = filter(replica_configuration_field, c => match c.concurrent_agents {
+    PopulationUnread { obligation: _ } => true
+    PopulationObserved { agents: _, standing: _ } => false
+  })
+  replica_configuration_field.length() == 9 && unread.length() == 7
+}
+
+// THE HIT RATIO IS A TYPED OBSERVATION ON THE ROW. h11 carries the pass it ran -- three hits against fifty
+// misses, standing named as the relay it is -- and every other candidate carries the obligation to take
+// one. A pass that counted nothing has no ratio: the permille is Absent, never zero, because zero hits is
+// a measurement and no measurement is not.
+test fn the_pass_ratio_is_carried_or_refused_never_absent_as_fine() -> Bool {
+  match h11_four_engines_configuration.prefix_cache_ratio {
+    RatioObserved { hits: hits, misses: misses, standing: _ } => hits == 3 && misses == 50
+    RatioUnread { obligation: _ } => false
+  }
+    && match prefix_cache_ratio_permille(ratio: h11_four_engines_configuration.prefix_cache_ratio) {
+      Present { value: permille_value } => permille_count(p: permille_value) == 56
+      Absent => false
+    }
+    && match srv3_batch8_ram_only_configuration.prefix_cache_ratio {
+      RatioUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "hit" as String)
+      RatioEmptyOnPass { pass: _, obligation: _ } => false
+      RatioObserved { hits: _, misses: _, standing: _ } => false
+    }
+    && match prefix_cache_ratio_permille(ratio: RatioObserved {
+      hits: 0,
+      misses: 0,
+      standing: TranscribedUncited { read_obligation: "witness-supplied: a pass that printed no counters" as NonEmptyStr },
+    }) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// THE OTHER HOSTS STATE THEIR CAPACITY IN AGENTS TOO, whether or not anyone has counted their population:
+// srv3's 64 GiB RAM tier over its own 1240 MiB plus 10 KiB-per-token snapshot is 18 agents against 24
+// declared slots, and srv4's two candidates differ by their ladder -- 43 agents with the parked disk tier,
+// 5 with the RAM tier alone. The ladder, not the prose, is what moves the number.
+test fn the_capacity_of_the_other_hosts_is_stated_in_agents_too() -> Bool {
+  match configuration_warm_agent_capacity(c: srv3_batch8_ram_only_configuration) {
+    Present { value: n } => n == 18
+    Absent => false
+  }
+    && match configuration_warm_agent_capacity(c: srv4_batch8_ram_only_configuration) {
+      Present { value: n } => n == 5
+      Absent => false
+    }
+    && match configuration_warm_agent_capacity(c: srv4_batch1_slotfile_configuration) {
+      Present { value: n } => n == 43
+      Absent => false
+    }
+}
+
+// EMPTY IS NOT ABSENT, AND NEITHER IS FINE. The row's RED case is a pass that produced a receipt with an
+// empty hit column; the other way a ratio is missing is that no pass ever carried the counters, which is a
+// missing producer rather than an instrument that shrugged. Collapsing the two is the failure mode this row
+// is about, so the two arms are different values, both refuse the ratio, and the unread arm's obligation
+// names the producer that would settle it.
+test fn an_empty_pass_column_is_not_the_same_verdict_as_no_producer() -> Bool {
+  let empty_column = RatioEmptyOnPass {
+    pass: "witness-supplied: a completed pass whose hit column came back empty" as NonEmptyStr,
+    obligation: "read the engine's prefix counters over a named interval" as NonEmptyStr,
+  }
+  let no_producer = RatioUnread { obligation: "witness-supplied: no pass carried the counters" as NonEmptyStr }
+  match prefix_cache_ratio_permille(ratio: empty_column) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match prefix_cache_ratio_permille(ratio: no_producer) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match empty_column {
+      RatioEmptyOnPass { pass: pass_text, obligation: _ } => string_contains(s: pass_text as String, pattern: "empty" as String)
+      RatioUnread { obligation: _ } => false
+      RatioObserved { hits: _, misses: _, standing: _ } => false
+    }
+    && match no_producer {
+      RatioUnread { obligation: _ } => true
+      RatioEmptyOnPass { pass: _, obligation: _ } => false
+      RatioObserved { hits: _, misses: _, standing: _ } => false
+    }
+    && match srv3_batch8_ram_only_configuration.concurrent_agents {
+      PopulationUnread { obligation: obligation } => string_contains(s: obligation as String, pattern: "fleet_host_truth_read" as String)
+      PopulationObserved { agents: _, standing: _ } => false
+    }
 }
