@@ -2692,3 +2692,60 @@ test fn refused_passwd_read_drives_the_gate_to_the_systemd_read() -> Bool {
     }
   }
 }
+
+// ── serving-observe-reads-absent-toolchain-as-drift (RB-M3 follow-up, lively-owl-722) ──
+//
+// End-to-end half of the follow-up: the OBSERVE now reads a fresh account's 127 toolchain listing as
+// DRIFT (see the setup witness), so the CONVERGE plans the bootstrap on exactly the host the live ken /
+// butch converges could not (rustup proven absent + `rustup toolchain list` exit 127). Before the fix
+// the assessment was indeterminate and converge_plan refused with ZERO writes; this claim is the red for
+// that: it requires the verified EnsureRustup before the EnsureToolchain on a refused-toolchain fresh host.
+
+// The fresh host (account absent, everything absent) with the toolchain listing REFUSED (the 127) rather
+// than merely established-absent -- the shape a real `rustup toolchain list` on an account with no rustup
+// produces. rustup itself is proven absent (the test -x leg).
+fn fresh_absent_observed_refused_toolchain(dline: String, d: RemoteBuildServingDesired) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(""),
+    group: est_s("root:x:0:\n"),
+    authorized_keys: est_s(""),
+    store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+    scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
+    checkout: est_absent(), toolchain: refused_b(), rustup: est_absent(),
+    serve_binary_sha256: Absent, checkout_revision: Absent,
+    authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: false },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+test fn a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => match rustup_init_release(version: serving_rustup_init_version, triple: "aarch64-unknown-linux-gnu") {
+      Absent => false
+      Present { value: r } => {
+        let a = serving_assess(d: d, o: fresh_absent_observed_refused_toolchain(forced_line(d), d), pin: pin_ok())
+        let ws = plan_writes(converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_absent()))
+        let carries = match rustup_write(ws) {
+          Absent => false
+          Present { value: w } => match w {
+            EnsureRustup { installer_url: u, expected_sha256: h, as_user: usr, rustup_home: rh, cargo_home: ch } =>
+              u == (rustup_init_url(r: r) as String) && string_contains(s: u, pattern: "/aarch64-unknown-linux-gnu/")
+                && h == (r.sha256 as String) && usr == d.account_name && rh == d.rustup_home && ch == d.cargo_home
+            _ => false
+          }
+        }
+        carries
+          && rank_of_rustup(ws: ws) < rank_of_toolchain(ws: ws)
+          && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name)
+      }
+    }
+  }
+}

@@ -1,0 +1,614 @@
+module gunbc.fleet.gpu_cap_priced_actuation
+
+// AN ACTUATION CARRIES ITS PRICE, OR IT DOES NOT ACTUATE.
+//
+// THE DEFECT THIS CLOSES. #17075 put the price beside the cap: gunbc.serving.gpu_power_cap_pricing takes an
+// ask and a field of candidates and answers with a std.decision verdict, and its witnesses show that an ask
+// with no circuit and a candidate with no reading cannot produce a cap. But nothing on the actuation path
+// *consumed* it. gunbc.fleet.gpu_power_cap_converge wrote whatever gunbc.serving.gpu_power_state_policy
+// admitted, and its only gate asked whether the driver accepts the number (admit_gpu_cap_against joins the
+// device's own reported [min, max]); gunbc.fleet.gpu_power_cap_boot_state carried an installed unit that
+// re-writes its own watt value at every boot. So the fold was consultable and the device still took whatever
+// `nvidia-smi -pl` was handed. That is the shape 2026-11-24 lived in: the same 10 W per card was refused on
+// one judgment and paid on the next, and both times the number reached the card.
+//
+// WHY THE GATE IS A CARRIER AND NOT A CHECK. The rung this class is climbing is MechanicallyPreventable, and
+// DESIGN's ladder puts construction above catching: `PricedActuation` below has the candidate as a FIELD of
+// its only arm that admits, so an actuation is not built by asking whether a price exists and then proceeding
+// anyway -- the value that reaches the device is read out of the candidate that was priced
+// (#gunbc.design_argument::fail_closed, #gunbc.design_argument::guarantee_ladder). A refusal is a typed,
+// located arm naming the reading that would close it, never a warning line that convergence follows.
+//
+// WHAT MAKES THIS A DECISION RATHER THAN A PERMISSION SLIP. The obligation is imposed by a constraint that is
+// DEMONSTRATED on the rows, not by a guess about intent: a host carried by a modeled circuit that has either
+// opened (a CircuitTrip row) or had a per-member draw bound stated is under an electrical constraint, and
+// every cap or clock-ceiling value actuated on it must arrive priced. `NoDemonstratedConstraint` is the other
+// arm, and it is not an escape hatch that happens to be convenient: it is the same refusal #17075 makes about
+// inventing a watt bound from a trip, applied on the way out. srv1 and ken sit there today because their
+// breaker has never opened and nobody has stated a bound on it -- so this module does not silently invent one
+// and take down a serving host -- and the witness `reading_a_bound_extends_the_obligation_to_srv1` shows the
+// arm closing the moment that bound is read onto the row. The strip's members (h11, srv3, srv4) are under the
+// obligation now, because that circuit opened twice.
+//
+// WHAT THIS MODULE DOES NOT OWN. It decides nothing about which cap to use (that is
+// gunbc.serving.gpu_power_cap_pricing's selection), nothing about whether a value is inside the device's
+// range (gunbc.serving.gpu_power_state_policy's admission), and nothing about whether a written value landed
+// (gunbc.fleet.gpu_power_cap_converge's post-write query). It answers exactly one question -- may this value
+// be put on the device at all -- and it answers it before anything is written.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.measure { Watt, watt_count, Hertz, hertz_count }
+import std.decl_ref { declaration_ref_eq }
+import product.host_identity { HostIdentity }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_power_circuit {
+  SharedPowerCircuit, BoundStated, BoundUnstated, MemberDrawBound,
+  circuit_identity, circuit_label, circuit_member_draw_bound, circuit_trips, circuits_carrying,
+}
+import gunbc.serving.gpu_power_cap_pricing {
+  CapCandidate, ConditionRead, ConditionUnread,
+  DecodeRead, DecodeUnread, DrawRead, DrawUnread, ShareRead, ShareUnread,
+  SmClockCeiling, CappedWithin, CeilingUnread, Unlocked, PowerAsk, AskUnstated, CircuitRelief,
+  CpuFrequencySetting, CappedAt, Uncapped, SettingUnread,
+  candidate_cap, candidate_is_on, oversubscription_defects,
+}
+
+// ── THE REQUEST, AS THE ACTUATION PATH HOLDS IT ─────────────────────────────────────────────────────
+//
+// The two controls a card's power behaviour actually has, in the shape the actuation path carries them: the
+// limit `nvidia-smi -pl` writes and, when a unit writes one, the SM clock ceiling `nvidia-smi -lgc` locks.
+// The ceiling is in the request rather than left out, because on 2026-11-24 it is what changed the answer --
+// 30 W with the card left to boost and 30 W under a 1500 MHz ceiling are different operating points at the
+// same watt value, and a gate that could only see the watts would have admitted one and gotten the other.
+// `ceiling: Absent` is a fact about the actuation (no -lgc line in the unit), not an unknown: an unknown
+// ceiling lives on the candidate as `CeilingUnread`, and the two never collapse into one arm.
+type ActuationRequest {
+  host: HostIdentity
+  // The board the value is being put on, when a row ties the UUID to one. It is text for the refusal and
+  // nothing more: the gate's comparisons run on the machine, the watt value and the clock, all of which the
+  // candidate and the request carry themselves. `Absent` is a card the device rows do not cover, and it is
+  // printed as such rather than folded into some other board's identity.
+  board: Optional<PhysicalAssetIdentity>
+  gpu_uuid: NonEmptyStr
+  cap: Watt
+  ceiling: Optional<Hertz>
+}
+
+// THE PRICED ACTUATION. One arm admits, and its fields cannot be filled in without a candidate: the watt
+// value the converge writes is read out of `candidate` (`candidate_cap`), the candidate must be on the
+// machine being actuated, and `circuit` is the circuit the ASK NAMED, matched by identity against the
+// constraints demonstrated on this host -- never the first circuit on a list. `still_owed` carries what this
+// actuation admits but has not read -- today the card's thermal state, which conditions the reading the
+// whole price rests on and is unread on srv3/srv4.
+type PricedActuation {
+  request: ActuationRequest
+  candidate: CapCandidate
+  circuit: SharedPowerCircuit
+  ask_said_on: NonEmptyStr
+  still_owed: List<NonEmptyStr>
+}
+
+// THE ANSWER TO "MAY THIS VALUE GO ON THE DEVICE". Every arm states its own remedy, and no arm falls through
+// to a write.
+type ActuationAdmission
+  // The value is priced: the candidate beside it carries the decode it costs, the draw it saves, and the
+  // circuit the ask served. `still_owed` is what is not yet read, named rather than absorbed.
+  = ActuationPriced { actuation: PricedActuation }
+  // No modeled circuit that carries this host has opened or had a bound stated, so no electrical constraint
+  // is demonstrated and there is no shared-watts decision to price. The warrant says which circuits carry it
+  // and what is unread on each, so this arm cannot be mistaken for a clean bill of health.
+  | NoDemonstratedConstraint { request: ActuationRequest, warrant: NonEmptyStr }
+  // A demonstrated constraint, and nobody has priced this value. The RED arm: 2026-11-24's 30 W on srv4,
+  // with no candidate beside it. `missing` names every reading the actuation owes, so the remedy is the row
+  // to author, not an argument.
+  | UnpricedActuationRefused {
+      request: ActuationRequest,
+      circuits: List<NonEmptyStr>,
+      missing: List<NonEmptyStr>,
+    }
+  // A candidate exists but it is not this operating point: a different machine, a different watt value, or a
+  // different clock ceiling. This is the arm the 2026-11-24 morning revert lives in -- the value that reached
+  // the card was 40 W while the value that had been weighed was 30 W, and nothing compared the two.
+  | ActuationValueMismatchRefused {
+      request: ActuationRequest,
+      candidate_label: NonEmptyStr,
+      mismatches: List<NonEmptyStr>,
+    }
+  // The candidate is the right operating point but its consequence was never read: no decode window, or no
+  // power.draw sample set. Under a circuit that has opened, a cap nobody measured does not go on the card.
+  | ActuationConsequenceUnreadRefused { request: ActuationRequest, owed: List<NonEmptyStr> }
+  // The right candidate, but the ask was never written down: `AskUnstated` is somebody said a number to save
+  // power and named no constraint. Under a demonstrated constraint that is refused, because the day this
+  // class was found on turned entirely on which constraint was being served.
+  | ActuationAskUnstatedRefused { request: ActuationRequest, candidate_label: NonEmptyStr, said: NonEmptyStr }
+  // The ask named a circuit, and that circuit is not one of the constraints demonstrated on this host. Watts
+  // saved on the strip are not watts saved on the breaker, so an ask written for one circuit does not license
+  // a cap priced against another; and the receipt may not quietly record the constraint that happened to be
+  // first on the list (#gunbc.design_argument::fail_closed: no silent widen, no fabricated default).
+  | ActuationAskUnservedRefused {
+      request: ActuationRequest,
+      candidate_label: NonEmptyStr,
+      asked_for: NonEmptyStr,
+      demonstrated: List<NonEmptyStr>,
+    }
+  // THE CONSTRAINT THE ASK SERVES CONTRADICTS ITS OWN DECLARATION. The fold owns this predicate
+  // (oversubscription_defects in gunbc.serving.gpu_power_cap_pricing) and the gate consumes it, so the gate
+  // cannot admit what the fold refuses: a cited rating and a stated per-member bound whose count x bound
+  // exceeds the rating describe a circuit no cap value can serve -- the ask is unservable as declared, and
+  // admitting any value under it would price watts against a constraint that does not add up
+  // (#gunbc.design_argument::fail_closed).
+  | ContradictoryConstraintRefused {
+      request: ActuationRequest,
+      circuit: NonEmptyStr,
+      defect: NonEmptyStr,
+    }
+  // TWO CANDIDATES PRICE THE ONE OPERATING POINT THE REQUEST STATES. Not a tie to break by list order --
+  // two measurements claiming the same watts, the same unlocked clock, the same uncapped cpu, with different
+  // consequences beside them. The fold owns the choice between candidates (its verdict would be a
+  // std.decision receipt); the gate has no verdict, so it reports both claims and refuses
+  // (#gunbc.design_argument::single_authority).
+  | ActuationCandidatesAmbiguousRefused {
+      request: ActuationRequest,
+      point: NonEmptyStr,
+      candidates: List<NonEmptyStr>,
+    }
+  // THE UNIT WRITES THE CLOCK AND CARRIES NO TYPED CEILING FOR IT. -pl alone leaves the card finding its own
+  // clock; -lgc pins it, and a pinned clock is part of the operating point the watts were measured under.
+  // BootCapCommand today carries the cap line and the verbatim line, not a typed -lgc value -- so a unit whose
+  // verbatim line contains -lgc cannot be priced, and says so, rather than being priced as unlocked
+  // (#gunbc.design_argument::fail_closed: no plausible output is fabricated).
+  | ClockLineUnpricedRefused {
+      request: ActuationRequest,
+      line: NonEmptyStr,
+    }
+
+// ── THE DEMONSTRATED CONSTRAINT ─────────────────────────────────────────────────────────────────────
+//
+// A constraint is demonstrated when the rows say so: the circuit opened, or somebody stated a per-member
+// draw bound. Neither is derived from the other and neither is guessed -- a circuit whose rating is unread and
+// which has never opened imposes nothing, because the only way to impose it would be to invent the number
+// (#gunbc.design_argument::grounding_is_intersubjective).
+
+fn bound_is_stated(b: MemberDrawBound) -> Bool {
+  match b {
+    BoundStated { draw_limit: _, standing: _ } => true
+    BoundUnstated { read_obligation: _ } => false
+  }
+}
+
+fn circuit_demonstrates_constraint(c: SharedPowerCircuit) -> Bool {
+  circuit_trips(c).length() > 0 || bound_is_stated(b: circuit_member_draw_bound(c: c))
+}
+
+// Every circuit that carries this host AND has demonstrated a constraint on it.
+fn demonstrated_constraints_on(host: HostIdentity) -> List<SharedPowerCircuit> {
+  filter(circuits_carrying(host: host), c => circuit_demonstrates_constraint(c: c))
+}
+
+fn under_demonstrated_constraint(host: HostIdentity) -> Bool {
+  demonstrated_constraints_on(host: host).length() > 0
+}
+
+// Which of the demonstrated constraints is the one the ASK named -- identity equality through
+// std.decl_ref, the same comparison gunbc.extdeps.board_authority uses for a subject's own declaration. An
+// ask for a circuit that is not on the table prices nothing, so the answer is an Optional and the caller
+// refuses on Absent rather than picking a substitute.
+fn circuit_asked_for(
+  constraints: List<SharedPowerCircuit>,
+  asked: SharedPowerCircuit,
+) -> Optional<SharedPowerCircuit> {
+  filter(
+    constraints,
+    c => declaration_ref_eq(a: circuit_identity(c: c), b: circuit_identity(c: asked)),
+  ).first()
+}
+
+// ── THE COMPARISONS THE CANDIDATE MUST PASS ─────────────────────────────────────────────────────────
+
+fn request_watts(r: ActuationRequest) -> Nat { watt_count(w: r.cap) }
+
+fn candidate_watts(c: CapCandidate) -> Nat { watt_count(w: candidate_cap(c: c)) }
+
+// The ceiling a request would lock, as the card sees it. Absent means "no -lgc line": the card is left to
+// boost to whatever its driver does, which is `Unlocked` on a candidate and NOT `CeilingUnread`.
+fn ceiling_is_locked_at(s: SmClockCeiling, maximum: Hertz) -> Bool {
+  match s {
+    CappedWithin { maximum: m } => hertz_count(h: m) == hertz_count(h: maximum)
+    Unlocked => false
+    CeilingUnread { read_obligation: _ } => false
+  }
+}
+
+fn ceiling_is_unlocked(s: SmClockCeiling) -> Bool {
+  match s {
+    Unlocked => true
+    CappedWithin { maximum: _ } => false
+    CeilingUnread { read_obligation: _ } => false
+  }
+}
+
+fn ceiling_text(s: SmClockCeiling) -> NonEmptyStr {
+  match s {
+    CappedWithin { maximum: m } => join(["locked at ", to_string(hertz_count(h: m)), " Hz"], "") as NonEmptyStr
+    Unlocked => "unlocked" as NonEmptyStr
+    CeilingUnread { read_obligation: _ } => "unread" as NonEmptyStr
+  }
+}
+
+fn request_ceiling_text(r: ActuationRequest) -> NonEmptyStr {
+  match r.ceiling {
+    Present { value: h } => join(["locked at ", to_string(hertz_count(h: h)), " Hz"], "") as NonEmptyStr
+    Absent => "unlocked (no -lgc line)" as NonEmptyStr
+  }
+}
+
+// The mismatch list, one entry per thing that differs, each naming both sides. An empty list means the
+// candidate prices exactly this operating point on exactly this machine.
+fn candidate_mismatches(request: ActuationRequest, candidate: CapCandidate) -> List<NonEmptyStr> {
+  let host_entry = if candidate_is_on(c: candidate, host: request.host) {
+    ""
+  } else {
+    join(["the candidate ", candidate.label as String, " was read on another machine, not the one being actuated"], "")
+  }
+  let cap_entry = if request_watts(r: request) == candidate_watts(c: candidate) {
+    ""
+  } else {
+    join(["the actuation writes ", to_string(request_watts(r: request)), " W but the candidate prices ", to_string(candidate_watts(c: candidate)), " W"], "")
+  }
+  let ceiling_entry = match request.ceiling {
+    Present { value: h } =>
+      if ceiling_is_locked_at(s: candidate.sm_clock, maximum: h) {
+        ""
+      } else {
+        join(["the actuation locks ", request_ceiling_text(r: request) as String, " but the candidate prices the clock ", ceiling_text(s: candidate.sm_clock) as String], "")
+      }
+    Absent =>
+      if ceiling_is_unlocked(s: candidate.sm_clock) {
+        ""
+      } else {
+        join(["the actuation leaves the clock unlocked but the candidate prices the clock ", ceiling_text(s: candidate.sm_clock) as String], "")
+      }
+  }
+  filter([host_entry, cap_entry, ceiling_entry], e => e != "")
+}
+
+// The readings a candidate owes before its consequence can be believed: a decode window and a power.draw
+// sample set come off different instruments, so they stay separate entries rather than one "unmeasured".
+fn unread_consequence_owed(candidate: CapCandidate) -> List<NonEmptyStr> {
+  let decode_entry = match candidate.decode {
+    DecodeRead { rate_low: _, rate_high: _, at_concurrency: _, window: _, instrument: _, standing: _ } => ""
+    DecodeUnread { read_obligation: o } => join(["decode: ", o as String], "")
+  }
+  let draw_entry = match candidate.draw {
+    DrawRead { draw_low: _, draw_high: _, samples: _, subject: _, throttle_share: sh, observed_on: _, standing: _ } =>
+      match sh {
+        ShareRead { power_capped: _, instrument: _ } => ""
+        // The power-capped share is owed as a reading of its own: its watts without the share cannot be
+        // read as cap-bound, and priced_draw_step already refuses the step across it.
+        ShareUnread { read_obligation: o } => join(["draw: ", o as String], "")
+      }
+    DrawUnread { read_obligation: o } => join(["draw: ", o as String], "")
+  }
+  filter([decode_entry, draw_entry], e => e != "")
+}
+
+// The card state is what makes a reading about this card instead of about a card like it. It does not gate
+// admission on its own (no srv3/srv4 card has one read, and a gate that refused on it would be refusing on
+// missing data rather than on a mismatch), but it never disappears: an actuation admitted on an unread card
+// carries the obligation in `still_owed`.
+fn card_state_owed(candidate: CapCandidate) -> List<NonEmptyStr> {
+  match candidate.condition {
+    ConditionRead { card: _, state: _, sensor: _, observed_on: _, standing: _ } => []
+    ConditionUnread { read_obligation: o } => [join(["card state: ", o as String], "") as NonEmptyStr]
+  }
+}
+
+// ── THE GATE ────────────────────────────────────────────────────────────────────────────────────────
+
+// The gate over an explicitly supplied set of constraints, so a witness can put a circuit on the table and
+// watch the obligation appear on a host that did not carry one a moment ago. The production entry below
+// derives the set from the rows; nothing else passes it.
+fn price_the_actuation_against(
+  request: ActuationRequest,
+  candidate: Optional<CapCandidate>,
+  ask: Optional<PowerAsk>,
+  constraints: List<SharedPowerCircuit>,
+) -> ActuationAdmission {
+  match constraints.first() {
+    // Nothing demonstrated on this host: no obligation, and a warrant that says so.
+    Absent => NoDemonstratedConstraint {
+      request: request,
+      warrant: no_constraint_warrant(host: request.host),
+    }
+    // The list is non-empty by construction here -- matched, not counted -- so nothing downstream needs a
+    // stand-in circuit to satisfy the type, and no real circuit can be substituted for one nobody named.
+    Present { value: _ } => match candidate {
+      Absent => UnpricedActuationRefused {
+        request: request,
+        circuits: map(constraints, c => circuit_label(c: c)),
+        missing: unpriced_missing(request: request),
+      }
+      Present { value: c } =>
+        match ask {
+          Absent => ActuationAskUnstatedRefused {
+            request: request,
+            candidate_label: c.label,
+            said: "no ask is recorded for this actuation: nobody named the constraint the watts were being saved for" as NonEmptyStr,
+          }
+          Present { value: a } =>
+            match a {
+              AskUnstated { cap: _, said: said } => ActuationAskUnstatedRefused {
+                request: request,
+                candidate_label: c.label,
+                said: said,
+              }
+              // THE ASK IS CHECKED AGAINST THE CONSTRAINT, not against nothing. An ask naming a circuit that
+              // is not demonstrated on this host does not price this actuation: it may be the right ask for
+              // another machine's constraint, and a receipt carrying whichever circuit happened to be first
+              // would say the cap served a constraint nobody asked it to serve.
+              CircuitRelief { circuit: asked_for, asked_on: asked_on } =>
+                match circuit_asked_for(constraints: constraints, asked: asked_for) {
+                  Absent => ActuationAskUnservedRefused {
+                    request: request,
+                    candidate_label: c.label,
+                    asked_for: circuit_label(c: asked_for),
+                    demonstrated: map(constraints, x => circuit_label(c: x)),
+                  }
+                  Present { value: served } =>
+                    let mismatches = candidate_mismatches(request: request, candidate: c)
+                    if mismatches.length() > 0 {
+                      ActuationValueMismatchRefused {
+                        request: request,
+                        candidate_label: c.label,
+                        mismatches: mismatches,
+                      }
+                    } else {
+                      let owed = unread_consequence_owed(candidate: c)
+                      if owed.length() > 0 {
+                        ActuationConsequenceUnreadRefused { request: request, owed: owed }
+                      } else {
+                        // Every candidate check has passed; what remains is whether the served constraint
+                        // itself adds up. It is asked here, last, so the refusal that fires is always the
+                        // most specific true one, and never before the ask has been established.
+                        match oversubscription_defects(circuit: served).first() {
+                          Present { value: defect } => ContradictoryConstraintRefused {
+                            request: request,
+                            circuit: circuit_label(c: served),
+                            defect: defect,
+                          }
+                          Absent => ActuationPriced {
+                            actuation: PricedActuation {
+                              request: request,
+                              candidate: c,
+                              circuit: served,
+                              ask_said_on: asked_on,
+                              still_owed: card_state_owed(candidate: c),
+                            },
+                          }
+                        }
+                      }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE ENTRY THE ACTUATION PATH CALLS. The constraint set is derived from the circuit rows, so a caller cannot
+// hand it a friendlier set; a caller that wants to test the gate against a circuit it made up calls the
+// _against form and says so in its name.
+fn price_the_actuation(
+  request: ActuationRequest,
+  candidate: Optional<CapCandidate>,
+  ask: Optional<PowerAsk>,
+) -> ActuationAdmission {
+  price_the_actuation_against(
+    request: request,
+    candidate: candidate,
+    ask: ask,
+    constraints: demonstrated_constraints_on(host: request.host),
+  )
+}
+
+// THE ADMITTED CARD'S ACTUATION, PRICED -- the entry the actuation path calls. `GpuCapAdmission` has three
+// arms and only `GpuCapAdmitted` names a device and a value at once, so this takes that arm's contents: a
+// pending card is nobody's actuation (the converge reports it and writes nothing) and an out-of-range value
+// has already refused at admission. The request is built HERE, from the admission, and the candidate that
+// prices it is looked up HERE -- the converge keeps no private copy of either, because a second copy of the
+// match is a second place for it to drift from the gate's.
+fn price_the_admitted_cap(
+  host: HostIdentity,
+  board: PhysicalAssetIdentity,
+  gpu_uuid: NonEmptyStr,
+  cap: Watt,
+  candidates: List<CapCandidate>,
+  ask: Optional<PowerAsk>,
+) -> ActuationAdmission {
+  price_the_request(
+    request: ActuationRequest {
+      host: host,
+      board: Present { value: board },
+      gpu_uuid: gpu_uuid,
+      cap: cap,
+      ceiling: Absent,
+    },
+    candidates: candidates,
+    ask: ask,
+  )
+}
+
+// THE ONE LOOKUP, OPEN TO EVERY SHAPE THE ACTUATION PATH HOLDS. The converge holds a policy admission and a
+// boot unit holds its own cap line; both come through here, so "which candidate prices this value" is decided
+// once, in this module (#gunbc.design_argument::single_authority -- a second copy of the match is a second
+// place for it to drift from the gate's, and the boot path and the converge path would otherwise each hold
+// their own rule about what counts as this operating point). Callers pass the REQUEST they hold and the rows;
+// they never pass a candidate they chose themselves.
+fn price_the_request(
+  request: ActuationRequest,
+  candidates: List<CapCandidate>,
+  ask: Optional<PowerAsk>,
+) -> ActuationAdmission {
+  let matches = candidates_pricing_the_point(candidates: candidates, request: request)
+  if matches.length() > 1 {
+    ActuationCandidatesAmbiguousRefused {
+      request: request,
+      point: operating_point_text(request: request),
+      candidates: map(matches, c => c.label),
+    }
+  } else {
+    price_the_actuation(
+      request: request,
+      candidate: matches.first(),
+      ask: ask,
+    )
+  }
+}
+
+// THE FULL OPERATING POINT, MATCHED -- not host and watts alone. A request writes what it writes: watts, and
+// no clock lock when its ceiling is Absent. A candidate that prices 30 W with the SM clock unlocked is a
+// different operating point from 30 W under a 1500 MHz ceiling, and both differ from 30 W on a machine held
+// at 2.0 GHz by a cpu cap the actuation never writes. Picking among these by list order would be a second
+// selection the fold does not own, and pricing a watts-only actuation by a cpu-capped candidate would fabricate
+// a control the actuation does not perform (#gunbc.design_argument::single_authority, ::fail_closed).
+fn candidate_prices_the_point(candidate: CapCandidate, request: ActuationRequest) -> Bool {
+  candidate_is_on(c: candidate, host: request.host)
+    && candidate_watts(c: candidate) == watt_count(w: request.cap)
+    && (
+      match request.ceiling {
+        Absent => match candidate.sm_clock {
+          Unlocked => true
+          _ => false
+        }
+        Present { value: v } => match candidate.sm_clock {
+          CappedWithin { maximum: m } => hertz_count(h: m) == hertz_count(h: v)
+          _ => false
+        }
+      }
+    )
+    && match candidate.cpu_cap {
+      Uncapped => true
+      _ => false
+    }
+}
+
+// Everything that prices exactly this operating point. One is the candidate; more is two claims about one
+// point and the gate refuses rather than picking; none is the unpriced refusal, naming what to read.
+fn candidates_pricing_the_point(
+  candidates: List<CapCandidate>,
+  request: ActuationRequest,
+) -> List<CapCandidate> {
+  filter(candidates, c => candidate_prices_the_point(candidate: c, request: request))
+}
+
+fn operating_point_text(request: ActuationRequest) -> NonEmptyStr {
+  join([
+    to_string(watt_count(w: request.cap)),
+    " W with clock ",
+    match request.ceiling {
+      Absent => "unlocked"
+      Present { value: v } => join(["pinned to ", to_string(hertz_count(h: v) / 1000000), " MHz"], ""),
+    },
+    " and cpu uncapped (the actuation writes only the power limit)",
+  ], "") as NonEmptyStr
+}
+
+// There is no accessor between an admission and the watt value: the converge matches this sum and reads
+// `candidate_cap` of the candidate the admitting arm carries, so there is no path from a bare Watt to a
+// device write that goes around the priced candidate. `actuation_admits` is the single derived yes/no, kept
+// for the boot-unit census and the witnesses, which want the verdict and not a value; it matches the same
+// seven arms, and nothing independently decides admission beside it.
+fn actuation_admits(a: ActuationAdmission) -> Bool {
+  match a {
+    ActuationPriced { actuation: _ } => true
+    NoDemonstratedConstraint { request: _, warrant: _ } => true
+    UnpricedActuationRefused { request: _, circuits: _, missing: _ } => false
+    ActuationValueMismatchRefused { request: _, candidate_label: _, mismatches: _ } => false
+    ActuationConsequenceUnreadRefused { request: _, owed: _ } => false
+    ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => false
+    ActuationAskUnservedRefused { request: _, candidate_label: _, asked_for: _, demonstrated: _ } => false
+    ContradictoryConstraintRefused { request: _, circuit: _, defect: _ } => false
+    ActuationCandidatesAmbiguousRefused { request: _, point: _, candidates: _ } => false
+    ClockLineUnpricedRefused { request: _, line: _ } => false
+  }
+}
+
+// The refusal, in the line the converge prints and the unit's failure names. Every arm lands here with text:
+// an arm that produced no reason would be the silent fall-through this module exists to prevent.
+fn actuation_refusal_text(a: ActuationAdmission) -> String {
+  match a {
+    UnpricedActuationRefused { request: r, circuits: cs, missing: ms } => join([
+      "no priced candidate beside it; it serves ", join(map(cs, c => c as String), " and "),
+      "; owed: ", join(map(ms, m => m as String), " | "),
+      " (request ", to_string(watt_count(w: r.cap)), " W on ", r.gpu_uuid as String, ")",
+    ], "")
+    ActuationValueMismatchRefused { request: r, candidate_label: l, mismatches: ms } => join([
+      "the candidate ", l as String, " does not price the value being written: ",
+      join(map(ms, m => m as String), " | "),
+    ], "")
+    ActuationConsequenceUnreadRefused { request: _, owed: os } => join([
+      "its consequence was never read: ", join(map(os, o => o as String), " | "),
+    ], "")
+    ActuationAskUnstatedRefused { request: _, candidate_label: l, said: s } => join([
+      "no ask names the constraint the watts were saved for (candidate ", l as String, "; said: ", s as String, ")",
+    ], "")
+    ActuationAskUnservedRefused { request: _, candidate_label: l, asked_for: a, demonstrated: ds } => join([
+      "the ask named ", a as String, ", which is not a constraint demonstrated on this host (candidate ",
+      l as String, "; demonstrated here: ",
+      if ds.length() > 0 { join(map(ds, d => d as String), ", ") } else { "none" },
+      ")",
+    ], "")
+    ContradictoryConstraintRefused { request: _, circuit: l, defect: d } => join([
+      "the constraint the ask serves contradicts its own declaration: ", l as String, " -- ", d as String,
+    ], "")
+    ActuationCandidatesAmbiguousRefused { request: r, point: pt, candidates: cs } => join([
+      "two candidates price this operating point (", pt as String, ") with different consequences beside them: ",
+      join(map(cs, c => c as String), " | "),
+      " -- reconcile the readings or let the fold's verdict choose; the gate does not break ties by list order",
+    ], "")
+    ClockLineUnpricedRefused { request: _, line: l } => join([
+      "the unit's own line pins the SM clock (", l as String,
+      ") but BootCapCommand carries no typed ceiling for it: an -lgc line is part of the operating point and has never been priced as one; model the ceiling beside the line",
+    ], "")
+    ActuationPriced { actuation: _ } => ""
+    NoDemonstratedConstraint { request: _, warrant: w } => w as String
+  }
+}
+
+// What an admitted actuation still owes, printed beside the success so an admission is never mistaken for a
+// closed reading.
+fn actuation_still_owed(a: ActuationAdmission) -> List<NonEmptyStr> {
+  match a {
+    ActuationPriced { actuation: p } => p.still_owed
+    _ => []
+  }
+}
+
+// ── TEXT BUILDERS, EACH ONE NAMING THE ROW TO AUTHOR ────────────────────────────────────────────────
+
+// What a host's circuits say, when none of them has demonstrated anything. The arm admits, and the warrant
+// says exactly how much of that admission rests on nobody having read the circuit yet.
+fn no_constraint_warrant(host: HostIdentity) -> NonEmptyStr {
+  let carriers = circuits_carrying(host: host)
+  if carriers.length() == 0 {
+    join(["no modeled circuit carries this host, so no shared electrical constraint is modeled for it and this value is not a power ask; a circuit row that carries it puts it under the pricing obligation"], "") as NonEmptyStr
+  } else {
+    join([
+      "the circuit(s) carrying this host (",
+      join(map(carriers, c => circuit_label(c: c) as String), ", "),
+      ") have never opened and state no per-member draw bound, so no constraint is demonstrated; the obligation attaches the moment a trip is recorded or a bound is stated",
+    ], "") as NonEmptyStr
+  }
+}
+
+// Every reading a refused actuation owes, as rows to author rather than as a shrug.
+fn unpriced_missing(request: ActuationRequest) -> List<NonEmptyStr> {
+  [
+    join(["a CapCandidate on gunbc.serving.gpu_power_cap_pricing for this machine at ", to_string(request_watts(r: request)), " W with the clock ", request_ceiling_text(r: request) as String], "") as NonEmptyStr,
+    "its decode reading: a milli-tok/s window with its instrument and standing (DecodeRead, never DecodeUnread)" as NonEmptyStr,
+    "its draw reading: milliwatts with the sample count, the sensor and the power-capped share (DrawRead, never DrawUnread)" as NonEmptyStr,
+    "the power ask it answers: which circuit the watts were being saved on, and when it was asked (CircuitRelief, never AskUnstated)" as NonEmptyStr,
+  ]
+}

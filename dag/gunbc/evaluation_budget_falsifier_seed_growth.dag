@@ -65,6 +65,8 @@ data evaluation_budget_falsifier_seed_growth_justification: SeedGrowthJustificat
     DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "serve_and_judge", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcessGroupWait", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "spawn_in_new_process_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "UnsignalablePid", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "signalable_pid", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "signal_process_group", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "wait_for_exit", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcEntry", field: WholeDeclaration },

@@ -49,6 +49,7 @@ import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
 import std.env_binding { EnvSet }
 import extdeps.posix.process
 import extdeps.posix.signal
+import extdeps.posix.process { signal_target_pid }
 import extdeps.http.client
 import extdeps.tools.sleep
 import extdeps.exec.command { env_prefixed_command_in }
@@ -310,11 +311,14 @@ fn run_node_http_serve_smoke() -> Bool {
             last_status: "",
             last_exit_code: 0
           )
-          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let kill_sent = match signal_target_pid(pid: pid) {
+            Present { value: target } => posix.Signal.TerminateProcess(target: target).success
+            Absent => false
+          }
           let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
           let cleanup = shell.Remove.RecursiveForce(path: dir.path)
           let harness_ok = dir.success && server_js.success && cleanup.success
-          let lifecycle_ok = kill.success
+          let lifecycle_ok = kill_sent
             && (match reaped {
               Absent => false
               Present { value: outcome } =>

@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
 import extdeps.shell
 import extdeps.posix.signal
+import extdeps.posix.process { signal_target_pid_of_text }
 import gunbc.host.host_hygiene_reaper {
   ResidualSlotObservation,
   ReapRefusalCause,
@@ -58,9 +59,29 @@ type ResidualReapApplyOutcome
   = ResidualReapApplied { unit: NonEmptyStr }
   | ResidualReapApplyRefused { unit: NonEmptyStr, cause: String }
 
-fn apply_terminate_occupants(pids: List<NonEmptyStr>) -> Bool {
-  let results = map(pids, pid => posix.Signal.TerminateProcess(pid: pid).success)
-  length(filter(results, r => !r)) == 0
+// Every occupant pid is first minted as an extdeps.posix.process SignalTargetPid. A cgroup.procs line that is
+// not exactly one signalable pid (0, 1, a negative, padding, out of pid_t range) refuses the whole reap with
+// that pid named -- no signal is sent for any occupant, and nothing is widened into a group or "everyone".
+type OccupantTermination
+  = OccupantsTerminated
+  | OccupantPidRefused { pid: NonEmptyStr }
+  | OccupantSignalFailed
+
+fn apply_terminate_occupants(pids: List<NonEmptyStr>) -> OccupantTermination {
+  let refused = filter(pids, pid => match signal_target_pid_of_text(text: pid as String) {
+    Present { value: _ } => false
+    Absent => true
+  })
+  match refused.first() {
+    Present { value: pid } => OccupantPidRefused { pid: pid }
+    Absent => {
+      let results = map(pids, pid => match signal_target_pid_of_text(text: pid as String) {
+        Present { value: target } => posix.Signal.TerminateProcess(target: target).success
+        Absent => false
+      })
+      if length(filter(results, r => !r)) == 0 { OccupantsTerminated } else { OccupantSignalFailed }
+    }
+  }
 }
 
 // UNEXECUTED-IN-CI: issues real `kill -TERM` / `rm -rf` effects against the local host.
@@ -81,14 +102,17 @@ fn apply_residual_reap_effect(effect: ResidualReapEffect) -> ResidualReapApplyOu
         ResidualReapApplyRefused { unit: u, cause: "rm -rf of stale system.control override dir failed" }
       }
     TerminateOccupantsAndRemoveOverrideEffect { unit: u, pids: pids, dir: dir } =>
-      if apply_terminate_occupants(pids: pids) {
-        if shell.Remove.RecursiveForce(path: dir as FilePath).success {
-          ResidualReapApplied { unit: u }
-        } else {
-          ResidualReapApplyRefused { unit: u, cause: "occupant termination succeeded but rm -rf of override dir failed" }
-        }
-      } else {
-        ResidualReapApplyRefused { unit: u, cause: "one or more kill -TERM occupant signals failed" }
+      match apply_terminate_occupants(pids: pids) {
+        OccupantsTerminated =>
+          if shell.Remove.RecursiveForce(path: dir as FilePath).success {
+            ResidualReapApplied { unit: u }
+          } else {
+            ResidualReapApplyRefused { unit: u, cause: "occupant termination succeeded but rm -rf of override dir failed" }
+          }
+        OccupantPidRefused { pid: p } =>
+          ResidualReapApplyRefused { unit: u, cause: join(["occupant pid is not one signalable process (extdeps.posix.process signal_target_pid_of_text), so no occupant was signalled: ", p as String], "") }
+        OccupantSignalFailed =>
+          ResidualReapApplyRefused { unit: u, cause: "one or more kill -TERM occupant signals failed" }
       }
   }
 }

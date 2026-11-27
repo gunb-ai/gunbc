@@ -81,6 +81,7 @@ import gunbc.compute.attempt_lifecycle {
   compute_pre_launch_ceiling_seconds,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.compute.seat_cgroup_absence { SeatCgroupEndProof, SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable, observe_seat_cgroup_end_proof }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -1556,6 +1557,24 @@ fn unit_lifecycle_by_wait(population: UnitPopulation, missing: String) -> UnitLi
   }
 }
 
+// THE THIRD ADMISSIBLE ACCOUNT FOR RECOVERY, consulted only beside the manager's not-found reading
+// and the hook's silence (gunbc.compute.seat_cgroup_absence states why ENOENT on the unit's own cgroup
+// is a kernel-level end proof, and the two guards that keep a wrong spelling from releasing a live
+// seat). Recovery holds no wait account, so today this arm can only answer Unknown and the seat stays
+// charged forever unless the operator rules seat by seat -- srv1's 011dfdd class and srv3's two seats
+// were all this shape. A PRESERVE or UNOBSERVABLE reading falls back to exactly the old answer, with
+// what the cgroup said added to the reason: fail_closed, a located diagnostic and never a release.
+fn seat_cgroup_or_wait(proof: SeatCgroupEndProof, population: UnitPopulation, missing: String) -> UnitLifecycle {
+  match proof {
+    SeatCgroupEnded { detail: d } =>
+      UnitTerminatedCauseUnknown { detail: join([missing, "; the end is nonetheless established by the kernel: ", d], "") }
+    SeatCgroupPreserve { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup still holds processes: ", d], ""))
+    SeatCgroupUnobservable { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup says nothing: ", d], ""))
+  }
+}
+
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
       // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
       // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
@@ -1609,6 +1628,13 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
 // unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
 type UnitLifecycleObservations {
   load_state: UnitPropertyReading
+  // THE SEAT'S OWN CGROUP, observed through gunbc.compute.seat_cgroup_absence: the kernel's answer to
+  // "can anything this unit launched still run". Consulted at exactly ONE arm below -- the manager's
+  // not-found reading beside the hook's silence -- where today the seat can only stay unknown; every
+  // other reading either outranks it (occupied processes) or outranks IT (the manager refusing the
+  // question, the hook's own record). Witness test.claim.compute.seat_cgroup_absence_witness claims
+  // each of those orderings with supplied values.
+  seat_cgroup: SeatCgroupEndProof
   // THE SEAT'S OWN RECORD, for the same reason the termination fold carries it: the two folds must agree
   // about what a manager's absence is worth, and they can only agree if they are deciding on the same
   // reading. test.claim.compute.manager_unaskable_wet_witness asserts that agreement as a relation.
@@ -1665,7 +1691,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
           SeatStopRecordFound { invocation_id, end } =>
             UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
           SeatStopRecordNone =>
-            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
+            // Without the record the manager itself ran, the manager can only say it does not LIST the
+            // unit -- and the seat's own wait, which used to be the only other admissible account here,
+            // is exactly what fails for a seat launched before the hook existed. The kernel's own account
+            // of the unit's cgroup is consulted third (seat_cgroup_or_wait); what it cannot say falls back
+            // to the old, refusing answer.
+            seat_cgroup_or_wait(proof: o.seat_cgroup, population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
           SeatStopRecordUnreadable { cause } =>
             unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and its exit spool could not be read, so the hook says nothing: ", cause], ""))
           SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
@@ -1702,11 +1733,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
 fn observe_unit_lifecycle(unit: NonEmptyStr, stop_record: SeatStopRecord) -> UnitLifecycle {
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_lifecycle_decide(o: UnitLifecycleObservations {
-    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
+    stop_record: stop_record,
     active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
     result: read_user_unit_property(unit: unit, property: unit_result_property),
     population: unit_population(control_group: cg, events: read_cgroup_events(control_group: cg)),
+    seat_cgroup: observe_seat_cgroup_end_proof(unit: unit),
   })
 }
 
