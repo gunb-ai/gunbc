@@ -28,13 +28,14 @@ import v2.std.compilers.target_model {
   target_value_expression_int_literal,
   target_value_expression_operand_needs_grouping,
   target_value_expression_primitive_apply,
-  target_value_expr_comparison_chain_refuses,
+  target_value_expr_comparison_chain_refusal_policy,
   target_value_expr_primitive_apply_operation_from_wire,
   target_value_expression_emit_comparison_operand_is_comparison_diagnostic,
   target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic,
   ChainsYes,
   ChainsNo,
   ChainsUndeclared,
+  CanonicalOperation,
   TargetRealizationCatalog,
   TargetValueExpression,
   TargetValueExprPrimitiveApply,
@@ -493,8 +494,31 @@ test fn grouping_undecodable_apply_operand_wraps() -> Bool {
   )
 }
 
+// The comparison-chain refusal is a three-state policy and the claims assert it BY VARIANT,
+// never through a dissolved Bool (review 99420; same dissolution the chain guard carried before
+// review 98497 replaced Optional<Bool> with OperatorChainsPolicy). "no" = the target declared
+// chains=no and refuses; "undeclared" = the target never declared a policy and refuses;
+// "absent" = no chain was proven (or ChainsYes permits it) and emission proceeds.
+fn chain_policy_variant(
+  catalog: TargetRealizationCatalog,
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> String {
+  match target_value_expr_comparison_chain_refusal_policy(
+    catalog: catalog,
+    enclosing_op: enclosing_op,
+    operands: operands
+  ) {
+    Present { value: ChainsNo } => "no"
+    Present { value: ChainsUndeclared } => "undeclared"
+    // ChainsYes makes the policy return Absent, so this arm is totality evidence, not a state.
+    Present { value: _ } => "permitted"
+    Absent => "absent"
+  }
+}
+
 test fn chains_undeclared_refuses_nested_comparison() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence(
         operation: canonical_operation_op_lt(),
@@ -504,11 +528,11 @@ test fn chains_undeclared_refuses_nested_comparison() -> Bool {
     ]),
     enclosing_op: canonical_operation_op_lt(),
     operands: [claim_lt_apply(), claim_flat_binding()]
-  )
+  ) == "undeclared"
 }
 
 test fn chains_declared_no_refuses_nested_comparison() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence_and_chains(
         operation: canonical_operation_op_lt(),
@@ -519,11 +543,11 @@ test fn chains_declared_no_refuses_nested_comparison() -> Bool {
     ]),
     enclosing_op: canonical_operation_op_lt(),
     operands: [claim_lt_apply(), claim_flat_binding()]
-  )
+  ) == "no"
 }
 
 test fn chains_declared_yes_permits_nested_comparison() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence_and_chains(
         operation: canonical_operation_op_lt(),
@@ -534,7 +558,7 @@ test fn chains_declared_yes_permits_nested_comparison() -> Bool {
     ]),
     enclosing_op: canonical_operation_op_lt(),
     operands: [claim_lt_apply(), claim_flat_binding()]
-  ) == false
+  ) == "absent"
 }
 
 // Chain-side counterpart of grouping_undecodable_apply_operand_wraps, rewritten for review 99405:
@@ -560,7 +584,7 @@ fn claim_undecodable_apply() -> TargetValueExpression {
 }
 
 test fn chains_undecodable_operand_alone_proves_no_chain_does_not_refuse() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence(
         operation: canonical_operation_op_lt(),
@@ -570,13 +594,13 @@ test fn chains_undecodable_operand_alone_proves_no_chain_does_not_refuse() -> Bo
     ]),
     enclosing_op: canonical_operation_op_lt(),
     operands: [claim_undecodable_apply(), claim_flat_binding()]
-  ) == false
+  ) == "absent"
 }
 
 // The OTHER slot proving the chain still refuses: the shape reason is TRUE then, and the
 // undecodable slot neither masks nor fabricates it.
 test fn chains_undecodable_operand_with_proven_comparison_sibling_refuses() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence(
         operation: canonical_operation_op_lt(),
@@ -586,7 +610,7 @@ test fn chains_undecodable_operand_with_proven_comparison_sibling_refuses() -> B
     ]),
     enclosing_op: canonical_operation_op_lt(),
     operands: [claim_undecodable_apply(), claim_lt_apply()]
-  )
+  ) == "undeclared"
 }
 
 // The refusal the undecodable operand actually meets: decoding its operation edge rejects under
@@ -606,7 +630,7 @@ test fn undecodable_op_edge_decode_refuses_under_operand_wire_malformed() -> Boo
 // declared, an undecodable operand does not make THIS check refuse — the operand's own emit path
 // rejects it with its own typed reason. Keeps the refusal attributed to the right decision.
 test fn chains_undecodable_operand_chains_yes_does_not_refuse() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence_and_chains(
         operation: canonical_operation_op_lt(),
@@ -623,7 +647,7 @@ test fn chains_undecodable_operand_chains_yes_does_not_refuse() -> Bool {
       },
       claim_flat_binding()
     ]
-  ) == false
+  ) == "absent"
 }
 
 // NEGATIVE CASE of the class that regressed at head c5ad78cb8eb (measured: subject
@@ -632,7 +656,7 @@ test fn chains_undecodable_operand_chains_yes_does_not_refuse() -> Bool {
 // ref) is not "an apply whose operation failed to decode", so it must never be classified as an
 // unknown comparison. Without the kind gate this witness refuses and goes red.
 test fn chains_two_non_apply_operands_do_not_refuse() -> Bool {
-  target_value_expr_comparison_chain_refuses(
+  chain_policy_variant(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence(
         operation: canonical_operation_op_lt(),
@@ -648,5 +672,5 @@ test fn chains_two_non_apply_operands_do_not_refuse() -> Bool {
         source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom)
       )
     ]
-  ) == false
+  ) == "absent"
 }
