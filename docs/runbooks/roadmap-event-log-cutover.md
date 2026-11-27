@@ -551,7 +551,7 @@ required, and `repo_root` is an **`--arg`** — there is no `--repo-root` flag o
 
 **Record an acceptance, BEFORE the merge.** Two pull-request arguments, together or neither; the arm of the
 red observation is SAID (`on_main` or `probe`), never guessed from which arguments came empty; the probe arm
-alone carries `--red-base` and `--probe-ref`. There is **no `--merged-at`**: the acceptance states no merge
+alone carries `--arg red_base=` and `--arg probe_ref=`. There is **no `--merged-at`**: the acceptance states no merge
 fact, and ctrl's merge gate reads this acceptance out of the standings, which is why it must be recordable
 while the pull request is still open.
 
