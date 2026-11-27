@@ -8,6 +8,8 @@ module test.claim.fleet.fleet_converge_hostname_converge_workflow_witness
 
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import extdeps.github.actions { DispatchInput, InputString, Job, Step }
 import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeYamlGenerated,
@@ -15,6 +17,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dispatch_inputs,
   fleet_converge_hostname_converge_job,
   fleet_converge_jobs,
+  fleet_converge_workflow_of,
   fleet_converge_subject_host_input_name,
   fleet_converge_yml_after_dispatch_input_capacity,
 }
@@ -27,12 +30,26 @@ import gunbc.host.host_hostname_converge {
 }
 import test.claim.fleet.fleet_converge_hostname_converge_emitter_witness { hostname_converge_job_id, step_if_text }
 
+// fleet_converge_jobs() now yields List<Outcome<Job>>; project the accepted jobs. A refusal is kept visible
+// as the gap between length(emitted_jobs()) and the raw list, so a scan over the accepted jobs never drops a
+// refused job out of view (which would let a word-comparison that should fail simply disappear).
+fn emitted_jobs() -> List<Job> {
+  match outcome_accepted_values(fleet_converge_jobs()) {
+    Present { value: jobs } => jobs
+    Absent => []
+  }
+}
+
 // THE ROUTE, NOT ONLY THE ANSWER. The job the workflow emits under this mode's id is the very value its
 // constructor builds; deleting the constructor's entry from the job list, or emitting a second job under the
 // id, turns this red.
 test fn the_workflow_carries_exactly_the_constructed_job() -> Bool {
-  let carried = filter(fleet_converge_jobs(), j => j.id == hostname_converge_job_id)
-  length(carried) == 1 && all(carried, j => j == fleet_converge_hostname_converge_job())
+  let carried = filter(emitted_jobs(), j => j.id == hostname_converge_job_id)
+  length(carried) == 1
+    && all(carried, j => match outcome_accepted_value(fleet_converge_hostname_converge_job()) {
+         Present { value: built } => j == built
+         Absent => false
+       })
 }
 
 // THE ACT WORD IS A SHARED FIELD, AND THIS IS THE LEG THAT MAKES THE REUSE SAFE RATHER THAN merely
@@ -69,8 +86,12 @@ fn job_allows_our_words_only_under_the_mode(job: Job) -> Bool {
 }
 
 test fn no_word_of_ours_unlocks_a_step_where_the_mode_is_not_required() -> Bool {
-  let jobs = fleet_converge_jobs()
-  all(jobs, j => job_allows_our_words_only_under_the_mode(job: j))
+  let raw = fleet_converge_jobs()
+  let jobs = emitted_jobs()
+  // Nothing may refuse, or a job that compares one of our words without the mode could vanish from the
+  // accepted list and the scan below would pass over it vacuously.
+  length(jobs) == length(raw)
+    && all(jobs, j => job_allows_our_words_only_under_the_mode(job: j))
     // And exactly one job belongs to this mode, so "only under our mode" cannot be satisfied by a second job
     // wearing the mode gate to compare our words for some other purpose.
     && count(filter(jobs, j => j.id == hostname_converge_job_id)) == 1
@@ -94,12 +115,15 @@ test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> B
       },
     ],
   )
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: over) {
-    FleetConvergeYamlGenerationRefused { reason: r } =>
-      string_contains(s: r, pattern: "the_row_that_broke_the_file")
-        && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
-        && string_contains(s: r, pattern: "EVERY mode")
-    FleetConvergeYamlGenerated { content: _ } => false
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } => match fleet_converge_yml_after_dispatch_input_capacity(inputs: over, wf: wf) {
+      FleetConvergeYamlGenerationRefused { reason: r } =>
+        string_contains(s: r, pattern: "the_row_that_broke_the_file")
+          && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
+          && string_contains(s: r, pattern: "EVERY mode")
+      FleetConvergeYamlGenerated { content: _ } => false
+    }
   }
 }
 
@@ -110,11 +134,14 @@ test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> B
 // boundary if the roster changes size -- and the roster sits exactly ON the cap today, which is the whole
 // reason this mode declares no input of its own.
 test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) {
-      FleetConvergeYamlGenerationRefused { reason: _ } => false
-      FleetConvergeYamlGenerated { content: c } =>
-        string_contains(s: c, pattern: "hostname-converge")
-    }
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } => match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs, wf: wf) {
+        FleetConvergeYamlGenerationRefused { reason: _ } => false
+        FleetConvergeYamlGenerated { content: c } =>
+          string_contains(s: c, pattern: "hostname-converge")
+      }
+  }
 }
 
 // THE FIELD THE GROUP NAMES IS A ROW THE WORKFLOW DECLARES. The group string is built from this module's

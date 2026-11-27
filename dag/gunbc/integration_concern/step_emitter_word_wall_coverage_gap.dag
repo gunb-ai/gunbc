@@ -1,0 +1,39 @@
+module gunbc.integration_concern.step_emitter_word_wall_coverage_gap
+
+// One row of the integration-concern register. The roster derives the row from this file
+// (module gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, step_emitter_word_wall_coverage_gap_review }
+
+data step_emitter_word_wall_coverage_gap: IntegrationConcern = IntegrationConcern {
+  identity: "step_emitter_word_wall_coverage_gap",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
+    requirement: "the run-step emitter path (gunbc_run_step_script -> gunbc_run_step_intent -> gunbc_invoke_step_emit_pipeline) enforces the invoke word wall on the run-body entry the way gunbc_run_command already does, so a hostile metacharacter entry is refused as a typed, located Diagnostic at the artifact boundary; today only gunbc_run_command crosses the alphabet guard, so attacker-shaped text admitted on the step-emitter path reaches committed workflow shell as a passing step",
+    standing: RequirementEstablished { by: step_emitter_word_wall_coverage_gap_review },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
+    tail: [
+      decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_intent"),
+      decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_emit_pipeline"),
+    ],
+  },
+  question: "does the step-emitter path enforce the invoke word wall? It does not -- only gunbc_run_command crosses the alphabet guard, so gunbc_invoke_word_wall_refuses_metacharacter_entry_holds is red on the origin/main tip AND on the head that retyped the emitter (identical red, not a regression from the retype). When the step-emitter path is brought behind the same word wall that gunbc_invoke_word_wall_diagnostic already emits (the alphabet guard applied to the run-body entry), the witness turns green and this row closes.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f945b1575d5df3c7f3ed0155a5c53675f23341d6",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_emit_pipeline") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_word_wall_refuses_metacharacter_entry_holds") },
+        ],
+      },
+      account: "Recorded while integrating emitter_string_return_carries_no_typed_refusal (review 97776). The retype deleted the three __GUNBC_INVOKE_EMIT_REFUSED__ poisons + the tier_o_workflow_produced scan, but the retained red control gunbc_invoke_word_wall_refuses_metacharacter_entry_holds was left red with no owner -- 'owned elsewhere' named no row, an untracked stall (gunbc.design_argument::guarantee_ladder meta-obligation 2). The discriminator is red on the origin/main tip and on this head alike: the step-emitter path never crosses the word wall, only gunbc_run_command does, so a metacharacter entry is admitted. Deliberately NOT fixed here (out of scope for the invoke-emitter retype; the fix is a word-wall application at the run-body entry, its own change). Recorded so the class is tracked and names its next-rung trigger, per gunbc.design_argument::continuous_generalization ('an unfinished reconciliation is recorded, not remembered').",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

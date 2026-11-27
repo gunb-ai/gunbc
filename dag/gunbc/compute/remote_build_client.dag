@@ -56,7 +56,7 @@ import gunbc.compute.remote_build {
   RemoteBuildCandidate, remote_build_candidates, remote_build_admitted_public_keys,
   RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
-  HostUnreachable, HostRefusedRequest, HostOutcomeUnknown, HostLegOverran, HostExecutionClassRefused,
+  HostUnreachable, HostUnknown, HostRefusedRequest, HostOutcomeUnknown, HostLegOverran, HostExecutionClassRefused,
   remote_build_host_placement, remote_build_any_host_admits, remote_build_admissible_hosts,
   remote_build_execution_requirements,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
@@ -528,6 +528,10 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostCapacityFull { detail: _, retry: _ } => "capacity-full"
     HostCannotServe { detail: _ } => "cannot-serve"
     HostUnreachable { detail: _ } => "unreachable"
+    // Reached and silent: the host never spoke the contract. A different fact from "unreachable"
+    // (never reached) and from "cannot-serve" (a declaration the host spoke) -- and from
+    // "outcome-unknown" (work may have started); nothing was sent here.
+    HostUnknown { exit_code: _, detail: _ } => "probe-unanswered"
     HostRefusedRequest { detail: _ } => "request-refused"
     HostOutcomeUnknown { detail: _ } => "outcome-unknown"
     HostLegOverran { deadline: d } =>
@@ -548,6 +552,7 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     // The detail IS the verdict, rendered by fabric; nothing here re-describes it.
     HostExecutionClassRefused { admission: _, detail } => detail
     HostUnreachable { detail } => detail
+    HostUnknown { exit_code: _, detail } => detail
     HostRefusedRequest { detail } => detail
     HostOutcomeUnknown { detail } => detail
     HostLegOverran { deadline: d } =>
@@ -722,6 +727,7 @@ fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
         HostCapacityFull { detail: _, retry: _ } => GateNoHostAdmitted
         HostCannotServe { detail: _ } => GateNoHostAdmitted
         HostUnreachable { detail: _ } => GateNoHostAdmitted
+        HostUnknown { exit_code: _, detail: _ } => GateNoHostAdmitted
         // A host the fleet's execution class refused never judged the code either: the work was refused
         // before it reached any host, which is the same class of non-verdict as a host that was down.
         HostExecutionClassRefused { admission: _, detail: _ } => GateNoHostAdmitted

@@ -3,21 +3,19 @@ module gunbc.ci.ci_bash_step
 import std.types { Bool, List, String }
 import v2.std.node { Node }
 import v2.extdeps.languages.bash_build { bash_build_assign, bash_build_command_from_lits, bash_build_or_else, bash_build_with_redir, bash_build_word_cmdsubst }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Outcome }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_orch_refused_poison }
 
 // The rendering of a runner authored as bash_build nodes into a step's script text, moved out of
 // gunbc.ci.ci_spec unchanged (gunbc.plans.closure_consolidation P1), and the repository-root
 // assignment every node-authored runner opens with.
 
 // ONE RENDERING OF bash_build STATEMENTS INTO A STEP'S SCRIPT TEXT, for every runner authored as nodes;
-// a rejected emission renders the refusal poison, never partial text.
-fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> String {
-  match bash_emit_stmts(statements: stmts, set_e: set_e) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
-  }
+// a rejected emission carries the emission's own located refusal through the Outcome (replacement_migration:
+// the in-band __GUNBC_INVOKE_EMIT_REFUSED__ poison and its tier_o scan are deleted -- a refused emission is a
+// typed Rejection from here to the artifact boundary, never partial text).
+fn gunbc_ci_bash_rendered(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
+  bash_emit_stmts(statements: stmts, set_e: set_e)
 }
 
 // THE REPOSITORY ROOT, read once at the top of a node-authored runner: the checkout's top level, or

@@ -66,7 +66,7 @@ import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requ
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_ssh_multiplex_directory_name, fleet_ssh_multiplex_runner_temp_env }
 import extdeps.ssh.client_options { shape_openssh_control_command_argv, SshControlExit }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted }
 import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
   BracketQuoted,
@@ -645,26 +645,33 @@ fn ci_wif_auth_step_with_condition(name: String, id: String, provider_resource: 
   }
 }
 
-fn ci_fleet_key_agent_step() -> Step {
+fn ci_fleet_key_agent_step() -> Outcome<Step> {
   ci_fleet_key_agent_step_when(if_condition: none)
 }
 
 // A job whose dispatches do not all consume host SSH authority passes the condition under which
 // they do, so a run that never opens a fleet session never holds the key (least access).
-fn ci_fleet_key_agent_step_when(if_condition: String?) -> Step {
-  RunStep {
-    name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
-    id: none,
-    run: gunbc_ci_fleet_key_agent_script(),
-    shell: none,
-    env: Present {
-      value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
-    },
-    working_directory: none,
-    if_condition: if_condition,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
+fn ci_fleet_key_agent_step_when(if_condition: String?) -> Outcome<Step> {
+  bind_outcome(
+    o: gunbc_ci_fleet_key_agent_script(),
+    f: fn(script) {
+      outcome_accepted(
+        value: RunStep {
+          name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
+          id: none,
+          run: script,
+          shell: none,
+          env: Present {
+            value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
+          },
+          working_directory: none,
+          if_condition: if_condition,
+          continue_on_error: none,
+          timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+        }
+      )
+    }
+  )
 }
 
 // THE MASTERS END BEFORE THE KEY DOES. Fleet key legs multiplex over control masters whose

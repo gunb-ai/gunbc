@@ -1,7 +1,6 @@
 module gunbc.heal_publisher_workflow
 import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
-
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count, Gibibyte, gibibyte, byte_size_count, gibibyte_to_byte_size }
 import std.optional { Optional, Present, Absent }
@@ -62,7 +61,6 @@ import gunbc.ci.ci_retry { ci_retry_step }
 import gunbc.auth.github_app_credential_step {github_app_installation_token_prelude, heal_publisher_token_mint}
 import gunbc.auth.github_apps {gunbai_bot_declared, gunbai_bot_declared_installation_id}
 import gunbc.auth.heal_publisher_federation {HealPublisherFederation}
-
 
 // THE PROTECTED PUBLISHER (gunbc#10958 Phase B), AND EVERY STRUCTURAL REASON IT IS SAFE TO GIVE IT A
 // CREDENTIAL.
@@ -278,21 +276,22 @@ fn heal_publisher_admit_step_name(profile: RepositoryCiProfile) -> String {
 // (gunb-ai/gunbc#16169); it is gone with the mirror's CI fork.
 fn heal_publisher_phase_script(
   profile: RepositoryCiProfile,
-  phase: DagInvocation,
+  phase: Outcome<DagInvocation>,
   source: PublisherCompilerSource
 ) -> Outcome<String> {
-  match source {
-    PublisherBuildsItsOwnCheckout { required_bins: _ } =>
-      outcome_accepted(
-        value: gunbc_run_step_script_with_prelude(
+  bind_outcome(
+    o: phase,
+    f: fn(p) { match source {
+      PublisherBuildsItsOwnCheckout { required_bins: _ } =>
+        gunbc_run_step_script_with_prelude(
           prelude: heal_publisher_cgroup_prelude(),
           source_roots: profile.roster.source_roots,
-          entry: phase.entry as String,
-          function: phase.function as String,
+          entry: p.entry as String,
+          function: p.function as String,
           receipt_rel: none
         )
-      )
-  }
+    }
+   })
 }
 
 // THE PUBLICATION PHASE, over the same roots the gate admitted: the row's publish invocation, rendered by
@@ -382,7 +381,7 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
               )
             ),
             role: consumes_only(capabilities: [CargoCapability]),
-          },
+          }
         ]
       )
   }
@@ -438,13 +437,13 @@ fn heal_publisher_bound_steps(
                   HealPublisherBoundStep {
                     step: heal_publisher_download_step(),
                     role: capability_neutral,
-                  },
+                  }
                 ],
                 route_steps
               ),
               [
                 HealPublisherBoundStep { step: admit_step, role: capability_neutral },
-                HealPublisherBoundStep { step: publish_step, role: capability_neutral },
+                HealPublisherBoundStep { step: publish_step, role: capability_neutral }
               ]
             )
           )
@@ -454,15 +453,14 @@ fn heal_publisher_bound_steps(
   )
 }
 
-
 fn heal_publisher_capability_closure_holds(steps: List<HealPublisherBoundStep>) -> Bool {
   capability_closure_is_closed(
     v: workflow_job_capability_closure(
       steps: list_map(
         xs: steps,
-        f: fn(b) { CapabilityAnnotatedStep { step_name: step_display_name(s: b.step), role: b.role } },
+        f: fn(b) { CapabilityAnnotatedStep { step_name: step_display_name(s: b.step), role: b.role } }
       )
-    ),
+    )
   )
 }
 
@@ -639,7 +637,10 @@ fn publisher_job_executes_candidate_code(steps: List<HealPublisherBoundStep>, pr
 fn publication_candidate_holds_publication_credential(profile: RepositoryCiProfile) -> Bool {
   match profile.heal {
     Absent => false
-    Present { value: policy } => heal_job_holds_publication_credential(job: policy)
+    Present { value: policy } => match heal_job_holds_publication_credential(job: policy) {
+      Accepted { value: holds } => holds
+      Rejected { diagnostics: _ } => true
+    }
   }
 }
 
@@ -662,7 +663,6 @@ data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publ
 
 // WHAT THE ROW FORBIDS BEFORE THE ADMISSIONS RUN: a publisher job for a repository that declares no
 // publisher is a job that downloads a candidate nothing seals.
-
 
 // THE PUBLISHER EMITTER, REFUSING BEFORE IT RENDERS. `gunbc#10887`'s shape -- a heal-publish.yml with no
 // heal.yml behind it, a job that fires with nothing to publish -- was reachable here because the emitter
@@ -808,7 +808,7 @@ fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gi
     "sudo mkdir -p \"$GUNBC_CG\"",
     concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
     "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
-    "cat \"$GUNBC_CG/memory.max\"",
+    "cat \"$GUNBC_CG/memory.max\""
   ]
 }
 
@@ -818,9 +818,9 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
     list_map(
       xs: hosted_runner_memory_cgroup_bind_commands(
         cgroup_name: heal_publisher_cgroup_name,
-        memory_max: hosted_arm_runner_cgroup_memory_max(),
+        memory_max: hosted_arm_runner_cgroup_memory_max()
       ),
-      f: fn(c) { ci_retry_step(command: c) },
+      f: fn(c) { ci_retry_step(command: c) }
     )
   )
 }
@@ -829,13 +829,13 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
 // the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
 // go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
 // commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
-fn heal_publisher_cgroup_prelude_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+fn heal_publisher_cgroup_prelude_script() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: heal_publisher_cgroup_prelude(),
       on_failure: FailFast
     }),
-    "\n"
+    f: fn(body) { outcome_accepted(value: concat(body, "\n")) }
   )
 }
 
@@ -843,9 +843,9 @@ fn heal_publisher_cgroup_prelude_script() -> String {
 // publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
 // the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
 // repository by its own federation record, as one rendered fragment ahead of its own invocation.
-fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: concat(
         heal_publisher_cgroup_prelude(),
         github_app_installation_token_prelude(
@@ -854,6 +854,6 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
       ),
       on_failure: FailFast
     }),
-    "\n"
+    f: fn(body) { outcome_accepted(value: concat(body, "\n")) }
   )
 }

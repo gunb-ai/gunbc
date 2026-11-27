@@ -1,6 +1,8 @@
 module test.claim.fleet.fleet_microvm_workflow_witness
 
 import std.types { Bool, String, List }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
 import extdeps.github.actions { Step, RunStep }
@@ -27,9 +29,21 @@ fn microvm_step_env_names(step: Step) -> List<String> {
   }
 }
 
+// The two micro-VM step builders now yield Outcome<Step>. The type checker accepts an Outcome<Step> where a
+// Step is declared, so handing one straight to the RunStep match above would silently miss and return the
+// empty list -- a false red. Unwrap the accepted step; a refusal yields the empty list so the assertion fails
+// closed instead of passing on a fabricated blank (any([]) is false, so the claim cannot be satisfied by a
+// refused step).
+fn microvm_step_env_names_of(step: Outcome<Step>) -> List<String> {
+  match outcome_accepted_value(step) {
+    Present { value: s } => microvm_step_env_names(step: s)
+    Absent => []
+  }
+}
+
 test fn both_microvm_steps_pass_the_selected_host_to_the_binding() -> Bool {
-  let converge_env = microvm_step_env_names(step: fleet_converge_microvm_host_converge_step())
-  let probe_env = microvm_step_env_names(step: fleet_converge_microvm_boot_probe_step())
+  let converge_env = microvm_step_env_names_of(step: fleet_converge_microvm_host_converge_step())
+  let probe_env = microvm_step_env_names_of(step: fleet_converge_microvm_boot_probe_step())
   any(converge_env, n => n == fleet_converge_expected_host_env_name)
     && any(probe_env, n => n == fleet_converge_expected_host_env_name)
 }
