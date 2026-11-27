@@ -45,10 +45,12 @@ data malformed_record_expression_position: String =
   "fn probe() -> Int {\n  let x = Brand { 1 }\n  x\n}\n"
 
 // A LEGITIMATE record literal in if-condition position parses AS THE RECORD LITERAL IT IS: the
-// attempt succeeds (field spelling `value: 1`), no fallback, no ParseError rows. This is the case
-// the fallback must not swallow.
+// attempt succeeds (field spelling `value: 1`), no fallback, and the branch block that follows is
+// still a block. This is the case the fallback must not swallow. (The record literal KEEPS the
+// brace group it legitimately owns -- a single brace group after an uppercase-ending condition is
+// inherently the record literal's, and no formation rule can also make it the block.)
 data record_literal_in_condition_position: String =
-  "fn probe(x: Int) -> Int {\n  if x == Present { value: 1 } else { 0 }\n}\n"
+  "fn probe(x: Int) -> Int {\n  if x == Present { value: 1 } { 2 } else { 0 }\n}\n"
 
 // VERBATIM carrier input (recurring_failure_mode row guarantee.seed_checklist.parse_formation_silent):
 // the measured false refusal, condition `brand_verdict == BrandNominalDistinctDeclarations` followed
