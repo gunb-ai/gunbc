@@ -11817,6 +11817,35 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    provider_layout: RefCell<Option<ProviderLayout>>,
+}
+
+pub(crate) type ProviderLayout = Rc<dyn Fn(&str) -> provider_acquire::PoolAnswer>;
+
+pub(crate) struct ParseWork {
+    intern_table: Rc<InternTable>,
+    parse_cache: std::collections::HashMap<String, ParseCacheEntry>,
+    normalize_diag_cache: std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>,
+}
+
+impl MultiEntryIndex {
+    pub(crate) fn take_parse_work(&self) -> ParseWork {
+        ParseWork {
+            intern_table: self.intern_table.borrow().clone(),
+            parse_cache: std::mem::take(&mut *self.parse_cache.borrow_mut()),
+            normalize_diag_cache: std::mem::take(&mut *self.normalize_diag_cache.borrow_mut()),
+        }
+    }
+
+    pub(crate) fn adopt_parse_work(&self, work: ParseWork) {
+        *self.intern_table.borrow_mut() = work.intern_table;
+        *self.parse_cache.borrow_mut() = work.parse_cache;
+        *self.normalize_diag_cache.borrow_mut() = work.normalize_diag_cache;
+    }
+
+    pub(crate) fn answer_providers_from(&self, layout: ProviderLayout) {
+        *self.provider_layout.borrow_mut() = Some(layout);
+    }
 }
 
 #[track_caller]
@@ -20861,6 +20890,51 @@ pub struct ClaimSelectionScope {
     pub beneath: bool,
 }
 
+fn claim_route_admitted_roots(source_roots: &[String]) -> Result<Vec<String>, String> {
+    let workspace = std::env::current_dir()
+        .map_err(|e| format!("cause=ClaimRouteWorkspaceUnresolved detail=\"{e}\""))?;
+    let base = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.clone());
+    let checkout = workspace_root();
+    let checkout = checkout.canonicalize().unwrap_or(checkout);
+    let mut admitted: Vec<String> = Vec::new();
+    for root in source_roots {
+        let spelled = std::path::Path::new(root.as_str());
+        let candidate = if spelled.is_absolute() {
+            spelled.to_path_buf()
+        } else {
+            base.join(spelled)
+        };
+        let canonical = match candidate.canonicalize() {
+            Ok(real) if real.is_dir() && real.starts_with(&base) => {
+                real.strip_prefix(&checkout).ok().map(|rel| {
+                    if rel.as_os_str().is_empty() {
+                        ".".to_string()
+                    } else {
+                        rel.to_string_lossy().replace('\\', "/")
+                    }
+                })
+            }
+            _ => None,
+        };
+        let Some(canonical) = canonical else {
+            return Err(format!(
+                "cause=ClaimRouteSourceRootOutsideWorkspace root={root} \
+                 workspace={} — --source-root names the claim corpus relative to the \
+                 checkout; a root that is not a directory under it (absolute outside, \
+                 escaping, or absent) is a refusal at the option's admission, not a \
+                 fallback to the default corpus and not a panic.",
+                base.display()
+            ));
+        };
+        if !admitted.contains(&canonical) {
+            admitted.push(canonical);
+        }
+    }
+    Ok(admitted)
+}
+
 pub fn run_claim_route(
     source_roots: &[String],
     scopes: &[ClaimSelectionScope],
@@ -20877,37 +20951,9 @@ pub fn run_claim_route(
     // `repo_relative_path_normalized: ... is not under ...` with rc=101), and never a quiet
     // fallback to the default corpus: a route that cannot honour the corpus it was asked to read
     // refuses rather than reading another one and reporting the standing anyway.
-    {
-        let workspace = std::env::current_dir()
-            .map_err(|e| format!("cause=ClaimRouteWorkspaceUnresolved detail=\"{e}\""))?;
-        let base = workspace
-            .canonicalize()
-            .unwrap_or_else(|_| workspace.clone());
-        for root in source_roots {
-            let spelled = std::path::Path::new(root.as_str());
-            let candidate = if spelled.is_absolute() {
-                spelled.to_path_buf()
-            } else {
-                base.join(spelled)
-            };
-            let under = match candidate.canonicalize() {
-                Ok(real) => real.is_dir() && real.starts_with(&base),
-                Err(_) => false,
-            };
-            if !under {
-                return Err(format!(
-                    "cause=ClaimRouteSourceRootOutsideWorkspace root={root} \
-                     workspace={} — --source-root names the claim corpus relative to the \
-                     checkout; a root that is not a directory under it (absolute outside, \
-                     escaping, or absent) is a refusal at the option's admission, not a \
-                     fallback to the default corpus and not a panic.",
-                    base.display()
-                ));
-            }
-        }
-    }
-    let (index, selected_sources) =
-        demand_acquire::claim_route_acquired_index(source_roots, scopes, module_selected)?;
+    let source_roots = &claim_route_admitted_roots(source_roots)?;
+    let (acquisition, selected_sources) =
+        demand_acquire::claim_route_acquisition(source_roots, scopes, module_selected)?;
     let selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> =
         selected_sources.iter().map(|(m, sf)| (m, sf)).collect();
     if selected.is_empty() {
@@ -20959,17 +21005,18 @@ pub fn run_claim_route(
         // `outcome=`). A resolve finding is not a claim that evaluated and did not hold. Only a source
         // that cannot be enumerated AT ALL still refuses the whole route (above) -- never an unobserved
         // row for a claim we cannot name.
-        let resolved = match resolve_entry_with_index_typed(&index, &entry) {
-            Err(refusal) => Err(refusal),
-            Ok((graph, source_indices)) => match closure_subject_for_entry(&index, &entry) {
-                // The entry resolved; only the reference-closure subject read then failed. That is
-                // not the corpus's own name/type diagnostic, so it falls toward no observation.
-                Err(e) => Err(entry_resolve::EntryResolveRefusal::ResolveInfrastructure {
-                    message: format!("closure subject {entry}: {e}"),
-                }),
-                Ok(closure_subject) => Ok(((graph, source_indices), closure_subject)),
-            },
-        };
+        let entry_source = selected
+            .iter()
+            .find(|(m, _)| **m == module_path)
+            .map(|(_, sf)| (*sf).clone())
+            .ok_or_else(|| {
+                format!(
+                    "cause=FloorDiscoveryEntryOutsideSubject entry={entry} module={module_path}"
+                )
+            })?;
+        let resolved = acquisition
+            .resolve_entry(&module_path, &entry_source)
+            .map(|r| ((r.graph, r.source_indices), r.closure_subject));
         match resolved {
             Err(refusal) => {
                 for function in functions {

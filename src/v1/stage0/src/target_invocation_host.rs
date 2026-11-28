@@ -2495,11 +2495,12 @@ fn quote_detail(text: &str) -> String {
 }
 
 /// THE CLAIM ROUTE: select the discovered claims the batch's patterns contain, evaluate each, print one
-/// line per claim, fold the verdicts. THE BATCH IS ONE PROCESS AND ONE SELECTION: the corpus is walked
-/// once (`cli_run::run_claim_route`'s single module-index pass), the claims are enumerated from that
-/// walk, and each is matched against EVERY pattern -- so selection is driven by the discovered corpus
-/// rather than by the operand list, and a claim two operands both denote is enrolled once, not twice.
-/// No operand widens another: a pattern selects only what it contains.
+/// line per claim, fold the verdicts. THE BATCH IS ONE PROCESS AND ONE SELECTION: the selected modules
+/// are read once (`cli_run::run_claim_route`'s selection), the claims are enumerated from them, and
+/// each is matched against EVERY pattern -- so selection is driven by the discovered corpus rather
+/// than by the operand list, and a claim two operands both denote is enrolled once, not twice. No
+/// operand widens another: a pattern selects only what it contains, and no selected module changes
+/// what another module's entry resolves against.
 ///
 /// The subject is narrowed to the modules the patterns can reach BEFORE discovery, so a batch of exact
 /// labels reads those modules rather than the corpus; the corpus roots arrive from the caller's
@@ -5080,10 +5081,7 @@ mod claim_route_result_contract_tests {
             .expect("the isolated crossing witness is a collection, not a route refusal");
         let batched = route_over(
             &roots,
-            &[
-                module_scope(crossing, false),
-                module_scope(importer, false),
-            ],
+            &[module_scope(crossing, false), module_scope(importer, false)],
             &|m| m == crossing || m == importer,
         )
         .expect("the batched crossing witness is a collection, not a route refusal");
@@ -5154,11 +5152,15 @@ mod claim_route_result_contract_tests {
             &[
                 (
                     "a.dag",
-                    &format!("module test.claim.{package}.a\n\ntest fn zz_a() -> Bool {{\n  true\n}}\n"),
+                    &format!(
+                        "module test.claim.{package}.a\n\ntest fn zz_a() -> Bool {{\n  true\n}}\n"
+                    ),
                 ),
                 (
                     "b.dag",
-                    &format!("module test.claim.{package}.b\n\ntest fn zz_b() -> Bool {{\n  true\n}}\n"),
+                    &format!(
+                        "module test.claim.{package}.b\n\ntest fn zz_b() -> Bool {{\n  true\n}}\n"
+                    ),
                 ),
             ],
         );
@@ -5177,10 +5179,7 @@ mod claim_route_result_contract_tests {
                 .unwrap_or_else(|cause| panic!("--source-root {dag}: {cause}")),
             )
         };
-        let expected = vec![
-            format!("{subtree}.a:zz_a"),
-            format!("{subtree}.b:zz_b"),
-        ];
+        let expected = vec![format!("{subtree}.a:zz_a"), format!("{subtree}.b:zz_b")];
         assert_eq!(labels_under("dag"), expected, "dag");
         assert_eq!(labels_under("./dag"), expected, "./dag");
         assert_eq!(labels_under(&absolute), expected, "{absolute}");
@@ -5194,7 +5193,10 @@ mod claim_route_result_contract_tests {
         let body = format!("module {child}\n\ntest fn zz_child() -> Bool {{\n  true\n}}\n");
         let _fixture = GovernedClaimPackage::new(&package, &[("child.dag", &body)]);
         let governed_path = format!("dag/test/claim/{package}/child.dag");
-        let custom = scratch_root(&format!("dup_{}", std::process::id()), &[("child.dag", &body)]);
+        let custom = scratch_root(
+            &format!("dup_{}", std::process::id()),
+            &[("child.dag", &body)],
+        );
         let custom_path = format!(
             "target/gunbc_claim_route_contract_dup_{}/test/claim/child.dag",
             std::process::id()

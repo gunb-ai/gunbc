@@ -1600,6 +1600,7 @@ fn multi_entry_index_shell_body(
         reference_reading_parses: std::cell::Cell::new(0),
         parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
+        provider_layout: RefCell::new(None),
     }
 }
 
@@ -1858,6 +1859,7 @@ pub enum EntryResolveRefusal {
 pub(crate) enum ResolveFailure {
     Diagnostics(String),
     Infrastructure(String),
+    ProvidersOutsideIndex(Vec<String>),
 }
 
 impl From<String> for ResolveFailure {
@@ -1870,6 +1872,7 @@ impl ResolveFailure {
     pub(crate) fn into_message(self) -> String {
         match self {
             Self::Diagnostics(m) | Self::Infrastructure(m) => m,
+            Self::ProvidersOutsideIndex(modules) => providers_outside_index_message(&modules),
         }
     }
 }
@@ -1902,11 +1905,21 @@ pub fn resolve_entry_with_index_typed(
     resolve_entry_with_parse_cache_typed(index, entry_file).map_err(EntryResolveRefusal::from)
 }
 
+fn providers_outside_index_message(modules: &[String]) -> String {
+    format!(
+        "generated providers {modules:?} are outside this index, and its builder did not rebuild \
+         over them"
+    )
+}
+
 impl From<ResolveFailure> for EntryResolveRefusal {
     fn from(failure: ResolveFailure) -> Self {
         match failure {
             ResolveFailure::Diagnostics(message) => Self::ClosureDiagnostics { message },
             ResolveFailure::Infrastructure(message) => Self::ResolveInfrastructure { message },
+            ResolveFailure::ProvidersOutsideIndex(modules) => Self::ResolveInfrastructure {
+                message: providers_outside_index_message(&modules),
+            },
         }
     }
 }
@@ -2312,16 +2325,18 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     // checked again; the closure only grows and the model refuses a module it already holds, so the
     // recursion reaches Complete or a typed refusal. One loop for every caller of this core.
     // A module in the index is held: its source text was read when the index was built, which
-    // refuses an unreadable or doubly-declared module. Outside it this index has NO answer: the
-    // layout-backed answer belonged to the lossy run loop that answered from a layout and rebuilt its
-    // own closure, and that machinery is deleted with the loop. The demand-acquired route answers each
-    // module from `layout_provider_answer` and rebuilds through
-    // `provider_acquire::compile_to_provider_fixed_point_with`, never through this core.
+    // refuses an unreadable or doubly-declared module. Outside it, an index that holds its whole
+    // pool answers Lacks; an index built over a demand-acquired closure carries the layout's answer
+    // (`MultiEntryIndex::answer_providers_from`), and a provider the layout holds refuses this
+    // resolve as `ProvidersOutsideIndex` so its builder rebuilds the closure over it.
+    let provider_layout = index.provider_layout.borrow().clone();
     let pool = |m: &str| {
         if index.source_files.contains_key(m) {
-            super::provider_acquire::PoolAnswer::Holds
-        } else {
-            super::provider_acquire::PoolAnswer::Lacks
+            return super::provider_acquire::PoolAnswer::Holds;
+        }
+        match &provider_layout {
+            Some(layout) => layout(m),
+            None => super::provider_acquire::PoolAnswer::Lacks,
         }
     };
     match super::provider_acquire::judge_closure(
@@ -2370,14 +2385,14 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
                     super::provider_acquire::stalled(&provider_demands, &modules)
                 }
                 super::provider_acquire::Extension::OutsideIndex(outside) => {
-                    // Cannot arrive for THIS builder, and it is a guard rather than a route: the model
-                    // only ever demands acquisition of a module its pool answered Holds for, and this
-                    // core's pool answers Holds only for a module in `index.source_files` -- the same
-                    // map `provider_closure_of` consults before it can report a module outside the
-                    // index. The other builders that DO rebuild (the demand-acquired route, and
-                    // emit-check/the hermetic fixture through their own adapter) answer this variant
-                    // themselves. Refused loudly, never silently: a guard being quiet is not a guard
-                    // being dead.
+                    // Without a layout answer this cannot arrive, and it is a guard rather than a
+                    // route: the pool then answers Holds only for a module in `index.source_files` --
+                    // the same map `provider_closure_of` consults before it can report a module
+                    // outside the index. Refused loudly, never silently: a guard being quiet is not a
+                    // guard being dead.
+                    if provider_layout.is_some() {
+                        return Err(ResolveFailure::ProvidersOutsideIndex(outside));
+                    }
                     return Err(ResolveFailure::Infrastructure(format!(
                         "generated providers {outside:?} are outside the whole-tree index, whose pool \
                          holds only what the index itself read"

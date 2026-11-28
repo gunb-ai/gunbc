@@ -330,7 +330,13 @@ pub(crate) fn layout_provider_answer(
     module: &str,
     duplicates: CustomRootDuplicate,
 ) -> super::entry_resolve::ProviderLayoutAnswer {
-    match read_layout_module(source_roots, custom, module, duplicates) {
+    provider_layout_answer_of(read_layout_module(source_roots, custom, module, duplicates))
+}
+
+fn provider_layout_answer_of(
+    read: Result<Option<Rc<v1_compiler_compile::SourceFile>>, String>,
+) -> super::entry_resolve::ProviderLayoutAnswer {
+    match read {
         Ok(Some(source)) => super::entry_resolve::ProviderLayoutAnswer::Holds(source),
         Ok(None) => super::entry_resolve::ProviderLayoutAnswer::Lacks,
         Err(_) => super::entry_resolve::ProviderLayoutAnswer::Unreadable,
@@ -395,28 +401,31 @@ pub(crate) fn acquire_layout_closure_seeded(
         index.insert(seed.clone(), snapshot.clone());
         queue.push_back(seed.clone());
     }
-    close_over_layout(source_roots, custom, duplicates, index, queue)
+    close_over_layout(custom, index, queue, &|name: &str| {
+        read_layout_module(source_roots, custom, name, duplicates)
+    })
 }
 
+type LayoutRead<'a> =
+    &'a dyn Fn(&str) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String>;
+
 fn close_over_layout(
-    source_roots: &[String],
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-    duplicates: CustomRootDuplicate,
     mut index: ModuleSourceIndex,
     mut queue: VecDeque<String>,
+    read: LayoutRead,
 ) -> Result<ModuleSourceIndex, String> {
     let mut known: HashSet<String> = index.keys().cloned().collect();
     while let Some(module) = queue.pop_front() {
         let Some(source) = index.get(&module).cloned() else {
             continue;
         };
-        let demanded = demanded_module_names(&source.path, &source.content, &known, &custom);
+        let demanded = demanded_module_names(&source.path, &source.content, &known, custom);
         for name in demanded {
             if index.contains_key(&name) {
                 continue;
             }
-            let Some(acquired) = read_layout_module(source_roots, &custom, &name, duplicates)?
-            else {
+            let Some(acquired) = read(&name)? else {
                 continue;
             };
             known.insert(name.clone());
@@ -427,72 +436,221 @@ fn close_over_layout(
     Ok(index)
 }
 
-pub(crate) fn claim_route_acquired_index(
+struct ClaimRouteLayoutReads {
+    source_roots: Vec<String>,
+    custom: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    reads: std::cell::RefCell<std::collections::HashMap<String, LayoutReadAnswer>>,
+}
+
+type LayoutReadAnswer = Result<Option<Rc<v1_compiler_compile::SourceFile>>, String>;
+
+impl ClaimRouteLayoutReads {
+    fn read(&self, name: &str) -> LayoutReadAnswer {
+        if let Some(answer) = self.reads.borrow().get(name) {
+            return answer.clone();
+        }
+        let answer = read_layout_module(
+            &self.source_roots,
+            &self.custom,
+            name,
+            CustomRootDuplicate::Refuse,
+        );
+        self.reads
+            .borrow_mut()
+            .insert(name.to_string(), answer.clone());
+        answer
+    }
+}
+
+pub(crate) struct ClaimRouteAcquisition {
+    layout: Rc<ClaimRouteLayoutReads>,
+    parse_work: std::cell::RefCell<Option<super::ParseWork>>,
+}
+
+pub(crate) struct ClaimEntryResolved {
+    pub(crate) graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    pub(crate) source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub(crate) closure_subject: String,
+}
+
+pub(crate) fn claim_route_acquisition(
     source_roots: &[String],
     scopes: &[super::ClaimSelectionScope],
     module_selected: &dyn Fn(&str) -> bool,
 ) -> Result<
     (
-        Rc<MultiEntryIndex>,
+        ClaimRouteAcquisition,
         Vec<(String, Rc<v1_compiler_compile::SourceFile>)>,
     ),
     String,
 > {
-    let custom = custom_root_module_census_under(source_roots, CustomRootDuplicate::Refuse)?;
+    let layout = Rc::new(ClaimRouteLayoutReads {
+        source_roots: source_roots.to_vec(),
+        custom: custom_root_module_census_under(source_roots, CustomRootDuplicate::Refuse)?,
+        reads: std::cell::RefCell::new(std::collections::HashMap::new()),
+    });
     let mut candidates: std::collections::BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> =
         std::collections::BTreeMap::new();
     for scope in scopes {
         let name = scope.module_segments.join(".");
         if !name.is_empty() {
-            if let Some(source) =
-                read_layout_module(source_roots, &custom, &name, CustomRootDuplicate::Refuse)?
-            {
-                candidates.insert(name.clone(), source);
+            if let Some(source) = layout.read(&name)? {
+                admit_claim_candidate(&mut candidates, name.clone(), source)?;
             }
         }
         if scope.beneath {
             for (module, source) in layout_modules_beneath(source_roots, &name)? {
-                candidates.insert(module, source);
+                admit_claim_candidate(&mut candidates, module, source)?;
             }
         }
     }
-    for (module, source) in &custom {
-        candidates.insert(module.clone(), source.clone());
+    for (module, source) in &layout.custom {
+        admit_claim_candidate(&mut candidates, module.clone(), source.clone())?;
     }
-    let selected: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = candidates
+    for (module, source) in &candidates {
+        layout
+            .reads
+            .borrow_mut()
+            .insert(module.clone(), Ok(Some(source.clone())));
+    }
+    let selected = candidates
         .into_iter()
         .filter(|(module, _)| module_selected(module))
         .collect();
-    super::pre_entry_phase::mark_demand_acquired_path();
-    let source_files = super::pre_entry_phase::timed(
-        "demand_layout_acquire",
-        super::pre_entry_phase::PhaseScale::Closure,
-        || {
-            let mut index: ModuleSourceIndex = HashMap::new();
-            let mut queue: VecDeque<String> = VecDeque::new();
-            for (module, source) in &selected {
-                index.insert(module.clone(), source.clone());
-                queue.push_back(module.clone());
-            }
-            close_over_layout(
-                source_roots,
-                &custom,
-                CustomRootDuplicate::Refuse,
-                index,
-                queue,
-            )
-        },
-    )?;
-    super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
-    let facts = module_graph_facts_from_acquired(&source_files, source_roots);
     Ok((
-        Rc::new(new_multi_entry_index_acquired(
-            source_files,
-            source_roots,
-            facts,
-        )),
+        ClaimRouteAcquisition {
+            layout,
+            parse_work: std::cell::RefCell::new(None),
+        },
         selected,
     ))
+}
+
+fn admit_claim_candidate(
+    candidates: &mut std::collections::BTreeMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    module: String,
+    source: Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(), String> {
+    match candidates.get(&module) {
+        Some(first) if first.path != source.path => Err(format!(
+            "module {module} is declared in both {} and {}",
+            first.path, source.path
+        )),
+        Some(_) => Ok(()),
+        None => {
+            candidates.insert(module, source);
+            Ok(())
+        }
+    }
+}
+
+impl ClaimRouteAcquisition {
+    pub(crate) fn resolve_entry(
+        &self,
+        entry_module: &str,
+        entry_source: &Rc<v1_compiler_compile::SourceFile>,
+    ) -> Result<ClaimEntryResolved, super::entry_resolve::EntryResolveRefusal> {
+        use super::entry_resolve::{EntryResolveRefusal, ResolveFailure};
+        let mut seeds: Vec<String> = Vec::new();
+        loop {
+            let index = self
+                .entry_index(entry_module, entry_source, &seeds)
+                .map_err(|message| EntryResolveRefusal::ResolveInfrastructure { message })?;
+            let resolved = super::entry_resolve::resolve_entry_with_parse_cache_typed(
+                &index,
+                &entry_source.path,
+            );
+            let step = match resolved {
+                Ok((graph, source_indices)) => {
+                    Ok(super::closure_subject_for_entry(&index, &entry_source.path)
+                        .map(|closure_subject| ClaimEntryResolved {
+                            graph,
+                            source_indices,
+                            closure_subject,
+                        })
+                        .map_err(|e| EntryResolveRefusal::ResolveInfrastructure {
+                            message: format!("closure subject {}: {e}", entry_source.path),
+                        }))
+                }
+                Err(ResolveFailure::ProvidersOutsideIndex(outside)) => Err(outside),
+                Err(failure) => Ok(Err(EntryResolveRefusal::from(failure))),
+            };
+            *self.parse_work.borrow_mut() = Some(index.take_parse_work());
+            let fresh: Vec<String> = match step {
+                Ok(outcome) => return outcome,
+                Err(outside) => outside.into_iter().filter(|m| !seeds.contains(m)).collect(),
+            };
+            if fresh.is_empty() {
+                return Err(EntryResolveRefusal::ResolveInfrastructure {
+                    message: "generated provider acquisition made no progress on the claim route: \
+                              every provider it asked for is already seeded"
+                        .to_string(),
+                });
+            }
+            seeds.extend(fresh);
+        }
+    }
+
+    fn entry_index(
+        &self,
+        entry_module: &str,
+        entry_source: &Rc<v1_compiler_compile::SourceFile>,
+        seeds: &[String],
+    ) -> Result<Rc<MultiEntryIndex>, String> {
+        let layout = &self.layout;
+        super::pre_entry_phase::mark_demand_acquired_path();
+        let source_files = super::pre_entry_phase::timed(
+            "demand_layout_acquire",
+            super::pre_entry_phase::PhaseScale::Closure,
+            || {
+                let mut index: ModuleSourceIndex = HashMap::new();
+                let mut queue: VecDeque<String> = VecDeque::new();
+                index.insert(entry_module.to_string(), entry_source.clone());
+                queue.push_back(entry_module.to_string());
+                for seed in seeds {
+                    if index.contains_key(seed) {
+                        continue;
+                    }
+                    let Some(source) = layout.read(seed)? else {
+                        return Err(format!(
+                            "generated provider {seed} was answered Holds and its read now holds \
+                             no module"
+                        ));
+                    };
+                    index.insert(seed.clone(), source);
+                    queue.push_back(seed.clone());
+                }
+                close_over_layout(&layout.custom, index, queue, &|name: &str| {
+                    layout.read(name)
+                })
+            },
+        )?;
+        super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
+        let facts = module_graph_facts_from_acquired(&source_files, &layout.source_roots);
+        let index = Rc::new(new_multi_entry_index_acquired(
+            source_files,
+            &layout.source_roots,
+            facts,
+        ));
+        if let Some(work) = self.parse_work.borrow_mut().take() {
+            index.adopt_parse_work(work);
+        }
+        let answers = layout.clone();
+        index.answer_providers_from(Rc::new(
+            move |module: &str| match provider_layout_answer_of(answers.read(module)) {
+                super::entry_resolve::ProviderLayoutAnswer::Holds(_) => {
+                    super::provider_acquire::PoolAnswer::Holds
+                }
+                super::entry_resolve::ProviderLayoutAnswer::Lacks => {
+                    super::provider_acquire::PoolAnswer::Lacks
+                }
+                super::entry_resolve::ProviderLayoutAnswer::Unreadable => {
+                    super::provider_acquire::PoolAnswer::Unreadable
+                }
+            },
+        ));
+        Ok(index)
+    }
 }
 
 fn layout_modules_beneath(
