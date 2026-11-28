@@ -9374,9 +9374,19 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // The capture-count debt admitted by the plan rather than by its author (vivid-swift-693, 2026-11-25):
     // the consumer row DissolutionCondition names this row, so the trigger is the plan own, not the worker own.
     edge(child: "source-annotation-fold-carries-absorbed-capture-count", parent: "parse-comment-gap-attachment-v2-consumed"),
-    // The substitution skip holds list-append-refuses-an-element-argument: its repro stays silently accepted while
-    // substitute_generics_apply never visits the subtree of a TypeVariable-inferred formal. See the row's boundary.
-    edge(child: "list-append-refuses-an-element-argument", parent: "generic-substitution-skips-the-subtree-under-a-type-variable-inferred-node"),
+    // NO EDGE here, on purpose. An edge is a PREREQUISITE, not commentary: roadmap_model.dag roadmap_parent_ids
+    // preserves every prerequisite, and roadmap_spawner.dag node_unmet_parent_ids feeding
+    // roadmap_readiness.dag readiness_dependency_gaps turns an unmet one into a blocking GapDependencies. The row named
+    // as parent declares its own red NOT DISPATCHABLE UNTIL OBSERVED, so an edge would gate a dispatchable node behind
+    // an undispatchable one - which is what this line used to do. That is the whole of what this removal asserts.
+    // The substitution-skip idea is a HYPOTHESIS owned by the row itself: id "generic-substitution-skips-the-subtree-under-a-type-variable-inferred-node"
+    // in this file. Measured at base a58ba3e3d4ae, no row under dag/gunbc/recurring_failure_mode/ states it as a cause:
+    // git grep -l substitute_generics_apply origin/main -- dag/gunbc/recurring_failure_mode/*.dag returns five files
+    // (error_type_fabricated_as_a_type_by_total_accessors, field_access_on_a_generic_call_result_keeps_the_uninstantiated_parameter,
+    // generic_identity_decided_by_spelling, generic_optional_over_a_type_application_argument_loses_the_optional,
+    // silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics) and none of them mentions visiting a subtree.
+    // So no carrier is cited here, rather than a path that does not resolve. When the hypothesis is observed it gets its
+    // own typed carrier, per gunbc.design_argument::guarantee_ladder, not an edge standing in for evidence.
     // The bare-124 class: the shared receipt lands with the boot probe's row.
     edge(child: "bare-124-timeout-readers-consume-the-bound-observation", parent: "boot-probe-must-not-read-a-bare-124-as-a-deadline"),
     // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
