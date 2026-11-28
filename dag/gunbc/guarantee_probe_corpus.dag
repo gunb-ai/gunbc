@@ -245,6 +245,18 @@ data call_duplicate_green_probe: GuaranteeProbeId = "call-label-surplus-duplicat
 
 data method_missing_red_probe: GuaranteeProbeId = "method-established-surface-missing-red" as GuaranteeProbeId
 data method_green_probe: GuaranteeProbeId = "method-established-surface-green-control" as GuaranteeProbeId
+// Carrier for the alias-return hole (roadmap node method-receiver-normalization,
+// rn_TMC5UFTYNMSBMS7FLXYIVQCSRE). Observed red ON MAIN, executed: the census observes 0 blocking
+// rows for the alias-return program (the executed DID-NOT-HOLD line lives in the node handback) while
+// the nominal spelling of the same program is accepted with zero blocking. This is the typed
+// carrier for a known hole -- NOT a witness leg that asserts a refusal main does not raise
+// (a merged claim that does not hold is a red that means 'unfixed', and the next session 'repairs'
+// it by relaxing the assertion). BOUNDED TRIGGER, the flip rule of this file's
+// ExpectSilentAcceptanceHole note: the day the fold/lookup side keys the alias at the coproduct
+// and raises its own cause -- MethodNotFound at subject 'Coproduct(FreeMonoid)' -- this row
+// FLIPS to ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" } and becomes the permanent
+// regression control that the higher rung stays real.
+data alias_return_fold_silent_hole_probe: GuaranteeProbeId = "method-established-surface-alias-return-silent-acceptance-hole" as GuaranteeProbeId
 
 data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
 data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
@@ -792,6 +804,14 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: method_established_surface_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MethodNotFound" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: alias_return_fold_silent_hole_probe,
+      class: method_established_surface_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "an alias-return receiver whose fold resolves at a coproduct carrier is accepted with zero blocking diagnostics -- fn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) } compiles on main with zero blocking rows and 164 advisory rows, all inside the imported std modules (the observation today is ACCEPTED_COUNTED, not ACCEPTED_CLEAN; measured via test.claim.guarantee_floor_class_probe_witness method_alias_return_fold_omission_is_still_silent) (type List<element> = FreeMonoid<element>, dag/std/types.dag) -- while the row method-receiver-normalization declares this spelling must refuse with its own cause, MethodNotFound keyed at the coproduct" as NonEmptyStr,
+      },
     },
     GuaranteeProbeRow {
       probe: sole_ctor_admitted_caller_green_probe,

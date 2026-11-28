@@ -23,12 +23,14 @@ import gunbc.guarantee_probe_corpus {
   floor_parse_list_separator_hole_probe,
   floor_record_completeness_green_probe,
   floor_record_completeness_red_probe,
+  alias_return_fold_silent_hole_probe,
   ExpectBlockingRefusal,
   active_probe_row,
   guarantee_probe_rows,
   active_v1_compile_probe_row,
   probe_row_expectation_holds,
   probe_expectation_is_below_floor_hole,
+  probe_observation_from_census,
   guarantee_probe_below_floor_hole_rows,
   build_v1_compile_receipt,
   receipt_joins_v1_compile_path,
@@ -95,7 +97,9 @@ data guarantee_floor_class_probe_scope_note: String = "WHAT THIS FILE IS. Five f
 // blocking TypeMismatch; generic green 0. field-through-generics hole 0 rows; declared-record
 // control 1 blocking InternalError; green 0. exhaustiveness type-variable hole 0 rows. record
 // completeness red 1 blocking MissingField; green 0. parse list separator hole 0 rows;
-// doubled-separator control 1 blocking ParseError; green 0. THE InternalError ROW IS PINNED AS
+// doubled-separator control 1 blocking ParseError; green 0. alias-return fold hole 0 rows;
+// MethodNotFound blocking 0 for that source (its refusal side lives in
+// test.claim.algebra_receiver_alias_agreement_witness, not in this file). THE InternalError ROW IS PINNED AS
 // OBSERVED, NOT AS ENDORSED: a field access naming no declared field refuses, the property the
 // control exists to establish, but under a class name that says nothing about what went wrong. That
 // is its own diagnostic-quality defect, recorded here rather than laundered into a nicer-sounding
@@ -166,6 +170,28 @@ fn blocking_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> C
   census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
 }
 
+// The mechanically-correct variant of silent_hole_holds for a hole whose subject program must
+// import std to reach its shape at all (the alias-return fold resolves at the coproduct carrier
+// through std.algebra -- measured: the program compiles with 0 blocking / 164 advisory rows, all
+// advisories inside the imported std modules, so its observation today is ACCEPTED_COUNTED, not
+// ACCEPTED_CLEAN). total_row_count_is_zero partitions ALL rows by severity and can never hold for
+// such a program; probe_row_observation_holds' silent_acceptance_hole arm is observation_is_clean
+// and fails for the same reason. What can still fail in BOTH directions, and does: the census
+// must RUN (ProbeNotRunnable fails the premise -- a harness that cannot measure cannot pass), the
+// refusal count must be ZERO (any blocking row -- a MethodNotFound refusal once the wall fires,
+// or a ParseError if the subject stops parsing -- fails it), and the probe row must exist and be
+// classified below-floor. The hole-class truth it pins: accepted, zero refusals, by declaration.
+fn below_floor_hole_accepted_unblocked(probe: GuaranteeProbeId, source: String) -> Bool {
+  let observation = probe_observation_from_census(census: census_of(source: source))
+  match active_probe_row(probe: probe) {
+    Present { value: row } =>
+      probe_expectation_is_below_floor_hole(e: row.expectation)
+        && observed_is_verdict(o: observation)
+        && observation_refused_count(o: observation) == 0
+    Absent => false
+  }
+}
+
 data generic_instantiation_hole_source: String = "module probe_floor_generic_inst\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: \"not an int\" } }\n"
 data generic_instantiation_monomorphic_source: String = "module probe_floor_generic_mono\ntype Plain { inner: Int }\nfn f() -> Plain { Plain { inner: \"not an int\" } }\n"
 data generic_instantiation_green_source: String = "module probe_floor_generic_green\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: 1 } }\n"
@@ -187,6 +213,11 @@ data record_completeness_green_source: String = "module probe_floor_record_full\
 // PARTIAL-OMISSION red and its green control.
 
 data parse_list_separator_hole_source: String = "module probe_floor_list_sep\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }  Cell { n: 3 } ] }\n"
+
+// The subject program of the method-receiver-normalization frontier hole (corpus row
+// alias_return_fold_silent_hole_probe). Executed as a FILE on srv1 with zero blocking diagnostics
+// (see PR #17138 evidence comment); embedded here verbatim so the claim evaluates the same bytes.
+data method_alias_return_fold_silent_hole_source: String = "module alias_agree_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
@@ -302,6 +333,44 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
   }
 }
 
+// Carrier leg for the method-receiver-normalization frontier roster hole (corpus row
+// alias_return_fold_silent_hole_probe, class method_established_surface_class). It asserts ONLY
+// what is true today -- the program is ACCEPTED with zero refusals (accepted_counted: 0 blocking,
+// 164 advisory rows inside the imported std modules; measured, see below_floor_hole_accepted_unblocked)
+// -- the shape of floor_parse_list_separator_omission_is_still_silent adapted to a subject that
+// cannot reach its hole shape without std: a firing-side assertion that FLIPS WITH THE WALL. Bounded
+// flip trigger: when the fold/lookup side refuses this program with MethodNotFound, this leg goes
+// red with it and the corpus row moves to ExpectBlockingRefusal { diagnostic_class:
+// "MethodNotFound" } -- delete neither. The refusal side of this family is NOT asserted here; it
+// lives in test.claim.algebra_receiver_alias_agreement_witness (bogus_method_refuses_under_both_spellings),
+// so no refusal weight rides on this file.
+test fn method_alias_return_fold_omission_is_still_silent() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row is declared below-floor, the census runs, and zero refusals are observed", below_floor_hole_accepted_unblocked(probe: alias_return_fold_silent_hole_probe, source: method_alias_return_fold_silent_hole_source)),
+    blocking_verdict(source: method_alias_return_fold_silent_hole_source, wanted: "MethodNotFound", holds: fn(n) { n == 0 })
+  ])
+}
+
+// The hole row joins the receipt machinery the same way the parse-separator hole does, with the
+// one substitution below_floor_hole_accepted_unblocked documents: the observation IS the acceptance
+// -- accepted_counted, refusals zero -- recorded, not laundered (observation_is_clean would demand
+// zero rows of every severity, which no std-importing subject can satisfy in this harness).
+test fn method_alias_return_fold_receipt_records_acceptance_as_the_observation() -> Bool {
+  match active_v1_compile_probe_row(probe: alias_return_fold_silent_hole_probe) {
+    Present { value: row } =>
+      let receipt = build_v1_compile_receipt(
+        row: row,
+        census: census_of(source: method_alias_return_fold_silent_hole_source),
+        subject_revision: synthetic_program_subject_revision(source: method_alias_return_fold_silent_hole_source),
+        harness_revision: witness_harness_revision(probe: row.probe),
+      )
+      observed_is_verdict(o: receipt.observed)
+        && observation_refused_count(o: receipt.observed) == 0
+        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
+    Absent => false
+  }
+}
+
 // THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has since
 // grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
@@ -310,6 +379,7 @@ test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
+    alias_return_fold_silent_hole_probe as String,
   ]
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1
