@@ -66,6 +66,16 @@ data gpu_board_10: PhysicalAssetIdentity = "gpu-board-10" as PhysicalAssetIdenti
 data gpu_board_11: PhysicalAssetIdentity = "gpu-board-11" as PhysicalAssetIdentity
 data gpu_board_12: PhysicalAssetIdentity = "gpu-board-12" as PhysicalAssetIdentity
 data gpu_board_13: PhysicalAssetIdentity = "gpu-board-13" as PhysicalAssetIdentity
+// john (the fourth Supermicro H11SSL, gunbc.fleet.fleet_host_identity::operator_host_ba61f9) carries three
+// NVIDIA GPU functions, read ON THE CARDS 2026-11-28 by `nvidia-smi --query-gpu=...uuid,serial,pci.bus_id...`
+// (artifacts/host-observations/john-gpu-power-2026-11-28/gpu_identity_power_query.csv): gpu-board-14 =
+// 0000:01:00.0 "Tesla V100-SXM2-16GB" uuid GPU-d36a26ba-52e6-3e47-e7fa-a9ca371c97b9 serial 1562520002708;
+// gpu-board-15 = 0000:81:00.0 "Tesla P100-PCIE-16GB" uuid GPU-08e9f79b-1389-b4e8-e3e3-b3eb6f2c4a27 serial
+// 0323216058317; gpu-board-16 = 0000:c1:00.0 "Tesla PG500-216" uuid GPU-4c63477e-61ff-9348-7969-4b0c3bb9fd01
+// serial 1561621019629. The numbering continues gpu_board_01..13 and is an identity, not a slot.
+data gpu_board_14: PhysicalAssetIdentity = "gpu-board-14" as PhysicalAssetIdentity
+data gpu_board_15: PhysicalAssetIdentity = "gpu-board-15" as PhysicalAssetIdentity
+data gpu_board_16: PhysicalAssetIdentity = "gpu-board-16" as PhysicalAssetIdentity
 
 
 // Inventory identity is independent of a host-slot or router-observation binding.

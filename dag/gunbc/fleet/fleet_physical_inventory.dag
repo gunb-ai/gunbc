@@ -28,8 +28,8 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_01, chassis_02, chassis_03, chassis_04, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_01, cooler_02 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, gpu_board_14, gpu_board_15, gpu_board_16, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_01, chassis_02, chassis_03, chassis_04, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_01, cooler_02 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7, operator_host_ba61f9 }
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
@@ -542,7 +542,45 @@ data gpu_board_13_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset, gpu_board_07_asset, gpu_board_08_asset, gpu_board_09_asset, gpu_board_10_asset, gpu_board_11_asset, gpu_board_12_asset, gpu_board_13_asset]
+// john (host-ba61f9), three NVIDIA GPU functions read ON THE CARDS 2026-11-28 (artifacts/host-observations/
+// john-gpu-power-2026-11-28/: gpu_identity_power_query.csv for name, UUID, serial and bus function,
+// gpu_pci_device_id_query.csv for the PCI device ids; SHA256SUMS pins both). Each catalog binding below stands on
+// the read device id AND the driver's own name agreeing with the bound row: 0x1db1 "Tesla V100-SXM2-16GB" is
+// extdeps.gpu.nvidia_v100's SXM2 16 GB row, 0x15f8 "Tesla P100-PCIE-16GB" is extdeps.gpu.nvidia_p100's PCIe 16 GB
+// row. The V100 is an SXM2 module the operator runs in a PCIe slot as a blower card; how it is carried is not read.
+//
+// gpu_board_16 (0x1df0, "Tesla PG500-216") HAS NO ASSET ROW HERE, AND THAT IS DELIBERATE. PhysicalAsset binds a
+// board catalog row, and none exists for this board: NVIDIA's driver appendix names device 1df0 "Tesla PG500-216"
+// (extdeps.nvidia.linux_driver_supported_chips) and pci.ids names it "GV100GL [Tesla PG500-216]", and neither
+// states its memory or board power -- the two figures a GpuBoardCatalogFacts row must carry. Binding it to the
+// SXM2 32 GB row (device 1db5) would assert a different board; authoring a row from the card's own 32768 MiB
+// report would put an observation inside an upstream module. So the board has its identity, its containment and
+// its device row (which is everything the cap derivation reads) and no catalog binding. TRIGGER: an NVIDIA or
+// OEM document stating the PG500-216's memory and board power is read, a row is authored in
+// extdeps.gpu.nvidia_v100, and gpu_board_16_asset is added binding it.
+data gpu_board_14_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_14,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_v100",
+    decl_name: "nvidia_tesla_v100_sxm2_16gb_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1562520002708" },
+  procurement: none,
+}
+
+data gpu_board_15_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_15,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_p100",
+    decl_name: "nvidia_tesla_p100_pcie_16gb_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "0323216058317" },
+  procurement: none,
+}
+
+data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset, gpu_board_04_asset, gpu_board_05_asset, gpu_board_06_asset, gpu_board_07_asset, gpu_board_08_asset, gpu_board_09_asset, gpu_board_10_asset, gpu_board_11_asset, gpu_board_12_asset, gpu_board_13_asset, gpu_board_14_asset, gpu_board_15_asset]
 
 // Only installed cards are contained; an owned card with no row here is in inventory, not in a host.
 data installed_gpu_board_containments: List<PhysicalContainment> = [
@@ -563,6 +601,11 @@ data installed_gpu_board_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_e2d4b7, component: gpu_board_11 },
   HostContainsComponent { host: operator_host_e2d4b7, component: gpu_board_12 },
   HostContainsComponent { host: operator_host_e2d4b7, component: gpu_board_13 },
+  // john's three cards, read on the cards 2026-11-28 as above: three driver-enumerated functions inside one host.
+  // No physical slot is claimed for any of them.
+  HostContainsComponent { host: operator_host_ba61f9, component: gpu_board_14 },
+  HostContainsComponent { host: operator_host_ba61f9, component: gpu_board_15 },
+  HostContainsComponent { host: operator_host_ba61f9, component: gpu_board_16 },
 ]
 
 

@@ -7,8 +7,8 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.pci.identity { PciAddress }
 import extdeps.linux.amdgpu_hwmon { AmdgpuHwmonPowerAttribute, Power1Cap }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 , gpu_board_11, gpu_board_12, gpu_board_13 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7, operator_host_ba61f9 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 , gpu_board_11, gpu_board_12, gpu_board_13, gpu_board_14, gpu_board_15, gpu_board_16 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -271,6 +271,49 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_default: Present { value: watt(count: 150) },
     power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
+  },
+  // john (host-ba61f9), read ON THE CARDS 2026-11-28T00:44:49Z in one read-only session as the unprivileged user
+  // (artifacts/host-observations/john-gpu-power-2026-11-28/: gpu_identity_power_query.csv carries name, UUID,
+  // serial, bus function and the four limits; nvidia_smi_q_power.txt the same limits in the long form; SHA256SUMS
+  // pins both). Every card sits at its OWN minimum limit -- 150, 125 and 100 W -- against defaults of 300, 250 and
+  // 250 W: what the operator's hand-written gpu-power-cap.service on john sets at boot (each GPU to its own
+  // power.min_limit). That unit's bytes are not in the receipt, so power_limit_current is the driver's report of
+  // the limit in force, not a verdict that any unit applied it. All three take a limit through nvidia-smi -pl.
+  GpuDeviceEnumerated {
+    host: operator_host_ba61f9,
+    board: gpu_board_14,
+    gpu_uuid: Present { value: "GPU-d36a26ba-52e6-3e47-e7fa-a9ca371c97b9" as NonEmptyStr },
+    pci_address: "0000:01:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 150),
+    power_limit_maximum: watt(count: 300),
+    power_limit_current: watt(count: 150),
+    power_limit_default: Present { value: watt(count: 300) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-28T00:44:49Z john nvidia-smi --query-gpu (Tesla V100-SXM2-16GB, VBIOS 88.00.4F.00.09, driver 580.178.04) and -q -d POWER" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_ba61f9,
+    board: gpu_board_15,
+    gpu_uuid: Present { value: "GPU-08e9f79b-1389-b4e8-e3e3-b3eb6f2c4a27" as NonEmptyStr },
+    pci_address: "0000:81:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 125),
+    power_limit_maximum: watt(count: 250),
+    power_limit_current: watt(count: 125),
+    power_limit_default: Present { value: watt(count: 250) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-28T00:44:49Z john nvidia-smi --query-gpu (Tesla P100-PCIE-16GB, VBIOS 86.00.41.00.06, driver 580.178.04) and -q -d POWER" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_ba61f9,
+    board: gpu_board_16,
+    gpu_uuid: Present { value: "GPU-4c63477e-61ff-9348-7969-4b0c3bb9fd01" as NonEmptyStr },
+    pci_address: "0000:c1:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 250),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 250) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-28T00:44:49Z john nvidia-smi --query-gpu (Tesla PG500-216, PCI device 0x1DF0, VBIOS 88.00.9C.00.01, driver 580.178.04) and -q -d POWER" as NonEmptyStr,
   },
 ]
 

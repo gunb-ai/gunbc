@@ -11,10 +11,11 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+  operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7, operator_host_ba61f9,
 }
 import gunbc.fleet.fleet_asset_identity {
   gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_11, gpu_board_12, gpu_board_13,
+  gpu_board_14, gpu_board_15, gpu_board_16,
 }
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
@@ -284,6 +285,31 @@ data srv4_rtx_2000_ada_cap_decision_superseded_40w: GpuPowerCapSelection = Opera
   said: "operator restored 40 W after judging the 30 W drop not worth 10 W per card; the strip opened again later the same day and the caps went back to 30 W" as NonEmptyStr,
 }
 
+// john (host-ba61f9): each card at its OWN minimum limit, which is what the operator asked of john on 2026-11-27
+// ("limit this and future tests", to smooth the work and avoid spikes; the operator's session wrote a
+// gpu-power-cap.service that sets every GPU to its own power.min_limit) and what the operator HOLDS from 2026-11-28
+// (gunbc.design_ruling::operator_holds_live_gpu_caps_accepting_circuit_overcommit_2026_11_28: "yeah i would keep
+// things as they are from now"). One decision per card because the three minima differ -- the decision is "the
+// card's floor", and OperatorDeclaredCap carries a watt figure, so each card's floor is its own row. The 2026-11-28
+// read (artifacts/host-observations/john-gpu-power-2026-11-28/) found each card at exactly that floor. The bounds
+// arm is CappedQuantityUnstated: the operator gave a purpose, not a timescale. All three depart from the 60 percent
+// rule (its targets are 180, 150 and 150 W), and the derivation classifies them so.
+fn john_floor_cap_decision(cap: Watt, card: String) -> GpuPowerCapSelection {
+  OperatorDeclaredCap {
+    cap: cap,
+    bounds: CappedQuantityUnstated,
+    decided_on: "2026-11-27" as NonEmptyStr,
+    said: join([
+      "operator, 2026-11-27, on john's tests: limit this and future tests, each GPU at its own power.min_limit (", card,
+      "); held 2026-11-28, verbatim: \"yeah i would keep things as they are from now - i will take butch off now.\" (gunbc.design_ruling::operator_holds_live_gpu_caps_accepting_circuit_overcommit_2026_11_28)",
+    ], "") as NonEmptyStr,
+  }
+}
+
+data john_v100_sxm2_16gb_cap_decision: GpuPowerCapSelection = john_floor_cap_decision(cap: watt(count: 150), card: "Tesla V100-SXM2-16GB, 150 W")
+data john_p100_cap_decision: GpuPowerCapSelection = john_floor_cap_decision(cap: watt(count: 125), card: "Tesla P100-PCIE-16GB, 125 W")
+data john_pg500_216_cap_decision: GpuPowerCapSelection = john_floor_cap_decision(cap: watt(count: 100), card: "Tesla PG500-216, 100 W")
+
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
@@ -324,6 +350,11 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   // file on the host.
   InstalledGpuCapIntent { host: operator_host_srv4, board: gpu_board_05, selection: srv4_rtx_2000_ada_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv4, board: gpu_board_06, selection: srv4_rtx_2000_ada_cap_decision },
+  // john's three cards, each at its own floor (the decisions above). Each admits through nvidia-smi by the UUID the
+  // 2026-11-28 read returned; the cap is the device's own minimum, so it is in range by the read.
+  InstalledGpuCapIntent { host: operator_host_ba61f9, board: gpu_board_14, selection: john_v100_sxm2_16gb_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_ba61f9, board: gpu_board_15, selection: john_p100_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_ba61f9, board: gpu_board_16, selection: john_pg500_216_cap_decision },
 ]
 
 fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {

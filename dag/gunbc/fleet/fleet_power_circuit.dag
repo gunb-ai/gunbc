@@ -8,8 +8,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+  operator_host_ba61f9,
 }
+import gunbc.design_ruling { breaker_circuit_members_and_john_power_facts_2026_11_28 }
 
 // WHICH MACHINES SHARE ONE PROTECTIVE DEVICE, AND WHAT THAT DEVICE HAS DONE.
 //
@@ -40,7 +42,9 @@ import gunbc.fleet.fleet_host_identity {
 // questions; one module answering both would make "these three hosts are on one strip" a property of a
 // number, which is where it got lost.
 //
-// THE RATING IS UNREAD, AND THAT IS THE HONEST ARM, NOT A TODO. Nobody has read the strip's rating plate
+// THE RATING IS UNREAD, AND THAT IS THE HONEST ARM, NOT A TODO. (Since 2026-11-28 the breaker's rating is the
+// operator's stated 1800 W -- RatingOperatorStated below; it is stated, not read, and the strip's stays unread.)
+// Nobody has read the strip's rating plate
 // or the breaker's ampere rating, and no wattmeter has ever been on either circuit. The only evidence
 // about these two circuits is that one of them opened twice, and an estimate of what it was carrying. A
 // consumer that wants a numeric bound must therefore be refused with the read obligation named -- it
@@ -69,8 +73,18 @@ data breaker_srv1_ken: DeclarationRef = decl_ref(
 // arm that says the bound the ask needs has never been read, and it carries the obligation that would
 // close it. There is no `RatingUnknown` arm beside it, because "unread" and "unknowable" answer different
 // questions and only the first has an action attached.
+//
+// THE OPERATOR-STATED ARM. An operator who says what a circuit is rated -- "the circuit is 1800w 15a" -- states a
+// SITE FACT nobody else can cite: no catalog row exists for a wall breaker, and no plate read was taken. It is
+// not RatingCited, whose standing is an external authority, a transcription or a receipt; it is the operator's
+// statement, recorded once as a dated gunbc.design_ruling row, and `stated_by` is that row's reference. A
+// consumer that needs to know whether the figure is grounded checks that reference against the ruling roster
+// (gunbc.fleet.gpu_cap_policy_derivation does). The watt figure is the one the operator gave in watts; an ampere
+// figure in the same statement stays in the ruling, because folding volts times amps here would assume a power
+// factor of unity (the rule at the head of this module).
 type CircuitRating
   = RatingCited { carry_limit: Watt, standing: CitedFigureStanding }
+  | RatingOperatorStated { carry_limit: Watt, stated_by: DeclarationRef }
   | RatingUnread { read_obligation: NonEmptyStr }
 
 // THE BOUND A SINGLE MEMBER MAY DRAW. This is the number a selection can actually apply to one host's
@@ -136,16 +150,27 @@ data surge_strip: SharedPowerCircuit = SharedPowerCircuit {
   trips: [strip_trip_2026_11_24_first, strip_trip_2026_11_24_second],
 }
 
-// THE OTHER CIRCUIT ON THE FLEET, carried so the strip is not the only named one: the breaker that feeds
-// srv1 and ken. It has not opened, and its rating is equally unread. An ask that serves THIS circuit is a
-// different decision from one that serves the strip, and the two must not be allowed to share a
-// constraint identity -- that is what std.decision's DecisionScope discriminator is for.
+// THE OTHER CIRCUIT ON THE FLEET: the 15 A breaker that feeds srv1, srv2, john and ken. It has not opened. An
+// ask that serves THIS circuit is a different decision from one that serves the strip, and the two must not be
+// allowed to share a constraint identity -- that is what std.decision's DecisionScope discriminator is for.
+//
+// ITS MEMBERS AND RATING ARE THE OPERATOR'S OF 2026-11-28 (gunbc.design_ruling::
+// breaker_circuit_members_and_john_power_facts_2026_11_28). The 2026-11-24 row named srv1 and ken only; the
+// operator's first 2026-11-28 statement named srv1 and srv2 (and john, the subject of the question), the second
+// confirmed ken ("yes ken is on it") and placed butch on it with a hedge ("butch i think"), and the third took
+// butch off ("i will take butch off now"). So the members are srv1, srv2, john and ken: the 2026-11-24 row was
+// right and incomplete, and its identity `breaker_srv1_ken` is KEPT rather than renamed -- its consumers
+// (gunbc.serving.gpu_power_cap_pricing, gunbc.fleet.gpu_cap_priced_actuation and their witnesses) name it, and a
+// partial name on a complete member list is a smaller cost than a rename across them. The rating is the
+// operator's 1800 W, stated in watts; the earlier 1.3-1.4 kW figure quoted for srv1 and ken was an estimate of
+// load and is not a rating.
 data breaker_srv1_ken_circuit: SharedPowerCircuit = SharedPowerCircuit {
   identity: breaker_srv1_ken,
-  label: "breaker carrying srv1 + ken" as NonEmptyStr,
-  members: [operator_host_srv1, operator_host_e2d4b7],
-  rating: RatingUnread {
-    read_obligation: "the breaker's ampere rating and the circuit's wiring have never been read; the 1.3-1.4 kW figure quoted for this pair is an estimate of load, not a rating" as NonEmptyStr,
+  label: "breaker carrying srv1 + ken + srv2 + john (15 A, 1800 W)" as NonEmptyStr,
+  members: [operator_host_srv1, operator_host_srv2, operator_host_ba61f9, operator_host_e2d4b7],
+  rating: RatingOperatorStated {
+    carry_limit: watt(count: 1800),
+    stated_by: breaker_circuit_members_and_john_power_facts_2026_11_28.reference,
   },
   member_draw_bound: BoundUnstated {
     read_obligation: "no per-member draw limit has been stated for this breaker either; it has not opened, which is not evidence of a bound" as NonEmptyStr,
@@ -172,6 +197,7 @@ fn circuit_trip_standing(t: CircuitTrip) -> CitedFigureStanding { t.standing }
 fn circuit_carry_limit(c: SharedPowerCircuit) -> Optional<Watt> {
   match c.rating {
     RatingCited { carry_limit: w, standing: _ } => Present { value: w }
+    RatingOperatorStated { carry_limit: w, stated_by: _ } => Present { value: w }
     RatingUnread { read_obligation: _ } => Absent
   }
 }
@@ -179,6 +205,7 @@ fn circuit_carry_limit(c: SharedPowerCircuit) -> Optional<Watt> {
 fn circuit_rating_read_obligation(c: SharedPowerCircuit) -> Optional<NonEmptyStr> {
   match c.rating {
     RatingCited { carry_limit: _, standing: _ } => Absent
+    RatingOperatorStated { carry_limit: _, stated_by: _ } => Absent
     RatingUnread { read_obligation: o } => Present { value: o }
   }
 }
@@ -202,5 +229,5 @@ fn circuits_carrying(host: HostIdentity) -> List<SharedPowerCircuit> {
 }
 
 data fleet_power_circuit_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.design_argument::consumption: read today by gunbc.serving.gpu_power_cap_pricing (the only fold that mints a hard constraint from a circuit, and it mints none while both ratings are unread) and by test.claim.serving.gpu_power_cap_pricing_witness. TRIGGER: the strip's and the breaker's ratings are read onto rows with a standing, or a wattmeter/UPS puts a measured draw on one of them, at which point RatingUnread loses its last member and a power ask against a named circuit becomes answerable in watts instead of in read obligations. Separately and NOT covered by that trigger: the strip has no PhysicalAssetIdentity in product.placement_supply, so the circuit is named by a DeclarationRef only; giving it an asset identity is an inventory change, not this module's." as NonEmptyStr
+  description: "gunbc.design_argument::consumption: read today by gunbc.serving.gpu_power_cap_pricing (the only fold that mints a hard constraint from a circuit, and it mints one only from a stated per-member bound, which neither circuit carries) and by gunbc.fleet.gpu_cap_policy_derivation (which sums a circuit only when its rating is grounded) and by test.claim.serving.gpu_power_cap_pricing_witness. Since 2026-11-28 the breaker carries the operator's stated 1800 W (gunbc.design_ruling::breaker_circuit_members_and_john_power_facts_2026_11_28) and the strip is the last RatingUnread member. TRIGGER: the strip's rating is read onto its row with a standing, or a wattmeter/UPS puts a measured draw on one of them, at which point RatingUnread loses its last member and a power ask against a named circuit becomes answerable in watts instead of in read obligations. Separately and NOT covered by that trigger: the strip has no PhysicalAssetIdentity in product.placement_supply, so the circuit is named by a DeclarationRef only; giving it an asset identity is an inventory change, not this module's." as NonEmptyStr
 )

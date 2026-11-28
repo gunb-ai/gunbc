@@ -4,16 +4,18 @@ import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef }
-import std.measure { Watt, Percent }
+import std.measure { Watt, Percent, watt }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.power.types { PowerSupplyCatalogRow }
 import extdeps.power.asrock_phantom_gaming { asrock_pg_1600g_catalog }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+  operator_host_ba61f9,
 }
-import gunbc.fleet.fleet_host_assembly { psu_srv1_b, psu_srv3, psu_srv4 }
+import gunbc.fleet.fleet_host_assembly { psu_srv1_b, psu_srv2, psu_srv3, psu_srv4 }
+import gunbc.design_ruling { breaker_circuit_members_and_john_power_facts_2026_11_28 }
 import gunbc.fleet.fleet_acquisition_census { psu_srv1_catalog_ref }
 import gunbc.fleet.machine_board { MachineBoardStanding, machine_board_rows }
 
@@ -44,19 +46,24 @@ import gunbc.fleet.machine_board { MachineBoardStanding, machine_board_rows }
 // recorded in extdeps.power.asrock_phantom_gaming's annotation, not re-checked here.
 //
 // WHY "UNREAD" EVERYWHERE, AND WHY THAT IS THE DELIVERABLE. Nearly every figure below is unread on 2026-11-27:
-// three of five supplies, every conversion floor, every non-GPU ceiling, both circuit ratings. The operator
+// three of five supplies, every conversion floor, every non-GPU ceiling, both circuit ratings. (On 2026-11-28 the
+// operator stated john's supply rating, john's non-GPU budget and the 15 A breaker's rating and members --
+// gunbc.design_ruling::breaker_circuit_members_and_john_power_facts_2026_11_28 -- which land as operator-stated
+// arms below and in gunbc.fleet.fleet_power_circuit; everything else stays unread.) The operator
 // asked for the constraints to be related "now that we have a lot of hosts"; relating them honestly makes the
 // unread set enumerable, and gunbc.fleet.gpu_cap_policy_derivation turns it into the typed list of reads that
 // would let a cap be established on each host. A guessed figure would make that list shorter and the caps
 // wrong (gunbc.design_argument::epistemic_humility).
 //
-// NOT COVERED, BY NAME. john (host-ba61f9, H11SSL unit 4: a V100-SXM2-16GB, a P100 and a 32 GB V100 "PG500-216")
-// has no HostIdentity on main -- it lands with gunb-ai/gunbc#17180 -- and none of its cards has a board identity
-// or a device row, so it has no row here. TRIGGER: #17180 lands john's identity; then each card is given an
-// asset identity and a device observation; then john gets a row below and the derivation covers it with no
-// other change. butch (srv14) carries no GPU since 2026-11-17 (gunbc.fleet.fleet_physical_inventory
-// butch_a2s_removed_pending_sale) and correctly has no row. The DGX Sparks are SoCs whose GPU power is not a
-// discrete card's limit and is out of this rule's population.
+// COVERED SINCE 2026-11-28: john (host-ba61f9, H11SSL unit 4, identity from gunb-ai/gunbc#17180). Its three cards
+// -- a V100-SXM2-16GB, a P100 and a "Tesla PG500-216" -- were read on 2026-11-28 and carry asset identities
+// (gunbc.fleet.fleet_asset_identity gpu_board_14..16), containment and device rows, and john has a row below.
+// A HOST WITH NO GPU HAS A ROW HERE WHEN IT SHARES A CIRCUIT WITH ONE: srv2 carries no card, but it is on the
+// 15 A breaker with srv1, john and ken, and a circuit cannot be summed over a member whose draw is unknown -- its
+// row is what lets the derivation say what srv2 still owes instead of HostConstraintRowMissing. NOT COVERED, BY
+// NAME: butch (srv14) carries no GPU since 2026-11-17 (gunbc.fleet.fleet_physical_inventory
+// butch_a2s_removed_pending_sale) and the operator took it off the breaker on 2026-11-28, so it has no row. The
+// DGX Sparks are SoCs whose GPU power is not a discrete card's limit and is out of this rule's population.
 
 // THE SUPPLY'S CONVERSION FLOOR: the lowest efficiency the supply is stated to hold across its load range.
 // A circuit carries the supply's AC INPUT, while a GPU's power limit is a DC figure at the card; converting the
@@ -68,6 +75,15 @@ type PsuEfficiencyFloor
 
 // THE SUPPLY THE HOST WAS BUILT WITH, as the assembly records it. `catalog_source` is the assembly's own
 // reference to the catalog row, carried so a witness can check this join names the same row the assembly does.
+//
+// THE OPERATOR-STATED ARM: a supply whose RATED OUTPUT the operator has stated and whose model nobody has read
+// (john's "1000w psu", 2026-11-28). It is not PsuCatalogued -- there is no catalog row to bind, and inventing one
+// from a wattage would mint a product nobody named -- and it is not PsuUnread, because the one figure the supply
+// bound needs is known. `stated_by` is the dated gunbc.design_ruling row holding the operator's words, and the
+// derivation counts the figure as grounded only while that row is rostered. The efficiency floor is carried
+// separately and is unread unless a model or an 80 PLUS level arrives; `model_read_obligation` names what would
+// replace this arm with PsuCatalogued. `component` is Absent when no asset identity exists for the supply: no
+// identity is minted for a supply nobody has looked at.
 type HostPsuConstraint
   = PsuCatalogued {
       component: PhysicalAssetIdentity
@@ -75,13 +91,28 @@ type HostPsuConstraint
       catalog_source: DeclarationRef
       efficiency_floor: PsuEfficiencyFloor
     }
+  | PsuRatedOutputOperatorStated {
+      component: Optional<PhysicalAssetIdentity>
+      rated_output: Watt
+      stated_by: DeclarationRef
+      efficiency_floor: PsuEfficiencyFloor
+      model_read_obligation: NonEmptyStr
+    }
   | PsuUnread { component: Optional<PhysicalAssetIdentity>, read_obligation: NonEmptyStr }
 
 // THE MOST THE REST OF THE HOST DRAWS AT THE SUPPLY'S OUTPUT, as a CEILING. gunbc.fleet.fleet_host_power holds
 // samples ("a single loaded operating point ... bounds neither end"), and a sample is not a ceiling: a budget
 // built on 94 W would be exceeded the first time the CPUs ran flat out. So no sample is promoted here.
+//
+// THE OPERATOR-DECLARED BUDGET: a ceiling the operator DECLARES rather than one anybody measured or cited (john's
+// "i would estimate it at 200w max for now", 2026-11-28). gunbc.design_argument::fail_closed admits an explicit
+// policy budget as an oracle, and that is what this is: a decision about how much of the supply the rest of the
+// host may be assumed to take, standing until the operator revises it or a measured ceiling replaces it. It is
+// not NonGpuCeilingStated, whose standing claims an external authority or a receipt. `declared_by` is the dated
+// gunbc.design_ruling row, checked against the ruling roster by the derivation.
 type NonGpuDrawCeiling
   = NonGpuCeilingStated { dc_watts: Watt, standing: CitedFigureStanding }
+  | NonGpuCeilingOperatorBudget { dc_watts: Watt, declared_by: DeclarationRef }
   | NonGpuCeilingUnread { read_obligation: NonEmptyStr }
 
 // A GPU THE HOST IS REPORTED TO CARRY THAT NO INVENTORY ROW NAMES. Typed rather than narrated, so the
@@ -192,12 +223,42 @@ data ken_e2d4b7_power_constraints: HostPowerConstraints = HostPowerConstraints {
   unidentified_gpus: [],
 }
 
+// john (host-ba61f9): the operator's 2026-11-28 figures. The supply's rated output is stated (1000 W) and its
+// model is not, so its efficiency floor is unread; the non-GPU ceiling is the operator's declared 200 W budget.
+// Every card john carries has an identity and a device row, so there is no unidentified GPU.
+data john_ba61f9_power_constraints: HostPowerConstraints = HostPowerConstraints {
+  host: operator_host_ba61f9,
+  psu: PsuRatedOutputOperatorStated {
+    component: Absent,
+    rated_output: watt(count: 1000),
+    stated_by: breaker_circuit_members_and_john_power_facts_2026_11_28.reference,
+    efficiency_floor: EfficiencyFloorUnread { read_obligation: "the operator gave john's supply as \"1000w psu\" with no model and no 80 PLUS level: read the supply's label (model, rated DC output, efficiency certification) and cite its efficiency curve, or have the operator state a floor" as NonEmptyStr },
+    model_read_obligation: "read john's supply label -- model, rated DC output and its 12 V connector complement -- and bind an extdeps.power catalog row, at which point this row becomes PsuCatalogued; no gunbc.fleet.fleet_host_assembly component exists for john's supply (the assembly covers srv1-srv4), so none is named here" as NonEmptyStr,
+  },
+  non_gpu_draw: NonGpuCeilingOperatorBudget {
+    dc_watts: watt(count: 200),
+    declared_by: breaker_circuit_members_and_john_power_facts_2026_11_28.reference,
+  },
+  unidentified_gpus: [],
+}
+
+// srv2: no GPU, on the 15 A breaker with srv1, john and ken. Its supply is the assembly's family-only psu_srv2;
+// its non-GPU ceiling is the WHOLE host's draw ceiling, since it carries no card, and nobody has stated it.
+data srv2_power_constraints: HostPowerConstraints = HostPowerConstraints {
+  host: operator_host_srv2,
+  psu: psu_family_unread(component: psu_srv2),
+  non_gpu_draw: NonGpuCeilingUnread { read_obligation: "srv2 carries no GPU, so its non-GPU ceiling is the whole host's draw ceiling at the supply's output: state it, or read it with a wall meter at full CPU load converted through the supply's floor" as NonEmptyStr },
+  unidentified_gpus: [],
+}
+
 data host_power_constraint_rows: List<HostPowerConstraints> = [
   srv1_power_constraints,
   srv3_power_constraints,
   srv4_power_constraints,
   h11_6ce85c_power_constraints,
   ken_e2d4b7_power_constraints,
+  john_ba61f9_power_constraints,
+  srv2_power_constraints,
 ]
 
 // ── THE WALK THAT IS THIS MODULE'S OWN ───────────────────────────────────────────────────────────

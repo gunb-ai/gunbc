@@ -190,9 +190,10 @@ fn circuit_bound_is_stated(circuit: SharedPowerCircuit) -> Bool {
 // as one description of one circuit: no candidate reading can fix it, so the answer is a typed, located
 // refusal naming the circuit, both figures and their product -- never a silent clamp, and never a quietly
 // narrowed bound (fail_closed: no fabricated default; the aggregate constraint carried as if it were a local
-// one, the occupies-vs-floor shape). Latent today by construction: both fleet ratings are RatingUnread, so
-// those asks are answered with the read obligations above and this check is vacuous until a rating plate is
-// cited -- which is exactly when an over-generous member bound would otherwise pass unchecked.
+// one, the occupies-vs-floor shape). Latent today: the strip's rating is RatingUnread, and the breaker's rating
+// is the operator's stated 1800 W (RatingOperatorStated, 2026-11-28) with no per-member bound beside it, so this
+// check is vacuous on both until a bound is stated next to a rating -- which is exactly when an over-generous
+// member bound would otherwise pass unchecked.
 fn oversubscription_defects(circuit: SharedPowerCircuit) -> List<NonEmptyStr> {
   match circuit_carry_limit(c: circuit) {
     Absent => [] as List<NonEmptyStr>

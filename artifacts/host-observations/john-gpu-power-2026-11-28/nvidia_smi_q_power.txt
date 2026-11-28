@@ -1,0 +1,90 @@
+# read 2026-11-28T00:44:49Z on john; command: nvidia-smi -q -d POWER
+
+==============NVSMI LOG==============
+
+Timestamp                                              : Sat Nov 28 00:44:49 2026
+Driver Version                                         : 580.178.04
+CUDA Version                                           : 13.0
+
+Attached GPUs                                          : 3
+GPU 00000000:01:00.0
+    GPU Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : 97.14 W
+        Current Power Limit                            : 150.00 W
+        Requested Power Limit                          : 150.00 W
+        Default Power Limit                            : 300.00 W
+        Min Power Limit                                : 150.00 W
+        Max Power Limit                                : 300.00 W
+    Power Samples
+        Duration                                       : 2.36 sec
+        Number of Samples                              : 119
+        Max                                            : 115.09 W
+        Min                                            : 87.02 W
+        Avg                                            : 101.12 W
+    GPU Memory Power Readings 
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+    Module Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+        Current Power Limit                            : N/A
+        Requested Power Limit                          : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+
+GPU 00000000:81:00.0
+    GPU Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : 49.02 W
+        Current Power Limit                            : 125.00 W
+        Requested Power Limit                          : 125.00 W
+        Default Power Limit                            : 250.00 W
+        Min Power Limit                                : 125.00 W
+        Max Power Limit                                : 250.00 W
+    Power Samples
+        Duration                                       : 2.36 sec
+        Number of Samples                              : 119
+        Max                                            : 59.45 W
+        Min                                            : 47.78 W
+        Avg                                            : 53.30 W
+    GPU Memory Power Readings 
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+    Module Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+        Current Power Limit                            : N/A
+        Requested Power Limit                          : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+
+GPU 00000000:C1:00.0
+    GPU Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : 100.23 W
+        Current Power Limit                            : 100.00 W
+        Requested Power Limit                          : 100.00 W
+        Default Power Limit                            : 250.00 W
+        Min Power Limit                                : 100.00 W
+        Max Power Limit                                : 250.00 W
+    Power Samples
+        Duration                                       : 2.39 sec
+        Number of Samples                              : 119
+        Max                                            : 105.43 W
+        Min                                            : 94.04 W
+        Avg                                            : 99.77 W
+    GPU Memory Power Readings 
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+    Module Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+        Current Power Limit                            : N/A
+        Requested Power Limit                          : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+

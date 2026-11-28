@@ -1,0 +1,5 @@
+# read 2026-11-28T00:44:58Z on john; command: nvidia-smi --query-gpu=index,pci.bus_id,pci.device_id,pci.sub_device_id,memory.total --format=csv
+index, pci.bus_id, pci.device_id, pci.sub_device_id, memory.total [MiB]
+0, 00000000:01:00.0, 0x1DB110DE, 0x121210DE, 16384 MiB
+1, 00000000:81:00.0, 0x15F810DE, 0x118F10DE, 16384 MiB
+2, 00000000:C1:00.0, 0x1DF010DE, 0x13F510DE, 32768 MiB

@@ -3,7 +3,7 @@ module gunbc.fleet.gpu_cap_policy_derivation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_saturating_sub, nat_to_decimal_string }
 import std.integer { nat_to_int, int_to_decimal_string }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.measure { Watt, watt, watt_count, Percent, percent, percent_count, permille_count }
 import std.pareto { ParetoEntry, SelectionAxis, LowerIsBetter, axis_point_reading }
@@ -30,14 +30,17 @@ import gunbc.fleet.gpu_device_observation {
 }
 import gunbc.fleet.fleet_physical_inventory { installed_gpu_board_containments }
 import gunbc.fleet.fleet_power_circuit {
-  SharedPowerCircuit, RatingCited, RatingUnread, BoundStated, BoundUnstated, circuit_carries, fleet_power_circuits,
+  SharedPowerCircuit, RatingCited, RatingOperatorStated, RatingUnread, BoundStated, BoundUnstated, circuit_carries,
+  circuit_carry_limit, fleet_power_circuits,
 }
 import gunbc.fleet.machine_board { MachineBoardStanding, MachineBoardCatalogued, MachineBoardUncatalogued, MachineBoardProviderOwned }
 import gunbc.fleet.host_power_constraints {
-  HostPowerConstraints, HostPsuConstraint, PsuCatalogued, PsuUnread,
-  EfficiencyFloorStated, EfficiencyFloorUnread, NonGpuCeilingStated, NonGpuCeilingUnread,
+  HostPowerConstraints, HostPsuConstraint, PsuCatalogued, PsuRatedOutputOperatorStated, PsuUnread,
+  PsuEfficiencyFloor, EfficiencyFloorStated, EfficiencyFloorUnread,
+  NonGpuDrawCeiling, NonGpuCeilingStated, NonGpuCeilingOperatorBudget, NonGpuCeilingUnread,
   host_power_constraint_rows, host_board_of,
 }
+import gunbc.design_ruling { design_rulings }
 import gunbc.serving.gpu_power_state_policy {
   FleetGpuCapDefault, fleet_gpu_cap_default, InstalledGpuCapIntent, OperatorDeclaredCap, installed_gpu_cap_intents,
 }
@@ -58,30 +61,32 @@ import gunbc.serving.gpu_power_state_policy {
 //          (extdeps.standards.nfpa_70) is the AC the members may hold continuously; through the LOWEST member
 //          floor it becomes a DC budget for every GPU on the circuit, less every member's non-GPU ceiling.
 //
-// THE ALLOCATION RULE WHEN THE DEFAULT DOES NOT FIT: proportional reduction toward each card's own minimum, by
-// one common fraction t in [0, 1]: cap = min + floor((target - min) x t). Every card gives up the same share of
-// the room it had above its floor -- no card drops below its floor, no card is singled out, and the result is a
-// pure function of the facts, so it is the same every time it is asked. Over a circuit, t is computed for the
-// whole circuit and each host then takes the smaller of that and its own supply's t, so a host held down by its
-// own supply never borrows the room that frees on the circuit (the circuit's sum only falls). This is a POLICY
-// choice of this module, stated so the operator can rule on it: the alternatives -- reducing the largest cards
-// first, or protecting one host's cards -- are different rules, not refinements.
+// WHEN THE DEFAULT DOES NOT FIT BUT THE FLOORS DO, NOTHING IS CHOSEN: NO ALLOCATION POLICY IS RULED. Which cards
+// give up how much when a supply or a circuit cannot carry every card at its rule target is a policy, and the
+// operator deferred it on 2026-11-28 ("i wouldn't worry about over budget yet, i would focus on documenting
+// facts" -- gunbc.design_ruling::operator_holds_live_gpu_caps_accepting_circuit_overcommit_2026_11_28). An earlier
+// revision of this module minted caps by one common fraction of the room above each card's floor; that rule was
+// never adopted, so the host is HostSelectionNeedsPolicy -- std.decision's needs-policy shape at host grain -- and
+// carries the binding constraint, its budget, the targets and the floors as reported figures (OverBudget), never
+// as caps. A circuit enters a host's bounds only as a policy-free upper bound: the most the host could take with
+// every other member at its floor.
 //
 // WHEN EVEN EVERY CARD AT ITS MINIMUM DOES NOT FIT, the host REFUSES with the violated constraint named. It is
 // never handed its minima "as the best we can do": a sum that cannot be carried is an electrical fact, and
 // putting the cards at their floor would hide it behind a number that still trips the breaker.
 //
-// WHEN A NEEDED FACT IS UNREAD, THE DEFAULT IS WITHHELD -- fail-closed, and this is the choice the operator
-// should review. The tempting arm is "apply 60 percent anyway: it is lower than the vendor default, so it
+// WHEN A NEEDED FACT IS UNREAD, THE DEFAULT IS WITHHELD -- fail-closed, and the operator confirmed it on
+// 2026-11-28: "i would consider unknown fine for now until we hav ea real model/policy" (gunbc.design_ruling::
+// operator_holds_live_gpu_caps_accepting_circuit_overcommit_2026_11_28). Nothing is applied under an unread
+// headroom, a lowering move included. The tempting arm is "apply 60 percent anyway: it is lower than the vendor default, so it
 // cannot make anything worse". That is false here: srv3 and srv4 sit BELOW their rule target today (40 and
 // 30 W against 42 W) on the strip that opened twice on 2026-11-24, so applying the default there RAISES draw on
 // a circuit whose rating nobody has read. A rule that admitted only lowering moves under an unread headroom
-// would be a second rule; this module states the question instead (HostHeadroomUnestablished carries every
-// read that would close it, and the PR that introduced this module asks it).
+// would be a second rule; HostHeadroomUnestablished carries every read that would close the headroom instead.
 //
 // WHERE std.decision ENTERS (gunbc.design_argument::selection_precedes_convergence). The rule generates the
-// candidate field -- the default vector, and the reduced or all-minimum vector when the default does not fit --
-// and std.decision selects among them: the bounds are HardConstraints that exclude a candidate BEFORE dominance,
+// candidate field -- the default vector, and the all-minimum vector when even the floors may not fit -- and
+// std.decision selects among them: the bounds are HardConstraints that exclude a candidate BEFORE dominance,
 // the field is ranked on two funded axes (the host's GPU cap sum, and its shortfall from the rule) under a policy
 // that prefers the rule's default among survivors, and a field the constraints empty is NoFeasibleRealization
 // with the violated constraint located. No second decision vocabulary exists here; this
@@ -243,6 +248,20 @@ fn standing_is_grounded(s: CitedFigureStanding) -> Bool {
   }
 }
 
+// AN OPERATOR STATEMENT GROUNDS A FIGURE ONLY WHILE IT IS A ROSTERED RULING. The operator-stated and
+// operator-declared arms (a supply's stated rating, a declared non-GPU budget, a circuit's stated rating) carry
+// the DeclarationRef of the gunbc.design_ruling row holding the operator's words. A reference anyone can type is
+// not evidence, so the derivation accepts the figure only when that reference is one of design_rulings() -- the
+// roster gunbc.documentary_refs and the design-ruling witnesses already hold to one row per declaration. A
+// reference to anything else is answered with the read the figure still owes, never with the figure.
+fn statement_is_rostered(r: DeclarationRef) -> Bool {
+  any(design_rulings(), x => declaration_ref_eq(a: x.reference, b: r))
+}
+
+fn unrostered_statement_obligation(what: String, r: DeclarationRef) -> NonEmptyStr {
+  join([what, " cites ", r.module_path as String, "::", r.decl_name as String, ", which is not a rostered gunbc.design_ruling row: record the operator's statement as a dated ruling and roster it, or read the figure"], "") as NonEmptyStr
+}
+
 fn standing_obligation(s: CitedFigureStanding, fallback: NonEmptyStr) -> NonEmptyStr {
   match s {
     TranscribedUncited { read_obligation: o } => o
@@ -255,7 +274,7 @@ fn standing_obligation(s: CitedFigureStanding, fallback: NonEmptyStr) -> NonEmpt
 type HostFacts {
   host: HostIdentity
   targets: List<DeviceRuleTarget>
-  psu_component: PhysicalAssetIdentity
+  psu_component: PhysicalAssetIdentity?
   psu_rated: Watt
   efficiency_floor: Percent
   non_gpu: Watt
@@ -265,14 +284,51 @@ type HostFactResolution
   = HostFactsResolved { facts: HostFacts }
   | HostFactsUnresolved { targets: List<DeviceRuleTarget>, needs: List<HeadroomNeed> }
 
+fn efficiency_floor_needs(host: HostIdentity, f: PsuEfficiencyFloor) -> List<HeadroomNeed> {
+  match f {
+    EfficiencyFloorUnread { read_obligation: o } => [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: o }]
+    EfficiencyFloorStated { floor: _, standing: s } =>
+      if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: standing_obligation(s: s, fallback: "the efficiency floor's standing is unstated" as NonEmptyStr) }] }
+  }
+}
+
 fn psu_needs(host: HostIdentity, psu: HostPsuConstraint) -> List<HeadroomNeed> {
   match psu {
     PsuUnread { component: _, read_obligation: o } => [PsuUnreadNeed { host: host, read_obligation: o }]
-    PsuCatalogued { component: _, catalog: _, catalog_source: _, efficiency_floor: f } => match f {
-      EfficiencyFloorUnread { read_obligation: o } => [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: o }]
-      EfficiencyFloorStated { floor: _, standing: s } =>
-        if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: standing_obligation(s: s, fallback: "the efficiency floor's standing is unstated" as NonEmptyStr) }] }
-    }
+    PsuCatalogued { component: _, catalog: _, catalog_source: _, efficiency_floor: f } => efficiency_floor_needs(host: host, f: f)
+    PsuRatedOutputOperatorStated { component: _, rated_output: _, stated_by: r, efficiency_floor: f, model_read_obligation: _ } =>
+      if statement_is_rostered(r: r) {
+        efficiency_floor_needs(host: host, f: f)
+      } else {
+        concat([PsuUnreadNeed { host: host, read_obligation: unrostered_statement_obligation(what: "the supply's stated rated output", r: r) }], efficiency_floor_needs(host: host, f: f))
+      }
+  }
+}
+
+// The supply's figures, once its needs are empty: the component (when one has an identity), the rated DC output
+// and the efficiency-floor arm. Absent only for an unread supply.
+type PsuFigures { component: PhysicalAssetIdentity?, rated: Watt, floor: PsuEfficiencyFloor }
+
+fn psu_figures(psu: HostPsuConstraint) -> PsuFigures? {
+  match psu {
+    PsuUnread { component: _, read_obligation: _ } => Absent
+    PsuCatalogued { component: c, catalog: cat, catalog_source: _, efficiency_floor: f } => Present { value: PsuFigures { component: Present { value: c }, rated: cat.rated_output, floor: f } }
+    PsuRatedOutputOperatorStated { component: c, rated_output: r, stated_by: _, efficiency_floor: f, model_read_obligation: _ } => Present { value: PsuFigures { component: c, rated: r, floor: f } }
+  }
+}
+
+fn floor_percent(f: PsuEfficiencyFloor) -> Percent? {
+  match f {
+    EfficiencyFloorStated { floor: fl, standing: _ } => Present { value: fl }
+    EfficiencyFloorUnread { read_obligation: _ } => Absent
+  }
+}
+
+fn non_gpu_watts(n: NonGpuDrawCeiling) -> Watt? {
+  match n {
+    NonGpuCeilingStated { dc_watts: w, standing: _ } => Present { value: w }
+    NonGpuCeilingOperatorBudget { dc_watts: w, declared_by: _ } => Present { value: w }
+    NonGpuCeilingUnread { read_obligation: _ } => Absent
   }
 }
 
@@ -281,6 +337,8 @@ fn non_gpu_needs(row: HostPowerConstraints) -> List<HeadroomNeed> {
     NonGpuCeilingUnread { read_obligation: o } => [NonGpuCeilingUnreadNeed { host: row.host, read_obligation: o }]
     NonGpuCeilingStated { dc_watts: _, standing: s } =>
       if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [NonGpuCeilingUnreadNeed { host: row.host, read_obligation: standing_obligation(s: s, fallback: "the non-GPU ceiling's standing is unstated" as NonEmptyStr) }] }
+    NonGpuCeilingOperatorBudget { dc_watts: _, declared_by: r } =>
+      if statement_is_rostered(r: r) { [] as List<HeadroomNeed> } else { [NonGpuCeilingUnreadNeed { host: row.host, read_obligation: unrostered_statement_obligation(what: "the declared non-GPU budget", r: r) }] }
   }
 }
 
@@ -304,19 +362,19 @@ fn resolve_host_facts(inputs: CapDerivationInputs, host: HostIdentity) -> HostFa
       if needs.length() > 0 {
         HostFactsUnresolved { targets: targets, needs: needs }
       } else {
-        match row.psu {
-          PsuUnread { component: _, read_obligation: o } => HostFactsUnresolved { targets: targets, needs: [PsuUnreadNeed { host: host, read_obligation: o }] }
-          PsuCatalogued { component: comp, catalog: cat, catalog_source: _, efficiency_floor: f } =>
-            match f {
-              EfficiencyFloorUnread { read_obligation: o } => HostFactsUnresolved { targets: targets, needs: [PsuEfficiencyFloorUnreadNeed { host: host, read_obligation: o }] }
-              EfficiencyFloorStated { floor: fl, standing: _ } =>
-                match row.non_gpu_draw {
-                  NonGpuCeilingUnread { read_obligation: o } => HostFactsUnresolved { targets: targets, needs: [NonGpuCeilingUnreadNeed { host: host, read_obligation: o }] }
-                  NonGpuCeilingStated { dc_watts: n, standing: _ } => HostFactsResolved {
-                    facts: HostFacts { host: host, targets: targets, psu_component: comp, psu_rated: cat.rated_output, efficiency_floor: fl, non_gpu: n },
-                  }
-                }
+        // The needs above are empty only when every figure below is present; the Absent arms restate the need
+        // rather than reach for a default, so a drift between the two folds withholds instead of inventing.
+        match psu_figures(psu: row.psu) {
+          Absent => HostFactsUnresolved { targets: targets, needs: [PsuUnreadNeed { host: host, read_obligation: "the supply's figures are unread" as NonEmptyStr }] }
+          Present { value: p } => match floor_percent(f: p.floor) {
+            Absent => HostFactsUnresolved { targets: targets, needs: efficiency_floor_needs(host: host, f: p.floor) }
+            Present { value: fl } => match non_gpu_watts(n: row.non_gpu_draw) {
+              Absent => HostFactsUnresolved { targets: targets, needs: non_gpu_needs(row: row) }
+              Present { value: n } => HostFactsResolved {
+                facts: HostFacts { host: host, targets: targets, psu_component: p.component, psu_rated: p.rated, efficiency_floor: fl, non_gpu: n },
+              }
             }
+          }
         }
       }
     }
@@ -333,7 +391,7 @@ fn host_needs_of(r: HostFactResolution) -> List<HeadroomNeed> {
 // ── THE BOUNDS ────────────────────────────────────────────────────────────────────────────────────────
 
 type BindingConstraint
-  = PsuSustainedOutput { psu: PhysicalAssetIdentity, rated_output: Watt, non_gpu: Watt }
+  = PsuSustainedOutput { psu: PhysicalAssetIdentity?, rated_output: Watt, non_gpu: Watt }
   | CircuitMemberDrawBound { circuit: DeclarationRef, draw_limit: Watt, efficiency_floor: Percent, non_gpu: Watt }
   | CircuitContinuousAllowance { circuit: DeclarationRef, carry_limit: Watt, continuous_fraction: Percent, lowest_efficiency_floor: Percent, members_non_gpu: Watt }
 
@@ -349,9 +407,18 @@ fn bound_identity(kind: String, host: HostIdentity, subject: String) -> Declarat
   decl_ref(module_path: "gunbc.fleet.gpu_cap_policy_derivation", decl_name: join([kind, "-", host as String, "-", subject], ""))
 }
 
+// The supply as a bound's subject: its asset identity, or -- for an operator-stated supply with none -- the host's
+// one supply, which is all the bound is about.
+fn psu_subject(c: PhysicalAssetIdentity?) -> String {
+  match c {
+    Present { value: x } => x as String
+    Absent => "operator-stated-supply"
+  }
+}
+
 fn psu_bound(f: HostFacts) -> HostBound {
   HostBound {
-    identity: bound_identity(kind: "psu-sustained-output", host: f.host, subject: f.psu_component as String),
+    identity: bound_identity(kind: "psu-sustained-output", host: f.host, subject: psu_subject(c: f.psu_component)),
     binding: PsuSustainedOutput { psu: f.psu_component, rated_output: f.psu_rated, non_gpu: f.non_gpu },
     budget: nat_saturating_sub(a: watt_count(w: f.psu_rated), b: watt_count(w: f.non_gpu)),
   }
@@ -383,6 +450,8 @@ fn resolve_circuit(inputs: CapDerivationInputs, c: SharedPowerCircuit) -> Circui
     RatingUnread { read_obligation: o } => [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: o }]
     RatingCited { carry_limit: _, standing: s } =>
       if standing_is_grounded(s: s) { [] as List<HeadroomNeed> } else { [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: standing_obligation(s: s, fallback: "the circuit rating's standing is unstated" as NonEmptyStr) }] }
+    RatingOperatorStated { carry_limit: _, stated_by: r } =>
+      if statement_is_rostered(r: r) { [] as List<HeadroomNeed> } else { [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: unrostered_statement_obligation(what: "the circuit's stated rating", r: r) }] }
   }
   let fraction_needs = if standing_is_grounded(s: inputs.continuous_fraction.standing) { [] as List<HeadroomNeed> } else { [ContinuousFractionUngrounded { read_obligation: standing_obligation(s: inputs.continuous_fraction.standing, fallback: "unstated" as NonEmptyStr) }] }
   let resolutions = map(c.members, m => resolve_host_facts(inputs: inputs, host: m))
@@ -398,9 +467,9 @@ fn resolve_circuit(inputs: CapDerivationInputs, c: SharedPowerCircuit) -> Circui
       HostFactsResolved { facts: f } => [f]
       HostFactsUnresolved { targets: _, needs: _ } => [] as List<HostFacts>
     })
-    match c.rating {
-      RatingUnread { read_obligation: o } => CircuitUnresolved { needs: [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: o }] }
-      RatingCited { carry_limit: limit, standing: _ } => {
+    match circuit_carry_limit(c: c) {
+      Absent => CircuitUnresolved { needs: [CircuitRatingUnreadNeed { circuit: c.identity, read_obligation: "the circuit's rating is unread" as NonEmptyStr }] }
+      Present { value: limit } => {
         let lowest_floor = min_percent(fs: facts)
         let non_gpu = fold(facts, init: no_watts(), f: (acc, x) => acc + watt_count(w: x.non_gpu))
         let continuous_ac = watt_count(w: limit) * percent_count(p: inputs.continuous_fraction.fraction) / 100
@@ -434,27 +503,25 @@ fn reduction_for(budget: Nat, targets: Nat, minima: Nat) -> ReductionFraction {
   else { ReducedBy { numerator: nat_saturating_sub(a: budget, b: minima), denominator: nat_saturating_sub(a: targets, b: minima) } }
 }
 
-fn reduced_cap(t: DeviceRuleTarget, f: ReductionFraction) -> Nat {
-  match f {
-    FitsWhole => target_watts(t: t)
-    FloorsDoNotFit => minimum_watts(t: t)
-    ReducedBy { numerator: n, denominator: d } =>
-      if d == 0 { target_watts(t: t) } else { minimum_watts(t: t) + nat_saturating_sub(a: target_watts(t: t), b: minimum_watts(t: t)) * n / d }
-  }
-}
+// A BUDGET THE RULE'S TARGETS EXCEED WHILE THE FLOORS STILL FIT: the figures, and nothing chosen. Which cards
+// give up how much is an ALLOCATION POLICY, and none is ruled -- the operator deferred it on 2026-11-28
+// (gunbc.design_ruling::operator_holds_live_gpu_caps_accepting_circuit_overcommit_2026_11_28: "i wouldn't worry
+// about over budget yet, i would focus on documenting facts"). So the derivation reports the binding constraint,
+// its budget, the targets and the floors, and the overcommit is targets - budget; it mints no reduced cap.
+type OverBudget { binding: BindingConstraint, budget: Nat, targets: Nat, minima: Nat }
 
-// This host's share of a resolved circuit under the circuit's own fraction. When the circuit's floors do not
-// fit, the share is what is left for this host with every OTHER member at its floor -- which is below this
-// host's own floors, so the all-minimum candidate is excluded and the refusal names the circuit.
+// This host's share of a resolved circuit. When every member's targets fit, the share is this host's targets.
+// Otherwise it is the most this host could take with every OTHER member at its floor -- a policy-free upper bound,
+// not an allocation. When the circuit's floors do not fit, that is below this host's own floors, so the
+// all-minimum candidate is excluded and the refusal names the circuit; when only the targets do not fit, the
+// circuit is reported over budget by circuit_over_budget below and no cap is selected.
 fn circuit_share_bound(cr: CircuitResolution, host: HostIdentity, own: List<DeviceRuleTarget>) -> List<HostBound> {
   match cr {
     CircuitUnresolved { needs: _ } => [] as List<HostBound>
     CircuitResolved { circuit: c, members: _, binding: b, budget: budget, minima: m, targets: t } => {
-      let f = reduction_for(budget: budget, targets: t, minima: m)
-      let share = match f {
-        FloorsDoNotFit => nat_saturating_sub(a: budget, b: nat_saturating_sub(a: m, b: sum_minima(ts: own)))
+      let share = match reduction_for(budget: budget, targets: t, minima: m) {
         FitsWhole => sum_targets(ts: own)
-        ReducedBy { numerator: _, denominator: _ } => fold(own, init: no_watts(), f: (acc, x) => acc + reduced_cap(t: x, f: f))
+        _ => nat_saturating_sub(a: budget, b: nat_saturating_sub(a: m, b: sum_minima(ts: own)))
       }
       let share_bound = HostBound {
         identity: bound_identity(kind: "circuit-continuous-share", host: host, subject: c.identity.decl_name as String),
@@ -463,6 +530,18 @@ fn circuit_share_bound(cr: CircuitResolution, host: HostIdentity, own: List<Devi
       }
       [share_bound]
     }
+  }
+}
+
+// A resolved circuit whose members' rule targets exceed its continuous allowance while their floors fit.
+fn circuit_over_budget(cr: CircuitResolution) -> List<OverBudget> {
+  match cr {
+    CircuitUnresolved { needs: _ } => [] as List<OverBudget>
+    CircuitResolved { circuit: _, members: _, binding: b, budget: budget, minima: m, targets: t } =>
+      match reduction_for(budget: budget, targets: t, minima: m) {
+        ReducedBy { numerator: _, denominator: _ } => [OverBudget { binding: b, budget: budget, targets: t, minima: m }]
+        _ => [] as List<OverBudget>
+      }
   }
 }
 
@@ -485,9 +564,10 @@ data id_param_devices: DeclarationRef = decl_ref(module_path: "gunbc.fleet.gpu_c
 
 // TWO AXES, AND WHY. The host's cap sum is what the bounds constrain (a HardConstraint caps a LowerIsBetter
 // axis from above), and the shortfall from the rule -- the watts the vector sits below every card's rule
-// target -- is what the rule asks to minimise. On those two the default and any reduction are incomparable
-// (less draw, more shortfall), so the choice between them is the policy's, and the policy prefers the default:
-// a reduction is selected only when the bounds have excluded the default, never because it draws less.
+// target -- is what the rule asks to minimise. On those two the default and the all-minimum vector are
+// incomparable (less draw, more shortfall), so the choice between them is the policy's, and the policy prefers
+// the default. The all-minimum vector is in the field only when the floors may not fit, so its exclusion is what
+// locates a refusal; it is never selected as an allocation.
 fn selection_axes() -> List<SelectionAxis> {
   [SelectionAxis { identity: ax_host_gpu_cap_sum, goal: LowerIsBetter }, SelectionAxis { identity: ax_rule_shortfall, goal: LowerIsBetter }]
 }
@@ -620,7 +700,6 @@ type DerivedDeviceCap {
 
 type HostAllocation
   = PolicyDefaultFits { tightest: BindingConstraint?, slack: Watt }
-  | ReducedTowardMinimum { binding: BindingConstraint, numerator: Nat, denominator: Nat }
 
 type HostCapDerivation
   = HostCapsSelected { host: HostIdentity, targets: List<DeviceRuleTarget>, caps: List<DerivedDeviceCap>, allocation: HostAllocation, receipt: SelectionReceipt }
@@ -628,11 +707,14 @@ type HostCapDerivation
   | HostHeadroomUnestablished { host: HostIdentity, targets: List<DeviceRuleTarget>, needs: List<HeadroomNeed> }
   | HostSelectionNeedsEvidence { host: HostIdentity, targets: List<DeviceRuleTarget>, needs: List<SelectionEvidenceNeed> }
   | HostSelectionRefused { host: HostIdentity, targets: List<DeviceRuleTarget>, defects: List<NonEmptyStr> }
+  // std.decision's needs-policy shape at host grain: the default does not fit, the floors do, and no allocation
+  // policy is ruled -- so nothing is selected and the figures are reported (OverBudget above).
+  | HostSelectionNeedsPolicy { host: HostIdentity, targets: List<DeviceRuleTarget>, over: OverBudget }
 
-fn caps_at(ts: List<DeviceRuleTarget>, f: ReductionFraction) -> List<DerivedDeviceCap> {
+fn caps_at(ts: List<DeviceRuleTarget>) -> List<DerivedDeviceCap> {
   flat_map(ts, t => match t {
-    RuleTargetDerived { host: _, board: b, gpu_uuid: u, control: k, rated: _, minimum: _, maximum: _, unclamped: _, target: _, clamp: _, current: _ } =>
-      [DerivedDeviceCap { board: b, gpu_uuid: u, control: k, cap: watt(count: reduced_cap(t: t, f: f)) }]
+    RuleTargetDerived { host: _, board: b, gpu_uuid: u, control: k, rated: _, minimum: _, maximum: _, unclamped: _, target: w, clamp: _, current: _ } =>
+      [DerivedDeviceCap { board: b, gpu_uuid: u, control: k, cap: w }]
     RuleTargetUnread { host: _, board: _, cause: _ } => [] as List<DerivedDeviceCap>
   })
 }
@@ -659,23 +741,42 @@ fn derive_host_caps_with(inputs: CapDerivationInputs, host: HostIdentity) -> Hos
         let ts = derived_targets(ts: f.targets)
         let bounds = concat(concat([psu_bound(f: f)], flat_map(cs, c => member_bounds(c: c, f: f))),
           flat_map(resolved_circuits, r => circuit_share_bound(cr: r, host: host, own: ts)))
-        select_host_caps(inputs: inputs, host: host, ts: ts, bounds: bounds)
+        select_host_caps(inputs: inputs, host: host, ts: ts, bounds: bounds, circuit_over: flat_map(resolved_circuits, r => circuit_over_budget(cr: r)))
       }
   }
 }
 
-fn select_host_caps(inputs: CapDerivationInputs, host: HostIdentity, ts: List<DeviceRuleTarget>, bounds: List<HostBound>) -> HostCapDerivation {
+// THE SELECTION, IN THREE CASES. When even the floors do not fit a bound, the field is the default and the
+// all-minimum vector, std.decision excludes both, and the host REFUSES naming the violated bound. When the
+// default fits every bound of its own but not jointly with its circuit's other members, or the floors fit a bound
+// and the default does not, the host is OVER BUDGET with no allocation policy ruled: HostSelectionNeedsPolicy
+// reports the figures and selects nothing. Only when the default fits everything does std.decision select it.
+fn select_host_caps(inputs: CapDerivationInputs, host: HostIdentity, ts: List<DeviceRuleTarget>, bounds: List<HostBound>, circuit_over: List<OverBudget>) -> HostCapDerivation {
   let targets = sum_targets(ts: ts)
   let minima = sum_minima(ts: ts)
   let tb = tightest(bounds: bounds, targets: targets, minima: minima)
+  match tb.fraction {
+    FloorsDoNotFit => select_through_decision(inputs: inputs, host: host, ts: ts, bounds: bounds, tb: tb, targets: targets, minima: minima)
+    _ => match circuit_over.first() {
+      // A circuit over budget is reported at the circuit's own figures, the same for every member.
+      Present { value: o } => HostSelectionNeedsPolicy { host: host, targets: ts, over: o }
+      Absent => match tb.fraction {
+        ReducedBy { numerator: _, denominator: _ } => match tb.bound {
+          Present { value: b } => HostSelectionNeedsPolicy { host: host, targets: ts, over: OverBudget { binding: b.binding, budget: b.budget, targets: targets, minima: minima } }
+          Absent => HostSelectionRefused { host: host, targets: ts, defects: ["the default exceeds a budget no bound names" as NonEmptyStr] }
+        }
+        _ => select_through_decision(inputs: inputs, host: host, ts: ts, bounds: bounds, tb: tb, targets: targets, minima: minima)
+      }
+    }
+  }
+}
+
+fn select_through_decision(inputs: CapDerivationInputs, host: HostIdentity, ts: List<DeviceRuleTarget>, bounds: List<HostBound>, tb: TightestBound, targets: Nat, minima: Nat) -> HostCapDerivation {
   let default_entry = entry_of(host: host, which: "policy-default", label: "every card at its rule target", sum: targets, shortfall: no_watts())
-  let reduced_sum = fold(ts, init: no_watts(), f: (acc, t) => acc + reduced_cap(t: t, f: tb.fraction))
   let field = match tb.fraction {
-    FitsWhole => [default_entry]
-    ReducedBy { numerator: _, denominator: _ } =>
-      [default_entry, entry_of(host: host, which: "reduced-toward-minimum", label: "every card reduced by one common fraction toward its own minimum", sum: reduced_sum, shortfall: nat_saturating_sub(a: targets, b: reduced_sum))]
     FloorsDoNotFit =>
       [default_entry, entry_of(host: host, which: "all-at-minimum", label: "every card at its own minimum", sum: minima, shortfall: nat_saturating_sub(a: targets, b: minima))]
+    _ => [default_entry]
   }
   match select_realization(
     assessment: assessment_for(host: host, ts: ts, bounds: bounds, policy: inputs.policy),
@@ -690,23 +791,14 @@ fn select_host_caps(inputs: CapDerivationInputs, host: HostIdentity, ts: List<De
     SelectedWithin { candidate: c, receipt: r } =>
       if declaration_ref_eq(a: c.identity, b: default_entry.identity) {
         HostCapsSelected {
-          host: host, targets: ts, caps: caps_at(ts: ts, f: FitsWhole), receipt: r,
+          host: host, targets: ts, caps: caps_at(ts: ts), receipt: r,
           allocation: PolicyDefaultFits {
             tightest: match tb.bound { Present { value: b } => Present { value: b.binding }  Absent => Absent },
             slack: watt(count: match tb.bound { Present { value: b } => nat_saturating_sub(a: b.budget, b: targets)  Absent => no_watts() }),
           },
         }
       } else {
-        match tb.bound {
-          Absent => HostSelectionRefused { host: host, targets: ts, defects: ["a reduced candidate was selected with no bound that required it" as NonEmptyStr] }
-          Present { value: b } => match tb.fraction {
-            ReducedBy { numerator: n, denominator: d } => HostCapsSelected {
-              host: host, targets: ts, caps: caps_at(ts: ts, f: tb.fraction), receipt: r,
-              allocation: ReducedTowardMinimum { binding: b.binding, numerator: n, denominator: d },
-            }
-            _ => HostSelectionRefused { host: host, targets: ts, defects: ["the selected candidate is neither the default nor a reduction" as NonEmptyStr] }
-          }
-        }
+        HostSelectionRefused { host: host, targets: ts, defects: ["a candidate other than the rule's default was selected, and no allocation policy is ruled" as NonEmptyStr] }
       }
     NoFeasibleRealization { causes: cz, scope: sc } => HostCapsRefused {
       host: host, targets: ts, causes: cz, scope: sc,
@@ -729,6 +821,17 @@ fn gpu_hosts_of(inputs: CapDerivationInputs) -> List<HostIdentity> {
   })
   let reported = flat_map(inputs.constraint_rows, r => if r.unidentified_gpus.length() > 0 { [r.host] } else { [] as List<HostIdentity> })
   fold(concat(contained, reported), init: [] as List<HostIdentity>, f: (acc, h) =>
+    if any(acc, x => host_identity_eq(a: x, b: h)) { acc } else { concat(acc, [h]) })
+}
+
+// The hosts whose facts the derivation READS: every GPU host, and every other member of a circuit that carries one
+// (srv2 on the 15 A breaker carries no card, and the breaker cannot be summed without it). This is the population a
+// constraint row is owed to, and the one the report's relation table covers, so a GPU-less circuit member shows
+// what it still owes rather than being absent from the page.
+fn related_hosts_of(inputs: CapDerivationInputs) -> List<HostIdentity> {
+  let gpu_hosts = gpu_hosts_of(inputs: inputs)
+  let partners = flat_map(filter(inputs.circuits, c => any(gpu_hosts, h => circuit_carries(c: c, host: h))), c => c.members)
+  fold(concat(gpu_hosts, partners), init: [] as List<HostIdentity>, f: (acc, h) =>
     if any(acc, x => host_identity_eq(a: x, b: h)) { acc } else { concat(acc, [h]) })
 }
 
@@ -771,6 +874,7 @@ type DerivedCapOutcome
   = CapDerived { cap: Watt, allocation: HostAllocation }
   | CapRefused { violated: List<BindingConstraint>, causes: List<NonEmptyStr> }
   | CapWithheld { causes: List<NonEmptyStr> }
+  | CapOverBudgetUnruled { over: OverBudget }
 
 type CappedSubject
   = IdentifiedDevice { board: PhysicalAssetIdentity, gpu_uuid: NonEmptyStr?, control: GpuPowerLimitControl? }
@@ -789,7 +893,7 @@ fn watts_text(w: Watt) -> String { join([nat_to_decimal_string(value: watt_count
 fn binding_text(b: BindingConstraint) -> String {
   match b {
     PsuSustainedOutput { psu: p, rated_output: r, non_gpu: n } =>
-      join(["supply ", p as String, ": ", watts_text(w: r), " DC less ", watts_text(w: n), " non-GPU"], "")
+      join(["supply ", psu_subject(c: p), ": ", watts_text(w: r), " DC less ", watts_text(w: n), " non-GPU"], "")
     CircuitMemberDrawBound { circuit: c, draw_limit: l, efficiency_floor: e, non_gpu: n } =>
       join(["member bound on ", c.decl_name as String, ": ", watts_text(w: l), " AC x ", nat_to_decimal_string(value: percent_count(p: e)), "% floor less ", watts_text(w: n), " non-GPU"], "")
     CircuitContinuousAllowance { circuit: c, carry_limit: l, continuous_fraction: fr, lowest_efficiency_floor: e, members_non_gpu: n } =>
@@ -844,6 +948,7 @@ fn host_outcome_for(d: HostCapDerivation, t: DeviceRuleTarget) -> DerivedCapOutc
     HostHeadroomUnestablished { host: _, targets: _, needs: ns } => CapWithheld { causes: map(ns, n => short_need_text(n: n) as NonEmptyStr) }
     HostSelectionNeedsEvidence { host: _, targets: _, needs: ns } => CapWithheld { causes: map(ns, n => selection_evidence_need_cause(n: n)) }
     HostSelectionRefused { host: _, targets: _, defects: ds } => CapRefused { violated: [], causes: ds }
+    HostSelectionNeedsPolicy { host: _, targets: _, over: o } => CapOverBudgetUnruled { over: o }
   }
 }
 
@@ -854,6 +959,7 @@ fn host_of(d: HostCapDerivation) -> HostIdentity {
     HostHeadroomUnestablished { host: h, targets: _, needs: _ } => h
     HostSelectionNeedsEvidence { host: h, targets: _, needs: _ } => h
     HostSelectionRefused { host: h, targets: _, defects: _ } => h
+    HostSelectionNeedsPolicy { host: h, targets: _, over: _ } => h
   }
 }
 
@@ -864,6 +970,7 @@ fn targets_of(d: HostCapDerivation) -> List<DeviceRuleTarget> {
     HostHeadroomUnestablished { host: _, targets: t, needs: _ } => t
     HostSelectionNeedsEvidence { host: _, targets: t, needs: _ } => t
     HostSelectionRefused { host: _, targets: t, defects: _ } => t
+    HostSelectionNeedsPolicy { host: _, targets: t, over: _ } => t
   }
 }
 
@@ -963,7 +1070,16 @@ fn outcome_cap_cell(o: DerivedCapOutcome) -> String {
     CapDerived { cap: c, allocation: _ } => watts_text(w: c)
     CapRefused { violated: _, causes: _ } => "REFUSED"
     CapWithheld { causes: _ } => "withheld"
+    CapOverBudgetUnruled { over: _ } => "OVER BUDGET (none chosen)"
   }
+}
+
+fn over_budget_text(o: OverBudget) -> String {
+  join([
+    "over budget, no allocation policy ruled: ", binding_text(b: o.binding), " leaves ", nat_to_decimal_string(value: o.budget),
+    " W DC for ", nat_to_decimal_string(value: o.targets), " W of rule targets (floors ", nat_to_decimal_string(value: o.minima),
+    " W); overcommit ", nat_to_decimal_string(value: nat_saturating_sub(a: o.targets, b: o.budget)), " W",
+  ], "")
 }
 
 fn outcome_reason_cell(o: DerivedCapOutcome) -> String {
@@ -973,11 +1089,10 @@ fn outcome_reason_cell(o: DerivedCapOutcome) -> String {
         Present { value: b } => join(["default fits; tightest: ", binding_text(b: b), " (", watts_text(w: s), " spare)"], "")
         Absent => "default fits; no bound applies"
       }
-      ReducedTowardMinimum { binding: b, numerator: n, denominator: d } =>
-        join(["reduced by ", nat_to_decimal_string(value: n), "/", nat_to_decimal_string(value: d), " of the room above each minimum; binding: ", binding_text(b: b)], "")
     }
     CapRefused { violated: v, causes: cz } => join(concat(map(v, b => join(["violates ", binding_text(b: b)], "")), map(cz, c => c as String)), "; ")
     CapWithheld { causes: cz } => join(map(cz, c => c as String), "; ")
+    CapOverBudgetUnruled { over: ov } => over_budget_text(o: ov)
   }
 }
 
@@ -1015,6 +1130,11 @@ fn psu_text(p: HostPsuConstraint) -> String {
         EfficiencyFloorStated { floor: fl, standing: _ } => join([nat_to_decimal_string(value: percent_count(p: fl)), "%"], "")
         EfficiencyFloorUnread { read_obligation: _ } => "unread"
       }], "")
+    PsuRatedOutputOperatorStated { component: _, rated_output: r, stated_by: by, efficiency_floor: f, model_read_obligation: _ } =>
+      join(["operator-stated ", watts_text(w: r), " DC (", by.decl_name as String, "), model unread; efficiency floor ", match f {
+        EfficiencyFloorStated { floor: fl, standing: _ } => join([nat_to_decimal_string(value: percent_count(p: fl)), "%"], "")
+        EfficiencyFloorUnread { read_obligation: _ } => "unread"
+      }], "")
     PsuUnread { component: c, read_obligation: _ } => match c {
       Present { value: comp } => join([comp as String, " (model/rating unread)"], "")
       Absent => "no supply recorded"
@@ -1033,6 +1153,7 @@ fn host_relation_line(inputs: CapDerivationInputs, h: HostIdentity) -> String {
     " | ", match rows.first() {
       Present { value: r } => match r.non_gpu_draw {
         NonGpuCeilingStated { dc_watts: w, standing: _ } => watts_text(w: w)
+        NonGpuCeilingOperatorBudget { dc_watts: w, declared_by: _ } => join([watts_text(w: w), " (operator budget)"], "")
         NonGpuCeilingUnread { read_obligation: _ } => "unread"
       }
       Absent => "NO ROW"
@@ -1048,9 +1169,14 @@ fn fact_checklist_with(inputs: CapDerivationInputs) -> List<String> {
   let every_line = flat_map(derive_fleet_caps_with(inputs: inputs), d => match d {
     HostHeadroomUnestablished { host: _, targets: _, needs: ns } => map(ns, n => need_text(n: n))
     HostSelectionNeedsEvidence { host: h, targets: _, needs: ns } => map(ns, n => join([h as String, ": ", selection_evidence_need_cause(n: n) as String], ""))
+    HostSelectionNeedsPolicy { host: h, targets: _, over: o } => [join([h as String, ": ", over_budget_text(o: o)], "")]
     _ => [] as List<String>
   })
-  fold(every_line, init: [] as List<String>, f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
+  // A circuit member that carries no GPU has no derivation of its own, but its unread facts are what keep its
+  // circuit from being summed, so its own reads are listed too (srv2 on the 15 A breaker).
+  let partner_lines = flat_map(filter(related_hosts_of(inputs: inputs), h => !any(gpu_hosts_of(inputs: inputs), g => host_identity_eq(a: g, b: h))), h =>
+    map(host_needs_of(r: resolve_host_facts(inputs: inputs, host: h)), n => need_text(n: n)))
+  fold(concat(every_line, partner_lines), init: [] as List<String>, f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
 }
 
 fn fleet_gpu_cap_report_md_with(inputs: CapDerivationInputs) -> String {
@@ -1067,7 +1193,7 @@ fn fleet_gpu_cap_report_md_with(inputs: CapDerivationInputs) -> String {
       "",
       "| host | supply | board | circuit | non-GPU ceiling | installed GPU boards |",
       "|---|---|---|---|---|---|",
-    ], map(gpu_hosts_of(inputs: inputs), h => host_relation_line(inputs: inputs, h: h)))
+    ], map(related_hosts_of(inputs: inputs), h => host_relation_line(inputs: inputs, h: h)))
   let checklist = concat(["", "### Facts the derivation is waiting on", ""], map(fact_checklist_with(inputs: inputs), x => join(["- ", x], "")))
   join(concat(concat(device_table, relation_table), checklist), "\n")
 }
