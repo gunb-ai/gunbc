@@ -50,8 +50,6 @@ import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
 
   run_privileged_step,
-  privileged_step_succeeded,
-  privileged_step_unanswered,
   privileged_step_outcome_wire,
   PrivilegedStepOutcome,
   CredentialNotEnrolled,
@@ -59,6 +57,7 @@ import gunbc.spark.grant_privileged_operation {
   CredentialRejected,
   PrivilegedCommandFailed,
   PrivilegedCommandSucceeded,
+  PrivilegedCommandUnanswered,
   AdmittedRootArgv,
   admitted_root_argv_label,
   admitted_root_argv_words,
@@ -160,22 +159,41 @@ fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: Host
 // observed) -- withheld, and keeps the wire fault from the outcome (#17119 item 4). Extracted so a witness
 // drives the exact branch production takes (single_authority).
 fn spark_retired_dropin_removal_settlement(removed: PrivilegedStepOutcome, readback_confirms: Bool) -> SparkRetiredDropinStanding {
-  if !privileged_step_succeeded(outcome: removed) && !privileged_step_unanswered(outcome: removed) {
-    RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
-  } else if readback_confirms {
-    RetiredDropinRemoved
-  } else if privileged_step_unanswered(outcome: removed) {
-    RetiredDropinRemovalUnsettled {
-      cause: join(
-        [
-          "the removal was dispatched but its reply could not be read and the readback does not confirm the shared file gone with every inspect grant held under its own file, so the effect is unknown: ",
-          privileged_step_outcome_wire(outcome: removed),
-        ],
-        "",
-      ) as NonEmptyStr,
-    }
-  } else {
-    RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+  match removed {
+    // ANSWERED exit 0: the readback is the authority. Confirmed -> removed; not confirmed -> the
+    // "rm exited 0 but..." failure (we have an answered success to contradict).
+    PrivilegedCommandSucceeded { command: _ } =>
+      if readback_confirms {
+        RetiredDropinRemoved
+      } else {
+        RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+      }
+    // DISPATCHED, REPLY UNREADABLE: the exit was never observed, so it is NOT "rm exited 0". The effect
+    // is unknown and the readback did not settle it -- its own UNSETTLED standing, keeping the wire fault.
+    PrivilegedCommandUnanswered { command: _, cause: _ } =>
+      if readback_confirms {
+        RetiredDropinRemoved
+      } else {
+        RetiredDropinRemovalUnsettled {
+          cause: join(
+            [
+              "the removal was dispatched but its reply could not be read and the readback does not confirm the shared file gone with every inspect grant held under its own file, so the effect is unknown: ",
+              privileged_step_outcome_wire(outcome: removed),
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+    // answered failure or pre-dispatch refusal: the removal either ran and failed, or never ran. The
+    // wire text is the located diagnostic; readback cannot rescue it.
+    PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+    CredentialRejected { lease: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+    CredentialNotEnrolled { lease: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+    CredentialNotMaterialized { lease: _, cause: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
   }
 }
 

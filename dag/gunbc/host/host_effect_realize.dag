@@ -9962,12 +9962,16 @@ fn build_cache_host_read(command: ArgvCommand, transport: HostEffectTransport) -
         }
       }
     BuildCacheReadRefused { reason: why } => HostReadFailed { detail: why as NonEmptyStr }
+    BuildCacheReadUnread { reason: why } => HostReadFailed { detail: concat("the read leg was dispatched but its reply could not be read: ", why) as NonEmptyStr }
   }
 }
 
 type BuildCacheReadResult
   = BuildCacheReadRan { observed: ShellExecObserved }
   | BuildCacheReadRefused { reason: String }
+  // The read leg WAS dispatched but its reply arrived unreadable: the leg ran, so it is not "could not
+  // run" / "refused" -- the answer is simply unknown (#17119 item 10).
+  | BuildCacheReadUnread { reason: String }
 
 // EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface
 // is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and
@@ -10025,9 +10029,9 @@ fn build_cache_typed_argv_read(
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
       TypedArgvExecOverran { deadline: d } =>
-        BuildCacheReadRefused { reason: host_effect_typed_argv_overran_reason(leg_hint: "build cache read", deadline: d) }
+        BuildCacheReadUnread { reason: host_effect_typed_argv_overran_reason(leg_hint: "build cache read", deadline: d) }
     TypedArgvExecWireInconsistent { fault: f } =>
-        BuildCacheReadRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "build cache read", fault: f) }
+        BuildCacheReadUnread { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "build cache read", fault: f) }
     TypedArgvExecRefused { reason: why } => BuildCacheReadRefused { reason: why }
   }
 }
@@ -10042,6 +10046,8 @@ fn build_cache_path_kind_read(
       match build_cache_host_read_observed(command: endpoint_path_kind_command(path: p), transport: transport) {
         BuildCacheReadRefused { reason: why } =>
           path_kind_of_socket_test_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true, parent: ParentListsEntry)
+        BuildCacheReadUnread { reason: why } =>
+          path_kind_of_socket_test_read(read: HostReadFailed { detail: concat("the socket-test leg was dispatched but its reply could not be read: ", why) as NonEmptyStr }, exit_success: true, parent: ParentListsEntry)
         BuildCacheReadRan { observed: o } =>
           path_kind_of_socket_test_read(
             read: HostReadText { text: o.stdout },
@@ -10049,6 +10055,7 @@ fn build_cache_path_kind_read(
             parent: if o.success { ParentListsEntry } else {
               match build_cache_host_read_observed(command: endpoint_parent_listing_command(path: p), transport: transport) {
                 BuildCacheReadRefused { reason: why } => ParentListingUnread { detail: concat("the endpoint path's parent listing was refused: ", why) as NonEmptyStr }
+                BuildCacheReadUnread { reason: why } => ParentListingUnread { detail: concat("the endpoint path's parent listing leg was dispatched but its reply could not be read: ", why) as NonEmptyStr }
                 BuildCacheReadRan { observed: l } => endpoint_parent_listing_of(exit_success: l.success, stdout: l.stdout, stderr: l.stderr, name: endpoint_path_name(path: p as String))
               }
             },
@@ -10860,6 +10867,7 @@ fn build_cache_fd_holder_read(
 fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTransport) -> NonEmptyStr? {
   match build_cache_host_read_observed(command: stat_inode_command(path: path as String), transport: transport) {
     BuildCacheReadRefused { reason: _ } => none
+    BuildCacheReadUnread { reason: _ } => none
     BuildCacheReadRan { observed: o } =>
       if o.success == true {
         match trim(o.stdout) {
@@ -10996,6 +11004,11 @@ fn build_cache_unlink_then_ensure(
             BuildCacheReadRefused { reason: why } =>
               NotConverged {
                 reason: join(["host_effect_apply: EnsureBuildCacheInstance could not run the admitted stale-socket unlink -- ", why], ""),
+                applied: effect_intent,
+              }
+            BuildCacheReadUnread { reason: why } =>
+              NotConverged {
+                reason: join(["host_effect_apply: EnsureBuildCacheInstance dispatched the admitted stale-socket unlink but its reply could not be read, so whether the socket was unlinked is unknown -- ", why], ""),
                 applied: effect_intent,
               }
             BuildCacheReadRan { observed: o } =>

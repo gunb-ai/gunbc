@@ -396,7 +396,11 @@ fn privileged_step_succeeded(outcome: PrivilegedStepOutcome) -> Bool {
 fn privileged_step_unanswered(outcome: PrivilegedStepOutcome) -> Bool {
   match outcome {
     PrivilegedCommandUnanswered { command: _, cause: _ } => true
-    _ => false
+    PrivilegedCommandSucceeded { command: _ } => false
+    PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
+    CredentialRejected { lease: _ } => false
+    CredentialNotEnrolled { lease: _ } => false
+    CredentialNotMaterialized { lease: _, cause: _ } => false
   }
 }
 

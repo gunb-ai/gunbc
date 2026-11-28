@@ -134,6 +134,39 @@ fn service_slot_unit_started(s: ServiceSlotUnitStart) -> Bool {
   }
 }
 
+// THE AGGREGATE EXIT REASON (#17119 item 3a). A held failure must NOT claim "not every slot is active"
+// when some slot's active state could not be READ at all: that states a definite non-active for a unit
+// whose state is UNKNOWN. "not every slot is active" is true only when EVERY failing slot was OBSERVED
+// non-active. With any unread slot the reason says the state could not be established, and counts the
+// observed non-active separately when both are present. A never-dispatched (not-started) slot is not
+// counted as unread: it was observed not-started, which "not every slot is active" states truthfully.
+fn service_slot_start_failure_reason(run: ServiceSlotStartRun) -> String {
+  let units = match run {
+    ServiceSlotStartRan { host: _, boot: _, revision: _, units: us } => us
+    ServiceSlotStartRefused { cause: _ } => []
+  }
+  let unread = count(filter(units, u =>
+    match u { ServiceSlotUnitStateUnread { unit: _, start_cause: _, readback_cause: _ } => true _ => false }))
+  let not_active = count(filter(units, u =>
+    match u { ServiceSlotUnitNotActive { unit: _, state: _ } => true _ => false }))
+  if unread == 0 {
+    "not every slot is active"
+  } else if not_active == 0 {
+    join(["the active state of ", int_to_decimal_string(value: unread), " slot(s) could not be established"], "")
+  } else {
+    join(
+      [
+        "the active state of ",
+        int_to_decimal_string(value: unread),
+        " slot(s) could not be established and ",
+        int_to_decimal_string(value: not_active),
+        " are not active",
+      ],
+      "",
+    )
+  }
+}
+
 // THE READBACK IS THE MANAGER'S OWN ActiveState, read over the same transport; a start whose unit is not active, or
 // whose state is unreadable, is not a started slot. A pure fold over the two supplied answers, so a witness can supply
 // them.
@@ -355,7 +388,7 @@ fn service_slot_start_wet() -> ProcessExit
         } else if service_slot_start_held(run: run) {
           ExitSuccess
         } else {
-          exit_failure(reason: concat("service-slot start: not every slot is active; see the receipt:\n", join(lines, "\n")))
+          exit_failure(reason: concat("service-slot start: ", service_slot_start_failure_reason(run: run), "; see the receipt:\n", join(lines, "\n")))
         }
       }
     }
