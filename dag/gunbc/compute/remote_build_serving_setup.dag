@@ -43,7 +43,12 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_compute_ledger_group_gid,
   fleet_posix_remote_build_supplementary_groups,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
+import gunbc.compute.remote_build_serving_identity {
+  remote_build_serving_instance,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildCandidate,
+}
 // The candidate row moved to the module that owns host membership for the serving route, so the live
 // dispatch gate and the provisioned-candidate row are read side by side and host_capacity can answer the
 // ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).

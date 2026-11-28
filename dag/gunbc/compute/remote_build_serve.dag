@@ -42,6 +42,7 @@ import gunbc.compute.work_provider_local {
   provide_result_host_record, host_record_was_written, host_record_wire, provide_result_succeeded,
 }
 import gunbc.compute.remote_build_wire {
+  remote_build_capacity_body, remote_build_capacity_retry_floor,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
   ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code,
   remote_build_serve_header, remote_build_serve_answer, remote_build_leg_is_probe,
@@ -55,7 +56,6 @@ import gunbc.compute.remote_build {
   RemoteBuildCandidate, remote_build_candidates,
   RemoteBuildClientKey, remote_build_admitted_client_keys,
   remote_build_ending_of_outcome, remote_build_dependency_operation,
-  remote_build_capacity_body, remote_build_capacity_retry_floor,
 }
 
 // ── THE SERVING ENTRY: WHAT THE REMOTE-BUILD KEY'S FORCED COMMAND RUNS ──────────────────────────────

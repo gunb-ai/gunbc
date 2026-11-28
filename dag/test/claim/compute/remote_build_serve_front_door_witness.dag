@@ -1,9 +1,13 @@
 module test.claim.compute.remote_build_serve_front_door_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.algebra { skip }
+import std.algebra { skip, trim, string_contains }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.systemd { systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice }
+import gunbc.live_deploy.serving_child_observations { serving_child_slice_unit_name }
 import gunbc.cli_wire { CliWirePrintable }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_name, fleet_posix_operator_user,
@@ -25,10 +29,17 @@ import gunbc.compute.remote_build_serve_front_door {
   RemoteBuildFrontDoorTurn, FrontDoorAnswer, FrontDoorHandOffToChild,
   remote_build_serve_front_door_turn, remote_build_serve_front_door_probe_answer,
   remote_build_answer_body_is_a_receipt,
+  RemoteBuildDoorAdmission, DoorAdmitted, DoorPoolFull, DoorLedgerUnreadable, DoorSubjectUnresolved,
 }
+import gunbc.compute.remote_build_wire {
+  remote_build_capacity_retry_floor, remote_build_retry_after_word, remote_build_retry_hint_of_body,
+}
+import std.retry_law { RetryHintDelay }
+import std.measure { second_count }
 import gunbc.compute.remote_build {
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, remote_build_probe_from_exit,
   remote_build_probe_answer, HostRefusedRequest, HostCannotServe, remote_build_answer_of_ending,
+  HostCapacityFull, remote_build_answer_moves_on,
 }
 
 // THE FRONT DOOR: what a probe leg costs, what it establishes, and what a request still pays.
@@ -48,6 +59,15 @@ import gunbc.compute.remote_build {
 // which resolves and refuses before evaluating, so the pre-entry receipt is the whole cost):
 //   dag/gunbc/compute/remote_build_serve.dag                  closure_files=897  resolve 143,398 ms  max_rss 3,421,140 KiB
 //   dag/gunbc/compute/remote_build_serve_front_door.dag        closure_files=151  resolve   9,755 ms  max_rss   379,164 KiB
+// RE-MEASURED 2026-11-27 after the PRE-HAND-OFF ADMISSION (the gate whose claims sit below): the door
+// now also reads the seat ledger, so its demand graph carries gunbc.compute.host_capacity (352 modules
+// on its own). The measured door entry at this head: closure_files=375, resolve 44,557 ms -- still a
+// third of the request entry's wall and a tenth of its modules, and the probe answer itself is still
+// minted from the principal leaf alone. Two widening attempts were measured and REJECTED on the way:
+// importing the roster module for the serving-instance mint (closure_files=913, resolve 129,846 ms --
+// fixed by moving the mint to the gunbc.compute.remote_build_serving_identity leaf), and importing the
+// systemctl/host-effect machinery for the hand-off's slice diagnostic (closure_files=866 and 874 --
+// fixed by reading the cgroup's own interface files through extdeps.linux.cgroup_v2_memory instead).
 // 14.4x the wall, 9.2x the memory, 6.0x the modules. A probe leg now resolves 151 modules instead of
 // 897; a REQUEST leg resolves the door (9.8 s) and then the serving entry, so its own cost is unchanged
 // in kind -- it still needs the request closure -- and that is the honest reading: this cut is the probe's,
@@ -107,6 +127,13 @@ fn remote_build_serve_principal_refused_for_a_group_the_account_does_not_hold() 
   )
 }
 
+// THE LEDGER STANDING THE TURN DECIDES AGAINST. The turn is pure, so every claim below supplies the
+// standing itself; the wet reader (remote_build_serve_front_door_admission) resolves the same standing
+// from the host's own ledger and is witnessed red-side at the gate lane, not here.
+fn w_admission_admitted() -> RemoteBuildDoorAdmission {
+  DoorAdmitted { held: 0, seats: 2 }
+}
+
 fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFrontDoorTurn {
   remote_build_serve_front_door_turn(
     host: w_serving_host(),
@@ -116,6 +143,21 @@ fn w_turn(raw: String?, principal: RemoteBuildServePrincipal) -> RemoteBuildFron
     accept_instant: w_accept_instant,
     raw_command: raw,
     principal: principal,
+    ask_admission: _ => w_admission_admitted(),
+  )
+}
+
+// A WORK REQUEST AT THE DOOR, under a supplied ledger standing -- the arm the admission gate guards.
+fn w_request_turn(admission: RemoteBuildDoorAdmission) -> RemoteBuildFrontDoorTurn {
+  remote_build_serve_front_door_turn(
+    host: w_serving_host(),
+    serve_binary: w_bin,
+    repo_root: w_repo,
+    leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
+    raw_command: Present { value: join([remote_build_protocol_word as String, " compile abc build"], "") },
+    principal: w_principal_admitted(),
+    ask_admission: _ => admission,
   )
 }
 
@@ -308,6 +350,7 @@ test fn a_host_off_the_serving_row_is_refused_at_the_door() -> Bool {
     accept_instant: w_accept_instant,
     raw_command: Present { value: remote_build_probe_text as String },
     principal: w_principal_admitted(),
+    ask_admission: _ => w_admission_admitted(),
   ) {
     FrontDoorAnswer { ending: ServeHostCannotServe, detail: d } =>
       contains(haystack: d, needle: "not-a-serving-host")
@@ -325,12 +368,113 @@ test fn a_door_rendered_without_a_binary_or_a_checkout_runs_nothing() -> Bool {
     FrontDoorHandOffToChild { hand_off: _ } => true
     _ => false
   }
-    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted(), ask_admission: _ => w_admission_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
          _ => false
        }
-    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted()) {
+    && match remote_build_serve_front_door_turn(host: w_serving_host(), serve_binary: "gunbc", repo_root: w_repo, leg_ceiling: w_leg_ceiling, accept_instant: w_accept_instant, raw_command: Present { value: remote_build_protocol_word as String }, principal: w_principal_admitted(), ask_admission: _ => w_admission_admitted()) {
          FrontDoorAnswer { ending: ServeHostCannotServe, detail: _ } => true
+         _ => false
+       }
+}
+
+// ── THE PRE-HAND-OFF ADMISSION (the gate that replaced the client-side probe) ─────────────────────
+//
+// WHY THESE CLAIMS EXIST. Before this gate the door handed off every request and the SERVING CHILD
+// discovered at acquisition that the pool was full -- after booting a 150-module resolve that could
+// OOM before it ever reached the ledger (srv3's pool-full class, gunbc.live_deploy.serving_child_
+// observations). The gate asks the ledger's own charge scan BEFORE the boot. The red arms below are
+// the two wrong directions: a full pool that still hands off (the OOM this closes), and an unreadable
+// ledger that guesses headroom (gunbc.design_argument::fail_closed -- only the ledger knows whether an
+// empty-looking pool is empty or unreadable).
+
+// PASSING CONTROL: an admitted ledger hands off, exactly as the door did before the gate.
+test fn an_admitted_ledger_hands_off() -> Bool {
+  match w_request_turn(admission: w_admission_admitted()) {
+    FrontDoorHandOffToChild { hand_off: _ } => true
+    _ => false
+  }
+}
+
+// RED: A FULL SEAT POOL REFUSES THE HAND-OFF, in the ONE capacity vocabulary the request path also
+// mints -- the room/readiness ending that MOVES THE WALK ON, the declared retry allowance readable
+// by the client's own reader, and the seat counts named. Never a hand-off, never a request's-fault
+// refusal.
+test fn a_full_seat_pool_refuses_the_hand_off_with_the_capacity_vocabulary() -> Bool {
+  match w_request_turn(admission: DoorPoolFull { held: 2, seats: 2 }) {
+    FrontDoorAnswer { ending: ServeHostFull, detail: detail } =>
+      contains(haystack: detail, needle: remote_build_retry_after_word as String)
+        && contains(haystack: detail, needle: "seat pool is full")
+        && contains(haystack: detail, needle: "2 of 2")
+        // The client reads this answer as capacity-full AND moves on: the walk is not stopped by a
+        // host that is merely full.
+        && match remote_build_answer_of_ending(ending: ServeHostFull, body: detail, stderr: "") {
+             HostCapacityFull { detail: _, retry: RetryHintDelay { delay: delay } } =>
+               second_count(s: delay) == second_count(s: remote_build_capacity_retry_floor)
+               && remote_build_answer_moves_on(a: remote_build_answer_of_ending(ending: ServeHostFull, body: detail, stderr: ""))
+             _ => false
+           }
+        // The allowance round-trips through the ONE body reader, not a second recognizer.
+        && match remote_build_retry_hint_of_body(body: detail) {
+             RetryHintDelay { delay: _ } => true
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// RED: A LEDGER THE DOOR CANNOT READ REFUSES THE HAND-OFF rather than guessing headroom. The ending
+// is the room/readiness class -- the request moves to the next host; a guess here is what booted the
+// pile-up that OOMed.
+test fn an_unreadable_seat_ledger_refuses_the_hand_off() -> Bool {
+  match w_request_turn(admission: DoorLedgerUnreadable { detail: "the seat charge scan could not be read" }) {
+    FrontDoorAnswer { ending: ServeHostCannotServe, detail: detail } =>
+      contains(haystack: detail, needle: "the seat charge scan could not be read")
+        && match remote_build_answer_of_ending(ending: ServeHostCannotServe, body: detail, stderr: "") {
+             HostCannotServe { detail: _ } => remote_build_answer_moves_on(a: remote_build_answer_of_ending(ending: ServeHostCannotServe, body: detail, stderr: ""))
+             _ => false
+           }
+    _ => false
+  }
+}
+
+// RED: AN UNRESOLVABLE CAPACITY SUBJECT (no capacity home for this host) refuses the hand-off for
+// the same reason -- with no subject there is no ledger, and no ledger means no admission.
+test fn an_unresolvable_capacity_subject_refuses_the_hand_off() -> Bool {
+  match w_request_turn(admission: DoorSubjectUnresolved { detail: "host srv-test has no capacity home" }) {
+    FrontDoorAnswer { ending: ServeHostCannotServe, detail: detail } =>
+      contains(haystack: detail, needle: "capacity home")
+    _ => false
+  }
+}
+
+// RED CONTROL FOR THE LAZY GATE (review 99441): THE PROBE ARM NEVER ASKS THE LEDGER. A poison
+// thunk -- a ledger standing that would refuse any hand-off -- is supplied where the probe arm runs.
+// The probe does not consult it and still answers ready. Were the ledger read eager again, or the
+// gate moved above the probe arm, the poison would mint host_full for a probe and this claim goes
+// red. (gunbc.design_argument::demand_before_materialization -- the probe pays for the probe.)
+test fn a_probe_never_asks_the_ledger() -> Bool {
+  match remote_build_serve_front_door_turn(
+    host: w_serving_host(), serve_binary: w_bin, repo_root: w_repo, leg_ceiling: w_leg_ceiling,
+    accept_instant: w_accept_instant,
+    raw_command: Present { value: remote_build_probe_text as String },
+    principal: w_principal_admitted(),
+    ask_admission: _ => DoorPoolFull { held: 9, seats: 2 },
+  ) {
+    FrontDoorAnswer { ending: ServeReady, detail: _ } => true
+    _ => false
+  }
+}
+
+// THE RENDERER TRAP: A CONTRACT-LEGAL READY EXITS NON-ZERO. The exit law gives ServeReady the code 6
+// -- non-zero -- so whatever prints the leg's exit renders it like a failure (the "✗ (exit=6)" line an
+// operator read as a dead host on 2026-11-27 while the walk was healthy). The law, not the rendering,
+// decides: those same bytes and that same code are, to the client's one reading, a ready. If the exit
+// law ever moves ServeReady, this claim is the red that says so.
+test fn a_contract_legal_ready_exits_six_and_the_client_still_reads_it_ready() -> Bool {
+  remote_build_serve_exit_code(e: ServeReady) == 6
+    && match w_client_probe_reading(ending: ServeReady) {
+         ProbeReady => true
          _ => false
        }
 }
@@ -376,13 +520,18 @@ test fn the_probe_entry_imports_none_of_the_request_path() -> Bool {
   let forbidden = w_forbidden_probe_imports()
   forbidden |> all(m => !(door |> any(l => contains(haystack: l, needle: m))))
     && forbidden |> any(m => (request_entry |> any(l => contains(haystack: l, needle: m))))
-      // and the door reads the two leaves it is made of: the wire's answer mint and the principal leaf.
+      // and the door reads the leaves it is made of: the wire's answer mint, the principal leaf, the
+      // capacity ledger (the PRE-HAND-OFF ADMISSION asks the ledger directly -- it may not route the
+      // admission through the request module, which would re-widen the closure to exactly what this
+      // claim keeps out) and the systemd property leaf (the hand-off's slice diagnostic).
     && (door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_wire")))
     && (door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_serve_principal {")))
-      // it is not a second authority for anything: it never imports the serving entry, the roster module
-      // or the client.
+    && (door |> any(l => contains(haystack: l, needle: "gunbc.compute.host_capacity {")))
+    && (door |> any(l => contains(haystack: l, needle: "extdeps.linux.cgroup_v2_memory {")))
+      // it is not a second authority for anything: it never imports the serving entry or the client.
+      // (The roster's serving-instance mint it DOES import comes from the roster module -- the same
+      // mint the request path uses, which is why the admission and the request describe one host.)
     && !(door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_serve {")))
-    && !(door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build {")))
     && !(door |> any(l => contains(haystack: l, needle: "gunbc.compute.remote_build_client")))
 }
 
@@ -448,12 +597,112 @@ fn w_forbidden_probe_imports() -> List<String> {
     "gunbc.compute.work_provider",
     "gunbc.compute.work_request",
     "gunbc.compute.attempt_lifecycle",
-    "gunbc.compute.host_capacity",
     "gunbc.roadmap.roadmap_dashboard_instance",
+    "gunbc.host.host_effect",
+    "gunbc.systemctl_show_read",
     "extdeps.git",
-    "extdeps.systemd",
     "extdeps.ssh.",
     "gunbc.compute.remote_build_serving_setup",
     "gunbc.fleet.fleet_known_hosts_anchor",
   ]
+}
+
+// ── THE DOOR ────────────────────────────────────────────────────────────────────────────────────────
+//
+// WHY AN AGGREGATE ENTRY, AND WHY THE ROSTER CLAIM BELOW IS NOT DEBT. Some claims here reach a real
+// Filesystem.Read (the import-line claims read the door's own source), so they ride no hermetic lane
+// that fakes the read -- an aggregate entry run with --function is how they get run, and the posted
+// manual receipt is the evidence (the schedule has no runner for them today). The roster is a call
+// list, which the module cannot enumerate at runtime; THE IDENTITY JOIN CLAIM makes the second copy
+// honest: it reads this module's own source and refuses when the set of `test fn` declarations and
+// the set of rostered calls disagree in either direction (gunbc.design_argument::fail_closed:
+// completeness is an identity join, not a count equality; gunbc.design_argument::single_authority).
+// The one deletion the join cannot catch from inside is deleting THIS claim with its roster line --
+// that deletion is itself a roster/declaration disagreement the next CI pass surfaces as a missing
+// claim, and the wet schedule rows that run this module name claims by hand besides.
+
+
+// THE DOOR'S OOM EVIDENCE READS THE NESTED SLICE CGROUP DIR (review 99502). A dashed slice is
+// nested under its ancestors by systemd; a flat path would make both reads refuse in exactly the
+// headerless-death case the diagnostic exists for. The nesting rule has ONE home -- the door must
+// borrow extdeps.systemd's, not re-derive it, and the rendered path must be the nested one.
+test fn the_diagnostic_borrows_the_nested_slice_path_from_systemd() -> Bool {
+  let src = Filesystem.Read(path: "dag/gunbc/compute/remote_build_serve_front_door.dag")
+  if !src.success { return false }
+  let uses_home = string_contains(s: src.content, pattern: "systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: unit)")
+  let no_fork = !string_contains(s: src.content, pattern: "cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: unit)")
+  let nested = match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: serving_child_slice_unit_name) {
+    SliceCgroupPath { path: p } => (p as String) == "/sys/fs/cgroup/gunbc.slice/gunbc-user.slice/gunbc-user-work.slice"
+    SliceNameNotASlice { spelling: _ } => false
+  }
+  uses_home && no_fork && nested
+}
+
+fn door_source_lines() -> List<String> {
+  let src = Filesystem.Read(path: "dag/test/claim/compute/remote_build_serve_front_door_witness.dag")
+  if !src.success { return [] }
+  return split(s: src.content, delimiter: "\n")
+}
+
+fn door_test_fn_name(line: String) -> String {
+  let t = trim(line)
+  if !starts_with(s: t, prefix: "test fn ") { return "" }
+  let after = substring(s: t, start: length("test fn "), end: length(t))
+  let parts: List<String> = split(s: after, delimiter: "(")
+  return match parts |> first { Present { value: v } => v  Absent => "" }
+}
+
+fn door_roster_name(line: String) -> String {
+  let t = trim(line)
+  if !starts_with(s: t, prefix: "check_or_name(name: \"") { return "" }
+  let parts: List<String> = split(s: t, delimiter: "\"")
+  return match parts |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+}
+
+// THE JOIN BOTH WAYS: every declaration called, every call a declaration. Add a claim without
+// rostering it, roster a name that is not a claim, or rename either side, and THIS goes red.
+test fn the_door_roster_lists_every_test_fn_and_nothing_else() -> Bool {
+  let lines = door_source_lines()
+  let fns = filter(map(lines, door_test_fn_name), n => n != "")
+  let rostered = filter(map(lines, door_roster_name), n => n != "")
+  length(fns) > 0
+    && !any(fns, n => first_where(rostered, r => r == n) == Absent)
+    && !any(rostered, r => first_where(fns, n => n == r) == Absent)
+}
+
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { return "" }
+  return concat(name, "\n")
+}
+
+fn run_remote_build_serve_front_door_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "the_door_roster_lists_every_test_fn_and_nothing_else", held: the_door_roster_lists_every_test_fn_and_nothing_else()),
+    check_or_name(name: "the_diagnostic_borrows_the_nested_slice_path_from_systemd", held: the_diagnostic_borrows_the_nested_slice_path_from_systemd()),
+    check_or_name(name: "an_admitted_principal_answers_the_probe_ready_and_the_client_sends_the_request", held: an_admitted_principal_answers_the_probe_ready_and_the_client_sends_the_request()),
+    check_or_name(name: "a_refused_principal_moves_the_request_on_and_never_stops_the_walk", held: a_refused_principal_moves_the_request_on_and_never_stops_the_walk()),
+    check_or_name(name: "the_ledger_membership_the_probe_no_longer_checks_still_refuses_the_request", held: the_ledger_membership_the_probe_no_longer_checks_still_refuses_the_request()),
+    check_or_name(name: "the_ledger_membership_the_request_path_still_checks_admits_when_it_is_there", held: the_ledger_membership_the_request_path_still_checks_admits_when_it_is_there()),
+    check_or_name(name: "the_probe_is_recognized_by_its_whole_text", held: the_probe_is_recognized_by_its_whole_text()),
+    check_or_name(name: "a_work_request_hands_off_to_the_serving_entry_with_the_forced_commands_words", held: a_work_request_hands_off_to_the_serving_entry_with_the_forced_commands_words()),
+    check_or_name(name: "the_hand_off_names_nothing_the_client_could_have_written", held: the_hand_off_names_nothing_the_client_could_have_written()),
+    check_or_name(name: "the_hand_off_and_the_request_legs_words_are_one_rendering", held: the_hand_off_and_the_request_legs_words_are_one_rendering()),
+    check_or_name(name: "words_that_do_not_name_the_contract_are_refused_with_a_header", held: words_that_do_not_name_the_contract_are_refused_with_a_header()),
+    check_or_name(name: "a_host_off_the_serving_row_is_refused_at_the_door", held: a_host_off_the_serving_row_is_refused_at_the_door()),
+    check_or_name(name: "a_door_rendered_without_a_binary_or_a_checkout_runs_nothing", held: a_door_rendered_without_a_binary_or_a_checkout_runs_nothing()),
+    check_or_name(name: "an_admitted_ledger_hands_off", held: an_admitted_ledger_hands_off()),
+    check_or_name(name: "a_full_seat_pool_refuses_the_hand_off_with_the_capacity_vocabulary", held: a_full_seat_pool_refuses_the_hand_off_with_the_capacity_vocabulary()),
+    check_or_name(name: "an_unreadable_seat_ledger_refuses_the_hand_off", held: an_unreadable_seat_ledger_refuses_the_hand_off()),
+    check_or_name(name: "an_unresolvable_capacity_subject_refuses_the_hand_off", held: an_unresolvable_capacity_subject_refuses_the_hand_off()),
+    check_or_name(name: "a_probe_never_asks_the_ledger", held: a_probe_never_asks_the_ledger()),
+    check_or_name(name: "a_contract_legal_ready_exits_six_and_the_client_still_reads_it_ready", held: a_contract_legal_ready_exits_six_and_the_client_still_reads_it_ready()),
+    check_or_name(name: "a_receipt_goes_out_byte_exact_and_a_refusal_keeps_its_stderr", held: a_receipt_goes_out_byte_exact_and_a_refusal_keeps_its_stderr()),
+    check_or_name(name: "the_probe_entry_imports_none_of_the_request_path", held: the_probe_entry_imports_none_of_the_request_path()),
+    check_or_name(name: "the_request_entry_never_mints_ready", held: the_request_entry_never_mints_ready()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("remote_build_serve_front_door_witness claims red: ", red) }
+  }
 }

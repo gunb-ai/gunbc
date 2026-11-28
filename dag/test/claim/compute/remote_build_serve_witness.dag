@@ -3,6 +3,7 @@ module test.claim.compute.remote_build_serve_witness
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.algebra { skip, trim }
 import product.host_identity { HostIdentity }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { Kibibyte, kibibyte, second, second_count }
@@ -16,23 +17,17 @@ import gunbc.compute.work_request {
   WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure,
   ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ToolchainMismatchRefused, DependencyNotSucceeded,
 }
+import gunbc.compute.remote_build_serving_identity {
+  remote_build_serving_instance,
+}
 import gunbc.compute.remote_build_wire {
+  remote_build_capacity_retry_floor,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
   ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code,
   remote_build_serve_header, remote_build_serve_answer,
 }
 import gunbc.compute.remote_build {
-  RemoteBuildWork, RemoteCompileEntry, remote_build_source_ref,
-  remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild, RemoteRunClaims, RemoteGateSubject,
-  RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
-  remote_build_answer_from_exit,
-  remote_build_ending_of_outcome, remote_build_answer_moves_on, remote_build_capacity_retry_floor,
-  RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
-  HostUnreachable, HostUnknown, HostRefusedRequest, HostOutcomeUnknown,
-  RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, ProbeUnrecognized, remote_build_probe_from_exit, remote_build_probe_answer,
-  RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
-  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
-  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session, remote_build_client_key_ci,
+  RemoteBuildWork, RemoteCompileEntry, remote_build_source_ref, remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild, RemoteRunClaims, RemoteGateSubject, RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request, remote_build_answer_from_exit, remote_build_ending_of_outcome, remote_build_answer_moves_on, RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe, HostUnreachable, HostUnknown, HostRefusedRequest, HostOutcomeUnknown, RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, ProbeUnrecognized, remote_build_probe_from_exit, remote_build_probe_answer, RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step, RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session, remote_build_client_key_ci,
 }
 import gunbc.compute.remote_build_serve {
   remote_build_fetch_argv, remote_build_authorized_entry, remote_build_ending_of_provide,
@@ -546,13 +541,15 @@ fn door_test_fn_name(line: String) -> String {
   let t = trim(line)
   if !starts_with(s: t, prefix: "test fn ") { return "" }
   let after = substring(s: t, start: length("test fn "), end: length(t))
-  return match after |> split(s: after, delimiter: "(") |> first { Present { value: v } => v  Absent => "" }
+  let parts: List<String> = split(s: after, delimiter: "(")
+  return match parts |> first { Present { value: v } => v  Absent => "" }
 }
 
 fn door_roster_name(line: String) -> String {
   let t = trim(line)
   if !starts_with(s: t, prefix: "check_or_name(name: \"") { return "" }
-  return match t |> split(s: t, delimiter: "\"") |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
+  let parts: List<String> = split(s: t, delimiter: "\"")
+  return match parts |> skip(n: 1) |> first { Present { value: v } => v  Absent => "" }
 }
 
 test fn the_door_roster_lists_every_test_fn_and_nothing_else() -> Bool {
