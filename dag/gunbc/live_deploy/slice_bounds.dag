@@ -1,5 +1,7 @@
 module gunbc.live_deploy.slice_bounds
 
+import gunbc.live_deploy.serving_child_observations { serving_child_slice_unit_name }
+
 import std.types { NonEmptyStr, String, List, Bool }
 import std.optional { Present, Absent }
 import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
@@ -301,7 +303,7 @@ data fci1_controls_slice_memory_swap_max: ByteSize = byte_size(0)
 // 22 GiB slots, gunbc.live_deploy.user_work_pool_slots). It is added in served_deployment_slice_allowance.
 //
 // THE NAME SHARES NO systemd HIERARCHY PREFIX with a serving slice (a dash is a parent edge).
-data user_work_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"
+data user_work_slice_unit_name: NonEmptyStr = serving_child_slice_unit_name
 
 // SWAP ZERO is the same kernel fact as the served slices: an overrun must kill at MemoryMax,
 // not page. The user-work population is the one that was holding ~175 GB uncharged on srv1.
