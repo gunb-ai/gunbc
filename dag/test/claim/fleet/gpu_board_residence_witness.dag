@@ -5,9 +5,9 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { PhysicalContainment, HostContainsComponent, PhysicalAsset }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7, operator_host_ba61f9 }
 import gunbc.hostname_allocation { operator_hosts }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, gpu_board_11, gpu_board_12, gpu_board_13 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10, gpu_board_11, gpu_board_12, gpu_board_13, gpu_board_14, gpu_board_15, gpu_board_16 }
 import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments, butch_a2s_removed_pending_sale }
 import gunbc.fleet.gpu_device_observation {
   current_gpu_device_observations, retired_gpu_device_observations, gpu_device_observation_board,
@@ -73,7 +73,17 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s()
       || a.identity == gpu_board_03 || a.identity == gpu_board_04 || a.identity == gpu_board_05
       || a.identity == gpu_board_06 || a.identity == gpu_board_07 || a.identity == gpu_board_08
       || a.identity == gpu_board_09 || a.identity == gpu_board_10
-      || a.identity == gpu_board_11 || a.identity == gpu_board_12 || a.identity == gpu_board_13)
+      || a.identity == gpu_board_11 || a.identity == gpu_board_12 || a.identity == gpu_board_13
+      || a.identity == gpu_board_14 || a.identity == gpu_board_15)
+    // john's three cards (read 2026-11-28) are in john. gpu_board_16, the PG500-216, is contained and has NO asset
+    // row -- no board catalog row exists to bind (gunbc.fleet.fleet_physical_inventory says why) -- and an asset
+    // row added for it without that catalog reds the detector above.
+    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_ba61f9, component: gpu_board_14 as String)
+    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_ba61f9, component: gpu_board_15 as String)
+    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_ba61f9, component: gpu_board_16 as String)
+    && current_row_for(board: (gpu_board_14 as String)) == 1
+    && current_row_for(board: (gpu_board_15 as String)) == 1
+    && current_row_for(board: (gpu_board_16 as String)) == 1
 }
 
 // THE FOUR SOLD A2s ARE STILL ASSETS. They left butch on 2026-11-17 and are pending sale, so their residence
@@ -159,7 +169,11 @@ test fn witness_card_assets_bind_admitted_board_rows() -> Bool {
       // by the operator's own 2026-11-19 read of three T10s, agreeing with these three rows; the disagreement
       // with the earlier two-card report is closed in
       // gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards.
-      || a.catalog.decl_name == "nvidia_tesla_t10_board_catalog")
+      || a.catalog.decl_name == "nvidia_tesla_t10_board_catalog"
+      // john's V100 and P100 (read 2026-11-28): the read PCI device ids 0x1db1 and 0x15f8 and the driver's own names
+      // are these rows' pci_device_id and driver_listed_name.
+      || a.catalog.decl_name == "nvidia_tesla_v100_sxm2_16gb_board_catalog"
+      || a.catalog.decl_name == "nvidia_tesla_p100_pcie_16gb_board_catalog")
 }
 
 // THE H11 HOST IS A ROSTER MEMBER UNDER ITS OPAQUE IDENTITY.

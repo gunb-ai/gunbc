@@ -1,0 +1,55 @@
+module extdeps.standards.nfpa_70
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Percent, percent }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// NFPA 70, THE NATIONAL ELECTRICAL CODE: the continuous-load rule for a branch circuit's overcurrent
+// device. A load that runs for three hours or more is "continuous", and the code sizes the breaker at
+// 125 percent of the continuous load plus the noncontinuous load (210.20(A) for the overcurrent device,
+// 210.19(A)(1) for the conductors). Read the other way, a continuous load may occupy at most 100/125 =
+// 80 percent of the breaker's rating unless the device and its assembly are listed for 100 percent
+// operation. A GPU serving host is a continuous load by that definition: it runs around the clock.
+//
+// TRANSCRIBED, NOT READ. The 125 percent figure is the code's well-known sizing rule, relayed here from
+// working knowledge and not from a read of the 2023 edition's text this session; NFPA publishes the
+// edition free to read behind an account, which this repository's tooling does not hold. The figure is
+// therefore carried with its standing, and a consumer that must not rest a bound on a transcription
+// refuses on it (gunbc.fleet.gpu_cap_policy_derivation does). What this module does NOT carry: the
+// 100-percent-rated exception, the local adoption year of the code where the operator's hosts sit, and any
+// amendment a jurisdiction applies -- each is a separate fact with its own read.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nfpa.org/codes-and-standards/nfpa-70-standard-development/70"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.nfpa_70",
+      decl_name: "nec_continuous_load_fraction",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The fraction of an overcurrent device's rating a continuous load may occupy, with the standing of the
+// figure. It is a FRACTION OF THE RATING and nothing else: it says nothing about a power factor, so a
+// consumer comparing it to watts still needs a rating stated in watts.
+type ContinuousLoadFraction {
+  fraction: Percent
+  standing: CitedFigureStanding
+}
+
+data nec_continuous_load_fraction: ContinuousLoadFraction = ContinuousLoadFraction {
+  fraction: percent(count: 80),
+  standing: TranscribedUncited {
+    read_obligation: "Read NFPA 70 (the edition the hosts' jurisdiction adopts) sections 210.19(A)(1) and 210.20(A) and confirm the 125 percent continuous-load sizing that makes 80 percent the continuous fraction of a standard (not 100-percent-rated) breaker; then cite the edition here." as NonEmptyStr,
+  },
+}

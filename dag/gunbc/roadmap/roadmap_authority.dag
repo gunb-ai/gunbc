@@ -2797,15 +2797,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "gpu-families-schedulable-with-caps-held",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/fleet/gpu_power_cap_converge.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Each held GPU family is schedulable from the cluster, and its declared power cap holds across an unattended cold boot",
         boundary: "Families held: Tesla T10, Tesla V100 (16 and 32 GB; compute capability 7.0, which pins its toolkit to CUDA 12), Radeon AI PRO R9700. gunbc.fleet.gpu_power_cap_converge writes a cap and reads it back; this node makes the cap part of the install, applied before any workload can run, and read back after a cold boot with nobody present.",
         displaced_cost: "A cap that resets on reboot forces every circuit to be sized for uncapped draw, and cards of a family are exposed one host at a time by hand.",
         first_slice: "Apply and read back the declared cap for one T10 host as part of its install, then cold-boot it unattended and read it again.",
         red_control: "(1) After an unattended cold boot every card reads its declared cap before the first job starts. (2) A job is refused placement while a card's cap is unread. (3) A V100 job runs on the CUDA 12 toolchain.",
-        out_of_scope: "Choosing the cap values, which are operator decisions.",
+        out_of_scope: "Choosing the cap values: they are DERIVED from the operator's fleet rule (60 percent of each card's rated limit, clamped to its range, bounded by its host's supply and circuit) by gunbc.fleet.gpu_cap_policy_derivation, and a per-host departure from the rule is the operator's decision.",
         handback: "The read-back receipts per family and the three controls."
-      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program."), on: "2026-11-27", note: "The operator made the cap a RULE (gunbc.design_ruling fleet_gpu_cap_default_sixty_percent_2026_11_27): the cap this node holds across a cold boot is the derived one, and on every host today it is withheld until the host's supply, non-GPU ceiling and circuit rating are read.")),
       parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Makes capped draw a fact the circuits can be sized on."),
     ),
     roadmap_node(
