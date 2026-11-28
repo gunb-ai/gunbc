@@ -803,7 +803,41 @@ data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
 // child compile alone measured 1607 s and the step 1798 s wall, 13.6 GB peak. Raised to 45 on the
 // operator's explicit sign-off, ruling gunbc.design_ruling serve_entry_verdict_step_raised_to_45_minutes.
 // The job backstop does not add this term, so the job's timeout is unchanged.
-data gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes: Duration = 45
+// RESTORED TO 30 ON MEASUREMENT, 2026-11-27/28 (roadmap demand-serve-entry-compile-time). The
+// step runs the RUN program, not the compile form. Measured on srv1 at 7405236dba6, the step's
+// served-command program -- gunbc run --entry dag/gunbc/live_deploy/pre_swap_admission.dag
+// --function record_plan_serve_entry_compile_verdict, which reaches
+// observe_served_command_reaches_bind -- completed in 20:06.59 wall (user 1192.18 s, sys 11.12 s,
+// max RSS 8,899,504 kB, closure 1698 sources, resolve_entry_graph_inclusive 1,089,191 ms; the
+// terminal admitted arm REFUSED with ingress binding, os error 2, AFTER the budget was met), which
+// is 33 percent headroom on one measurement at one revision. Production corroborates the same
+// program: plan run 45925556764 at 9f2c6c9965 admitted compile_arm. MAIN HAS SINCE MOVED THE STEP:
+// since cdc51ac6a49 (#17140) the governed step enters
+// dag/gunbc/live_deploy/plan_serve_entry_verdict.dag instead, which defines
+// record_plan_serve_entry_compile_verdict at :366 and calls observe_served_command_reaches_bind at
+// :402 -- the same program through the same observer, in a different file. The re-measurement at
+// that argv is owed by this row and is held pending the ruling on which entry the criterion names;
+// until it lands this bound rests on the measurement above, and the PR says so in the same words.
+// The whole-closure compile of the entry is a DIFFERENT program, with its own row
+// (serve-entry-compile-inhabitance-wet-lane-cost); at the same revision it measured 2676.24 s wall,
+// 44:36 -- OVER 30. If this step is ever routed back to the compile form, this bound must be
+// re-established before any deploy depends on it.
+// Red control, executed rather than asserted: the generated-artifact drift gate
+// gunbc.instruments.generated_artifact_gate.run_generated_artifact_drift_gate NAMES the planted
+// artifact in its refusal at the probe tree (8 findings, rc 1, .github/workflows/fleet-converge.yml
+// named by path) and does NOT name it at the same tree with that one line reverted (7 findings,
+// rc 1). The exit code discriminates nothing on its own: seven OTHER registered artifacts carried
+// findings at that tree (.gitattributes, five fixtures/roadmap_authority/events/**, provisioning/
+// srv4/gunbc-ghrunner.sudoers), so the artifact-naming witness is the discriminator, not the rc,
+// and both legs legitimately return 1. Those numbers are the pair measured at 7405236dba6 /
+// d586679e8e51 (log acqC_v4_run.log, slot acquired 2026-11-28T03:20:26Z); the pair is re-measured
+// at THIS base before the acceptance request and those numbers supersede them. Until a clean-main
+// leg names them at main they are findings AT MY TREES, not a claim about main. The claim_executor
+// --required-regen round is BLIND to this artifact -- its regen entry is
+// dag/gunbc/stage0/stage0_crate_partition_emit.dag, and it returned rc 0 with
+// first_generation_equal=true on the drifted tree -- which is why the control is the drift gate and
+// not the regen round.
+data gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes: Duration = 30
 
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 
