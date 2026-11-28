@@ -14,7 +14,7 @@ import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern {
   ConcernSighting, IntegrationConcern, ExistingHome, PreservedObligation, RequirementUnestablished,
-  SuspectedCapabilityGap, CitesDeclaration,
+  SuspectedCapabilityGap, CitesDeclaration, Triaged,
 }
 import gunbc.guarantee_stall { climbs_when }
 

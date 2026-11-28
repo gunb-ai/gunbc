@@ -45,11 +45,22 @@ import gunbc.fleet.fleet_host_truth_read {
 // builds the claim, and used only as refusal TEXT, never as a model decision: an English string
 // naming a module as data would be a second, stale-able source of truth about where things live
 // (gunbc.design_argument::single_authority, source_annotations).
-type EnumeratedHardwareClaim { device_class: String, count: Nat, declared_by: String }
+// NO QUALIFIER FIELD IS CARRIED on the hardware, cap and swap claims: no device class, no role, no slot
+// name. The read module pairs a claim with the read it answers by (host, axis) and nothing else
+// (#gunbc.fleet.fleet_host_truth_read::HostTruthPairing), so a qualifier carried inside a claim could not
+// be matched by any read of that host -- which is this row's failure one level down: the repository
+// asserting NVIDIA while the machine is only ever asked how many, host-wide, and the difference found by
+// collision. Those facts stay with the modules that DO read them (the row's boundary assigns hardware
+// to gunbc.plans.fleet_hardware_fact_consumption, the slot shape to gunbc.host.memory_envelope), and a
+// claim carries exactly what a read of that host can answer, plus the authority that declared it.
+// #gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart::fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart
+// is the record of the one change that would let a claim name a device or a slot: the pairing key gains the
+// qualifier, and the claim gains the field, in the same change.
+type EnumeratedHardwareClaim { count: Nat, declared_by: String }
 type EnabledUnitsClaim { unit: String, hardware_enumerates: Bool, declared_by: String }
 type HostKeyClaim { enrolled_fingerprint: String, declared_by: String }
-type LeafCapClaim { role: String, working_set: ByteSize, declared_by: String }
-type SwapBackingClaim { slot: String, backing: HostTruthValue, declared_by: String }
+type LeafCapClaim { working_set: ByteSize, declared_by: String }
+type SwapBackingClaim { backing: HostTruthValue, declared_by: String }
 
 // THE CLAIM SET. Each axis is OPTIONAL and appears at most once, which is what makes the fleet's
 // doubled-axis specimen (a host claiming four GPUs AND two NICs on one hardware axis) unstatable
@@ -194,6 +205,15 @@ fn model_claims_axes_present(claims: ModelClaims) -> List<HostTruthAxis> {
 // only in prose). Read that row before widening anything: the carrier's one-claim-per-axis restriction
 // must be RELAXED in the same change that gives the read a qualifier key, so one duplicate authority
 // remains and this module keeps no guard of its own.
+// THE SECOND INTERIM, RECORDED IN THE SAME REGISTER: the cap and swap axes already had a producer on a
+// running route -- the observe route declares them from the runner slot's shape
+// (#gunbc.fleet.fleet_host_truth_observe::host_truth_observe_expectations) -- so those two axes have two
+// producers, this carrier and that route, deciding from different sources. Joining them is a change to a
+// module this row does not own, and it is recorded as
+// #gunbc.integration_concern.fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_claim_carrier::fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_claim_carrier,
+// which names both producers, the specimen where they part (a serving set bounded below its declared working
+// set, which is not the runner slot) and the obligations the join must keep -- above all that an unread axis
+// stays WITHOUT an expectation, because that is what makes the standing read refuse rather than agree.
 fn desired_state_follows_the_machine(host: NonEmptyStr, claims: ModelClaims, reads: List<HostTruthRead>) -> HostTruthVerdict {
   fleet_host_truth_verdict_for_host(
     host: host,
