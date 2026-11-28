@@ -1,0 +1,1482 @@
+module test.claim.filesystem_effect_reach_wall
+
+import v2.compiler.effect_demand {
+  FilesystemEffectSite,
+  FilesystemEffectReach,
+  FilesystemEffectCensusPopulation,
+  FilesystemEffectCensusReport,
+  ReachedThroughHandler,
+  ReachedFreePrimitiveDirectly,
+  filesystem_free_primitive_slug,
+  filesystem_effect_emitted_closure_population,
+  filesystem_effect_direct_reach_debt_contract,
+  filesystem_effect_debt_join_holds,
+  filesystem_effect_debt_contract_identity_strings,
+  distinct_string_count,
+  filesystem_effect_debt_site_identity,
+  filesystem_effect_reaches_from_phase1_rows,
+  filesystem_effect_census_log,
+  filesystem_effect_emitted_closure_census,
+  filesystem_effect_site_eq,
+  filesystem_effect_reaches_are_located_distinct,
+  filesystem_effect_reach_site,
+  FilesystemWallCompileGateTrigger,
+  filesystem_wall_compile_gate_trigger,
+  filesystem_effect_reach_census,
+  filesystem_effect_direct_reach_wall_holds,
+  filesystem_effect_callee_matches_identity,
+  filesystem_effect_debt_contract_distinct_count
+}
+// THE REAL ROSTER AND THE WALL ITSELF, from the module that owns the row identity, the roster and the
+// predicate (review 98562 finding 2: no second row type, no hand-written adapter, no restated
+// predicate -- gunbc.design_argument::single_authority). The witness exercises the real producer over
+// an executing route (gunbc.design_argument::consumption).
+import gunbc.demand_engine_restatement_follow_up {
+  demand_restatement_retained_fn_rows,
+  demand_restatement_authorized_roster,
+  DemandRestatementRowIdentity,
+  AuthorizedRow,
+  NewRestatementRowRefused,
+
+  demand_restatement_identity_eq,
+  demand_restatement_identity_text,
+  demand_restatement_row_verdict,
+  demand_restatement_new_row_refusals,
+  demand_restatement_wall_holds
+}
+// THE ARRIVING PRODUCER FOR WALL 1: the same ingest, tokenize and parse authorities the compiler
+// itself runs -- NOT a second parser, and no roster field re-spelled here.
+import v2.compiler.source_root_eval { native_lane_census_ingest, native_test_context_from_ingest, NativeTestContext }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import std.optional { Absent, Optional, Present }
+import v2.extdeps.languages.dag {
+  dag_binding_branded_atom_identity,
+  dag_lex_token_symbol,
+  dag_language_model,
+  import_binding_rows_from_decl_node,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  qualified_name_from_module_node
+}
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
+import std.algebra { Cons, Empty, fold_list, length, list_append, string_contains }
+import std.types { Bool, List, NonEmptyStr }
+import v2.std.text { String }
+import v2.std.node {
+  Node,
+  node_subtree_nodes,
+  symbol_eq,
+  symbol_intern_lexeme,
+  symbol_lexeme,
+  TypeNode,
+  Conj,
+  node_synthetic
+}
+import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved, ResolutionContext, closure_declarations_demand }
+import v2.std.node_query { find_named_child }
+import v2.compiler.occurrence_role { read_names, NamesFound, NameReadRefused, NoNameHere }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_from_string_segments,
+  qualified_name_to_dotted_string
+}
+import v2.test.claim.compiler.operation_declaration_seam { read_seam_path }
+
+// EFFECTS-1 (egress-effects-1-filesystem-provider), THE CONTROLS FOR BOTH WALLS. The row's red_control is
+// "a new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses
+// under the handler binding." THE RED IS THE ROW'S OWN REFUSAL, NOT MODULE ABSENCE: it is carried as a
+// RedProbe (v2 gunbc.roadmap.roadmap_status) on the durable branch
+// red-control/egress-effects-1-filesystem-provider, whose named break NEUTERS the refusal predicates
+// where they now live -- the direct-reach refusal in v2.compiler.effect_demand (direct reaches pass
+// through) and the restatement refusal in gunbc.demand_engine_restatement_follow_up (an unauthorised
+// restatement identity passes through)
+// with nothing else changed -- so the witness's refusal assertions FAIL there and PASS at the probe's
+// green base. Red_at, green_at, red_base and probe_ref are recorded with the executed pair in the PR
+// comment run link; until that run link exists these are DECLARED controls, not executed ones. (As base
+// context only: none of the symbols below existed at the dispatch base a9a0ee068a4 -- that fact is not
+// the red control and is not claimed as one.) Each discriminating test plants exactly one defect over a
+// small SYNTHETIC world (fail_closed's construction-over-validation rule: the refusal is a parameterized
+// function, never an oracle copied from the tree it audits), and has a reachable opposite answer -- a
+// green control that still passes.
+
+// =============================================================================================
+// WALL 2 -- filesystem_read direct reach, located BY SITE over the NAMED typed population source
+// =============================================================================================
+
+// The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics -- the
+// definition is \#v1.compiler.emit_rust::emit_file_call (escaped: src/v1 is outside the roots the marked-reference check binds), which is what makes
+// "emit_file_call" the slug a green control reaches through: it is the one filesystem realization the
+// native door binds, and the free legacy primitive `filesystem_read` is neither that handler nor its
+// interface. The handler slug a green control reaches through is a filesystem realization OTHER than the
+// free primitive's slug.
+// The two self_host.dag direct reaches, located by SITE (module + enclosing declaration + OCCURRENCE
+// INDEX within that declaration -- NOT a line number): read_roster_manifest occurrence 1 and
+// fold_side_bytes occurrence 1. They are distinct offenders -- keying on (module, operation) alone would
+// collapse them, the under-counting defect this lane must not ship. The census is run with the named
+// typed population source (filesystem_effect_emitted_closure_population) passed BY NAME.
+
+data self_host_read_roster_manifest_site: FilesystemEffectSite = FilesystemEffectSite {
+  module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+  enclosing_declaration: symbol_intern_lexeme(lexeme: "read_roster_manifest"),
+  site_occurrence: 1
+}
+
+data self_host_fold_side_bytes_site: FilesystemEffectSite = FilesystemEffectSite {
+  module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+  enclosing_declaration: symbol_intern_lexeme(lexeme: "fold_side_bytes"),
+  site_occurrence: 1
+}
+
+data handler_site: FilesystemEffectSite = FilesystemEffectSite {
+  module: qualified_name_from_dotted_string(dotted: "v2.compiler.compile"),
+  enclosing_declaration: symbol_intern_lexeme(lexeme: "compiled_closure"),
+  site_occurrence: 1
+}
+
+// THE FIXTURE REACHES CONSTRUCT THE ARMS DIRECTLY (review 98815 finding 1): the classifier that took an
+// operation string and re-decided the variant is deleted, so a fixture states its variant ONCE, at the
+// arm. The refused arm carries the same named cause the producer carries, so the witness exercises the
+// wall on the producer's own arm shape.
+data filesystem_reach_through_handler: FilesystemEffectReach = ReachedThroughHandler {
+  site: handler_site
+}
+
+data filesystem_reach_self_host_roster: FilesystemEffectReach = ReachedFreePrimitiveDirectly {
+  site: self_host_read_roster_manifest_site,
+  cause: ^filesystem_read_reached_outside_filesystem_handler
+}
+
+data filesystem_reach_self_host_fold: FilesystemEffectReach = ReachedFreePrimitiveDirectly {
+  site: self_host_fold_side_bytes_site,
+  cause: ^filesystem_read_reached_outside_filesystem_handler
+}
+
+// THE CENSUS OVER THE EMITTED-CLOSURE POPULATION, run with the NAMED typed population source. self_host
+// is the one in-population module (the module the native-emitted closure under the NativeCliDriver
+// binding reaches); its two direct reaches are the two located offenders.
+data self_host_emitted_closure_reaches: List<FilesystemEffectReach> = Cons {
+  head: filesystem_reach_self_host_roster,
+  tail: Cons { head: filesystem_reach_self_host_fold, tail: Empty }
+}
+
+data self_host_emitted_closure_report: FilesystemEffectCensusReport = filesystem_effect_reach_census(
+  population_source: filesystem_effect_emitted_closure_population,
+  reaches: self_host_emitted_closure_reaches
+)
+
+test fn filesystem_handler_binding_green_control_holds() -> Bool {
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    reaches: Cons { head: filesystem_reach_through_handler, tail: Empty }
+  )
+  filesystem_effect_direct_reach_wall_holds(report: report)
+}
+
+// THE NAMED POPULATION SOURCE IS CARRIED, not a bare list: the census report names the emitted-closure
+// rule it was measured over (consumption of the typed declaration -- a reader sees WHERE the population
+// came from, and the call site passes the symbol BY NAME, no inline literal).
+test fn filesystem_census_report_names_its_population_source() -> Bool {
+  self_host_emitted_closure_report.population_source.rule
+    == ^emitted_closure_under_native_cli_driver_e2_filesystem_binding
+}
+
+// The named source names the real driver arm and the real bound handler, so a reader can re-derive the
+// population against the corpus at the cited head rather than take it on faith.
+test fn filesystem_population_source_names_the_real_driver_and_handler() -> Bool {
+  (self_host_emitted_closure_report.population_source.driver_arm == "NativeCliDriver")
+    && (self_host_emitted_closure_report.population_source.bound_handler == "emit_file_call")
+    && (self_host_emitted_closure_report.population_source.free_primitive_slug == filesystem_free_primitive_slug)
+}
+
+// MULTIPLICITY: self_host's two direct reaches are TWO distinct offenders in the census report, located
+// at two distinct SITES (the wall does not collapse them to one). This is the defect a (module,
+// operation) key would have printed as ONE.
+test fn filesystem_census_reports_two_distinct_sites_for_self_host() -> Bool {
+  let offenders = self_host_emitted_closure_report.offenders
+  (length(xs: offenders) == 2)
+    && (!filesystem_effect_site_eq(
+      left: self_host_read_roster_manifest_site,
+      right: self_host_fold_side_bytes_site
+    ))
+}
+
+// THE DISTINCTNESS ARM IS LIVE, THROUGH THE WALL (review 98184 finding 3: keyed on the offender list the
+// arm was inert -- an empty offender list is trivially distinct, so its RED was unauthorable; the arm now
+// keys on the extractor's REACHES, where two phase-1 rows for the same declaration CAN number the same
+// located site twice). GREEN -- the real self_host census reaches sit at distinct located sites, so the
+// wall holds its second arm. RED, AUTHORED -- two reaches at the SAME located site, BOTH through the bound
+// handler so the offender list is EMPTY, and the wall still refuses: the failing arm is observably the
+// distinctness arm, not the emptiness arm.
+test fn filesystem_reaches_are_located_distinct_on_the_real_self_host_census() -> Bool {
+  filesystem_effect_reaches_are_located_distinct(
+    reaches: self_host_emitted_closure_report.reaches
+  ) == true
+}
+
+test fn filesystem_same_site_twice_breaks_the_wall_with_no_offenders() -> Bool {
+  let duplicated = Cons {
+    head: filesystem_reach_through_handler,
+    tail: Cons { head: filesystem_reach_through_handler, tail: Empty }
+  }
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    reaches: duplicated
+  )
+  // Zero offenders: both reaches went through the bound handler, so the emptiness arm PASSES.
+  (length(xs: report.offenders) == 0)
+    // And the wall still breaks: the duplicate located site is the only thing that can fail here.
+    && (!filesystem_effect_direct_reach_wall_holds(report: report))
+    && (filesystem_effect_reaches_are_located_distinct(reaches: report.reaches) == false)
+}
+
+// THE TRIGGER CARRIER IS CONSUMED, and it names the real offender rather than hiding it in prose
+// (gunbc.design_argument::source_annotations). The gate connects only when these two located self_host
+// declarations migrate to the bound handler; reading them off the carrier (not re-typing them) proves the
+// named offender is visible in the artifact. The declarations match the two census sites' enclosing
+// declarations, so the trigger and the census agree on WHICH sites are the known in-population offenders.
+test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool {
+  // TARGETS READ AS TYPED IDENTITIES (review 98447 finding 2 / gunbc.design_argument::single_authority):
+  // QualifiedName equality against the SAME authority objects the census and the population use -- the
+  // handler identity is the witness's own filesystem_handler_identity data, the module the census sites'
+  // module -- never string fields the witness string-matches. TYPED, NOT RESOLVED (review
+  // 98447 re-ask): these comparisons make the check an identity comparison; nothing here resolves the
+  // names against the corpus, so a corpus rename does NOT fail this leg while the fixture strings drift
+  // together. The rename guard is the deferred resolve-against-real-phase-1-rows leg, owned by Manager
+  // B's establishing roadmap row for this instrument.
+  (filesystem_wall_compile_gate_trigger.awaiting_migration_module
+      == qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"))
+    && (qualified_name_to_dotted_string(qn: filesystem_wall_compile_gate_trigger.awaiting_migration_module)
+      == qualified_name_to_dotted_string(qn: self_host_read_roster_manifest_site.module))
+    && (length(xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations) == 2)
+    && (any(
+      xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations,
+      predicate: fn(d) {
+        d
+          == qualified_name_from_dotted_string(
+            dotted: concat(
+              qualified_name_to_dotted_string(qn: self_host_read_roster_manifest_site.module),
+              concat(".", symbol_lexeme(sym: self_host_read_roster_manifest_site.enclosing_declaration))
+            )
+          )
+      }
+    ))
+    && (any(
+      xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations,
+      predicate: fn(d) {
+        d
+          == qualified_name_from_dotted_string(
+            dotted: concat(
+              qualified_name_to_dotted_string(qn: self_host_fold_side_bytes_site.module),
+              concat(".", symbol_lexeme(sym: self_host_fold_side_bytes_site.enclosing_declaration))
+            )
+          )
+      }
+    ))
+    && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler == filesystem_handler_identity)
+    && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler
+      != filesystem_wall_compile_gate_trigger.awaiting_migration_module)
+    && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler != filesystem_primitive_identity)
+    && (filesystem_wall_compile_gate_trigger.gate_connects_when
+      == ^self_host_direct_reaches_migrate_to_bound_handler)
+    // THE CAPABILITY IS NAMED, not just the consequence (gunbc.design_argument::guarantee_ladder; ruled
+    // on this row, dag/gunbc/roadmap/roadmap_authority.dag first_slice): the carrier holds the ruled
+    // capability SENTENCE verbatim -- "emit_rust binds a native handler at
+    // an ordinary-function entry" -- and the witness asserts THAT STRING, not a row id: a row id asserted
+    // here could be renamed under the trigger and leave it claiming to hold ("Not a row id, so it
+    // survives a rename", the reviewing lane's requirement). The symbol handle and the consequence symbol are separate, so capability and
+    // consequence cannot collapse into one word.
+    && (filesystem_wall_compile_gate_trigger.missing_capability
+      == ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry)
+    && (filesystem_wall_compile_gate_trigger.missing_capability
+      != filesystem_wall_compile_gate_trigger.gate_connects_when)
+    && (filesystem_wall_compile_gate_trigger.capability_text
+      == "emit_rust binds a native handler at an ordinary-function entry")
+    // Non-echo legs: the string's CONTENT is checked piecewise against what it must name (the emitter stage
+    // as subject, the entry kind as object), and it is checked to be NEITHER target identity -- so an edit
+    // that swaps the capability for a migration target or the handler name fails on shape, not just on the
+    // constant comparison.
+    && string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "emit_rust")
+    && string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "ordinary-function entry")
+    && (filesystem_wall_compile_gate_trigger.capability_text
+      != qualified_name_to_dotted_string(qn: filesystem_wall_compile_gate_trigger.migrate_to_bound_handler))
+    && (filesystem_wall_compile_gate_trigger.capability_text
+      != qualified_name_to_dotted_string(qn: filesystem_wall_compile_gate_trigger.awaiting_migration_module))
+    && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "self_host"))
+    // A row id may sit BESIDE the capability as a cross-reference, never instead of it: the capability text
+    // itself must not be a row identifier.
+    && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "rn_"))
+    && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "egress-effects-1"))
+}
+
+// THE NEWLY-ADDED-SITE CONTROL (the establishing roadmap row's binding arm). This is NOT the planted-out-of-bounds arm: a
+// planted reach proves the wall catches what the producer emits; THIS proves the census notices a site
+// NOBODY has flagged before -- an extra direct reach appearing in a fresh module/declaration must surface as
+// exactly ONE NEW NAMED offender, and the two known self_host offenders must still be there. It is a
+// DISCRIMINATOR for the site-identity key: a (module, operation) key would collapse the two self_host sites
+// (same module, same operation) to ONE, so baseline 2 would read 1 and the whole chain fails. With the
+// occurrence key the three sites are distinct, the baseline is 2, the extension is 3, and the new one is the
+// planted site by name. If the census could not tell an old offender from a new one, the still-present and
+// the new-site assertions could not both hold -- which is the failure B asked to be surfaced now.
+test fn filesystem_newly_added_site_surfaces_as_a_new_named_offender() -> Bool {
+  let planted_site = FilesystemEffectSite {
+    module: qualified_name_from_dotted_string(dotted: "v2.compiler.native_census_witness_planted"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "planted_direct_read"),
+    site_occurrence: 1
+  }
+  let planted_reach = ReachedFreePrimitiveDirectly {
+    site: planted_site,
+    cause: ^filesystem_read_reached_outside_filesystem_handler
+  }
+  let extended = Cons {
+    head: filesystem_reach_self_host_roster,
+    tail: Cons { head: filesystem_reach_self_host_fold, tail: Cons { head: planted_reach, tail: Empty } }
+  }
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    reaches: extended
+  )
+  (length(xs: self_host_emitted_closure_report.offenders) == 2)
+    && (length(xs: report.offenders) == 3)
+    && filesystem_effect_reaches_are_located_distinct(reaches: report.reaches)
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: planted_site
+        )
+      }
+    )
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: self_host_read_roster_manifest_site
+        )
+      }
+    )
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: self_host_fold_side_bytes_site
+        )
+      }
+    )
+}
+
+// =============================================================================================
+// FULL-IDENTITY DISCRIMINATION (review 98447 blocking point c, the emission lane's false-negative hole)
+// =============================================================================================
+// The producer keys a reach on the callee's WHOLE resolved QualifiedName, not its final segment. A
+// last-segment test would (1) refuse a HONYM declared elsewhere in its own module as if it were the free
+// primitive (false positive) and (2) miss the real primitive reached through a spelling whose last segment
+// is not the slug (the hole). These tests PROVE the discrimination rather than assert it (fail_closed:
+// construction over validation): plant the two shapes side by side and show which the wall keys.
+// The primitive identity is a SUPPLIED QualifiedName, not a hand-typed slug constant.
+
+// The free primitive's declared identity, sourced from the EXISTING AUTHORITY rather than retyped
+// (the compiler lane: "Source the identity from the existing authority, operation_declaration_seam.dag:66 ...
+// import or reference that value, never a retyped string"). read_seam_path() returns the QualifiedName the
+// production resolver records for the read seam -- v2.std.live_read.filesystem_read -- so this fixture cannot
+// drift from what the resolve fold actually emits, and it names the module that DECLARES filesystem_read.
+data filesystem_primitive_identity: QualifiedName = read_seam_path()
+
+// A HONYM: a declaration named filesystem_read in its OWN module (built segment by segment so the last
+// segment genuinely equals the primitive's last segment -- the discrimination a last-segment test would fail
+// is only meaningful if the final segments really match). The module differs, so the full path differs.
+// Must NOT match.
+data filesystem_homonym_identity: QualifiedName =
+  qualified_name_from_string_segments(segments: [
+    "v2", "test", "fixture", "filesystem_read_homonym", "filesystem_read"
+  ])
+
+// GREEN: a callee whose full resolved path IS the primitive identity (the authority value itself) matches.
+test fn filesystem_full_identity_callee_matches() -> Bool {
+  filesystem_effect_callee_matches_identity(
+    callee: read_seam_path(),
+    identity: filesystem_primitive_identity
+  )
+}
+
+// RED (discriminating): a homonym -- SAME last segment, DIFFERENT module -- must NOT match. If the wall
+// keyed on the last segment this would wrongly return true (the false-positive arm).
+test fn filesystem_homonym_does_not_match() -> Bool {
+  ! filesystem_effect_callee_matches_identity(
+    callee: filesystem_homonym_identity,
+    identity: filesystem_primitive_identity
+  )
+}
+
+// GREEN (the hole closed): the wall keys on the RESOLVED identity, so the real primitive reached under a
+// renamed import (the same resolved authority path arriving again) matches, while a same-named declaration
+// in a DIFFERENT module does not -- the pair a last-segment slug test could not tell apart (the emission lane's
+// false-negative hole plus A's false positive). The primitive side is the authority value, so it is the real
+// spelling both sides carry.
+test fn filesystem_renamed_import_still_matches_the_primitive_identity() -> Bool {
+  filesystem_effect_callee_matches_identity(
+    callee: read_seam_path(),
+    identity: filesystem_primitive_identity
+  )
+    && ! filesystem_effect_callee_matches_identity(
+      callee: qualified_name_from_string_segments(segments: [
+        "v2", "other", "module", "filesystem_read"
+      ]),
+      identity: filesystem_primitive_identity
+    )
+}
+
+// A non-filesystem callee matches neither identity (contributes no reach), so the derived path stays honest
+// about what it covers.
+test fn filesystem_non_matching_callee_matches_neither_identity() -> Bool {
+  let unrelated = qualified_name_from_dotted_string(dotted: "std.algebra.fold_list")
+  ! filesystem_effect_callee_matches_identity(callee: unrelated, identity: filesystem_primitive_identity)
+}
+
+test fn filesystem_read_direct_reach_refuses() -> Bool {
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    reaches: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
+  )
+  (length(xs: report.offenders) == 1)
+    && (!filesystem_effect_direct_reach_wall_holds(report: report))
+}
+
+// THE CAUSE IS NAMED and the reach is located at its enclosing declaration + occurrence index.
+test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
+  // THE ARM IS THE MATCH: the fixture constructs the refused arm directly (no classifier to mis-key),
+  // and the site it carries is TYPED -- module compared as a QualifiedName's dotted identity, declaration
+  // as a Symbol's lexeme (review 98815 finding 2).
+  match filesystem_reach_self_host_roster {
+    ReachedFreePrimitiveDirectly { site: site, cause: cause } =>
+      (qualified_name_to_dotted_string(qn: site.module) == "v2.compiler.self_host")
+        && symbol_eq(a: symbol_intern_lexeme(lexeme: "read_roster_manifest"), b: site.enclosing_declaration)
+        && (site.site_occurrence == 1)
+        && symbol_eq(a: symbol_intern_lexeme(lexeme: "filesystem_read_reached_outside_filesystem_handler"), b: cause)
+    ReachedThroughHandler { site: _ } => false
+  }
+}
+
+// A THIRD call inside the SAME enclosing declaration is occurrence 2 -- a NEW offender, not a duplicate
+// of occurrence 1. This, with the length==2 test above, is what stops the census passing by collapsing
+// two sites into one or by growing quietly.
+test fn filesystem_a_third_occurrence_in_the_same_declaration_is_a_new_offender() -> Bool {
+  let third_site = FilesystemEffectSite {
+    module: qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"),
+    enclosing_declaration: symbol_intern_lexeme(lexeme: "read_roster_manifest"),
+    site_occurrence: 2
+  }
+  (filesystem_effect_site_eq(left: third_site, right: self_host_read_roster_manifest_site) == false)
+    && (filesystem_effect_site_eq(left: third_site, right: self_host_fold_side_bytes_site) == false)
+    && (filesystem_effect_site_eq(left: third_site, right: third_site) == true)
+}
+
+// WHAT THE DELETED THIRD ARM GUARDED, GUARDED STRUCTURALLY (review 98815 finding 1). A filesystem effect
+// whose resolved identity is neither the free primitive nor the bound handler is now UNWRITABLE as a
+// reach -- the producer emits no arm for it -- and the census refuses every arm that is not the handler
+// arm BY NAME at its site. This leg is the discriminating control: an unrecognised identity (the homonym
+// spelling -- the primitive's own last segment at the wrong module) contributes NO reach to the derived
+// census, while the non-handler arm the wall owns is refused with its site and named cause.
+test fn filesystem_unrecognised_identity_emits_no_arm_and_the_non_handler_arm_refuses() -> Bool {
+  let homonym_rows = [
+    derived_row(
+      "v2.compiler.self_host",
+      "local_filesystem_read_holder",
+      [qualified_name_from_dotted_string(dotted: filesystem_homonym_fixture_spelling)]
+    )
+  ]
+  let homonym_report = filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: homonym_rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+  let unauthorised = ReachedFreePrimitiveDirectly {
+    site: FilesystemEffectSite {
+      module: qualified_name_from_dotted_string(dotted: "v2.compiler.unrelated"),
+      enclosing_declaration: symbol_intern_lexeme(lexeme: "unrelated_call"),
+      site_occurrence: 1
+    },
+    cause: ^filesystem_read_reached_outside_filesystem_handler
+  }
+  let unauthorised_report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    reaches: Cons { head: unauthorised, tail: Empty }
+  )
+  (length(xs: homonym_report.reaches) == 0)
+    && (length(xs: homonym_report.offenders) == 0)
+    && (length(xs: unauthorised_report.offenders) == 1)
+}
+
+test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    reaches: Cons {
+      head: filesystem_reach_through_handler,
+      tail: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
+    }
+  )
+  (length(xs: report.offenders) == 1)
+    && (!filesystem_effect_direct_reach_wall_holds(report: report))
+}
+
+// =============================================================================================
+// THE DERIVED POPULATION -- reaches pulled out of the phase-1 rows the resolver's fold PRODUCES, not
+// typed by hand in the test (review 98184 finding 1; review 98447 condition 2; DESIGN consumption and
+// witness_one_interface: the inhabittance claim is over what the REAL producer emits)
+// =============================================================================================
+// filesystem_effect_reaches_from_phase1_rows maps the SAME list name_resolve's phase-1 fold built
+// (ClosureDeclarations.rows) to located reaches. These rows are built through the SAME row type the fold
+// emits, with callees as resolved QualifiedNames: the primitive identity is the AUTHORITY value
+// read_seam_path() (#v2.std.live_read::filesystem_read -- that declaration is the ONLY declaration of
+// filesystem_read in the corpus, shown by the real-roster leg of this witness at run time; extdeps.filesystem.filesystem_io declares NO
+// filesystem_read, its member is filesystem_read_outcome, so a filesystem_io fixture would be a claim
+// about the tree that is false -- this fixture's homonym spelling is named in filesystem_homonym_fixture_
+// spelling below and it is NOT filesystem_io). A HONYM carrying the same last segment but its own module
+// path sits INSIDE the scanned tier. The census must refuse the three primitive sites and NOT the homonym
+// -- asserted by NAME, so a last-segment wall fails here (false positive) or misses the primitive (the
+// hole). A clean real-closure census is bounded by the scope line the census log prints: ambient builtin-
+// route calls are counted only where the resolve fold records a resolved callee path, which the executed
+// ambient-callee leg must show before a green is read as builtin-route coverage.
+
+// The bound handler's declared identity (src/v1/05_emit_rust.dag emit_file_call), supplied to the census
+// as a resolved QualifiedName so the through-handler arm is keyed on identity, not a slug.
+data filesystem_handler_identity: QualifiedName =
+  qualified_name_from_dotted_string(dotted: "v1.compiler.emit_rust.emit_file_call")
+
+// THE FIXTURE POPULATION LABEL names the fixture closure these rows stand for -- NOT compile_cli. The
+// real-closure leg (self_host under compiler_pipeline_entry) is a separate executed leg; labelling a
+// fixture run with the production root would print provenance it did not measure.
+data filesystem_effect_fixture_closure_population: FilesystemEffectCensusPopulation =
+  FilesystemEffectCensusPopulation {
+    rule: ^derived_fixture_closure_over_wall_fixture_rows,
+    driver_arm: "NativeCliDriver",
+    emitted_closure_root_module: "test.claim.filesystem_effect_reach_wall",
+    emitted_closure_root_declaration: "filesystem_derived_population_fixture",
+    bound_handler: "emit_file_call",
+    free_primitive_slug: "filesystem_read"
+  }
+
+// Build a row of the SAME type the phase-1 fold emits. `local` carries a synthetic node: the producer
+// reads module, name and callees only; the node is the row-type inhabitant, not census data.
+fn derived_row(module_path: String, decl: String, callees: List<QualifiedName>) -> DeclPhase1Row {
+  DeclPhase1Row {
+    module: qualified_name_from_dotted_string(dotted: module_path),
+    name: symbol_intern_lexeme(lexeme: decl),
+    path: qualified_name_from_dotted_string(dotted: concat(concat(module_path, "."), decl)),
+    local: LocallyResolved { node: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+    callees: callees
+  }
+}
+
+// THE HONYM: same last segment as the primitive, its OWN module path. This is the fixture spelling the
+// census log leg names.
+data filesystem_homonym_fixture_spelling: String =
+  "v2.test.fixture.wall_population.filesystem_read"
+
+data filesystem_derived_population_rows: List<DeclPhase1Row> = [
+  derived_row("v2.compiler.self_host", "read_roster_manifest", [read_seam_path()]),
+  derived_row(
+    "v2.compiler.self_host",
+    "fold_side_bytes",
+    [read_seam_path(), qualified_name_from_dotted_string(dotted: "std.algebra.fold_list")]
+  ),
+  derived_row("v2.compiler.native_census_witness_planted", "planted_direct_read", [read_seam_path()]),
+  derived_row(
+    "v2.compiler.self_host",
+    "local_filesystem_read_holder",
+    [qualified_name_from_dotted_string(dotted: filesystem_homonym_fixture_spelling)]
+  ),
+  derived_row("v2.cli.compile_cli", "compiled_closure", [filesystem_handler_identity])
+]
+
+data filesystem_derived_census_report: FilesystemEffectCensusReport =
+  filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: filesystem_derived_population_rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+
+// THE DERIVED CENSUS REFUSES EXACTLY THE THREE PRIMITIVE SITES, named. The derived producer -- not a
+// hand-typed reach list -- located them.
+test fn filesystem_derived_census_refuses_the_three_primitive_sites_by_name() -> Bool {
+  let report = filesystem_derived_census_report
+  (length(xs: report.offenders) == 3)
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: self_host_read_roster_manifest_site
+        )
+      }
+    )
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: self_host_fold_side_bytes_site
+        )
+      }
+    )
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: FilesystemEffectSite {
+            module: qualified_name_from_dotted_string(dotted: "v2.compiler.native_census_witness_planted"),
+            enclosing_declaration: symbol_intern_lexeme(lexeme: "planted_direct_read"),
+            site_occurrence: 1
+          }
+        )
+      }
+    )
+}
+
+// THE HONYM IS NOT REFUSED -- and not merely "not an offender": it produces NO REACH AT ALL, so a
+// last-segment wall would show it here as a false-positive offender. The non-filesystem callee
+// (std.algebra.fold_list) likewise produced no reach (fold_side_bytes contributed exactly one).
+test fn filesystem_derived_census_refuses_neither_the_homonym_nor_a_non_filesystem_callee() -> Bool {
+  let report = filesystem_derived_census_report
+  (any(
+    xs: report.reaches,
+    predicate: fn(r) {
+      symbol_eq(a: symbol_intern_lexeme(lexeme: "local_filesystem_read_holder"), b: filesystem_effect_reach_site(reach: r).enclosing_declaration)
+    }
+  ) == false)
+    && (length(xs: report.reaches) == 4)
+}
+
+// THE HANDLER ARM AUTHORISES: the row whose callee is the bound handler's identity reaches through the
+// handler and keeps the wall green over a handler-only population.
+test fn filesystem_derived_handler_row_is_authorised_and_wall_holds() -> Bool {
+  let handler_only = filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: [derived_row("v2.cli.compile_cli", "compiled_closure", [filesystem_handler_identity])],
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+  (length(xs: handler_only.offenders) == 0)
+    && (length(xs: handler_only.reaches) == 1)
+    && filesystem_effect_direct_reach_wall_holds(report: handler_only)
+}
+
+// THE WALL DOES NOT HOLD over the derived population -- the refusal fires on the PRODUCED reaches.
+test fn filesystem_derived_population_breaks_the_wall() -> Bool {
+  ! filesystem_effect_direct_reach_wall_holds(report: filesystem_derived_census_report)
+}
+
+// =============================================================================================
+// THE REAL-PRODUCER LEG (review 98743 finding 1; gunbc.design_argument::witness_one_interface:
+// "SUPPLYING INPUTS MAY NEVER REMOVE THE LAST EXECUTION OF THE REAL PATH"). The rows this leg feeds
+// the census are NOT derived_row fixtures: they are the resolver's OWN phase-1 fold output --
+// ClosureDeclarations.rows, produced by closure_declarations_demand over the ResolutionContext that
+// native_test_context_from_ingest builds from native_lane_census_ingest (the same ingest the
+// compiler's census lane runs). filesystem_effect_reaches_from_phase1_rows consumes THAT list -- the
+// named consumer of the resolver's rows field -- and the debt join and the contract identity set run
+// over its output, so a corpus rename that moves a contracted declaration off the census fails HERE,
+// in a claim, not only on the scratch probe trees. Assertions are set identities against the TYPED
+// contract (no count copied from a tree) plus a void guard: an empty direct-reach population is a
+// refused leg, never a green (empty populations are void, not passing).
+// =============================================================================================
+
+fn real_direct_identity_strings(report: FilesystemEffectCensusReport) -> List<String> {
+  fold_list(
+    xs: report.offenders,
+    empty: [],
+    cons: fn(acc, o) {
+      Cons {
+        head: filesystem_effect_debt_site_identity(site: filesystem_effect_reach_site(reach: o)),
+        tail: acc
+      }
+    }
+  )
+}
+
+fn real_identity_contains(xs: List<String>, needle: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) {
+      if acc {
+        true
+      } else if s == needle {
+        true
+      } else {
+        false
+      }
+    }
+  )
+}
+
+// BOTH-WAYS set equality over identity strings: every contract identity is a located direct reach and
+// every located direct reach is a contract member -- an identity join, not a count equality.
+fn real_direct_identities_equal_contract(report: FilesystemEffectCensusReport) -> Bool {
+  let direct = real_direct_identity_strings(report: report)
+  let contract = filesystem_effect_debt_contract_identity_strings()
+  (length(xs: direct) != 0)
+    && (length(xs: contract) != 0)
+    && fold_list(
+         xs: contract,
+         empty: true,
+         cons: fn(acc, s) {
+           if acc { real_identity_contains(xs: direct, needle: s) } else { false }
+         }
+       )
+    && fold_list(
+         xs: direct,
+         empty: true,
+         cons: fn(acc, s) {
+           if acc { real_identity_contains(xs: contract, needle: s) } else { false }
+         }
+       )
+}
+
+// THE REAL-ROWS LEGS, SPLIT INTO INDIVIDUALLY-NAMED CLAIMS (manager ordering mandate msg_db29f8a4,
+// plan approval msg_0cbd099e): the conjunction that used to live here conjoined three facts plus a
+// fixture-confinement expectation and a Bool could not name which conjunct failed. The confinement
+// expectation was the WRONG EXPECTATION (a contracted debt site is a real-corpus direct reach by
+// construction — the wall refusing it is the establishment, not a gap), so the offenders arm now
+// ASSERTS NAMEABILITY (every offender appears as its own assembled "offender <module>#<decl>#<occ>"
+// line on the census log) and confinement is reported as a separate named arm whose red is the
+// cause-naming evidence and a stop-gate, never patched around. One ingest, one shared resolution
+// (single_authority): all five claims read the SAME real_resolver_rows data.
+fn real_rows_report(rows: List<DeclPhase1Row>) -> FilesystemEffectCensusReport {
+  filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    rows: rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+}
+
+fn real_rows_debt_join_leg(rows: List<DeclPhase1Row>) -> Bool {
+  filesystem_effect_debt_join_holds(
+    reaches: filesystem_effect_reaches_from_phase1_rows(
+      rows: rows,
+      free_primitive_identity: filesystem_primitive_identity,
+      bound_handler_identity: filesystem_handler_identity
+    )
+  )
+}
+
+fn real_rows_contract_leg(rows: List<DeclPhase1Row>) -> Bool {
+  real_direct_identities_equal_contract(report: real_rows_report(rows: rows))
+}
+
+// NAMEABILITY: no offender without its own located line. An offender whose site cannot be named
+// (module, enclosing declaration, occurrence) refuses THIS arm — a census that refuses without
+// naming is an oracle, not a report. Vacuity guard: an empty offender list is VOID here, not green;
+// the nonempty population is asserted, and the contract arm below grounds who must be in it.
+fn real_rows_offenders_named_leg(rows: List<DeclPhase1Row>) -> Bool {
+  let report = real_rows_report(rows: rows)
+  let log = filesystem_effect_census_log(report: report)
+  (length(xs: report.offenders) > 0)
+    && fold_list(
+         xs: report.offenders,
+         empty: true,
+         cons: fn(acc, o) {
+           if !acc {
+             false
+           } else {
+             let site = filesystem_effect_reach_site(reach: o)
+             string_contains(
+               s: log,
+               pattern: concat("offender ", filesystem_effect_debt_site_identity(site: site))
+             )
+           }
+         }
+       )
+}
+
+// THE REPORTED CONTAINMENT ARM (named; its RED is cause-naming and a stop-gate per msg_0cbd099e,
+// never authored around): every offender is either a contracted debt site or one of the two
+// witness fixture modules. A real-corpus module beyond those populations shows here.
+fn real_rows_fixture_or_contract_leg(rows: List<DeclPhase1Row>) -> Bool {
+  let report = real_rows_report(rows: rows)
+  let contract = filesystem_effect_debt_contract_identity_strings()
+  fold_list(
+    xs: report.offenders,
+    empty: true,
+    cons: fn(acc, o) {
+      if !acc {
+        false
+      } else {
+        let site = filesystem_effect_reach_site(reach: o)
+        let mod = qualified_name_to_dotted_string(qn: site.module)
+        (mod == "v2.test.fixture.wall_population")
+          || (mod == "v2.test.fixture.filesystem_read_homonym")
+          || real_identity_contains(
+               xs: contract,
+               needle: filesystem_effect_debt_site_identity(site: site)
+             )
+      }
+    }
+  )
+}
+
+data real_resolver_rows: Outcome<List<DeclPhase1Row>> =
+  bind_outcome(
+    o: native_lane_census_ingest(source_roots: ["dag", "src/v2"]),
+    f: fn(ingest) {
+      bind_outcome(
+        o: native_test_context_from_ingest(ingest: ingest),
+        f: fn(c) {
+          match c.resolution {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: shared, diagnostics: _ } =>
+              outcome_accepted(value: closure_declarations_demand(shared: shared).rows)
+          }
+        }
+      )
+    }
+  )
+
+// THE STAGE LADDER (stageK, manager msg_7326c290 ruling 1): the split measured THAT the shared
+// real_resolver_rows data refuses wholesale (all four legs died at eval_steps=3 — the shape of
+// Rejected=>false); the ladder names WHICH stage refuses. One evaluation per stage, threaded
+// (single_authority: each stage reads the ONE data node above it, no re-ingest per claim), and each
+// stage gets its own individually-named claim so the LABEL is the diagnostic (ruling 4): the refusal
+// is observed at its stage boundary rather than reported as a bare Bool several layers away.
+data real_rows_probe_ingest: Outcome<SourceRootIngest> =
+  native_lane_census_ingest(source_roots: ["dag", "src/v2"])
+
+data real_rows_probe_context: Outcome<NativeTestContext> =
+  bind_outcome(
+    o: real_rows_probe_ingest,
+    f: fn(ingest) { native_test_context_from_ingest(ingest: ingest) }
+  )
+
+data real_rows_probe_resolution: Outcome<ResolutionContext> =
+  bind_outcome(
+    o: real_rows_probe_context,
+    f: fn(c) { c.resolution }
+  )
+
+data real_rows_probe_rows: Outcome<List<DeclPhase1Row>> =
+  bind_outcome(
+    o: real_rows_probe_resolution,
+    f: fn(shared) { outcome_accepted(value: closure_declarations_demand(shared: shared).rows) }
+  )
+
+test fn real_rows_probe_ingest_accepted() -> Bool {
+  match real_rows_probe_ingest {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn real_rows_probe_context_accepted() -> Bool {
+  match real_rows_probe_context {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn real_rows_probe_resolution_accepted() -> Bool {
+  match real_rows_probe_resolution {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// NONEMPTYPopulation guard rides the last rung: rows=[] would counterfeit an accepted resolution.
+test fn real_rows_probe_rows_nonempty() -> Bool {
+  match real_rows_probe_rows {
+    Accepted { value: rows, diagnostics: _ } => length(xs: rows) > 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE CONJUNCTION KEEPS ITS NAME (the srv1 leg list is keyed on it): all four named legs at once.
+test fn filesystem_effect_census_over_real_resolver_rows_matches_the_contract() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } =>
+      real_rows_debt_join_leg(rows: rows)
+        && real_rows_contract_leg(rows: rows)
+        && real_rows_offenders_named_leg(rows: rows)
+        && real_rows_fixture_or_contract_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_debt_join_holds() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_debt_join_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_direct_identities_equal_contract() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_contract_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_offenders_named_in_census_log() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_offenders_named_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn filesystem_effect_real_rows_offenders_within_contract_or_fixtures() -> Bool {
+  match real_resolver_rows {
+    Accepted { value: rows, diagnostics: _ } => real_rows_fixture_or_contract_leg(rows: rows)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE CENSUS LOG PRINTS THE CONTRACT BESIDE THE REFUSED COUNT, PRINTS THE CONTRACT TRAVERSAL (the emission-lane
+// condition 1), AND NAMES EACH OFFENDER SITE. The asserted substrings cannot be echoed from an input: no
+// row input contains "offender ", "debt_site ", the "#" joiner, or "refused=" -- the log fn ASSEMBLES those
+// lines from the census and the typed contract. (The test NAME keeps the old "bound" word only because the
+// srv1 leg list is keyed on it; the bound itself was deleted per review 98447.)
+test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Bool {
+  let log = filesystem_effect_census_log(report: filesystem_derived_census_report)
+  string_contains(
+    s: log,
+    pattern: "refused=3 contract_sites=4 contract_distinct=4"
+  )
+    && string_contains(s: log, pattern: "debt_site v2.compiler.self_host#read_roster_manifest#1")
+    && string_contains(s: log, pattern: "debt_site v2.compiler.self_host#fold_side_bytes#1")
+    && string_contains(s: log, pattern: "debt_site v2.workflow.compile_door_ledger#ledger_read_witness#1")
+    && string_contains(s: log, pattern: "debt_site v2.workflow.compile_door_ledger#door_ledger_row#1")
+    && string_contains(s: log, pattern: "offender v2.compiler.self_host#read_roster_manifest#1")
+    && string_contains(s: log, pattern: "offender v2.compiler.self_host#fold_side_bytes#1")
+    && string_contains(
+      s: log,
+      pattern: "offender v2.compiler.native_census_witness_planted#planted_direct_read#1"
+    )
+    && string_contains(
+      s: log,
+      pattern: "arms: coproduct = ReachedFreePrimitiveDirectly(refused) | ReachedThroughHandler(authorised)"
+    )
+    && string_contains(s: log, pattern: "no classifier, no third arm")
+    && string_contains(s: log, pattern: "ambient builtin-route calls are counted only where")
+    && (string_contains(s: log, pattern: "offender v2.compiler.self_host#local_filesystem_read_holder")
+      == false)
+}
+
+// =============================================================================================
+// THE DEBT CONTRACT (review 98447 finding 1, formulated by the lane): a MONOTONE IDENTITY-GRAIN JOIN,
+// exercised in BOTH refusal directions on fixture input plus a green control. No number here is copied
+// from a tree; every count is derived by the run that claims it. TWO FACES (review 98720 finding 1),
+// stated separately: (a) the PREDICATE legs below run on derived_row fixtures -- they prove the join
+// refusals are reachable at all and cannot catch a corpus rename (contract and fixture drift together);
+// (b) the REAL-PRODUCER leg filesystem_effect_census_over_real_resolver_rows_matches_the_contract
+// feeds the join filesystem_effect_reaches_from_phase1_rows over the resolver's OWN phase-1 fold output
+// (ClosureDeclarations.rows from closure_declarations_demand over native_test_context_from_ingest fed
+// by native_lane_census_ingest), not fixture rows -- a rename moving a contracted declaration off the
+// census fails that leg in a claim, with a void guard so an empty population refuses rather than
+// passing. The real-reach
+// REFUSALS cannot be planted into the tree a claim runs on; they are owed by the two scratch probe
+// trees run outside this witness (planted extra reach / removed member, census refuses), same route
+// and same run as the green leg. The emit-side handler binding remains deferred to the establishing
+// roadmap row below.
+// =============================================================================================
+
+// Rows spelling EXACTLY the four contracted sites: two #v2.compiler.self_host declarations and two
+// #v2.workflow.compile_door_ledger declarations, each with the real primitive as a phase-1 callee.
+data filesystem_contract_rows: List<DeclPhase1Row> = [
+  derived_row("v2.compiler.self_host", "read_roster_manifest", [read_seam_path()]),
+  derived_row("v2.compiler.self_host", "fold_side_bytes", [read_seam_path()]),
+  derived_row("v2.workflow.compile_door_ledger", "ledger_read_witness", [read_seam_path()]),
+  derived_row("v2.workflow.compile_door_ledger", "door_ledger_row", [read_seam_path()])
+]
+
+fn contract_census(rows: List<DeclPhase1Row>) -> FilesystemEffectCensusReport {
+  filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: rows,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+}
+
+// GREEN CONTROL: the census over exactly the contracted population locates all four, the wall refuses
+// (four direct reaches), and the identity join HOLDS -- contract within reaches and reaches within
+// contract, both directions, in the run that claims it.
+test fn filesystem_contract_census_joins_and_refuses_all_four() -> Bool {
+  let report = contract_census(rows: filesystem_contract_rows)
+  (length(xs: report.offenders) == 4)
+    && filesystem_effect_debt_join_holds(reaches: report.reaches)
+    && (!filesystem_effect_direct_reach_wall_holds(report: report))
+}
+
+// RED DIRECTION (a) -- UNKNOWN REACH (the establishing roadmap row's required arm): a fifth direct reach at a site that is
+// NOT a contract member must break the join by name while the four known ones stay located. The wall
+// alone would already refuse this (fail_closed); the join is what proves the CONTRACT bites.
+test fn filesystem_contract_join_refuses_unknown_reach() -> Bool {
+  let report = contract_census(
+    rows: list_append(
+      left: filesystem_contract_rows,
+      right: [derived_row("v2.compiler.native_census_witness_planted", "planted_direct_read", [read_seam_path()])]
+    )
+  )
+  (length(xs: report.offenders) == 5)
+    && (!filesystem_effect_debt_join_holds(reaches: report.reaches))
+}
+
+// RED DIRECTION (b) -- CENSUS INCOMPLETE (the establishing roadmap row's required arm): every reach present is a contract
+// member, but one member is not reached at all. A join that only checked "reaches within contract"
+// would GREEN this -- the completeness direction refuses it: a census that never sees a contracted debt
+// is blind, not clean.
+test fn filesystem_contract_join_refuses_unreached_member() -> Bool {
+  let report = contract_census(
+    rows: [
+      derived_row("v2.compiler.self_host", "read_roster_manifest", [read_seam_path()]),
+      derived_row("v2.compiler.self_host", "fold_side_bytes", [read_seam_path()]),
+      derived_row("v2.workflow.compile_door_ledger", "ledger_read_witness", [read_seam_path()])
+    ]
+  )
+  (length(xs: report.offenders) == 3)
+    && (!filesystem_effect_debt_join_holds(reaches: report.reaches))
+}
+
+// UNIQUE GRAIN (the emission-lane condition 3): four members, four DISTINCT identity strings -- a collision
+// cannot hide a three-member contract behind four entries. The route that owns each identity is the
+// DIRECT reach (the instrument face on filesystem_effect_direct_reach_debt_contract says so).
+test fn filesystem_contract_identity_grain_is_duplicate_free() -> Bool {
+  (length(xs: filesystem_effect_direct_reach_debt_contract) == 4)
+    && (filesystem_effect_debt_contract_distinct_count() == 4)
+}
+
+// =============================================================================================
+// WALL 1 -- new demand_restatement row. THE WALL'S PREDICATE LIVES IN gunbc.demand_engine_restatement_
+// follow_up (the module that owns the row identity and the roster); THIS witness imports it. THE TWO
+// SIDES OF EVERY ASSERTION BELOW COME FROM DIFFERENT PRODUCERS, named on their face: the ROSTER side is
+// demand_restatement_authorized_roster (the follow-up module's retained data, projected through the
+// module's own single bridge), and the ARRIVING side is corpus_restatement_arriving -- the real tree,
+// enumerated by native_lane_census_ingest, each witness tokenized and parsed by the real parse route,
+// and its uses clauses read off the parse nodes with the authored type resolved through the module's
+// own import binding rows. The arriving side is NEVER built from the roster, and the roster side is
+// never built from the arriving side (review 98562 finding 1; gunbc.design_argument::guarantee_ladder:
+// a check whose forbidden state is expressible nowhere it runs is a decoration). The forbidden state IS
+// expressible here: author a new `uses` row anywhere under the governed census roots (dag/ or
+// src/v2 -- v2.cli.repository_layout governs exactly these two trees for the roots API, and the
+// arriving side enumerates them) and the hold arm goes red by naming it; delete a retained row's uses
+// clause and the blindness arm goes red by naming it. Rows under a non-governed directory are outside
+// the arriving population, so the wall does not claim them.
+// =============================================================================================
+
+// THE ARRIVING PRODUCER: parse the corpus, read the uses clauses. A `uses` entry parses to a node
+// carrying alias in `name` and the authored type as its single child (the v1 parser's
+// make_resource_use_node puts the resource node in children -- read from that carrier, not restated),
+// hung on the fn/pattern declaration node's `uses` field (the v1 parser reads the `uses` keyword at its
+// parse_uses_clause).
+// The short authored names (fn rows: `uses net: Network`) are resolved through the module's OWN import
+// binding rows (v2.extdeps.languages.dag import_binding_rows_from_decl_node, the resolver's reader --
+// `import std.resources { Network }` binds Network to std.resources.Network); fully-qualified authored
+// names (pattern rows: `uses net: std.resources.Network`) pass through unchanged. NO second parser, NO
+// re-spelling of any roster field lives here.
+fn corpus_import_bindings(module_root: Node) -> List<AliasBindingRow> {
+  fold_list(
+    xs: node_subtree_nodes(root: module_root),
+    empty: [],
+    cons: fn(acc, node) {
+      match import_binding_rows_from_decl_node(decl: node, module_root: module_root) {
+        Accepted { value: rows, diagnostics: _ } => concat(acc, rows)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+fn corpus_resolved_authored_type(type_text: String, bindings: List<AliasBindingRow>) -> String {
+  fold_list(
+    xs: bindings,
+    empty: type_text,
+    cons: fn(acc, row) {
+      if acc != type_text {
+        acc
+      } else {
+        if symbol_lexeme(sym: row.binding) == type_text {
+          qualified_name_to_dotted_string(qn: row.target)
+        } else {
+          acc
+        }
+      }
+    }
+  )
+}
+
+// THE SANCTIONED READERS, NOT A HAND WALK (review 98995 finding on the fabricated walk; manager
+// 2026-11-26 correction: Node carries {kind, children, occurrence_id} -- there is NO .uses and NO
+// .name field, so the prior reader was fabricated and is GONE, not patched). The uses clause and its
+// entries are read through the grammar's own capture machinery -- parse_subtree_find_production_captured
+// over the emitted production identities the compiler itself enumerates (v2.compiler.body_lowering_fold
+// body_lower_is_structure_preserved_emitted names ^dag_surface_uses_clause and ^dag_surface_uses_entry),
+// and dotted names through parse_qualified_name_segments_from_capture, the same reader
+// v2.extdeps.languages.dag alias_binding_row_target_from_decl uses. Absent clause or entry yields zero
+// rows (a fn without `uses` authors no restatement row); a present-but-malformed capture REJECTS with
+// the segments reader's own diagnostic -- fail_closed, no silent drop.
+// THE SANCTIONED READERS, NOT A HAND WALK (review 98995; manager 2026-11-26: Node is {kind, children,
+// occurrence_id} -- the earlier .uses/.name walk was fabricated and is GONE, not patched).
+//
+// READS THE PARSE, NOT THE REQUIREMENT LOWERING: gunbc.recurring_failure_mode.uses_clause_has_no_carrier
+// rules that the authored `uses` clause has NO lowered carrier -- body lowering refuses every fn
+// carrying one (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), so no
+// requirement-lowering route can see these rows and none is claimed. The readers below are the
+// grammar's own capture machinery, the same ones v2.extdeps.languages.dag uses for import/alias rows:
+// parse_production_emitted_identity_optional filters fn declarations by the stamped production
+// identity; parse_subtree_find_production_captured finds the clause and entry over the emitted
+// identities v2.compiler.body_lowering_fold enumerates (^dag_surface_uses_clause,
+// ^dag_surface_uses_entry); the ENTRY NAME goes through the DECLARED name reader the occurrence-role
+// table assigns to ^dag_production_uses_entry --
+// v2.compiler.occurrence_role dag_name_production_rows:324, NameRoleRead { role: DeclarationRole,
+// category: LexicalValueOccurrence, reader: ReadFieldInitLabel } -- dispatched by read_names and
+// lexemed by node_atom_identity_optional on the atom the reader returns; the contract type goes
+// through parse_qualified_name_segments_from_capture over the ^dag_surface_qualified_name capture.
+//
+// FAIL-CLOSED SHAPE, three distinguishable outcomes (A, 23:06Z): ABSENT clause => zero rows (a fn
+// without `uses` authors no restatement row -- distinguishable from the next arm); a clause SHELL with
+// no readable entry (capture absent, reader refused, no atom, atom without an identity) REJECTS, it
+// never returns an empty list; malformed segments REJECT with the reader's own diagnostic. The
+// negative-control claims below demonstrate each arm, and the blindness guard
+// (every_authorized_restatement_identity_is_found_in_the_corpus) turns a wrong reader shape red.
+// The EMPTY population at its declared grain: the [] literal typed against a declared List return
+// (a collection position), not at a generic outcome_accepted(value:) parameter, where the elaborator
+// sees no collection (gate leg 136cca48e62 diagnostic, filesystem_effect_reach_wall.dag:1008:51).
+fn witness_zero_row_identities() -> List<DemandRestatementRowIdentity> {
+  []
+}
+
+fn witness_uses_rows(decl: Node, module_path: String, bindings: List<AliasBindingRow>) -> Outcome<List<DemandRestatementRowIdentity>> {
+  match parse_subtree_find_production_captured(root: decl, emitted: ^dag_surface_uses_clause) {
+    ParseSubtreeAbsent => outcome_accepted(value: witness_zero_row_identities())
+    ParseSubtreeFound { captured: clause_capture } =>
+      match parse_subtree_find_production_captured(root: clause_capture, emitted: ^dag_surface_uses_entry) {
+        ParseSubtreeAbsent =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^named_child_missing,
+            at: node_locus(node: clause_capture),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        ParseSubtreeFound { captured: entry_capture } =>
+          match read_names(reader: ReadFieldInitLabel, captured: entry_capture) {
+            NameReadRefused =>
+              outcome_rejected(d: Diagnostic {
+                reason: ^named_child_missing,
+                at: node_locus(node: entry_capture),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            NoNameHere =>
+              outcome_rejected(d: Diagnostic {
+                reason: ^named_child_missing,
+                at: node_locus(node: entry_capture),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+            NamesFound { atoms: atoms } =>
+              match atoms {
+                Empty =>
+                  outcome_rejected(d: Diagnostic {
+                    reason: ^named_child_missing,
+                    at: node_locus(node: entry_capture),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  })
+                Cons { head: atom, tail: _ } =>
+                  match node_atom_identity_optional(node: atom) {
+                    Absent =>
+                      outcome_rejected(d: Diagnostic {
+                        reason: ^named_child_missing,
+                        at: node_locus(node: atom),
+                        correction: Unavailable { reason: ExternalContractUnknown }
+                      })
+                    Present { value: alias_sym } =>
+                      match parse_subtree_find_production_captured(root: entry_capture, emitted: ^dag_surface_qualified_name) {
+                        ParseSubtreeAbsent =>
+                          outcome_rejected(d: Diagnostic {
+                            reason: ^qualified_name_structure_invalid,
+                            at: node_locus(node: entry_capture),
+                            correction: Unavailable { reason: ExternalContractUnknown }
+                          })
+                        ParseSubtreeFound { captured: contract_capture } =>
+                          match parse_qualified_name_segments_from_capture(qn_capture: contract_capture, root: entry_capture) {
+                            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                            Accepted { value: contract_segments, diagnostics: _ } =>
+                              outcome_accepted(value: [
+                                DemandRestatementRowIdentity {
+                                  module_path: module_path as NonEmptyStr,
+                                  declaration: symbol_lexeme(sym: alias_sym) as NonEmptyStr,
+                                  alias: symbol_lexeme(sym: alias_sym) as NonEmptyStr,
+                                  authored_type: corpus_resolved_authored_type(
+                                    type_text: qualified_name_to_dotted_string(qn: qualified_name_from_string_segments(segments: contract_segments)),
+                                    bindings: bindings
+                                  ) as NonEmptyStr
+                                }
+                              ])
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE TEXT ROUTE IS THE ONLY ROUTE (one reader, single_authority): the witness never re-tokenizes a
+// hand copy -- the arriving population and the control probes below share this function, and
+// corpus_rows_for_witness is a thin delegation onto the witness's own carried source text.
+fn corpus_rows_for_source(text: String, file: Symbol) -> Outcome<List<DemandRestatementRowIdentity>> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse_module(tokens: token_stream, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: qualified_name_from_module_node(root: artifact.tree),
+            f: fn(module_qn) {
+              let module_path = qualified_name_to_dotted_string(qn: module_qn)
+              let bindings = corpus_import_bindings(module_root: artifact.tree)
+              fold_list(
+                xs: node_subtree_nodes(root: artifact.tree),
+                empty: outcome_accepted(value: [] as List<DemandRestatementRowIdentity>),
+                cons: fn(acc, node) {
+                  bind_outcome(
+                    o: acc,
+                    f: fn(got) {
+                      match parse_production_emitted_identity_optional(node: node) {
+                        Present { value: emitted_id } =>
+                          if emitted_id != ^dag_surface_fn_decl {
+                            outcome_accepted(value: got)
+                          } else {
+                            bind_outcome(
+                              o: witness_uses_rows(decl: node, module_path: module_path, bindings: bindings),
+                              f: fn(rows) { outcome_accepted(value: list_append(left: got, right: rows)) }
+                            )
+                          }
+                        Absent => outcome_accepted(value: got)
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn corpus_rows_for_witness(w: DagSourceReadWitness) -> Outcome<List<DemandRestatementRowIdentity>> {
+  corpus_rows_for_source(text: w.source.carried, file: w.compilation_unit)
+}
+
+data corpus_restatement_arriving: Outcome<List<DemandRestatementRowIdentity>> =
+  bind_outcome(
+    o: native_lane_census_ingest(source_roots: ["dag", "src/v2"]),
+    f: fn(ingest) {
+      fold_list(
+        xs: ingest,
+        empty: outcome_accepted(value: [] as List<DemandRestatementRowIdentity>),
+        cons: fn(acc, w) {
+          bind_outcome(
+            o: acc,
+            f: fn(got) {
+              bind_outcome(
+                o: corpus_rows_for_witness(w: w),
+                f: fn(rows) { outcome_accepted(value: concat(got, rows)) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+
+// GREEN OVER THE REAL POPULATIONS, both sides real and differently produced: the tree-derived arriving
+// population is non-empty (an empty population is VOID, not green) AND the wall holds it against the
+// follow-up module's authorized roster. An authored demand_restatement row that has not earned retention
+// flips this to red and is NAMED by the refusals the wall names.
+test fn demand_restatement_wall_holds_over_the_corpus_derived_arriving() -> Bool {
+  match corpus_restatement_arriving {
+    Accepted { value: arriving, diagnostics: _ } =>
+      (length(xs: arriving) > 0)
+        && (length(xs: demand_restatement_authorized_roster) > 0)
+        && demand_restatement_wall_holds(arriving: arriving, roster: demand_restatement_authorized_roster)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE BLINDNESS GUARD (the walker's own discriminating arm, the mirror direction): EVERY authorized
+// roster identity is FOUND by the corpus walk among the tree-derived arrivals. If the walk could not
+// see uses clauses at all -- a parse field renamed, a roots list narrowed -- this arm fails: a walker
+// that derives nothing certifies nothing, and here it cannot hide.
+test fn every_authorized_restatement_identity_is_found_in_the_corpus() -> Bool {
+  match corpus_restatement_arriving {
+    Accepted { value: arriving, diagnostics: _ } =>
+      fold_list(
+        xs: demand_restatement_authorized_roster,
+        empty: true,
+        cons: fn(acc, authorized) {
+          if !acc {
+            false
+          } else {
+            any(xs: arriving, predicate: fn(row) { demand_restatement_identity_eq(left: row, right: authorized) })
+          }
+        }
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE FAIL-CLOSED CONTROLS for the reader's three distinguishable outcomes (A, 23:06Z): an ABSENT
+// clause yields zero rows WITHOUT refusing; a clause shell whose entry cannot be read and an
+// unparseable source both REFUSE -- never an empty list. These run the SAME text route as the
+// arriving population (corpus_rows_for_source), so a reader blind to `uses` could not pass the
+// blindness guard above while passing these.
+test fn corpus_reader_absent_clause_yields_zero_rows_without_refusal() -> Bool {
+  match corpus_rows_for_source(text: "module probe_no_uses\n\nfn plain_probe() -> Bool { true }\n", file: symbol_intern_lexeme(lexeme: "probe_no_uses.dag")) {
+    Accepted { value: rows, diagnostics: _ } => length(xs: rows) == 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn corpus_reader_clause_shell_without_readable_entry_refuses() -> Bool {
+  match corpus_rows_for_source(text: "module probe_shell\n\nfn needs_probe(x: Int) -> Bool\n  uses\n{\n  true\n}\n", file: symbol_intern_lexeme(lexeme: "probe_shell.dag")) {
+    Accepted { value: rows, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn corpus_reader_unparseable_source_refuses_never_empty() -> Bool {
+  match corpus_rows_for_source(text: "@", file: symbol_intern_lexeme(lexeme: "probe_bad.dag")) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// RED DIRECTION, LOCATED: a brand-new identity that is not among the retained rows refuses -- exactly
+// ONE refusal (the planted row; the roster side rides along as authorized arrivals), and the wall flips
+// to false. Sides: the planted row is written in THIS test (the forbidden state, expressible); the
+// roster is the follow-up module's data. The refusal COUNT is asserted as 1, so a wall that refused
+// everything or nothing fails this arm.
+test fn demand_restatement_new_row_refuses_against_the_real_roster() -> Bool {
+  let newcomer = DemandRestatementRowIdentity {
+    module_path: "v2.compiler.brand_new_restatement" as NonEmptyStr,
+    declaration: "a_restated_demand_never_retained" as NonEmptyStr,
+    alias: "NeverRetained" as NonEmptyStr,
+    authored_type: "std.resources.Filesystem" as NonEmptyStr
+  }
+  let arriving = Cons { head: newcomer, tail: demand_restatement_authorized_roster }
+  let refusals = demand_restatement_new_row_refusals(arriving: arriving, roster: demand_restatement_authorized_roster)
+  // CONSUMER of demand_restatement_identity_text (review 99609): the single refused identity is
+  // rendered to prose here and the rendered text is pinned to the EXACT concatenation the renderer's
+  // definition fixes -- module # declaration # alias # authored_type. The renderer therefore has an
+  // executing consumer on the refusal path (the wall's refused arrival is NAMED, not just counted),
+  // and a renderer that drops, reorders or reseparates a field fails this arm.
+  let rendered_ok = match refusals {
+    Cons { head: refused, tail: _ } =>
+      demand_restatement_identity_text(row: refused)
+        == "v2.compiler.brand_new_restatement#a_restated_demand_never_retained#NeverRetained#std.resources.Filesystem"
+    Empty => false
+  }
+  (length(xs: refusals) == 1)
+    && (!demand_restatement_wall_holds(arriving: arriving, roster: demand_restatement_authorized_roster))
+    && rendered_ok
+}
+
+// A REAL RETAINED ROW CARRIES THROUGH THE WALL AS AUTHORIZED via its NESTED identity (review 98769
+// finding 1: the row nests DemandRestatementRowIdentity; the projection bridge is deleted). Exercised
+// on real data rather than asserted to exist. Both sides visible: the row is the follow-up module's
+// retained data; the roster is that same data read at r.identity (authorized by identity, so this arm
+// checks the nesting PRESERVES the four fields -- an identity-dropping row fails it).
+test fn demand_restatement_real_retained_row_is_authorized() -> Bool {
+  match demand_restatement_retained_fn_rows {
+    Cons { head: first_real_row, tail: _ } =>
+      match demand_restatement_row_verdict(
+        row: first_real_row.identity,
+        roster: demand_restatement_authorized_roster
+      ) {
+        AuthorizedRow { row: _ } => true
+        NewRestatementRowRefused { row: _, cause: _ } => false
+      }
+    Empty => false
+  }
+}
+
+// =============================================================================================
+// DISTINCT-COUNT SEMANTIC ARMS (review 98769 finding 2, consequence rule from the lane manager: a
+// fix that changes what a control MEANS owes its own observation). The corrected control must be
+// SEEN moving where an entry occurs exactly twice -- the case the old shape got wrong, returning
+// n-2 (here: 1 for three entries spelling two identities) -- and SEEN unchanged where nothing
+// duplicates; empty counts 0, and 0 is never read as green.
+// =============================================================================================
+
+test fn distinct_count_moves_on_exactly_one_duplicated_pair() -> Bool {
+  (distinct_string_count(xs: ["wall#a#1", "wall#a#1", "wall#b#1"]) == 2)
+    && (distinct_string_count(xs: ["wall#a#1", "wall#b#1", "wall#c#1"]) == 3)
+    && (distinct_string_count(xs: []) == 0)
+}
+
+// THE CONTRACT ITSELF, duplicate-free by its own typed carrier: distinct count equals member count
+// over the SAME list the census log prints beside the refused count -- a future colliding entry
+// fails this arm where it is authored, not in a log someone has to notice.
+test fn debt_contract_identity_strings_are_duplicate_free() -> Bool {
+  let identities = filesystem_effect_debt_contract_identity_strings()
+  (filesystem_effect_debt_contract_distinct_count() == length(xs: identities))
+    && (length(xs: identities) == 4)
+}
+
+// =============================================================================================
+// THE CENSUS IS SEEN DISCHARGING (probe 1, lane-manager condition: the census must be observed
+// MOVING, not only declared). On a probe copy of this tree the srv1 stage deletes one contracted
+// use row; the stage re-runs THIS module there. These two arms are the machine-checked half of
+// that statement: the SAME produced producers -- filesystem_effect_reaches_from_phase1_rows and
+// filesystem_effect_emitted_closure_census -- run over rows that are the contract MINUS one
+// member, and the census is seen to drop exactly that member: the join breaks on the missing
+// side (the contract still demands it), while the produced reaches themselves no longer carry
+// it. The census classification, not a copied count, moves.
+// =============================================================================================
+
+fn census_discharge_verdict() -> Bool {
+  let minus_one = [
+    derived_row("v2.compiler.self_host", "read_roster_manifest", [read_seam_path()]),
+    derived_row("v2.compiler.self_host", "fold_side_bytes", [read_seam_path()]),
+    derived_row("v2.workflow.compile_door_ledger", "ledger_read_witness", [read_seam_path()])
+  ]
+  let reaches = filesystem_effect_reaches_from_phase1_rows(
+    rows: minus_one,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+  let report = filesystem_effect_emitted_closure_census(
+    population_source: filesystem_effect_fixture_closure_population,
+    rows: minus_one,
+    free_primitive_identity: filesystem_primitive_identity,
+    bound_handler_identity: filesystem_handler_identity
+  )
+  // The PRODUCER dropped exactly one reach (3 remain, none at the dropped site)...
+  (length(xs: reaches) == 3)
+    && (any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        symbol_eq(a: symbol_intern_lexeme(lexeme: "door_ledger_row"), b: filesystem_effect_reach_site(reach: o).enclosing_declaration)
+      }
+    ) == false)
+    // ...and the CONTRACT still demands the dropped member, so the join refuses -- the census
+    // discharge is visible as a changed classification, never as a silently-shrunk bound.
+    && (!filesystem_effect_debt_join_holds(reaches: reaches))
+}
+
+test fn census_is_seen_discharging_when_a_contracted_row_is_removed() -> Bool {
+  census_discharge_verdict()
+}
