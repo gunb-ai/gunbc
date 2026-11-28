@@ -1,0 +1,374 @@
+module test.claim.fleet.fleet_enrolled_key_roster_closure_witness
+
+// THE CLOSURE OVER THE ENROLLED-KEY ROSTER, WITNESSED. The roadmap node
+// "fleet-truth-enrolled-key-roster-closed" of gunbc.roadmap.roadmap_authority
+// asks for an explicit disposition for every host in either roster -- enrolled, or refused with a reason --
+// and for a witness that the fold refuses a host holding neither. The functions below are that witness; the
+// fold they run on lives in gunbc.fleet.fleet_host_key_enrollment, because the row's first_slice puts the
+// fold in the carrier and a witness that reimplemented it would prove the witness runs rather than that the
+// model works.
+//
+// WHAT THE POPULATION IS, AND WHERE IT COMES FROM. Membership is read from the modules that own it --
+// #gunbc.compute.remote_build_hosts::remote_build_serving_hosts (the build dispatch gate) and
+// #gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts (the provisioned-candidate row) for
+// the build side, and for the serving side #gunbc.serving.router_dev_policy::router_dev_host_roster plus the
+// host-keyed rows of #gunbc.serving.serving_host_memory, which are what carry h11 (operator_host_6ce85c),
+// srv3 and srv4 today. There is no single serving host-list function to defer to, so the population is read
+// from those rows rather than from names typed into this file. Seven hosts result: srv1, srv2, srv3, srv4,
+// host-e2d4b7 (ken), srv14 (butch) and host-6ce85c (dan/h11). SIX carry anchor rows; dan does NOT, and the
+// refused-with-a-named-cause arm is what turns that into a stated gap instead of a hole. That refusal is the
+// row working, not the row failing: no scan was attempted from here and no host was touched.
+//
+// THE RED CONTROLS ARE NOT DECORATION. This row's red_control is a roster host with no anchor row and no
+// refusal reason, and a key mismatch RESOLVED BY HAND rather than refused with both fingerprints named. The
+// two RED functions make exactly those two states detectable: one passes the fold's output with the refusal
+// arms dropped -- the shape a hand-match leaves behind -- and the discriminator reports the host it lost; the
+// other puts the hand resolution's own report beside the carrier's and shows the hand report cannot name the
+// fingerprint it expected, because it never held one.
+
+import std.types { Bool, List, NonEmptyStr, Int }
+import std.list { distinct_by_key }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+  operator_host_srv14, operator_host_e2d4b7, operator_host_6ce85c,
+}
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_serving_candidate_hosts }
+import gunbc.serving.router_dev_policy { router_dev_host_roster }
+import gunbc.serving.serving_host_memory {
+  serving_host_config_observations_of_the_2026_11_24_pass,
+  host_6ce85c_serving_memory_observed,
+}
+import gunbc.fleet.fleet_host_key_enrollment {
+  EnrolledKeyRosterHost,
+  HostKeyAnchorDisposition,
+  AnchorEnrolled,
+  AnchorRefused,
+  NoEnrolledRowAndNoScan,
+  AnchorRowsDisagree,
+  HostOutsideEveryRoster,
+  enrolled_key_roster_host,
+  enrolled_anchor_rows_for,
+  enrolled_fingerprint_for,
+  host_key_anchor_disposition,
+  host_key_anchor_roster_closure,
+  host_of_anchor_disposition,
+  roster_hosts_with_neither_anchor_nor_refusal,
+  host_key_anchor_absence_wire,
+  host_key_anchor_disposition_wire,
+  host_key_anchor_expectation,
+  host_key_anchor_readback,
+  host_key_anchor_readback_wire,
+  fleet_host_key_enrollments,
+  known_host_row_field,
+}
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthDeclared,
+  HostTruthNothingDeclared,
+  TruthMarking,
+  TruthDivergent,
+  TruthAgrees,
+}
+import gunbc.fleet.fleet_host_truth_sources { host_truth_identity_expectation }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHICH ROSTERS NAME A HOST, read from the modules that own membership. A host carries the label of every
+// roster that names it, and a refusal quotes those labels, so a reader of a refusal sees WHICH roster is
+// uncovered instead of being told a host is "not enrolled".
+data build_gate_label: NonEmptyStr = "build-dispatch-gate"
+data build_candidate_label: NonEmptyStr = "build-serving-candidate"
+data serving_router_label: NonEmptyStr = "serving-router-dev"
+data serving_memory_label: NonEmptyStr = "serving-host-memory"
+
+fn serving_roster_hosts() -> List<HostIdentity> {
+  concat(
+    map(router_dev_host_roster(), r => r.host),
+    concat(
+      map(serving_host_config_observations_of_the_2026_11_24_pass, o => o.host),
+      [host_6ce85c_serving_memory_observed.host],
+    ),
+  )
+}
+
+fn roster_labels_naming(host: HostIdentity) -> List<NonEmptyStr> {
+  concat(
+    concat(
+      if any(remote_build_serving_hosts(), h => host_identity_eq(a: h, b: host)) { [build_gate_label] } else { [] },
+      if any(remote_build_serving_candidate_hosts(), h => host_identity_eq(a: h, b: host)) { [build_candidate_label] } else { [] },
+    ),
+    concat(
+      if any(map(router_dev_host_roster(), r => r.host), h => host_identity_eq(a: h, b: host)) { [serving_router_label] } else { [] },
+      if any(serving_roster_hosts(), h => host_identity_eq(a: h, b: host)) { [serving_memory_label] } else { [] },
+    ),
+  )
+}
+
+// THE ROSTER THE CLOSURE RUNS OVER: the distinct union of the build and serving populations, each host
+// carrying the labels of the rosters that name it. Nothing is hand-typed here -- a host enters because a
+// roster module carries its row, and it leaves when one stops.
+fn enrolled_key_roster() -> List<EnrolledKeyRosterHost> {
+  let hosts = distinct_by_key(
+    xs: concat(concat(remote_build_serving_hosts(), remote_build_serving_candidate_hosts()), serving_roster_hosts()),
+    key: fn(h) { h as String },
+  )
+  map(hosts, fn(h) { enrolled_key_roster_host(host: h, rosters: roster_labels_naming(host: h)) })
+}
+
+fn disposition_count(closure: List<HostKeyAnchorDisposition>, enrolled: Bool) -> Int {
+  length(filter(closure, fn(d) {
+    match d {
+      AnchorEnrolled { host: _, anchor: _, enrolled_endpoints: _ } => enrolled
+      AnchorRefused { host: _, cause: _ } => !enrolled
+    }
+  }))
+}
+
+// 1. THE CLOSURE IS A CLOSURE: one disposition per roster host, every roster host named exactly once,
+// nobody silent. The counts are the claim -- seven roster hosts, six enrolled, one refused with a named
+// cause -- and the six are named by identity, so a registry edit that swaps which machine is anchored goes
+// red here rather than keeping the count right.
+test fn the_closure_gives_every_roster_host_a_disposition() -> Bool {
+  let roster = enrolled_key_roster()
+  let closure = host_key_anchor_roster_closure(roster: roster)
+  length(roster) == 7
+    && length(closure) == length(roster)
+    && all(roster, fn(e) {
+      length(filter(closure, fn(d) { host_identity_eq(a: host_of_anchor_disposition(d), b: e.host) })) == 1
+    })
+    && disposition_count(closure: closure, enrolled: true) == 6
+    && disposition_count(closure: closure, enrolled: false) == 1
+    && all(
+      [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7, operator_host_srv14],
+      fn(h) { any(closure, fn(d) {
+        match d {
+          AnchorEnrolled { host: enrolled_host, anchor: _, enrolled_endpoints: _ } => host_identity_eq(a: enrolled_host, b: h)
+          AnchorRefused { host: _, cause: _ } => false
+        }
+      }) },
+    )
+    && any(closure, fn(d) {
+      match d {
+        AnchorRefused { host: refused_host, cause: NoEnrolledRowAndNoScan { rosters: _ } } => host_identity_eq(a: refused_host, b: operator_host_6ce85c)
+        _ => false
+      }
+    })
+    // Every disposition renders a wire that names its host: a refusal that cannot say who it is about is the
+    // unlocatable diagnostic fail_closed refuses.
+    && all(closure, fn(d) {
+      let wire = host_key_anchor_disposition_wire(d: d)
+      string_contains(s: wire, pattern: "host=")
+        && match d {
+          AnchorEnrolled { host: h, anchor: _, enrolled_endpoints: _ } =>
+            string_contains(s: wire, pattern: h as String) && string_contains(s: wire, pattern: "anchor_fingerprint=SHA256:")
+          AnchorRefused { host: h, cause: _ } =>
+            string_contains(s: wire, pattern: h as String) && string_contains(s: wire, pattern: "cause=")
+        }
+    })
+}
+
+// 2. A HOST WITH NO ANCHOR ROW REFUSES, and the refusal names the cause this carrier can support: no row, no
+// scan attempted, no host action taken -- and expressly NOT that the host has no key. dan
+// (operator_host_6ce85c) is that host today, named by two serving rosters. The other two refusal arms are
+// witnessed on the same claim: a host the fold was never told belongs to a roster is refused rather than
+// scored, and a registry pinning two fingerprints for one machine refuses with both named.
+test fn a_host_with_no_anchor_row_refuses_with_a_named_cause() -> Bool {
+  let entry = enrolled_key_roster_host(
+    host: operator_host_6ce85c,
+    rosters: [serving_router_label, serving_memory_label],
+  )
+  let d = host_key_anchor_disposition(entry: entry)
+  let unrostered = host_key_anchor_disposition(enrolled_key_roster_host(host: operator_host_srv1, rosters: []))
+  let disagree_wire = host_key_anchor_absence_wire(
+    cause: AnchorRowsDisagree { fingerprints: ["SHA256:anchor-one", "SHA256:anchor-two"] },
+  )
+  match d {
+    AnchorRefused { host: h, cause: NoEnrolledRowAndNoScan { rosters: rs } } =>
+      host_identity_eq(a: h, b: operator_host_6ce85c)
+        && length(enrolled_anchor_rows_for(host: operator_host_6ce85c)) == 0
+        && length(rs) == 2
+        && string_contains(s: host_key_anchor_disposition_wire(d: d), pattern: "no enrolled host-key row")
+        && string_contains(s: host_key_anchor_absence_wire(cause: NoEnrolledRowAndNoScan { rosters: rs }), pattern: "no scan attempted")
+        // The refusal is not an absence claim about the machine.
+        && string_contains(s: host_key_anchor_absence_wire(cause: NoEnrolledRowAndNoScan { rosters: rs }), pattern: "not a statement that the host has no key")
+        && match unrostered {
+          AnchorRefused { host: u, cause: HostOutsideEveryRoster } =>
+            host_identity_eq(a: u, b: operator_host_srv1)
+              && string_contains(s: host_key_anchor_disposition_wire(d: unrostered), pattern: "does not name this host")
+          _ => false
+        }
+        && string_contains(s: disagree_wire, pattern: "SHA256:anchor-one")
+        && string_contains(s: disagree_wire, pattern: "SHA256:anchor-two")
+        && string_contains(s: disagree_wire, pattern: "two authorities for one machine")
+    _ => false
+  }
+}
+
+// 3. RED -- A ROSTER HOST WITH NO ANCHOR ROW AND NO REFUSAL REASON KEEPS THIS OPEN. Over the fold the
+// discriminator is empty, because the coproduct has no arm for "neither". Pass it the list a hand match
+// leaves behind -- only the enrolled arms -- and the same discriminator names the host that fell out. That is
+// the row's red_control made checkable rather than asserted: the fold's refusal arm is what closes the
+// roster, and dropping it reopens exactly one host.
+test fn RED_a_roster_host_with_no_row_and_no_refusal_reason_keeps_the_roster_open() -> Bool {
+  let roster = enrolled_key_roster()
+  let closure = host_key_anchor_roster_closure(roster: roster)
+  let enrolled_only = filter(closure, fn(d) {
+    match d {
+      AnchorEnrolled { host: _, anchor: _, enrolled_endpoints: _ } => true
+      AnchorRefused { host: _, cause: _ } => false
+    }
+  })
+  let open_over_the_fold = roster_hosts_with_neither_anchor_nor_refusal(roster: roster, dispositions: closure)
+  let open_under_a_hand_match = roster_hosts_with_neither_anchor_nor_refusal(roster: roster, dispositions: enrolled_only)
+  length(open_over_the_fold) == 0
+    && length(open_under_a_hand_match) == 1
+    && any(open_under_a_hand_match, fn(h) { host_identity_eq(a: h, b: operator_host_6ce85c) })
+    // Non-vacuity: the control is a strict subset of a seven-host population, not an empty list handed to a
+    // fold that reports nothing because it read nothing.
+    && length(enrolled_only) == 6
+}
+
+// 4. THE READ-BACK REFUSES A MISMATCH AND NAMES BOTH FINGERPRINTS -- enrolled anchor, presented key, both
+// fingerprints, refusal. The anchor is read from the registry rather than typed into this claim, the
+// presented key is a planted divergence, and the agreement control runs over the same host so the divergence
+// arm is not simply the arm this function always returns.
+test fn a_key_mismatch_refuses_naming_both_fingerprints() -> Bool {
+  let rows = enrolled_anchor_rows_for(host: operator_host_srv14)
+  match rows.first() {
+    Absent => false
+    Present { value: anchor } =>
+      let planted = "SHA256:planted-divergence-not-the-anchored-machine" as NonEmptyStr
+      let comparison = host_key_anchor_readback(
+        host: operator_host_srv14,
+        presented_fingerprint: Present { value: planted },
+        at_run: "enrolled-key-roster-closure-witness" as NonEmptyStr,
+        declared_by: "gunbc.fleet.fleet_host_key_enrollment",
+      )
+      let wire = host_key_anchor_readback_wire(host: operator_host_srv14, comparison: comparison)
+      let agreement = host_key_anchor_readback(
+        host: operator_host_srv14,
+        presented_fingerprint: Present { value: anchor.sha256_fingerprint as NonEmptyStr },
+        at_run: "enrolled-key-roster-closure-witness" as NonEmptyStr,
+        declared_by: "gunbc.fleet.fleet_host_key_enrollment",
+      )
+      match comparison {
+        TruthDivergent { observed: got, expected: wants } =>
+          got != wants
+            && string_contains(s: wire, pattern: "KEY MISMATCH")
+            && string_contains(s: wire, pattern: anchor.sha256_fingerprint)
+            && string_contains(s: wire, pattern: planted as String)
+            && string_contains(s: wire, pattern: known_host_row_field(k: anchor))
+            && string_contains(s: wire, pattern: anchor.public_key_base64)
+            && string_contains(s: wire, pattern: "REFUSED")
+            && match agreement {
+              TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => true
+              _ => false
+            }
+        _ => false
+      }
+  }
+}
+
+// 5. RED -- A KEY MISMATCH RESOLVED BY HAND IS THE DIVERGENCE THE ROUTE SKIPPED. The row's displaced_cost is
+// an ed25519 fingerprint matched by hand after a moved address carried another machine's key. Put the hand
+// route's own report beside the carrier's and the difference is in the text: the hand route can name only the
+// key it looked at, because it holds no anchor to name; the carrier's refusal names the enrolled anchor, its
+// endpoint, its public half and both fingerprints. Same host, same presented key -- one route states a
+// divergence a roster has to act on, the other states a match nobody can audit.
+test fn RED_a_key_mismatch_resolved_by_hand_is_the_divergence_the_route_skipped() -> Bool {
+  let rows = enrolled_anchor_rows_for(host: operator_host_srv14)
+  match rows.first() {
+    Absent => false
+    Present { value: anchor } =>
+      let planted = "SHA256:planted-divergence-not-the-anchored-machine" as NonEmptyStr
+      let comparison = host_key_anchor_readback(
+        host: operator_host_srv14,
+        presented_fingerprint: Present { value: planted },
+        at_run: "enrolled-key-roster-closure-witness" as NonEmptyStr,
+        declared_by: "gunbc.fleet.fleet_host_key_enrollment",
+      )
+      let carrier_wire = host_key_anchor_readback_wire(host: operator_host_srv14, comparison: comparison)
+      // What the hand match reports: the fingerprint it compared, and nothing about what was expected.
+      let hand_wire = join(["fingerprint matched by hand: ", planted as String], "")
+      string_contains(s: hand_wire, pattern: planted as String)
+        && string_contains(s: hand_wire, pattern: "matched by hand")
+        && string_contains(s: hand_wire, pattern: anchor.public_key_base64) == false
+        && string_contains(s: hand_wire, pattern: anchor.sha256_fingerprint) == false
+        && string_contains(s: carrier_wire, pattern: anchor.sha256_fingerprint)
+        && string_contains(s: carrier_wire, pattern: planted as String)
+        && string_contains(s: carrier_wire, pattern: known_host_row_field(k: anchor))
+        && string_contains(s: carrier_wire, pattern: anchor.public_key_base64)
+        // The carrier's arm carries both values, not a flag: this is what a consumer refuses on.
+        && match comparison {
+          TruthDivergent { observed: got, expected: wants } => got != wants
+          _ => false
+        }
+  }
+}
+
+// 6. THE CLOSURE READS THE ANCHOR FROM THE ENROLLMENT AUTHORITY AND NOTHING ELSE. Every enrolled
+// disposition's endpoint count equals the registry's own row count for that host, every enrolled anchor
+// fingerprint is the registry's own projection for that host, and no refusal is issued for a host the
+// registry does hold rows for. That is the single-authority check: the fold cannot be quietly re-deriving
+// keys from a second list, and it cannot read the first-contact hop rows as anchors.
+test fn the_closure_reads_the_anchor_from_the_enrollment_authority_only() -> Bool {
+  let roster = enrolled_key_roster()
+  let closure = host_key_anchor_roster_closure(roster: roster)
+  all(closure, fn(d) {
+    let h = host_of_anchor_disposition(d: d)
+    let registry_rows = filter(fleet_host_key_enrollments, fn(k) { host_identity_eq(a: k.host, b: h) })
+    match d {
+      AnchorEnrolled { host: _, anchor: anchor_row, enrolled_endpoints: n } =>
+        n == length(registry_rows)
+          && length(registry_rows) > 0
+          && any(registry_rows, fn(k) { k.sha256_fingerprint == anchor_row.sha256_fingerprint && host_identity_eq(a: k.host, b: anchor_row.host) })
+          && match enrolled_fingerprint_for(host: h as String) {
+            Present { value: p } => p == anchor_row.sha256_fingerprint
+            Absent => false
+          }
+      AnchorRefused { host: _, cause: _ } => length(registry_rows) == 0
+    }
+  })
+    // Non-vacuity: the enrolled half of that quantifier is six hosts deep, and one of them is pinned at TWO
+    // endpoints (srv1's LAN row and its tailnet row), which is exactly the case a projection gets wrong.
+    && any(closure, fn(d) {
+      match d {
+        AnchorEnrolled { host: h, anchor: _, enrolled_endpoints: n } => n == 2 && host_identity_eq(a: h, b: operator_host_srv1)
+        AnchorRefused { host: _, cause: _ } => false
+      }
+    })
+    && disposition_count(closure: closure, enrolled: true) == 6
+}
+
+// 7. THE READ-BACK IS KEYED ON THE HOST IDENTITY, NOT ON A SPELLING OF ONE. The registry keys butch's anchor
+// as operator_host_srv14 (operator ruling D2: a per-host fact is a row keyed by the machine), so a read of
+// the MACHINE lands on that anchor. The string-keyed sibling in gunbc.fleet.fleet_host_truth_sources answers
+// about the text it was handed and reports the model's own gap for "butch" -- true of the string, not of the
+// machine, and the ruling of 2026-11-27 keeps that fix in its own row, with the existing RED witness left
+// alone. This claim asserts BOTH stand as they are, so the corrected keying is visible beside the old claim
+// instead of silently replacing it.
+test fn the_readback_is_keyed_on_the_host_identity_not_the_report_text() -> Bool {
+  let machine_expectation = host_key_anchor_expectation(
+    host: operator_host_srv14,
+    declared_by: "gunbc.fleet.fleet_host_key_enrollment",
+  )
+  let text_expectation = host_truth_identity_expectation(
+    host: "butch" as NonEmptyStr,
+    declared_by: "gunbc.fleet.fleet_host_key_enrollment",
+  )
+  match machine_expectation {
+    HostTruthDeclared { host: h, axis: _, expected: TruthMarking { text: wants }, declared_by: _ } =>
+      (h as String) == "srv14"
+        && match enrolled_fingerprint_for(host: "srv14") {
+          Present { value: p } => p == wants
+          Absent => false
+        }
+        && match text_expectation {
+          HostTruthNothingDeclared { host: t, axis: _, because: _ } => (t as String) == "butch"
+          _ => false
+        }
+    HostTruthNothingDeclared { host: _, axis: _, because: _ } => false
+  }
+}
