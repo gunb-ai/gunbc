@@ -12878,6 +12878,89 @@ pub fn regen_module_names(workspace: &Path) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
+mod regen_graph_index_ownership_tests {
+    use super::*;
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            let root = workspace_root().join("target").join(format!(
+                "gunbc-regen-index-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            for (path, source) in [
+                ("dag/shared.dag", "module shared\nfn shared_value() -> Int { 1 }\n"),
+                ("src/v1/seed.dag", "module seed\nimport shared { shared_value }\nfn seed_value() -> Int { shared_value() }\n"),
+                ("src/v2/policy.dag", "module policy\nfn policy_value() -> Int { 2 }\n"),
+            ] {
+                let path = root.join(path);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, source).unwrap();
+            }
+            Self(root)
+        }
+
+        fn roots(&self, paths: &[&str]) -> Vec<String> {
+            paths
+                .iter()
+                .map(|path| self.0.join(path).to_string_lossy().into_owned())
+                .collect()
+        }
+
+        fn read_graph(&self) {
+            let (edges, modules) = regen_module_edges(&self.0).unwrap();
+            assert_eq!(modules, vec!["seed", "shared"]);
+            assert!(edges
+                .iter()
+                .any(|(from, to)| &**from == "seed" && &**to == "shared"));
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn graph_first_leaves_the_policy_pool_available() {
+        let fixture = Fixture::new();
+        fixture.read_graph();
+        let policy = super::super::try_process_shared_index(&fixture.roots(&["dag", "src/v2"]));
+        assert!(
+            policy.is_ok(),
+            "graph read occupied the policy's shared pool: {:?}",
+            policy.err()
+        );
+    }
+
+    #[test]
+    fn policy_first_keeps_its_shared_index_after_graph_read() {
+        let fixture = Fixture::new();
+        let roots = fixture.roots(&["dag", "src/v2"]);
+        let before = super::super::try_process_shared_index(&roots).unwrap();
+        fixture.read_graph();
+        let after = super::super::try_process_shared_index(&roots).unwrap();
+        assert!(Rc::ptr_eq(&before, &after));
+    }
+
+    #[test]
+    fn matching_graph_pool_is_reused_without_another_build() {
+        let fixture = Fixture::new();
+        let roots = fixture.roots(&["src/v1", "dag"]);
+        let _shared = super::super::try_process_shared_index(&roots).unwrap();
+        let before = super::super::entry_resolve::whole_pool_index_builds_on_this_thread();
+        fixture.read_graph();
+        assert_eq!(
+            super::super::entry_resolve::whole_pool_index_builds_on_this_thread(),
+            before
+        );
+    }
+}
+
 pub fn regen_module_edges(
     workspace: &Path,
 ) -> Result<(Vec<(Rc<str>, Rc<str>)>, Vec<String>), String> {
@@ -12891,26 +12974,22 @@ pub fn regen_module_edges(
                 .into_owned()
         })
         .collect();
-    // ONE CORPUS INDEX PER PROCESS, WHERE THE POOLS AGREE. This call used to build its OWN
-    // whole-corpus index on top of the process-shared one, so the corpus was parsed and typechecked
-    // twice in one process and both copies stayed resident. Same construction, same canonical roots
-    // key, so the shared index is a cache hit and not a behavior change
-    // (gunbc.design_argument::single_authority -- distinct consumers of one pool resolve it once).
-    // SCOPED, BECAUSE IT IS NOT UNIVERSAL: the hit needs the demanding route's pool to be the pool
-    // the process already resolved. On the heal route it is not -- this round's pool is `src/v1` plus
-    // `dag` while the same child resolved `dag` plus `src/v2` for the model -- so the shared build is
-    // refused with `SharedIndexSecondResidentPool` and the cold build still runs there (measured, run
-    // 43784443590). A refused shared build takes the cold build rather than answering from anything
-    // weaker, and SAYS so, because a round that degraded must not read as the repaired route
-    // (gunbc.design_argument::fail_closed -- every degradation is typed, located and countable). The
-    // cause the shared build gave is carried into the line.
-    let index: Rc<super::MultiEntryIndex> = match super::try_process_shared_index(&abs_roots) {
-        Ok(index) => index,
-        Err(cause) => {
-            eprintln!("required-regen: shared-corpus-index refused, cold rebuild follows: {cause}");
-            Rc::new(super::build_multi_entry_index(&abs_roots))
-        }
-    };
+    // Reuse a matching resident pool; otherwise this graph reader owns its index. It must not
+    // claim an empty shared slot: the dry-run route reads this [src/v1, dag] graph BEFORE asking
+    // its [dag, src/v2] policy, while heal asks the policy first. Installing the auxiliary graph
+    // pool made the former refuse SharedIndexSecondResidentPool after building the whole graph.
+    // The existing memo reader never builds or installs a pool. A private build uses the same
+    // source admission and edge construction, and releases its index when this read returns.
+    let index: Rc<super::MultiEntryIndex> =
+        match super::entry_resolve::memoized_process_shared_index(&abs_roots) {
+            Some(index) => index,
+            None => {
+                eprintln!(
+                    "required-regen: no matching resident graph pool; building an owned index"
+                );
+                Rc::new(super::build_multi_entry_index(&abs_roots))
+            }
+        };
     // UNCOMPOSED ROWS FOR A REVERSE WALK. The affected set is the reachability this route's own
     // reverse walk takes, so the rows it is handed are the DIRECT dependencies the route reads --
     // a reference target, or a resolved bare-name provider for a source that declares no `import`
