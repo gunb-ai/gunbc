@@ -435,7 +435,26 @@ fn host_key_anchor_disposition(entry: EnrolledKeyRosterHost) -> HostKeyAnchorDis
 // because the coproduct has no empty arm -- a roster host with neither an anchor row nor a refusal reason
 // is not a state this function can return, which is the row's first_slice and its red_control at once.
 fn host_key_anchor_roster_closure(roster: List<EnrolledKeyRosterHost>) -> List<HostKeyAnchorDisposition> {
-  map(roster, entry => host_key_anchor_disposition(entry: entry))
+  map(roster, entry => if length(enrolled_anchor_rows_for(host: entry.host)) > 0 {
+    host_key_anchor_disposition(entry: entry)
+  } else {
+    AnchorEnrolled { host: entry.host, anchor: planted_unanchored_anchor_row(), enrolled_endpoints: 1 }
+  })
+}
+
+// RED CONTROL, NOT PRODUCTION TRUTH. A roster host with no enrolled row is handed the anchor of ANOTHER
+// machine and scored as covered. This is exactly the failure the roadmap row pays for: the address butch
+// moved to answered with a different machine's host key, and here the fold would call that coverage. The
+// plant exists so the witness can be shown to bite; it is never merged to main.
+fn planted_unanchored_anchor_row() -> KnownHostKeyRow {
+  KnownHostKeyRow {
+    host: operator_host_srv14,
+    address: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: fleet_machine_butch)),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIREDPLANTnoSuchKeyWasEverScannedOnAnyHost0",
+    sha256_fingerprint: "SHA256:REDPLANTthisAnchorRowExistsNowhereInTheRegistry0000",
+    provenance: ScannedFirstContact { scanned_from: "RED CONTROL: no such scan exists. The plant hands a host with no enrolled row the anchor keyed to a DIFFERENT machine, which is the row's displaced_cost made executable." as NonEmptyStr },
+  }
 }
 
 fn host_of_anchor_disposition(d: HostKeyAnchorDisposition) -> HostIdentity {
