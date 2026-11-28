@@ -9,13 +9,8 @@ import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
-  prod_role_desired_deployment,
+  desired_deployment_roster,
   instance_id_text,
-  ProdRoleDeployment,
-  ProdRoleDeploymentSelected,
-  ProdRoleDeploymentRefused,
-  ProdRoleDeploymentRosterRefused,
-  ProdRoleDeploymentHolderRowMismatch,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
 import gunbc.live_deploy.emit {
@@ -36,7 +31,9 @@ import gunbc.actions_run_binding {
   json_required_string_member,
   JsonStringMemberFound,
   JsonStringMemberRefused,
+  actions_variable_trimmed,
 }
+import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 import gunbc.fleet.fleet_converge_receipt {
   receipt_int_member,
@@ -504,43 +501,120 @@ fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwap
   )
 }
 
-// THE VERDICT REQUIREMENT IS SCOPED TO THE FLEET PROD-ROLE (STAGE) INSTANCE. The plan job mints
-// the serve-entry verdict for the prod-role spec only (record_plan_serve_entry_verdict_for runs
-// over the prod-role row), so the swap demands it only when the deployment IS that row -- decided
-// by the single authority for who holds the fleet prod role (prod_role_desired_deployment; an
-// unreadable realization fails CLOSED into the verdict arm). The LAB route is left alone (manager
-// rule): the operator-local lab live_deploy apply (live_deploy_apply_desired_wet over a lab row,
-// Plan B from an integration checkout) has no plan job, so it keeps the pre-gap mechanism -- the
-// cold serve-entry compile -- UNCHANGED, slowness and all. Changing the lab's wet route is a
-// separate node, not a ride-along in this one.
-fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryCompileVerdict {
-  if deployment_requires_plan_serve_entry_verdict(deployment: deployment) {
-    observe_plan_serve_entry_verdict(spec: selected_deployment_spec(row: deployment))
+// WHICH CHILD THE WET STEP RUNS FOR THE SERVE-ENTRY COMPILE, decided ONCE and as data.
+//
+// THE RULE, stated as the one fact it rests on: an operator-local deploy has NO plan job, so nothing
+// has ever compiled the served entry for it -- that route keeps the pre-gap mechanism, the cold
+// serve-entry compile, UNCHANGED, slowness and all. ANY transaction that carries an admitted plan
+// run pointer DID have a plan job, and that plan job recorded a serve-entry verdict for EVERY roster
+// row it can wet-deploy (gunbc.live_deploy.plan_serve_entry_verdict record_plan_serve_entry_compile_verdict),
+// so the swap consumes the plan's answer by identity instead of paying the ~22-minute cold resolve
+// again -- prod-role holder or lab row makes no difference.
+//
+// WHY THE POINTER AND NOT THE ROLE (the defect this retires): the exemption this file used to justify
+// with the operator-local fact was IMPLEMENTED as prod-role identity, so a lab row inside a CI
+// transaction -- which does have a plan job -- was exempted and took the cold compile arm, which is
+// how deploy2 run 45749803682 met the 60-minute bound. The pointer is the operator-local fact,
+// directly: it is a required deploy-mode dispatch input, admitted before the wet step by
+// admit_plan_run_pointer (gunbc.fleet.fleet_converge_plan_revision admit_plan_run_pointer), so its
+// presence IS "this transaction has an admitted plan".
+//
+// NO NEW ENV MARKER: the pointer text is read through the ONE constant the pointer admission itself
+// reads (gunbc.fleet.fleet_converge_plan_revision fleet_converge_plan_pointer_env_name), by the same
+// actions_variable_trimmed pattern its readers use (:137 resolve_plan_revision_admission, :379
+// admit_run_pointer_step). Nothing here invents a name, and nothing here infers CI-ness from a
+// variable that merely rides a CI event.
+type SwapServeEntryCompileArm
+  = SwapServeEntryCompileFromPlanVerdict { row: DesiredDeployment }
+  | SwapServeEntryCompileByColdResolve { row: DesiredDeployment }
+
+// The pointer's presence, as a fold over the supplied text so BOTH legs are witnessed; the wrapper
+// below is the only place this module touches the environment for it.
+fn admitted_plan_pointer_present_under(pointer: String) -> Bool {
+  trim(s: pointer) != ""
+}
+
+fn admitted_plan_pointer_present() -> Bool {
+  admitted_plan_pointer_present_under(
+    pointer: actions_variable_trimmed(name: fleet_converge_plan_pointer_env_name as NonEmptyStr),
+  )
+}
+
+// THE ONE DECISION, over supplied data: pointer present = the plan answered for this row; absent =
+// operator-local, cold compile. Each arm CARRIES the row whose child it will run, so the arm is what
+// a witness reads to prove which route a given deployment takes -- never a hand-written string.
+fn swap_serve_entry_compile_arm_under(pointer: String, deployment: DesiredDeployment) -> SwapServeEntryCompileArm {
+  if admitted_plan_pointer_present_under(pointer: pointer) {
+    SwapServeEntryCompileFromPlanVerdict { row: deployment }
   } else {
-    let spec = selected_deployment_spec(row: deployment)
-    let root = git.Inspect.Toplevel()
-    let root_path = root.path as String
-    let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
-    observe_serve_entry_compile_clean(
-      repo_root: root_path,
-      bin_path: bin,
-      roots: deployment_serve_source_roots,
-      entry: spec.service.serve_entry as String,
-    )
+    SwapServeEntryCompileByColdResolve { row: deployment }
   }
 }
 
-// The scope predicate: true exactly when the deployment is the row the fleet holds as its prod
-// role (STAGE). Every refusal of the role lookup FAILS CLOSED -- a swap that cannot see who holds
-// the role cannot be trusted to be a lab swap.
+fn swap_serve_entry_compile_arm(deployment: DesiredDeployment) -> SwapServeEntryCompileArm {
+  swap_serve_entry_compile_arm_under(
+    pointer: actions_variable_trimmed(name: fleet_converge_plan_pointer_env_name as NonEmptyStr),
+    deployment: deployment,
+  )
+}
+
+// THE SCOPE PREDICATE, kept under its name and its caller: true exactly when the swap must consume
+// the plan's verdict for this row -- i.e. when the arm chosen for it is the verdict arm. Role
+// equality is gone, and with it the four fail-closed refusal arms of the old role lookup: the
+// pointer is either admitted or it is not, and both readings are witnessed rather than defaulted.
 fn deployment_requires_plan_serve_entry_verdict(deployment: DesiredDeployment) -> Bool {
-  match prod_role_desired_deployment() {
-    ProdRoleDeploymentSelected { deployment: stage } =>
-      instance_id_text(id: deployment.instance.instance_id) == instance_id_text(id: stage.instance.instance_id)
-    ProdRoleDeploymentRefused => true
-    ProdRoleDeploymentRosterRefused => true
-    ProdRoleDeploymentHolderRowMismatch => true
+  match swap_serve_entry_compile_arm(deployment: deployment) {
+    SwapServeEntryCompileFromPlanVerdict { row: _ } => true
+    SwapServeEntryCompileByColdResolve { row: _ } => false
   }
+}
+
+fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryCompileVerdict {
+  match swap_serve_entry_compile_arm(deployment: deployment) {
+    SwapServeEntryCompileFromPlanVerdict { row } => observe_plan_serve_entry_verdict(deployment: row)
+    SwapServeEntryCompileByColdResolve { row } => {
+      let spec = selected_deployment_spec(row: row)
+      let root = git.Inspect.Toplevel()
+      let root_path = root.path as String
+      let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
+      observe_serve_entry_compile_clean(
+        repo_root: root_path,
+        bin_path: bin,
+        roots: deployment_serve_source_roots,
+        entry: spec.service.serve_entry as String,
+      )
+    }
+  }
+}
+
+// WHICH CHILD ACTUALLY RAN, as data, so the inhabitance witness can prove the arm and the child
+// agree instead of asserting a label. The verdict arm's child is the verdict DOCUMENT READ at this
+// path for this row's own address; the cold arm's child is the served-command SPAWN of this row's
+// own entry. Both carry the row's address, so a leg that mixed the arms up would name the wrong
+// child for the row it claims -- which is exactly the confusion the retired role predicate allowed.
+// Built from the arm's row and the SAME path/entry constants the arms call, never from a string a
+// leg could agree with either arm.
+type ServeEntryCompileChild
+  = CompileChildVerdictDocumentRead { path: String, subject_host: String, instance_id: String }
+  | CompileChildServeCommandSpawn { entry: String, subject_host: String, instance_id: String }
+
+fn swap_serve_entry_compile_child_under(pointer: String, deployment: DesiredDeployment) -> ServeEntryCompileChild {
+  let spec = selected_deployment_spec(row: deployment)
+  let subject_host = deployment.target.host.identity as String
+  let instance_id = instance_id_text(id: deployment.instance.instance_id)
+  match swap_serve_entry_compile_arm_under(pointer: pointer, deployment: deployment) {
+    SwapServeEntryCompileFromPlanVerdict { row: _ } =>
+      CompileChildVerdictDocumentRead { path: serve_entry_verdict_path(), subject_host: subject_host, instance_id: instance_id }
+    SwapServeEntryCompileByColdResolve { row: _ } =>
+      CompileChildServeCommandSpawn { entry: spec.service.serve_entry as String, subject_host: subject_host, instance_id: instance_id }
+  }
+}
+
+fn swap_serve_entry_compile_child_for(deployment: DesiredDeployment) -> ServeEntryCompileChild {
+  swap_serve_entry_compile_child_under(
+    pointer: actions_variable_trimmed(name: fleet_converge_plan_pointer_env_name as NonEmptyStr),
+    deployment: deployment,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +637,14 @@ fn deployment_requires_plan_serve_entry_verdict(deployment: DesiredDeployment) -
 // name and the operator re-runs the plan.
 // ---------------------------------------------------------------------------
 
-data serve_entry_verdict_schema: String = "live-deploy-serve-entry-verdict/v1"
+// THE DOCUMENT IS v2 AND IT IS A ROW SET. v1 carried ONE record -- the prod-role row -- which is
+// exactly why a lab row inside a CI transaction had no verdict to consume (the producer gap this PR
+// closes). v2 carries one row per plan-covered roster row, each addressed by (subject_host,
+// instance_id), so the swap selects ITS row rather than trusting the document to be about it.
+// THE SCHEMA CUT IS ONE MOTION: the producer and every consumer moved together, there is no
+// dual-read and no v1 fallback, and a plan artifact written under v1 read by this consumer refuses
+// with the typed schema mismatch below -- the expected behaviour across the cutover.
+data serve_entry_verdict_schema: String = "live-deploy-serve-entry-verdict/v2"
 
 fn serve_entry_verdict_path() -> String {
   join([fleet_converge_plan_artifact_dir, "/serve_entry_verdict.json"], "")
@@ -572,14 +653,21 @@ fn serve_entry_verdict_path() -> String {
 type ServeEntryVerdictConsumption
   = Consumed { compile: ServeEntryCompileVerdict }
   | ConsumedAbsent { detail: String }
+  | ConsumedSchemaMismatch { expected: String, seen: String }
+  | ConsumedRowAbsent { subject_host: String, instance_id: String }
+  | ConsumedRosterForeignRow { subject_host: String, instance_id: String }
   | ConsumedIdentityMismatch { field: String, expected: String, seen: String }
 
 // THE PLAN PUBLISHES AND THE SWAP CONSUMES: one product. ServeEntryCompileVerdict is the sole
 // authority for the compile outcome and is CARRIED unchanged -- never re-spelled arm-for-arm
 // (gunbc.design_argument::minimize_redundancy: minting a fresh authority for a concept that already exists is a failed
 // decomposition; the old parallel three-arm copy lost the diagnostics list on the round trip).
-// The four identity fields bind that verdict to the exact bytes the swap will promote.
+// The row is ADDRESSED by the two things only the roster knows (which host, which instance) and
+// BOUND by the four identity fields the swap re-checks, so a verdict about another row's bytes is
+// named as foreign rather than laundered into this row's compile answer.
 type ServeEntryVerdictRecord {
+  subject_host: String,
+  instance_id: String,
   source_revision: String,
   entry: String,
   argv_digest: String,
@@ -587,9 +675,27 @@ type ServeEntryVerdictRecord {
   compile: ServeEntryCompileVerdict,
 }
 
-type ServeEntryVerdictDecode
-  = ServeEntryVerdictDecoded { record: ServeEntryVerdictRecord }
+// THE DOCUMENT, DECODED WHOLE. The schema is its own typed arm rather than an Undecoded detail,
+// because "a v1 plan artifact is being read by a v2 swap" is a different fact from "this text is
+// not a verdict" and the operator's repair differs: one is re-run the plan, the other is a bug.
+type ServeEntryVerdictDocumentDecode
+  = ServeEntryVerdictDocumentDecoded { rows: List<ServeEntryVerdictRecord> }
+  | ServeEntryVerdictSchemaMismatch { expected: String, seen: String }
   | ServeEntryVerdictUndecoded { detail: String }
+
+// THE ROW'S ADDRESS, spelled the same way on both sides of the plan-to-swap contract: the document's
+// members and the roster row's own fields go through this one function, so no second spelling can
+// drift (gunbc.design_argument::single_authority).
+fn serve_entry_verdict_row_address(subject_host: String, instance_id: String) -> String {
+  join([trim(s: subject_host), ":", trim(s: instance_id)], "")
+}
+
+fn serve_entry_verdict_row_address_of(row: DesiredDeployment) -> String {
+  serve_entry_verdict_row_address(
+    subject_host: row.target.host.identity as String,
+    instance_id: instance_id_text(id: row.instance.instance_id),
+  )
+}
 
 // THE VERDICT'S ARGUMENT DIGEST TEXT. The handler, listener and binding function come from the
 // unit's own producer (gunbc.live_deploy.emit live_deploy_serve_unit_ingress_args) and the argv
@@ -622,9 +728,15 @@ fn serve_entry_argv_digest(spec: DeploymentSpec) -> String {
   serve_entry_argv_digest_of_text(text: serve_entry_argv_identity_text(spec: spec))
 }
 
-fn serve_entry_verdict_json(record: ServeEntryVerdictRecord) -> JsonValue {
+// ONE ROW, AS JSON: the address members, the four identity members, then the carried compile arms.
+// The compile members are the SAME members v1 wrote, unchanged -- the cut is the row set around
+// them, not a re-spelling of the verdict.
+fn serve_entry_verdict_row_json(record: ServeEntryVerdictRecord) -> JsonValue {
+  let address_members = [
+    json_kv(key: "subject_host", value: json_string(s: record.subject_host)),
+    json_kv(key: "instance_id", value: json_string(s: record.instance_id)),
+  ]
   let identity_members = [
-    json_kv(key: "schema", value: json_string(s: serve_entry_verdict_schema)),
     json_kv(key: "source_revision", value: json_string(s: record.source_revision)),
     json_kv(key: "entry", value: json_string(s: record.entry)),
     json_kv(key: "argv_digest", value: json_string(s: record.argv_digest)),
@@ -644,7 +756,16 @@ fn serve_entry_verdict_json(record: ServeEntryVerdictRecord) -> JsonValue {
       json_kv(key: "compile_detail", value: json_string(s: detail)),
     ]
   }
-  json_object(members: concat(identity_members, compile_members))
+  json_object(members: concat(concat(address_members, identity_members), compile_members))
+}
+
+// THE DOCUMENT THE PLAN WRITES AND THE SWAP READS: the schema and the rows, in the one file beside
+// the plan artifact (serve_entry_verdict_path). One file, one document, one writer.
+fn serve_entry_verdict_document_json(rows: List<ServeEntryVerdictRecord>) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: serve_entry_verdict_schema)),
+    json_kv(key: "rows", value: json_array(elements: map(rows, r => serve_entry_verdict_row_json(record: r)))),
+  ])
 }
 
 // THE DIAGNOSTICS LIST, READ BACK ELEMENT BY ELEMENT. The plan's observation produced a LIST of
@@ -666,7 +787,99 @@ fn serve_entry_verdict_diagnostic_list(elements: List<JsonValue>) -> ServeEntryV
     })
 }
 
-fn serve_entry_verdict_decode(raw: String) -> ServeEntryVerdictDecode {
+// ONE ROW, READ MEMBER BY MEMBER. Every member is REQUIRED: a row that omits its address, its
+// entry, or a blocked arm's diagnostics list is not a weaker verdict -- it is an unreadable one, and
+// the swap refuses rather than inventing the missing fact (gunbc.design_argument::fail_closed). The
+// compile arm is decoded by the one helper below and CARRIED into the record once; v1 spelled the
+// record three times, once per arm, which is the copy that lost a field on the round trip.
+type ServeEntryVerdictRowDecode
+  = RowDecoded { record: ServeEntryVerdictRecord }
+  | RowUndecoded { detail: String }
+
+type ServeEntryVerdictCompileDecode
+  = CompileDecoded { compile: ServeEntryCompileVerdict }
+  | CompileUndecoded { detail: String }
+
+fn serve_entry_verdict_compile_decode(arm: String, doc: JsonValue) -> ServeEntryVerdictCompileDecode {
+  if arm == "admitted" {
+    CompileDecoded { compile: ServeEntryCompileAdmitted }
+  } else if arm == "blocked" {
+    match receipt_int_member(doc: doc, key: "compile_blocking") {
+      ReceiptIntRefused { reason } => CompileUndecoded { detail: reason }
+      ReceiptIntFound { value: blocking } =>
+        match json_field(obj: doc, key: "compile_diagnostics") {
+          FieldRead { value: JsonArray { elements } } =>
+            match serve_entry_verdict_diagnostic_list(elements: elements) {
+              DiagnosticsRead { diagnostics } =>
+                CompileDecoded { compile: ServeEntryCompileBlocked { blocking: blocking, diagnostics: diagnostics } }
+              DiagnosticsRefused { reason } => CompileUndecoded { detail: reason }
+            }
+          _ => CompileUndecoded { detail: "compile_diagnostics is not an array" }
+        }
+    }
+  } else if arm == "unobserved" {
+    match json_required_string_member(doc: doc, key: "compile_detail") {
+      JsonStringMemberRefused { reason } => CompileUndecoded { detail: reason }
+      JsonStringMemberFound { value: detail } =>
+        CompileDecoded { compile: ServeEntryCompileUnobserved { detail: detail } }
+    }
+  } else {
+    CompileUndecoded {
+      detail: join(["verdict compile arm is not admitted, blocked, or unobserved: ", arm], ""),
+    }
+  }
+}
+
+fn serve_entry_verdict_row_decode(doc: JsonValue) -> ServeEntryVerdictRowDecode {
+  match json_required_string_member(doc: doc, key: "subject_host") {
+    JsonStringMemberRefused { reason } => RowUndecoded { detail: join(["verdict row subject_host is ", reason], "") }
+    JsonStringMemberFound { value: subject_host } =>
+      match json_required_string_member(doc: doc, key: "instance_id") {
+        JsonStringMemberRefused { reason } => RowUndecoded { detail: join(["verdict row instance_id is ", reason], "") }
+        JsonStringMemberFound { value: instance_id } =>
+          match json_required_string_member(doc: doc, key: "source_revision") {
+            JsonStringMemberRefused { reason } => RowUndecoded { detail: reason }
+            JsonStringMemberFound { value: source_revision } =>
+              match json_required_string_member(doc: doc, key: "entry") {
+                JsonStringMemberRefused { reason } => RowUndecoded { detail: reason }
+                JsonStringMemberFound { value: entry } =>
+                  match json_required_string_member(doc: doc, key: "argv_digest") {
+                    JsonStringMemberRefused { reason } => RowUndecoded { detail: reason }
+                    JsonStringMemberFound { value: argv_digest } =>
+                      match json_required_string_member(doc: doc, key: "compiler_bin_sha256_hex") {
+                        JsonStringMemberRefused { reason } => RowUndecoded { detail: reason }
+                        JsonStringMemberFound { value: compiler_bin_sha256_hex } =>
+                          match json_required_string_member(doc: doc, key: "compile_arm") {
+                            JsonStringMemberRefused { reason } => RowUndecoded { detail: reason }
+                            JsonStringMemberFound { value: arm } =>
+                              match serve_entry_verdict_compile_decode(arm: arm, doc: doc) {
+                                CompileUndecoded { detail } => RowUndecoded { detail: detail }
+                                CompileDecoded { compile } =>
+                                  RowDecoded {
+                                    record: ServeEntryVerdictRecord {
+                                      subject_host: subject_host,
+                                      instance_id: instance_id,
+                                      source_revision: source_revision,
+                                      entry: entry,
+                                      argv_digest: argv_digest,
+                                      compiler_bin_sha256_hex: compiler_bin_sha256_hex,
+                                      compile: compile,
+                                    },
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE DOCUMENT, DECODED WHOLE. The rows fold stops at the first unreadable row and keeps the FIRST
+// named refusal -- a document half-read is not a verdict set, and a partial fold that dropped the
+// bad row would hand the swap a set the plan never claimed to publish.
+fn serve_entry_verdict_document_decode(raw: String) -> ServeEntryVerdictDocumentDecode {
   match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap } =>
       ServeEntryVerdictUndecoded { detail: join(["verdict document is ", json_document_gap_text(gap: gap)], "") }
@@ -675,80 +888,36 @@ fn serve_entry_verdict_decode(raw: String) -> ServeEntryVerdictDecode {
         JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
         JsonStringMemberFound { value: schema } =>
           if schema != serve_entry_verdict_schema {
-            ServeEntryVerdictUndecoded {
-              detail: join(["verdict schema is not ", serve_entry_verdict_schema, ": ", schema], ""),
-            }
+            ServeEntryVerdictSchemaMismatch { expected: serve_entry_verdict_schema, seen: schema }
           } else {
-            match json_required_string_member(doc: doc, key: "source_revision") {
-              JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-              JsonStringMemberFound { value: source_revision } =>
-                match json_required_string_member(doc: doc, key: "entry") {
-                  JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                  JsonStringMemberFound { value: entry } =>
-                    match json_required_string_member(doc: doc, key: "argv_digest") {
-                      JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                      JsonStringMemberFound { value: argv_digest } =>
-                        match json_required_string_member(doc: doc, key: "compiler_bin_sha256_hex") {
-                          JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                          JsonStringMemberFound { value: compiler_bin_sha256_hex } =>
-                            match json_required_string_member(doc: doc, key: "compile_arm") {
-                              JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                              JsonStringMemberFound { value: arm } =>
-                                if arm == "admitted" {
-                                  ServeEntryVerdictDecoded {
-                                    record: ServeEntryVerdictRecord {
-                                      source_revision: source_revision,
-                                      entry: entry,
-                                      argv_digest: argv_digest,
-                                      compiler_bin_sha256_hex: compiler_bin_sha256_hex,
-                                      compile: ServeEntryCompileAdmitted,
-                                    },
-                                  }
-                                } else if arm == "blocked" {
-                                  match receipt_int_member(doc: doc, key: "compile_blocking") {
-                                    ReceiptIntRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                                    ReceiptIntFound { value: blocking } =>
-                                      match json_field(obj: doc, key: "compile_diagnostics") {
-                                        FieldRead { value: JsonArray { elements } } =>
-                                          match serve_entry_verdict_diagnostic_list(elements: elements) {
-                                            DiagnosticsRead { diagnostics } =>
-                                              ServeEntryVerdictDecoded {
-                                                record: ServeEntryVerdictRecord {
-                                                  source_revision: source_revision,
-                                                  entry: entry,
-                                                  argv_digest: argv_digest,
-                                                  compiler_bin_sha256_hex: compiler_bin_sha256_hex,
-                                                  compile: ServeEntryCompileBlocked { blocking: blocking, diagnostics: diagnostics },
-                                                },
-                                              }
-                                            DiagnosticsRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                                          }
-                                        _ => ServeEntryVerdictUndecoded { detail: "compile_diagnostics is not an array" }
-                                      }
-                                  }
-                                } else if arm == "unobserved" {
-                                  match json_required_string_member(doc: doc, key: "compile_detail") {
-                                    JsonStringMemberRefused { reason } => ServeEntryVerdictUndecoded { detail: reason }
-                                    JsonStringMemberFound { value: detail } =>
-                                      ServeEntryVerdictDecoded {
-                                        record: ServeEntryVerdictRecord {
-                                          source_revision: source_revision,
-                                          entry: entry,
-                                          argv_digest: argv_digest,
-                                          compiler_bin_sha256_hex: compiler_bin_sha256_hex,
-                                          compile: ServeEntryCompileUnobserved { detail: detail },
-                                        },
-                                      }
-                                  }
-                                } else {
-                                  ServeEntryVerdictUndecoded {
-                                    detail: join(["verdict compile arm is not admitted, blocked, or unobserved: ", arm], ""),
-                                  }
-                                }
+            match json_field(obj: doc, key: "rows") {
+              FieldRead { value: JsonArray { elements } } =>
+                fold(
+                  elements,
+                  init: ServeEntryVerdictDocumentDecoded { rows: [] as List<ServeEntryVerdictRecord> },
+                  f: (acc, e) => match acc {
+                    ServeEntryVerdictSchemaMismatch { expected, seen } =>
+                      ServeEntryVerdictSchemaMismatch { expected: expected, seen: seen }
+                    ServeEntryVerdictUndecoded { detail } => ServeEntryVerdictUndecoded { detail: detail }
+                    ServeEntryVerdictDocumentDecoded { rows } =>
+                      match serve_entry_verdict_row_decode(doc: e) {
+                        RowDecoded { record } =>
+                          if any(
+                            rows,
+                            r => serve_entry_verdict_row_address(subject_host: r.subject_host, instance_id: r.instance_id)
+                              == serve_entry_verdict_row_address(subject_host: record.subject_host, instance_id: record.instance_id),
+                          ) {
+                            ServeEntryVerdictUndecoded {
+                              detail: join(["two verdict rows carry the address ", record.subject_host, ":", record.instance_id, "; the plan publishes exactly one row per roster row"], ""),
                             }
-                        }
-                    }
-                }
+                          } else {
+                            ServeEntryVerdictDocumentDecoded { rows: concat(rows, [record]) }
+                          }
+                        RowUndecoded { detail } => ServeEntryVerdictUndecoded { detail: detail }
+                      }
+                  },
+                )
+              _ => ServeEntryVerdictUndecoded { detail: "verdict rows is not an array" }
             }
           }
       }
@@ -785,18 +954,79 @@ fn serve_entry_verdict_identity_check(
   }
 }
 
-// Pure admission: the recorded identity against the four facts the swap itself holds, then the
-// verdict's own arm. A blocked or unobserved verdict still passes identity first -- a verdict
-// about someone else's bytes must be named as such, not laundered into a compile answer.
-fn admit_plan_serve_entry_verdict(
+// THE ROW THE SWAP NEEDS, chosen from the plan's row set by the address the roster gave it. There
+// is no fallback to "the only row", "the first row", or "the prod-role row": the swap's deployment
+// names ONE (subject_host, instance_id) and that address is the whole selection. A duplicate address
+// is refused at decode, so at most one row can match here.
+type ServeEntryVerdictRowSelect
+  = RowSelected { record: ServeEntryVerdictRecord }
+  | RowMissing { subject_host: String, instance_id: String }
+
+fn serve_entry_verdict_row_select(
+  rows: List<ServeEntryVerdictRecord>,
+  subject_host: String,
+  instance_id: String,
+) -> ServeEntryVerdictRowSelect {
+  let wanted = serve_entry_verdict_row_address(subject_host: subject_host, instance_id: instance_id)
+  fold(
+    rows,
+    init: RowMissing { subject_host: subject_host, instance_id: instance_id },
+    f: (acc, r) => match acc {
+      RowSelected { record } => RowSelected { record: record }
+      RowMissing { subject_host: h, instance_id: i } =>
+        if serve_entry_verdict_row_address(subject_host: r.subject_host, instance_id: r.instance_id) == wanted {
+          RowSelected { record: r }
+        } else {
+          RowMissing { subject_host: h, instance_id: i }
+        }
+    },
+  )
+}
+
+// THE DOCUMENT CANNOT CARRY A ROW THE ROSTER DOES NOT KNOW. A row whose (subject_host, instance_id)
+// matches no row of gunbc.live_deploy.desired desired_deployment_roster is not skipped: a stranger
+// that is merely ignored is how a verdict for a machine this transaction may not touch ends up in
+// the set the swap reads from. Checked over the WHOLE document, before any selection, so a document
+// that mixes the swap's own row with a foreign one refuses rather than being read partially.
+type ServeEntryVerdictRosterAdmission
+  = RosterRowsAdmitted
+  | RosterRowForeign { subject_host: String, instance_id: String }
+
+fn serve_entry_verdict_roster_admission(
+  rows: List<ServeEntryVerdictRecord>,
+  roster: List<DesiredDeployment>,
+) -> ServeEntryVerdictRosterAdmission {
+  fold(
+    rows,
+    init: RosterRowsAdmitted,
+    f: (acc, r) => match acc {
+      RosterRowForeign { subject_host, instance_id } =>
+        RosterRowForeign { subject_host: subject_host, instance_id: instance_id }
+      RosterRowsAdmitted =>
+        if any(
+          roster,
+          row => serve_entry_verdict_row_address_of(row: row)
+            == serve_entry_verdict_row_address(subject_host: r.subject_host, instance_id: r.instance_id),
+        ) {
+          RosterRowsAdmitted
+        } else {
+          RosterRowForeign { subject_host: r.subject_host, instance_id: r.instance_id }
+        }
+    },
+  )
+}
+
+// THE IDENTITY CHECK RUNS ONCE, ON THE PRODUCT -- not once per arm, and only ever on the row that
+// was selected. The four facts name the exact bytes the swap will promote; the compile verdict is
+// CARRIED, never interrogated here. A blocked or unobserved verdict still passes identity first --
+// a verdict about someone else's bytes must be named as such, not laundered into a compile answer.
+fn admit_plan_serve_entry_record(
   record: ServeEntryVerdictRecord,
   expected_source_revision: String,
   expected_entry: String,
   expected_argv_digest: String,
   admitted_bin_sha256_hex: String,
 ) -> ServeEntryVerdictConsumption {
-  // THE IDENTITY CHECK RUNS ONCE, ON THE PRODUCT -- not once per arm. The four facts name the
-  // exact bytes the swap will promote; the compile verdict is CARRIED, never interrogated here.
   match serve_entry_verdict_identity_check(
     source_revision: record.source_revision,
     entry: record.entry,
@@ -813,12 +1043,57 @@ fn admit_plan_serve_entry_verdict(
   }
 }
 
+// THE SWAP'S ADMISSION, OVER THE PLAN'S ROW SET: document integrity first (no row the roster does
+// not name), then the swap's OWN row by address, then the four-key identity check on that row. The
+// order is load-bearing: a foreign row and an absent row are different repairs, and neither may be
+// reached by way of a fallback that reads someone else's verdict.
+fn admit_plan_serve_entry_verdict(
+  rows: List<ServeEntryVerdictRecord>,
+  roster: List<DesiredDeployment>,
+  subject_host: String,
+  instance_id: String,
+  expected_source_revision: String,
+  expected_entry: String,
+  expected_argv_digest: String,
+  admitted_bin_sha256_hex: String,
+) -> ServeEntryVerdictConsumption {
+  match serve_entry_verdict_roster_admission(rows: rows, roster: roster) {
+    RosterRowForeign { subject_host: foreign_host, instance_id: foreign_instance } =>
+      ConsumedRosterForeignRow { subject_host: foreign_host, instance_id: foreign_instance }
+    RosterRowsAdmitted =>
+      match serve_entry_verdict_row_select(rows: rows, subject_host: subject_host, instance_id: instance_id) {
+        RowMissing { subject_host: missing_host, instance_id: missing_instance } =>
+          ConsumedRowAbsent { subject_host: missing_host, instance_id: missing_instance }
+        RowSelected { record } =>
+          admit_plan_serve_entry_record(
+            record: record,
+            expected_source_revision: expected_source_revision,
+            expected_entry: expected_entry,
+            expected_argv_digest: expected_argv_digest,
+            admitted_bin_sha256_hex: admitted_bin_sha256_hex,
+          )
+      }
+  }
+}
+
 fn serve_entry_verdict_as_compile_verdict(consumption: ServeEntryVerdictConsumption) -> ServeEntryCompileVerdict {
   match consumption {
     Consumed { compile } => compile
     ConsumedAbsent { detail } =>
       ServeEntryCompileUnobserved {
         detail: join(["the plan run published no serve-entry verdict (", detail, "); refusing without a cold resolve -- re-run the plan"], ""),
+      }
+    ConsumedSchemaMismatch { expected, seen } =>
+      ServeEntryCompileUnobserved {
+        detail: join(["plan serve-entry verdict schema mismatch: this swap reads ", expected, " and the plan artifact carries '", seen, "'; a plan written before the v2 row set cannot be consumed by a v2 swap -- re-run the plan (no dual-read, no v1 fallback, and no cold resolve)"], ""),
+      }
+    ConsumedRowAbsent { subject_host, instance_id } =>
+      ServeEntryCompileUnobserved {
+        detail: join(["the plan's serve-entry verdict carries no row for ", subject_host, ":", instance_id, "; every roster row this transaction can wet-deploy must carry its own row -- re-run the plan (no cold resolve fallback)"], ""),
+      }
+    ConsumedRosterForeignRow { subject_host, instance_id } =>
+      ServeEntryCompileUnobserved {
+        detail: join(["the plan's serve-entry verdict carries a row for ", subject_host, ":", instance_id, ", which is no row of desired_deployment_roster; the document is not the one this roster produced -- refuse and re-run the plan"], ""),
       }
     ConsumedIdentityMismatch { field, expected, seen } =>
       ServeEntryCompileUnobserved {
@@ -827,10 +1102,12 @@ fn serve_entry_verdict_as_compile_verdict(consumption: ServeEntryVerdictConsumpt
   }
 }
 
-// THE SWAP'S QUESTION, ANSWERED FROM THE PLAN. Reads the plan artifact's verdict, digests the
-// release binary the swap itself would promote, and admits only on a four-way identity match.
+// THE SWAP'S QUESTION, ANSWERED FROM THE PLAN. Reads the plan artifact's row set, digests the
+// release binary the swap itself would promote, and admits only when THIS deployment's row is in
+// the document, the roster knows every row in it, and the four identity keys match that row.
 // No branch of this function compiles anything: that is the whole point.
-fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
+fn observe_plan_serve_entry_verdict(deployment: DesiredDeployment) -> ServeEntryCompileVerdict {
+  let spec = selected_deployment_spec(row: deployment)
   let path = serve_entry_verdict_path()
   let read = Filesystem.Read(path: path)
   if !read.success {
@@ -838,10 +1115,14 @@ fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVe
       consumption: ConsumedAbsent { detail: join(["could not read ", path, ": ", read.error], "") },
     )
   } else {
-    match serve_entry_verdict_decode(raw: read.content) {
+    match serve_entry_verdict_document_decode(raw: read.content) {
+      ServeEntryVerdictSchemaMismatch { expected, seen } =>
+        serve_entry_verdict_as_compile_verdict(
+          consumption: ConsumedSchemaMismatch { expected: expected, seen: seen },
+        )
       ServeEntryVerdictUndecoded { detail } =>
         serve_entry_verdict_as_compile_verdict(consumption: ConsumedAbsent { detail: detail })
-      ServeEntryVerdictDecoded { record } => {
+      ServeEntryVerdictDocumentDecoded { rows } => {
         let root = git.Inspect.Toplevel()
         let bin = witness_bin_release_path(root: root.path as String, bin_name: "gunbc")
         match sha256sum_file_digest_via_shell(path: bin as NonEmptyStr) {
@@ -854,7 +1135,10 @@ fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVe
           Sha256FileDigest { digest } =>
             serve_entry_verdict_as_compile_verdict(
               consumption: admit_plan_serve_entry_verdict(
-                record: record,
+                rows: rows,
+                roster: desired_deployment_roster(),
+                subject_host: deployment.target.host.identity as String,
+                instance_id: instance_id_text(id: deployment.instance.instance_id),
                 expected_source_revision: observe_checkout_head_hex(),
                 expected_entry: spec.service.serve_entry as String,
                 expected_argv_digest: serve_entry_argv_digest(spec: spec),
@@ -897,73 +1181,5 @@ fn probe_serve_entry_verdict_dir() -> ServeEntryVerdictDirAdmission {
     admission
   } else {
     admission
-  }
-}
-
-fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
-  match probe_serve_entry_verdict_dir() {
-    ServeEntryVerdictDirRefused { dir, reason } =>
-      exit_failure(reason: serve_entry_verdict_dir_refusal_text(dir: dir, reason: reason))
-    ServeEntryVerdictDirWritable => record_plan_serve_entry_verdict_after_dir_admitted(row: row)
-  }
-}
-
-fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) -> ProcessExit {
-  let spec = selected_deployment_spec(row: row)
-  let root = git.Inspect.Toplevel()
-  let root_path = root.path as String
-  let bin = witness_bin_release_path(root: root_path, bin_name: "gunbc")
-  match sha256sum_file_digest_via_shell(path: bin as NonEmptyStr) {
-    Sha256FileDigestUnavailable { path: wanted, reason } =>
-      exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the pair build produced no digestable gunbc at ", wanted as String, ": ", reason], ""))
-    Sha256FileDigest { digest } => {
-      let compile = observe_served_command_reaches_bind(
-        repo_root: root_path,
-        bin_path: bin,
-        roots: deployment_serve_source_roots,
-        spec: spec,
-        release_revision: observe_checkout_head_hex(),
-        stderr_sink: join([serve_entry_verdict_path(), ".child-stderr"], ""),
-      )
-      let record = ServeEntryVerdictRecord {
-        source_revision: observe_checkout_head_hex(),
-        entry: spec.service.serve_entry as String,
-        argv_digest: serve_entry_argv_digest(spec: spec),
-        compiler_bin_sha256_hex: digest.hex as String,
-        compile: compile,
-      }
-      let path = serve_entry_verdict_path()
-      let write = Filesystem.Write(path: path, content: serialize_json(v: serve_entry_verdict_json(record: record)))
-      if !write.success {
-        exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — could not write ", path, ": ", write.error], ""))
-      } else {
-        match compile {
-          ServeEntryCompileAdmitted => ExitSuccess
-          ServeEntryCompileBlocked { blocking, diagnostics } =>
-            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the served command did not reach the bind stage cleanly; ", int_to_decimal_string(value: blocking), " blocking: ", serve_entry_blocking_summary(diagnostics: diagnostics)], ""))
-          ServeEntryCompileUnobserved { detail } =>
-            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the served command did not reach the bind stage: ", detail], ""))
-        }
-      }
-    }
-  }
-}
-
-// PLAN-JOB ENTRY (fleet-converge job, after the plan step, before the artifact upload): run the
-// prod-role SERVED COMMAND with the release pair the run itself built, and publish the verdict beside
-// the plan receipt so the swap consumes it by identity. The served command is run to a clean bind
-// refusal on an absent-parent unix listener; reaching that refusal is what admits the release (it
-// checks exactly what the served run checks -- the entry plus the served handler's reach -- and
-// materializes nothing). A blocked or unobserved run fails the PLAN RUN here, where the fold belongs
-// -- the deploy chain then never starts, and PR 1's run-pointer admission names the refused plan run.
-fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
-  match prod_role_desired_deployment() {
-    ProdRoleDeploymentSelected { deployment } => record_plan_serve_entry_verdict_for(row: deployment)
-    ProdRoleDeploymentRefused =>
-      exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the prod-role desired deployment is refused; the serve-entry verdict has no subject")
-    ProdRoleDeploymentRosterRefused =>
-      exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the desired roster is refused; the serve-entry verdict has no subject")
-    ProdRoleDeploymentHolderRowMismatch =>
-      exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the prod-role holder row mismatches the roster")
   }
 }
