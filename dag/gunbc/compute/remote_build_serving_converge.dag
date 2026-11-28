@@ -275,6 +275,25 @@ fn serving_leg_checkout_revision(item: String, target: SshTarget, context: Fleet
   serving_leg_first_token(item: item, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: owner as NonEmptyStr, command: argv_words(command: git_rev_parse_head_command(repository_dir: dir)))))
 }
 
+// THE CENSUS DOOR ADDRESS, declared ONCE (single_authority): the door's own invocation
+// (converge_gunbc_door_argv's entry, serving_leg_seat_census's function) and the carrier probe below
+// all read these two data, so the probe cannot spell a second identity for the door. The loudness
+// closes the rename class: if the door moves or renames and one of these is left behind, the door
+// INVOCATION itself fails — a typed refused census leg named in the receipt, visible on every
+// observe — rather than the probe silently deferring the census forever (the stranding class this
+// PR exists to remove). Witness: the_carrier_read_demands_the_exact_declaration.
+data census_door_module_tail: String = "/dag/gunbc/compute/work_provider_local.dag"
+data census_door_function: String = "compute_recover_catalog_serving_cli"
+
+// THE CARRIER TEST, pure over the module's bytes so a claim exercises it without a host: the file
+// carries the door exactly when a LINE BEGINS the declaration `fn <name>(` — anchored at the newline
+// so a commented-out declaration ("// fn name("), a prose mention mid-line, and a sibling sharing
+// the name's prefix ("fn name_v2(") all answer false (fail_closed: no plausible carrier is
+// fabricated from a substring).
+fn census_door_declaration_carried(text: String) -> Bool {
+  string_contains(s: text, pattern: concat(concat("\nfn ", census_door_function), "("))
+}
+
 // THE DOOR-CARRIER LEG: does this checkout carry the census door? One elevated cat of the module the
 // recovery doors live in; the decision is the door function's own declaration, asked of the bytes the
 // checkout itself holds. Exit 0 settles true/false; any other outcome is a REFUSED read — the census
@@ -282,12 +301,12 @@ fn serving_leg_checkout_revision(item: String, target: SshTarget, context: Fleet
 // never assumed). The file is repo source, not secret material: the receipt records the Bool, never
 // the bytes.
 fn serving_leg_checkout_census_door(item: String, target: SshTarget, context: FleetSshExecutionContext, dir: String, owner: String) -> ObservationAttempt<Bool, ServingLegFailure> {
-  let argv = sudo_elevate_argv(command: argv_words(command: cat_command(path: concat(dir, "/dag/gunbc/compute/work_provider_local.dag"))))
+  let argv = sudo_elevate_argv(command: argv_words(command: cat_command(path: concat(dir, census_door_module_tail))))
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
     TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
-      true => ObservationEstablished { observed: string_contains(s: r.stdout, pattern: "fn compute_recover_catalog_serving_cli") }
+      true => ObservationEstablished { observed: census_door_declaration_carried(text: r.stdout) }
       false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("cat exit ", to_string(r.exit_code)) } }
     }
   }
@@ -1575,7 +1594,7 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
   match gunbc_installed_run_with_named_arguments_command(
     binary: d.serve_binary as NonEmptyStr,
     source_roots: [concat(repo, "/dag"), concat(repo, "/src/v2")],
-    entry: concat(repo, "/dag/gunbc/compute/work_provider_local.dag"),
+    entry: concat(repo, census_door_module_tail),
     function: function,
     arguments: arguments
   ) {
@@ -1694,7 +1713,7 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
       Absent => RecoverCatalogLegUnknown { detail: "the serving account's uid is unobserved, so the census door cannot be placed in its user session" }
       Present { value: serving_uid } => match converge_gunbc_door_argv(
         d: d,
-        function: "compute_recover_catalog_serving_cli",
+        function: census_door_function,
         arguments: [NamedArgumentRequest { name: "host", value: d.host as String }],
         runtime_dir: user_session_runtime_dir(uid: serving_uid)
       ) {
