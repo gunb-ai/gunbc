@@ -493,29 +493,28 @@ fn host_key_anchor_disposition_wire(d: HostKeyAnchorDisposition) -> String {
 // "Host key verification failed." is the wire butch's moved address produced and it is indistinguishable
 // from an interception -- a mismatch that does not say which key it expected is a mismatch resolved by
 // hand with a delay.
-fn host_key_anchor_expectation(host: HostIdentity, declared_by: String) -> HostTruthExpectation {
-  let rows = enrolled_anchor_rows_for(host: host)
-  let prints = distinct_by_key(xs: map(rows, k => k.sha256_fingerprint), key: fn(p) { p })
-  let host_text = (host as String) as NonEmptyStr
-  match rows.first() {
-    Absent => HostTruthNothingDeclared {
+fn host_key_anchor_expectation(entry: EnrolledKeyRosterHost, declared_by: String) -> HostTruthExpectation {
+  // ONE PLACE DECIDES WHETHER A HOST HAS AN ANCHOR, AND IT IS host_key_anchor_disposition. The first
+  // version of this function re-derived the same answer line for line -- no row, rows that disagree, one
+  // anchor -- which is gunbc.design_argument::single_authority's fork in exactly the shape it warns about:
+  // change the disagreement rule in one function and the closure and the read-back start answering the same
+  // question differently for the same host. So the expectation is built FROM the disposition, and the
+  // refusal text comes from host_key_anchor_absence_wire over the typed cause rather than from prose typed in
+  // here. The flattening to HostTruthNothingDeclared's because: String happens at the boundary of the
+  // borrowed expectation shape in gunbc.fleet.fleet_host_truth_read, not in this carrier: the typed cause
+  // still exists in the disposition this function reads, and one wire renders it for both callers.
+  let host_text = (entry.host as String) as NonEmptyStr
+  match host_key_anchor_disposition(entry: entry) {
+    AnchorEnrolled { host: _, anchor: anchor, enrolled_endpoints: _ } => HostTruthDeclared {
       host: host_text,
       axis: TruthIdentityAnchoredNotAddressed,
-      because: join(["no enrolled host-key row for ", host as String, " in gunbc.fleet.fleet_host_key_enrollment; no scan attempted and no host action taken -- the model has no anchor, which is not a claim that the host presents nothing"], ""),
+      expected: TruthMarking { text: anchor.sha256_fingerprint },
+      declared_by: declared_by,
     }
-    Present { value: anchor } => if length(prints) > 1 {
-      HostTruthNothingDeclared {
-        host: host_text,
-        axis: TruthIdentityAnchoredNotAddressed,
-        because: join(["the enrollment registry pins ", to_string(length(prints)), " different fingerprints for ", host as String, ": ", join(prints, " / ")], ""),
-      }
-    } else {
-      HostTruthDeclared {
-        host: host_text,
-        axis: TruthIdentityAnchoredNotAddressed,
-        expected: TruthMarking { text: anchor.sha256_fingerprint },
-        declared_by: declared_by,
-      }
+    AnchorRefused { host: _, cause: c } => HostTruthNothingDeclared {
+      host: host_text,
+      axis: TruthIdentityAnchoredNotAddressed,
+      because: host_key_anchor_absence_wire(cause: c),
     }
   }
 }
@@ -525,13 +524,12 @@ fn host_key_anchor_expectation(host: HostIdentity, declared_by: String) -> HostT
 // read-back asks about a machine, not about a spelling of one. The string-keyed sibling in
 // gunbc.fleet.fleet_host_truth_sources is a separate defect and stays as it is until its own row lands.
 fn host_key_anchor_readback(
-  host: HostIdentity,
+  entry: EnrolledKeyRosterHost,
   presented_fingerprint: NonEmptyStr?,
   at_run: NonEmptyStr,
   declared_by: String,
 ) -> HostTruthComparison {
-  let host_text = (host as String) as NonEmptyStr
-  let expectation = host_key_anchor_expectation(host: host, declared_by: declared_by)
+  let host_text = (entry.host as String) as NonEmptyStr
   host_truth_compare(
     read: match presented_fingerprint {
       Present { value: printed } => HostTruthObserved {
@@ -543,7 +541,7 @@ fn host_key_anchor_readback(
       }
       Absent => HostTruthReadBlank { host: host_text, axis: TruthIdentityAnchoredNotAddressed }
     },
-    expectation: expectation,
+    expectation: host_key_anchor_expectation(entry: entry, declared_by: declared_by),
   )
 }
 
@@ -552,20 +550,20 @@ fn host_key_anchor_readback(
 // fingerprints, refusal. The read-back hands back a comparison, never a Bool: a Bool is what got resolved by
 // hand in the first place, and a caller that wants to admit or refuse a host reads the verdict machinery
 // (gunbc.fleet.fleet_host_truth_read::fleet_host_truth_verdict_for_host) rather than a flag from here.
-fn host_key_anchor_readback_wire(host: HostIdentity, comparison: HostTruthComparison) -> String {
-  let anchors = join(map(enrolled_anchor_rows_for(host: host), fn(k) {
+fn host_key_anchor_readback_wire(entry: EnrolledKeyRosterHost, comparison: HostTruthComparison) -> String {
+  let anchors = join(map(enrolled_anchor_rows_for(host: entry.host), fn(k) {
     join([known_host_row_field(k: k), " ", k.key_type, " ", k.public_key_base64, " ", k.sha256_fingerprint], " ")
   }), " | ")
   match comparison {
     TruthDivergent { observed: got, expected: wants, declared_by: d } =>
       match host_key_anchor_fingerprint_pair(observed: got, expected: wants) {
         BothFingerprintsNamed { anchor_fingerprint: a, presented_fingerprint: p } =>
-          join(["KEY MISMATCH host=", host as String, " enrolled_anchor=", anchors, " anchor_fingerprint=", a, " presented_fingerprint=", p, " anchor_authority=", d, " both_fingerprints_named=yes REFUSED: ", host_truth_divergence_locator(comparison: comparison)], "")
+          join(["KEY MISMATCH host=", entry.host as String, " enrolled_anchor=", anchors, " anchor_fingerprint=", a, " presented_fingerprint=", p, " anchor_authority=", d, " both_fingerprints_named=yes REFUSED: ", host_truth_divergence_locator(comparison: comparison)], "")
         DivergenceCarriesNoMarking =>
-          join(["REFUSED host=", host as String, " reason=identity_divergence_carries_no_marking_on_both_sides fingerprint_fields_printed=none enrolled_anchor_rows=", to_string(length(enrolled_anchor_rows_for(host: host))), " ", host_truth_divergence_locator(comparison: comparison)], "")
+          join(["REFUSED host=", entry.host as String, " reason=identity_divergence_carries_no_marking_on_both_sides fingerprint_fields_printed=none enrolled_anchor_rows=", to_string(length(enrolled_anchor_rows_for(host: entry.host))), " ", host_truth_divergence_locator(comparison: comparison)], "")
       }
     _ =>
-      join(["host=", host as String, " anchors=", if length(anchors) == 0 { "none" } else { anchors }, " ", host_truth_divergence_locator(comparison: comparison)], "")
+      join(["host=", entry.host as String, " anchors=", if length(anchors) == 0 { "none" } else { anchors }, " ", host_truth_divergence_locator(comparison: comparison)], "")
   }
 }
 

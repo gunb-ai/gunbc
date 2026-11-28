@@ -240,15 +240,19 @@ test fn a_key_mismatch_refuses_naming_both_fingerprints() -> Bool {
     Absent => false
     Present { value: anchor } =>
       let planted = "SHA256:planted-divergence-not-the-anchored-machine" as NonEmptyStr
+      // The read-back is asked about the MACHINE, through the roster entry the closure carries: the same
+      // entry the fold used, so the anchor rule is read from one place (host_key_anchor_disposition) by both
+      // the closure and the read-back.
+      let entry = enrolled_key_roster_host(host: operator_host_srv14, rosters: [build_candidate_label])
       let comparison = host_key_anchor_readback(
-        host: operator_host_srv14,
+        entry: entry,
         presented_fingerprint: Present { value: planted },
         at_run: "enrolled-key-roster-closure-witness" as NonEmptyStr,
         declared_by: "gunbc.fleet.fleet_host_key_enrollment",
       )
-      let wire = host_key_anchor_readback_wire(host: operator_host_srv14, comparison: comparison)
+      let wire = host_key_anchor_readback_wire(entry: entry, comparison: comparison)
       let agreement = host_key_anchor_readback(
-        host: operator_host_srv14,
+        entry: entry,
         presented_fingerprint: Present { value: anchor.sha256_fingerprint as NonEmptyStr },
         at_run: "enrolled-key-roster-closure-witness" as NonEmptyStr,
         declared_by: "gunbc.fleet.fleet_host_key_enrollment",
@@ -283,13 +287,14 @@ test fn RED_a_key_mismatch_resolved_by_hand_is_the_divergence_the_route_skipped(
     Absent => false
     Present { value: anchor } =>
       let planted = "SHA256:planted-divergence-not-the-anchored-machine" as NonEmptyStr
+      let entry = enrolled_key_roster_host(host: operator_host_srv14, rosters: [build_candidate_label])
       let comparison = host_key_anchor_readback(
-        host: operator_host_srv14,
+        entry: entry,
         presented_fingerprint: Present { value: planted },
         at_run: "enrolled-key-roster-closure-witness" as NonEmptyStr,
         declared_by: "gunbc.fleet.fleet_host_key_enrollment",
       )
-      let carrier_wire = host_key_anchor_readback_wire(host: operator_host_srv14, comparison: comparison)
+      let carrier_wire = host_key_anchor_readback_wire(entry: entry, comparison: comparison)
       // What the hand match reports: the fingerprint it compared, and nothing about what was expected.
       let hand_wire = join(["fingerprint matched by hand: ", planted as String], "")
       string_contains(s: hand_wire, pattern: planted as String)
@@ -351,7 +356,7 @@ test fn the_closure_reads_the_anchor_from_the_enrollment_authority_only() -> Boo
 // instead of silently replacing it.
 test fn the_readback_is_keyed_on_the_host_identity_not_the_report_text() -> Bool {
   let machine_expectation = host_key_anchor_expectation(
-    host: operator_host_srv14,
+    entry: enrolled_key_roster_host(host: operator_host_srv14, rosters: [build_candidate_label]),
     declared_by: "gunbc.fleet.fleet_host_key_enrollment",
   )
   let text_expectation = host_truth_identity_expectation(
