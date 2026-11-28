@@ -4997,6 +4997,238 @@ mod claim_route_result_contract_tests {
         )
         .expect("the scratch corpus must resolve to a collection, not a route refusal")
     }
+
+    fn route_over(
+        roots: &[String],
+        scopes: &[cli_run::ClaimSelectionScope],
+        module_selected: &dyn Fn(&str) -> bool,
+    ) -> Result<Vec<ClaimRouteMember>, String> {
+        std::env::set_current_dir(cli_run::workspace_root()).expect("enter workspace");
+        cli_run::run_claim_route(
+            roots,
+            scopes,
+            module_selected,
+            &|_, _| true,
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+            None,
+        )
+    }
+
+    fn module_scope(module: &str, beneath: bool) -> cli_run::ClaimSelectionScope {
+        cli_run::ClaimSelectionScope {
+            module_segments: module.split('.').map(str::to_string).collect(),
+            beneath,
+        }
+    }
+
+    fn outcomes_of(members: &[ClaimRouteMember], module: &str) -> Vec<(String, M)> {
+        let mut out: Vec<(String, M)> = members
+            .iter()
+            .filter(|m| m.module_path == module)
+            .map(|m| (m.function.clone(), m.outcome.clone()))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    fn labels_of(members: &[ClaimRouteMember]) -> Vec<String> {
+        let mut labels: Vec<String> = members
+            .iter()
+            .map(|m| format!("{}:{}", m.module_path, m.function))
+            .collect();
+        labels.sort();
+        labels
+    }
+
+    struct GovernedClaimPackage(std::path::PathBuf);
+
+    impl GovernedClaimPackage {
+        fn new(package: &str, files: &[(&str, &str)]) -> Self {
+            let dir = cli_run::workspace_root()
+                .join("dag/test/claim")
+                .join(package);
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("governed fixture package");
+            for (file, body) in files {
+                std::fs::write(dir.join(file), body).expect("governed fixture source");
+            }
+            GovernedClaimPackage(dir)
+        }
+    }
+
+    impl Drop for GovernedClaimPackage {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    #[ignore = "drives the real claim route over the live corpus; run with --release --ignored"]
+    fn a_generated_provider_is_acquired_whatever_else_the_batch_selects() {
+        let importer = "test.claim.zz_coercion_importer";
+        let scratch = scratch_root(
+            "provider_batch",
+            &[(
+                "zz_coercion_importer.dag",
+                "module test.claim.zz_coercion_importer\n\nimport std.coercion { dag_can_cast }\n\ntest fn zz_imports_the_route() -> Bool {\n  dag_can_cast(source_type: \"Int\", target_type: \"Int\") || true\n}\n",
+            )],
+        );
+        let mut roots = vec![scratch];
+        roots.extend(cli_run::witness_layer_roots());
+        let crossing = "test.claim.host_text_crossing_entry_witness";
+        let isolated = route_over(&roots, &[module_scope(crossing, false)], &|m| m == crossing)
+            .expect("the isolated crossing witness is a collection, not a route refusal");
+        let batched = route_over(
+            &roots,
+            &[
+                module_scope(crossing, false),
+                module_scope(importer, false),
+            ],
+            &|m| m == crossing || m == importer,
+        )
+        .expect("the batched crossing witness is a collection, not a route refusal");
+        let held = vec![
+            (
+                "a_nonempty_host_text_crosses_to_a_nonempty_sequence".to_string(),
+                M::Evaluated(O::Pass),
+            ),
+            (
+                "an_empty_host_text_crosses_to_an_empty_sequence".to_string(),
+                M::Evaluated(O::Pass),
+            ),
+        ];
+        assert_eq!(outcomes_of(&isolated, crossing), held, "isolated");
+        assert_eq!(outcomes_of(&batched, crossing), held, "batched");
+    }
+
+    #[test]
+    #[ignore = "drives the real claim route over the live corpus; run with --release --ignored"]
+    fn a_bare_name_binds_alike_whatever_else_the_batch_selects() {
+        let parent = "test.claim.zz_bare_parent";
+        let child = "test.claim.zz_bare_parent.child";
+        let scratch = scratch_root(
+            "bare_batch",
+            &[
+                (
+                    "zz_bare_parent.dag",
+                    "module test.claim.zz_bare_parent\n\nfn zz_bare_unique_helper() -> Bool {\n  true\n}\n\ntest fn zz_parent_calls_its_helper() -> Bool {\n  zz_bare_unique_helper()\n}\n",
+                ),
+                (
+                    "zz_bare_child.dag",
+                    "module test.claim.zz_bare_parent.child\n\ntest fn zz_child_calls_the_parent_helper() -> Bool {\n  zz_bare_unique_helper()\n}\n",
+                ),
+            ],
+        );
+        let mut roots = vec![scratch];
+        roots.extend(cli_run::witness_layer_roots());
+        let isolated = route_over(&roots, &[module_scope(child, false)], &|m| m == child)
+            .expect("the isolated child is a collection, not a route refusal");
+        let batched = route_over(
+            &roots,
+            &[module_scope(child, false), module_scope(parent, false)],
+            &|m| m == child || m == parent,
+        )
+        .expect("the batched child is a collection, not a route refusal");
+        assert_eq!(outcomes_of(&isolated, child).len(), 1);
+        assert_eq!(
+            outcomes_of(&isolated, child),
+            outcomes_of(&batched, child),
+            "the child's bare name must bind alike whether or not its parent is selected"
+        );
+        assert_eq!(
+            outcomes_of(&batched, parent),
+            vec![(
+                "zz_parent_calls_its_helper".to_string(),
+                M::Evaluated(O::Pass)
+            )],
+            "the helper binds for the module that declares it"
+        );
+    }
+
+    #[test]
+    #[ignore = "drives the real claim route over the live corpus; run with --release --ignored"]
+    fn every_spelling_of_a_governed_root_selects_the_same_subtree() {
+        let package = format!("zz_claim_route_spelling_{}", std::process::id());
+        let _fixture = GovernedClaimPackage::new(
+            &package,
+            &[
+                (
+                    "a.dag",
+                    &format!("module test.claim.{package}.a\n\ntest fn zz_a() -> Bool {{\n  true\n}}\n"),
+                ),
+                (
+                    "b.dag",
+                    &format!("module test.claim.{package}.b\n\ntest fn zz_b() -> Bool {{\n  true\n}}\n"),
+                ),
+            ],
+        );
+        let subtree = format!("test.claim.{package}");
+        let prefix = format!("{subtree}.");
+        let absolute = cli_run::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned();
+        let labels_under = |dag: &str| {
+            let roots = vec![dag.to_string(), "src/v2".to_string()];
+            labels_of(
+                &route_over(&roots, &[module_scope(&subtree, true)], &|m| {
+                    m.starts_with(&prefix)
+                })
+                .unwrap_or_else(|cause| panic!("--source-root {dag}: {cause}")),
+            )
+        };
+        let expected = vec![
+            format!("{subtree}.a:zz_a"),
+            format!("{subtree}.b:zz_b"),
+        ];
+        assert_eq!(labels_under("dag"), expected, "dag");
+        assert_eq!(labels_under("./dag"), expected, "./dag");
+        assert_eq!(labels_under(&absolute), expected, "{absolute}");
+    }
+
+    #[test]
+    #[ignore = "drives the real claim route over the live corpus; run with --release --ignored"]
+    fn a_module_two_roots_declare_refuses_under_every_selector_and_one_file_is_one_member() {
+        let package = format!("zz_claim_route_dup_{}", std::process::id());
+        let child = format!("test.claim.{package}.child");
+        let body = format!("module {child}\n\ntest fn zz_child() -> Bool {{\n  true\n}}\n");
+        let _fixture = GovernedClaimPackage::new(&package, &[("child.dag", &body)]);
+        let governed_path = format!("dag/test/claim/{package}/child.dag");
+        let custom = scratch_root(&format!("dup_{}", std::process::id()), &[("child.dag", &body)]);
+        let custom_path = format!(
+            "target/gunbc_claim_route_contract_dup_{}/test/claim/child.dag",
+            std::process::id()
+        );
+        let subtree = format!("test.claim.{package}");
+        let prefix = format!("{subtree}.");
+        let selected = |m: &str| m.starts_with(&prefix);
+        let both_roots = vec!["dag".to_string(), "src/v2".to_string(), custom.clone()];
+        for (spelling, scope) in [
+            ("subtree", module_scope(&subtree, true)),
+            (":all", module_scope(&child, false)),
+        ] {
+            let refused = route_over(&both_roots, &[scope], &selected);
+            let cause = refused
+                .as_ref()
+                .err()
+                .unwrap_or_else(|| panic!("{spelling} must refuse the collision: {refused:?}"));
+            assert!(
+                cause.contains(&format!("module {child} is declared in both"))
+                    && cause.contains(&governed_path)
+                    && cause.contains(&custom_path),
+                "{spelling} must name both files: {cause}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&custom);
+        let governed_only = vec!["dag".to_string(), "src/v2".to_string()];
+        let members = route_over(
+            &governed_only,
+            &[module_scope(&subtree, true), module_scope(&child, false)],
+            &selected,
+        )
+        .expect("overlapping selectors over one file are a collection, not a refusal");
+        assert_eq!(labels_of(&members), vec![format!("{child}:zz_child")]);
+    }
 }
 
 #[cfg(test)]
