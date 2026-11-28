@@ -250,11 +250,13 @@ fn remote_build_serve_front_door_probe_answer(host: String, principal: RemoteBui
 // THE WET READER IS remote_build_serve_front_door_admission; the turn above is pure and asks for the
 // verdict through a THUNK the CLI fills, so every arm is decidable in the witness without a host and
 // the probe arm never reaches the ledger at all (review 99441: an effectful demand with no consumer
-// on the arm that pays for it). What the entry statically carries is declared, not smuggled: the seat
-// ledger (gunbc.compute.host_capacity, 352 modules) rides every leg of this door -- measured at this
-// head, door entry closure_files=375, resolve 44.6 s. What stays BANNED at the door is the
-// systemctl/host-effect machinery for the hand-off diagnostic, measured at closure_files 866/874 and
-// resolve ~130 s on this same entry -- the ceiling the slice-diagnostic comment refuses to cross.
+// on the arm that pays for it). What the entry statically carries is declared, not smuggled: the
+// seat ledger (gunbc.compute.host_capacity) rides every leg of this door. The instrument for what
+// the entry carries is the door's own `gunbc run --entry ... --function ...` [pre-entry] counters
+// (demand_acquired_modules, resolve_entry_graph_inclusive ms); the figures are read there, never
+// transcribed here. What stays BANNED at the door is the systemctl/host-effect machinery for the
+// hand-off diagnostic -- the same counters showed it far past the ceiling the slice-diagnostic
+// comment refuses to cross, and a probe re-read of that instrument must catch any regression.
 type RemoteBuildDoorAdmission
   = DoorAdmitted { held: Nat, seats: Nat }
   | DoorPoolFull { held: Nat, seats: Nat }
