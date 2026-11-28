@@ -1,6 +1,29 @@
 module test.claim.printer_start_reconciliation_witness
-import std.types {Bool,String}
-import gunbc.fleet.printer_start_reconciliation {observe_start,reconcile_step,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved,ConfirmRunning,StopBlocked,StopUncertain,ReadAgain}
+import std.types {Bool,String,NonEmptyStr,Secret,FilePath}
+import std.process {ExitFailure}
+import std.optional {Present, Absent}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {Filesystem, filesystem_read_outcome, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused}
+import extdeps.shell.exec {ProcessCaptured,ProcessOutputPresent}
+import extdeps.cloud.gcp.secret_manager {SmResolvedVersionIdentity}
+import product.placement_supply {PhysicalAssetIdentity}
+import gunbc.fleet.printer_credential_source {PrinterCredentialSource,HostCustodyCredentialSource}
+import gunbc.fleet.printer_start_evidence_store {start_evidence_path,start_evidence_store,StartEvidenceStore,StartEvidenceStoreReady,StartEvidenceStoreUnready}
+import gunbc.host_state_root {HostStateTree,isolated_host_state_tree}
+import gunbc.fleet.printer_report {PrinterReported,PrinterCleanupClean,PrinterCleanupOutstanding}
+import gunbc.fleet.printer_start_reconciliation {observe_start,reconcile_step,reconcile_reads,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved,ConfirmRunning,StopBlocked,StopUncertain,ReadAgain}
+
+// THE STORE, THE ADMITTED WAY (round-4 review item 5): a sealed StartEvidenceStore is minted by
+// this module's guarded start_evidence_store(tree) -- legacy scan and directory admission included --
+// over an ISOLATED HostStateTree, exactly as the sealed-createonce stores witness does. The former
+// start_evidence_store_at(root) let any string mint the sealed type from outside its module and is
+// deleted.
+fn fresh_evidence_store() -> StartEvidenceStore? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_start_reconcile_store.XXXXXX").path
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  if !shell.Mkdir.Parents(path: start_evidence_path(tree: tree) as String as FilePath).success { return none }
+  match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: s } => Present { value: s } StartEvidenceStoreUnready { detail: _ } => none }
+}
 
 fn report(state:String,file:String,code:String) -> String {
  join(["{\"print\":{\"gcode_state\":\"",state,"\",\"gcode_file\":\"",file,"\",\"print_error\":",code,"}}"],"")
@@ -12,8 +35,20 @@ test fn other_project_and_finished_previous_job_never_confirm() -> Bool {
  all(["IDLE","FINISH","PREPARE","SLICING","UNKNOWN"],state=>match observe_start(text:report(state:state,file:"gunbc-abc.3mf",code:"0"),remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}) &&
  match observe_start(text:report(state:"RUNNING",file:"gunbc-other.3mf",code:"0"),remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}
 }
-test fn partial_duplicate_and_display_only_reports_cannot_confirm() -> Bool {
- all(["{}","not json","{\"print\":{\"gcode_state\":\"RUNNING\",\"subtask_name\":\"gunbc-abc.3mf\",\"print_error\":0}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\"}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\",\"print_error\":0,\"print_error\":1}}"],text=>match observe_start(text:text,remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false})
+// WHAT CANNOT CONFIRM: an unreadable document, a missing print member, a MISSING error code (no
+// error standing to judge), and a DUPLICATED error code (the vendor contradicts itself; observe_job
+// answers the duplicate through json_object_unique_member's JsonMemberDuplicated arm, never by
+// picking a winner). A report naming the expected job only through subtask_name is NOT in this
+// set: gunbc.fleet.printer_job_monitor::job_file admits subtask_name as the job's identity when
+// gcode_file is absent, pinned by that module's own claim a_finished_job_is_found_by_subtask_name.
+// The start boundary asks observe_job -- the ONE job-identity decision -- so it must not demand a
+// stricter name than the monitor itself holds; a second, stricter identity here would be a second
+// authority over one fact (gunbc.design_argument::single_authority). The confirmation that alias
+// grants is pinned below so it cannot drift silently.
+test fn partial_and_duplicate_reports_cannot_confirm_and_the_monitor_alias_confirms() -> Bool {
+ all(["{}","not json","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\"}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\",\"print_error\":0,\"print_error\":1}}"],text=>match observe_start(text:text,remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}) &&
+ // The accepted alias confirms -- the monitor's decision, not a second one made here.
+ match observe_start(text:"{\"print\":{\"gcode_state\":\"RUNNING\",\"subtask_name\":\"gunbc-abc.3mf\",\"print_error\":0}}",remote:"gunbc-abc.3mf") {ExpectedProjectRunning=>true _=>false}
 }
 test fn expected_project_pause_failure_and_real_errors_are_distinct() -> Bool {
  all(["PAUSE","FAILED"],state=>match observe_start(text:report(state:state,file:"gunbc-abc.3mf",code:"0"),remote:"gunbc-abc.3mf") {ExpectedProjectBlocked=>true _=>false}) &&
@@ -24,4 +59,51 @@ test fn unresolved_budget_terminates_and_confirmation_stops_reads() -> Bool {
  (match reconcile_step(observation:StartUnresolved,remaining:1) {StopUncertain=>true _=>false}) &&
  (match reconcile_step(observation:ExpectedProjectRunning,remaining:8) {ConfirmRunning=>true _=>false}) &&
  (match reconcile_step(observation:ExpectedProjectBlocked,remaining:8) {StopBlocked=>true _=>false})
+}
+
+// THE TWO-READ LEAK CONTROL (round-3 review, blocker 1): a first telemetry read whose post-start
+// cleanup left the client binding outstanding, followed by a clean RUNNING read, must NOT confirm
+// quietly. The leak is folded into the carried cause, the receipt standing and the final exit: the
+// consumer refuses (exit failure) and the receipt on disk keeps the leak. Before the fix the second
+// read's clean standing overwrote the first read's leak and the run exited success.
+test fn leaked_first_read_survives_a_clean_running_second_read_and_refuses_the_exit() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_start_reconcile.XXXXXX").path
+  if !shell.Mkdir.Parents(path: dir as FilePath).success { return false }
+  let start_store = match fresh_evidence_store() { Absent => return false Present { value: s } => s }
+  let exit = reconcile_reads(
+    printer: "gunbc-abc.3mf" as PhysicalAssetIdentity,
+    remote: "gunbc-abc.3mf",
+    version: "1",
+    digest: "d",
+    credential_source: HostCustodyCredentialSource { run_id: "test-run" },
+    evidence_prefix: dir,
+    evidence_store: start_store,
+    claim_key: "test-claim" as NonEmptyStr,
+    publish_standing: "publish-acknowledged",
+    cleanup_issue: "",
+    remaining: 8,
+    read: index => match index {
+      // READ 1: telemetry answers (no state to resolve yet) and its cleanup leaks the binding.
+      0 => PrinterReported {
+        outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: report(state: "IDLE", file: "gunbc-abc.3mf", code: "0") } },
+        cleanup: PrinterCleanupOutstanding { detail: "/tmp/leaked-telemetry-binding" as NonEmptyStr },
+      }
+      // READ 2: the expected project RUNNING, cleanup clean -- the standing that used to erase read 1.
+      _ => PrinterReported {
+        outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: report(state: "RUNNING", file: "gunbc-abc.3mf", code: "0") } },
+        cleanup: PrinterCleanupClean,
+      }
+    }
+  )
+  match exit {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "post-start telemetry cleanup left the client binding outstanding at /tmp/leaked-telemetry-binding")
+        && string_contains(s: r, pattern: "running-confirmed")
+        && string_contains(s: r, pattern: "claim retained, DO NOT REPLAY")
+        && match filesystem_read_outcome(content: (Filesystem.Read(path: (concat(dir, ".receipt.json") as FilePath)).content as String), success: (Filesystem.Read(path: (concat(dir, ".receipt.json") as FilePath)).success as Bool), error: "") {
+          FilesystemReadSucceeded { content: rc } => string_contains(s: rc, pattern: "cleanup: post-start telemetry cleanup left the client binding outstanding at /tmp/leaked-telemetry-binding")
+          FilesystemReadRefused { error: _ } => false
+        }
+    _ => false
+  }
 }

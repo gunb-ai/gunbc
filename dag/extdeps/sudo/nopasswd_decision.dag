@@ -103,6 +103,17 @@ fn sudo_decision_binary_absent(query: SudoDecisionQuery) -> SudoDecision {
   }
 }
 
+// A PRESENCE PROBE THAT NEVER SPAWNED answers NOTHING about presence: 'is not present' would be an
+// unheld fact minted from silence. The decision names the unreadability and carries the probe's cause.
+fn sudo_decision_binary_unreadable(query: SudoDecisionQuery, cause: String) -> SudoDecision {
+  match query.argv.first() {
+    Present { value: program } =>
+      SudoDecisionUnobserved { cause: join(["the presence of binary ", program as String, " could not be read: ", cause], "") as NonEmptyStr }
+    Absent =>
+      SudoDecisionUnobserved { cause: "the query names no command" as NonEmptyStr }
+  }
+}
+
 fn sudo_decision_exit_cause(code: Int, stderr: String) -> NonEmptyStr {
   join(["sudo -n -ll exited ", to_string(code), ": ", trim(s: stderr)], "") as NonEmptyStr
 }

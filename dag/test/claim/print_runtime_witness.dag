@@ -6,7 +6,7 @@ import extdeps.shell
 import gunbc.host_state_root { isolated_host_state_tree }
 import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStore, CadRuntimeStoreReady, CadRuntimeStoreUnready, cad_environment_interpreter, cad_environment_prefix }
 import product.printing.print_runtime {
-  RuntimeJudgement, RuntimeMatches, RuntimeMismatch,
+  RuntimeJudgement, RuntimeMatches, RuntimeMismatch, RuntimeUnreadable,
   judge_cad_probe, judge_host_architecture,
 }
 
@@ -14,6 +14,9 @@ fn matches(j: RuntimeJudgement) -> Bool {
   match j {
     RuntimeMatches => true
     RuntimeMismatch { reason: _ } => false
+    // Never spawned is NOT a match -- and it is not a mismatch either; the witness's own
+    // judgement helper refuses to call an unanswered probe a verdict.
+    RuntimeUnreadable { reason: _ } => false
   }
 }
 

@@ -1,0 +1,108 @@
+// WITNESS: gunbc.fleet.fleet_converge_plan_cli binary presence is a THREE-STANDING LOOKUP,
+// not a `test -f` exit reading. Round-5 review item 5: the sudo-plan planner turned EVERY
+// nonzero capture of `test -f <binary>` into BinaryPresenceKnown(false), so an INACCESSIBLE
+// binary (mode-000 parent, regular-file parent, EIO) reported "is not present" and skipped the
+// sudo query -- a demonstrated fabrication, since exit 1 cannot tell absence from unreadable.
+// Presence now comes only from a completed, positive parent listing (`<parent>/.`, settled by
+// a grandparent listing when the lookup fails); unreadable standings carry their cause into
+// sudo_decision_binary_unreadable instead of minting "not present". These claims drive the
+// REAL binary_presence_of over REAL children (WET): chmod-defeated parents, missing parents,
+// and standing regular files -- no recorded captures.
+//
+// ADMITTED EFFECTS (gunbc.recurring_failure_mode wet-claim rows, same rows the sibling fleet
+// witnesses ride): a temp-directory write plus child processes (ls, test) over the created
+// tree only. The shared negative half holds: no network, no ssh, no sudo, no cargo, no git,
+// no remote host.
+module test.claim.fleet.fleet_converge_plan_binary_presence_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import extdeps.shell
+import gunbc.fleet.fleet_converge_plan_cli {
+  BinaryPresence, BinaryPresenceKnown, BinaryPresenceUnreadable, binary_presence_of,
+}
+import gunbc.command_runner { run_shell_command_capture, process_capture_admitted, LocalExec }
+import extdeps.exec.command { argv_command }
+import extdeps.exec.program { uncataloged_program }
+
+// THE WITNESS'S OWN SCRATCH-SEEDING ROUTE: mkdir -p over the same admitted capture entry every
+// other child in this file rides (chmod, and the module under test's own lookups). The Filesystem
+// primitive exposes no recursive-create method, and inventing one here would be a method surface
+// the receiver does not establish -- so the directory arrives through a real child, admitted or the
+// claim returns false. Admitted effect: one mkdir under this claim's own mktemp directory.
+fn witness_mkdir_p(path: String) -> Bool {
+  process_capture_admitted(captured: run_shell_command_capture(
+    command: argv_command(program: uncataloged_program(invocation: "mkdir" as NonEmptyStr), arguments: ["-p" as String, path]),
+    transport: LocalExec))
+}
+
+// AN INACCESSIBLE BINARY IS NEVER "NOT PRESENT" (the demonstrated fabrication): the binary
+// stands, its PARENT is mode-000, so `test -f` exits 1 with empty stderr exactly as a missing
+// file does -- and `ls <parent>/.` exits nonzero with Permission denied. The lookup must
+// answer BinaryPresenceUnreadable carrying that cause (the listing failure with the parent
+// standing in a completed grandparent listing), never BinaryPresenceKnown(false); the planner
+// then refuses with sudo_decision_binary_unreadable instead of skipping the sudo query as if
+// the binary were gone.
+test fn an_inaccessible_binary_reports_unreadable_never_not_present() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-a.XXXXXX").path as String
+  let bin = join([home, "/sbin"], "")
+  let sudo_path = join([bin, "/sudo"], "")
+  if !witness_mkdir_p(path: bin) { return false }
+  if !Filesystem.WriteCreateNew(path: sudo_path, content: "#!/bin/sh\nexit 0\n").success { return false }
+  if !process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "000" as NonEmptyStr, path: bin), transport: LocalExec)) { return false }
+  match binary_presence_of(program: sudo_path) {
+    BinaryPresenceUnreadable { cause: c } =>
+      // The cause names the failing lookup and the standing parent; it never says absent.
+      string_contains(s: c, pattern: "would not list")
+        && !string_contains(s: c, pattern: "is not present")
+    BinaryPresenceKnown { present: _ } => false
+  }
+}
+
+// A POSITIVELY ABSENT BINARY STILL ANSWERS KNOWN(FALSE) -- the completed grandparent listing
+// (the mktemp home, readable) simply does not name the parent directory. This is the standing
+// the old fold produced for EVERY nonzero exit; here it must come only from positive readings.
+test fn a_positively_absent_binary_still_answers_known_false() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-b.XXXXXX").path as String
+  if !witness_mkdir_p(path: home) { return false }
+  match binary_presence_of(program: join([home, "/nowhere/sudo"], "")) {
+    BinaryPresenceKnown { present: p } => p == false
+    BinaryPresenceUnreadable { cause: _ } => false
+  }
+}
+
+// A STANDING REGULAR FILE ANSWERS KNOWN(TRUE) THROUGH THE LISTING AND THE REGULAR PROBE: the
+// entry is named by a completed parent listing and `test -f` exits 0. Under a regular-file
+// parent the same fold answers Unreadable (the `/.` lookup fails, the parent stands in the
+// completed grandparent listing) -- never the bare `test -f`'s fabricated 1.
+test fn a_standing_regular_file_answers_known_true() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-c.XXXXXX").path as String
+  let bin = join([home, "/sbin"], "")
+  let sudo_path = join([bin, "/sudo"], "")
+  if !witness_mkdir_p(path: bin) { return false }
+  if !Filesystem.WriteCreateNew(path: sudo_path, content: "#!/bin/sh\nexit 0\n").success { return false }
+  if !process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "755" as NonEmptyStr, path: sudo_path), transport: LocalExec)) { return false }
+  match binary_presence_of(program: sudo_path) {
+    BinaryPresenceKnown { present: p } => p == true
+    BinaryPresenceUnreadable { cause: _ } => false
+  }
+}
+
+// THE REGULAR-FILE PARENT IS UNREADABLE, NOT EMPTY: `ls -1 -A -- <parent>` on a REGULAR FILE
+// exits 0 printing the operand -- the faked empty listing that made a hidden binary look
+// absent. Listing `<parent>/.` instead, the lookup FAILS (ENOTDIR), the completed grandparent
+// listing positively NAMES the parent, and the standing is Unreadable. This claim pins the
+// exact counterexample the round-5 review reproduced against the head.
+test fn a_binary_behind_a_regular_file_parent_is_unreadable_not_absent() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/plancli-presence-d.XXXXXX").path as String
+  let decoy = join([home, "/sbin"], "")
+  if !witness_mkdir_p(path: home) { return false }
+  if !Filesystem.WriteCreateNew(path: decoy, content: "not a directory").success { return false }
+  match binary_presence_of(program: join([decoy, "/sudo"], "")) {
+    BinaryPresenceUnreadable { cause: c } =>
+      string_contains(s: c, pattern: "would not list") && !string_contains(s: c, pattern: "is not present")
+    BinaryPresenceKnown { present: _ } => false
+  }
+}

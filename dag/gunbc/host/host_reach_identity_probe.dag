@@ -23,7 +23,7 @@ import gunbc.fleet.fleet_reach_endpoint {
   PrincipalUnobserved,
   EndpointUnobserved,
 }
-import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply }
+import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply, fleet_host_key_enroll_receipt_refusal }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -395,6 +395,14 @@ fn probe_fleet_reach_wet() -> ProcessExit {
     Present { value: raw } => trim(s: raw)
   }
   let enroll_lines = fleet_host_key_enroll_apply(home: home)
+  // The SSH fan-out is GATED on the enrollment decision, the same refusal the standalone
+  // entry applies (round-5 review, blocker 4): probe pairs each host's presented key against
+  // the enrolled fingerprint, so dispatching SSH when the pin readback was not POSITIVE --
+  // unreadable, absent, or never spawned -- reaches hosts whose identity is unverified.
+  let enroll_refusal = fleet_host_key_enroll_receipt_refusal(receipt: enroll_lines)
+  if enroll_refusal != "" {
+    exit_failure(reason: join([enroll_refusal, " -- fleet reach probe halted before any SSH", ""]))
+  }
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {
     probed_at: probed_at_word(reading: now) as String,

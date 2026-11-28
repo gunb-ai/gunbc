@@ -1,0 +1,116 @@
+module test.claim.command_runner_transport_refusal_witness
+
+// TRANSPORT-REFUSAL PRODUCER CONTROL OVER gunbc.command_runner: THE EXECUTED RECEIPT.
+//
+// WHAT THIS WITNESS HOLDS (the :88 review sweep, blocker 4).
+// command_runner's two observing entries -- run_shell_command_observe_outcome and
+// run_shell_command_capture -- answer a transport refusal (command_over_transport refusing the
+// SshExec arm because the target's RemoteExecCommandInterpretation is Unknown,
+// gunbc.remote_shell_command remote_exec_command_string) with a typed NOT-SPAWNED result carrying
+// the program and the cause. Before #16847 the same refusal rode
+// process_observation(exit_code: 0 - 1, ...) -- an exit code invented for a child that never
+// existed -- and capture inherited it as ProcessRefused { exit_code: -1 }. These claims call BOTH
+// real runner entries (the side-chat verdict's minimum missing pairing: no synthetic stand-ins for
+// one entry) and grade the exact discriminated arm.
+//
+// HERMETIC BY CONSTRUCTION: NO HOST, NO SSH.
+// The refusal happens inside command_over_transport BEFORE any RunArgv is attempted -- no child is
+// ever created, no network contact is made, and no sshpass/ssh binary is consulted. The ssh_target
+// is a syntax-valid witness name that is never dialled. The claim would be equally hermetic under
+// --claim-run's mock regime, because it never reaches a host-effect boundary; if it ever did, the
+// run would STOP at HostEffectRefused{NoMockResponse}, which is a loud failure, not a green vote.
+//
+// THE MUTATION CONTROL (documented, not inlined).
+// Restoring the fabrication in either entry turns the matching claims RED:
+//  * revert run_shell_command_observe_outcome's CommandOverTransportRefused arm to
+//    ProcessRan { observation: process_observation(exit_code: 0 - 1, stdout: "", stderr: cause) }
+//    and test_observe_unknown_interpretation_yields_typed_not_spawned,
+//    test_observe_not_spawned_carries_program_and_cause, and
+//    test_observe_never_answers_a_verdict_for_the_unspawned_child all go false (their ProcessRan
+//    arms vote false once a fabricated observation arrives);
+//  * revert run_shell_command_capture's arm to
+//    ProcessCaptured { outcome: ProcessRefused { exit_code: -1, stderr: cause } } and
+//    test_capture_unknown_interpretation_yields_typed_not_spawned,
+//    test_capture_not_spawned_carries_program_and_cause, and
+//    test_capture_never_answers_a_verdict_for_the_unspawned_child all go false.
+// Both mutations were run and reverted in-PR; the head carries the typed arms.
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.filesystem { path_basename }
+import extdeps.exec.command { ArgvCommand, CommandTransport, SshExec, argv_command }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.shell.exec {
+  ProcessRunOutcome, ProcessNotSpawned, ProcessRan,
+  ProcessCaptureOutcome, ProcessCaptured, ProcessCaptureNotSpawned,
+}
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture }
+import gunbc.remote_shell_command { RemoteExecCommandInterpretation, Unknown }
+
+// A program the wall never gates (non-git) and never needs to exist: the entries refuse before
+// any child would be created, so the invocation is a NAME, not a lookup.
+fn witness_echo_identity() -> ProgramIdentity = uncataloged_program(invocation: "echo" as NonEmptyStr)
+
+fn argv_echo() -> ArgvCommand = argv_command(program: witness_echo_identity(), arguments: ["transport-refusal-witness"])
+
+fn ssh_transport_unknown_interpretation() -> CommandTransport =
+  SshExec { ssh_target: "witness.invalid" as NonEmptyStr, interpretation: Unknown }
+
+// ---------------------------------------------------------------------------
+// OBSERVE ENTRY: the refusal is ProcessNotSpawned, program and cause intact.
+// ---------------------------------------------------------------------------
+
+test fn test_observe_unknown_interpretation_yields_typed_not_spawned() -> Bool {
+  match run_shell_command_observe_outcome(command: argv_echo(), transport: ssh_transport_unknown_interpretation()) {
+    ProcessNotSpawned { program: _, cause: _ } => true
+    ProcessRan { observation: _ } => false
+  }
+}
+
+test fn test_observe_not_spawned_carries_program_and_cause() -> Bool {
+  match run_shell_command_observe_outcome(command: argv_echo(), transport: ssh_transport_unknown_interpretation()) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      path_basename(path: p) == "echo"
+        && string_contains(s: c, pattern: "command_over_transport refused")
+        && string_contains(s: c, pattern: "Unknown")
+    ProcessRan { observation: _ } => false
+  }
+}
+
+// THE FABRICATION-FREE DISCRIMINANT: an observed-run arm is a RED vote here. A restored
+// exit_code: 0 - 1 observation lands in ProcessRan and this claim goes false -- there is no arm
+// that could absorb a fabricated verdict as acceptable.
+test fn test_observe_never_answers_a_verdict_for_the_unspawned_child() -> Bool {
+  match run_shell_command_observe_outcome(command: argv_echo(), transport: ssh_transport_unknown_interpretation()) {
+    ProcessNotSpawned { program: _, cause: _ } => true
+    ProcessRan { observation: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CAPTURE ENTRY: the same fact at the capture grain, with its own typed arm.
+// ---------------------------------------------------------------------------
+
+test fn test_capture_unknown_interpretation_yields_typed_not_spawned() -> Bool {
+  match run_shell_command_capture(command: argv_echo(), transport: ssh_transport_unknown_interpretation()) {
+    ProcessCaptureNotSpawned { program: _, cause: _ } => true
+    ProcessCaptured { outcome: _ } => false
+  }
+}
+
+test fn test_capture_not_spawned_carries_program_and_cause() -> Bool {
+  match run_shell_command_capture(command: argv_echo(), transport: ssh_transport_unknown_interpretation()) {
+    ProcessCaptureNotSpawned { program: p, cause: c } =>
+      path_basename(path: p) == "echo"
+        && string_contains(s: c, pattern: "command_over_transport refused")
+        && string_contains(s: c, pattern: "Unknown")
+    ProcessCaptured { outcome: _ } => false
+  }
+}
+
+test fn test_capture_never_answers_a_verdict_for_the_unspawned_child() -> Bool {
+  match run_shell_command_capture(command: argv_echo(), transport: ssh_transport_unknown_interpretation()) {
+    ProcessCaptureNotSpawned { program: _, cause: _ } => true
+    ProcessCaptured { outcome: _ } => false
+  }
+}

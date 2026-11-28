@@ -55,8 +55,7 @@ import gunbc.command_runner {
   ProcessOutputAbsent,
   ProcessRefused,
   run_shell_command_capture,
-  LocalExec,
-}
+LocalExec}
 import extdeps.tools.gnu_coreutils { ls_one_per_line_command }
 import gunbc.runner.runner_unit {
   runner_unit_prefix,
@@ -83,6 +82,7 @@ import gunbc.runner.runner_slot_retirement {
   host_maskable_units,
   unit_in_maskable_scope,
 }
+import extdeps.shell.exec { ProcessCaptured, ProcessCaptureNotSpawned }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
@@ -936,11 +936,12 @@ fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bo
 // observation reports only what it established. RunnerSlotsObserved with an empty list is a genuine
 // answer about a genuinely empty host.
 //
-// THE SIBLING FAMILIES DO NOT DRAW THIS LINE AND THAT IS THE DEFECT NOT TO COPY.
-// gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet yields [] both when a drop-in is absent and
-// when it cannot be read, and observe_timer_members_wet filters on a test that cannot distinguish
-// 'no such unit' from 'could not run the test'. Tolerable for caps, where an absent drop-in is the
-// common real state; not for slots, where absent means 'provision it'.
+// THE SIBLING FAMILIES, MEASURED. gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet yields a
+// typed CapMembersUnobservable beside absence; observe_timer_members_wet likewise refuses through
+// TimerMembersUnobservable (program and cause of the unspawned `test` child) since the :88 review
+// sweep -- a collapse read as 'no such unit' was proposing timer work over a population nobody
+// enumerated. Caps' tolerated blur was tightened too. The lesson holds: unreadable is a fact of its
+// own, never the empty end of an observation.
 //
 // ENUMERATION IS BY DIRECTORY, NOT BY PROBING THE DESIRED NAMES. Asking 'does each name I expect
 // exist' returns only a subset of what was already intended, so an out-of-band slot nobody desired
@@ -953,6 +954,7 @@ fn observe_runner_slot_members_wet() -> RunnerSlotObservation
     command: ls_one_per_line_command(path: actions_runner_base_dir),
     transport: LocalExec,
   ) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessRefused { exit_code: code, stderr: err } =>
       RunnerSlotsUnobserved {
         reason: concat(
@@ -974,7 +976,18 @@ fn observe_runner_slot_members_wet() -> RunnerSlotObservation
           l => runner_slot_member_from_instance_name(instance_name: trim(s: l)),
         ),
       }
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => RunnerSlotsUnobserved {
+        reason: concat(
+          concat("could not enumerate ", actions_runner_base_dir),
+          concat(": the listing refused rather than returning an empty directory, so this host's slot population is UNKNOWN and must not be read as empty. stderr: ", join(["never spawned ", __pp0, ": ", __pw0], ""))
+        ) as NonEmptyStr,
+      }
+
+
+
+
+}
 }
 
 type RunnerSlotConvergeVerdict

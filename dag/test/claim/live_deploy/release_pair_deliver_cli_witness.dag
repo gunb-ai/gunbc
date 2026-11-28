@@ -17,14 +17,17 @@ import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotIns
 import std.optional { Optional, Present, Absent }
 import std.algebra { string_contains }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned, process_observation }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.live_deploy.release_pair_delivery {
-  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused, release_pair_occupied_link_verdict, release_pair_occupied_link_refusal_reason, OccupiedLinkUnreadable,
   release_pair_incoming_serve_source, release_pair_source_dir,
   release_pair_converged_noop, release_pair_already_at_head_reason, PlanWaits,
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
   release_pair_decode_head, release_pair_pack_fetch, release_pair_pack_verify,
+  release_pair_decode_head_capture, release_pair_decode_ancestry_capture, release_pair_decode_built_runs_capture,
+  release_pair_decode_build_job_capture, release_pair_pack_fetch_capture,
   release_pair_deliver_serving, ServingMapped, ServingRefused, release_pair_serving_poison_reason,
   release_pair_source_head_verdict, SourceHeadObserved, SourceHeadRefused,
   release_pair_source_head_mismatch_reason, release_pair_source_head_unobservable_reason,
@@ -639,4 +642,64 @@ test fn witness_source_add_refused_reason_is_own() -> Bool {
     ActionPlaced => false
   }
   refused && ok_present && ok_absent && not_spawned_refuses
+}
+
+// ── capture-grain not-spawned controls (PR #16847) ──────────────────────────────────────────────────────────────
+// A transport refusal means NO CHILD EVER RAN: each capture-grain wrapper must fold that fact onto the typed
+// refusal the inner decode already names — never onto an observation, and never with an invented exit code.
+
+test fn witness_decode_head_capture_not_spawned_is_none() -> Bool {
+  match release_pair_decode_head_capture(outcome: ProcessCaptureNotSpawned { program: "gh" as NonEmptyStr, cause: "transport refused" as NonEmptyStr }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_decode_ancestry_capture_not_spawned_refuses() -> Bool {
+  match release_pair_decode_ancestry_capture(outcome: ProcessCaptureNotSpawned { program: "git" as NonEmptyStr, cause: "transport refused" as NonEmptyStr }) {
+    AncestryRefused { reason: _ } => true
+    AncestryObserved { shas: _ } => false
+  }
+}
+
+test fn witness_decode_built_runs_capture_not_spawned_refuses() -> Bool {
+  match release_pair_decode_built_runs_capture(outcome: ProcessCaptureNotSpawned { program: "gh" as NonEmptyStr, cause: "transport refused" as NonEmptyStr }) {
+    BuiltRunsRefused { reason: _ } => true
+    BuiltRunsObserved { runs: _ } => false
+  }
+}
+
+test fn witness_decode_build_job_capture_not_spawned_is_unobservable() -> Bool {
+  match release_pair_decode_build_job_capture(outcome: ProcessCaptureNotSpawned { program: "gh" as NonEmptyStr, cause: "transport refused" as NonEmptyStr }) {
+    BuildJobUnobservable => true
+    _ => false
+  }
+}
+
+test fn witness_pack_fetch_capture_not_spawned_is_absent() -> Bool {
+  match release_pair_pack_fetch_capture(
+    fetch: ProcessCaptureNotSpawned { program: "gh" as NonEmptyStr, cause: "transport refused" as NonEmptyStr },
+    manifest_read: manifest_read(text: real_manifest_head),
+    pack_dir: pack_dir_str,
+    member_src: member_src_str,
+  ) {
+    PackAbsent { reason: _ } => true
+    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
+  }
+}
+
+// THE CLI CONSUMER'S FINAL WORDS on a never-spawned occupied-link readback: UNREADABLE with the
+// program and cause, never "differs / not a symlink" (review 97468 follow-through: the claim asserts
+// the refusal string the CLI renders, so a consumer that re-fabricates a readlink verdict goes red).
+test fn witness_occupied_link_capture_not_spawned_reports_unreadable_with_cause() -> Bool {
+  let verdict = release_pair_occupied_link_verdict(
+    link_read: ProcessCaptureNotSpawned { program: "readlink" as NonEmptyStr, cause: "transport refused" as NonEmptyStr },
+    expected_source: member_src_str,
+  )
+  match verdict {
+    OccupiedLinkUnreadable { program: p, cause: why } =>
+      p == "readlink" && why == "transport refused"
+        && string_contains(s: release_pair_occupied_link_refusal_reason(verdict: verdict), pattern: "never spawned: transport refused")
+    _ => false
+  }
 }

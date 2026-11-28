@@ -65,10 +65,11 @@ import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command, env_prefixed_command_in }
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
-import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
+import extdeps.posix.test_utility { test_directory_command, test_executable_command }
 // PR-1c: the identity sidecar leg reads the file through the ONE serve-side identity reader (single
 // format authority, so the converge writer and the serve reader cannot drift) and carries the result as
 // the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
@@ -95,8 +96,8 @@ import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_en
 // observed_cgroup_bound), so the cap comparison and the wrap admission share one carrier; the VALUE itself is
 // decoded by the one systemctl-show authority, extdeps.systemd::parse_systemd_memory_limit_show, below.
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryUnlimited, CgroupMemoryLimited }
-import gunbc.command_runner { run_shell_command_capture }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture  }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.github.actions_environment { github_sha_variable_name }
 import extdeps.rust.rustup {rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm, rustup_toolchain_install_command,
   rustup_init_release, rustup_init_url, rustup_linux_gnu_triple, rustup_init_install_command }
@@ -163,19 +164,101 @@ fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionC
 // unobservable (a ServingUnknown), never a proven absence. The elevation precondition short-circuits
 // it: when 'sudo -n true' was refused the leg never runs (a sudo refusal shares the exit 1 this leg
 // would read as "absent", review 95915), so it is ObservationRefused.
-fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, probe: ArgvCommand) -> ObservationAttempt<Bool, ServingLegFailure> {
+// ROUND-4 REVIEW ITEM 3: test(1) EXIT 1 IS NOT ABSENCE. A mode-000 parent answers `test -e/-d/-f/-x`
+// with exit 1 and empty stderr exactly as an absent entry does, so this leg no longer decides
+// absence from the test's own exit. ABSENCE IS ESTABLISHED BY THE SHARED ELEVATED PARENT LISTING
+// (gunbc.live_deploy.member_observe parent_listing_argv / listing_contains_entry, the route #16984
+// and host_credential_custody_converge ride -- under the SAME elevation the leg carries, since a
+// refused elevation is not an absent file, review 95915): a listing the parent positively lacks
+// is a real absence (false); a listing that cannot be read is refused, never absence; and only
+// for an entry the listing SAYS STANDS does the test leg answer its own property (exit 0 true,
+// exit 1 property-genuinely-false, anything else refused).
+// ROUND-5 REVIEW ITEM 3 (remote leg): ABSENCE COMES ONLY FROM A COMPLETED, POSITIVE READING
+// ABOUT THE SUBJECT, and an ELEVATED COMMAND'S exit 1 is never read as a false property -- sudo
+// denies an individual command with exit 1, indistinguishable from the utility's own 1. The
+// elevated lookup lists `<parent>/.` (the trailing `/.` makes ls FAIL when the parent is a
+// regular file, where a bare listing of a file parent exits 0 printing the operand); a failed
+// lookup is settled only by a SECOND, SAME-SHAPE elevated listing of the GRANDPARENT, and only
+// a completed grandparent listing that positively lacks the parent establishes absence. No
+// stderr is ever read for meaning. A listing that cannot be read -- EACCES, EIO, ENOTDIR, an
+// ssh refusal, a denied elevation -- is ObservationRefused, so no remediation is selected on it
+// (round-4 review: "That result can select a directory or binary remediation").
+type ServingListingAnswer
+  = ListingEntryPresent
+  | ListingEntryAbsent
+  | ListingNeedsParent { main_cause: String }
+  | ListingUnreadable { cause: String }
+
+fn serving_listing_entry_standing(listing: TypedArgvExecOutcome, entry: String) -> ServingListingAnswer {
+  match listing {
+    TypedArgvExecRefused { reason: reason } => ListingUnreadable { cause: concat("parent listing refused: ", reason) }
+    TypedArgvExecOverran { deadline: d } => ListingUnreadable { cause: concat("parent listing overran: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) }
+    TypedArgvExecConverged { result: r } => if r.exit_code == 0 {
+      if listing_contains_entry(stdout: r.stdout, name: entry) { ListingEntryPresent } else { ListingEntryAbsent }
+    } else {
+      ListingNeedsParent { main_cause: join(["listing exit ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
+    }
+  }
+}
+
+// The failed subject lookup is settled ONLY by a completed grandparent listing: absent there is
+// a real absence; standing-but-unlistable (mode-000, a regular file, EIO) or another failure is
+// UNREADABLE, never absence.
+fn serving_parent_settles(parent_listing: TypedArgvExecOutcome, parent_name: String, main_cause: String) -> ServingListingAnswer {
+  match parent_listing {
+    TypedArgvExecRefused { reason: reason } => ListingUnreadable { cause: join(["the subject lookup failed (", main_cause, ") and the grandparent listing was refused: ", reason], "") }
+    TypedArgvExecOverran { deadline: d } => ListingUnreadable { cause: join(["the subject lookup failed (", main_cause, ") and the grandparent listing overran: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)], "") }
+    TypedArgvExecConverged { result: gp } => if gp.exit_code == 0 {
+      if listing_contains_entry(stdout: gp.stdout, name: parent_name) {
+        ListingUnreadable { cause: join(["the parent stands in a completed grandparent listing but would not list: ", main_cause], "") }
+      } else { ListingEntryAbsent }
+    } else {
+      ListingUnreadable { cause: join(["the subject lookup failed (", main_cause, ") and the grandparent listing failed too (exit ", to_string(gp.exit_code), ": ", trim(s: gp.stderr), ")"], "") }
+    }
+  }
+}
+
+fn serving_listing_standing_wet(item: String, path: String, target: SshTarget, context: FleetSshExecutionContext) -> ServingListingAnswer {
+  let parent = path_parent(path: path)
+  let main = typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: parent_listing_argv(parent: join([parent, "/."], ""))))
+  match serving_listing_entry_standing(listing: main, entry: path_basename(path: path)) {
+    ListingNeedsParent { main_cause: c } => serving_parent_settles(
+      parent_listing: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: parent_listing_argv(parent: join([path_parent(path: parent), "/."], "")))),
+      parent_name: path_basename(path: parent),
+      main_cause: c,
+    )
+    other => other
+  }
+}
+
+fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, path: String, target: SshTarget, context: FleetSshExecutionContext, probe: ArgvCommand) -> ObservationAttempt<Bool, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))) {
-      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
-      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-      TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
-        true => ObservationEstablished { observed: true }
-        false => match r.exit_code == 1 {
-          true => ObservationEstablished { observed: false }
-          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test exit ", to_string(r.exit_code)) } }
-        }
-      }
+    ObservationEstablished { observed: _ } => match serving_listing_standing_wet(item: item, path: path, target: target, context: context) {
+      ListingEntryAbsent => ObservationEstablished { observed: false }
+      ListingUnreadable { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingNeedsParent { main_cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingEntryPresent => serving_property_answer(
+        item: item,
+        ran: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))),
+      )
+    }
+  }
+}
+
+// THE PROPERTY LEG'S OWN FOLD, PURE SO THE WITNESS DRIVES IT (round-5 review item 3): the
+// listing already established the entry STANDS, so the property probe answers only its own
+// question, and ONLY exit 0 says yes. Exit 1 from an ELEVATED probe is ambiguous -- sudo
+// denies individual commands with exit 1, indistinguishable from the utility's own 1 -- so it
+// REFUSES rather than establishing a false property. A mutation restoring "exit 1 means false"
+// goes red on the witness claim over this fold.
+fn serving_property_answer(item: String, ran: TypedArgvExecOutcome) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match ran {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => ObservationEstablished { observed: true }
+      false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("elevated property probe exit ", to_string(r.exit_code), ": only exit 0 establishes the property (a sudo denial shares exit 1)") } }
     }
   }
 }
@@ -189,16 +272,17 @@ fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item
 fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
-      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
-      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-        true => ObservationEstablished { observed: "" }
-        false => match t.exit_code == 0 {
-          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
-          true => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
-        }
-      }
+    // ROUND-5 REVIEW ITEM 3: the CONFIRMED ABSENCE comes from the elevated parent listing (and,
+    // through it, the grandparent), NEVER from `test -f` exit 1 -- that exit is also what a sudo
+    // DENIAL of this very command returns, and an established "" (no forced command) selected on
+    // a denial would be a fabricated reading. Only a completed listing positively lacking the
+    // entry says absent; presence leads straight to the affirmative elevated read, whose own
+    // failures all refuse.
+    ObservationEstablished { observed: _ } => match serving_listing_standing_wet(item: item, path: path, target: target, context: context) {
+      ListingEntryAbsent => ObservationEstablished { observed: "" }
+      ListingUnreadable { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingNeedsParent { main_cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingEntryPresent => serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path))
     }
   }
 }
@@ -219,14 +303,15 @@ fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: a
 fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
-      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
-      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
-      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-        true => ObservationEstablished { observed: SidecarAbsent }
-        false => match t.exit_code == 0 {
-          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
-          true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
+    // ROUND-5 REVIEW ITEM 3: SidecarAbsent is established ONLY by the elevated parent listing
+    // positively lacking the sidecar (via the grandparent when needed) -- never by `test -f`
+    // exit 1, which an elevated denial of this very command shares. A denied denial that had
+    // been read as absent would trigger a RE-RECORD of an identity file that may stand unread.
+    ObservationEstablished { observed: _ } => match serving_listing_standing_wet(item: item, path: path, target: target, context: context) {
+      ListingEntryAbsent => ObservationEstablished { observed: SidecarAbsent }
+      ListingUnreadable { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingNeedsParent { main_cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+      ListingEntryPresent => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
             ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
               // The reader KEEPS the revision (it was previously discarded at this boundary). The sidecar
               // writer (converge_record_serve_identity) and its parser both carry it; on a native-build host
@@ -236,8 +321,6 @@ fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFail
             }
             ObservationRefused { cause: c } => ObservationRefused { cause: c }
           }
-        }
-      }
     }
   }
 }
@@ -349,18 +432,32 @@ fn serving_ledger_row_read(target: SshTarget, context: FleetSshExecutionContext,
 // is read once per run from the executor's own state — its built binary's sha and its arch.
 fn serving_local_first_token(cmd: ArgvCommand) -> String? {
   match run_shell_command_capture(command: cmd, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } => match first_space_token(text: t) == "" { true => none  false => Present { value: first_space_token(text: t) } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => none
+
+
+
+
+}
 }
 
 fn serving_local_trimmed(cmd: ArgvCommand) -> String? {
   match run_shell_command_capture(command: cmd, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
     ProcessOutputPresent { text: t } => match trim(s: t) == "" { true => none  false => Present { value: trim(s: t) } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => none
+
+
+
+
+}
 }
 
 // THE EXECUTOR PLAN-TIME PIN, read ONCE per run and handed to BOTH observe and apply (the manager's
@@ -605,8 +702,8 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   let passwd = serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo("/etc/passwd"))
   let group = serving_leg_read(item: "group.members", target: target, context: context, argv: serving_cat_sudo("/etc/group"))
   let authorized_keys = serving_leg_authorized_keys(elevation: elevation, item: "authorized_keys.forced_command", target: target, context: context, path: d.authorized_keys_path)
-  let store_root = serving_leg_test(elevation: elevation, item: "store.root", target: target, context: context, probe: test_directory_command(path: d.store_root))
-  let store_staging = serving_leg_test(elevation: elevation, item: "store.staging", target: target, context: context, probe: test_directory_command(path: d.store_staging))
+  let store_root = serving_leg_test(elevation: elevation, item: "store.root", path: d.store_root as String, target: target, context: context, probe: test_directory_command(path: d.store_root))
+  let store_staging = serving_leg_test(elevation: elevation, item: "store.staging", path: d.store_staging as String, target: target, context: context, probe: test_directory_command(path: d.store_staging))
   // The store dirs' octal modes, read alongside their presence: a drifted mode on a present directory
   // is a proved deviation, not a presence-check pass (review 95935). The stat legs stand on their own.
   let store_root_mode = serving_leg_stat(item: "store.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_root))
@@ -617,16 +714,16 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // absence is a proved PresentAbsent the apply can write toward, a wrong mode is a proved drift, and a
   // refused read mints no write. The serve-binary install's parents are root-owned by design, so this is
   // the one directory in the account's tree the converge must own INTO existence.
-  let scratch_root = serving_leg_test(elevation: elevation, item: "scratch.root", target: target, context: context, probe: test_directory_command(path: d.scratch_root_dir))
+  let scratch_root = serving_leg_test(elevation: elevation, item: "scratch.root", path: d.scratch_root_dir as String, target: target, context: context, probe: test_directory_command(path: d.scratch_root_dir))
   let scratch_root_mode = serving_leg_stat(item: "scratch.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.scratch_root_dir))
   // The census recovery door LISTS this directory to establish the seat census. On a fresh host it is
   // absent, which the door refuses as ComputeSeatsUnreadable (gunbc.compute.compute_attempt_slots_root:
   // absent is not "no seats"). So its absence is a proved PresentAbsent the apply writes toward, and the
   // census door is gated (census_door_gate) to defer until this directory is established present -- so the
   // initial observe still forms a plan instead of stranding on an unread census.
-  let compute_attempts = serving_leg_test(elevation: elevation, item: "compute.attempts", target: target, context: context, probe: test_directory_command(path: d.compute_attempts_dir))
-  let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, probe: test_executable_command(path: d.serve_binary))
-  let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, probe: test_directory_command(path: d.checkout_dir))
+  let compute_attempts = serving_leg_test(elevation: elevation, item: "compute.attempts", path: d.compute_attempts_dir as String, target: target, context: context, probe: test_directory_command(path: d.compute_attempts_dir))
+  let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", path: d.serve_binary as String, target: target, context: context, probe: test_executable_command(path: d.serve_binary))
+  let checkout = serving_leg_test(elevation: elevation, item: "checkout", path: d.checkout_dir as String, target: target, context: context, probe: test_directory_command(path: d.checkout_dir))
   // THE TOOLCHAIN PAIR, gated on the ACCOUNT (side-chat review follow-up): a confirmed-absent
   // account CONFIRMS both legs absent (its home has no rustup and no channels — sudo -u could not
   // run anyway); an unreadable presence read leaves them refused-as-unknown. A host that merely
@@ -634,7 +731,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   let account_gate = serving_account_presence_gate(account_name: d.account_name, passwd: passwd)
   let rustup = match account_gate {
     ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
-    _ => serving_leg_test(elevation: elevation, item: "rustup", target: target, context: context, probe: test_executable_command(path: concat(d.account_home, "/.cargo/bin/rustup")))
+    _ => serving_leg_test(elevation: elevation, item: "rustup", path: concat(d.account_home, "/.cargo/bin/rustup"), target: target, context: context, probe: test_executable_command(path: concat(d.account_home, "/.cargo/bin/rustup")))
   }
   let toolchain = match account_gate {
     ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
@@ -1836,9 +1933,14 @@ fn converge_as_user(kind: FleetLegKind, target: SshTarget, context: FleetSshExec
 // and sha256 readback then happen over the ssh edge.
 fn converge_upload(target: SshTarget, context: FleetSshExecutionContext, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> ConvergeStep {
   match run_shell_command_capture(command: fleet_scp_upload_command(context: context, target: target, local_path: local_path, remote_path: remote_path), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessOutputPresent { text: _ } => StepDone
     ProcessOutputAbsent => StepDone
     ProcessRefused { exit_code: c, stderr: e } => StepFailed { cause: join(["scp upload exit ", to_string(c), ": ", trim(e)], "") }
+    // No scp client ran, so nothing crossed the wire. The failure is the spawner's own words, not an
+    // exit code the client never returned.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => StepFailed { cause: join(["scp upload was never spawned: ", p, ": ", why], "") }
   }
 }
 
@@ -1947,7 +2049,7 @@ fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionConte
         StepFailed { cause: c } => StepFailed { cause: concat("chmod rustup-init: ", c) }
         StepDone => match converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: rustup_home }, EnvSet { name: "CARGO_HOME", value: cargo_home }], command: rustup_init_install_command(rustup_init_path: installer))) {
           StepFailed { cause: c } => StepFailed { cause: concat("rustup-init: ", c) }
-          StepDone => match serving_leg_test(elevation: ObservationEstablished { observed: true }, item: "rustup", target: target, context: context, probe: test_executable_command(path: concat(cargo_home, "/bin/rustup"))) {
+          StepDone => match serving_leg_test(elevation: ObservationEstablished { observed: true }, item: "rustup", path: concat(cargo_home, "/bin/rustup"), target: target, context: context, probe: test_executable_command(path: concat(cargo_home, "/bin/rustup"))) {
             ObservationEstablished { observed: true } => StepDone
             ObservationEstablished { observed: false } => StepFailed { cause: concat("rustup-init exited 0 but no executable rustup at ", concat(cargo_home, "/bin/rustup")) }
             ObservationRefused { cause: f } => StepFailed { cause: concat("rustup readback refused: ", f.cause) }

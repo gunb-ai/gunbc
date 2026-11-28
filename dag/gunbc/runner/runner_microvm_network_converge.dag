@@ -6,7 +6,7 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptureOutcome, ProcessCaptured}
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
   filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
@@ -20,7 +20,7 @@ import extdeps.linux.nf_conntrack {
   nf_conntrack_helper_proc_path, nf_conntrack_sysctl_dir, nf_conntrack_helper_sysctl_name,
 }
 import extdeps.tools.uname { uname_release_command }
-import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, LocalExec}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.github.actions_environment { github_run_id_variable_name }
@@ -323,13 +323,51 @@ fn parse_auto_assignment_value(text: String) -> HelperAutoAssignment {
   }
 }
 
+// A PRIVILEGED READ IS EITHER AN OBSERVED CHILD RESULT (the capture grain, with its own not-spawned
+// arm) OR THE FACT THAT THE ADMINISTRATOR EDGE OVERRAN ITS DEADLINE WITHOUT RETURNING A RESULT.
+// An overran leg may or may not have started a child, so it claims neither spawn fact: it carries the
+// deadline cause. This is a module-local fold -- PR C (SpawnOutcome<T>, #16847's declared follow-up)
+// folds it into the general spawn/outcome carrier when that declaration lands.
+type PrivilegedRead
+  = PrivilegedReadCaptured { outcome: ProcessCaptureOutcome }
+  | PrivilegedReadOverran { cause: NonEmptyStr }
+
+// Did this read's CHILD RETURN A RESULT this fold may classify? An overran leg answers no, whatever
+// it may have started on the far side of the edge.
+fn privileged_read_ran(r: PrivilegedRead) -> Bool {
+  match r {
+    PrivilegedReadCaptured { outcome: o } => outcome_ran(o: o)
+    PrivilegedReadOverran { cause: _ } => false
+  }
+}
+
+// The stdout a fold may read; an overran leg has returned nothing to read.
+fn privileged_read_stdout(r: PrivilegedRead) -> String {
+  match r {
+    PrivilegedReadCaptured { outcome: o } => outcome_stdout(o: o)
+    PrivilegedReadOverran { cause: _ } => ""
+  }
+}
+
 // A SURFACE THAT DID NOT ANSWER IS UNREAD, and the count is only minted from a run that answered.
-fn surface_reading(o: ProcessOutcome, surface: String, count: Int) -> HelperSurfaceReading {
+fn surface_reading(o: PrivilegedRead, surface: String, count: Int) -> HelperSurfaceReading {
   match o {
-    ProcessRefused { exit_code: code, stderr: _ } =>
-      HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
-    ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
-    ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+    PrivilegedReadCaptured { outcome: capture } => match capture {
+      ProcessCaptured { outcome: outcome } => match outcome {
+        ProcessRefused { exit_code: code, stderr: _ } =>
+          HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
+        ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
+        ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+      }
+      // A probe nobody started answered nothing: it is unread, and the cause is the spawner's own words.
+      // Counting a surface off an unspawned probe would mint a "no helper attached" from silence.
+      ProcessCaptureNotSpawned { program: p, cause: why } =>
+        HelperSurfaceUnread { reason: join([surface, " probe was never spawned: ", p, ": ", why], "") as NonEmptyStr }
+    }
+    // The edge overran without returning a child result: the surface is unread, and the deadline is
+    // the cause -- never an exit code the child never reported.
+    PrivilegedReadOverran { cause: why } =>
+      HelperSurfaceUnread { reason: join([surface, " probe overran its deadline without returning a result: ", why], "") as NonEmptyStr }
   }
 }
 
@@ -383,6 +421,10 @@ type HostReading {
   generation: ConvergeGeneration
   ip_forward: IpForwardStanding
   ruleset_digest: Sha256Digest?
+  // WHY the installed-table read did not answer, when it did not answer: the deadline cause of
+  // an overran leg, or the spawner's words for an unspawned one. The generic "not digestible"
+  // diagnosis is honest only for a child that RETURNED and produced no digestible listing.
+  table_cause: NonEmptyStr?
   auto_assignment: HelperAutoAssignment
   nft_ct_helper_statements: HelperSurfaceReading
   xtables_ct_helper_targets: HelperSurfaceReading
@@ -473,7 +515,10 @@ fn host_refusals(h: HostReading) -> List<ConvergeRefusal> {
       },
       match h.ruleset_digest {
         Present { value: _ } => []
-        Absent => [RulesetUnread { reason: "nft list table did not return a digestible listing of the installed table" as NonEmptyStr }]
+        Absent => [RulesetUnread { reason: match h.table_cause {
+          Present { value: c } => join(["nft list table could not answer: ", c], "")
+          Absent => "nft list table did not return a digestible listing of the installed table"
+        } as NonEmptyStr }]
       },
     ),
     match h.auto_assignment {
@@ -528,7 +573,10 @@ fn converge_outcome(slots: List<SlotReading>, h: HostReading) -> ConvergeOutcome
   match first_refusal(rs: refusals) {
     Present { value: r } => ConvergeRefused { refusal: r }
     Absent => match h.ruleset_digest {
-      Absent => ConvergeRefused { refusal: RulesetUnread { reason: "no digestible listing of the installed table" as NonEmptyStr } }
+      Absent => ConvergeRefused { refusal: RulesetUnread { reason: match h.table_cause {
+        Present { value: c } => join(["no digestible listing of the installed table: ", c], "")
+        Absent => "no digestible listing of the installed table"
+      } as NonEmptyStr } }
       Present { value: d } => ConvergedNetwork {
         receipt: ConvergedSlotNetwork {
           host: h.host,
@@ -566,26 +614,36 @@ fn proc_readable(o: FilesystemReadOutcome) -> Bool {
   }
 }
 
-fn capture_stdout(c: ArgvCommand) -> ProcessOutcome {
+fn capture_stdout(c: ArgvCommand) -> ProcessCaptureOutcome {
   run_shell_command_capture(command: c, transport: LocalExec)
 }
 
 // A REFUSED COMMAND HAS NO READING, AND AN EMPTY ONE IS NOT THE SAME AS A MISSING ONE.
 // ProcessOutputAbsent is a run that printed nothing -- an empty conntrack expectation table is
 // exactly that, and it is a real reading -- while ProcessRefused is a probe that did not answer.
-fn outcome_stdout(o: ProcessOutcome) -> String {
+fn outcome_stdout(o: ProcessCaptureOutcome) -> String {
   match o {
-    ProcessOutputPresent { text: t } => t
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: t } => t
+      ProcessOutputAbsent => ""
+      ProcessRefused { exit_code: _, stderr: _ } => ""
+    }
+    // A probe the spawner never ran printed nothing, and nothing is what its counters must see -- but
+    // only alongside outcome_ran(o:) == false, which is what keeps the reading from being believed.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => ""
   }
 }
 
-fn outcome_ran(o: ProcessOutcome) -> Bool {
+fn outcome_ran(o: ProcessCaptureOutcome) -> Bool {
   match o {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: _ } => true
+      ProcessOutputAbsent => true
+      ProcessRefused { exit_code: _, stderr: _ } => false
+    }
+    // It did not run. That is the fact, and it is reported as one: no exit code is named for a probe
+    // the spawner never started.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => false
   }
 }
 
@@ -599,12 +657,16 @@ fn listing_digest(d: Sha256FileDigest) -> Sha256Digest? {
   }
 }
 
-fn slot_probe_reading(o: ProcessOutcome, probe: String) -> SlotProbeReading {
+fn slot_probe_reading(o: ProcessCaptureOutcome, probe: String) -> SlotProbeReading {
   match o {
-    ProcessOutputPresent { text: t } => SlotProbeRead { text: t }
-    ProcessOutputAbsent => SlotProbeRead { text: "" }
-    ProcessRefused { exit_code: code, stderr: _ } =>
-      SlotProbeUnread { reason: join([probe, " exited ", to_string(code)], "") as NonEmptyStr }
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: t } => SlotProbeRead { text: t }
+      ProcessOutputAbsent => SlotProbeRead { text: "" }
+      ProcessRefused { exit_code: code, stderr: _ } =>
+        SlotProbeUnread { reason: join([probe, " exited ", to_string(code)], "") as NonEmptyStr }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      SlotProbeUnread { reason: join([probe, " was never spawned: ", p, ": ", why], "") as NonEmptyStr }
   }
 }
 
@@ -616,6 +678,22 @@ fn read_slot_wet(slot: RunnerSlotIdentity) -> SlotReading {
     tap_ipv6: parse_disable_ipv6(readable: proc_readable(o: v6), text: proc_text(o: v6)),
     addr: slot_probe_reading(o: capture_stdout(c: ip_addr_show_command(device: net.tap_device as String)), probe: "ip -o -4 addr show"),
     route: slot_probe_reading(o: capture_stdout(c: ip_route_show_command(device: net.tap_device as String)), probe: "ip -o -4 route show"),
+  }
+}
+
+// THE TABLE READ'S OWN REFUSAL FACT, carried beside the digest decision (round-3 review, blocker
+// 3). An overran or unspawned installed-table read must not be flattened into the generic "no
+// digestible listing" diagnosis: that diagnosis is honest only for a child that RETURNED without a
+// digestible listing. This is the whole projection from the read to its cause, so the witness drives
+// the same function the wet fold calls -- the digest half (host_ruleset_digest_wet) spawns a child
+// and stays wet; the cause half is total over the reading and testable hermetically.
+fn table_read_cause(table: PrivilegedRead) -> NonEmptyStr? {
+  match table {
+    PrivilegedReadOverran { cause: why } => Present { value: join(["overran its deadline without returning a result: ", why], "") as NonEmptyStr }
+    PrivilegedReadCaptured { outcome: cap } => match cap {
+      ProcessCaptureNotSpawned { program: p, cause: why } => Present { value: join(["probe was never spawned: ", p, ": ", why], "") as NonEmptyStr }
+      _ => none
+    }
   }
 }
 
@@ -634,12 +712,16 @@ fn host_ruleset_digest_wet(listing: String) -> Sha256FileDigest {
 // gunbc.runner.runner_microvm_network_observe, which cannot live here: gunbc.runner.runner_host_grants consumes this
 // module's operation fold, and the administrator edge reaches through it. What stays here is every
 // reading an unprivileged principal CAN take -- procfs, ip, uname -- and the fold over all of them.
+// EACH FIELD IS AN OBSERVED CHILD RESULT (which includes the typed fact that its probe was never
+// spawned) OR THE FACT THAT THE ADMINISTRATOR EDGE OVERRAN WITHOUT RETURNING A RESULT. The
+// administrator edge may decline to start a probe at all, or overran its deadline without an answer;
+// neither is a child that printed nothing.
 type MicrovmPrivilegedReadings {
-  table: ProcessOutcome
-  ruleset: ProcessOutcome
-  xtables: ProcessOutcome
-  userspace: ProcessOutcome
-  expectations: ProcessOutcome
+  table: PrivilegedRead
+  ruleset: PrivilegedRead
+  xtables: PrivilegedRead
+  userspace: PrivilegedRead
+  expectations: PrivilegedRead
 }
 
 fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: MicrovmPrivilegedReadings) -> HostReading {
@@ -650,12 +732,14 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: Micr
   let userspace = reads.userspace
   let expectations = reads.expectations
   let kernel = capture_stdout(c: uname_release_command())
-  let digest = if outcome_ran(o: table) { listing_digest(d: host_ruleset_digest_wet(listing: outcome_stdout(o: table))) } else { none }
+  let digest = if privileged_read_ran(r: table) { listing_digest(d: host_ruleset_digest_wet(listing: privileged_read_stdout(r: table))) } else { none }
+  let table_cause = table_read_cause(table: table)
   HostReading {
     host: host,
     generation: generation,
     ip_forward: ip_forward_standing(readable: proc_readable(o: forward), text: proc_text(o: forward)),
     ruleset_digest: digest,
+    table_cause: table_cause,
     auto_assignment: parse_auto_assignment(
       observed: observe_helper_sysctl_wet(),
       kernel_release: trim(s: outcome_stdout(o: kernel)),
@@ -664,22 +748,22 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: Micr
     nft_ct_helper_statements: surface_reading(
       o: ruleset,
       surface: "nft list ruleset",
-      count: ct_helper_statement_count(ruleset_listing: outcome_stdout(o: ruleset)),
+      count: ct_helper_statement_count(ruleset_listing: privileged_read_stdout(r: ruleset)),
     ),
     xtables_ct_helper_targets: surface_reading(
       o: xtables,
       surface: "iptables-legacy-save",
-      count: xtables_ct_target_count(save_output: outcome_stdout(o: xtables)),
+      count: xtables_ct_target_count(save_output: privileged_read_stdout(r: xtables)),
     ),
     userspace_helpers: surface_reading(
       o: userspace,
       surface: "nfct helper list",
-      count: userspace_helper_count(listing: outcome_stdout(o: userspace)),
+      count: userspace_helper_count(listing: privileged_read_stdout(r: userspace)),
     ),
     expectations: surface_reading(
       o: expectations,
       surface: "conntrack -L expect",
-      count: expectation_line_count(stdout: outcome_stdout(o: expectations)),
+      count: expectation_line_count(stdout: privileged_read_stdout(r: expectations)),
     ),
   }
 }

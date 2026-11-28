@@ -3,10 +3,10 @@ module test.claim.revision_job_fixture.revision_job_light_claims
 import std.types { Bool, String }
 import std.algebra { trim }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.git { git_hash_object_command }
 import extdeps.rust.cargo_build { cargo_run_release_manifest_offline_command }
-import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds }
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds}
 
 // THE REVISION JOB'S LIGHT, DISCRIMINATING CLAIM SET -- FIXTURES, NOT CLAIMS ABOUT THE PROGRAM.
 //
@@ -46,8 +46,13 @@ test fn the_guest_toolchain_links_c_into_rust() -> Bool {
     ProcessNotSpawned { program: _, cause: _ } => false
   }
   let linked = match run_shell_command_capture(command: cargo_run_release_manifest_offline_command(manifest_path: concat(link_smoke_dir, "/Cargo.toml"), target_dir: "/work/link-smoke-target"), transport: LocalExec) {
-    ProcessOutputPresent { text: t } => trim(s: t) == "link-smoke 46"
-    _ => false
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: t } => trim(s: t) == "link-smoke 46"
+      _ => false
+    }
+    // The link-smoke binary was never spawned, so its banner was never printed: unobserved, not a
+    // mismatch. A fabricated exit here would print a mismatch the child never caused.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => false
   }
   hashed && linked
 }

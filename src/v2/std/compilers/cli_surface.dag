@@ -156,7 +156,7 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
   admit_callers: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_stdin_local"),
-    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_capture"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
     decl_ref(
       module_path: "gunbc.codex_app_server_press",

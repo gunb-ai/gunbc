@@ -3,6 +3,9 @@ module test.claim.r2_conditional_put_race_probe
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.optional { Present, Absent }
 import extdeps.object_storage { ObjectEntityTag, PutIfMatch }
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessNotSpawned }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.exec.command { argv_words }
 import extdeps.version.semver { semver_core_of_dotted, semver_minimum_of_constraint, semver_version_label }
 import extdeps.tools.curl {
@@ -15,6 +18,7 @@ import gunbc.cloudflare.r2_conditional_put_race_probe {
   RaceRoundObservation, RaceRoundUnseeded, RaceRoundRaced,
   RaceOverlap, RaceOverlapEstablished, RaceOverlapUnestablished, race_overlap_of_trace,
   RaceRoundConsistent, RaceRoundBothSucceeded, RaceRoundInconclusive, race_round_verdict,
+  RaceRoundWritersUnstarted, race_round_line, race_receipt_round, race_probe_receipt, race_round_with,
   RaceProbePassed, RaceProbeFalsified, RaceProbeInconclusive, race_probe_verdict,
   race_writer_a, race_writer_b, race_probe_rounds,
   r2_conditional_put_race_receipt, race_receipt_reading, RaceReceiptRead, RaceReceiptUnreadable,
@@ -29,6 +33,17 @@ import extdeps.uri { Uri, Https }
 // it wrote, are constructed here. The real producer is run_r2_conditional_put_race_probe under the
 // fleet-converge mode r2_conditional_put_race_probe, whose receipt is the live reading; the route
 // claims below run the real argv builder and the real parsers over the shapes curl writes.
+
+// THE MUTATION CONTROL (documented, not inlined) -- PRODUCER DECISION, NOT TYPES (review 97468).
+// The testable types stay in place; restore ONLY the old producer decisions and the writers claims
+// turn RED:
+//  * in r2_conditional_put_race_probe.race_round_line, map the RaceRoundWritersUnstarted arm back
+//    to concat("seed refused: ", c as String) -- the round-trip claim (race_round_line then
+//    race_receipt_round) then reads the line back as RaceRoundUnseeded and its pattern fails;
+//  * in race_round_verdict, map RaceRoundWritersUnstarted back to the shared
+//    "the round was not seeded" inconclusive -- the verdict claim's "seed is confirmed" and
+//    "writers never started" assertions both fail while the seed tag is still in hand.
+// Both mutations were run and reverted in-PR; the head carries the honest producer decisions.
 
 fn rep(status: Int) -> CurlParallelTransferReport { CurlParallelTransferReported { status: status } }
 
@@ -361,4 +376,82 @@ test fn an_upstream_citation_is_preferred_over_the_receipt() -> Bool {
     ObservedByReceipt { observed: _ } => false
   }
   preferred && deferred
+}
+
+
+// A SEALED SEED WITH UNSTARTED WRITERS IS NOT AN UNSEEDED ROUND (review 97468 blocker 4). A
+// writer spawn refusal AFTER a CONFIRMED seed used to be recorded as RaceRoundUnseeded, which
+// states a FALSE fact about the round: the seed answered with a tag. The seed keeps its
+// identity, the unstarted writers get their own record, and the words "was not seeded" must
+// never appear over a confirmed tag.
+test fn writers_unstarted_verdict_keeps_the_seed_and_refuses_the_unseeded_words() -> Bool {
+  match race_round_verdict(observation: RaceRoundWritersUnstarted { seed_tag: "seed-tag-9", cause: "curl was never spawned: transport refused" }) {
+    RaceRoundInconclusive { cause: c } =>
+      string_contains(s: c as String, pattern: "the seed is confirmed at tag seed-tag-9")
+        && string_contains(s: c as String, pattern: "writers never started")
+        && !string_contains(s: c as String, pattern: "was not seeded")
+    _ => false
+  }
+}
+
+// THE RECORD CARRIES ITS OWN IDENTITY THROUGH RENDER AND PARSE: the receipt line round trips
+// to the SAME observation, seed tag and cause intact -- never collapsing back to "seed
+// refused", which is the difference between keeping a sealed entity and republishing it.
+// THE PRODUCTION FOLD, NOT THE CLASSIFIER ALONE (round-4 review item 6): a declared 3-round run
+// whose two raced rounds are consistent and whose THIRD round had a confirmed seed with writers
+// that never spawned. Through race_probe_verdict and the receipt the probe publishes: the run is
+// inconclusive (the unstarted round proved nothing), never passed, and the receipt keeps the seed
+// tag -- the round the probe lost is recorded as itself in the fold's own output. Red before the
+// seed-preserving fold existed: the variant did not compile, and its pre-fix rendering parsed as
+// an unseeded round.
+test fn a_run_with_a_confirmed_seed_and_one_unstarted_round_is_inconclusive_never_passed() -> Bool {
+  let rounds = [raced(a: rep(status: 200), b: rep(status: 412)), raced(a: rep(status: 412), b: rep(status: 200)), RaceRoundWritersUnstarted { seed_tag: "seed-tag-9", cause: "curl was never spawned: transport refused" }]
+  match race_probe_verdict(declared_rounds: 3, observations: rounds) {
+    RaceProbeInconclusive { rounds: n, cause: c, witnesses: _ } =>
+      n == 3
+        && string_contains(s: c as String, pattern: "proved nothing")
+        && string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "writers unstarted seed=seed-tag-9")
+        && string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "verdict=inconclusive")
+        && !string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "verdict=passed")
+    _ => false
+  }
+}
+
+// THE PRODUCER, NOT THE AGGREGATE (round-5 review, controls): a CONFIRMED SEED plus a writer
+// ProcessNotSpawned, driven THROUGH race_round's own fold (race_round_with -- the exact function
+// the wet entry calls, with the two external steps supplied). The producer must keep the seed's
+// entity tag, give the unstarted writers their own observation carrying program and cause, and
+// answer NOTHING else: pre-fix this arm was RaceRoundUnseeded, which threw away a sealed entity
+// and told the next reader "the round was not seeded". The existing aggregate claims above
+// construct the variant directly and could not see such a mutation; this one drives the fold
+// that DECIDES it. Round bodies are local files only; no network, no credential.
+test fn a_confirmed_seed_with_unstarted_writers_goes_through_the_producer_fold() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_r2_producer.XXXXXX").path
+  let locator = R2ObjectLocator {
+    endpoint: R2S3Endpoint { account_id: "acct", jurisdiction: R2JurisdictionDefault },
+    bucket_name: "race-probe-bucket" as NonEmptyStr,
+    key: "race-probe-key" as NonEmptyStr,
+  }
+  match race_round_with(
+    round: 3 as Nat, locator: locator, netrc: "/dev/null" as FilePath, dir: dir as FilePath,
+    seed: (l, n, b) => Present { value: ObjectEntityTag { value: "seed-tag-9" as NonEmptyStr } },
+    writers: command => ProcessNotSpawned { program: "curl" as NonEmptyStr, cause: "transport refused to build the child" as NonEmptyStr },
+  ) {
+    RaceRoundWritersUnstarted { seed_tag: t, cause: c } =>
+      (t as String) == "seed-tag-9"
+        && string_contains(s: c as String, pattern: "curl")
+        && string_contains(s: c as String, pattern: "transport refused to build the child")
+        // The record is NOT "the round was not seeded": its own words say so.
+        && !string_contains(s: c as String, pattern: "not seeded")
+    _ => false
+  }
+}
+
+test fn writers_unstarted_round_round_trips_through_the_receipt_line() -> Bool {
+  let line = race_round_line(round: 3, observation: RaceRoundWritersUnstarted { seed_tag: "seed-tag-9", cause: "curl was never spawned: transport refused" })
+  match race_receipt_round(line: line, position: 3) {
+    Present { value: RaceRoundWritersUnstarted { seed_tag: t, cause: c } } =>
+      t == "seed-tag-9" && c == "curl was never spawned: transport refused"
+    _ => false
+  }
 }

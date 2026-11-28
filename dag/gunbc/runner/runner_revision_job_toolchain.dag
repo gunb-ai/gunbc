@@ -7,7 +7,7 @@ import std.algebra { trim }
 import std.resources { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.xz { xz_decompress_keep_command }
 import extdeps.tools.dpkg_deb { dpkg_deb_extract_command, dpkg_deb_control_fields_command }
@@ -18,7 +18,7 @@ import extdeps.gnupg.gpgv { gpgv_verify_cleartext_command, gpgv_valid_primary_fi
 import extdeps.glibc.ldconfig { ldconfig_root_command }
 import extdeps.os.ubuntu_ports_archive { ubuntu_ports_archive_root, ubuntu_ports_package_url }
 import extdeps.debian.version { DebianAlternative, parse_debian_relationships, constraint_satisfied }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted , process_capture_admitted}
 import gunbc.runner.revision_job_toolchain_pins {
   ToolchainPinnedDeb, toolchain_pinned_debs, toolchain_closure_roots, toolchain_archive_signing_key_fingerprint,
   toolchain_archive_suite, toolchain_inrelease_sha256, toolchain_packages_index_path,
@@ -214,9 +214,9 @@ fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
   let inrelease = concat(dir, "/InRelease")
   let verified_path = concat(dir, "/InRelease.verified")
   let packages_xz = concat(dir, "/Packages.xz")
-  if !process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: dir), transport: LocalExec)) {
+  if !process_capture_admitted(captured: run_shell_command_capture(command: mkdir_parents_command(path: dir), transport: LocalExec)) {
     ToolchainIndexRefused { step: "mkdir", detail: dir }
-  } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: concat(base, "/InRelease"), destination: inrelease), transport: LocalExec)) {
+  } else if !process_capture_admitted(captured: run_shell_command_capture(command: curl_download_command(url: concat(base, "/InRelease"), destination: inrelease), transport: LocalExec)) {
     ToolchainIndexRefused { step: "fetch-inrelease", detail: base }
   } else if !file_matches(path: inrelease, expected: toolchain_inrelease_sha256) {
     ToolchainIndexRefused { step: "inrelease-pin", detail: "InRelease does not match its pinned SHA-256" }
@@ -225,22 +225,25 @@ fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
     // and spawning it would abort the run rather than return a refusal.
     ToolchainIndexRefused { step: "verifier-missing", detail: "gpgv is not on this host's PATH" }
   } else { match run_shell_command_capture(command: gpgv_verify_cleartext_command(keyring: keyring, signed_file: inrelease, output: verified_path), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code: c, stderr: e } => ToolchainIndexRefused { step: "signature", detail: join(["gpgv exit ", to_string(c), ": ", e], "") }
     ProcessOutputAbsent => ToolchainIndexRefused { step: "signature", detail: "gpgv printed no status" }
-    // Exit 0 alone is not enough: gpgv writes the output even on a bad signature, so the signed text is
-    // read only once the pinned PRIMARY key has a VALIDSIG in this run's status.
     ProcessOutputPresent { text: status } =>
       if count(filter(gpgv_valid_primary_fingerprints(status: status), f => f == toolchain_archive_signing_key_fingerprint as String)) == 0 {
         ToolchainIndexRefused { step: "signer", detail: concat("no VALIDSIG from the pinned primary key in: ", status) }
       } else if !signed_text_lists_index(verified: Filesystem.Read(path: verified_path).content) {
         ToolchainIndexRefused { step: "index-listed", detail: "the signed InRelease does not list Packages.xz at its pinned SHA-256" }
-      } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: join([base, "/", toolchain_packages_index_path as String], ""), destination: packages_xz), transport: LocalExec)) {
+      } else if !process_capture_admitted(captured: run_shell_command_capture(command: curl_download_command(url: join([base, "/", toolchain_packages_index_path as String], ""), destination: packages_xz), transport: LocalExec)) {
         ToolchainIndexRefused { step: "fetch-packages", detail: toolchain_packages_index_path as String }
       } else if !file_matches(path: packages_xz, expected: toolchain_packages_index_sha256) {
         ToolchainIndexRefused { step: "packages-pin", detail: "Packages.xz does not match the digest the signed InRelease lists" }
-      } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: xz_decompress_keep_command(archive: packages_xz), transport: LocalExec)) {
+      } else if !process_capture_admitted(captured: run_shell_command_capture(command: xz_decompress_keep_command(archive: packages_xz), transport: LocalExec)) {
         ToolchainIndexRefused { step: "decompress", detail: packages_xz }
       } else { ToolchainIndexVerified { packages: concat(dir, "/Packages") } }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => ToolchainIndexRefused { step: "signature", detail: join(["gpgv was never spawned: ", p, ": ", why], "") }
+    // Exit 0 alone is not enough: gpgv writes the output even on a bad signature, so the signed text is
+    // read only once the pinned PRIMARY key has a VALIDSIG in this run's status.
   } }
 }
 
@@ -273,7 +276,7 @@ fn prove_toolchain_rows(store: String, dir: String, keyring: String) -> Toolchai
         ToolchainRowsDigestUnavailable { reason: r } => ToolchainRowsRefused { reasons: [r] }
         ToolchainRowsDigested { hex: h } => {
           let path = toolchain_closure_receipt_path(store: store, rows_digest: h as String)
-          let made = process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: concat(store, "/toolchain-closure")), transport: LocalExec))
+          let made = process_capture_admitted(captured: run_shell_command_capture(command: mkdir_parents_command(path: concat(store, "/toolchain-closure")), transport: LocalExec))
           let written = made && (Filesystem.WriteCreateNew(path: path, content: toolchain_closure_receipt_body(rows_digest: h as String)).success
             || Filesystem.Read(path: path).content == toolchain_closure_receipt_body(rows_digest: h as String))
           if written { ToolchainRowsProven { receipt: path } } else { ToolchainRowsRefused { reasons: [concat("writing the receipt failed: ", path)] } }
@@ -305,14 +308,17 @@ fn deb_path(debs_dir: String, r: ToolchainPinnedDeb) -> String {
 fn deb_reasons(debs_dir: String, r: ToolchainPinnedDeb) -> List<String> {
   let path = deb_path(debs_dir: debs_dir, r: r)
   let fetched = file_matches(path: path, expected: r.deb.sha256)
-    || process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: ubuntu_ports_package_url(p: r.deb), destination: path), transport: LocalExec))
+    || process_capture_admitted(captured: run_shell_command_capture(command: curl_download_command(url: ubuntu_ports_package_url(p: r.deb), destination: path), transport: LocalExec))
   if !fetched { [concat("fetch failed: ", r.deb.filename as String)] }
   else if !file_matches(path: path, expected: r.deb.sha256) { [concat("SHA-256 does not match its row: ", r.deb.filename as String)] }
   else { match run_shell_command_capture(command: dpkg_deb_control_fields_command(archive: path, fields: ["Package", "Version", "Architecture", "Depends", "Pre-Depends"]), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
     ProcessOutputPresent { text: control } => control_disagreements(r: r, control: control)
     ProcessOutputAbsent => [concat("no control fields: ", r.deb.filename as String)]
     ProcessRefused { exit_code: _, stderr: e } => [join(["dpkg-deb -f refused ", r.deb.filename as String, ": ", e], "")]
-  } }
+    }
+    ProcessCaptureNotSpawned { program: pp, cause: why } => [join(["dpkg-deb -f refused ", r.deb.filename as String, ": ", join(["never spawned ", pp, ": ", why], "")], "")]
+} }
 }
 
 fn prepare_toolchain_closure(store: String, debs_dir: String) -> ToolchainClosurePreparation {
@@ -322,7 +328,7 @@ fn prepare_toolchain_closure(store: String, debs_dir: String) -> ToolchainClosur
       let receipt = toolchain_closure_receipt_path(store: store, rows_digest: h as String)
       if Filesystem.Read(path: receipt).content != toolchain_closure_receipt_body(rows_digest: h as String) {
         PinnedRowsUnproven { rows_digest: h as String, expected_receipt: receipt }
-      } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: debs_dir), transport: LocalExec)) {
+      } else if !process_capture_admitted(captured: run_shell_command_capture(command: mkdir_parents_command(path: debs_dir), transport: LocalExec)) {
         ToolchainClosureRefused { reasons: [concat("mkdir ", debs_dir)] }
       } else {
         let reasons = flat_map(toolchain_pinned_debs, r => deb_reasons(debs_dir: debs_dir, r: r))

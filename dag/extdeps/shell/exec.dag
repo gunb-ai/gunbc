@@ -7,6 +7,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.transports.shell { ShellOutcome }
 import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
 import std.measure { ByteSize }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -307,3 +309,50 @@ fn classify_process_observation(
     ProcessRefused { exit_code: observation.exit_code, stderr: observation.stderr }
   }
 }
+
+// -------------------------------------------------------------------------------------------
+// THE CAPTURE GRAIN: a spawn AND a classification, as one answer.
+//
+// A caller that wants 'the product's stdout, or a refusal' asks for two things at once -- that a
+// child run, and that its observation be decoded under a policy. Those two facts have different
+// shapes and ProcessOutcome above carries only the second: its three arms are verdicts OVER AN
+// OBSERVATION THAT EXISTS. Until this type, a caller that also had to say 'the child never
+// spawned' had no arm for it and emitted ProcessRefused { exit_code: 0 - 1 } -- an exit code no
+// process on any platform has ever returned, fabricated into the one coproduct whose own doc
+// comment above promises that a caller 'cannot silently receive' a non-verdict. That is
+// gunbc.design_argument::fail_closed in its exact form: a refusal rendered as an observation.
+//
+// ProcessCaptureNotSpawned is ProcessRunOutcome::ProcessNotSpawned's MEANING at the capture grain
+// -- the same fact (no child was created) with the same fields (program, cause). It is spelled
+// separately because variant names are unique within a module and this module already spends that
+// name on ProcessRunOutcome; the spelling change is forced by the compiler, not chosen to widen
+// the vocabulary. It is NOT ProcessOutputAbsent: absence is a verdict over a child that DID run
+// and printed nothing, which is why the two arms cannot be merged.
+//
+// SHOULD BE GENERALIZED, NOT NOW (gunbc.design_argument::root_generalization, author answer (2)).
+// ProcessCaptureNotSpawned is a SECOND LEAF of one rule: it means what ProcessRunOutcome::ProcessNotSpawned
+// means, with the same fields, so it is a fork and a correctness concern rather than a style one. It does
+// not ride in this PR because the generalization is not additive -- writing SpawnOutcome<T> renames the arms
+// of a live coproduct (ProcessRan at 168 sites in 47 files, ProcessNotSpawned at 170 in 49, ProcessCaptured
+// at 232 in 72: ~400 sites in ~100 files), and v2-bootstrap builds only the two emitted closures, so that
+// rename would be the unverified half of a PR whose subject is a fabricated exit code.
+// TRIGGER: #16847 merged. FOLLOW-UP: PR C, opened right after it -- this PR already gates the capture
+// entry itself, so there is no separate capture-gate PR to sequence against -- introduces SpawnOutcome<T> in this module, re-expresses ProcessRunOutcome as
+// SpawnOutcome<ProcessObservation> and ProcessCaptureOutcome as SpawnOutcome<ProcessOutcome>, and deletes
+// both bespoke coproducts together with this note and the row below. OWNER: royal-ibex-664.
+// SWEPT BY: bright-ibex-807.
+// -------------------------------------------------------------------------------------------
+
+type ProcessCaptureOutcome
+  = ProcessCaptured { outcome: ProcessOutcome }
+  | ProcessCaptureNotSpawned { program: NonEmptyStr, cause: NonEmptyStr }
+
+// THE DEBT AS A CARRIER, in the form main already carries this kind of note (the two DissolutionCondition
+// rows on main -- extdeps/bmc/capability.dag bmc_firmware_semver_parser_dissolve_on and
+// extdeps/quantum/bach_double_slit_observation.dag bach_double_slit_observation_dissolve_on -- are
+// unbound_dissolution descriptions, gunbc.design_argument::source_annotations' machine-readable form for a
+// condition no mechanism can evaluate yet). It was briefly bound to DeclarationAppears { SpawnOutcome },
+// which is the wrong carrier here: the trigger would name a declaration this PR deliberately does not
+// write, so the row could only mature by the author's own later act, and nothing outside this module could
+// read it as due. The event named below is outside this module and dated.
+data process_capture_outcome_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: PR C, opened after #16847 merges, lands SpawnOutcome<T> in extdeps.shell.exec; ProcessRunOutcome becomes SpawnOutcome<ProcessObservation> and ProcessCaptureOutcome becomes SpawnOutcome<ProcessOutcome>, and both bespoke not-spawned arms (ProcessNotSpawned, ProcessCaptureNotSpawned) are deleted with this row. Until then the capture grain carries its own not-spawned arm, which is the second leaf this row is the debt for.")

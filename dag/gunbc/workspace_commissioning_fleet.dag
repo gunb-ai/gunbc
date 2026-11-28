@@ -31,7 +31,7 @@ import gunbc.workspace_commissioning_executor_store { workspace_executor_journal
 import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_credential_row }
 import gunbc.workspace_commissioning_start_observe { workspace_commissioning_start_observe, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable }
-import gunbc.workspace_commissioning_executor_input { workspace_executor_installed_adapter_matches }
+import gunbc.workspace_commissioning_executor_input { WorkspaceExecutorAdapterVerdict, AdapterMatches, AdapterDiffers, AdapterUnreadable, workspace_executor_installed_adapter_verdict }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_key }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
@@ -152,9 +152,12 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
     MicrovmHostBound { spec, host: _ } => match workspace_commissioning_runtime_refusal(provenance: provenance,
       release_dir: installed, login: spec.job_user) {
       Present { value: reason } => WorkspaceCommissioningFleetRefused { reason: reason }
-      Absent => if !workspace_executor_installed_adapter_matches(release_dir: installed as String, slot: key) {
-        WorkspaceCommissioningFleetRefused { reason: "commissioning executor installation is not established" }
-      } else { match workspace_commissioning_no_hold_refusal(provenance: provenance) {
+      Absent => match workspace_executor_installed_adapter_verdict(release_dir: installed as String, slot: key) {
+        AdapterDiffers => WorkspaceCommissioningFleetRefused { reason: "commissioning executor installation is not established" }
+        // A grant that could not be read is not an unestablished installation: the refusal says it is
+        // unread, with the cause the reader itself reported.
+        AdapterUnreadable { cause: c } => WorkspaceCommissioningFleetRefused { reason: join(["commissioning executor grant could not be read: ", c], "") }
+        AdapterMatches => match workspace_commissioning_no_hold_refusal(provenance: provenance) {
         Present { value: reason } => WorkspaceCommissioningFleetRefused { reason: reason }
         Absent => match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
           WorkspaceCommissioningStoreObserved { snapshot } => match workspace_executor_journal_observe(slot_key: key) {

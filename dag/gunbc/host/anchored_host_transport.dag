@@ -23,7 +23,7 @@ import extdeps.tools.gnu_coreutils { mkdir_create_only_with_mode_command, cat_fi
 import extdeps.tools.util_linux_findmnt { findmnt_fstype_for_path_command }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.shell
 import extdeps.network.endpoint { SocketAddress, render_network_host }
 import extdeps.dns.domain_name { DnsLabel }
@@ -42,7 +42,7 @@ import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
   HostBoundTransport, HostBoundTransportResolved, HostBoundTransportRefused, host_bound_transport_of,
 }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import gunbc.fleet.fleet_ssh_locus { prepare_ssh_agent_context, fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTargetResolved, SshTargetRefused }
 import gunbc.auth.authorization_pattern_selection {
@@ -664,6 +664,7 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
       ], "")
       Present { value: _ } =>
         match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
           ProcessOutputPresent { text: key_text } => join([
             "scan host=", row.host as String, " outcome=observed\n",
             "presented ", trim(s: key_text), "\n",
@@ -672,10 +673,13 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
           ], "")
           ProcessOutputAbsent => join(["scan host=", row.host as String, " outcome=no-key-offered; nothing to anchor-match\n"], "")
           ProcessRefused { exit_code: _, stderr: e } => join(["scan host=", row.host as String, " outcome=refused cause=", trim(s: e), "\n"], "")
+          }
+          ProcessCaptureNotSpawned { program: pp, cause: why } => join(["scan host=", row.host as String, " outcome=refused cause=", trim(s: join(["never spawned ", pp, ": ", why], "")), "\n"], "")
         }
     }
   }
 }
+
 
 // ── THE LIVE ANCHORED TRANSPORT, ONE COMPOSITION FOR EVERY CALLER ───────────────────────────────
 //
@@ -713,6 +717,7 @@ fn anchored_host_transport_live_per_boot(host: HostIdentity, attempt_raw: String
                 SshTargetRefused { endpoint: e, refusal: _ } => AnchoredBindingRefused { cause: join(["the fleet endpoint ", e, " for ", host as String, " is not an SSH target"], "") }
                 SshTargetResolved { target: target } =>
                   match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
                     ProcessOutputPresent { text: key_text } =>
                       match anchored_host_transport_per_boot(transport: FleetSsh {kind: ProbeLeg, target: target, context: context }, expected_boot_id: expected_boot_id, pin: Present { value: pin }, presented_key_line: trim(s: key_text)) {
                         AnchoredBindingBound { bound: b, anchor: a } =>
@@ -721,7 +726,13 @@ fn anchored_host_transport_live_per_boot(host: HostIdentity, attempt_raw: String
                       }
                     ProcessOutputAbsent => AnchoredBindingRefused { cause: join([host as String, " offered no host key to the scan"], "") }
                     ProcessRefused { exit_code: _, stderr: e } => AnchoredBindingRefused { cause: join(["the host-key scan of ", host as String, " was refused: ", trim(s: e)], "") }
-                  }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => AnchoredBindingRefused { cause: join(["the host-key scan of ", host as String, " was refused: ", trim(s: join(["never spawned ", __pp1, ": ", __pw1], ""))], "") }
+
+
+
+
+}
               }
             }
           }

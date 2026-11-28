@@ -31,7 +31,7 @@ import gunbc.fleet.fleet_convergence_verdict {
   fleet_convergence_verdict,
 }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments }
-import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enroll_apply }
+import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enroll_apply, fleet_host_key_enroll_receipt_refusal }
 
 // Operator verdict join 5 (2026-08-09): the receipts hosts PUBLISH were consumed by
 // nothing — converge wrote /opt/gunbc/receipts/<host>-converge-receipt.txt and
@@ -271,6 +271,14 @@ fn collect_fleet_convergence_wet() -> ProcessExit {
     Present { value: raw } => trim(s: raw)
   }
   let enroll_lines = fleet_host_key_enroll_apply(home: home)
+  // The SSH collection legs are GATED on the enrollment decision, the same refusal the
+  // standalone entry applies (round-5 review, blocker 4): with a non-positive readback the
+  // pin the collector's ssh depends on is unverified, and dispatching anyway trusts whatever
+  // answered -- the anchor hole the pin closes.
+  let enroll_refusal = fleet_host_key_enroll_receipt_refusal(receipt: enroll_lines)
+  if enroll_refusal != "" {
+    exit_failure(reason: join([enroll_refusal, " -- fleet convergence collect halted before any SSH", ""]))
+  }
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(
     enrollments: fleet_enrollments,

@@ -19,7 +19,8 @@ import gunbc.fleet.fleet_ssh_access { operator_ssh_principal }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_subject, workspace_gateway_evidence }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 
 // Execute in the existing operator context with its explicitly selected agent. The selector is
 // PUBLIC key material. No private key is copied, and the root controller never invokes this path.
@@ -56,11 +57,16 @@ fn workspace_observe_gateway_subject_wet(subject: ForwardingAdmissionSubject,
       match ssh_stdio_forward_command(subject: subject, options: options) {
         Absent => WorkspaceGatewayUnobserved { reason: "forwarding command cannot represent this subject" }
         Present { value: command } => {
-          let observed = run_shell_command_observe(command: timeout_command(duration: second(count: 5), kill_after: second(count: 1), command: command), transport: LocalExec)
+          match run_shell_command_observe_outcome(command: timeout_command(duration: second(count: 5), kill_after: second(count: 1), command: command), transport: LocalExec) {
+            ProcessNotSpawned { program: p, cause: why } => WorkspaceGatewayUnobserved {
+              reason: join(["the gateway forwarding command was never spawned: ", p as String, " -- ", why as String], "") as NonEmptyStr,
+            }
+            ProcessRan { observation: observed } =>
           match clock_now_probed_at() {
             Absent => WorkspaceGatewayUnobserved { reason: "gateway observation clock unavailable" }
             Present { value: observed_time } => WorkspaceGatewayObserved { evidence: workspace_gateway_evidence(subject: subject,
               known_host: enrolled_host_key, observation: observed, observed_at: observed_time as String) }
+          }
           }
         }
       }

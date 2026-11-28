@@ -206,7 +206,7 @@ data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 // THE FORGERY THIS SHAPE CLOSES. An earlier revision of this receipt recognised the bounder's own
 // --verbose enforcement diagnostic in the run's stderr. That was withdrawn under a binding review
 // finding on gunbc#17013: stderr is shared with the bounded subject (gunbc.command_runner's
-// run_shell_command_observe captures it separately from the exit status, and any program the subject runs
+// run_shell_command_observe_outcome carries the run's stderr separately from the exit status, and any program the subject runs
 // may write it -- named in prose, not marked: a marked reference into gunbc.command_runner currently
 // refuses because that module does not normalize, a pre-existing main-tree condition this PR does not
 // touch), so a

@@ -1,0 +1,161 @@
+module test.claim.runner.runner_qemu_toolchain_placement_witness
+
+// CLAIMS FOR THE QEMU TOOLCHAIN TREE CHECK (review 97468 blocker 4; round-4 review item 3: the
+// probe is the shared PARENT LISTING, not test(1) -- exit 1 never established absence, because a
+// mode-000 parent answers exit 1 with empty stderr just like an absent entry, and only a
+// SUCCESSFUL listing establishes it). The listing is a WET child: the transport refuses under a
+// remote or declined session, and no claim here can force LocalExec to refuse hermetically -- so
+// the classifier claims pin the decoding, and the production claims drive the real entry, the
+// place_qemu_toolchain_wet placement itself.
+
+// THE MUTATION CONTROL (documented, not inlined) -- PRODUCER DECISION, NOT TYPES (review 97468).
+// Restore in runner_qemu_toolchain.qemu_toolchain_tree_standing either
+//  * the ProcessCaptureNotSpawned arm to QemuToolchainTreeAbsent (the original defect: silence as
+//    absence), or
+//  * the ProcessRefused arms to one blanket QemuToolchainTreeAbsent (every nonzero as absence),
+// and the matching claims below go false. Restore in place_qemu_toolchain_wet a stage-on-Unreadable
+// route (the Unreadable arm falling through to the staging branch) and the production placement
+// claim goes false -- the refusal it asserts never appears. Restore the membership predicate to a
+// constant (Stands always, or Absent always) and the wet production claims go false. All mutations
+// were run and reverted in-PR; the head carries the honest arms.
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.runner.runner_qemu_toolchain {
+  QemuToolchainTreeStanding, QemuToolchainTreeStands, QemuToolchainTreeAbsent,
+  QemuToolchainTreeUnreadable, qemu_toolchain_tree_standing, qemu_toolchain_tree_test_wet,
+  QemuToolchainLocation, QemuToolchainPlacement, QemuToolchainTreePresent, QemuToolchainPlacementRefused,
+  qemu_toolchain_location, place_qemu_toolchain_wet,
+}
+import gunbc.command_runner { run_shell_command_capture, process_capture_admitted, LocalExec }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.chmod { chmod_set_mode_command }
+import extdeps.shell
+import extdeps.shell.exec { ProcessCaptureOutcome, ProcessCaptureNotSpawned, ProcessCaptured, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+
+// A LISTING THAT NEVER SPAWNED ANSWERED NOTHING. It is NOT "absent": treating silence as
+// absence would let placement stage a replacement over a tree the recipe may already own -- the
+// exact defect the reviewer named ("an unspawned `test -e` selects staging"), one grain later in
+// the shared-listing route that replaced test(1).
+test fn spawn_refused_tree_check_is_unreadable_not_absent() -> Bool {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptureNotSpawned { program: "ls -1 -A -- <parent>/." as NonEmptyStr, cause: "the transport refused to build the child" as NonEmptyStr }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A -- <grandparent>/." as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
+    QemuToolchainTreeUnreadable { cause: c } =>
+      string_contains(s: c, pattern: "ls -1 -A -- <parent>/.")
+        && string_contains(s: c, pattern: "the transport refused to build the child")
+    _ => false
+  }
+}
+
+// A MODE-000 PARENT IS NOT AN ABSENT TREE (round-4/5 review item 3). ls exits 2 on the denied
+// directory and exits 1 on some usage errors; test(1) answered BOTH absence and unreadable
+// with exit 1, which is exactly why the listing replaced it. A captured nonzero of the
+// SUBJECT's listing is a failed reading that settles only against a completed GRANDPARENT
+// listing: absent there is absence; standing-but-unlistable here is UNREADABLE.
+test fn a_denied_parent_listing_is_unreadable_not_absent() -> Bool {
+  match qemu_toolchain_tree_standing(
+    captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "cannot access '<parent>/.': Permission denied" } },
+    entry_name: "qemu", parent_name: "base",
+    parent_listing: ProcessCaptured { outcome: ProcessOutputPresent { text: "base\narchives\n" } },
+  ) {
+    QemuToolchainTreeUnreadable { cause: c } => string_contains(s: c, pattern: "exit 1") && string_contains(s: c, pattern: "would not list")
+    _ => false
+  }
+}
+
+test fn an_errored_tree_check_is_unreadable_not_absent() -> Bool {
+  match qemu_toolchain_tree_standing(
+    captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } },
+    entry_name: "qemu", parent_name: "base",
+    parent_listing: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } },
+  ) {
+    QemuToolchainTreeUnreadable { cause: c } =>
+      string_contains(s: c, pattern: "exit 2")
+        && string_contains(s: c, pattern: "Permission denied")
+    _ => false
+  }
+}
+
+// THE LISTING ESTABLISHES BOTH ANSWERS IT CLAIMS: a successful listing that names the entry is
+// present; a successful listing the parent positively lacks it is absent (empty stdout is the
+// empty-directory case of the same reading).
+test fn a_successful_listing_answers_present_and_absent_by_membership() -> Bool {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "qemu\narchives\n" } }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
+    QemuToolchainTreeStands =>
+      match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "archives\n" } }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
+        QemuToolchainTreeAbsent =>
+          match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputAbsent }, entry_name: "qemu", parent_name: "base", parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted" as NonEmptyStr }) {
+            QemuToolchainTreeAbsent => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE PRODUCTION FOLD, NOT THE CLASSIFIER (round-3 review, controls). The wet tree check runs the
+// real listing child over a real tree: a directory that stands classifies Stands, and a name under
+// the same parent that does not exist classifies Absent. A mutation that collapsed Stands or
+// conflated the two turns this red at the entry the placement itself calls.
+test fn the_wet_tree_check_answers_for_a_real_tree_and_for_a_missing_one() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_tree.XXXXXX").path
+  let stands = qemu_toolchain_tree_test_wet(path: made as String)
+  let absent = qemu_toolchain_tree_test_wet(path: join([made as String, "/no-such-tree"], ""))
+  match stands {
+    QemuToolchainTreeStands => match absent { QemuToolchainTreeAbsent => true _ => false }
+    _ => false
+  }
+}
+
+// A MISSING PARENT IS A POSITIVE ABSENCE, NOT UNREADABLE (round-4b): the kernel resolved the
+// parent and found no entry, so the tree cannot stand -- a first placement under a missing parent
+// is Absent and staging may proceed. Collapsing the lookup's ENOENT into Unreadable would refuse
+// the first placement of a fresh toolchain forever.
+test fn a_missing_parent_is_a_positive_absence_not_unreadable() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_parent.XXXXXX").path
+  match qemu_toolchain_tree_test_wet(path: join([made as String, "/no-parent/tree"], "")) {
+    QemuToolchainTreeAbsent => true
+    _ => false
+  }
+}
+
+// THE DEEP MISSING CHAIN IS HONESTLY UNREADABLE (round-5): with the grandparent ALSO missing, no
+// completed reading settles the subject, and the fold refuses instead of trusting an error string.
+test fn a_chain_of_missing_parents_is_unreadable_not_absent() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_deep.XXXXXX").path
+  match qemu_toolchain_tree_test_wet(path: join([made as String, "/no/such/parent/tree"], "")) {
+    QemuToolchainTreeUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+// PLACE_QEMU_TOOLCHAIN_WET REFUSES BEFORE STAGING WHEN THE LISTING ERRORS (round-3 review: "a
+// mutation that retains TreeUnreadable there but stages on it in place_qemu_toolchain_wet escapes
+// the test"; round-4 item 3: THE CASE IS THE MODE-000 PARENT, which test(1) hid behind exit 1).
+// A chmod-000 home makes the real parent listing exit 2 -- the unreadable standing arrives through
+// the transport, with no injection. A refusal that staged would leave a staging directory under
+// the base and a Published/absent-path arm; this asserts the refusal names the failed check.
+test fn place_refuses_before_staging_when_the_existence_check_errors() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_home.XXXXXX").path
+  let locked = run_shell_command_capture(command: chmod_set_mode_command(chmod_program: "/bin/chmod" as NonEmptyStr, mode: "000" as NonEmptyStr, path: home as String), transport: LocalExec)
+  let placement = place_qemu_toolchain_wet(location: qemu_toolchain_location(home: home as String, install_dir: "qemu" as NonEmptyStr), archives: [])
+  let restored = run_shell_command_capture(command: chmod_set_mode_command(chmod_program: "/bin/chmod" as NonEmptyStr, mode: "755" as NonEmptyStr, path: home as String), transport: LocalExec)
+  match placement {
+    QemuToolchainPlacementRefused { archives: _, cause: c } =>
+      string_contains(s: c, pattern: "could not be checked")
+        && process_capture_admitted(captured: locked)
+        && process_capture_admitted(captured: restored)
+    _ => false
+  }
+}
+
+// AN EXISTING TREE IS NEVER REPLACED, through the production entry: with the recipe root standing,
+// placement reports the tree present and publishes nothing -- no staging run, no archives.
+test fn an_existing_tree_is_reported_present_by_the_production_placement() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_home.XXXXXX").path
+  let location = qemu_toolchain_location(home: home as String, install_dir: "qemu" as NonEmptyStr)
+  let made = run_shell_command_capture(command: mkdir_parents_command(path: location.root as String), transport: LocalExec)
+  match place_qemu_toolchain_wet(location: location, archives: []) {
+    QemuToolchainTreePresent => process_capture_admitted(captured: made)
+    _ => false
+  }
+}

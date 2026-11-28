@@ -6,9 +6,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.tools.gnu_coreutils { ls_long_directory_command }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import std.algebra { trim }
 import gunbc.fleet.fleet_host_key_enrollment {
   fleet_automation_authorized_keys_line,
@@ -84,11 +84,18 @@ fn fe_appended_exactly_once(home: String, line: String) -> Bool {
 // implies both held; these assertions make the modes OBSERVED, not merely sequenced.
 fn fe_mode_is(listing_prefix: String, path: String) -> Bool {
   match run_shell_command_capture(command: ls_long_directory_command(path: path), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: listing } =>
       string_contains(s: listing, pattern: listing_prefix)
     ProcessOutputAbsent => false
     ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => false
+
+
+
+
+}
 }
 
 // THE SECOND VERDICT: the production route's presence answer over the enrolled file is

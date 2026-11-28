@@ -25,9 +25,10 @@ import extdeps.tools.stat { stat_owner_user_name_command }
 import std.algebra { Empty, trim }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
 import extdeps.shell.exec {
-  ExitZeroSucceeds, process_exit_is_admitted,
+  ExitZeroSucceeds, process_exit_is_admitted, ProcessExitPolicy,
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  ProcessObservation, process_observation, classify_process_observation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned,
+  process_observation, classify_process_observation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned,
+  ProcessCaptureOutcome, ProcessCaptured, ProcessCaptureNotSpawned,
 }
 import extdeps.git { is_git_program }
 import gunbc.git_argv_route_wall {
@@ -220,9 +221,14 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 //
 // TWO CONSEQUENCES, and the second is the useful one.
 //
-// There is no unspawnable-versus-ran distinction for this surface to model. A fourth "not spawned"
-// variant would be an uninhabited arm that every consumer must handle and none can ever reach, so
-// it is deliberately absent.
+// THE SPAWNED-VERSUS-NEVER-SPAWNED DISTINCTION IS REAL, but it lives where the decision is made,
+// not in the child. A program that cannot exec aborts the evaluation as above, and there is no
+// reading left to inspect: ProcessExit needs no variant for it. What DOES need an answer is the
+// step before any exec -- the spawner declining to build the command at all. Nothing ran and no
+// abort happens there, and this module used to answer that case by writing an exit code for a child
+// that never existed (the `exit_code: 0 - 1` this text used to rationalize). The capture grain
+// answers it as ProcessCaptureOutcome::ProcessCaptureNotSpawned { program, cause }: an arm with a
+// real producer, not an uninhabited one, because the refusal path is reachable.
 //
 // AND A CALLER CANNOT PROBE FOR A BINARY'S EXISTENCE BY TRYING TO RUN IT. The attempt does not
 // return an answer; it stops the line. Presence must be asked of something that exists -- spawn a
@@ -230,11 +236,13 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 // wreckage. That is why a separate presence probe has to exist, and it is a boundary fact about
 // the transport rather than a limitation of this module.
 //
-// THE BUILT/REFUSED DISTINCTION SURVIVES HERE TOO, and stays distinguishable from an ordinary
-// failed run even though both terminate in the same ProcessRefused variant: a build refusal
-// carries the sentinel exit_code: 0 - 1, which no real process exit code is, while a command that
-// reached shell.Exec.RunArgv and exited nonzero carries that process's own exit_code. A caller
-// matching on exit_code, not just the variant, can still tell "never ran" from "ran and failed".
+// THE BUILT/REFUSED DISTINCTION SURVIVES HERE TOO, and it needs no invented exit code to do it: a
+// refusal returns Absent -- NO ProcessExit at all, because no child was created and an exit code
+// written for a run that never happened is an observation nobody observed
+// (gunbc.design_argument::fail_closed) -- while a command that reached shell.Exec.RunArgv returns
+// Present { value: .. } carrying that process's OWN exit_code. At the capture entry the same fact
+// is ProcessCaptureOutcome::ProcessCaptureNotSpawned { program, cause }, which is what the
+// exit_code: 0 - 1 that used to be fabricated there was finally replaced with.
 //
 // THE SPAWN-REFUSAL ASYMMETRY SURVIVES THE COLLAPSE, and it survives because the collapse never
 // touched what program each arm names -- only how the resulting argv reaches the process. LocalExec
@@ -265,71 +273,17 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 //
 // The coproduct makes the failure unignorable: output is reachable ONLY through the variant that
 // carries it, so a caller cannot read text without having confronted the arm where there is none.
-// THE RAW OBSERVATION, FOR CALLERS WHOSE PRODUCT IS THE OUTPUT **EVEN WHEN THE PROCESS FAILED**.
-//
-// run_shell_command_capture below answers "what did this print IF it succeeded": classify_process_
-// observation returns ProcessRefused { exit_code, stderr } on a non-admitted exit and DISCARDS
-// stdout. That is right for a caller reading a value out of a command, where output from a failed
-// run is not a value.
-//
-// It is exactly wrong for a caller whose evidence IS the stdout of a run that failed. A Firecracker
-// guest's serial console arrives on the VMM's stdout, so a guest that panics and is then killed by
-// its deadline produces its most important output on the stream the classifier throws away -- and a
-// receipt that then reported stderr as "the console" would be a fabricated label on missing
-// evidence, which gunbc.design_argument::fail_closed forbids by name.
-//
-// So this returns the triple and lets the caller decide, rather than widening ProcessOutcome for
-// every consumer in the fleet. Two different questions, two functions; the classifier is untouched
-// and no existing caller changes.
-// DECLARED-UNCHECKED RESIDUAL for git (gunbc.design_argument::guarantee_ladder / fail_closed), stated at
-// its true rung. The wall gate runs in observe_outcome, run_shell_command and run_shell_command_stdin_local;
-// THIS entry (and run_shell_command_capture, which delegates to it) is left ungated for a TRUE reason, NOT
-// "a refusal cannot ride": the only refusal arm ProcessObservation offers is process_observation(exit_code:
-// 0 - 1, ...) -- the command_over_transport-refused arm below -- and ProcessObservation is the OBSERVED
-// child result, so that -1 is a FABRICATED observed exit code. That sentinel is a pre-existing fail_closed
-// defect (a plausible exit fabricated where none was observed); capture turns it into ProcessRefused{exit_code:
-// -1}. Routing the wall through it would SPREAD the fabrication, so the wall does NOT ride it here. The
-// repair (and the TRIGGER to gate this entry) is a typed not-spawned result -- migrate these
-// callers/signatures to ProcessRunOutcome, which carries ProcessNotSpawned. Its one git caller,
-// worker_git_subtree_apply_spawn_wet_witness wre3_gate_observation (read-only `rev-parse --absolute-git-dir`),
-// sits here and is never inspected by the wall; its verb `rev-parse` IS on the wall's read-only allowlist, so
-// if it were gated (post-migration) it would be admitted via the read-only verb -- the leading-subcommand
-// walk skips the `-c`/`--git-dir` operands and lands on `rev-parse`, no `-C`-first reordering needed. Counted
-// here, not concealed.
-fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
-{
-  match command_over_transport(command: command, transport: transport) {
-    CommandOverTransportRefused { cause: c } =>
-      process_observation(
-        exit_code: 0 - 1,
-        stdout: "",
-        stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
-      )
-    CommandOverTransportBuilt { command: over } =>
-      {
-        let run = shell.Exec.RunArgv(
-          program: over.program.invocation,
-          arguments: process_argv_expansion(
-            surface: cli_surface_of_literal_words(words: over.arguments)
-          ),
-        )
-        process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
-      }
-  }
-}
-
-// THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
-// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation.
 // THE GIT ROUTE WALL GATE. Before any transport wrapping, classify whether the inner ArgvCommand's
 // program is git (by basename, not exact spelling) and if so, consult the route wall.
 // SCOPE OF THE GUARANTEE, stated at its real rung (gunbc.design_argument::guarantee_ladder): this gate
-// (git_route_wall_admits + refusal surfaces git_route_wall_refusal / git_route_wall_refusal_exit) is
-// compulsory for RECOGNIZED DIRECT-GIT argvs routed through run_shell_command_observe_outcome,
-// run_shell_command and run_shell_command_stdin_local. Two entries that reach a spawn --
-// run_shell_command_observe and run_shell_command_capture -- do NOT consult the wall; each carries its own
-// declared-unchecked-residual comment naming its TRUE reason (their only refusal arm is the fabricated
-// exit_code: 0 - 1 sentinel, whose repair is a typed not-spawned ProcessRunOutcome result -- the trigger),
-// so the residual is counted, not concealed (gunbc.design_argument::fail_closed). A recognized bare mutating
+// (git_route_wall_admits + refusal surfaces git_route_wall_refusal / git_route_wall_refusal_exit /
+// git_route_wall_refusal_capture) is compulsory for RECOGNIZED DIRECT-GIT argvs routed through ALL FOUR
+// entries that reach a spawn: run_shell_command_observe_outcome, run_shell_command,
+// run_shell_command_stdin_local and run_shell_command_capture. No entry that reaches a spawn is exempt:
+// capture stood outside this gate only while its one refusal arm was the fabricated exit_code: 0 - 1
+// sentinel -- routing the wall through a fabrication spreads it -- and with ProcessCaptureOutcome's typed
+// ProcessCaptureNotSpawned the gate closed there as well, under its own capture-grain red controls on the
+// route-wall witness. A recognized bare mutating
 // git argv handed to a gated entry is refused on BOTH arms (local AND SSH): command_runner is the only
 // module turning an ArgvCommand into a local process, and the gate runs before command_over_transport, so a
 // remote `git commit -m x` without in-repo dressing -- which would run in the SSH session's ambient CWD, the
@@ -368,9 +322,45 @@ fn git_route_wall_refusal_exit(command: ArgvCommand) -> ProcessExit {
   exit_failure(reason: concat("git route wall: bare mutating argv refused at workdir-free route for program ", concat(command.program.invocation, "; use gunbc.git_workdir_free_route")))
 }
 
-// THE TYPED REFUSAL SURFACE: ProcessRunOutcome is the one meaning of "nothing ran". A transport that
-// refuses to build the command spawned nothing either, so it is the same arm, never an exit code:
-// no process ran, and a sentinel exit status would be a fabricated observation (gunbc.design_argument::fail_closed).
+
+// THE TYPED REFUSAL FOR THE CAPTURE ENTRY (run_shell_command_capture). Same meaning as
+// git_route_wall_refusal: no child was ever created, so the honest answer is the typed
+// not-spawned arm of ProcessCaptureOutcome -- never a ProcessCaptured verdict, never an exit code.
+fn git_route_wall_refusal_capture(command: ArgvCommand) -> ProcessCaptureOutcome {
+  ProcessCaptureNotSpawned {
+    program: command.program.invocation,
+    cause: concat("git route wall: bare mutating argv refused at workdir-free route for program ", concat(command.program.invocation, "; use gunbc.git_workdir_free_route")) as NonEmptyStr,
+  }
+}
+
+// THE TYPED REFUSAL SURFACE: at this entry, ProcessRunOutcome::ProcessNotSpawned is the meaning of
+// "nothing ran". A transport that refuses to build the command spawned nothing either, so it is the
+// same arm, never an exit code: no process ran, and a sentinel exit status would be a fabricated
+// observation (gunbc.design_argument::fail_closed). At the CAPTURE grain the same rule has a declared
+// second leaf, ProcessCaptureOutcome::ProcessCaptureNotSpawned -- one rule, two grains, until PR C
+// folds both into SpawnOutcome<T> (the explanation and the machine-readable debt row sit on the type
+// in extdeps/shell/exec.dag: ProcessCaptureOutcome's comment and process_capture_outcome_dissolve_on).
+//
+// THIS IS ALSO THE ONLY ENTRY WHOSE PRODUCT IS THE RAW OBSERVATION **EVEN WHEN THE PROCESS FAILED**,
+// which is why the fleet's stdout-of-a-failed-run callers (the Firecracker serial-console receipts,
+// the census image probes, the rootfs capture legs) route here rather than at
+// run_shell_command_capture below. Capture answers "what did this print IF it succeeded":
+// classify_process_observation returns ProcessRefused { exit_code, stderr } on a non-admitted exit
+// and DISCARDS stdout. That is right for a caller reading a value out of a command, where output
+// from a failed run is not a value. It is exactly wrong for a caller whose evidence IS the stdout of
+// a run that failed: a Firecracker guest's serial console arrives on the VMM's stdout, so a guest
+// that panics and is then killed by its deadline produces its most important output on the stream
+// the classifier throws away -- and a receipt that then reported stderr as "the console" would be a
+// fabricated label on missing evidence, which gunbc.design_argument::fail_closed forbids by name.
+// So the triple is returned and the caller decides; the classifier is untouched.
+//
+// GIT COVERAGE, stated rather than assumed: the one caller on this entry whose program is git is
+// test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness wre3_gate_observation, via
+// extdeps.git git_absolute_git_dir_premise_argv (`-c safe.directory=.. --git-dir <repo>/.git
+// rev-parse --absolute-git-dir`). It is ADMITTED, by the wall's leading-subcommand walk skipping the
+// `-c`/`--git-dir` operands and landing on the read-only verb `rev-parse` -- no `-C`-first reordering
+// was needed -- and the witness's own claim asserts that admission, so this sentence is checked and
+// not merely written.
 fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
   uses net: Network
 {
@@ -400,26 +390,97 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
   }
 }
 
-// THE UNCHECKED ROUTE, declared. Capture's product is stdout, so it returns ProcessOutcome (the three
-// output arms) via run_shell_command_observe (the ProcessObservation record path). The wall gate runs in
-// observe_outcome, run_shell_command and run_shell_command_stdin_local; capture is left ungated for the SAME
-// TRUE reason as run_shell_command_observe (which it delegates to), NOT "a refusal cannot ride": the only
-// refusal its ProcessOutcome can express today is ProcessRefused{exit_code: -1}, reached from observe's
-// process_observation(exit_code: 0 - 1, ...) sentinel -- a FABRICATED observed exit code, a pre-existing
-// fail_closed defect that routing the wall would spread. It also cannot redeclare ProcessNotSpawned (the
-// compiler rejects a second same-named variant in this module, where it already lives on ProcessRunOutcome).
-// The repair (and the TRIGGER to gate capture) is migrating its callers/signature to a typed not-spawned
-// ProcessRunOutcome result. ONE live git caller remains here, named precisely:
+// THE CAPTURE ROUTE, now fully guarded (gunbc.design_argument::guarantee_ladder / fail_closed). Capture's
+// product is stdout, so its answer is ProcessCaptureOutcome: ProcessCaptured carries the
+// classify_process_observation verdict under ExitZeroSucceeds over an observation that EXISTS, and
+// ProcessCaptureNotSpawned carries the case where no child was ever created. It is the entry that
+// used to answer a refusal with process_observation(exit_code: 0 - 1, ...) and therefore with
+// ProcessRefused { exit_code: -1 } -- an exit code fabricated into a coproduct whose arms are all
+// verdicts over an observed run. That fabrication is gone: the transport's refusal is now a typed
+// arm naming the program and the cause, exactly as observe_outcome has always spelled it.
+//
+// GATED, LIKE THE OTHER THREE ENTRIES (round 6, brief goal 2). The wall gate now runs in
+// observe_outcome, run_shell_command, run_shell_command_stdin_local AND capture: a bare mutating
+// git argv (any spelling, local or ssh) answers ProcessCaptureNotSpawned with the wall's cause
+// BEFORE command_over_transport is consulted -- no fabricated verdict, never a ProcessCaptured
+// claim about a child that never ran (gunbc.design_argument::fail_closed). The original reason
+// capture waited -- a refusal could only ride the fabricated -1 sentinel, so gating would spread
+// the fabrication -- was retired by the typed not-spawned arm above; what kept the gate back
+// since was its CONTROL SET, now landed in test/claim/git_command_runner_route_wall_witness:
+// bare-mutating local/add, absolute /usr/bin/git, deep absolute, and the SSH arm over THIS entry,
+// plus the gate-inversion mutation (muts M18) that proves those claims go red when the gate is
+// deleted. ONE live git caller runs through capture today:
 //   gunbc.runner.runner_revision_job_guest::revision_job_tree_steps (git init / add / snapshot commit /
 //   diff-tree, L100-110) is executed through capture by test/claim/runner/runner_revision_job_guest_
-//   wet_witness::run_all. Its commands are all `-C`-dressed (the shipped builders), so the wall would ADMIT
-//   them -- leaving it on the unchecked capture route is a counted gap, not a concealed one.
-fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
+//   wet_witness::run_all. Its commands are all `-C`-dressed (the shipped builders), so the wall
+//   ADMITS them -- witnessed by that wet claim, not by prose.
+fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessCaptureOutcome
 {
-  classify_process_observation(
-    policy: ExitZeroSucceeds,
-    observation: run_shell_command_observe(command: command, transport: transport),
-  )
+  if !git_route_wall_admits(command: command) {
+    git_route_wall_refusal_capture(command: command)
+  } else {
+  match command_over_transport(command: command, transport: transport) {
+    CommandOverTransportRefused { cause: c } =>
+      ProcessCaptureNotSpawned {
+        program: command.program.invocation,
+        cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
+      }
+    CommandOverTransportBuilt { command: over } =>
+      {
+        // shell.Exec.RunArgv, NOT RunArgvOutcome, and that is a decision rather than an oversight:
+        // which shell.Exec operation an entry names decides where a HERMETIC claim stops
+        // (HostEffectRefused at that operation), and capture is the entry the fleet's receipt
+        // witnesses rest on. The spawn-abort fact is documented on run_shell_command above and is a
+        // separate matter from the pre-spawn refusals this entry owns; moving both at once would
+        // move 156 call sites' host-effect surface for a reason this PR does not have.
+        let run = shell.Exec.RunArgv(
+          program: over.program.invocation,
+          arguments: process_argv_expansion(
+            surface: cli_surface_of_literal_words(words: over.arguments)
+          ),
+        )
+        ProcessCaptured {
+          outcome: classify_process_observation(
+            policy: ExitZeroSucceeds,
+            observation: process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr),
+          ),
+        }
+      }
+  }
+  }
+}
+
+// Did a CAPTURED process do its job? The capture grain of process_outcome_admitted, and the reason it
+// exists is the not-spawned arm: a caller that asked for output and got no child must be refused, not
+// handed the verdict it would have gotten from a silent run. Nothing spawns here, so nothing is
+// observed: false on ProcessCaptureNotSpawned is a refusal of a question that has no answer, not a
+// reading of a failure. A caller that needs the CAUSE (a receipt, a diagnostic, an operator message)
+// matches the arms itself -- this helper deliberately cannot reach it.
+fn process_capture_admitted(captured: ProcessCaptureOutcome) -> Bool {
+  match captured {
+    ProcessCaptured { outcome: o } => process_outcome_admitted(outcome: o)
+    ProcessCaptureNotSpawned { program: _, cause: _ } => false
+  }
+}
+
+// ONE HOME for the not-spawned receipt rendering: how "there was never a child" reads on a receipt,
+// shared by every grain that must say it (capture below, run above). Never blank, never invented:
+// program and cause come from the refusal that stopped the spawn, and PR C dissolves this row together
+// with the second not-spawned leaf it serves (see process_capture_outcome_dissolve_on).
+fn process_not_spawned_text(program: NonEmptyStr, cause: NonEmptyStr) -> String {
+  join(["(not spawned: ", trim(s: program), " -- ", trim(s: cause), ")"], "")
+}
+
+// A receipt line's text at the capture grain, and it is NOT a flattening back to the conflated shape:
+// the four states render to four DISTINGUISHABLE strings, so 'the child never spawned' cannot be
+// printed as '(no output)', which is the exact confusion ProcessOutputAbsent exists to prevent. Same
+// rule as process_outcome_receipt_text: for human-readable text only; a caller using the value AS DATA
+// matches the arms itself.
+fn process_capture_receipt_text(captured: ProcessCaptureOutcome) -> String {
+  match captured {
+    ProcessCaptured { outcome: o } => process_outcome_receipt_text(outcome: o)
+    ProcessCaptureNotSpawned { program: p, cause: c } => process_not_spawned_text(program: p, cause: c)
+  }
 }
 
 // Did the process do its job? Callers whose product is the EXIT STATUS rather than the output ask
@@ -431,6 +492,36 @@ fn process_outcome_admitted(outcome: ProcessOutcome) -> Bool {
     ProcessOutputPresent { text: _ } => true
     ProcessOutputAbsent => true
     ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// THE RUN GRAIN of the same question, and the reason it is not the outcome-grain helper: at this
+// grain the caller holds a ProcessRunOutcome, which says WHETHER A CHILD EXISTED before it says how
+// it did. The policy is a parameter, not a constant baked in here -- run_shell_command_observe_outcome
+// is policy-free by design (its callers decide what a good exit is: most ExitZeroSucceeds, a
+// readiness probe ExitZeroOrOneSucceeds), and a helper that picked the policy for them would quietly
+// make one policy the module's answer. Not-spawned is false, which is a REFUSAL of a question that
+// has no answer, not a reading of a failed run: nothing ran, so no policy can admit it
+// (gunbc.design_argument::fail_closed). A caller that must REPORT why, as opposed to branch on
+// whether, takes process_run_outcome_error_text or matches the arms itself.
+fn process_run_outcome_admitted(policy: ProcessExitPolicy, run: ProcessRunOutcome) -> Bool {
+  match run {
+    ProcessRan { observation: o } => process_exit_is_admitted(policy: policy, exit_code: o.exit_code)
+    ProcessNotSpawned { program: _, cause: _ } => false
+  }
+}
+
+// The line a refusal receipt prints for a run: the child's OWN stderr when there was a child, and
+// the program plus the cause when there never was one. The second half is the whole point -- the
+// old shape printed trim(stderr) of an observation that did not exist, which rendered a refusal to
+// spawn as an empty string, and an empty explanation is how a fabricated -1 used to look on a
+// receipt. Never blank, never invented: every string here came from the child or from the refusal
+// that stopped it. Text for receipts and diagnostics only; a caller reading the value AS DATA matches
+// the arms, same rule as process_outcome_receipt_text.
+fn process_run_outcome_error_text(run: ProcessRunOutcome) -> String {
+  match run {
+    ProcessRan { observation: o } => o.stderr
+    ProcessNotSpawned { program: p, cause: c } => process_not_spawned_text(program: p, cause: c)
   }
 }
 
@@ -449,7 +540,7 @@ fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
 
 // Receipt owner probe — admitted under command_runner_scaffold until
 // extdeps.filesystem.filesystem_io carries typed owner observation.
-fn stat_owner_name_capture(path: String) -> ProcessOutcome {
+fn stat_owner_name_capture(path: String) -> ProcessCaptureOutcome {
   run_shell_command_capture(
     command: stat_owner_user_name_command(path: path),
     transport: LocalExec,

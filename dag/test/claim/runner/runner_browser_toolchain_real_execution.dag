@@ -13,7 +13,7 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.posix.test_utility { test_exists_command }
 import extdeps.automation.playwright { playwright_1_62_1_npm_tarball }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec, process_capture_admitted}
 import gunbc.host.verified_archive_install {
   ArchiveSha256, ArchiveNpmIntegrity, ArchiveDigestPin,
   verified_archive_install, verify_archive_digest,
@@ -46,7 +46,7 @@ data fixture_content: String = "gunbc-browser-toolchain-archive-fixture\n"
 data wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000"
 
 fn exists(path: String) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
 }
 
 fn install_fixture(dir: String, pin: ArchiveDigestPin) -> Bool {
@@ -178,11 +178,11 @@ fn plant_fixture_tree(dir: String) -> Bool {
 fn plant_fixture_tree_with(dir: String, candidate_body: String) -> Bool {
   let loc = fixture_location(dir: dir)
   let bin = concat(loc.root as String, "/node/bin")
-  process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: bin), transport: LocalExec))
-    && process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: concat(loc.root as String, "/node_modules/playwright")), transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: mkdir_parents_command(path: bin), transport: LocalExec))
+    && process_capture_admitted(captured: run_shell_command_capture(command: mkdir_parents_command(path: concat(loc.root as String, "/node_modules/playwright")), transport: LocalExec))
     && Filesystem.Write(path: loc.node_binary as String, content: join(["#!/bin/sh\n{ /usr/bin/env; echo '--- end of invocation'; } >> '", fixture_marker(dir: dir), "'\n", candidate_body, "echo v24.21.0\n"], "")).success
     && Filesystem.Write(path: concat(loc.playwright_module as String, "/index.js"), content: "module.exports = {};\n").success
-    && process_outcome_admitted(outcome: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0755", path: loc.node_binary as String), transport: LocalExec))
+    && process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0755", path: loc.node_binary as String), transport: LocalExec))
 }
 
 fn fixture_digest(dir: String) -> String {
@@ -336,7 +336,7 @@ test fn a_contested_tree_is_refused_not_replaced_by_real_execution() -> Bool {
 }
 
 fn run_ok_local(command: ArgvCommand) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
 }
 
 // A CANDIDATE THAT WRITES INSIDE THE TREE IS CAUGHT ON THE RUN THAT WROTE (eager-owl-205, after run

@@ -9,7 +9,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, j
 import extdeps.languages.json.emit { JsonString, JsonNumber }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { env_prefixed_command, LocalExec }
 import extdeps.tools.mosquitto_rr { mosquitto_snapshot_command }
@@ -36,48 +36,136 @@ import gunbc.auth.mosquitto_options_binding {
 
 // Read-only status request/response. Topic/endpoint/credential all join through the same fleet identity.
 // It observes current state, not causality or an acknowledgement of a particular start.
-fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
+// What the credential cleanup did after a report attempt. The credential-bound options file
+// lives in the directory the placed binding holds (its own Mktemp directory, binding.dir),
+// NOT under the CA workspace, so removing the CA workspace does not remove it: the standing
+// of the two cleanups is kept apart and travels with the capture verdict, never replacing it.
+type PrinterCleanupStanding
+  = PrinterCleanupClean
+  | PrinterCleanupOutstanding { detail: NonEmptyStr }
+
+// The outcome of one printer report attempt: the child's capture verdict and the cleanup
+// standing, carried separately. A cleanup failure never rewrites the real child verdict, and
+// a captured success never hides a leaked credential-bearing file -- the caller must refuse
+// (or report the cleanup outstanding) when the standing is Outstanding.
+type PrinterReportCapture
+  = PrinterReported { outcome: ProcessCaptureOutcome, cleanup: PrinterCleanupStanding }
+  // ALL ADMITTED FRESH CAPTURES RAN AND NONE HELD A COMPLETE STATE/ERROR REPORT. The last REAL
+  // capture is kept: dressing exhaustion as ProcessOutputAbsent would fabricate "the child ran and
+  // printed nothing" over a stream that DID print -- eight partial telemetry deltas that never
+  // completed. Consumers refuse in the printer domain with these words; nothing here is an exit code.
+  | PrinterReportExhausted { last: ProcessCaptureOutcome, cleanup: PrinterCleanupStanding }
+
+// Words for the last capture an exhausted attempt budget returned. Every arm is a fact the capture
+// itself carries (the spawner's refusal, an exit the child reported, output that stayed unread).
+// THE CLEANUP STANDING IN WORDS, for every refusal that withholds an approval or a start over a
+// report that also leaked its credential-bound file: the leak is a known fact and must travel to
+// the operator wherever the refusal text is produced (round-3 review: approval and pre-start paths
+// discarded it).
+fn printer_report_cleanup_note(c: PrinterCleanupStanding) -> String {
+  match c {
+    PrinterCleanupOutstanding { detail: d } => join(["; the report cleanup left ", d, " outstanding"], "")
+    PrinterCleanupClean => ""
+  }
+}
+
+fn printer_report_last_words(capture: ProcessCaptureOutcome) -> String {
+  match capture {
+    ProcessCaptureNotSpawned { program: p, cause: why } => join(["never spawned: ", p, " -- ", why], "")
+    ProcessCaptured { outcome: ProcessRefused { exit_code: e, stderr: x } } => join(["exited ", to_string(e), ": ", x], "")
+    ProcessCaptured { outcome: ProcessOutputAbsent } => "returned no output"
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } => join(["printed ", to_string(string_length(s: t)), " bytes that never completed into a state/error report"], "")
+  }
+}
+
+// THE FINAL DIAGNOSIS FOR AN EXHAUSTED BUDGET, decided once so the witness drives the consumer's
+// exact exit: a refusal naming the incompleteness and the last capture's own facts, never a
+// fabricated verdict, and a credential-bound leak still refuses over silence.
+fn printer_report_exhaustion_refusal(last: ProcessCaptureOutcome, cleanup: PrinterCleanupStanding) -> ProcessExit {
+  match cleanup {
+    PrinterCleanupOutstanding { detail: d } => exit_failure(reason: join(["Printer report incomplete after all admitted captures (last: ", printer_report_last_words(capture: last), ") AND its credential-bound cleanup leaked: ", d], ""))
+    PrinterCleanupClean => exit_failure(reason: join(["Printer report incomplete after all admitted captures (last: ", printer_report_last_words(capture: last), ")"], ""))
+  }
+}
+
+// One attempt under a pinned CA bundle: whether options were placed (a placed binding must be
+// shredded) and what the child returned.
+type ReportCredentialAttempt
+  = PrinterCredentialAttempt { outcome: ProcessCaptureOutcome, options_outstanding: Bool, options_placed: Bool }
+
+fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> PrinterReportCapture {
   match read_existing_printer_session(printer:printer,version:version,credential_source:SecretManagerCredentialSource {token_source:token_source}) {
-   PrinterSessionRefused {cause:c}=>ProcessRefused {exit_code:1,stderr:c as String}
+   // The report client was never spawned: the session's own refusal is the fact, not an
+   // exit code no child returned.
+   PrinterSessionRefused {cause:c}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:join(["printer session refused: ",c as String],"") as NonEmptyStr}, cleanup: PrinterCleanupClean }
    PrinterSessionReady {session:s}=>report_using_session(session:s)
   }
 }
-fn report_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+fn report_using_session(session:PrinterCredentialSession) -> PrinterReportCapture {
  report_session_attempts(session:session,remaining:8)
 }
 
 // Reconciliation owns its retry budget; do not multiply it by the readiness retry loop.
-fn report_once_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+fn report_once_using_session(session:PrinterCredentialSession) -> PrinterReportCapture {
  report_session_attempts(session:session,remaining:1)
 }
-fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> ProcessOutcome {
+fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> PrinterReportCapture {
  let printer=session_printer(s:session)
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
    PrinterAddressFound {address:a}=>if remaining==1 {report_with_credential(serial:serial,address:a,credential:session_credential(s:session))} else {complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:remaining)}
-   PrinterAddressUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
+   // No address means no endpoint to dial: the client was never spawned.
+   PrinterAddressUnknown {printer:_}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:"printer address absent or ambiguous"}, cleanup: PrinterCleanupClean } PrinterAddressAmbiguous {printer:_}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:"printer address absent or ambiguous"}, cleanup: PrinterCleanupClean } PrinterAddressWrongClass {printer:_}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:"printer address absent or ambiguous"}, cleanup: PrinterCleanupClean }
   }
-  PrinterSerialUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}
+  // No serial means no topics to subscribe: the client was never spawned.
+  PrinterSerialUnknown {printer:_}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:"printer serial absent or ambiguous"}, cleanup: PrinterCleanupClean } PrinterSerialUnrecorded {printer:_}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:"printer serial absent or ambiguous"}, cleanup: PrinterCleanupClean } PrinterSerialAmbiguous {printer:_}=>PrinterReported { outcome: ProcessCaptureNotSpawned {program:"mosquitto_rr" as NonEmptyStr,cause:"printer serial absent or ambiguous"}, cleanup: PrinterCleanupClean }
  }
 }
 
-fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> ProcessOutcome {
+fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> PrinterReportCapture {
   match acquire_pinned_ca_bundle() {
-    CaBundleRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
-    CaBundleRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+    // Without the pinned CA bundle the client is never launched; nothing was placed, so there
+    // is nothing of ours left behind to clean.
+    CaBundleRefused { cause: c } => PrinterReported { outcome: ProcessCaptureNotSpawned { program: "mosquitto_rr" as NonEmptyStr, cause: join(["CA bundle refused: ", c as String], "") as NonEmptyStr }, cleanup: PrinterCleanupClean }
+    // Refused with residue left behind: the client never launched AND our own files remain --
+    // the capture says never-spawned, the standing says outstanding.
+    CaBundleRefusedResidueRemains { cause: c } => PrinterReported { outcome: ProcessCaptureNotSpawned { program: "mosquitto_rr" as NonEmptyStr, cause: join(["CA bundle refused with residue: ", c as String], "") as NonEmptyStr }, cleanup: PrinterCleanupOutstanding { detail: join(["CA bundle residue remains after refusal: ", c as String], "") as NonEmptyStr } }
     CaBundlePinned { bundle: bundle, workspace: workspace } => {
-      let result = match place_mosquitto_rr_options_privately(login: bambu_lan_mqtt_user, password: credential) {
-        MosquittoOptionsRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
-        MosquittoOptionsRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
-        MosquittoOptionsPlaced { binding: b } => {
-          let outcome = run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_snapshot_command(
-            endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), request_topic: bambu_request_topic(serial: serial), payload: bambu_status_snapshot_payload(), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec)
-          if shred_mosquitto_options_binding(binding: b) { outcome }
-          else { ProcessRefused { exit_code: 1, stderr: "Printer report credential cleanup failed" } }
+      let attempt = match place_mosquitto_rr_options_privately(login: bambu_lan_mqtt_user, password: credential) {
+        // Without placed RR options the client is never launched.
+        MosquittoOptionsRefused { cause: c } => PrinterCredentialAttempt { outcome: ProcessCaptureNotSpawned { program: "mosquitto_rr" as NonEmptyStr, cause: join(["mosquitto RR options refused: ", c as String], "") as NonEmptyStr }, options_outstanding: false, options_placed: false }
+        MosquittoOptionsRefusedResidueRemains { cause: c } => PrinterCredentialAttempt { outcome: ProcessCaptureNotSpawned { program: "mosquitto_rr" as NonEmptyStr, cause: join(["mosquitto RR options refused with residue: ", c as String], "") as NonEmptyStr }, options_outstanding: true, options_placed: false }
+        MosquittoOptionsPlaced { binding: b } => PrinterCredentialAttempt {
+          outcome: run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_snapshot_command(
+            endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), request_topic: bambu_request_topic(serial: serial), payload: bambu_status_snapshot_payload(), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec),
+          // The capture is the run's verdict; a shred failure does not undo a spawn -- it makes
+          // the credential-bound options directory (the binding's own Mktemp directory,
+          // binding.dir, NOT the CA workspace below) leak, which travels as Outstanding.
+          options_outstanding: !shred_mosquitto_options_binding(binding: b),
+          options_placed: true
         }
       }
-      if shell.Remove.RecursiveForce(path: workspace).success { result }
-      else { ProcessRefused { exit_code: 1, stderr: "Printer report CA workspace cleanup failed" } }
+      let ca_removed = shell.Remove.RecursiveForce(path: workspace).success
+      // The CA workspace removal failing leaks the CA workspace; it never rewrites the run's
+      // captured verdict. Both leakages, if both happen, are named in one standing.
+      match attempt {
+        PrinterCredentialAttempt { outcome: outcome, options_outstanding: lo, options_placed: lp } =>
+          if lo && lp && !ca_removed {
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: "credential-bound options directory (binding.dir) AND the CA workspace both leaked after forced removal" } }
+          } else if lo && lp {
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: "credential-bound options directory (binding.dir) leaked: shred of the placed binding directory failed" } }
+          } else if lo && !ca_removed {
+            // Refusal residue AND a CA workspace leak: two independent facts, both named (the
+            // old `else if lo` branch reported only the residue and silently dropped the CA leak).
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["placed options refusal residue remains in the private options directory (binding.dir), AND CA workspace ", workspace, " leaked after forced removal"], "") as NonEmptyStr } }
+          } else if lo {
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["placed options refusal residue remains in the private options directory (binding.dir), NOT the CA workspace -- forced removal did not clear it"], "") as NonEmptyStr } }
+          } else if !ca_removed {
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["CA workspace ", workspace, " leaked after forced removal"], "") as NonEmptyStr } }
+          } else {
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupClean }
+          }
+      }
     }
   }
 }
@@ -88,11 +176,28 @@ fn run(printer: String, version: String, output: String) -> ProcessExit {
     PrinterSelected { printer: p } => match read_supplied_access_token() {
       SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
       SuppliedTokenReady { token: t } => match report(printer: p, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: t }) {
-        ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
-        ProcessOutputAbsent => exit_failure(reason: "No printer report received")
-        ProcessOutputPresent { text: text } =>
-          if Filesystem.Write(path: output, content: text).success { ExitSuccess }
-          else { exit_failure(reason: "Cannot retain printer report") }
+        // Exhaustion refuses in the printer domain with the last capture's own facts -- the CLI never
+        // writes a partial report and never hears a fabricated "No printer report received".
+        PrinterReportExhausted { last: last_capture, cleanup: cleanup } => printer_report_exhaustion_refusal(last: last_capture, cleanup: cleanup)
+        PrinterReported { outcome: observed_capture, cleanup: cleanup } => match cleanup {
+          // A credential-bound leak after the attempt is a refusal in its own right: the child's
+          // real verdict is kept in the result and never replaced, but it never passes silently
+          // either -- the operator hears what leaked.
+          PrinterCleanupOutstanding { detail: d } => exit_failure(reason: join(["Printer report cleanup outstanding: ", d], ""))
+          PrinterCleanupClean => match observed_capture {
+            ProcessCaptured { outcome: observed } => match observed {
+              ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+              ProcessOutputAbsent => exit_failure(reason: "No printer report received")
+              ProcessOutputPresent { text: text } =>
+                if Filesystem.Write(path: output, content: text).success { ExitSuccess }
+                else { exit_failure(reason: "Cannot retain printer report") }
+            }
+            // The report client was never spawned, so the printer's state is unknown and the operator
+            // hears the spawner's own cause -- not an exit code no child ever returned.
+            ProcessCaptureNotSpawned { program: pp, cause: why } =>
+              exit_failure(reason: join(["Printer report was never spawned: ", pp, " -- ", why], ""))
+          }
+        }
       }
     }
   }
@@ -127,11 +232,62 @@ fn report_has_state_and_error(text: String) -> Bool {
   }
 }
 
-fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> ProcessOutcome {
-  if remaining <= 0 { return ProcessRefused { exit_code: 1, stderr: "No complete state/error report within eight fresh observations" } }
-  match report_with_credential(serial: serial, address: address, credential: credential) {
-    ProcessOutputPresent { text: text } => if report_has_state_and_error(text: text) { ProcessOutputPresent { text: text } }
-      else { complete_report_with_credential(serial: serial, address: address, credential: credential, remaining: remaining - 1) }
+// THE RETRY FOLD ITSELF, EXTRACTED (round-4 review item 6): the budget walk -- complete report
+// stops the loop, exhausted budget keeps the LAST real capture under the exhaustion marker, and a
+// leaked credential-bearing file from an EARLIER attempt is folded forward into whatever later
+// attempts return -- lives in ONE fn that both production and the claim drive. The claim injects
+// its own capture source (an fn from the remaining budget to a capture); the walk is this same
+// code, so a mutation of the fold turns the claim red (gunbc.design_argument::witness_one_interface).
+fn complete_report_attempts(remaining: Int, attempt: fn(Int) -> PrinterReportCapture) -> PrinterReportCapture {
+  match attempt(remaining) {
+    PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } =>
+      if report_has_state_and_error(text: text) { PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } }
+      // THE BUDGET IS OUT AND THIS WAS THE LAST REAL CAPTURE: keep it under the exhaustion marker --
+      // the caller refuses in the printer domain. Fabricating ProcessOutputAbsent here would report
+      // "ran, printed nothing" over a stream that DID print, just never completely.
+      else if remaining <= 1 { PrinterReportExhausted { last: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } }
+      // Retrying discards THIS attempt's capture, but a leaked credential-bearing file must not
+      // be discarded with it: the standing is folded into whatever the later attempts return.
+      else { fold_cleanup(previous: cleanup, next: complete_report_attempts(remaining: remaining - 1, attempt: attempt)) }
     other => other
+  }
+}
+
+// THE PRODUCTION ENTRY rides the one fold above: every real attempt is a fresh
+// report_with_credential (the retry RE-RUNS the capture, which is why it has its own budget), and
+// a report that never ran is not an incomplete report -- retrying a program the spawner refused
+// would only answer the same refusal eight times, so the fold hands `other` straight back.
+fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> PrinterReportCapture {
+  complete_report_attempts(
+    remaining: remaining,
+    attempt: _ => report_with_credential(serial: serial, address: address, credential: credential),
+  )
+}
+
+// Carry an earlier attempt's outstanding cleanup across a retry that replaces the capture.
+fn fold_standings(previous: PrinterCleanupStanding, next: PrinterCleanupStanding) -> PrinterCleanupStanding {
+  match previous {
+    PrinterCleanupClean => next
+    PrinterCleanupOutstanding { detail: p } => match next {
+      PrinterCleanupClean => PrinterCleanupOutstanding { detail: p as NonEmptyStr }
+      PrinterCleanupOutstanding { detail: d } => PrinterCleanupOutstanding { detail: join([p, "; ", d], "") as NonEmptyStr }
+    }
+  }
+}
+
+fn fold_cleanup(previous: PrinterCleanupStanding, next: PrinterReportCapture) -> PrinterReportCapture {
+  match next {
+    PrinterReportExhausted { last: last, cleanup: cleanup } =>
+      PrinterReportExhausted { last: last, cleanup: fold_standings(previous: previous, next: cleanup) }
+    PrinterReported { outcome: outcome, cleanup: PrinterCleanupClean } =>
+      match previous {
+        PrinterCleanupClean => PrinterReported { outcome: outcome, cleanup: PrinterCleanupClean }
+        PrinterCleanupOutstanding { detail: d } => PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: d } }
+      }
+    PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: d } } =>
+      match previous {
+        PrinterCleanupClean => PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: d } }
+        PrinterCleanupOutstanding { detail: p } => PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join([p, "; ", d], "") as NonEmptyStr } }
+      }
   }
 }

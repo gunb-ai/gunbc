@@ -1,7 +1,7 @@
 module gunbc.runner.runner_qemu_toolchain
 
 import std.types { Bool, List, NonEmptyStr, FilePath }
-import std.algebra { list_append, trim }
+import std.algebra { list_append, trim, string_contains }
 import std.content_hash { content_hash_atom }
 import std.env_binding { EnvBinding, EnvSet }
 import std.optional { Present, Absent }
@@ -11,13 +11,13 @@ import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage, ubuntu_port
 import extdeps.virtualization.qemu { QemuDistributionBuild, qemu_8_2_2_ubuntu_noble_arm64 }
 import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, aavmf_2024_02_ubuntu_noble }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
-import extdeps.posix.test_utility { test_exists_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, ls_almost_all_one_per_line_command }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, listing_contains_entry }
 import gunbc.host.verified_archive_install {
   ArchiveSha256, StagedArchive, ExtractDebData, ArchivePlacement, archive_placements_text,
   stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec, process_capture_admitted}
 import gunbc.host.host_effect { LocalShell }
 
 // A PINNED QEMU TOOLCHAIN ON AN EXECUTOR HOST, PLACED AS THE JOB USER WITH NO ADMINISTRATOR AND NO
@@ -140,7 +140,74 @@ fn qemu_toolchain_placement_text(p: QemuToolchainPlacement) -> String {
 }
 
 fn qemu_toolchain_run_ok(command: ArgvCommand) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
+}
+
+// THE EXISTENCE READING IS A PARENT LISTING, NOT test(1), AND HAS THREE STANDINGS. `test -e`
+// CANNOT ESTABLISH ABSENCE: a mode-000 parent answers exit 1 with empty stderr exactly as an
+// absent entry does (round-4 review). The reading that establishes both answers is the shared
+// parent listing (gunbc.live_deploy.member_observe parent_listing_argv /
+// listing_contains_entry, the route #16984 and runner_host_file_converge ride; the mint below is
+// argv-equal to it): a SUCCESSFUL listing that names the entry is present, a successful listing
+// its parent positively lacks it is absent, a listing that errored or was never spawned answers
+// NOTHING and must not select staging -- treating it as absent would publish over a tree the
+// recipe may already own.
+type QemuToolchainTreeStanding
+  = QemuToolchainTreeStands
+  | QemuToolchainTreeAbsent
+  | QemuToolchainTreeUnreadable { cause: String }
+
+// ROUND-5 REVIEW ITEM 3: ABSENCE COMES ONLY FROM A COMPLETED, POSITIVE READING ABOUT THE
+// SUBJECT -- never from a substring of an error. The lookup lists `<parent>/.` (the trailing
+// `/.` makes ls FAIL -- nonzero -- when the parent is a regular file, where a bare
+// `ls -1 -A -- <parent>` would exit 0 printing the operand and fake an empty directory), and
+// the failed lookup is settled by a SECOND, SAME-SHAPE listing of the GRANDPARENT: only a
+// completed grandparent listing that positively lacks the parent establishes absence (the
+// subject cannot stand under a parent that is not there). A parent that STANDS in a completed
+// grandparent listing but will not itself list -- mode-000, EIO, a regular file -- is
+// UNREADABLE, never absent, and placement refuses before staging. No stderr is ever read for
+// meaning: a directory literally named "No such file or directory" fools no substring rule here.
+// `parent_listing` is consulted only when the subject's own lookup failed; callers that did not
+// need it pass the typed ProcessCaptureNotSpawned (a child that never ran, answering nothing).
+fn qemu_toolchain_tree_standing(captured: ProcessCaptureOutcome, entry_name: String, parent_name: String, parent_listing: ProcessCaptureOutcome) -> QemuToolchainTreeStanding {
+  match captured {
+    ProcessCaptureNotSpawned { program: p, cause: why } => QemuToolchainTreeUnreadable { cause: join([p, ": ", why], "") }
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } =>
+      if listing_contains_entry(stdout: t, name: entry_name) { QemuToolchainTreeStands } else { QemuToolchainTreeAbsent }
+    ProcessCaptured { outcome: ProcessOutputAbsent } => QemuToolchainTreeAbsent
+    ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
+      match parent_listing {
+        ProcessCaptured { outcome: ProcessOutputPresent { text: gp } } =>
+          if listing_contains_entry(stdout: gp, name: parent_name) {
+            QemuToolchainTreeUnreadable { cause: join(["the parent stands in a completed grandparent listing but would not list: exit ", to_string(code), " ", trim(s: err)], "") }
+          } else { QemuToolchainTreeAbsent }
+        ProcessCaptured { outcome: ProcessOutputAbsent } => QemuToolchainTreeAbsent
+        ProcessCaptured { outcome: ProcessRefused { exit_code: gcode, stderr: gerr } } =>
+          QemuToolchainTreeUnreadable { cause: join(["the parent lookup errored (exit ", to_string(code), " ", trim(s: err), ") and the grandparent lookup errored too (exit ", to_string(gcode), " ", trim(s: gerr), ")"], "") }
+        ProcessCaptureNotSpawned { program: p, cause: why } =>
+          QemuToolchainTreeUnreadable { cause: join(["the parent lookup errored (exit ", to_string(code), " ", trim(s: err), ") and the grandparent lookup never spawned (", p, ": ", why, ")"], "") }
+      }
+  }
+}
+
+fn qemu_toolchain_tree_test_wet(path: String) -> QemuToolchainTreeStanding {
+  let parent = path_parent(path: path)
+  let main = run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: join([parent, "/."], "")), transport: LocalExec)
+  match main {
+    // Only a failed lookup sends the decision to the grandparent; a completed listing answered.
+    ProcessCaptured { outcome: ProcessRefused { exit_code: _, stderr: _ } } => qemu_toolchain_tree_standing(
+      captured: main,
+      entry_name: path_basename(path: path),
+      parent_name: path_basename(path: parent),
+      parent_listing: run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: join([path_parent(path: parent), "/."], "")), transport: LocalExec),
+    )
+    _ => qemu_toolchain_tree_standing(
+      captured: main,
+      entry_name: path_basename(path: path),
+      parent_name: path_basename(path: parent),
+      parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted; the parent listing answered" as NonEmptyStr },
+    )
+  }
 }
 
 // AN EXISTING TREE IS NEVER REPLACED. Its path is the recipe's, so it was published from these
@@ -150,11 +217,15 @@ fn qemu_toolchain_run_ok(command: ArgvCommand) -> Bool {
 // extraction, and the readback hashes the files QEMU actually maps.
 fn place_qemu_toolchain_wet(location: QemuToolchainLocation, archives: List<UbuntuArchiveBinaryPackage>) -> QemuToolchainPlacement {
   let staged_archives = map(archives, a => qemu_toolchain_staged_archive(a: a))
-  if qemu_toolchain_run_ok(command: test_exists_command(path: location.root as String)) {
-    QemuToolchainTreePresent
-  } else if qemu_toolchain_run_ok(command: mkdir_parents_command(path: location.archives as String)) == false {
-    QemuToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
-  } else {
+  match qemu_toolchain_tree_test_wet(path: location.root as String) {
+    QemuToolchainTreeStands => QemuToolchainTreePresent
+    // The tree could not be checked: refuse BEFORE staging anything. Staging on an unreadable check
+    // would publish over a tree the recipe may already own, on the strength of a test that never ran.
+    QemuToolchainTreeUnreadable { cause: c } =>
+      QemuToolchainPlacementRefused { archives: [], cause: join(["the toolchain tree could not be checked for an existing tree: ", c], "") }
+    QemuToolchainTreeAbsent => if qemu_toolchain_run_ok(command: mkdir_parents_command(path: location.archives as String)) == false {
+      QemuToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
+    } else {
     let made = shell.Mktemp.DirWithTemplate(template: join([location.base as String, "/staging.XXXXXXXX"], "") as FilePath)
     if made.success == false {
       QemuToolchainPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
@@ -170,6 +241,7 @@ fn place_qemu_toolchain_wet(location: QemuToolchainLocation, archives: List<Ubun
       }
       let dropped = qemu_toolchain_run_ok(command: rm_recursive_force_command(path: staging))
       result
+    }
     }
   }
 }

@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.shell
 import extdeps.tools.hostname
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
@@ -37,7 +37,7 @@ import gunbc.fleet.fleet_printer_access {
   read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused,
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound, PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
 }
-import gunbc.fleet.printer_report { report_using_session }
+import gunbc.fleet.printer_report { report_using_session, PrinterReported, PrinterReportExhausted, PrinterCleanupClean, PrinterCleanupOutstanding, printer_report_cleanup_note, printer_report_last_words }
 import gunbc.fleet.printer_job_monitor { observe_job }
 import gunbc.fleet.printer_project_delivery { remote_name_for_attempt }
 import gunbc.fleet.printer_actuation {
@@ -185,10 +185,38 @@ fn copy_verified(record: PrintRequestRecord, path: String) -> Bool {
   })
 }
 
-fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, credential_source: PrinterCredentialSource) -> String? {
+// THE PRE-FILING OBSERVATION READING, WITH ITS FAILURE NAMED. The old shape collapsed every
+// failure into a bare none, and the caller's refusal said only 'observation unavailable' -- a
+// KNOWN credential-bound cleanup leak (the standing the report carries even when its read never
+// spawned or its budget ran out) vanished into that one sentence. Each failure now names itself:
+// the spawner's program and cause, the exhausted budget's last words, and the outstanding leak
+// travel to the caller's refusal (round-4 review item 4: carry it through).
+type SessionReportReading
+  = SessionReportStanding { text: String }
+  | SessionReportUnavailable { reason: String }
+
+fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, credential_source: PrinterCredentialSource) -> SessionReportReading {
   match read_existing_printer_session(printer: printer, version: version, credential_source: credential_source) {
-    PrinterSessionRefused { cause: _ } => none
-    PrinterSessionReady { session: s } => match report_using_session(session: s) { ProcessOutputPresent { text: t } => Present { value: t } ProcessOutputAbsent => none ProcessRefused { exit_code: _, stderr: _ } => none }
+    PrinterSessionRefused { cause: c } => SessionReportUnavailable { reason: join(["the printer credential session refused: ", c as String], "") }
+    PrinterSessionReady { session: s } => match report_using_session(session: s) {
+      // A clean capture yields the standing only when the credential-bound cleanup fully
+      // succeeded; a never-spawned read or an outstanding leak yields no standing, never a text.
+      PrinterReported { outcome: ProcessCaptured { outcome: observed }, cleanup: PrinterCleanupClean } => match observed {
+        ProcessOutputPresent { text: t } => SessionReportStanding { text: t }
+        ProcessOutputAbsent => SessionReportUnavailable { reason: "the report came back empty" }
+        ProcessRefused { exit_code: code, stderr: e } => SessionReportUnavailable { reason: join(["the report read exited ", to_string(code), ": ", trim(s: e)], "") }
+      }
+      PrinterReported { outcome: ProcessCaptureNotSpawned { program: pp, cause: why }, cleanup: cl } =>
+        SessionReportUnavailable { reason: join(["the report client was never spawned (", pp as String, ": ", why as String, ")", printer_report_cleanup_note(c: cl)], "") }
+      // An exhausted budget yielded no standing: the partial captures are not a text to file --
+      // and its cleanup standing, clean or leaking, is said.
+      PrinterReportExhausted { last: l, cleanup: cl } =>
+        SessionReportUnavailable { reason: join(["the report was incomplete after all admitted captures (last: ", printer_report_last_words(capture: l), printer_report_cleanup_note(c: cl), ")"], "") }
+      // A credential-bound leak after a readable read: the text exists but is withheld -- a
+      // standing filed from it would be approval resting on an outstanding secret-bearing file.
+      PrinterReported { outcome: ProcessCaptured { outcome: _ }, cleanup: PrinterCleanupOutstanding { detail: d } } =>
+        SessionReportUnavailable { reason: join(["the report cleanup left ", d, " outstanding; the reading is withheld"], "") }
+    }
   }
 }
 
@@ -250,7 +278,7 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, source_revision: N
   // The report that derives this pass's standing is the one any completion record retains; the
   // record never carries a second, later observation that nothing checked.
   let observed = if completed { none } else {
-    match session_report(printer: record.request.printer, version: version, credential_source: credential_source) { Present { value: t } => Present { value: t } Absent => return exit_failure(reason: "Printer observation unavailable; standing cannot be derived and nothing was sent") }
+    match session_report(printer: record.request.printer, version: version, credential_source: credential_source) { SessionReportStanding { text: t } => Present { value: t } SessionReportUnavailable { reason: r } => return exit_failure(reason: join(["Printer observation unavailable -- ", r, "; standing cannot be derived and nothing was sent"], "")) }
   }
   let evidence = match observed {
     Absent => match print_completion_standing(store: completions, claim_key: claim_key, record: record, remote: remote) {

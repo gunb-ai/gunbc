@@ -6,9 +6,9 @@ import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.durable_exclusive_hold { DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.tools.gnu_coreutils { readlink_command }
 import extdeps.linux.proc_pid_stat {
   proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable,
@@ -119,11 +119,17 @@ type PidNamespaceReading
 
 fn own_pid_namespace() -> PidNamespaceReading {
   match run_shell_command_capture(command: readlink_command(path: proc_self_pid_namespace_path), transport: LocalExec) {
-    ProcessOutputPresent { text: t } =>
-      if trim(s: t) == "" { PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr } }
-      else { PidNamespaceRead { namespace: trim(s: t) as NonEmptyStr } }
-    ProcessOutputAbsent => PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr }
-    ProcessRefused { exit_code: c, stderr: e } => PidNamespaceUnread { cause: join(["readlink /proc/self/ns/pid exited ", to_string(c), ": ", e], "") as NonEmptyStr }
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: t } =>
+        if trim(s: t) == "" { PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr } }
+        else { PidNamespaceRead { namespace: trim(s: t) as NonEmptyStr } }
+      ProcessOutputAbsent => PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr }
+      ProcessRefused { exit_code: c, stderr: e } => PidNamespaceUnread { cause: join(["readlink /proc/self/ns/pid exited ", to_string(c), ": ", e], "") as NonEmptyStr }
+    }
+    // No child ran, so no link was read and no exit code exists to quote: the cause is the spawner's
+    // own words, never a status invented for a readlink that did not exist.
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      PidNamespaceUnread { cause: join(["readlink /proc/self/ns/pid was never spawned: ", p, ": ", why], "") as NonEmptyStr }
   }
 }
 

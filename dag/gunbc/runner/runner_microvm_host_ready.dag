@@ -32,8 +32,7 @@ import extdeps.virtualization.firecracker {
 }
 import gunbc.command_runner {
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec,
-}
+run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec, process_capture_admitted}
 import extdeps.tools.id { id_group_names_command }
 import extdeps.tools.coreutils_stat {
   PathOwnershipObservation, PathOwnershipObserved, PathOwnershipUnobservable, coreutils_stat_path_ownership,
@@ -52,6 +51,7 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
+import extdeps.shell.exec { ProcessCaptured, ProcessCaptureNotSpawned }
 
 // THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner.runner_microvm
 // models what a runner guest is and admits a VM config; nothing had ever asked a host whether it
@@ -97,6 +97,10 @@ type KvmDeviceStanding
   = KvmDeviceWritable
   | KvmDevicePresentNotWritable
   | KvmDeviceAbsent
+  // NOTHING ANSWERED. The `test` child itself was never spawned, so neither existence nor
+  // writability was asked -- which is neither Absent (a 'no' answer) nor PresentNotWritable. A
+  // never-spawned probe read as Absent lets a host standing claim a fact nobody observed.
+  | KvmDeviceUnreadable { program: String, cause: String }
 
 // THE DEVICE AND THE GRANT ARE TWO FACTS, AND COLLAPSING THEM IS WHAT MADE THE OLD STANDING UNABLE
 // TO DESCRIBE A CONVERGED HOST. KvmDeviceStanding above answers "can THIS process open the device",
@@ -137,6 +141,11 @@ type FirecrackerBinaryStanding
   = FirecrackerInstalled { binary: String, version_line: String }
   | FirecrackerVersionMismatch { binary: String, observed: String }
   | FirecrackerBinaryAbsent { binary: String }
+  // The executable or version probe never spawned: the binary is NOT absent (nobody asked it), and
+  // it is not installed-unverified either -- no version line exists to classify. Carries the
+  // probe's own program and cause; the converge refuses on it rather than reinstalling over a
+  // question that was never answered.
+  | FirecrackerBinaryUnreadable { binary: String, program: String, cause: String }
 
 // WHETHER THIS HOST CAN BE MEASURED IS PART OF WHETHER IT CAN SERVE, and that is why this sits in
 // the host standing rather than in a probe of its own.
@@ -204,20 +213,51 @@ fn firecracker_installed_binary(root: String, rel: FirecrackerRelease) -> String
   join([firecracker_install_dir(root: root, rel: rel), "/firecracker"], "")
 }
 
-fn kvm_standing_of(exists: Bool, writable: Bool) -> KvmDeviceStanding {
-  if !exists { KvmDeviceAbsent } else if writable { KvmDeviceWritable } else { KvmDevicePresentNotWritable }
+// A PROBE ANSWERS, OR IT NEVER RUNS -- and the difference is the standing. `test -x` refusing is an
+// answer ('not executable'); a test child never spawned is the absence of an answer, and collapsing
+// it into 'false' is how the :541-590 defect read a never-spawned probe as absence.
+type CaptureProbe = ProbeAnswered { admitted: Bool } | ProbeUnreadable { program: String, cause: String }
+
+fn capture_probe(captured: ProcessCaptureOutcome) -> CaptureProbe {
+  match captured {
+    ProcessCaptured { outcome: _ } => ProbeAnswered { admitted: process_capture_admitted(captured: captured) }
+    ProcessCaptureNotSpawned { program: p, cause: why } => ProbeUnreadable { program: p as String, cause: why as String }
+  }
 }
 
-fn binary_standing_of(binary: String, executable: Bool, version_output: String, rel: FirecrackerRelease) -> FirecrackerBinaryStanding {
-  if !executable {
-    FirecrackerBinaryAbsent { binary: binary }
-  } else {
-    let first = match first(split(trim(s: version_output), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
-    if starts_with(s: first, prefix: firecracker_version_line(rel: rel)) {
-      FirecrackerInstalled { binary: binary, version_line: first }
-    } else {
-      FirecrackerVersionMismatch { binary: binary, observed: first }
-    }
+// THE VERSION LINE, TYPED: reading an unspawned version child as "" and comparing "" against the
+// expected banner is a fabricated Mismatch -- the binary was never queried.
+type FirecrackerVersionReading = VersionLineRead { text: String } | VersionUnreadable { program: String, cause: String }
+
+fn kvm_standing_of(exists: CaptureProbe, writable: CaptureProbe) -> KvmDeviceStanding {
+  match exists {
+    ProbeUnreadable { program: p, cause: c } => KvmDeviceUnreadable { program: p, cause: c }
+    ProbeAnswered { admitted: false } => KvmDeviceAbsent
+    ProbeAnswered { admitted: true } =>
+      match writable {
+        ProbeUnreadable { program: p, cause: c } => KvmDeviceUnreadable { program: p, cause: c }
+        ProbeAnswered { admitted: true } => KvmDeviceWritable
+        ProbeAnswered { admitted: false } => KvmDevicePresentNotWritable
+      }
+  }
+}
+
+fn binary_standing_of(binary: String, executable: CaptureProbe, version: FirecrackerVersionReading, rel: FirecrackerRelease) -> FirecrackerBinaryStanding {
+  match executable {
+    ProbeUnreadable { program: p, cause: c } => FirecrackerBinaryUnreadable { binary: binary, program: p, cause: c }
+    ProbeAnswered { admitted: false } => FirecrackerBinaryAbsent { binary: binary }
+    ProbeAnswered { admitted: true } =>
+      match version {
+        VersionUnreadable { program: p, cause: c } => FirecrackerBinaryUnreadable { binary: binary, program: p, cause: c }
+        VersionLineRead { text: version_output } => {
+          let first = match first(split(trim(s: version_output), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
+          if starts_with(s: first, prefix: firecracker_version_line(rel: rel)) {
+            FirecrackerInstalled { binary: binary, version_line: first }
+          } else {
+            FirecrackerVersionMismatch { binary: binary, observed: first }
+          }
+        }
+      }
   }
 }
 
@@ -245,6 +285,7 @@ fn binary_standing_of(binary: String, executable: Bool, version_output: String, 
 fn kvm_reachable(standing: FirecrackerHostStanding, expected_login: NonEmptyStr) -> Bool {
   (match standing.kvm {
     KvmDeviceAbsent => false
+    KvmDeviceUnreadable { program: _, cause: _ } => false
     KvmDeviceWritable => true
     KvmDevicePresentNotWritable => true
   })
@@ -262,7 +303,7 @@ fn kvm_reachable(standing: FirecrackerHostStanding, expected_login: NonEmptyStr)
 }
 
 fn firecracker_binary_installed(standing: FirecrackerHostStanding) -> Bool {
-  match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  FirecrackerVersionMismatch { binary: _, observed: _ } => false  FirecrackerBinaryAbsent { binary: _ } => false }
+  match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  FirecrackerVersionMismatch { binary: _, observed: _ } => false  FirecrackerBinaryAbsent { binary: _ } => false  FirecrackerBinaryUnreadable { binary: _, program: _, cause: _ } => false }
 }
 
 // THE CONVERGE'S QUESTION: has this host been brought to the state where its executor can run a
@@ -278,7 +319,7 @@ fn firecracker_host_ready(standing: FirecrackerHostStanding, expected_login: Non
 // process did not inherit answers the first question and not the second, so a probe gated on
 // readiness would attempt a boot it cannot perform and report a VMM error as an IMAGE verdict.
 fn firecracker_host_ready_in_this_process(standing: FirecrackerHostStanding) -> Bool {
-  (match standing.kvm { KvmDeviceWritable => true  KvmDevicePresentNotWritable => false  KvmDeviceAbsent => false })
+  (match standing.kvm { KvmDeviceWritable => true  KvmDevicePresentNotWritable => false  KvmDeviceAbsent => false  KvmDeviceUnreadable { program: _, cause: _ } => false })
     && firecracker_binary_installed(standing: standing)
 }
 
@@ -287,6 +328,7 @@ fn kvm_standing_text(k: KvmDeviceStanding) -> String {
     KvmDeviceWritable => "kvm=writable"
     KvmDevicePresentNotWritable => join(["kvm=present-not-writable (", firecracker_requires_kvm_device as String, " exists but THIS process may not open it; a process's supplementary groups are fixed at its exec, so a grant applied during this run is not visible here)"], "")
     KvmDeviceAbsent => join(["kvm=absent (", firecracker_requires_kvm_device as String, " does not exist; the KVM module is not loaded or the host does not virtualize)"], "")
+    KvmDeviceUnreadable { program: p, cause: c } => join(["kvm=unreadable (the probe was never spawned: ", p, " -- ", c, ")"], "")
   }
 }
 
@@ -295,6 +337,7 @@ fn binary_standing_text(b: FirecrackerBinaryStanding) -> String {
     FirecrackerInstalled { binary: p, version_line: v } => join(["firecracker=installed ", p, " (", v, ")"], "")
     FirecrackerVersionMismatch { binary: p, observed: o } => join(["firecracker=version-mismatch ", p, " answered '", o, "'"], "")
     FirecrackerBinaryAbsent { binary: p } => join(["firecracker=absent ", p], "")
+    FirecrackerBinaryUnreadable { binary: p, program: q, cause: c } => join(["firecracker=unreadable ", p, " (probe never spawned: ", q, " -- ", c, ")"], "")
   }
 }
 
@@ -504,6 +547,7 @@ fn observe_kvm_device_delegation_wet() -> KvmDeviceDelegation {
 
 fn observe_kvm_group_enrolment_wet(login: NonEmptyStr) -> KvmGroupEnrolment {
   match run_shell_command_capture(command: id_group_names_command(user: login), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessOutputPresent { text: t } =>
       if group_names_contain(output: t, group: kvm_device_group) {
         KvmGroupEnrolled { login: login, group: kvm_device_group }
@@ -514,6 +558,9 @@ fn observe_kvm_group_enrolment_wet(login: NonEmptyStr) -> KvmGroupEnrolment {
       KvmGroupEnrolmentUnreadable { login: login, cause: "id -nG exited successfully and printed nothing, so no group list was read" }
     ProcessRefused { exit_code: c, stderr: e } =>
       KvmGroupEnrolmentUnreadable { login: login, cause: join(["id -nG exited ", to_string(c), ": ", trim(s: e)], "") }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      KvmGroupEnrolmentUnreadable { login: login, cause: join(["id -nG was never spawned: ", p, ": ", why], "") }
   }
 }
 
@@ -538,38 +585,61 @@ fn observe_firecracker_host_standing_at_binary_wet(binary: String, login: NonEmp
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
-  let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
-  let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
-  let executable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
-  let version_output = if executable {
+  let exists = capture_probe(captured: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
+  let writable = capture_probe(captured: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
+  let executable = capture_probe(captured: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
+  // The version child runs only when the executable probe ANSWERED yes; a version child that never
+  // spawned is a missing reading, not an empty one.
+  let executable_yes = match executable { ProbeAnswered { admitted: a } => a  ProbeUnreadable { program: _, cause: _ } => false }
+  let version = if executable_yes {
     match run_shell_command_capture(command: firecracker_version_command(binary: binary), transport: LocalExec) {
-      ProcessOutputPresent { text: t } => t
+      ProcessCaptured { outcome: __pc1 } => match __pc1 {
+        ProcessOutputPresent { text: t } => VersionLineRead { text: t }
+        ProcessOutputAbsent => VersionLineRead { text: "" }
+        ProcessRefused { exit_code: _, stderr: _ } => VersionLineRead { text: "" }
+      }
+      ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => VersionUnreadable { program: __pp1 as String, cause: __pw1 as String }
+    }
+  } else { VersionLineRead { text: "" } }
+  let gnu_time = capture_probe(captured: run_shell_command_capture(command: test_executable_command(path: gnu_time_program().invocation), transport: LocalExec))
+  let cgroup_peak = capture_probe(captured: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path()), transport: LocalExec))
+  let systemd_cap = run_shell_command_capture(command: systemctl_version_command(), transport: LocalExec)
+  // The systemctl probe's own program and cause, kept for the Unreadable instrument's cause text:
+  // 'produced no readable line' may only be said of a child that RAN.
+  let systemd_unspawned = match systemd_cap { ProcessCaptureNotSpawned { program: p, cause: why } => Present { value: join([p as String, " -- ", why as String], "") }  ProcessCaptured { outcome: _ } => Absent }
+  let systemd_version = match systemd_cap {
+    ProcessCaptured { outcome: __pc2 } => match __pc2 {
+      ProcessOutputPresent { text: t } =>
+        match first(split(trim(s: t), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
       ProcessOutputAbsent => ""
       ProcessRefused { exit_code: _, stderr: _ } => ""
     }
-  } else { "" }
-  let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_program().invocation), transport: LocalExec))
-  let cgroup_peak = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path()), transport: LocalExec))
-  let systemd_version = match run_shell_command_capture(command: systemctl_version_command(), transport: LocalExec) {
-    ProcessOutputPresent { text: t } =>
-      match first(split(trim(s: t), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+    ProcessCaptureNotSpawned { program: _, cause: _ } => ""
   }
   FirecrackerHostStanding {
     kvm: kvm_standing_of(exists: exists, writable: writable),
     kvm_group: observe_kvm_group_enrolment_wet(login: login),
     kvm_delegation: observe_kvm_device_delegation_wet(),
-    binary: binary_standing_of(binary: binary, executable: executable, version_output: version_output, rel: rel),
+    binary: binary_standing_of(binary: binary, executable: executable, version: version, rel: rel),
     footprint_instruments: FootprintInstrumentStanding {
       instruments: [
         InstrumentStanding {
           instrument: GnuTimeMaxRss,
-          observation: if gnu_time { InstrumentPresent } else { InstrumentAbsent },
+          observation: match gnu_time {
+            ProbeAnswered { admitted: true } => InstrumentPresent
+            ProbeAnswered { admitted: false } => InstrumentAbsent
+            ProbeUnreadable { program: p, cause: c } =>
+              InstrumentUnreadable { cause: join(["the gnu-time existence test was never spawned: ", p, " -- ", c], "") }
+          },
         },
         InstrumentStanding {
           instrument: CgroupMemoryPeak,
-          observation: if cgroup_peak { InstrumentPresent } else { InstrumentAbsent },
+          observation: match cgroup_peak {
+            ProbeAnswered { admitted: true } => InstrumentPresent
+            ProbeAnswered { admitted: false } => InstrumentAbsent
+            ProbeUnreadable { program: p, cause: c } =>
+              InstrumentUnreadable { cause: join(["the memory.peak existence test was never spawned: ", p, " -- ", c], "") }
+          },
         },
         InstrumentStanding {
           instrument: SystemdMemoryPeak,
@@ -577,7 +647,12 @@ fn observe_firecracker_host_standing_at_binary_wet(binary: String, login: NonEmp
             SystemdReportsMemoryPeak { version: _ } => InstrumentPresent
             SystemdTooOldForMemoryPeak { version: _ } => InstrumentAbsent
             SystemdVersionUnreadable =>
-              InstrumentUnreadable { cause: "systemctl --version produced no line this could read a major version from" }
+              InstrumentUnreadable { cause: match systemd_unspawned {
+                // Only a child that RAN can be said to have produced an unreadable line; a child
+                // that never spawned is reported by its own program and cause.
+                Present { value: v } => join(["systemctl --version was never spawned: ", v], "")
+                Absent => "systemctl --version produced no line this could read a major version from"
+              } }
           },
         },
       ],
@@ -670,6 +745,10 @@ fn runner_microvm_host_converge_wet() -> ProcessExit
             FirecrackerInstalled { binary: _, version_line: _ } => ExitSuccess
             FirecrackerVersionMismatch { binary: _, observed: _ } => install_firecracker_release(root: root)
             FirecrackerBinaryAbsent { binary: _ } => install_firecracker_release(root: root)
+            // Reinstalling over an unreadable executable probe could overwrite a perfectly good
+            // pinned binary on the strength of a probe that never ran: refuse, naming the cause.
+            FirecrackerBinaryUnreadable { binary: b, program: p, cause: c } =>
+              exit_failure(reason: join(["runner_microvm_host_converge: cannot classify the installed firecracker at ", b, ": the executable probe never spawned (", p, ": ", c, "); refusing to reinstall over an unanswered question"], ""))
           }
           match install {
             ExitSuccess =>

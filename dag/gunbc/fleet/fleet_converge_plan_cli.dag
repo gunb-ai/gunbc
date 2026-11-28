@@ -26,9 +26,11 @@ import gunbc.fleet.fleet_host_grant_coverage {
   InstalledSudoersText,
   InstalledSudoersUnreadable,
 }
-import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_version_from_run }
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_decision_binary_unreadable, sudo_version_from_run }
 import extdeps.sudo.elevation { sudo_version_command }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, listing_contains_entry }
+import extdeps.tools.gnu_coreutils { ls_almost_all_one_per_line_command }
 import std.types { CommitSha }
 
 
@@ -74,7 +76,7 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted , process_capture_admitted}
 import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
@@ -249,6 +251,7 @@ import gunbc.fleet.fleet_converge_receipt {
   admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
+import extdeps.shell.exec { ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 // The apply script is written by this CLI and then executed, so its mode is a decision this module
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
@@ -272,11 +275,18 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 fn observe_effective_user_wet() -> NonEmptyStr?
 {
   match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" { none } else { Present { value: trim(s: t) as NonEmptyStr } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => none
+
+
+
+
+}
 }
 
 fn observe_host_short_wet() -> NonEmptyStr?
@@ -285,6 +295,7 @@ fn observe_host_short_wet() -> NonEmptyStr?
     command: hostname_short_read_command(),
     transport: LocalExec,
   ) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
     ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" {
         none
@@ -293,7 +304,13 @@ fn observe_host_short_wet() -> NonEmptyStr?
       }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => none
+
+
+
+
+}
 }
 
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
@@ -311,15 +328,38 @@ fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmissio
   )
 }
 
-fn observe_timer_members_wet() -> List<TimerRetirementMember>
+// A TIMER IS EITHER NOT A MEMBER OR UNASKED -- NOT BOTH. The old filter collapsed 'the `test`
+// child was never spawned' into 'unit file not present', so a launch-environment converge could
+// propose timer work over a unit population nobody enumerated (gunbc.design_argument::fail_closed).
+// Unobservable carries the probe's own program and cause; the callers refuse, never plan.
+type TimerMembersObservation
+  = TimerMembersObserved { members: List<TimerRetirementMember> }
+  | TimerMembersUnobservable { unit: NonEmptyStr, program: String, cause: String }
+
+fn observe_timer_members_wet() -> TimerMembersObservation
 {
   let legacy = timer_retirement_observed_legacy_srv1()
-  filter(legacy, m =>
-    process_outcome_admitted(outcome: run_shell_command_capture(
-      command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
-      transport: LocalExec,
-    ))
-  )
+  fold(legacy, init: TimerMembersObserved { members: [] }, f: fn(acc, m) {
+    match acc {
+      TimerMembersUnobservable { unit: _, program: _, cause: _ } => acc
+      TimerMembersObserved { members: members } => {
+        let probe = run_shell_command_capture(
+          command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
+          transport: LocalExec,
+        )
+        match probe {
+          ProcessCaptureNotSpawned { program: p, cause: why } =>
+            TimerMembersUnobservable { unit: m.unit_name, program: p as String, cause: why as String }
+          ProcessCaptured { outcome: _ } =>
+            if process_capture_admitted(captured: probe) {
+              TimerMembersObserved { members: append(members, items: [m]) }
+            } else {
+              TimerMembersObserved { members: members }
+            }
+        }
+      }
+    }
+  })
 }
 
 type CapMembersObservation
@@ -428,12 +468,18 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
         observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
       },
     }
-    ScopeDecoded { scope: LaunchEnvironment } => FleetConvergeRequestObserved {
-      request: LaunchEnvironmentConverge {
-        host: host,
-        observed_timers: observe_timer_members_wet(),
-      },
-    }
+    ScopeDecoded { scope: LaunchEnvironment } =>
+      match observe_timer_members_wet() {
+        TimerMembersUnobservable { unit: u, program: p, cause: c } => FleetConvergeRequestUnobserved {
+          reason: join(["TimerMembersUnobservable unit=", u as String, " — the membership test was never spawned: ", p, " -- ", c], ""),
+        }
+        TimerMembersObserved { members: observed_timers } => FleetConvergeRequestObserved {
+          request: LaunchEnvironmentConverge {
+            host: host,
+            observed_timers: observed_timers,
+          },
+        }
+      }
     ScopeDecoded { scope: WorkspaceSlotCommissioningOnly } => FleetConvergeRequestUnobserved { reason: "commissioning observation requires the admitted revision" }
     ScopeDecoded { scope: WorkspaceAllocationOnly } => FleetConvergeRequestUnobserved { reason: "workspace allocation observation requires the admitted revision" }
     ScopeDecoded { scope: LiveDeploy } =>
@@ -448,8 +494,10 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                 CapMembersUnobservable { path: path, cause: cause } => FleetConvergeRequestUnobserved {
                   reason: join(["CapMemberUnobservable path=", path as String, " — ", cause], ""),
                 }
-                CapMembersAbsent => {
-                  let observed_timers = observe_timer_members_wet()
+                CapMembersAbsent =>
+                  match observe_timer_members_wet() {
+                    TimerMembersUnobservable { unit: u, program: p, cause: c } => FleetConvergeRequestUnobserved { reason: join(["TimerMembersUnobservable unit=", u as String, " — the membership test was never spawned: ", p, " -- ", c], "") }
+                    TimerMembersObserved { members: observed_timers } => {
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
@@ -467,9 +515,12 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_host_grants: observed_host_grants,
                     },
                   }
-                }
-                CapMembersObserved { members: observed_caps } => {
-                  let observed_timers = observe_timer_members_wet()
+                    }
+                  }
+                CapMembersObserved { members: observed_caps } =>
+                  match observe_timer_members_wet() {
+                    TimerMembersUnobservable { unit: u, program: p, cause: c } => FleetConvergeRequestUnobserved { reason: join(["TimerMembersUnobservable unit=", u as String, " — the membership test was never spawned: ", p, " -- ", c], "") }
+                    TimerMembersObserved { members: observed_timers } => {
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
@@ -487,7 +538,8 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_host_grants: observed_host_grants,
                     },
                   }
-                }
+                    }
+                  }
               }
           }
   }
@@ -581,23 +633,93 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
 // normally root:root 0440, so an unreadable file is its own typed outcome.
 // THE ONE WET EXEC here (sudo's real exit codes and text) is the unpaired gap; the witnesses
 // run the pure mapping over recorded outputs.
+// THREE STANDINGS for a presence probe: the probe answered present, answered absent, or was never
+// spawned and answered NOTHING. Pure over the capture, so the witness drives all three.
+type BinaryPresence
+  = BinaryPresenceKnown { present: Bool }
+  | BinaryPresenceUnreadable { cause: String }
+
+// ROUND-5 REVIEW ITEM 5: `test -f` ANSWERS NOTHING ABOUT PRESENCE. The binary's own exit-1
+// question cannot tell an absent binary from an INACCESSIBLE one -- a mode-000 (or otherwise
+// unlistable) parent defeats `test -f` with exit 1 exactly as a missing file does, and the old
+// fold turned every nonzero capture into BinaryPresenceKnown(false), so an inaccessible sudo
+// binary reported "is not present" and skipped the sudo query. PRESENCE NOW COMES FROM A
+// COMPLETED, POSITIVE PARENT LISTING (the shared member_observe route): `<parent>/.` so a
+// regular-file parent FAILS the lookup instead of faking an empty listing; a failed lookup is
+// settled only by a completed GRANDPARENT listing that positively lacks the parent. An
+// unreadable standing is BinaryPresenceUnreadable -- never "not present" -- and its cause
+// travels into the decision. `probe` (the regular-file question) is consulted only when the
+// entry is listed; callers that did not need it pass the typed ProcessCaptureNotSpawned.
+fn binary_presence_from(listing: ProcessCaptureOutcome, entry_name: String, parent_name: String, parent_listing: ProcessCaptureOutcome, probe: ProcessCaptureOutcome) -> BinaryPresence {
+  match listing {
+    ProcessCaptureNotSpawned { program: p, cause: why } => BinaryPresenceUnreadable { cause: join([p, ": ", why], "") }
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } =>
+      if listing_contains_entry(stdout: t, name: entry_name) {
+        match probe {
+          ProcessCaptured { outcome: observed } => BinaryPresenceKnown { present: process_outcome_admitted(outcome: observed) }
+          ProcessCaptureNotSpawned { program: p, cause: why } => BinaryPresenceUnreadable { cause: join(["the entry is listed but the regular-file probe never spawned (", p, ": ", why, ")"], "") }
+        }
+      } else { BinaryPresenceKnown { present: false } }
+    ProcessCaptured { outcome: ProcessOutputAbsent } => BinaryPresenceKnown { present: false }
+    ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
+      match parent_listing {
+        ProcessCaptured { outcome: ProcessOutputPresent { text: gp } } =>
+          if listing_contains_entry(stdout: gp, name: parent_name) {
+            BinaryPresenceUnreadable { cause: join(["the parent stands in a completed grandparent listing but would not list: exit ", to_string(code), " ", trim(s: err)], "") }
+          } else { BinaryPresenceKnown { present: false } }
+        ProcessCaptured { outcome: ProcessOutputAbsent } => BinaryPresenceKnown { present: false }
+        ProcessCaptured { outcome: ProcessRefused { exit_code: gcode, stderr: gerr } } =>
+          BinaryPresenceUnreadable { cause: join(["the parent lookup errored (exit ", to_string(code), " ", trim(s: err), ") and the grandparent lookup errored too (exit ", to_string(gcode), " ", trim(s: gerr), ")"], "") }
+        ProcessCaptureNotSpawned { program: p, cause: why } =>
+          BinaryPresenceUnreadable { cause: join(["the parent lookup errored (exit ", to_string(code), " ", trim(s: err), ") and the grandparent lookup never spawned (", p, ": ", why, ")"], "") }
+      }
+  }
+}
+
+fn binary_presence_of(program: String) -> BinaryPresence {
+  let parent = path_parent(path: program)
+  let listing = run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: join([parent, "/."], "")), transport: LocalExec)
+  let needs_parent = match listing {
+    ProcessCaptured { outcome: ProcessRefused { exit_code: _, stderr: _ } } => true
+    _ => false
+  }
+  let entry_listed = match listing {
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } => listing_contains_entry(stdout: t, name: path_basename(path: program))
+    _ => false
+  }
+  binary_presence_from(
+    listing: listing,
+    entry_name: path_basename(path: program),
+    parent_name: path_basename(path: parent),
+    parent_listing: if needs_parent {
+      run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: join([path_parent(path: parent), "/."], "")), transport: LocalExec)
+    } else {
+      ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted; the parent listing answered" as NonEmptyStr }
+    },
+    probe: if entry_listed {
+      run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec)
+    } else {
+      ProcessCaptureNotSpawned { program: "test -f" as NonEmptyStr, cause: "not consulted; the parent listing settled presence" as NonEmptyStr }
+    },
+  )
+}
 fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersionRead) -> HostGrantDecisionRead
 {
   let program = match query.argv.first() {
     Present { value: w } => w as String
     Absent => ""
   }
-  let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+  // THREE STANDINGS, not two: a presence probe that was never spawned answers NOTHING about presence,
+  // and reporting 'not present' from it would mint an unheld fact. Its cause travels into the
+  // decision as unreadable, with the program and the cause.
+  let presence = binary_presence_of(program: program)
   HostGrantDecisionRead {
     query: query,
-    decision: if present {
-      sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
-    } else {
-      sudo_decision_binary_absent(query: query)
+    decision: match presence {
+      BinaryPresenceKnown { present: true } =>
+        sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
+      BinaryPresenceKnown { present: false } => sudo_decision_binary_absent(query: query)
+      BinaryPresenceUnreadable { cause: c } => sudo_decision_binary_unreadable(query: query, cause: c)
     },
   }
 }
@@ -1555,10 +1677,18 @@ fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> Pro
 // The registration KIND comes from the file's own bytes, read only when the file is present; an
 // unreadable or undecodable file is carried as its own arm so ownership refuses on it rather than
 // defaulting either way.
-fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSlotRegistration {
-  if !present {
-    SlotUnregistered
-  } else {
+// A TEST THAT NEVER RAN IS NOT AN ABSENT REGISTRATION. `test -f` refusing answers 'unregistered';
+// a test child never spawned answers nothing, and defaulting that to SlotUnregistered would let a
+// roster print a registered runner as unregistered -- the exact collapse this file's own rule ("no
+// name enters the roster without provenance") forbids. The unreadable check lands in the arm that
+// refuses, never in the arm that defaults.
+fn observe_runner_slot_registration_wet(presence: ProcessCaptureOutcome, path: String) -> RunnerSlotRegistration {
+  match presence {
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      SlotRegistrationUnreadable { reason: join(["the registration check was never spawned: ", p as String, " -- ", why as String], "") }
+    ProcessCaptured { outcome: _ } =>
+      if process_capture_admitted(captured: presence) {
+    
     let read = Filesystem.Read(path: path)
     if !read.success {
       SlotRegistrationUnreadable { reason: join([".runner present but unreadable: ", read.error], "") }
@@ -1569,6 +1699,9 @@ fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSl
         ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => SlotRegisteredPersistent
       }
     }
+      } else {
+        SlotUnregistered
+      }
   }
 }
 
@@ -1600,11 +1733,11 @@ fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMembe
     }
   } else {
     let registration_path = join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")
-    let registered = process_outcome_admitted(outcome: run_shell_command_capture(
+    let registration_check = run_shell_command_capture(
       command: test_regular_file_command(path: registration_path),
       transport: LocalExec,
-    ))
-    let registration = observe_runner_slot_registration_wet(present: registered, path: registration_path)
+    )
+    let registration = observe_runner_slot_registration_wet(presence: registration_check, path: registration_path)
     let unit = runner_unit_name_of_registration(registration_name: name)
     match read_unit_property(unit: unit, property: ActiveState) {
       UnitPropertyUnreadable { unit: u, property: p } =>

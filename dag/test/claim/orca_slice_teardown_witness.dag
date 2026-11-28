@@ -1,0 +1,58 @@
+module test.claim.orca_slice_teardown_witness
+
+// CLAIMS FOR THE ORCA SLICE TEARDOWN (review 97468, blocker 5 / round-3 "a successful slice
+// followed by outstanding cleanup exits failure; I found no new control exercising the decision").
+// The slice's verdict and the teardown's standing are DIFFERENT FACTS: the child's answer says
+// what Orca did, the standing says whether the private realization was removed. Neither may erase
+// the other -- neither a success claim over a leaked secret-bearing tree, nor a never-spawned claim
+// over a child that ran. The claims drive the one consumer decision (slice_exit_for).
+//
+// THE MUTATION CONTROL (documented, not inlined). In slice_run.slice_exit_for, restore either
+//  * the OrcaCleanupOutstanding + ProcessOutputPresent arm to ExitSuccess (the old collapse that
+//    let a leaked realization exit green), or
+//  * the OrcaCleanupOutstanding + ProcessCaptured arms to a NotSpawned-style refusal (the round-4
+//    defect: inventing a spawn fact over a child that ran),
+// and the matching claim below turns false on its reason assertions (the first loses ExitFailure,
+// the second loses the "ORCA SLICE RESULT" wording this control pins). Both mutations were run
+// and reverted in-PR.
+
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ExitFailure, ExitSuccess }
+import gunbc.command_runner { ProcessCaptureOutcome }
+import extdeps.shell.exec { ProcessCaptured, ProcessOutputPresent, ProcessCaptureNotSpawned }
+import extdeps.printing.orca_slicer { OrcaCleanupStanding, OrcaCleanupClean, OrcaCleanupOutstanding }
+import product.printed_chassis.slice_run { slice_exit_for }
+
+// A SUCCESSFUL SLICE FOLLOWED BY A FAILED TEARDOWN EXITS FAILURE, naming the leak. The slice
+// genuinely ran -- the refusal keeps that fact AND adds the leak; it does not exit on the slice's
+// success alone.
+test fn a_successful_slice_with_failed_teardown_exits_failure_naming_the_leak() -> Bool {
+  match slice_exit_for(capture: ProcessCaptured { outcome: ProcessOutputPresent { text: "slice.gcode" } }, standing: OrcaCleanupOutstanding { detail: "private Orca realization leaked under /tmp/orca.X" as NonEmptyStr }) {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "cleanup outstanding")
+        && string_contains(s: r, pattern: "private Orca realization leaked under /tmp/orca.X")
+    _ => false
+  }
+}
+
+// A SUCCESSFUL SLICE WITH A CLEAN TEARDOWN STILL EXITS SUCCESS -- the teardown standing must not
+// over-refuse honest runs (the guard against the opposite collapse).
+test fn a_successful_slice_with_clean_teardown_exits_success() -> Bool {
+  match slice_exit_for(capture: ProcessCaptured { outcome: ProcessOutputPresent { text: "slice.gcode" } }, standing: OrcaCleanupClean) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+// AN UNSPAWNED SLICE WITH A LEAK CARRIES BOTH FACTS: nothing ran AND the realization stands.
+// Either half alone would misreport the run.
+test fn an_unspawned_slice_with_a_leak_carries_both_facts() -> Bool {
+  match slice_exit_for(capture: ProcessCaptureNotSpawned { program: "orca_appimage" as NonEmptyStr, cause: "digest differs" as NonEmptyStr }, standing: OrcaCleanupOutstanding { detail: "leaked under /tmp/orca.Y" as NonEmptyStr }) {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "never spawned")
+        && string_contains(s: r, pattern: "digest differs")
+        && string_contains(s: r, pattern: "leaked")
+        && string_contains(s: r, pattern: "/tmp/orca.Y")
+    _ => false
+  }
+}

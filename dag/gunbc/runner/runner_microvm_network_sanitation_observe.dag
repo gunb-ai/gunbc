@@ -7,9 +7,9 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.linux.tun_fdinfo { tun_descriptor_census_observe, tun_census_refusal_text, TunDescriptorCensus, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable, TunAttachedQueueRequirement, tun_attached_queue_requirement }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessCaptured}
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import gunbc.runner.runner_microvm_network {
   SlotNetworkSanitationSubject, SlotNetworkReadings,
   TapHolderObservation, TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
@@ -42,15 +42,20 @@ fn tap_holders_reading(census: TunDescriptorCensus) -> TapHolderObservation {
 
 fn observe_network_residue(command: ArgvCommand) -> ResidueObservation {
   match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessCaptured { outcome: outcome } => match outcome {
     ProcessOutputPresent { text: body } => if trim(s: body) == "" { ResidueAbsent }
       else { ResiduePresent { entries: length(filter(split(s: body, delimiter: "\n"), line => trim(s: line) != "")) } }
     ProcessOutputAbsent => ResidueAbsent
     other => ResidueUnreadable { reason: "network residue listing failed" as NonEmptyStr }
+    }
+    // Unspawned is unreadable, never an absence: a listing the kernel never ran has no residue to report.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => ResidueUnreadable { reason: "network residue listing never spawned" as NonEmptyStr }
   }
 }
 
 fn observe_network_ruleset() -> RulesetObservation {
   match run_shell_command_capture(command: runner_microvm_nft_list_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: outcome } => match outcome {
     ProcessOutputPresent { text: body } => match sha256sum_stdin_digest_via_shell(content: body) {
       Sha256FileDigest { digest: hashed } => match sha256_hex_digest(hex: hashed.hex as String) {
         Present { value: actual_digest } => RulesetListed { digest: actual_digest }
@@ -59,6 +64,9 @@ fn observe_network_ruleset() -> RulesetObservation {
       other => RulesetUnreadable { reason: "listed ruleset digest unavailable" as NonEmptyStr }
     }
     other => RulesetUnreadable { reason: "converged nft table could not be listed" as NonEmptyStr }
+    }
+    // Unspawned is unreadable, not an empty table: a digest of nothing would read as a clean ruleset.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => RulesetUnreadable { reason: "converged nft table listing never spawned" as NonEmptyStr }
   }
 }
 

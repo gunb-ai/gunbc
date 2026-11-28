@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr, Bool, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent, ProcessCaptured, ProcessCaptureNotSpawned}
+import gunbc.command_runner { run_shell_command_capture  }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.python { python_interpreter_at }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
@@ -33,7 +33,7 @@ import product.printing.cad_runtime_store {
   cad_environment_publish, CadPublished, CadPublishRefused, cad_build_under_lock, CadBuildResult, CadBuilt, CadBuildFailed,
 }
 import product.printing.print_runtime {
-  probe_cad_interpreter, RuntimeMatches, RuntimeMismatch,
+  probe_cad_interpreter, RuntimeMatches, RuntimeMismatch, RuntimeUnreadable,
   CadEnvironmentReading, CadEnvironmentAbsent, CadEnvironmentReady, CadEnvironmentWrong, CadEnvironmentUnreadable,
   cad_environment_reading_reason, read_cad_environment,
 }
@@ -74,10 +74,17 @@ fn micromamba_subject(tree: HostStateTree, spec: CadRuntimeSpec) -> AcquisitionS
 // One build step on this host; a refusal names the step and carries its stderr.
 fn run_local(label: String, command: ArgvCommand) -> String? {
   match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessRefused { exit_code: _, stderr: e } => Present { value: join([label, ": ", e], "") }
     ProcessOutputAbsent => none
     ProcessOutputPresent { text: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => Present { value: join([label, ": ", join(["never spawned ", __pp0, ": ", __pw0], "")], "") }
+
+
+
+
+}
 }
 
 // THE BUILD UNDER THE LOCK. The prefix is re-checked after the lock is taken: another convergence
@@ -103,6 +110,9 @@ fn build_locked(tree: HostStateTree, store: CadRuntimeStore, spec: CadRuntimeSpe
       Present { value: e } => Present { value: e }
       Absent => match probe_cad_interpreter(spec: spec, interpreter: cad_environment_interpreter(store: store, spec: spec)) {
         RuntimeMismatch { reason: r } => Present { value: concat("Built environment failed its probe: ", r) }
+        // A freshly built environment whose probe child never spawned is reported by its own cause,
+        // not as a failed verdict -- and its marker is never written over an unreadable probe.
+        RuntimeUnreadable { reason: u } => Present { value: concat("Built environment probe was unreadable: ", u) }
         RuntimeMatches => match cad_environment_publish(store: store, spec: spec) {
           CadPublished => none
           CadPublishRefused { cause: c } => Present { value: c }

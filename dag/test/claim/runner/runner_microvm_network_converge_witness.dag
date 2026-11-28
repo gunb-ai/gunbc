@@ -1,11 +1,22 @@
 module test.claim.runner.runner_microvm_network_converge_witness
 
+// THE MUTATION CONTROL (documented, not inlined) -- PRODUCER DECISION, NOT TYPES (review 97468).
+// In runner_microvm_network_converge, restore the old table projection and the table claims turn
+// RED while every pre-existing claim stays green:
+//  * drop the table_cause projection (read_host_wet passing none) or make table_read_cause answer
+//    Absent for Overran / ProcessCaptureNotSpawned legs -- both table claims' receipt assertions
+//    fail (the deadline and the never-spawned words never reach receipt_text);
+//  * restore the generic RulesetUnread arms (ignoring h.table_cause) -- the deadline and
+//    "never spawned" wording disappears from the refusal.
+// The mutations were run and reverted in-PR; the head carries the cause-carrying arms.
+
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import extdeps.shell.exec { ProcessCaptureOutcome, ProcessCaptureNotSpawned }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
   SystemdDaemonReload, SystemdEnableUnit, EnsureOwnedDirectory,
@@ -29,6 +40,8 @@ import gunbc.runner.runner_microvm_network_converge {
   converge_outcome, absent_from_kernel_or_unread, receipt_text,
   IpForwardStanding, IpForwardOn, IpForwardOff, IpForwardUnread,
   SlotProbeReading, SlotProbeRead, SlotProbeUnread,
+  PrivilegedRead, PrivilegedReadCaptured, PrivilegedReadOverran, surface_reading, table_read_cause,
+  privileged_read_ran, privileged_read_stdout,
   IpForwardingUnread, SlotAddressUnread, SlotRouteUnread,
 }
 
@@ -172,12 +185,14 @@ fn host_reading(
   xtables: HelperSurfaceReading,
   userspace: HelperSurfaceReading,
   expectations: HelperSurfaceReading,
+  cause: NonEmptyStr?,
 ) -> HostReading {
   HostReading {
     host: operator_host_srv1,
     generation: "run-3" as ConvergeGeneration,
     ip_forward: fwd,
     ruleset_digest: digest,
+    table_cause: cause,
     auto_assignment: auto,
     nft_ct_helper_statements: nft,
     xtables_ct_helper_targets: xtables,
@@ -191,7 +206,59 @@ fn kernel_absent() -> HelperAutoAssignment {
 }
 
 fn host_with(fwd: IpForwardStanding, digest: Sha256Digest?, auto: HelperAutoAssignment) -> HostReading {
-  host_reading(fwd: fwd, digest: digest, auto: auto, nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0))
+  host_reading(fwd: fwd, digest: digest, auto: auto, nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0), cause: none)
+}
+
+// AN OVERRAN ADMIN READ IS UNREAD WITH ITS DEADLINE CAUSE (review 97468 blocker 3). The old
+// shape turned the transport's deadline into ProcessRefused { exit_code: -1 } and the surface
+// then said "probe exited -1" -- the fabricated sentinel living on in the READING. The claim
+// asserts the deadline cause reaches the surface and the receipt, and that no exit-code
+// wording of any kind appears; a control that only checks the refuse label would let a
+// re-fabrication through.
+test fn overran_privileged_read_is_unread_with_its_deadline_cause() -> Bool {
+  let overran = PrivilegedReadOverran { cause: "the fleet ssh leg overran its deadline: 30s" as NonEmptyStr }
+  match surface_reading(o: overran, surface: "conntrack expectations", count: 0) {
+    HelperSurfaceUnread { reason: r } =>
+      string_contains(s: r, pattern: "overran its deadline without returning a result")
+        && string_contains(s: r, pattern: "the fleet ssh leg overran its deadline: 30s")
+        && !string_contains(s: r, pattern: "exited -1")
+        && !string_contains(s: r, pattern: "probe exited")
+        && privileged_read_ran(r: overran) == false
+        && privileged_read_stdout(r: overran) == ""
+    _ => false
+  }
+}
+
+// THE CAUSE REACHES THE FULL CONSUMER'S RECEIPT. The refuse and its text are the final
+// diagnosis this consumer emits; an overran expectation read must carry the deadline there.
+test fn overran_expectation_read_reaches_the_receipt_with_its_cause() -> Bool {
+  let overran = PrivilegedReadOverran { cause: "the fleet ssh leg overran its deadline: 30s" as NonEmptyStr }
+  let reading = host_reading(
+    fwd: IpForwardOn,
+    digest: Present { value: converged_digest },
+    auto: kernel_absent(),
+    nft: counted(n: 0),
+    xtables: counted(n: 0),
+    userspace: counted(n: 0),
+    expectations: surface_reading(o: overran, surface: "conntrack expectations", count: 0),
+    cause: none,
+  )
+  let text = receipt_text(o: converge_outcome(slots: [clean_slot(i: 1)], h: reading))
+  string_contains(s: text, pattern: "REFUSED")
+    && string_contains(s: text, pattern: "overran its deadline without returning a result")
+    && string_contains(s: text, pattern: "the fleet ssh leg overran its deadline: 30s")
+    && !string_contains(s: text, pattern: "exited -1")
+}
+
+// A CAPTURED NOT-SPAWNED READ STAYS HONEST AT THE SURFACE: never spawned, with the cause.
+test fn captured_not_spawned_privileged_read_stays_honest_at_the_surface() -> Bool {
+  let read = PrivilegedReadCaptured { outcome: ProcessCaptureNotSpawned { program: "sudo ip6tables -S" as NonEmptyStr, cause: "the fleet session declined" as NonEmptyStr } }
+  match surface_reading(o: read, surface: "xtables helper targets", count: 0) {
+    HelperSurfaceUnread { reason: r } =>
+      string_contains(s: r, pattern: "was never spawned")
+        && string_contains(s: r, pattern: "the fleet session declined")
+    _ => false
+  }
 }
 
 // THE HOST'S OWN FACTS REFUSE THE SAME WAY. Forwarding off, a ruleset that produced no digestible
@@ -202,8 +269,8 @@ test fn each_host_fact_refuses_under_its_own_name() -> Bool {
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: none, auto: kernel_absent()))) == "ruleset-unread"
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: AutoAssignmentOn))) == "auto-helpers-on"
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: AutoAssignmentUnread { reason: "sysctl unreadable" as NonEmptyStr }))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 2), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-attached"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 1), expectations: counted(n: 0)))) == "helpers-attached"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 2), userspace: counted(n: 0), expectations: counted(n: 0), cause: none))) == "helpers-attached"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 1), expectations: counted(n: 0), cause: none))) == "helpers-attached"
 }
 
 // A SURFACE NOBODY READ IS NOT AN EMPTY ONE. Each of the three helper surfaces and the expectation
@@ -212,10 +279,10 @@ test fn each_host_fact_refuses_under_its_own_name() -> Bool {
 // a legacy CT target or a userspace helper converged green.
 test fn an_unread_helper_surface_refuses_rather_than_counting_zero() -> Bool {
   let d = Present { value: converged_digest }
-  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: unread(why: "probe exited 1"), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: unread(why: "iptables-legacy-save missing"), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: unread(why: "nfct missing"), expectations: counted(n: 0)))) == "helpers-unread"
-    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: unread(why: "conntrack refused")))) == "helpers-unread"
+  outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: unread(why: "probe exited 1"), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0), cause: none))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: unread(why: "iptables-legacy-save missing"), userspace: counted(n: 0), expectations: counted(n: 0), cause: none))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: unread(why: "nfct missing"), expectations: counted(n: 0), cause: none))) == "helpers-unread"
+    && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: unread(why: "conntrack refused"), cause: none))) == "helpers-unread"
 }
 
 // A HELPER ATTACHED BY ANY TABLE COUNTS, because an expectation is created by whichever helper is
@@ -393,4 +460,42 @@ test fn staged_tap_policy_disables_networkd_ipv6_autoconfiguration() -> Bool {
     && string_contains(s: file.content, pattern: "IPv6AcceptRA=no\n"))
     && any(files, file => file.path == "/var/lib/gunbc-microvm-network-stage/gunbc-tap13-ipv6.conf"
       && string_contains(s: file.content, pattern: "disable_ipv6 = 1"))
+}
+
+// AN OVERRAN INSTALLED-TABLE READ KEEPS ITS DEADLINE (round-3 review, blocker 3). The projection
+// from the reading to its cause is THE ONE THE WET FOLD CALLS; the old shape mapped any
+// non-ran table read to a bare digest:none and the generic "did not return a digestible listing"
+// diagnosis, so the deadline was lost at both the receipt and the CLI exit. The claims drive the
+// production projection and the full consumer, and assert the final receipt text -- not the
+// classifier's label.
+test fn overran_table_read_carries_its_deadline_through_the_digest_decision() -> Bool {
+  let overran = PrivilegedReadOverran { cause: "nft list table overran the 30s administrator edge" as NonEmptyStr }
+  match table_read_cause(table: overran) {
+    Present { value: c } => {
+      let reading = host_reading(fwd: IpForwardOn, digest: none, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0), cause: Present { value: c })
+      let text = receipt_text(o: converge_outcome(slots: [clean_slot(i: 1)], h: reading))
+      string_contains(s: c, pattern: "overran its deadline without returning a result")
+        && string_contains(s: text, pattern: "REFUSED")
+        && string_contains(s: text, pattern: "nft list table overran the 30s administrator edge")
+    }
+    Absent => false
+  }
+}
+
+// AN UNSPAWNED INSTALLED-TABLE READ IS NOT "NO DIGESTIBLE LISTING". A probe nobody started never
+// returned a listing; reporting it as a broken listing asserts a child ran and produced junk.
+// The receipt must carry "never spawned" with the program and the spawner's own cause.
+test fn unspawned_table_read_reports_never_spawned_not_a_bad_listing() -> Bool {
+  let read = PrivilegedReadCaptured { outcome: ProcessCaptureNotSpawned { program: "sudo nft list table inet gunbc" as NonEmptyStr, cause: "the fleet session declined the command" as NonEmptyStr } }
+  match table_read_cause(table: read) {
+    Present { value: c } => {
+      let reading = host_reading(fwd: IpForwardOn, digest: none, auto: kernel_absent(), nft: counted(n: 0), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0), cause: Present { value: c })
+      let text = receipt_text(o: converge_outcome(slots: [clean_slot(i: 1)], h: reading))
+      string_contains(s: c, pattern: "sudo nft list table inet gunbc")
+        && string_contains(s: text, pattern: "never spawned")
+        && string_contains(s: text, pattern: "the fleet session declined the command")
+        && !string_contains(s: text, pattern: "exited")
+    }
+    Absent => false
+  }
 }

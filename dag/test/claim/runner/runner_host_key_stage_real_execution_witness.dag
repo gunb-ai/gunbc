@@ -5,8 +5,8 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
+import gunbc.command_runner { run_shell_command_capture  }
 import gunbc.runner.runner_host_medium { runner_host_key_gen_argv, runner_host_key_pub_argv, runner_host_key_fingerprint_argv }
 import test.claim.runner.runner_host_medium_witness { keyed_capture, observed_boot }
 
@@ -29,10 +29,17 @@ fn key_stage_text(outcome_text: String?) -> String {
 
 fn key_stage_run(command: ArgvCommand) -> String? {
   match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } => Present { value: t }
     ProcessOutputAbsent => Present { value: "" }
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => none
+
+
+
+
+}
 }
 
 fn real_key_pair_texts(dir: String, name: String) -> List<String> {

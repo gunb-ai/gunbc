@@ -10,7 +10,8 @@ import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { LocalExec }
+import extdeps.exec.command { LocalExec, ArgvCommand }
+import extdeps.shell.exec { ProcessRunOutcome }
 import extdeps.object_storage { ObjectEntityTag, PutUnconditional, PutIfMatch }
 import extdeps.tools.curl {
   curl_sigv4_s3_upload_command, curl_sigv4_s3_parallel_upload_command, curl_sigv4_s3_delete_command,
@@ -27,11 +28,12 @@ import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, Trans
 import extdeps.uri { Uri, Https }
 import std.decl_ref { decl_ref }
 import gunbc.host.host_cli_dependency { observe_host_cli_dependency, HostCliDependencyPresent, HostCliDependencyAbsent }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import gunbc.auth.netrc_binding { netrc_binding_path }
 import gunbc.cloudflare.r2_s3_netrc { place_r2_s3_netrc, shred_r2_s3_netrc, R2S3NetrcPlaced, R2S3NetrcRefused, R2S3NetrcRefusedResidueRemains }
-import gunbc.cloudflare.r2_staged_transfer { classify_s3_transfer, S3Answered, S3NotAnswered, s3_status_precondition_failed }
+import gunbc.cloudflare.r2_staged_transfer { classify_s3_run, S3Answered, S3NotAnswered, s3_status_precondition_failed }
 import gunbc.cloudflare.r2_origin {
   CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
   R2OriginAllocated, R2OriginUnallocated, fabric_workspace_standing,
@@ -152,6 +154,19 @@ fn race_receipt_round(line: String, position: Int) -> RaceRoundObservation? {
     let observed = substring(s: head, start: string_length(s: prefix), end: string_length(s: head))
     if starts_with(s: observed, prefix: "seed refused: ") {
       Present { value: RaceRoundUnseeded { cause: substring(s: observed, start: 14, end: string_length(s: observed)) as NonEmptyStr } }
+    } else if starts_with(s: observed, prefix: "writers unstarted seed=") {
+      let rest = substring(s: observed, start: 23, end: string_length(s: observed))
+      let by_cause = split(s: rest, delimiter: " cause=")
+      if length(by_cause) < 2 {
+        none
+      } else {
+        Present {
+          value: RaceRoundWritersUnstarted {
+            seed_tag: race_receipt_word(words: by_cause, index: 0) as NonEmptyStr,
+            cause: join(by_cause.skip(n: 1), " cause=") as NonEmptyStr,
+          }
+        }
+      }
     } else {
       let by_overlap = split(s: observed, delimiter: " overlap=")
       let by_b = split(s: race_receipt_word(words: by_overlap, index: 0), delimiter: " b=")
@@ -264,6 +279,10 @@ fn r2_conditional_put_linearizability_ground() -> CitedFigureStanding {
 // What one round observed. A seed that did not answer 2xx with a tag leaves nothing to race on.
 type RaceRoundObservation
   = RaceRoundUnseeded { cause: NonEmptyStr }
+  // A CONFIRMED SEED WITH WRITERS THAT NEVER STARTED. The round produced no race, but saying the
+  // round "was not seeded" would contradict the seed's own confirmed tag: the tag is kept and the
+  // unstarted writers get this record, rendered and parsed as itself.
+  | RaceRoundWritersUnstarted { seed_tag: NonEmptyStr, cause: NonEmptyStr }
   | RaceRoundRaced { a: CurlParallelTransferReport, b: CurlParallelTransferReport, overlap: RaceOverlap }
 
 // WHETHER THE TWO REQUESTS RACED, AS A FACT READ FROM THE SHARED CLOCK -- never inferred from either
@@ -385,6 +404,10 @@ fn race_answers_verdict(a: RaceAnswer, b: RaceAnswer, overlap: RaceOverlap) -> R
 fn race_round_verdict(observation: RaceRoundObservation) -> RaceRoundVerdict {
   match observation {
     RaceRoundUnseeded { cause: c } => RaceRoundInconclusive { cause: concat("the round was not seeded: ", c as String) as NonEmptyStr }
+    // The seed ANSWERED with a tag; only the writers failed. The verdict says what actually stands:
+    // a confirmed seed and writers that never started -- never "the round was not seeded".
+    RaceRoundWritersUnstarted { seed_tag: t, cause: c } =>
+      RaceRoundInconclusive { cause: join(["the seed is confirmed at tag ", t as String, " but the round's writers never started: ", c as String], "") as NonEmptyStr }
     RaceRoundRaced { a: a, b: b, overlap: overlap } =>
       match a {
         CurlParallelTransferUnreported { cause: c } => RaceRoundInconclusive { cause: concat("writer a: ", c as String) as NonEmptyStr }
@@ -477,6 +500,9 @@ fn race_round_verdict_words(v: RaceRoundVerdict) -> String {
 fn race_round_line(round: Int, observation: RaceRoundObservation) -> String {
   let observed = match observation {
     RaceRoundUnseeded { cause: c } => concat("seed refused: ", c as String)
+    // The receipt line is the claim's own record: the seed tag it holds and the unstarted writers'
+    // cause, rendered so the parser reads back the SAME observation, never a "seed refused" one.
+    RaceRoundWritersUnstarted { seed_tag: t, cause: c } => join(["writers unstarted seed=", t as String, " cause=", c as String], "")
     RaceRoundRaced { a: a, b: b, overlap: o } => join(["a=", race_report_words(r: a), " b=", race_report_words(r: b), " overlap=", race_overlap_words(o: o)], "")
   }
   join(["round ", to_string(round), " ", observed, " -> ", race_round_verdict_words(v: race_round_verdict(observation: observation))], "")
@@ -533,11 +559,11 @@ fn race_write_body(path: String, round: Nat, writer: String) -> Bool {
 }
 
 fn race_seed(locator: R2ObjectLocator, netrc: FilePath, body: String) -> ObjectEntityTag? {
-  let observed = run_shell_command_observe(
+  let observed = run_shell_command_observe_outcome(
     command: curl_sigv4_s3_upload_command(url: r2_object_url(locator: locator), local_path: body, netrc_path: netrc, sigv4_region: r2_s3_sigv4_region, precondition: PutUnconditional, report: ReportStatusAndEntityTag),
     transport: LocalExec,
   )
-  match classify_s3_transfer(observation: observed) {
+  match classify_s3_run(run: observed) {
     S3NotAnswered { cause: _ } => none
     S3Answered { status: s, tag: t } => if http_status_is_success(status: s) { t } else { none }
   }
@@ -551,7 +577,22 @@ fn race_trace_reading(path: String) -> CurlTraceReading {
   if read.success { curl_trace_reading(trace: read.content) } else { CurlTraceRefused { cause: concat("the trace could not be read back: ", read.error) as NonEmptyStr } }
 }
 
+// THE ROUND, SEALED AGAINST ITS TWO EXTERNAL STEPS (the seed PUT and the parallel writers), so
+// the PRODUCER fold -- seed tag kept, unstarted writers given their own observation carrying
+// program and cause -- is drivable by a claim without a network (round-5 review, controls:
+// "a confirmed seed plus a writer ProcessNotSpawned, through race_round"; a mutation turning the
+// WritersUnstarted arm into RaceRoundUnseeded goes red here, where the aggregate-level claims
+// could not see it). The wet entry passes the real steps; the witness passes a confirmed tag and
+// a ProcessNotSpawned, driving the same code path over local round bodies only.
 fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath) -> RaceRoundObservation {
+  race_round_with(
+    round: round, locator: locator, netrc: netrc, dir: dir,
+    seed: race_seed,
+    writers: command => run_shell_command_observe_outcome(command: command, transport: LocalExec),
+  )
+}
+
+fn race_round_with(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePath, seed: fn(R2ObjectLocator, FilePath, String) -> ObjectEntityTag?, writers: fn(ArgvCommand) -> ProcessRunOutcome) -> RaceRoundObservation {
   let seed_body = race_body_path(dir: dir, name: "seed")
   let trace = race_body_path(dir: dir, name: "trace")
   let a_body = race_body_path(dir: dir, name: race_writer_a as String)
@@ -559,24 +600,31 @@ fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
   if (race_write_body(path: seed_body, round: round, writer: "seed") && race_write_body(path: a_body, round: round, writer: race_writer_a as String) && race_write_body(path: b_body, round: round, writer: race_writer_b as String)) == false {
     RaceRoundUnseeded { cause: "the round's bodies could not be written locally" }
   } else {
-    match race_seed(locator: locator, netrc: netrc, body: seed_body) {
+    match seed(locator: locator, netrc: netrc, body: seed_body) {
       Absent => RaceRoundUnseeded { cause: "the unconditional seed PUT did not answer 2xx with an entity tag" }
       Present { value: tag } => {
         let url = r2_object_url(locator: locator)
-        let observed = run_shell_command_observe(
-          command: curl_sigv4_s3_parallel_upload_command(
+        let observed = writers(command: curl_sigv4_s3_parallel_upload_command(
             uploads: [
               S3ParallelUpload { label: race_writer_a, url: url, local_path: a_body, precondition: PutIfMatch { tag: tag } },
               S3ParallelUpload { label: race_writer_b, url: url, local_path: b_body, precondition: PutIfMatch { tag: tag } },
             ],
             netrc_path: netrc, sigv4_region: r2_s3_sigv4_region, trace_path: trace as FilePath,
-          ),
-          transport: LocalExec,
-        )
-        RaceRoundRaced {
-          a: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_a),
-          b: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_b),
-          overlap: race_overlap_of_trace(reading: race_trace_reading(path: trace), label_a: race_writer_a, label_b: race_writer_b),
+          ))
+        match observed {
+          // A round whose writers were never spawned did not race -- but its seed IS confirmed, so
+          // the record is NOT 'the round was not seeded': the seed's tag is kept, and the unstarted
+          // writers get their own observation carrying the program and the cause. The probe reads it
+          // as a short run -- inconclusive, never a pass.
+          ProcessNotSpawned { program: p, cause: why } => RaceRoundWritersUnstarted {
+            seed_tag: tag.value,
+            cause: join(["the round's parallel writers were never spawned: ", p as String, " -- ", why as String], "") as NonEmptyStr,
+          }
+          ProcessRan { observation: observed } => RaceRoundRaced {
+            a: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_a),
+            b: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_b),
+            overlap: race_overlap_of_trace(reading: race_trace_reading(path: trace), label_a: race_writer_a, label_b: race_writer_b),
+          }
         }
       }
     }
@@ -594,8 +642,8 @@ fn race_rounds(declared: Int, locator: R2ObjectLocator, netrc: FilePath, dir: Fi
 }
 
 fn race_cleanup(locator: R2ObjectLocator, netrc: FilePath) -> String {
-  let observed = run_shell_command_observe(command: curl_sigv4_s3_delete_command(url: r2_object_url(locator: locator), netrc_path: netrc, sigv4_region: r2_s3_sigv4_region), transport: LocalExec)
-  match classify_s3_transfer(observation: observed) {
+  let observed = run_shell_command_observe_outcome(command: curl_sigv4_s3_delete_command(url: r2_object_url(locator: locator), netrc_path: netrc, sigv4_region: r2_s3_sigv4_region), transport: LocalExec)
+  match classify_s3_run(run: observed) {
     S3Answered { status: s, tag: _ } =>
       if http_status_is_success(status: s) { "cleanup=probe key deleted" } else { join(["cleanup=REFUSED: the probe key delete answered ", to_string(s), "; the key remains"], "") }
     S3NotAnswered { cause: c } => concat("cleanup=UNKNOWN: the probe key delete received no answer: ", c as String)
@@ -664,12 +712,21 @@ fn run_r2_conditional_put_race_probe() -> ProcessExit {
   match observe_host_cli_dependency(tool: curl_trace_ids_cli_tool) {
     HostCliDependencyAbsent { absence: a } => exit_failure(reason: join(["THE TRANSPORT IS NOT ON THIS HOST: ", a.tool as String, " (", a.hint, ")"], ""))
     HostCliDependencyPresent => {
-      let version = run_shell_command_observe(command: curl_version_command(), transport: LocalExec)
+      match run_shell_command_observe_outcome(command: curl_version_command(), transport: LocalExec) {
+        // NOT handed to curl_version_standing as an empty stdout: that would report "curl --version
+        // printed no 'curl M.m.p' first line", which is a false explanation of a curl that never ran.
+        // The refusal names what happened -- the version probe was never spawned.
+        ProcessNotSpawned { program: p, cause: why } => race_refused_before_rounds(
+          transport: join(["transport=REFUSED the curl version probe was never spawned: ", p as String, " -- ", why as String], ""),
+        )
+        ProcessRan { observation: version } => {
       let standing = curl_version_standing(tool: curl_trace_ids_cli_tool, stdout: version.stdout)
       match standing {
         CurlVersionBelowPin { observed: _, required: _ } => race_refused_before_rounds(transport: race_transport_line(standing: standing))
         CurlVersionUnreadable { cause: _ } => race_refused_before_rounds(transport: race_transport_line(standing: standing))
         CurlVersionMeetsPin { observed: _ } => race_run_with_version(transport: race_transport_line(standing: standing))
+      }
+        }
       }
     }
   }

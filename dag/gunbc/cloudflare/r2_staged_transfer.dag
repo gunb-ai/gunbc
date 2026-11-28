@@ -5,7 +5,6 @@ import extdeps.ietf.http_semantics { http_status_is_success }
 import std.algebra { trim }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.shell
-import extdeps.shell.exec { ProcessObservation }
 import extdeps.exec.command { LocalExec }
 import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
 import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool, curl_s3_entity_tag_cli_tool, S3TransferReport, ReportStatus, ReportStatusAndEntityTag }
@@ -22,7 +21,8 @@ import extdeps.cloudflare.r2 {
   r2_s3_endpoint_host,
   r2_s3_sigv4_region,
 }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessObservation, ProcessRan, ProcessNotSpawned, ProcessRunOutcome }
+import gunbc.command_runner { run_shell_command_observe_outcome, process_run_outcome_error_text }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.auth.netrc_binding { netrc_binding_path }
 import gunbc.cloudflare.r2_s3_netrc {
@@ -87,6 +87,20 @@ fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
             }
           Present { value: status } => S3Answered { status: status, tag: s3_entity_tag_of(stdout: observation.stdout) }
         }
+    }
+  }
+}
+
+// THE RUN GRAIN of the classifier. A curl that was never spawned answered nothing, which is exactly
+// what S3NotAnswered already reports -- the store never replied -- and the cause says so with the
+// program and the reason it did not run, so no reader can mistake a missing transport for a store that
+// replied wrongly. classify_s3_transfer stays the answer over an observation one HAS; this only refuses
+// to hand it an observation one does not.
+fn classify_s3_run(run: ProcessRunOutcome) -> S3TransferAnswer {
+  match run {
+    ProcessRan { observation: observation } => classify_s3_transfer(observation: observation)
+    ProcessNotSpawned { program: p, cause: why } => S3NotAnswered {
+      cause: join(["the transport was never spawned: ", p as String, " -- ", why as String], "") as NonEmptyStr,
     }
   }
 }
@@ -227,7 +241,7 @@ fn r2_put_staged_file(target: R2TransferTarget, local_path: FilePath, token_sour
         R2S3NetrcRefusedResidueRemains { cause: cause } =>
           R2Put { verdict: R2PutRefused { cause: cause }, credential: WriteCredentialResidueRemains { cause: cause } }
         R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
-          let observed = run_shell_command_observe(
+          let observed = run_shell_command_observe_outcome(
             command: curl_sigv4_s3_upload_command(
               url: r2_object_url(locator: target.locator),
               local_path: local_path as String,
@@ -240,7 +254,7 @@ fn r2_put_staged_file(target: R2TransferTarget, local_path: FilePath, token_sour
           )
           let shredded = shred_r2_s3_netrc(workspace: workspace)
           R2Put {
-            verdict: classify_r2_put(precondition: target.precondition, answer: classify_s3_transfer(observation: observed), stderr: observed.stderr),
+            verdict: classify_r2_put(precondition: target.precondition, answer: classify_s3_run(run: observed), stderr: process_run_outcome_error_text(run: observed)),
             credential: if shredded { WriteCredentialShredded } else { WriteCredentialResidueRemains { cause: credential_residue_cause } },
           }
         }
@@ -326,7 +340,7 @@ fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSour
           R2S3NetrcRefused { cause: cause } => R2FetchLocalFailure { cause: cause, staging: r2_release_staging(dir: dir) }
           R2S3NetrcRefusedResidueRemains { cause: cause } => R2FetchLocalFailure { cause: cause, staging: r2_release_staging(dir: dir) }
           R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
-            let observed = run_shell_command_observe(
+            let observed = run_shell_command_observe_outcome(
               command: curl_sigv4_s3_download_command(
                 url: r2_object_url(locator: target.locator),
                 destination: staged_path as String,
@@ -340,7 +354,7 @@ fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSour
             if shredded == false {
               R2FetchLocalFailure { cause: "the read credential's private directory could not be removed after the GET; credential material may remain and requires cleanup, and the fetch is not reported as staged", staging: r2_release_staging(dir: dir) }
             } else {
-              let verdict = classify_r2_fetch(answer: classify_s3_transfer(observation: observed), staged_path: staged_path, stderr: observed.stderr)
+              let verdict = classify_r2_fetch(answer: classify_s3_run(run: observed), staged_path: staged_path, stderr: process_run_outcome_error_text(run: observed))
               r2_fetch_of_verdict(verdict: verdict, staging_dir: dir, released: if r2_fetch_retains_staging(verdict: verdict) { R2StagingNotCreated } else { r2_release_staging(dir: dir) })
             }
           }

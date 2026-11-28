@@ -1,11 +1,11 @@
 module gunbc.workspace_tool_observer
 
-import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import std.types { String, NonEmptyStr, Timestamp }
 import std.algebra { trim }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.posix.test_utility { test_executable_command }
-import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec, ProcessCaptureOutcome, process_outcome_admitted , process_capture_admitted}
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.runner.runner_microvm_host_ready { FirecrackerHostStanding, observe_firecracker_host_standing_at_binary_wet, firecracker_host_ready_in_this_process }
@@ -14,6 +14,20 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
+// THE JAILER EXECUTABLE CHECK HAS THREE STANDINGS. A test that was never spawned answered nothing:
+// it is neither executable nor non-executable, and the refusal carries the probe's own cause.
+type WorkspaceJailerStanding
+  = JailerExecutable
+  | JailerNotExecutable
+  | JailerStandingUnreadable { cause: String }
+
+fn workspace_jailer_standing(captured: ProcessCaptureOutcome) -> WorkspaceJailerStanding {
+  match captured {
+    ProcessCaptureNotSpawned { program: p, cause: why } => JailerStandingUnreadable { cause: join([p, ": ", why], "") }
+    ProcessCaptured { outcome: observed } => if process_outcome_admitted(outcome: observed) { JailerExecutable } else { JailerNotExecutable }
+  }
+}
+
 type WorkspaceToolsObserved sole_constructor { host: NonEmptyStr, observed_at: Timestamp, release_dir: NonEmptyStr, standing: FirecrackerHostStanding }
 type WorkspaceToolsRead = WorkspaceToolsReady { observation: WorkspaceToolsObserved } | WorkspaceToolsUnobserved { reason: NonEmptyStr }
 
@@ -21,20 +35,31 @@ type WorkspaceToolsRead = WorkspaceToolsReady { observation: WorkspaceToolsObser
 // runtime. Its output cannot be manufactured from a caller's readiness boolean.
 fn workspace_observe_tools(release_dir: NonEmptyStr, login: NonEmptyStr) -> WorkspaceToolsRead {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: raw_host } => if trim(s: raw_host) == "" { WorkspaceToolsUnobserved { reason: "controller host name is empty" } }
     else {
       let standing = observe_firecracker_host_standing_at_binary_wet(binary: microvm_controller_vmm_binary(release_dir: release_dir as String), login: login)
       if !firecracker_host_ready_in_this_process(standing: standing) { WorkspaceToolsUnobserved { reason: "installed controller Firecracker or current KVM access is unavailable" } }
-      else if !process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: microvm_controller_jailer_binary(release_dir: release_dir as String)), transport: LocalExec)) {
-        WorkspaceToolsUnobserved { reason: "installed controller jailer is not executable" }
-      } else { match clock_now_probed_at() {
-        Absent => WorkspaceToolsUnobserved { reason: "controller tool observation clock is unavailable" }
-        Present { value: observed_time } => WorkspaceToolsReady { observation: WorkspaceToolsObserved { host: trim(s: raw_host) as NonEmptyStr, observed_at: observed_time as String, release_dir: release_dir, standing: standing } }
+      else { match workspace_jailer_standing(captured: run_shell_command_capture(command: test_executable_command(path: microvm_controller_jailer_binary(release_dir: release_dir as String)), transport: LocalExec)) {
+        // A jailer check that was never spawned answered nothing: 'not executable' would be an
+        // unheld fact. The refusal carries the probe's program and cause.
+        JailerStandingUnreadable { cause: c } => WorkspaceToolsUnobserved { reason: join(["installed controller jailer executable standing is unreadable: ", c], "") as NonEmptyStr }
+        JailerNotExecutable => WorkspaceToolsUnobserved { reason: "installed controller jailer is not executable" }
+        JailerExecutable => match clock_now_probed_at() {
+          Absent => WorkspaceToolsUnobserved { reason: "controller tool observation clock is unavailable" }
+          Present { value: observed_time } => WorkspaceToolsReady { observation: WorkspaceToolsObserved { host: trim(s: raw_host) as NonEmptyStr, observed_at: observed_time as String, release_dir: release_dir, standing: standing } }
+        }
       } }
     }
     ProcessOutputAbsent => WorkspaceToolsUnobserved { reason: "controller host identity is unreadable" }
     ProcessRefused { exit_code: _, stderr: _ } => WorkspaceToolsUnobserved { reason: "controller host identity is unreadable" }
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceToolsUnobserved { reason: "controller host identity is unreadable" }
+
+
+
+
+}
 }
 
 // The observation carries the controller's KERNEL hostname, and the slot carries a stable identity;

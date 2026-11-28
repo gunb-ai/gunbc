@@ -46,7 +46,11 @@ test fn a_record_in_the_format_before_the_field_decodes_with_no_root() -> Bool {
 }
 
 test fn a_cursor_registration_round_trips_and_a_claude_record_cannot_carry_one() -> Bool {
-  decoded_executor(text: credential_record_json(r: record(executor: credential_attempt_executor_for(executor: CursorFromSnapshot), reference: cursor_reference()))) == "cursor-registered"
+  // A WRITTEN registration (the won-creation proof the create flow persists after its mkdir
+  // returned 0) round-trips unchanged. Opening an attempt records only the executor: an OPEN
+  // record decodes as cursor-UNregistered, so no reader can mistake an open for a creation won.
+  decoded_executor(text: credential_record_json(r: record(executor: AttemptCursor { runtime_root: CursorRuntimeRootRegistered }, reference: cursor_reference()))) == "cursor-registered"
+    && decoded_executor(text: credential_record_json(r: record(executor: credential_attempt_executor_for(executor: CursorFromSnapshot), reference: cursor_reference()))) == "cursor-unregistered"
     && decoded_executor(text: credential_record_json(r: record(executor: credential_attempt_executor_for(executor: ClaudeFromSnapshot), reference: "id1-claude"))) == "claude"
 }
 

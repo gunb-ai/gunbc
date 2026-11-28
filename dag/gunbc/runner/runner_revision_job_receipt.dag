@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.measure { measure_count }
 import std.content_hash { serialize_content_hash }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
@@ -14,7 +14,7 @@ import extdeps.bazel.label { render_label }
 import extdeps.git.object_store { git_object_id_wire_hex }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, json_object, json_array, json_kv, json_string, json_int, serialize_json }
 import product.fabric.execution { Receipt, ExecutionReceipt }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
 import gunbc.target_invocation { claim_route_verdict_exit }
 import gunbc.runner.runner_revision_job_stage { RevisionJobInputDigests }
@@ -131,6 +131,7 @@ fn publish_revision_job_receipt(store_root: String, staging_path: String, d: Rev
   let staged = Filesystem.WriteCreateNew(path: staging_path, content: body)
   if !staged.success { RevisionJobPublicationRefused { step: "write-staging", detail: staged.error } }
   else { match run_shell_command_capture(command: sha256sum_file_command(path: staging_path), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessRefused { exit_code: _, stderr: e } => RevisionJobPublicationRefused { step: "sha256", detail: e }
     ProcessOutputAbsent => RevisionJobPublicationRefused { step: "sha256", detail: "sha256sum printed nothing" }
     ProcessOutputPresent { text: line } => match sha256sum_line_digest(line: line) {
@@ -141,11 +142,17 @@ fn publish_revision_job_receipt(store_root: String, staging_path: String, d: Rev
         let index_dir = join([store_root, "/by-commit/", commit], "")
         let index_entry = join([index_dir, "/", address], "")
         let dirs_ok = match run_shell_command_capture(command: mkdir_parents_command(path: concat(store_root, "/receipts")), transport: LocalExec) {
-          ProcessRefused { exit_code: _, stderr: _ } => false
-          _ => match run_shell_command_capture(command: mkdir_parents_command(path: index_dir), transport: LocalExec) {
+          ProcessCaptured { outcome: mkdir_receipts } => match mkdir_receipts {
             ProcessRefused { exit_code: _, stderr: _ } => false
-            _ => true
+            _ => match run_shell_command_capture(command: mkdir_parents_command(path: index_dir), transport: LocalExec) {
+              ProcessCaptured { outcome: mkdir_index } => match mkdir_index {
+                ProcessRefused { exit_code: _, stderr: _ } => false
+                _ => true
+              }
+              ProcessCaptureNotSpawned => false
+            }
           }
+          ProcessCaptureNotSpawned => false
         }
         if !dirs_ok { RevisionJobPublicationRefused { step: "mkdir", detail: store_root } }
         else {
@@ -164,7 +171,9 @@ fn publish_revision_job_receipt(store_root: String, staging_path: String, d: Rev
         }
       }
     }
-  } }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => RevisionJobPublicationRefused { step: "sha256", detail: join(["never spawned ", __pp0, ": ", __pw0], "") }
+} }
   }
   }
 }

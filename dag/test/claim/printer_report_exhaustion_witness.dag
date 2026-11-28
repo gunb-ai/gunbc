@@ -1,0 +1,112 @@
+module test.claim.printer_report_exhaustion_witness
+
+// CLAIMS FOR THE EXHAUSTED REPORT BUDGET (review 97468, blocker 5 / round-3 "no control exercises
+// the decision"). After eight admitted captures none of which completed into a state or error
+// report, the consumer refuses with the LAST CAPTURE'S OWN facts. Before the fix the exhaustion
+// path fabricated ProcessOutputAbsent -- a verdict of "no output" over children that printed bytes
+// -- and the CLI could exit on a silence that never happened. The claims drive the one consumer
+// decision (printer_report_exhaustion_refusal), not a re-implemented classifier.
+//
+// THE MUTATION CONTROL (documented, not inlined). Restore in printer_report.dag either
+//  * printer_report_last_words's ProcessOutputPresent arm to "returned no output" (the old
+//    silence claim), or
+//  * printer_report_exhaustion_refusal's leak arm to discard the outstanding standing,
+// and the matching claim below turns false on its contains-assertions. Both mutations were run
+// and reverted in-PR; the head carries the honest arms.
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.process { ExitFailure }
+import gunbc.command_runner { ProcessCaptureOutcome }
+import extdeps.shell.exec { ProcessCaptured, ProcessOutputPresent }
+import gunbc.fleet.printer_report {
+  printer_report_exhaustion_refusal, PrinterCleanupClean, PrinterCleanupOutstanding,
+  complete_report_attempts, PrinterReportCapture, PrinterReported, PrinterReportExhausted,
+}
+
+// EIGHT PARTIAL NON-EMPTY REPORTS REFUSE WITH THE LAST CAPTURE'S FACTS. The last capture printed
+// bytes that never completed -- the refusal must SAY so, with the byte count, never "no output".
+test fn exhausted_reports_refuse_with_the_last_capture_facts() -> Bool {
+  let partial = "telemetry: 90"
+  match printer_report_exhaustion_refusal(last: ProcessCaptured { outcome: ProcessOutputPresent { text: partial } }, cleanup: PrinterCleanupClean) {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "incomplete after all admitted captures")
+        && string_contains(s: r, pattern: "printed 13 bytes that never completed")
+        && !string_contains(s: r, pattern: "returned no output")
+    _ => false
+  }
+}
+
+// A CREDENTIAL-BOUND LEAK RIDES THE EXHAUSTION REFUSAL. The leak is a known fact; dropping it
+// would fail the operator's only signal that a secret-bearing file stands on disk.
+test fn an_outstanding_report_leak_rides_the_exhaustion_refusal() -> Bool {
+  let partial = "telemetry: 90"
+  match printer_report_exhaustion_refusal(last: ProcessCaptured { outcome: ProcessOutputPresent { text: partial } }, cleanup: PrinterCleanupOutstanding { detail: "/tmp/options-binding" as NonEmptyStr }) {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "printed 13 bytes that never completed")
+        && string_contains(s: r, pattern: "leaked")
+        && string_contains(s: r, pattern: "/tmp/options-binding")
+    _ => false
+  }
+}
+
+// THE REAL RETRY FOLD, EIGHT PARTIAL READS WITH AN EARLIER LEAK (round-4 review item 6). The
+// budget walk itself (complete_report_attempts, which the production
+// complete_report_with_credential rides) is driven with an injected capture source: attempt 7 of
+// 8 leaks the credential-bound binding, attempts 8..2 print bytes that never complete, and the
+// EIGHTH read completes. The fold must (a) walk the full budget -- the completing read is the
+// remaining==1 one, proving all eight ran, (b) stop on completion, and (c) carry the SEVENTH
+// attempt's leak forward across the seven replacement captures: the standing it returns is
+// Outstanding, naming the leak. Red before the fold existed (the walk was welded to the credential
+// and untestable), and red on any fold_cleanup drop.
+fn partial_read(remaining: Int) -> String {
+  join(["{\"print\":{\"gcode_state\":\"RUNNING\",\"partial\":\"attempt-", to_string(remaining), "\"}"], "")
+}
+
+fn complete_read(remaining: Int) -> String {
+  join(["{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"job.3mf\",\"print_error\":0,\"read\":\"attempt-", to_string(remaining), "\"}}"], "")
+}
+
+test fn eight_partial_reads_with_an_earlier_leak_walk_the_real_fold_and_keep_the_leak() -> Bool {
+  match complete_report_attempts(
+    remaining: 8,
+    attempt: remaining => PrinterReported {
+      outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: if remaining == 1 { complete_read(remaining) } else { partial_read(remaining) } } },
+      cleanup: if remaining == 7 { PrinterCleanupOutstanding { detail: "/tmp/leaked-telemetry-binding" as NonEmptyStr } } else { PrinterCleanupClean },
+    },
+  ) {
+    PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: t } }, cleanup: standing } =>
+      // The completing capture, VERBATIM -- production returns the real child result it read,
+      // byte for byte (round-5 review: the fixture's eighth report was unbalanced JSON the
+      // parser rejected, and the old assertion searched for "read=attempt-1", a spelling the
+      // member never has; both defects pinned here).
+      t == complete_read(1)
+        && match standing {
+            PrinterCleanupOutstanding { detail: d } => string_contains(s: d as String, pattern: "/tmp/leaked-telemetry-binding")
+            _ => false
+          }
+    _ => false
+  }
+}
+
+// EIGHT PARTIALS AND NO COMPLETION: the fold returns the EXHAUSTION marker carrying the LAST
+// real capture (attempt 1's bytes, never a fabricated silence) and the folded leak.
+test fn eight_partial_reads_exhaust_into_the_last_capture_with_the_folded_leak() -> Bool {
+  match complete_report_attempts(
+    remaining: 8,
+    attempt: remaining => PrinterReported {
+      outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: partial_read(remaining) } },
+      cleanup: if remaining == 8 { PrinterCleanupOutstanding { detail: "/tmp/first-attempt-leak" as NonEmptyStr } } else { PrinterCleanupClean },
+    },
+  ) {
+    PrinterReportExhausted { last: last_capture, cleanup: standing } =>
+      match last_capture {
+        ProcessCaptured { outcome: ProcessOutputPresent { text: t } } => string_contains(s: t, pattern: "attempt-1")
+        _ => false
+      }
+        && match standing {
+            PrinterCleanupOutstanding { detail: d } => string_contains(s: d as String, pattern: "/tmp/first-attempt-leak")
+            _ => false
+          }
+    _ => false
+  }
+}

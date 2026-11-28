@@ -2,7 +2,7 @@ module test.claim.printer_job_start_witness
 
 import std.types { Bool, String, NonEmptyStr, Secret, FilePath, List }
 import extdeps.exec.command { argv_words }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.oasis.mqtt {
   MqttQos, AtMostOnce, AtLeastOnce, ExactlyOnce, mqtt_qos_wire_level,
   MqttEndpoint, MqttOverTls,
@@ -197,8 +197,7 @@ test fn the_lan_broker_endpoint_is_tls() -> Bool {
 // reachable from a fixture.
 test fn a_lost_connection_is_not_reported_as_a_refusal() -> Bool {
   match classify_publish_outcome(
-    printer: printer_02,
-    outcome: ProcessRefused { exit_code: 7, stderr: "Error: The connection was lost." },
+    printer: printer_02,outcome:      ProcessCaptured { outcome: ProcessRefused { exit_code: 7, stderr: "Error: The connection was lost." } },
     topic: bambu_request_topic(serial: a_serial),
     remote_name: a_remote_name,
     sequence_id: "1" as NonEmptyStr,
@@ -233,8 +232,7 @@ test fn an_unknown_outcome_with_residue_is_still_unknown() -> Bool {
 // is the one that must be changed to admit the narrower arm -- which is the point of enrolling it.
 test fn every_nonzero_publish_result_is_unknown_until_the_table_is_measured() -> Bool {
   match classify_publish_outcome(
-    printer: printer_02,
-    outcome: ProcessRefused { exit_code: 5, stderr: "Connection Refused: not authorised." },
+    printer: printer_02,outcome:      ProcessCaptured { outcome: ProcessRefused { exit_code: 5, stderr: "Connection Refused: not authorised." } },
     topic: bambu_request_topic(serial: a_serial),
     remote_name: a_remote_name,
     sequence_id: "1" as NonEmptyStr,
@@ -321,7 +319,7 @@ test fn the_population_contains_both_refused_arms() -> Bool {
 // route everything to unknown. Without this the four rows would pass on a leg that never succeeds.
 test fn a_clean_publish_is_still_published() -> Bool {
   match classify_publish_outcome(
-    printer: printer_02, outcome: ProcessOutputAbsent,
+    printer: printer_02,outcome:  ProcessCaptured { outcome: ProcessOutputAbsent },
     topic: bambu_request_topic(serial: a_serial),
     remote_name: a_remote_name, sequence_id: "1" as NonEmptyStr, cleaned: true) {
     PrintStartPublished { receipt: _ } => true
@@ -427,4 +425,30 @@ test fn the_receipt_loading_is_the_declared_slot_readings_of_that_printer() -> B
     count(filter(ams_slot_readings_of(printer: p), r => r.slot == 4 && r.material == Petg && (r.read_on as String) == "2026-11-10")) == 1 &&
     all(ams_slot_readings_of(printer: p), r => r.printer == p)) &&
   (filament_material_abbreviation(m: Petg) as String) == "PETG" && (filament_material_abbreviation(m: Pla) as String) == "PLA"
+}
+
+// A PUBLISH THAT WAS NEVER SPAWNED IS UNKNOWN, NEVER PUBLISHED AND NEVER A REFUSED DELIVERY WITH A
+// STATUS. The client did not run, so whether the printer received the start command is unknown in the
+// same way a lost connection makes it unknown; the cause carries the spawner's words, not an exit code.
+test fn a_publish_that_was_never_spawned_is_an_outcome_unknown() -> Bool {
+  let never = ProcessCaptureNotSpawned {
+    program: "mqtt publish" as NonEmptyStr,
+    cause: "the broker session was refused" as NonEmptyStr,
+  }
+  match classify_publish_outcome(
+    printer: printer_02, outcome: never,
+    topic: bambu_request_topic(serial: a_serial), remote_name: a_remote_name,
+    sequence_id: "1" as NonEmptyStr, cleaned: true) {
+    PrintStartOutcomeUnknown { printer: _, cause: c } =>
+      string_contains(s: c, pattern: "never spawned mqtt publish")
+        && string_contains(s: c, pattern: "the broker session was refused")
+    _ => false
+  }
+    && match classify_publish_outcome(
+      printer: printer_02, outcome: never,
+      topic: bambu_request_topic(serial: a_serial), remote_name: a_remote_name,
+      sequence_id: "1" as NonEmptyStr, cleaned: false) {
+      PrintStartOutcomeUnknownResidueRemains { printer: _, cause: _ } => true
+      _ => false
+    }
 }

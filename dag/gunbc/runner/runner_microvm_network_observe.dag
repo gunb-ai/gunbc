@@ -6,11 +6,11 @@ import gunbc.runner.runner_microvm_network_receipt_store { read_network_receipt,
 import gunbc.runner.runner_microvm_network_apply { MicrovmNetworkApplySubject, microvm_network_local_subject, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptureOutcome, ProcessCaptured}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import product.host_identity { HostIdentity }
-import gunbc.command_runner { run_shell_commands, run_shell_command_capture, LocalExec }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture, LocalExec}
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh, SshShell, EmitArtifactThenThinRun }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -30,7 +30,7 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.runner.runner_microvm_network { ConvergeGeneration, runner_microvm_nft_read_operation }
 import gunbc.runner.runner_microvm_network_converge {
-  MicrovmPrivilegedReadings, ConvergedNetwork, ConvergeRefused,
+  MicrovmPrivilegedReadings, PrivilegedRead, ConvergedNetwork, ConvergeRefused,
   read_slot_wet, read_host_wet, converge_outcome, receipt_text,
   bind_requested_host, expected_host_reading, host_binding_refusal_text,
   HostBindingHeld, HostBindingRefused, HostBindingUnnamed,
@@ -66,19 +66,32 @@ fn admin_read_outcome(
   target: SshTarget,
   context: FleetSshExecutionContext,
   op: ExecutorPrivilegedOperation,
-) -> ProcessOutcome
+) -> PrivilegedRead
 {
   let argv = sudo_elevate_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
-  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv) {
-  TypedArgvExecOverran { deadline: d } => ProcessRefused { exit_code: -1, stderr: typed_argv_exec_overran_reason(leg_hint: "microvm network observe", deadline: d) }
-    TypedArgvExecRefused { reason: why } => ProcessRefused { exit_code: -1, stderr: why }
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: argv) {
+    // THE EDGE OVERRAN ITS DEADLINE WITHOUT RETURNING A CHILD RESULT. Whether a child started on
+    // the far side is unknown, so neither spawn fact is claimed and no exit code is invented (the
+    // -1 sentinel this PR removes is exactly such a fabrication). The deadline travels as the
+    // reading's own cause, through the fold and into the receipt.
+  TypedArgvExecOverran { deadline: d } =>
+      PrivilegedReadOverran { cause: typed_argv_exec_overran_reason(leg_hint: "microvm network observe", deadline: d) }
+    // THE EDGE DECLINED, SO NO CHILD EVER EXISTED. This used to be ProcessRefused { exit_code: -1 } --
+    // a status fabricated into a copduct whose arms are all OBSERVED child results, for a command that
+    // never ran. It is now the typed not-spawned fact, carrying the edge's own reason. CAVEAT (not
+    // solved here, ruled elsewhere): the executor seam folds a broken wire (SessionWireInconsistent,
+    // where a child MAY have started) into this same TypedArgvExecRefused arm, so this arm's spawn
+    // claim inherits the seam's coarseness. The follow-up adds a 4th TypedArgvExecOutcome arm for
+    // that case, owned by vivid-tern-749 (follow-up ruled on #16984).
+    TypedArgvExecRefused { reason: why } =>
+      PrivilegedReadCaptured { outcome: ProcessCaptureNotSpawned { program: join(argv, " ") as NonEmptyStr, cause: why as NonEmptyStr } }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code != 0 {
-        ProcessRefused { exit_code: r.exit_code, stderr: trim(s: r.stderr) }
+        PrivilegedReadCaptured { outcome: ProcessCaptured { outcome: ProcessRefused { exit_code: r.exit_code, stderr: trim(s: r.stderr) } } }
       } else if r.stdout == "" {
-        ProcessOutputAbsent
+        PrivilegedReadCaptured { outcome: ProcessCaptured { outcome: ProcessOutputAbsent } }
       } else {
-        ProcessOutputPresent { text: r.stdout }
+        PrivilegedReadCaptured { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: r.stdout } } }
       }
   }
 }
@@ -182,12 +195,16 @@ fn record_converge_readback_wet(
 }
 
 
-fn network_read_outcome(transport: HostEffectTransport, op: ExecutorPrivilegedOperation) -> ProcessOutcome {
+fn network_read_outcome(transport: HostEffectTransport, op: ExecutorPrivilegedOperation) -> PrivilegedRead {
   match transport {
     FleetSsh { target, context, kind: _ } => admin_read_outcome(target: target, context: context, op: op)
-    LocalShell => run_shell_command_capture(command: executor_privileged_operation_elevated_command(op: op), transport: LocalExec)
-    SshShell { ssh_host: _ } => ProcessRefused { exit_code: -1, stderr: "network readback requires the local administrator or a verified fleet session" }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => ProcessRefused { exit_code: -1, stderr: "network readback requires a live host" }
+    LocalShell => PrivilegedReadCaptured { outcome: run_shell_command_capture(command: executor_privileged_operation_elevated_command(op: op), transport: LocalExec) }
+    // Two transports that cannot carry this read at all: nothing was spawned, and saying so is not a
+    // child's exit code. Both used to fabricate -1 into an observed-result coproduct.
+    SshShell { ssh_host: _ } =>
+      PrivilegedReadCaptured { outcome: ProcessCaptureNotSpawned { program: "network readback" as NonEmptyStr, cause: "network readback requires the local administrator or a verified fleet session" as NonEmptyStr } }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      PrivilegedReadCaptured { outcome: ProcessCaptureNotSpawned { program: "network readback" as NonEmptyStr, cause: "network readback requires a live host" as NonEmptyStr } }
   }
 }
 

@@ -131,6 +131,10 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "witness_git_identity_bare"),
     decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "witness_git_identity_absolute"),
     decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "witness_git_identity_deep"),
+    // TRANSPORT-REFUSAL PRODUCER CONTROL (the :88 review sweep, blocker 4): a name-only identity --
+    // the entries refuse in command_over_transport before any child would be created, so the
+    // invocation is a NAME, not a lookup.
+    decl_ref(module_path: "test.claim.command_runner_transport_refusal_witness", decl_name: "witness_echo_identity"),
     decl_ref(module_path: "extdeps.rust.cargo_build_service", decl_name: "cargo_build_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),

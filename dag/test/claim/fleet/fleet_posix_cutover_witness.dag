@@ -2,7 +2,7 @@ module test.claim.fleet.fleet_posix_cutover_witness
 
 import std.types { String, Bool }
 import std.algebra { trim }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import gunbc.fleet.fleet_probe_identity_observe {
   passwd_home_observation,
   passwd_home_of,
@@ -44,18 +44,18 @@ import extdeps.filesystem.filesystem_io {
 // POSITIVE CONTROL: a whoami admission and a well-formed passwd line admit the home.
 test fn witness_passwd_home_observation_admits_the_database_line() -> Bool {
   match passwd_home_observation(
-    user: ProcessOutputPresent { text: "srvuser\n" },
-    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+    user: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser\n" } },
+    passwd: Present { value: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } } },
   ) {
     PasswdHomeObserved { home: h } =>
       h == "/home/srvuser"
         && passwd_home_of(obs: passwd_home_observation(
-          user: ProcessOutputPresent { text: "srvuser\n" },
-          passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+          user: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser\n" } },
+          passwd: Present { value: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } } },
         )) == "/home/srvuser"
         && passwd_home_receipt_text(obs: passwd_home_observation(
-          user: ProcessOutputPresent { text: "srvuser\n" },
-          passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+          user: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser\n" } },
+          passwd: Present { value: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } } },
         )) == "/home/srvuser"
     _ => false
   }
@@ -64,8 +64,8 @@ test fn witness_passwd_home_observation_admits_the_database_line() -> Bool {
 // RED WITHOUT THE ARM: a passwd line with no sixth field is refused, not truncated to "".
 test fn witness_passwd_home_refuses_a_line_without_a_home_field() -> Bool {
   match passwd_home_observation(
-    user: ProcessOutputPresent { text: "srvuser\n" },
-    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User\n" } },
+    user: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser\n" } },
+    passwd: Present { value: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User\n" } } },
   ) {
     PasswdHomeRefused { cause: c } => string_contains(s: c, pattern: "no home field")
     _ => false
@@ -75,21 +75,30 @@ test fn witness_passwd_home_refuses_a_line_without_a_home_field() -> Bool {
 // RED WITHOUT THE GUARD: the account database is keyed only by an admitted user probe. The
 // deleted pipeline keyed it with whatever the substitution produced, including nothing.
 test fn witness_passwd_home_refuses_when_the_user_probe_was_not_admitted() -> Bool {
-  match passwd_home_observation(user: ProcessOutputPresent { text: "" }, passwd: Absent) {
+  (match passwd_home_observation(user: ProcessCaptured { outcome: ProcessOutputPresent { text: "" } }, passwd: Absent) {
     PasswdHomeRefused { cause: c } => string_contains(s: c, pattern: "account database not keyed")
     _ => false
-  }
+  })
+    // A user probe the spawner never ran cannot key the database lookup either, and the refusal
+    // names the program: it is not reported as an account that has no home.
+    && (match passwd_home_observation(
+        user: ProcessCaptureNotSpawned { program: "whoami", cause: "the spawner refused it" },
+        passwd: Absent) {
+      PasswdHomeRefused { cause: c } =>
+        string_contains(s: c, pattern: "never spawned") && string_contains(s: c, pattern: "whoami")
+      other => false
+    })
 }
 
 // RED WITHOUT THE ARM: an empty home field answers absent, and no path is opened from it.
 test fn witness_passwd_home_absent_when_the_home_field_is_empty() -> Bool {
   match passwd_home_observation(
-    user: ProcessOutputPresent { text: "srvuser\n" },
-    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } },
+    user: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser\n" } },
+    passwd: Present { value: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } } },
   ) {
     PasswdHomeAbsent => passwd_home_of(obs: passwd_home_observation(
-      user: ProcessOutputPresent { text: "srvuser\n" },
-      passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } },
+      user: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser\n" } },
+      passwd: Present { value: ProcessCaptured { outcome: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } } },
     )) == ""
     _ => false
   }
@@ -107,9 +116,9 @@ test fn witness_adc_env_default_answers_unset_or_empty() -> Bool {
 // prints nothing (the capture's Absent arm), exit 1 IS the answer "absent" -- not a refusal --
 // and a status the question does not use is a refusal. Red without the exit-code split.
 test fn witness_adc_file_exit_one_is_the_answer_absent() -> Bool {
-  adc_file_observation_text(outcome: ProcessOutputAbsent) == "present"
-    && adc_file_observation_text(outcome: ProcessRefused { exit_code: 1, stderr: "" }) == "absent"
-    && string_contains(s: adc_file_observation_text(outcome: ProcessRefused { exit_code: 126, stderr: "permission denied" }), pattern: "refused")
+  adc_file_observation_text(outcome: ProcessCaptured { outcome: ProcessOutputAbsent }) == "present"
+    && adc_file_observation_text(outcome: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "" } }) == "absent"
+    && string_contains(s: adc_file_observation_text(outcome: ProcessCaptured { outcome: ProcessRefused { exit_code: 126, stderr: "permission denied" } }), pattern: "refused")
 }
 
 // POSITIVE CONTROL: the enrolled line, exactly, is admitted.
@@ -219,9 +228,10 @@ test fn witness_pinned_config_payload_repairs_an_unterminated_config() -> Bool {
 // cannot establish rather than pinning a relative UserKnownHostsFile that ssh would resolve
 // against the user's home. The deleted script's $(pwd) could silently pin an empty substitution.
 test fn witness_cwd_capture_answers_empty_unless_admitted() -> Bool {
-  cwd_capture_stdout(outcome: ProcessOutputPresent { text: " /run/checkout \n" }) == "/run/checkout"
-    && cwd_capture_stdout(outcome: ProcessRefused { exit_code: 1, stderr: "no tty" }) == ""
-    && trim(s: cwd_capture_stdout(outcome: ProcessOutputAbsent)) == ""
+  cwd_capture_stdout(outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: " /run/checkout \n" } }) == "/run/checkout"
+    && cwd_capture_stdout(outcome: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "no tty" } }) == ""
+    && trim(s: cwd_capture_stdout(outcome: ProcessCaptured { outcome: ProcessOutputAbsent })) == ""
+    && cwd_capture_stdout(outcome: ProcessCaptureNotSpawned { program: "pwd", cause: "the spawner refused it" }) == ""
 }
 
 // THE PRESENCE VERDICT, PURE OVER A SUPPLIED READ. The deleted script answered

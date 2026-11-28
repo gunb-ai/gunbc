@@ -1,0 +1,94 @@
+module test.claim.fleet.fleet_host_key_readback_witness
+
+// THE PIN READBACK DECIDES THE ENTRY (round-4 review item 1). `ssh-keygen -F` has THREE answers
+// and the entry must tell them apart: exit 0 with the row printed is a POSITIVE readback (found);
+// exit 1 is a genuine observation that the row is NOT there (positive absence -- a failure to
+// enroll, not an enrollment); anything else -- 255 on an unreadable fragment, a killed reader --
+// proves neither found nor absent. Pre-fix every nonzero collapsed into ABSENT and an unreadable
+// fragment exited SUCCESS on an unverified pin. These claims drive the real readback child
+// (pin_readback_block over a real fragment, chmod-000 for the unreadable standing) and the
+// entry's extracted final decision (fleet_host_key_enroll_receipt_refusal), so the diagnosis,
+// not a re-implemented classifier, is what goes red.
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.algebra { string_contains }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.chmod { chmod_set_mode_command }
+import gunbc.command_runner { run_shell_command_capture, process_capture_admitted, LocalExec }
+import gunbc.fleet.fleet_host_key_enrollment {
+  pin_readback_block, fleet_host_key_enroll_receipt_refusal,
+  fleet_host_key_enrollments, known_hosts_line,
+}
+
+fn stage_fragment(dir: String, name: String, content: String) -> String {
+  let path = join([dir, "/", name], "")
+  if !Filesystem.WriteCreateNew(path: path, content: content).success { return "" }
+  path
+}
+
+fn chmod_fragment(path: String, mode: String) -> Bool {
+  process_capture_admitted(captured: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: "/bin/chmod" as NonEmptyStr, mode: mode as NonEmptyStr, path: path), transport: LocalExec))
+}
+
+// AN UNREADABLE FRAGMENT MUST NOT EXIT SUCCESS. chmod-000 makes every ssh-keygen -F answer with
+// a read error; the receipt then carries readback=ERROR (never found, never ABSENT), and the
+// extracted entry decision refuses with the receipt. Pre-fix this shape fell through ABSENT to
+// ExitSuccess.
+test fn an_unreadable_fragment_readback_refuses_the_entry_and_never_reports_found() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_hostkey_readback.XXXXXX").path as String
+  let fragment = stage_fragment(dir: dir, name: "known_hosts.error", content: join(map(fleet_host_key_enrollments, k => known_hosts_line(k: k)), "\n"))
+  if fragment == "" { return false }
+  if !chmod_fragment(path: fragment, mode: "000") { return false }
+  let receipt = pin_readback_block(staged: fragment)
+  let _restore = chmod_fragment(path: fragment, mode: "644")
+  let refusal = fleet_host_key_enroll_receipt_refusal(receipt: receipt)
+  refusal != ""
+    && !string_contains(s: receipt, pattern: "readback=found")
+    // The readback reports its OWN failure, as ERROR with the child's cause, not a bare
+    // "refused" (round-5 review, controls): a mode-000 fragment makes ssh-keygen -F answer
+    // exit 255 with a permission cause, and that cause must be legible in the refusal.
+    && string_contains(s: receipt, pattern: "readback=ERROR")
+    && string_contains(s: refusal, pattern: "readback=ERROR")
+    && string_contains(s: refusal, pattern: "unreadable fragment:")
+}
+
+// A POSITIVE ABSENCE IS ALSO A REFUSAL: the rows are NOT in the staged fragment (an empty
+// fragment; every ssh-keygen -F answers exit 1), so the pin did not pin -- failure to enroll,
+// refused with the receipt. Pre-fix, ABSENT shared the success path with read errors.
+test fn a_positive_absence_readback_refuses_the_entry() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_hostkey_absent.XXXXXX").path as String
+  let fragment = stage_fragment(dir: dir, name: "known_hosts.empty", content: "")
+  if fragment == "" { return false }
+  let receipt = pin_readback_block(staged: fragment)
+  let refusal = fleet_host_key_enroll_receipt_refusal(receipt: receipt)
+  refusal != ""
+    && !string_contains(s: receipt, pattern: "readback=found")
+    && string_contains(s: receipt, pattern: "readback=ABSENT")
+}
+
+// SUCCESS REQUIRES THE POSITIVE READBACK ON EVERY ROW: with all enrolled rows really in the
+// fragment, every line reads back found-in-pinned-fragment and the entry's decision allows
+// (empty refusal). A membership predicate that never observed found could not turn this green.
+test fn every_row_read_back_found_allows_the_entry() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_hostkey_found.XXXXXX").path as String
+  let fragment = stage_fragment(dir: dir, name: "known_hosts.found", content: join(map(fleet_host_key_enrollments, k => known_hosts_line(k: k)), "\n"))
+  if fragment == "" { return false }
+  let receipt = pin_readback_block(staged: fragment)
+  let refusal = fleet_host_key_enroll_receipt_refusal(receipt: receipt)
+  refusal == ""
+    && string_contains(s: receipt, pattern: "readback=found-in-pinned-fragment")
+    && !string_contains(s: receipt, pattern: "readback=ABSENT")
+    && !string_contains(s: receipt, pattern: "readback=ERROR")
+    && !string_contains(s: receipt, pattern: "readback=UNOBSERVED")
+}
+
+// THE MUTATION CONTROL (documented, not inlined, review 97468 practice): restore in
+// fleet_host_key_enrollment.pin_readback_block either
+//  * the ProcessRefused arms to one blanket " readback=ABSENT" (the pre-fix collapse of read
+//    errors into absence), or
+//  * the ProcessCaptureNotSpawned arm to " readback=ABSENT" (silence as absence),
+// and the unreadable-fragment claim goes false (an ERROR-less receipt on a chmod-000 fragment);
+// restore the ProcessOutputPresent arm to " readback=ABSENT" and the found claim goes false;
+// restore fleet_host_key_enroll_receipt_refusal to return "" for ABSENT or ERROR and both
+// refusal claims go false. All were run and reverted in-PR; the head carries the honest arms.

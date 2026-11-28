@@ -6,10 +6,10 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty, ExecMainStatus, ActiveState }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, MicrovmReceiptWriter, ControllerReceipts, MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, MicrovmReceiptRead, MicrovmReceiptUnreadable, microvm_receipt_read }
@@ -201,10 +201,16 @@ fn microvm_unit_start_on_its_host(subject: MicrovmUnitStartSubject) -> MicrovmSl
       UnitPropertyUnread { property: _, detail: d } => SlotStartInvocationUnread { unit: unit, detail: join(["before the start: ", d], "") }
       UnitPropertyRead { value: before } =>
         match run_shell_command_capture(command: executor_privileged_operation_command(op: SystemdStartUnit { unit: unit }), transport: LocalExec) {
+          ProcessCaptured { outcome: __outcome } => match __outcome {
           ProcessRefused { exit_code: c, stderr: e } =>
             SlotStartRefused { unit: unit, detail: join(["systemctl start exited ", to_string(c), ": ", trim(s: e)], "") }
           ProcessOutputPresent { text: _ } => microvm_unit_start_invocation_verdict(subject: subject, unit: unit, before: before)
           ProcessOutputAbsent => microvm_unit_start_invocation_verdict(subject: subject, unit: unit, before: before)
+          // No child, so no exit code to name: the start was refused before it ran, which is what
+          // SlotStartRefused means here. The cause is the spawner's own words, not a status.
+          }
+          ProcessCaptureNotSpawned { program: p, cause: why } =>
+            SlotStartRefused { unit: unit, detail: join(["systemctl start was never spawned: ", p, ": ", why], "") }
         }
     }
   }

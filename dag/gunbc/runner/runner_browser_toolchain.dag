@@ -4,9 +4,9 @@ import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput 
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.shell
-import extdeps.posix.test_utility { test_exists_command }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, listing_contains_entry }
 import std.measure { ByteSize, byte_size }
-import std.algebra { Cons, Empty, list_append, trim, length }
+import std.algebra { Cons, Empty, list_append, trim, length, string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import std.env_binding { EnvBinding, EnvSet }
@@ -32,7 +32,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_owner_executable_files_command, find_symlink_targets_command }
-import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command, ls_one_per_line_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command, ls_one_per_line_command, ls_almost_all_one_per_line_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -44,7 +44,7 @@ import std.content_hash { content_hash_atom }
 import extdeps.tools { apt_package_of }
 import extdeps.package_managers.apt { package_xz_utils }
 import gunbc.command_runner {
-  ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, run_shell_command_capture, process_outcome_admitted, LocalExec,
+  ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, run_shell_command_capture, process_outcome_admitted, LocalExec, process_capture_admitted
 }
 import gunbc.host.verified_archive_install {
   ArchiveDigestPin, ArchiveSha256, ArchiveNpmIntegrity,
@@ -95,6 +95,7 @@ import extdeps.systemd.systemctl { systemctl_daemon_reload_command }
 import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptured }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake.megarac_kvm_still drives the MegaRAC KVM viewer
@@ -173,9 +174,13 @@ fn archive_digest_receipt(url: String, destination: String, receipt: String) -> 
 // observation is re-derivable by anyone rather than carried on a session's word.
 fn runner_browser_toolchain_archive_sha256_of_wet(url: String, destination: String, receipt: String) -> ProcessExit {
   match run_shell_command_capture(command: curl_download_command(url: url, destination: destination), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code: c, stderr: e } => exit_failure(reason: join(["fetch failed (exit ", to_string(c), "): ", trim(s: e)], ""))
     ProcessOutputPresent { text: _ } => archive_digest_receipt(url: url, destination: destination, receipt: receipt)
     ProcessOutputAbsent => archive_digest_receipt(url: url, destination: destination, receipt: receipt)
+    // The curl child never existed, so the archive is not on disk and no exit code may be named.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => exit_failure(reason: join(["fetch was never spawned: ", p, ": ", why], ""))
   }
 }
 
@@ -554,15 +559,18 @@ type TreeAdmission
   | TreeContentMismatch { tree: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
   | TreeUnobservable { tree: NonEmptyStr, reason: String }
 
-fn tree_admission_of(tree: NonEmptyStr, present: Bool, pinned: NonEmptyStr, observation: TreeDigestObservation) -> TreeAdmission {
-  if present == false {
-    TreeAbsent { tree: tree }
-  } else {
-    match observation {
-      TreeDigestUnobservable { reason: r } => TreeUnobservable { tree: tree, reason: r }
-      TreeDigestObserved { hex: h } =>
-        if (h as String) == (pinned as String) { TreeAdmitted } else { TreeContentMismatch { tree: tree, expected: pinned, observed: h } }
-    }
+fn tree_admission_of(tree: NonEmptyStr, presence: PathExistence, pinned: NonEmptyStr, observation: TreeDigestObservation) -> TreeAdmission {
+  match presence {
+    PathAbsent => TreeAbsent { tree: tree }
+    // An unreadable existence check is not absence: the tree may be sitting right there, and this
+    // is the same arm the placement already refuses to replace from.
+    PathExistenceUnreadable { program: p, cause: c } => TreeUnobservable { tree: tree, reason: join(["the existence reading established nothing (never spawned, or its parent listing errored): ", p, " -- ", c], "") }
+    PathPresent =>
+      match observation {
+        TreeDigestUnobservable { reason: r } => TreeUnobservable { tree: tree, reason: r }
+        TreeDigestObserved { hex: h } =>
+          if (h as String) == (pinned as String) { TreeAdmitted } else { TreeContentMismatch { tree: tree, expected: pinned, observed: h } }
+      }
   }
 }
 
@@ -596,9 +604,12 @@ fn tree_manifest_text_of(tree: String, sha_lines: String, exec_lines: String, li
 
 fn capture_or_empty(command: ArgvCommand) -> ToolchainCapture {
   match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessOutputPresent { text: t } => ToolchainCapturedText { text: t }
     ProcessOutputAbsent => ToolchainCapturedText { text: "" }
     ProcessRefused { exit_code: c, stderr: e } => ToolchainCaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => ToolchainCaptureRefused { reason: join(["never spawned: ", p, ": ", why], "") }
   }
 }
 
@@ -617,12 +628,17 @@ fn tree_sha256_wet(tree: String, manifest_path: String) -> TreeDigestObservation
                 TreeDigestUnobservable { reason: concat("the tree manifest could not be written at ", manifest_path) }
               } else {
                 match run_shell_command_capture(command: env_prefixed_command_in(directory: "/", bindings: [EnvSet { name: "LC_ALL", value: "C" }], command: sort_in_place_command(path: manifest_path)), transport: LocalExec) {
+                  ProcessCaptured { outcome: __outcome } => match __outcome {
                   ProcessRefused { exit_code: c, stderr: e } => TreeDigestUnobservable { reason: join(["sorting the tree manifest failed (exit ", to_string(c), "): ", trim(s: e)], "") }
+                  // The sort never ran, so the manifest is unsorted and its digest would be a
+                  // different digest than the tree's: unobservable, not a digest of an unsorted file.
                   _ =>
                     match sha256sum_file_digest_via_shell(path: manifest_path as NonEmptyStr) {
                       Sha256FileDigestUnavailable { path: _, reason: r } => TreeDigestUnobservable { reason: r }
                       Sha256FileDigest { digest: d } => TreeDigestObserved { hex: d.hex }
                     }
+                  }
+                  ProcessCaptureNotSpawned { program: p, cause: why } => TreeDigestUnobservable { reason: join(["sorting the tree manifest was never spawned: ", p, ": ", why], "") }
                 }
               }
             }
@@ -633,12 +649,12 @@ fn tree_sha256_wet(tree: String, manifest_path: String) -> TreeDigestObservation
 
 // The manifest path is the caller's own per-invocation scratch, so this reader writes nothing shared.
 fn admit_tree_wet(tree: NonEmptyStr, manifest_path: String, pinned: NonEmptyStr) -> TreeAdmission {
-  let present = path_exists_wet(path: tree as String)
+  let presence = path_exists_wet(path: tree as String)
   tree_admission_of(
     tree: tree,
-    present: present,
+    presence: presence,
     pinned: pinned,
-    observation: if present { tree_sha256_wet(tree: tree as String, manifest_path: manifest_path) } else { TreeDigestUnobservable { reason: "absent" } },
+    observation: match presence { PathPresent => tree_sha256_wet(tree: tree as String, manifest_path: manifest_path)  _ => TreeDigestUnobservable { reason: "absent" } },
   )
 }
 
@@ -904,9 +920,12 @@ type ToolchainCapture
 
 fn capture_text(command: ArgvCommand) -> ToolchainCapture {
   match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessOutputPresent { text: t } => ToolchainCapturedText { text: t }
     ProcessOutputAbsent => ToolchainCaptureRefused { reason: "the command exited zero and printed nothing" }
     ProcessRefused { exit_code: c, stderr: e } => ToolchainCaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => ToolchainCaptureRefused { reason: join(["never spawned: ", p, ": ", why], "") }
   }
 }
 
@@ -934,7 +953,7 @@ fn package_version_command(location: RunnerBrowserToolchainLocation, scratch: St
 }
 
 fn plant_probe_wet(scratch: String) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(scratch: scratch)), transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(scratch: scratch)), transport: LocalExec))
     && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/package.json"], ""), content: browser_toolchain_decoy_package_json).success
     && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/index.js"], ""), content: browser_toolchain_decoy_index).success
     && match try_serialize_html_source(node: browser_toolchain_probe_fragment()) {
@@ -1163,12 +1182,74 @@ fn toolchain_placement_text(p: ToolchainPlacement) -> String {
   }
 }
 
-fn path_exists_wet(path: String) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+// AN EXISTENCE READING IS NOT A BOOL, AND test(1) CANNOT ESTABLISH ABSENCE (round-4 review item
+// 3). `test -e` exit 1 was read as PathAbsent, but a mode-000 parent answers exit 1 with empty
+// stderr exactly as an absent entry does -- and a reader child that was never spawned answers
+// NOTHING. The reading that establishes both answers is the shared parent listing
+// (gunbc.live_deploy.member_observe parent_listing_argv / listing_contains_entry, the route
+// #16984 and runner_host_file_converge ride; the mint below is argv-equal to it): a SUCCESSFUL
+// listing naming the entry is present, a successful listing its parent positively lacks it is
+// absent, and a listing that errored or never spawned is neither -- reading its silence as
+// absence lets a placement stage a fresh tree beside one this process could not look at (the
+// :1182 defect: the unspawned existence check returned false, was read as TreeAbsent, and staged
+// fresh). The reading carries the reader's own program and cause.
+type PathExistence = PathPresent | PathAbsent | PathExistenceUnreadable { program: String, cause: String }
+
+// ROUND-5 REVIEW ITEM 3: ABSENCE COMES ONLY FROM A COMPLETED, POSITIVE READING ABOUT THE
+// SUBJECT -- never from a substring of an error. The lookup lists `<parent>/.` (the trailing
+// `/.` makes ls FAIL -- nonzero -- when the parent is a regular file, where a bare
+// `ls -1 -A -- <parent>` would exit 0 printing the operand and fake an empty directory), and
+// the failed lookup is settled by a SECOND, SAME-SHAPE listing of the GRANDPARENT: only a
+// completed grandparent listing that positively lacks the parent establishes absence. A parent
+// that STANDS in a completed grandparent listing but will not itself list -- mode-000, EIO, a
+// regular file -- is UNREADABLE, never absent, and staging refuses (the staging decision below
+// enters staging ONLY on PathAbsent). No stderr is ever read for meaning: a directory literally
+// named "No such file or directory" fools no substring rule here. `parent_listing` is consulted
+// only when the subject's own lookup failed; callers that did not need it pass the typed
+// ProcessCaptureNotSpawned (a child that never ran, answering nothing).
+fn path_existence_standing(captured: ProcessCaptureOutcome, entry_name: String, parent_name: String, parent_listing: ProcessCaptureOutcome) -> PathExistence {
+  match captured {
+    ProcessCaptureNotSpawned { program: p, cause: why } => PathExistenceUnreadable { program: p as String, cause: why as String }
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } =>
+      if listing_contains_entry(stdout: t, name: entry_name) { PathPresent } else { PathAbsent }
+    ProcessCaptured { outcome: ProcessOutputAbsent } => PathAbsent
+    ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
+      match parent_listing {
+        ProcessCaptured { outcome: ProcessOutputPresent { text: gp } } =>
+          if listing_contains_entry(stdout: gp, name: parent_name) {
+            PathExistenceUnreadable { program: "ls -1 -A", cause: join(["the parent stands in a completed grandparent listing but would not list: exit ", to_string(code), " ", trim(s: err)], "") }
+          } else { PathAbsent }
+        ProcessCaptured { outcome: ProcessOutputAbsent } => PathAbsent
+        ProcessCaptured { outcome: ProcessRefused { exit_code: gcode, stderr: gerr } } =>
+          PathExistenceUnreadable { program: "ls -1 -A", cause: join(["the parent lookup errored (exit ", to_string(code), " ", trim(s: err), ") and the grandparent lookup errored too (exit ", to_string(gcode), " ", trim(s: gerr), ")"], "") }
+        ProcessCaptureNotSpawned { program: p, cause: why } =>
+          PathExistenceUnreadable { program: p as String, cause: join(["the parent lookup errored (exit ", to_string(code), " ", trim(s: err), ") and the grandparent lookup never spawned (", p, ": ", why, ")"], "") }
+      }
+  }
+}
+
+fn path_exists_wet(path: String) -> PathExistence {
+  let parent = path_parent(path: path)
+  let main = run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: join([parent, "/."], "")), transport: LocalExec)
+  match main {
+    // Only a failed lookup sends the decision to the grandparent; a completed listing answered.
+    ProcessCaptured { outcome: ProcessRefused { exit_code: _, stderr: _ } } => path_existence_standing(
+      captured: main,
+      entry_name: path_basename(path: path),
+      parent_name: path_basename(path: parent),
+      parent_listing: run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: join([path_parent(path: parent), "/."], "")), transport: LocalExec),
+    )
+    _ => path_existence_standing(
+      captured: main,
+      entry_name: path_basename(path: path),
+      parent_name: path_basename(path: parent),
+      parent_listing: ProcessCaptureNotSpawned { program: "ls -1 -A" as NonEmptyStr, cause: "not consulted; the parent listing answered" as NonEmptyStr },
+    )
+  }
 }
 
 fn run_ok(command: ArgvCommand) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
 }
 
 // PUBLICATION ONLY EVER FILLS AN ABSENT PATH (side-chat review 5336109370). A tree already at the
@@ -1272,10 +1353,15 @@ fn superseded_entries_of(entries: List<String>, current: String) -> List<String>
 
 fn observe_superseded_trees_wet(location: RunnerBrowserToolchainLocation) -> SupersededTrees {
   match run_shell_command_capture(command: ls_one_per_line_command(path: location.base as String), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code: c, stderr: e } =>
       SupersededTreesUnobservable { cause: join(["the toolchain base could not be listed (exit ", to_string(c), "): ", trim(s: e)], "") }
     ProcessOutputAbsent => SupersededTreesObserved { entries: [] }
     ProcessOutputPresent { text: t } => SupersededTreesObserved { entries: superseded_entries_of(entries: split(t, "\n"), current: location.recipe as String) }
+    // A listing that never ran is not an empty base: reporting no superseded trees would be a
+    // observation nobody made.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => SupersededTreesUnobservable { cause: join(["the toolchain base listing was never spawned: ", p, ": ", why], "") }
   }
 }
 

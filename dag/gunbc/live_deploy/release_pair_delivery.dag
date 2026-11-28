@@ -58,6 +58,7 @@ import gunbc.live_deploy.operations { systemctl_restart_command }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.command_runner { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
@@ -187,14 +188,38 @@ fn release_pair_resume_decision(receipt_read: FilesystemReadOutcome, expected_bo
 // write the receipt. Read the link back with the admitted readlink_command (extdeps.tools.gnu_coreutils): it prints
 // the target and refuses on a non-symlink, so a refusal or any DIFFERENT target is NOT this revision's placement and
 // must refuse, never be silently adopted (a silent widen). Pure over the readlink ProcessOutcome so it is witnessed.
-fn release_pair_occupied_link_benign(link_read: ProcessOutcome, expected_source: String) -> Bool {
+type ReleasePairOccupiedLinkRead
+  = OccupiedLinkBenignSamePlacement
+  | OccupiedLinkNotBenign { cause: String }
+  | OccupiedLinkUnreadable { program: String, cause: String }
+
+fn release_pair_occupied_link_verdict(link_read: ProcessCaptureOutcome, expected_source: String) -> ReleasePairOccupiedLinkRead {
   match link_read {
-    ProcessOutputPresent { text: t } => match trim(s: t) == expected_source {
-      true => true
-      false => false
+    // NOBODY READ THE LINK: neither benign nor foreign is established. Report UNREADABLE with the
+    // program and the cause -- "differs / not a symlink" would be a readlink verdict fabricated for a
+    // command that never ran (the exact defect class this PR removes).
+    ProcessCaptureNotSpawned { program: p, cause: why } => OccupiedLinkUnreadable { program: p, cause: why }
+    ProcessCaptured { outcome: read } => match read {
+      ProcessOutputPresent { text: t } => match trim(s: t) == expected_source {
+        true => OccupiedLinkBenignSamePlacement
+        false => OccupiedLinkNotBenign { cause: concat("the link names ", trim(s: t)) }
+      }
+      ProcessOutputAbsent => OccupiedLinkNotBenign { cause: "readlink printed no target" }
+      ProcessRefused { exit_code: e, stderr: s } => OccupiedLinkNotBenign { cause: join(["readlink exited ", to_string(e), ": ", trim(s: s)], "") }
     }
-    ProcessOutputAbsent => false
-    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// THE CLI'S FINAL DIAGNOSIS, decided once over the verdict so the witness drives the consumer's exact
+// words: a consumer that re-fabricates -- rendering an unreadable readlink as "differs / not a
+// symlink" -- fails the witness that reads this row.
+fn release_pair_occupied_link_refusal_reason(verdict: ReleasePairOccupiedLinkRead) -> String {
+  match verdict {
+    OccupiedLinkUnreadable { program: p, cause: why } =>
+      join(["pair-deliver: the occupied locus link could not be read (readlink ", p, " never spawned: ", why, ") -- refusing rather than adopting a placement nobody verified (fail-closed)"], "")
+    OccupiedLinkNotBenign { cause: c } =>
+      join(["pair-deliver: the per-revision release locus link is occupied by a target other than this revision's fetched member (", c, ") -- refusing rather than adopting a foreign placement (fail-closed, review 96241 f1)"], "")
+    OccupiedLinkBenignSamePlacement => ""
   }
 }
 
