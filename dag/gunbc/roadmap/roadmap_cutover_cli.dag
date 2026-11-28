@@ -426,8 +426,8 @@ fn roadmap_cutover_retire_cli(
 // THE ARGUMENTS ARE THE THREE THE MIGRATION CAN ACTUALLY STATE — the line, the thread and the head, plus
 // who and where. There is no --merged-at: an acceptance is recorded on a head, BEFORE the merge, and the
 // merge time belongs to the merge event (gunbc.design_ruling::
-// acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event). There is no --red-kind / --red-at /
-// --green-at / --red-base / --probe-ref either: the migrated rows state no observation, and the ordinary
+// acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event). There is no --arg red_kind= / --arg red_at= /
+// --arg green_at= / --arg red_base= / --arg probe_ref= either: the migrated rows state no observation, and the ordinary
 // recorder refuses a line without one (gunbc.roadmap.roadmap_event_cli roadmap_acceptance_record_cli);
 // recording them is what the closed migration gate above authorises, through
 // roadmap_acceptance_record_migration_cli, and nothing else.

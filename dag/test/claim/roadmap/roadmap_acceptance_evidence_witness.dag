@@ -305,7 +305,7 @@ test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
     match shape { Absent => true, Present { value: _ } => false })
   && claim("a SHORT head — a real prefix, but not a full commit — is refused: it is the join key to the merge event and a prefix joins nothing",
     match short_head { Absent => true, Present { value: _ } => false })
-  && claim("an UPPERCASE 40-hex head is refused: the sha shape is lowercase, the same check --red-at/--green-at/--red-base hold to",
+  && claim("an UPPERCASE 40-hex head is refused: the sha shape is lowercase, the same check --arg red_at=/--arg green_at=/--arg red_base= hold to",
     match upper_head { Absent => true, Present { value: _ } => false })
   && claim("three empty arguments are the ONE admissible absence, not three refusals",
     match none_conv { Present { value: NoPullRequest } => true, _ => false })
