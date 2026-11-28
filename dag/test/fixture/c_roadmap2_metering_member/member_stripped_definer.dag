@@ -1,0 +1,18 @@
+module test.fixture.c_roadmap2_metering_member.member_stripped_definer
+
+// THE STRIPPED TWIN: member_definer.dag with the sole_constructor keyword removed and NOTHING else
+// changed -- the same record, the same segment: PathSegment field, the same forge_target. One variable
+// only (side-chat Q1, carried from the credential-reference twins): with the keyword gone the SAME forged
+// casts compile clean, so the sealed twin's refusal is evidence about the SEAL keyword itself. An earlier
+// version of this file made the stripped type a branded alias, which was a second changed variable; it is
+// now the record minus one keyword.
+
+import std.types { Bool, PathSegment, String }
+
+type AttemptMeteringMemberName {
+  segment: PathSegment
+}
+
+fn forge_target(entry: AttemptMeteringMemberName) -> Bool {
+  true
+}

@@ -1,0 +1,20 @@
+module test.fixture.c_roadmap2_metering_store_forgery.definer
+
+// THE SEALED TWIN DEFINER of gunbc.roadmap.roadmap_attempt_metering.AttemptMeteringStore, for the strip
+// control of review 97249's second finding. Same fields as the production declaration; the directory is
+// the field the store-bound effects derive their path from, so a forged directory is exactly what the
+// business functions must not be able to receive. Companion: stripped_definer.dag, which differs from
+// this file in NOTHING but the sole_constructor keyword (one-variable control, review 97160 rule).
+
+import std.types { Bool, NonEmptyStr, String }
+
+type AttemptMeteringStore sole_constructor {
+  instance: NonEmptyStr
+  node: String
+  attempt_key: String
+  directory: NonEmptyStr
+}
+
+fn forge_target(store: AttemptMeteringStore) -> Bool {
+  store.directory as String == "sealed"
+}

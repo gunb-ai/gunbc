@@ -1,0 +1,31 @@
+module gunbc.integration_concern.roadmap_attempt_metering_plain_head_refusal
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern }
+
+data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_attempt_metering_plain_head_refusal",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
+    requirement: "a pre-seal plain metering.json at an attempt entry whose sealed slot exists with generation >= 1 answers a typed refusal through the seal contract; it is never read or adopted by a fallback arm inside attempt_metering_read",
+    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass, which dissolves the population the adoption op serves" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
+    tail: [],
+  },
+  question: "Should a plain metering.json beside a sealed slot ever be readable? No: the sealed slot is the only metering record store; the refusal arm records the non-migration, and the adoption op (roadmap_attempt_metering_belt_departed_adoption) is the only route that moves plain bytes into the slot.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_current_head") },
+        tail: [],
+      },
+      account: "srv2 measured 23 plain metering.json records dated 2026-10-24 under the live attempt-state root, all predating the index route; a reader that answered absent or head for them would silently drop metered usage, so it refuses typed instead.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

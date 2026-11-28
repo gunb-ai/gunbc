@@ -1,0 +1,16 @@
+module test.fixture.c_roadmap2_metering_member.member_definer
+
+// THE SEALED TWIN DEFINER: the same shape the production member carrier has -- a record sealed by
+// sole_constructor whose only entrance is a checked constructor in the declaring module (here the seal
+// itself is what the claim tests, so this definer carries no constructor). The probes forge the carrier
+// with `as` casts in a probe module FOREIGN to this declaring module. Companion: member_stripped_definer.dag.
+
+import std.types { Bool, PathSegment, String }
+
+type AttemptMeteringMemberName sole_constructor {
+  segment: PathSegment
+}
+
+fn forge_target(entry: AttemptMeteringMemberName) -> Bool {
+  true
+}

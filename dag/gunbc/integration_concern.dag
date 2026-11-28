@@ -939,3 +939,28 @@ data fleet_converge_arm64_label_sighting_revision: CommitSha = "d4d5088c216cb93f
 // kept in agreement by nothing. The trigger to consolidate: the next edit to either container leaf moves it
 // onto ThirdPartyAptRepo rather than editing the leaf in place; a fix to the shared shape (fingerprint
 // handling, keyrings mode, the sudo/quote discipline) then lands once and reaches all three vendors.
+
+
+data attempt_request_binding_races_itself_beside_the_store_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set")
+  second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit")
+  rest: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_store", decl_name: "attempt_state_create_new_at")
+  ],
+}
+
+data metering_roster_written_by_hand_beside_the_store_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set")
+  second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once")
+  rest: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold")
+  ],
+}
+
+data served_observation_written_by_hand_beside_the_store_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set")
+  second: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put")
+  rest: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put")
+  ],
+}

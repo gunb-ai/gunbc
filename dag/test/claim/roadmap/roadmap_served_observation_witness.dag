@@ -2,13 +2,19 @@ module test.claim.roadmap.roadmap_served_observation_witness
 
 import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemReadSucceeded, FilesystemFileObservation }
 
-import std.types { String, Int, Bool, List, FilePath }
+import std.types { String, Int, Bool, List, FilePath, NonEmptyStr }
 import extdeps.http.server { text_html_utf8, text_plain_utf8, application_json_utf8 }
-import gunbc.host.host_layout { instance_receipts_dir }
+import extdeps.shell
+import gunbc.host.host_layout { instance_receipts_dir, srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_path_is_under,
+  HostDashboardInstance,
+  isolated_dashboard_instance,
+  DashboardActuating,
+  DispatchStateHostShared,
 }
 import gunbc.roadmap.roadmap_serve { roadmap_serve_route_specs, ObservationJsonHandler }
 import gunbc.roadmap.roadmap_served_observation {
@@ -21,8 +27,13 @@ import gunbc.roadmap.roadmap_served_observation {
   ServedObservationBodyRead, ServedObservationBodyPresent, ServedObservationBodyMissing, ServedObservationBodyUnreadable, ServedObservationBodyMismatch,
   ServedObservationEntryLookup, ServedObservationEntryFound, ServedObservationEntryMissing,
   served_observation_schema,
-  served_observation_path_for_instance,
-  served_observation_body_path_for_instance,
+  ServedObservationStore,
+  ServedObservationStoreReading,
+  ServedObservationStoreReady,
+  ServedObservationStoreUnready,
+  served_observation_store,
+  served_observation_index_entry,
+  served_observation_body_entry,
   served_observation_index_of_snapshot,
   served_observation_index_wire,
   served_observation_decode,
@@ -332,18 +343,89 @@ test fn standing_publishes_observed_at_and_identity_when_present() -> Bool {
 // Same law as the belt tick receipt's home: the index and every body are per-instance, under the
 // instance's own receipts dir, never under the host-shared attempt-state root, and no two kinds
 // share a body path.
+// The instance is ISOLATED over a witness-made directory, the same posture as the sealed create-once
+// stores' witness: the mint OBSERVES its root (mkdir + list), and srv1's live root /opt/gunbc is not
+// creatable where claims execute. The DISPATCH STATE STAYS HOST-SHARED like main's claim had it (an
+// InstanceOwned fixture would make "shared" resolve to the fixture's own attempt-state and silently
+// lose the host-shared case this claim exists for): the scope is DispatchStateHostShared pointing at
+// a SEPARATE attempt-state directory inside the same temp tree.
+fn served_observation_homing_instance(dir: String) -> HostDashboardInstance {
+  let base = isolated_dashboard_instance(
+    deployment: deployment_id(name: "srvobs-homing" as NonEmptyStr),
+    instance_id: "srvobs-homing" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+  HostDashboardInstance {
+    deployment: base.deployment,
+    instance_id: base.instance_id,
+    host_identity: base.host_identity,
+    provision_parent_root: base.provision_parent_root,
+    instance_root: base.instance_root,
+    local_origin_root: base.local_origin_root,
+    local_origin_publish_ref: base.local_origin_publish_ref,
+    repo_root: base.repo_root,
+    dispatch_base_ref: base.dispatch_base_ref,
+    publication_base_branch: base.publication_base_branch,
+    dispatch_state_scope: DispatchStateHostShared {
+      worktree_root: join([dir, "/host-worktrees"], "") as FilePath,
+      attempt_state_root: join([dir, "/host-attempt-state"], "") as FilePath,
+    },
+    execution_environment: base.execution_environment,
+    provider_state: base.provider_state,
+    serve_binary: base.serve_binary,
+    serve_function: base.serve_function,
+    listen_host: base.listen_host,
+    listen_port: base.listen_port,
+    tmux_server: base.tmux_server,
+    actuation: base.actuation,
+    actuator_host: base.actuator_host,
+    source_seed: base.source_seed,
+    admitted_revision: base.admitted_revision,
+    toolchain: base.toolchain,
+    dispatch_worker_memory_max: base.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: base.compute_build_memory_ceiling,
+    belt_obligation_memory_max: base.belt_obligation_memory_max,
+    belt_reviewer_memory_max: base.belt_reviewer_memory_max,
+    belt_max_concurrent: base.belt_max_concurrent,
+    directory_owner: base.directory_owner,
+    worker: base.worker,
+    materialization_store_root: base.materialization_store_root,
+  }
+}
+
 test fn the_snapshot_files_are_homed_in_the_instance_receipts_dir_not_the_shared_root() -> Bool {
-  let instance = srv1_live_dashboard_instance()
+  // A failed mktemp leaves path empty; instance_receipts_dir("") would be "/receipts" and the mint
+  // would happily create and list it. Require SUCCESS AND a nonempty path before building anything.
+  let tmp = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_srvobs_homing.XXXXXX" as FilePath)
+  if !tmp.success || (tmp.path as String) == "" { return false }
+  let dir = tmp.path as String
+  let instance = served_observation_homing_instance(dir: dir)
   let shared = dashboard_instance_dispatch_attempt_state_root(instance: instance)
   let receipts = instance_receipts_dir(instance_root: instance.instance_root as String)
-  let index_path = served_observation_path_for_instance(instance: instance)
-  let daily = served_observation_body_path_for_instance(instance: instance, kind: DailyPage)
-  let sessions = served_observation_body_path_for_instance(instance: instance, kind: SessionsJson)
-  starts_with(s: index_path, prefix: receipts)
-    && starts_with(s: daily, prefix: receipts)
-    && !dashboard_path_is_under(path: index_path as FilePath, root: shared)
-    && !dashboard_path_is_under(path: daily as FilePath, root: shared)
-    && daily != sessions && daily != index_path
+  // The two per-instance path routes are deleted with the seal; the names exist only as derivations
+  // over the store this PR's mint returns, so the homing law is asserted over the sealed derivations.
+  let verdict = match served_observation_store(instance: instance) {
+    ServedObservationStoreReady { store } =>
+      let index_path = served_observation_index_entry(store: store)
+      let daily = served_observation_body_entry(store: store, kind: DailyPage)
+      let sessions = served_observation_body_entry(store: store, kind: SessionsJson)
+      index_path == join([receipts, "/", "served-observation", ".json"], "")
+        && starts_with(s: index_path, prefix: receipts)
+        && starts_with(s: daily, prefix: receipts)
+        && !dashboard_path_is_under(path: index_path as FilePath, root: shared)
+        && !dashboard_path_is_under(path: daily as FilePath, root: shared)
+        && daily != sessions && daily != index_path
+    ServedObservationStoreUnready { detail: _ } => false
+  }
+  // Cleanup runs on BOTH arms and its success is part of the verdict: the witness leaves nothing behind.
+  let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath).success
+  verdict && cleaned
 }
 
 test fn the_standing_route_is_served() -> Bool {
