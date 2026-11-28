@@ -1,0 +1,1143 @@
+module test.claim.floor.floor_preparation_split_witness
+
+import std.types { Bool, Int, List, Present, Absent, String }
+import std.algebra { length, list_push }
+import std.measure { Millisecond, Second, second }
+import v2.workflow.floor_preparation_split {
+  floor_preparation_any_row_starts_with,
+  floor_preparation_attribution_all_rows_have_lines,
+  floor_preparation_attributed_ms,
+  floor_preparation_capture,
+  floor_preparation_capture_provenance,
+  floor_preparation_population_is_wellformed,
+  floor_preparation_report_sentinel,
+  floor_preparation_report_is_wellformed,
+  floor_preparation_classify_report_line,
+  floor_preparation_population_lines,
+  floor_preparation_census_is_honest,
+  floor_preparation_claim_row_count,
+  floor_preparation_deletion_margin_holds,
+  floor_preparation_entry_paths,
+  floor_preparation_entry_scoped_ms,
+  floor_preparation_ms_count,
+  floor_preparation_excluded_row_count,
+  floor_preparation_excluded_with_cause,
+  floor_preparation_fill_fill_ms,
+  floor_preparation_fill_row_count,
+  floor_preparation_graded_row_count,
+  floor_preparation_has_exact_row,
+  floor_preparation_lines_are_closed,
+  floor_preparation_module_keys,
+  floor_preparation_phase_ms,
+  floor_preparation_phase_row_count,
+  floor_preparation_probe_fill_ms,
+  floor_preparation_probe_row_count,
+  floor_preparation_refusal,
+  floor_preparation_requested_row_count,
+  floor_preparation_requested_rows,
+  floor_preparation_resolve_rows_match_their_module_rows,
+  floor_preparation_split_claim_lines,
+  floor_preparation_split_claim_ms,
+  floor_preparation_split_fail,
+  floor_preparation_split_pass,
+  floor_preparation_split_preparation_lines,
+  floor_preparation_split_preparation_ms,
+  floor_preparation_split_report,
+  floor_preparation_split_total_ms,
+  floor_preparation_total_ms,
+  floor_preparation_untrimmed_capture,
+  floor_preparation_untrimmed_capture_provenance,
+  floor_preparation_untrimmed_covers_the_graded_population,
+  floor_preparation_untrimmed_total_ms,
+  floor_preparation_untrimmed_verdict_pass,
+  floor_preparation_whole_tree_ms,
+}
+
+import v2.workflow.floor_preparation_capture_runner {
+  floor_preparation_runner_modelled_steps,
+  floor_preparation_leg_argv,
+  floor_preparation_claims_leg_argv,
+  floor_preparation_population_entries,
+  floor_preparation_bound_operand,
+  floor_preparation_untrimmed_bound,
+  floor_preparation_graded_bound,
+  floor_preparation_claims_bound,
+  floor_preparation_report_bound
+}
+import v2.workflow.floor_cost_debt {
+  floor_cost_debt_population_report,
+}
+
+// THE WITNESSES OVER `v2.workflow.floor_preparation_split` -- the entry point that re-derives where a
+// floor-shaped run's wall time goes, landed for `gunbc.roadmap ci-cost-floor-preparation-cut`.
+//
+// Each one is a KILLER and its header says what it kills. NONE compares the preparation total to a
+// milliseconds literal: `gunbc.design_argument::fail_closed` refuses that change detector, and a pinned
+// total would have to be re-edited on every re-capture, which is how a measurement becomes a ritual.
+// What these attack instead is the FOLD -- drop a line, count one twice, mis-key a cost field, bill the
+// same fill from two rows, or charge a module with another module's resolution -- and one of these goes
+// red.
+//
+// Execute them:
+//
+//   target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --functions <the names listed below, comma-separated>
+//
+//   floor_preparation_capture_grammar_is_closed,
+//   floor_preparation_split_conserves_to_the_independent_total,
+//   floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost,
+//   floor_preparation_the_fold_bills_the_reach_probe_fill_once,
+//   floor_preparation_committed_fill_rows_are_paired,
+//   floor_preparation_the_fold_refuses_what_it_cannot_read,
+//   floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row,
+//   floor_preparation_verdict_rows_match_an_independent_prefix_scan,
+//   floor_preparation_preparation_side_dominates_the_claim_side,
+//   floor_preparation_entry_resolve_is_charged_to_the_module_it_names,
+//   floor_preparation_preparation_sides_partition_by_scale,
+//   floor_preparation_the_committed_census_is_honest,
+//   floor_preparation_the_excluded_population_is_stated_with_its_causes,
+//   floor_preparation_the_untrimmed_leg_is_the_same_floor,
+//   floor_preparation_the_split_fold_is_not_the_cost_debt_fold,
+//   floor_preparation_the_committed_capture_is_measured_not_authored,
+//   floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,
+//   floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log,
+//   floor_preparation_the_runner_process_is_modelled,
+//   floor_preparation_the_roadmap_names_the_floor_fold,
+//   floor_preparation_the_wall_bound_is_a_typed_second
+//
+// TWENTY-TWO `test fn`s, and this roster is the roster that runs: `v2.workflow.floor_preparation_capture_runner`
+// passes exactly these names to `--functions` and refuses unless every one prints its own PASS line.
+// The bare `fn` bodies above them are helpers, not claims, and are never passed to `--functions`.
+//
+// TWO KINDS OF INPUT, deliberately. Most claims read THE COMMITTED CAPTURE -- the instrument lines of
+// one floor-shaped `claim_batch` leg, committed in the authority module with the provenance the report
+// prints -- and assert STRUCTURE, so they stay green across re-captures of the same shape and go red when
+// the fold stops reading the lines. Three claims (`..._the_fold_bills_the_reach_probe_fill_once`,
+// `..._the_fold_refuses_what_it_cannot_read`, and the counterfactual inside the first) read a SHORT
+// CAPTURE THIS FILE AUTHORS, because the behaviour they kill -- one fill billed once, and every
+// silent-zero path refusing instead of reading as zero -- only appears in a real run when preparation
+// leaves an artifact for a claim to fill, and would otherwise go untested on a capture where preparation
+// warmed everything first. Numbers may be written against an input this file composes; they may not be
+// written against the world. That distinction is `gunbc.design_argument::fail_closed`, and it is why no
+// claim here compares the preparation side to an observed millisecond figure.
+
+// ----------------------------------------------------------------------------------------------
+// 1. CLOSED GRAMMAR. Kills: a phase or tag renamed upstream and silently DROPPED, which would shrink the
+// preparation side by whatever it cost. `floor_preparation_refusal` names the first line the grammar
+// cannot read; it must be Absent, and the capture must contain BOTH a phase row and a per-claim row so
+// the fold is not green over an input it never read.
+// ----------------------------------------------------------------------------------------------
+
+// Optional readers (review 97993): a refused capture reads Absent from every split reader, so a
+// claim can only ever compare a PRESENT reading. These helpers refuse (false) on Absent -- there
+// is no path from a refused fold through them to a number.
+fn opt_present(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => true  Absent {} => false }
+}
+
+fn opt_absent(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => false  Absent {} => true }
+}
+
+fn opt_int_eq(opt: Optional<Int>, want: Int) -> Bool {
+  match opt { Present { value: v } => v == want  Absent {} => false }
+}
+
+fn opt_int_ne(opt: Optional<Int>, want: Int) -> Bool {
+  match opt { Present { value: v } => v != want  Absent {} => false }
+}
+
+fn opt_int_ge0(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => v >= 0  Absent {} => false }
+}
+
+fn opt_int_gt0(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => v > 0  Absent {} => false }
+}
+
+fn opt_int_gt(a: Optional<Int>, b: Optional<Int>) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => x > y
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+}
+
+
+fn opt_ms_present(opt: Optional<Millisecond>) -> Bool {
+  match opt {
+    Present { value: _ } => true
+    Absent {} => false
+  }
+}
+
+fn opt_ms_absent(opt: Optional<Millisecond>) -> Bool {
+  match opt {
+    Present { value: _ } => false
+    Absent {} => true
+  }
+}
+
+// The witness's own assert boundary: a duration claim states a NUMBER, so the carrier is counted
+// exactly here, by the named reader -- never inside the module's public readers (review 98052).
+fn opt_ms_eq(opt: Optional<Millisecond>, want: Int) -> Bool {
+  match opt {
+    Present { value: v } => floor_preparation_ms_count(v) == want
+    Absent {} => false
+  }
+}
+
+fn opt_ms_ne(opt: Optional<Millisecond>, want: Int) -> Bool {
+  match opt {
+    Present { value: v } => floor_preparation_ms_count(v) != want
+    Absent {} => false
+  }
+}
+
+fn opt_ms_ge0(opt: Optional<Millisecond>) -> Bool {
+  match opt {
+    Present { value: v } => floor_preparation_ms_count(v) >= 0
+    Absent {} => false
+  }
+}
+
+fn opt_ms_gt(a: Optional<Millisecond>, b: Optional<Millisecond>) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => floor_preparation_ms_count(x) > floor_preparation_ms_count(y)
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+}
+
+fn opt_ms_eq_sum(a: Optional<Millisecond>, b: Optional<Millisecond>, want: Optional<Millisecond>) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => match want {
+        Present { value: w } => floor_preparation_ms_count(x) + floor_preparation_ms_count(y) == floor_preparation_ms_count(w)
+        Absent {} => false
+      }
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+}
+
+fn opt_int_eq_sum(a: Optional<Int>, b: Optional<Int>, want: Optional<Int>) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => match want {
+        Present { value: w } => x + y == w
+        Absent {} => false
+      }
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+}
+
+fn int_ge_opt(want: Int, opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => want >= v  Absent {} => false }
+}
+
+// A fold that refused must leave EVERY reader Absent: no property of a refused capture may read
+// as a measured value. This is the discriminating shape the fail-closed ruling asks of claims.
+fn split_reads_absent(capture: List<String>) -> Bool {
+  opt_ms_absent(floor_preparation_split_total_ms(capture))
+    && opt_ms_absent(floor_preparation_split_preparation_ms(capture))
+    && opt_ms_absent(floor_preparation_split_claim_ms(capture))
+    && opt_absent(floor_preparation_split_preparation_lines(capture))
+    && opt_absent(floor_preparation_split_claim_lines(capture))
+    && opt_absent(floor_preparation_split_pass(capture))
+    && opt_absent(floor_preparation_split_fail(capture))
+}
+
+fn grammar_closes_over_the_committed_capture() -> Bool {
+  let capture = floor_preparation_capture()
+  length(xs: capture) > 0
+    && floor_preparation_lines_are_closed(capture)
+    && floor_preparation_refusal(capture) == none
+    && floor_preparation_phase_row_count(capture) > 0
+    && floor_preparation_claim_row_count(capture) > 0
+}
+
+test fn floor_preparation_capture_grammar_is_closed() -> Bool {
+  grammar_closes_over_the_committed_capture()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 2. CONSERVATION. Kills: a line dropped from the split, counted twice, or counted on both sides. The
+// split's `total_ms` is produced by the fold's single accumulator step; the comparison total comes from
+// `floor_preparation_total_ms`, a second path over the same lines. They must not disagree, and the
+// grand total must be the sum of the two sides it claims to break down.
+// ----------------------------------------------------------------------------------------------
+
+fn split_conserves() -> Bool {
+  let capture = floor_preparation_capture()
+  opt_ms_present(floor_preparation_split_total_ms(capture))
+    && opt_ms_eq(floor_preparation_split_total_ms(capture), floor_preparation_ms_count(floor_preparation_total_ms(capture)))
+    && opt_ms_eq_sum(floor_preparation_split_preparation_ms(capture),
+      floor_preparation_split_claim_ms(capture), floor_preparation_split_total_ms(capture))
+    && opt_ms_ge0(floor_preparation_split_preparation_ms(capture))
+    && opt_ms_ge0(floor_preparation_split_claim_ms(capture))
+}
+
+test fn floor_preparation_split_conserves_to_the_independent_total() -> Bool {
+  split_conserves()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 3. DELETION MARGIN. Kills: a figure transcribed into this tree instead of derived from the lines, and
+// a fold that charges a line anything other than what the per-line reader reports. For EVERY line that
+// carries a cost, the total of the capture without that line falls by exactly that line's own cost -- so
+// the number can only be right if it came from the lines.
+// ----------------------------------------------------------------------------------------------
+
+test fn floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost() -> Bool {
+  floor_preparation_deletion_margin_holds(floor_preparation_capture())
+}
+
+// ----------------------------------------------------------------------------------------------
+// 4a. CLASSIFICATION CAUSALITY, ON A CAPTURE THIS FILE AUTHORS. Kills: billing the reach-probe row's
+// `fill_cpu_ms` as preparation. `claim_batch` prints `[floor-reach-probe]` IMMEDIATELY AFTER
+// `[floor-shared-fill]`, under the same condition, repeating the SAME fill
+// (src/v1/stage0/src/cli_run/claim_execution.rs:214 reads the same `shared_artifact_fill_cpu` the row at
+// :183 already printed). So one fill must reach the preparation side ONCE.
+//
+// THE INPUT HERE IS AUTHORED, NOT OBSERVED -- which is exactly why numbers may be written down against
+// it. `gunbc.design_argument::fail_closed` forbids pinning the fold to a figure copied out of the
+// WORLD (a real run's wall clock, which would have to be re-edited whenever the fleet gets faster); a
+// unit of instrument output composed by this file has no such shelf life, and without it the probe row
+// would go unwitnessed whenever preparation warms the artifact before any claim pays a fill -- which is
+// what happened in the captured run. Both readings are kept: this claim tests the FOLD, and claim 4b
+// below tests that the world's rows still agree with it.
+// ----------------------------------------------------------------------------------------------
+
+fn probe_pair_capture() -> List<String> {
+  [
+    "[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms=40 wall_ms=41 rss_growth_bytes=1024 source_files=2 bare_eligible=1 provenance=built-by-preparation scope=entry-closure-union entries=1 entries_refused=0 pool_files=8",
+    "[resolve] dag/test/claim/probe_pair.dag: 5ms  (1 modules, 2 resolved items in closure)",
+    "[floor-shared-fill] claim=test.claim.probe_pair.witness_fn marginal_cpu_ms=7 fill_cpu_ms=119 measured_cpu_ms=126 marginal_wall_ms=8 fill_wall_ms=119 measured_wall_ms=127 marginal_eval_steps=25303 fill_eval_steps=1838 measured_eval_steps=27141 provenance=filled-shared-artifact triggered_by=step_coproduct_reflection_shape",
+    "[floor-reach-probe] claim=test.claim.probe_pair.witness_fn fill_cpu_ms=119 reach=cooperatively_pollable dispatches=4019 last_builtin=step_coproduct_reflection_shape",
+    "[witness] witness_fn: cpu=126ms wall=126ms eval_steps=27141 subject=0123456789abcdef eval_self=126.000ms",
+    "PASS witness_fn",
+  ]
+}
+
+fn the_fold_bills_one_fill_once() -> Bool {
+  let capture = probe_pair_capture()
+  opt_ms_present(floor_preparation_split_total_ms(capture))
+    // 41 wall for the warm build + 5 per-entry resolve + 119 for filling the shared artifact.
+    && opt_ms_eq(floor_preparation_split_preparation_ms(capture), 165)
+    // 7 marginal (the claim's own CPU with the artifact warm) + 126 the claim row reports.
+    && opt_ms_eq(floor_preparation_split_claim_ms(capture), 133)
+    && opt_ms_eq(floor_preparation_split_total_ms(capture), 298)
+    && opt_ms_eq(floor_preparation_split_total_ms(capture), floor_preparation_ms_count(floor_preparation_total_ms(capture)))
+    // THE COUNTERFACTUAL, stated: the probe row's 119 is the same quantity, and the preparation side
+    // does NOT contain it twice.
+    && floor_preparation_ms_count(floor_preparation_probe_fill_ms(capture)) == 119
+    && floor_preparation_ms_count(floor_preparation_fill_fill_ms(capture)) == 119
+    && opt_ms_ne(floor_preparation_split_preparation_ms(capture), 165 + floor_preparation_ms_count(floor_preparation_probe_fill_ms(capture)))
+    && floor_preparation_probe_row_count(capture) == 1
+    && floor_preparation_fill_row_count(capture) == 1
+    && opt_int_eq(floor_preparation_split_pass(capture), 1)
+}
+
+test fn floor_preparation_the_fold_bills_the_reach_probe_fill_once() -> Bool {
+  the_fold_bills_one_fill_once()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 4b. THE COMMITTED CAPTURE'S OWN FILL ROWS, IF IT HAS ANY. Where a capture contains the pair, the two
+// rows must report the same quantity and the split must still conserve; where preparation warmed the
+// artifact so no claim paid a fill, there is nothing for this claim to check and 4a is what guards the
+// classification. It asserts the pairing the printer guarantees rather than trusting it.
+// ----------------------------------------------------------------------------------------------
+
+fn committed_fill_rows_are_paired() -> Bool {
+  let capture = floor_preparation_capture()
+  let fills = floor_preparation_fill_row_count(capture)
+  let probes = floor_preparation_probe_row_count(capture)
+  fills == probes
+    && floor_preparation_ms_count(floor_preparation_probe_fill_ms(capture)) == floor_preparation_ms_count(floor_preparation_fill_fill_ms(capture))
+    && opt_ms_present(floor_preparation_split_total_ms(capture))
+    && opt_ms_eq(floor_preparation_split_total_ms(capture), floor_preparation_ms_count(floor_preparation_total_ms(capture)))
+}
+
+test fn floor_preparation_committed_fill_rows_are_paired() -> Bool {
+  committed_fill_rows_are_paired()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 4c. THE FOLD REFUSES WHAT IT CANNOT READ. Kills: every silent-zero path in the fold, each on an
+// instrument line this file composes to look like the producer's:
+//
+//   * a phase token outside the closed table (the September spelling `strict-preparation`, which current
+//     main no longer prints, is the realistic case -- a phase renamed upstream must never be dropped);
+//   * a known phase row with its `wall_ms` missing (a missing field is not a zero);
+//   * a negative cost (`parse_int` would otherwise lift it to its magnitude);
+//   * a per-claim row printed before any `[resolve]` (its module would have to be invented);
+//   * a `[witness]` cost that dropped its `ms` unit (a format change, not a reading);
+//   * a tagged line whose tag the grammar does not know at all.
+//
+// Each refusal must NAME itself, so a reader is told why the split has no number rather than being
+// handed a smaller one.
+// ----------------------------------------------------------------------------------------------
+
+fn the_fold_refuses_what_it_cannot_read() -> Bool {
+  refuses_unknown_phase_token()
+    && refuses_a_missing_cost_field()
+    && refuses_a_negative_cost()
+    && refuses_a_claim_row_with_no_entry()
+    && refuses_a_cost_without_its_unit()
+    && refuses_an_unknown_tag()
+}
+
+fn refuses_unknown_phase_token() -> Bool {
+  let capture = ["[floor-phase] phase=strict-preparation state=completed wall_ms=27267 cpu_ms=27200"]
+  split_reads_absent(capture)
+    && floor_preparation_refusal(capture) != none
+}
+
+fn refuses_a_missing_cost_field() -> Bool {
+  let capture = ["[floor-phase] phase=gate-closure state=completed rss_growth_bytes=1024 sources=3"]
+  split_reads_absent(capture)
+}
+
+fn refuses_a_negative_cost() -> Bool {
+  let capture = ["[floor-phase] phase=module-index state=completed wall_ms=-5 pool_files=8"]
+  split_reads_absent(capture)
+}
+
+fn refuses_a_claim_row_with_no_entry() -> Bool {
+  let capture = ["[witness] orphan_fn: cpu=5ms wall=5ms eval_steps=9 subject=0123456789abcdef eval_self=5.000ms"]
+  split_reads_absent(capture)
+}
+
+fn refuses_a_cost_without_its_unit() -> Bool {
+  let capture = [
+    "[resolve] dag/test/claim/unit_pair.dag: 5ms  (1 modules, 2 resolved items in closure)",
+    "[witness] unit_fn: cpu=126 wall=126 eval_steps=9 subject=0123456789abcdef eval_self=126.000ms",
+  ]
+  split_reads_absent(capture)
+}
+
+fn refuses_an_unknown_tag() -> Bool {
+  let capture = ["[floor-unknown-instrument] claim=test.claim.x.y value=1"]
+  split_reads_absent(capture)
+}
+
+test fn floor_preparation_the_fold_refuses_what_it_cannot_read() -> Bool {
+  the_fold_refuses_what_it_cannot_read()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 5. MODULE ATTRIBUTION ACCOUNTS. Kills: a per-entry or per-claim row reaching the split but not the
+// module table (or the reverse) -- how a module-grain report silently lies while every total still
+// balances -- and a module row with no line behind it.
+// ----------------------------------------------------------------------------------------------
+
+fn attribution_covers_every_non_phase_costed_row() -> Bool {
+  let capture = floor_preparation_capture()
+  opt_ms_eq(floor_preparation_attributed_ms(capture),
+      floor_preparation_ms_count(floor_preparation_total_ms(capture)) - floor_preparation_ms_count(floor_preparation_phase_ms(capture)))
+    && length(xs: floor_preparation_module_keys(capture)) > 0
+    && length(xs: floor_preparation_module_keys(capture)) == length(xs: floor_preparation_entry_paths(capture))
+    && floor_preparation_attribution_all_rows_have_lines(capture)
+}
+
+test fn floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row() -> Bool {
+  attribution_covers_every_non_phase_costed_row()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 6. VERDICTS READ HONESTLY. Kills: a verdict row swallowed by the cost fold -- a FAIL line silently
+// counted as preparation would let a broken floor read as cost -- and a pass/fail count that disagrees
+// with an INDEPENDENT scan of the capture's prefixes, which is also the property the red-control leg of
+// this node leans on: a claim that breaks must show up as a verdict, not as a number.
+// ----------------------------------------------------------------------------------------------
+
+fn verdict_rows_match_the_prefix_scan() -> Bool {
+  let capture = floor_preparation_capture()
+  let passes = floor_preparation_split_pass(capture)
+  let failures = floor_preparation_split_fail(capture)
+  opt_present(passes)
+    && opt_present(failures)
+    && opt_int_eq(passes, independent_pass_count(capture))
+    && opt_int_eq(failures, independent_fail_count(capture))
+    && opt_int_gt0(passes)
+    && opt_int_eq_sum(passes, failures, Present {
+      value: length(xs: capture) - tagged_row_count(capture) - prose_row_count(capture) - unobserved_row_count(capture) })
+}
+
+fn independent_pass_count(capture: List<String>) -> Int {
+  fold(capture, init:  0, f: (acc, line) => if has_pass_prefix(line) { acc + 1 } else { acc })
+}
+
+fn independent_fail_count(capture: List<String>) -> Int {
+  fold(capture, init:  0, f: (acc, line) => if has_fail_prefix(line) { acc + 1 } else { acc })
+}
+
+fn has_pass_prefix(line: String) -> Bool {
+  let pieces = split(s: line, delimiter: "PASS ")
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+fn has_fail_prefix(line: String) -> Bool {
+  let pieces = split(s: line, delimiter: "FAIL ")
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+// THE THIRD HOST VERDICT CLASS. `UNOBSERVED <claim> (...)` is printed by the host for a roster claim
+// the leg could not evaluate; it is neither a pass, a fail, a tagged instrument row, nor claim_batch
+// prose. A capture may legitimately carry it, so the completeness arithmetic below must account for
+// it rather than pretend only two verdict classes exist -- silently dropping it would make every
+// identity here fail on any capture with an unobservable claim, which is exactly how a real check
+// gets weakened by a later hand.
+fn has_unobserved_prefix(line: String) -> Bool {
+  let pieces = split(s: line, delimiter: "UNOBSERVED ")
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+fn unobserved_row_count(capture: List<String>) -> Int {
+  fold(capture, init: 0, f: (acc, line) => if has_unobserved_prefix(line) { acc + 1 } else { acc })
+}
+
+// THE LINES CARRYING A TAG the authority's grammar owns, counted here WITHOUT consulting that grammar,
+// so witness 6's arithmetic is a second opinion rather than a restatement.
+fn tagged_row_count(capture: List<String>) -> Int {
+  fold(capture, init:  0, f: (acc, line) => if is_tagged(line) { acc + 1 } else { acc })
+}
+
+fn is_tagged(line: String) -> Bool {
+  let pieces = split(s: line, delimiter: "[")
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+// THE RUNNER'S PROSE: `claim_batch:` progress lines, which are neither tagged rows nor verdicts and
+// must not be mistaken for either.
+fn prose_row_count(capture: List<String>) -> Int {
+  fold(capture, init:  0, f: (acc, line) =>
+    if is_tagged(line) || has_pass_prefix(line) || has_fail_prefix(line) {
+      acc
+    } else if starts_with_claim_batch(line) {
+      acc + 1
+    } else {
+      acc
+    })
+}
+
+fn starts_with_claim_batch(line: String) -> Bool {
+  let pieces = split(s: line, delimiter: "claim_batch:")
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+test fn floor_preparation_verdict_rows_match_an_independent_prefix_scan() -> Bool {
+  verdict_rows_match_the_prefix_scan()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 7. THE PREMISE ITSELF, AS A CLAIM. `gunbc.roadmap ci-cost-floor-preparation-cut` asserts the claims
+// were never the expense: strict preparation and the reach probes dominate the floor's wall time. Asserted
+// as STRUCTURE -- the preparation side strictly exceeds the claim side, with both sides populated -- and
+// NO ratio pinned, so a genuinely faster preparation phase does not fail it and a capture that measured
+// nothing cannot pass it.
+// ----------------------------------------------------------------------------------------------
+
+fn preparation_side_strictly_exceeds_the_claim_side() -> Bool {
+  let capture = floor_preparation_capture()
+  opt_ms_gt(floor_preparation_split_preparation_ms(capture), floor_preparation_split_claim_ms(capture))
+    && opt_int_gt0(floor_preparation_split_preparation_lines(capture))
+    && opt_int_gt0(floor_preparation_split_claim_lines(capture))
+}
+
+test fn floor_preparation_preparation_side_dominates_the_claim_side() -> Bool {
+  preparation_side_strictly_exceeds_the_claim_side()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 8. THE MODULE KEY IS THE ENTRY'S OWN. Kills: the path-to-identity rule drifting from what the
+// `[resolve]` row actually named, which would charge one module with another module's resolution -- the
+// exact defect that makes a module-grain report untrustworthy while every total still balances. Checked
+// off the capture with its own entry threading, so it tests the table's bookkeeping rather than
+// restating it.
+// ----------------------------------------------------------------------------------------------
+
+test fn floor_preparation_entry_resolve_is_charged_to_the_module_it_names() -> Bool {
+  let capture = floor_preparation_capture()
+  opt_ms_present(floor_preparation_split_total_ms(capture))
+    && floor_preparation_resolve_rows_match_their_module_rows(capture)
+}
+
+// ----------------------------------------------------------------------------------------------
+// 9. THE SCALE PARTITION. Kills: a preparation row that belongs to neither scale bucket -- which is
+// what would leave the node's cost decision taken on an incomplete reading, since the two buckets are
+// exactly the roadmap's two constructions: whole-tree preparation is reachable only by reusing
+// resolved-module and reach-probe results ACROSS RUNS, entry-scoped preparation is reachable directly by
+// scoping preparation to a diff's closure. Both halves are folded independently of the split's
+// accumulator, so a phase row silently missing from the scale table would leave the two halves summing
+// BELOW the preparation total and go red here -- rather than quietly biasing which construction the
+// measurement appears to support.
+// ----------------------------------------------------------------------------------------------
+
+fn preparation_sides_partition_by_scale() -> Bool {
+  let capture = floor_preparation_capture()
+  opt_ms_eq(floor_preparation_split_preparation_ms(capture),
+      floor_preparation_ms_count(floor_preparation_whole_tree_ms(capture)) + floor_preparation_ms_count(floor_preparation_entry_scoped_ms(capture)))
+    && floor_preparation_ms_count(floor_preparation_whole_tree_ms(capture)) >= 0
+    && floor_preparation_ms_count(floor_preparation_entry_scoped_ms(capture)) > 0
+}
+
+test fn floor_preparation_preparation_sides_partition_by_scale() -> Bool {
+  preparation_sides_partition_by_scale()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 12. THE CENSUS IS HONEST. Kills: a capture that quietly DELETED a refused claim to look green, or
+// quietly PROMOTED a red claim into the graded set. The committed capture is trimmed -- some enrolled
+// claims do not appear in the graded capture -- and a trimmed artifact is exactly where that fraud
+// lives. Every graded row must have its own `PASS ` row in BOTH captures, every row marked `refused`
+// must have a `FAIL ` row in the untrimmed capture, every `unobserved` row an `UNOBSERVED ` row there,
+// and every `no_verdict_line` row neither. The causes are re-derived from the capture's own rows, never
+// from the name of the module they came from. (Ordered by royal-newt-240, msg_8712db4a: the exclusion
+// is auditable to a cause, not to a pattern that correlates with one.)
+// ----------------------------------------------------------------------------------------------
+
+fn committed_census_is_honest() -> Bool {
+  floor_preparation_census_is_honest()
+    && floor_preparation_untrimmed_covers_the_graded_population()
+}
+
+test fn floor_preparation_the_committed_census_is_honest() -> Bool {
+  committed_census_is_honest()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 13. THE EXCLUDED POPULATION IS STATED, WITH ITS CAUSES SUMMING. Kills: an artifact that hides how
+// much it dropped. The enrolled count must equal graded + excluded exactly (nothing vanished between
+// them), every excluded claim's cause must be one of the three the fold understands, and the three
+// cause counts must sum to the excluded count -- so a claim cannot be excluded with no cause beside it.
+// It asserts no count of its own: how many claims main refuses is main's business, and this stays true
+// whether main heals or rots, while still refusing the silence it exists to refuse.
+// ----------------------------------------------------------------------------------------------
+
+fn excluded_population_is_stated() -> Bool {
+  let enrolled = floor_preparation_requested_row_count()
+  let graded = floor_preparation_graded_row_count()
+  let excluded = floor_preparation_excluded_row_count()
+  enrolled == graded + excluded
+    && floor_preparation_excluded_with_cause("refused")
+      + floor_preparation_excluded_with_cause("unobserved")
+      + floor_preparation_excluded_with_cause("no_verdict_line")
+      == excluded
+}
+
+test fn floor_preparation_the_excluded_population_is_stated_with_its_causes() -> Bool {
+  excluded_population_is_stated()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 14. THE UNTRIMMED LEG IS THE SAME FLOOR, NOT A SMALLER ONE. Kills: reporting "what the floor
+// actually pays" from a run that enrolled less than the graded leg did -- which would let the trimmed
+// number be quietly presented as the untrimmed one. The untrimmed leg must have come back green at
+// least as often as the graded leg (it ran every graded claim plus the refused ones), its fold must
+// not refuse, and its total must be a measured positive rather than the -1 a refused fold reports.
+// ----------------------------------------------------------------------------------------------
+
+fn untrimmed_leg_is_the_same_floor() -> Bool {
+  let untrimmed = floor_preparation_untrimmed_capture()
+  floor_preparation_untrimmed_total_ms() > 0
+    && int_ge_opt(floor_preparation_untrimmed_verdict_pass(), floor_preparation_split_pass(capture: floor_preparation_capture()))
+    && floor_preparation_any_row_starts_with(untrimmed, "[floor-phase]")
+}
+
+test fn floor_preparation_the_untrimmed_leg_is_the_same_floor() -> Bool {
+  untrimmed_leg_is_the_same_floor()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 15. THE TWO FOLDS ARE NOT THE SAME SUBJECT. Kills: this authority drifting into
+// `v2.workflow.floor_cost_debt`'s question -- which enrolled identities the over-cost withholding holds
+// back from published census rows -- so that two entry points would answer one question and a reader
+// could not tell which figure to act on. Each report must carry its OWN vocabulary: this one speaks in
+// `preparation_ms`/`claim_ms` and never in `population:`/`censored=`; floor_cost_debt speaks in
+// `population:` and never in `preparation_ms`. A claim about the world's numbers would rot; a claim
+// about which question each entry point answers is what keeps them from merging.
+// ----------------------------------------------------------------------------------------------
+
+fn the_two_reports_answer_different_questions() -> Bool {
+  let mine = floor_preparation_split_report()
+  let theirs = floor_cost_debt_population_report()
+  starts_with(s: mine, prefix: "floor-preparation-split")
+    && starts_with(s: theirs, prefix: "floor_cost_debt population")
+    && split(s: mine, delimiter: "preparation_ms=").length() > 1
+    && split(s: theirs, delimiter: "preparation_ms=").length() == 1
+    && split(s: theirs, delimiter: "population:").length() > 1
+    && split(s: mine, delimiter: "population:").length() == 1
+}
+
+test fn floor_preparation_the_split_fold_is_not_the_cost_debt_fold() -> Bool {
+  the_two_reports_answer_different_questions()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 16. THE TOOL AND THE MODEL FOLD THE SAME GRAMMAR. Kills: the capture instrument and this authority
+// drifting apart -- the tool accepting a phase token the model refuses, or billing a phase the model
+// leaves uncosted, which would let a run be measured one way and claimed another. The tool's table is a
+// DELIBERATE duplicate (a model cannot execute Python and the tool cannot typecheck a model), so the
+// only honest control is to read the tool's own source and refuse on drift.
+// ----------------------------------------------------------------------------------------------
+
+fn text_contains(haystack: String, needle: String) -> Bool {
+  split(s: haystack, delimiter: needle).length() > 1
+}
+
+// 16. THE TOOL RUNS THE FOLD AND HOLDS NONE. Kills: the shell growing a second fold again. The reading
+// of the figures is THIS module's `floor_preparation_split_report` executed by the released `gunbc run`
+// host, whose refusal prints the returned String -- the documented convention at
+// `src/v2/workflow/floor_cost_debt.dag` ("the refusal is the correct behaviour rather than a
+// workaround"). The shell supplies logs and runs binaries; it computes nothing. The awk fold that used
+// to live there summed `preparation +=` / `claim +=` from its own cost table: neither token may come
+// back, or the fork is back with it. The two transport guards stay named on purpose -- a truncated
+// download that exits 0 and an argv missing `--functions` have both fooled this lane, and those are
+// execution-integrity checks on the RUNNER, not adjudications over the measurement.
+fn capture_tool_holds_no_fold() -> Bool {
+  let tool = filesystem_read(path: "src/v2/workflow/floor_preparation_capture_runner.dag").content
+  text_contains(tool, "--function")
+    && text_contains(tool, "floor_preparation_split_report")
+    && text_contains(tool, "release-bins.manifest")
+    && text_contains(tool, "e3b0c442")
+    && text_contains(tool, "shell.Exec.RunArgv")
+    && text_contains(tool, "heavy-slot")
+    && text_contains(tool, "HEAVY_OWNER=")
+    && !text_contains(tool, "preparation +=")
+    && !text_contains(tool, "claim +=")
+    && !text_contains(tool, "cost_field")
+    && !text_contains(tool, "wall_ms")
+    && !text_contains(tool, "cpu_ms")
+}
+
+test fn floor_preparation_the_capture_tool_runs_the_fold_and_holds_none() -> Bool {
+  capture_tool_holds_no_fold()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 18. THE COMMITTED CAPTURE IS MEASURED, NOT AUTHORED. Kills: the state this file was opened in -- the
+// five generated blocks empty while the text beside them asserted the committed census was honest. An
+// empty capture is not a passing state and the fold must not be green over rows it never read: this
+// guard refuses empty blocks, refuses a capture missing any of the four instrument families a
+// floor-shaped run cannot help but print, refuses rows the fold itself would refuse, and refuses
+// provenance that does not name a 64-hex binary sha, its byte count, and the head and tree it was
+// measured on. It is the whole-run gate the capture tool used to compute in shell: those gates moved
+// INTO the fold, so the harness's only adjudication is "every one of these claims printed its own PASS".
+// The hex shape is pinned here and the harness compares the same string to `release-bins.manifest` --
+// shape in the substrate, truth against the release.
+// ----------------------------------------------------------------------------------------------
+
+fn row_starts(line: String, needle: String) -> Bool {
+  let pieces = split(s: line, delimiter: needle)
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+fn count_starting(rows: List<String>, needle: String) -> Int {
+  fold(rows, init:  0, f: (acc, line) => if row_starts(line, needle) { acc + 1 } else { acc })
+}
+
+// THE RUNNER WRITES PROVENANCE AS ONE LINE WITH MANY key=value TOKENS:
+// "[capture-provenance] leg=<x> binary_sha256=<hex> binary_bytes=<n> head_sha=<hex> tree_sha=<hex>
+// rc=<n> kept_rows=<n>". The OLD helpers here were unsatisfiable by any file the runner writes --
+// provenance_named matched rows BEGINNING with the key (no row ever begins with 'binary_sha256=';
+// every row begins with '[capture-provenance] leg='), and after_equals returned the segment between
+// the FIRST TWO '=' of the whole line -- for these rows that is the text 'untrimmed binary_sha256',
+// not any key's value. All five provenance conjuncts of committed_capture_is_measured therefore decided false on every run of main, whatever
+// the leg did (run9o leg b; the replica of their exact semantics returns named='' for all four
+// keys). Same broken-gate class as the clean-bit suppression and the "untrimmed" closing-section
+// check: reported as a finding about the CHECKS, not tuned away. The replacement reads the key at
+// whatever position it holds inside a line and returns the characters after THAT key's '='.
+fn provenance_tokens(line: String) -> List<String> {
+  split(s: line, delimiter: " ")
+}
+
+fn provenance_value(rows: List<String>, key: String) -> String {
+  let hits = fold(rows, init: [], f: (acc, row) =>
+    fold(provenance_tokens(line: row), init: acc, f: (a, t) =>
+      if row_starts(t, key) { list_push(xs: a, item: t) } else { a }))
+  match hits.first() {
+    Present { value: t } => {
+      let parts = split(s: t, delimiter: "=")
+      match parts.skip(n: 1).first() {
+        Present { value: v } => v
+        Absent {} => ""
+      }
+    }
+    Absent {} => ""
+  }
+}
+
+// Everything a sha256 hex digest may NOT contain. A real digest is 64 characters from [0-9a-f];
+// iterating the complement of that set is how a language without character predicates still pins
+// the shape. The harness, not the substrate, compares this exact string to release-bins.manifest.
+data sha_forbidden_chars: List<String> = [
+  "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w",
+  "x", "y", "z", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
+  "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", " ", ".", ":", "-", "_", "/", "=", ",", "#",
+  ";", "\"", "'", "+"
+]
+
+fn sha_hex_shape_ok(value: String) -> Bool {
+  length(xs: value) == 64
+    && fold(sha_forbidden_chars, init: true, f: (acc, ch) => acc && !text_contains(value, ch))
+}
+
+fn committed_capture_is_measured() -> Bool {
+  let capture = floor_preparation_capture()
+  let untrimmed = floor_preparation_untrimmed_capture()
+  let prov = floor_preparation_capture_provenance()
+  let uprov = floor_preparation_untrimmed_capture_provenance()
+  length(xs: capture) > 0
+    && length(xs: untrimmed) > 0
+    && length(xs: floor_preparation_requested_rows()) > 0
+    && count_starting(capture, "[floor-phase]") > 0
+    && count_starting(capture, "[resolve]") > 0
+    && count_starting(capture, "PASS ") > 0
+    && count_starting(untrimmed, "[floor-phase]") >= count_starting(capture, "[floor-phase]")
+    && count_starting(untrimmed, "[resolve]") >= count_starting(capture, "[resolve]")
+    && count_starting(untrimmed, "PASS ") > 0
+    // NO EXISTENCE COUNT IS ASSERTED ON [floor-shared-fill] ROWS. They are printed by the floor
+    // instruments themselves -- not by the capture -- and the pinned claim_batch has printed zero
+    // of them on every leg of every run (run9m: zero in both transcripts, while the PASSing
+    // floor_materialization claims printed none either). '> 0' here was a count about the world
+    // that no run of main could satisfy, the same unsatisfiable class as the clean-bit gate; a
+    // hand-authored capture cannot dodge it anyway, because the cache witness ties every fill
+    // count in the block to the retained log line for line. What lives HERE is measurement
+    // presence (phase, resolve, PASS rows, provenance identities), not instrument emission.
+    && opt_ms_present(floor_preparation_split_total_ms(capture))
+    && opt_ms_present(floor_preparation_split_total_ms(untrimmed))
+    && sha_hex_shape_ok(provenance_value(prov, "binary_sha256="))
+    && provenance_value(prov, "binary_bytes=") != ""
+    && provenance_value(prov, "head_sha=") != ""
+    && provenance_value(prov, "tree_sha=") != ""
+    && sha_hex_shape_ok(provenance_value(uprov, "binary_sha256="))
+    && floor_preparation_graded_row_count() <= floor_preparation_requested_row_count()
+    && floor_preparation_graded_row_count() > 0
+    // the GRADED block is green by construction: a FAIL or UNOBSERVED row belongs to the untrimmed
+    // block with its cause, never to the capture the split figures are read from
+    && count_starting(capture, "FAIL ") == 0
+    && count_starting(capture, "UNOBSERVED ") == 0
+}
+
+test fn floor_preparation_the_committed_capture_is_measured_not_authored() -> Bool {
+  committed_capture_is_measured()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 19. THE COMMITTED BLOCK IS A CACHE, AND THE RETAINED LOG IS ITS SOURCE. Kills: a capture that
+// drifts from the log it was cut from -- a hand-edited committed row, or a rerun that forgot to
+// refresh the block. The tool retains the kept instrument lines of BOTH legs in
+// `dag/test/claim/floor/floor_preparation_split_retained.txt`; this claim re-folds that retained
+// artifact with the model's OWN fold and refuses when the cache disagrees: row, phase, resolve,
+// PASS and fill counts must each match, in both sections. What it cannot see is the keep-filter that
+// produced the retained file (transport, in the tool); that filter is covered by the coverage and
+// census claims -- every requested row appears with a verdict or is excluded with a printed cause --
+// and not by this one, and the division is stated rather than implied.
+// ----------------------------------------------------------------------------------------------
+
+type FloorPreparationRetainedCount {
+  section: String,
+  graded_rows: Int,
+  graded_phase: Int,
+  graded_resolve: Int,
+  graded_pass: Int,
+  graded_fill: Int,
+  untrimmed_rows: Int,
+  untrimmed_phase: Int,
+  untrimmed_resolve: Int,
+  untrimmed_pass: Int,
+  untrimmed_fill: Int,
+}
+
+fn retained_empty(section: String) -> FloorPreparationRetainedCount {
+  FloorPreparationRetainedCount {
+    section: section,
+    graded_rows: 0, graded_phase: 0, graded_resolve: 0, graded_pass: 0, graded_fill: 0,
+    untrimmed_rows: 0, untrimmed_phase: 0, untrimmed_resolve: 0, untrimmed_pass: 0, untrimmed_fill: 0
+  }
+}
+
+fn retained_bump(acc: FloorPreparationRetainedCount, line: String) -> FloorPreparationRetainedCount {
+  let is_phase = if row_starts(line, "[floor-phase]") { 1 } else { 0 }
+  let is_resolve = if row_starts(line, "[resolve]") { 1 } else { 0 }
+  let is_pass = if row_starts(line, "PASS ") { 1 } else { 0 }
+  let is_fill = if row_starts(line, "[floor-shared-fill]") { 1 } else { 0 }
+  if acc.section == "graded" {
+    FloorPreparationRetainedCount {
+      section: acc.section,
+      graded_rows: acc.graded_rows + 1,
+      graded_phase: acc.graded_phase + is_phase,
+      graded_resolve: acc.graded_resolve + is_resolve,
+      graded_pass: acc.graded_pass + is_pass,
+      graded_fill: acc.graded_fill + is_fill,
+      untrimmed_rows: acc.untrimmed_rows,
+      untrimmed_phase: acc.untrimmed_phase,
+      untrimmed_resolve: acc.untrimmed_resolve,
+      untrimmed_pass: acc.untrimmed_pass,
+      untrimmed_fill: acc.untrimmed_fill
+    }
+  } else {
+    FloorPreparationRetainedCount {
+      section: acc.section,
+      graded_rows: acc.graded_rows,
+      graded_phase: acc.graded_phase,
+      graded_resolve: acc.graded_resolve,
+      graded_pass: acc.graded_pass,
+      graded_fill: acc.graded_fill,
+      untrimmed_rows: acc.untrimmed_rows + 1,
+      untrimmed_phase: acc.untrimmed_phase + is_phase,
+      untrimmed_resolve: acc.untrimmed_resolve + is_resolve,
+      untrimmed_pass: acc.untrimmed_pass + is_pass,
+      untrimmed_fill: acc.untrimmed_fill + is_fill
+    }
+  }
+}
+
+fn retained_step(acc: FloorPreparationRetainedCount, line: String) -> FloorPreparationRetainedCount {
+  if line == "SECTION graded" {
+    // THE UNTRIMMED TALLIES MUST SURVIVE THE SECTION SWITCH. The old branch used
+    // retained_empty("graded"), which zeroes EVERY field -- including the untrimmed counts the fold
+    // had just accumulated, because the body contract puts SECTION untrimmed FIRST. The cache
+    // witness then compared state.untrimmed_rows == length(untrimmed_capture()) forever after a
+    // silent reset to 0: unsatisfiable on every file the runner writes (run9o dbg: untrimmed_rows=0
+    // while the section is "graded" and the graded tallies are correct). This is the third
+    // never-passable check found in this module (after the clean-bit suppression and the
+    // "untrimmed" closing-section name), each reported as a finding rather than tuned away.
+    // Mirror the SECTION untrimmed branch: reset only what this section will recount.
+    FloorPreparationRetainedCount {
+      section: "graded",
+      graded_rows: 0, graded_phase: 0, graded_resolve: 0, graded_pass: 0, graded_fill: 0,
+      untrimmed_rows: acc.untrimmed_rows, untrimmed_phase: acc.untrimmed_phase,
+      untrimmed_resolve: acc.untrimmed_resolve, untrimmed_pass: acc.untrimmed_pass,
+      untrimmed_fill: acc.untrimmed_fill
+    }
+  } else if line == "SECTION untrimmed" {
+    FloorPreparationRetainedCount {
+      section: "untrimmed",
+      graded_rows: acc.graded_rows, graded_phase: acc.graded_phase, graded_resolve: acc.graded_resolve,
+      graded_pass: acc.graded_pass, graded_fill: acc.graded_fill,
+      untrimmed_rows: 0, untrimmed_phase: 0, untrimmed_resolve: 0, untrimmed_pass: 0, untrimmed_fill: 0
+    }
+  } else if acc.section == "none" {
+    acc
+  } else {
+    retained_bump(acc, line)
+  }
+}
+
+fn retained_lines() -> List<String> {
+  filter(
+    split(s: filesystem_read(path: "dag/test/claim/floor/floor_preparation_split_retained.txt").content, delimiter: "\n"),
+    l => l != ""
+  )
+}
+
+fn retained_fold() -> FloorPreparationRetainedCount {
+  fold(retained_lines(), init: retained_empty("none"), f: (acc, line) => retained_step(acc, line))
+}
+
+fn retained_header_clean(lines: List<String>) -> Bool {
+  fold(lines, init: false, f: (acc, line) =>
+    if starts_with(s: line, prefix: "# gunbc-floor-retained ") {
+      if text_contains(haystack: line, needle: "claims_own_roster_clean=true") { true } else { false }
+    } else { acc })
+}
+
+fn retained_cache_agrees() -> Bool {
+  let graded = floor_preparation_capture()
+  let untrimmed = floor_preparation_untrimmed_capture()
+  let state = retained_fold()
+  retained_header_clean(retained_lines())
+    // The retained_body contract is SECTION untrimmed FIRST, SECTION graded LAST, so the fold's
+    // closing state names the section it ended in. (run9m: this read "untrimmed" while the body
+    // contract ends graded -- a witness no run could satisfy, the same broken-gate class as the
+    // clean-bit suppression the ruling removed.)
+    && state.section == "graded"
+    && state.graded_rows == length(xs: graded)
+    && state.untrimmed_rows == length(xs: untrimmed)
+    && state.graded_phase == count_starting(graded, "[floor-phase]")
+    && state.graded_resolve == count_starting(graded, "[resolve]")
+    && state.graded_pass == count_starting(graded, "PASS ")
+    && state.graded_fill == count_starting(graded, "[floor-shared-fill]")
+    && state.untrimmed_phase == count_starting(untrimmed, "[floor-phase]")
+    && state.untrimmed_resolve == count_starting(untrimmed, "[resolve]")
+    && state.untrimmed_pass == count_starting(untrimmed, "PASS ")
+    && state.untrimmed_fill == count_starting(untrimmed, "[floor-shared-fill]")
+}
+
+test fn floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log() -> Bool {
+  retained_cache_agrees()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 20. THE RUNNER IS A REALIZATION OF A MODELLED PROCESS, NOT AN AUTHORITY. Kills: a runner step
+// existing only in prose, or a modelled step vanishing from the realization. The step list is data
+// in `v2.workflow.floor_preparation_capture_runner`; each name must appear, quoted, at the site in
+// the same module that emits its `[runner-step]` receipt, and the process surface must be the
+// admitted service calls (shell.Exec.RunArgv, Filesystem.Write) rather than any shell the module
+// shells out to. This is the Rule 8 half the scaffold marker alone never closed -- with the shell
+// deleted under the lane's Hold ruling, there is no second place for process to live.
+// ----------------------------------------------------------------------------------------------
+
+fn runner_module_text() -> String {
+  filesystem_read(path: "src/v2/workflow/floor_preparation_capture_runner.dag").content
+}
+
+fn step_is_modelled_in_runner(step: String) -> Bool {
+  let receipt_site = concat(concat("floor_preparation_receipt(\"", step), "\"")
+  let label_site = concat(concat("label: \"", step), "\"")
+  length(xs: split(s: runner_module_text(), delimiter: receipt_site)) >= 2
+    || length(xs: split(s: runner_module_text(), delimiter: label_site)) >= 2
+}
+
+fn every_step_declared_and_realized() -> Bool {
+  fold(floor_preparation_runner_modelled_steps, init: true, f: (acc, step) =>
+    acc && step_is_modelled_in_runner(step: step))
+}
+
+fn runner_holds_no_shell_authority() -> Bool {
+  !text_contains(runner_module_text(), "scripts/floor_preparation_capture.sh")
+    && !text_contains(runner_module_text(), ".sh\"")
+}
+
+// Structural, not a coin-flip OR: the model-rendered argv must carry every element a claim leg
+// needs -- all three source roots, the entry flag, the functions flag, and the witness entry --
+// and it must carry NO shell text. A roster presence check would be a to-do list with a witness
+// attached; these are the elements the instrument refuses without.
+fn leg_argv_is_model_rendered() -> Bool {
+  let argv_text = join(floor_preparation_leg_argv(entries: floor_preparation_population_entries()), "\n")
+  let claims_text = join(floor_preparation_claims_leg_argv(["floor_preparation_the_fold_refuses_what_it_cannot_read"]), "\n")
+  text_contains(argv_text, "--source-root")
+    && text_contains(argv_text, "src/v1")
+    && text_contains(argv_text, "--entry")
+    && text_contains(argv_text, "--functions")
+    && !text_contains(argv_text, "sh -c")
+    && !text_contains(argv_text, "&&")
+    && text_contains(claims_text, "--source-root")
+    && text_contains(claims_text, "src/v1")
+    && text_contains(claims_text, "--entry")
+    && text_contains(claims_text, "--functions")
+    && text_contains(claims_text, floor_preparation_witness_entry_hint())
+    && !text_contains(claims_text, "sh -c")
+    && !text_contains(claims_text, "&&")
+}
+
+fn floor_preparation_witness_entry_hint() -> String {
+  "dag/test/claim/floor/floor_preparation_split_witness.dag"
+}
+
+fn runner_process_is_modelled() -> Bool {
+  length(xs: floor_preparation_runner_modelled_steps) > 0
+    && every_step_declared_and_realized()
+    && runner_holds_no_shell_authority()
+    && leg_argv_is_model_rendered()
+    && text_contains(runner_module_text(), "shell.Exec.RunArgv")
+    && text_contains(runner_module_text(), "Filesystem.Write")
+}
+
+test fn floor_preparation_the_runner_process_is_modelled() -> Bool {
+  runner_process_is_modelled()
+}
+
+
+// ----------------------------------------------------------------------------------------------
+// 17. THE ROADMAP STILL NAMES THIS FOLD. Kills: this authority becoming the repo's best-kept secret --
+// the failure mode the whole node exists to close was that NO entry point re-derived the split, and an
+// entry point nobody can find from the plan is the same failure wearing a file. The row's own handback
+// vocabulary must be present in the plan beside the node id, so the discovery path from plan to fold is
+// asserted rather than remembered.
+// ----------------------------------------------------------------------------------------------
+
+fn roadmap_names_the_floor_fold() -> Bool {
+  let plan = filesystem_read(path: "dag/gunbc/roadmap/roadmap_authority.dag").content
+  text_contains(plan, "ci-cost-floor-preparation-cut")
+    && text_contains(plan, "ENTRY POINT THAT RE-DERIVES")
+}
+
+test fn floor_preparation_the_roadmap_names_the_floor_fold() -> Bool {
+  roadmap_names_the_floor_fold()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 22. A REFUSAL CANNOT READ AS A REPORT. `gunbc run --function` has no success channel, so the
+// runner's report leg reads its verdict off the printed line -- the platform gap is taken upward,
+// not patched here. What lives HERE is the un-mixing: the report, its refusal, and its
+// empty-population line all carry the model's sentinel, and only the closed-grammar match with the
+// sentinel and neither marker classifies REPORT_READ. A real refusal text must classify
+// REFUSAL_NOT_A_REPORT, an empty-population line must classify POPULATION_EMPTY_NOT_A_REPORT, and
+// junk must classify UNRECOGNISED_OUTPUT. The three verdicts can never collapse into one PASS.
+// ----------------------------------------------------------------------------------------------
+
+fn refusal_is_not_a_report() -> Bool {
+  floor_preparation_classify_report_line(
+    line: concat(concat("floor-preparation-split REFUSED: ", floor_preparation_report_sentinel),
+      " preparation_ms=0 total_ms=0 pass=0")) == "REFUSAL_NOT_A_REPORT"
+}
+
+fn empty_population_is_not_a_report() -> Bool {
+  floor_preparation_classify_report_line(
+    line: concat(concat("floor-preparation-split population=EMPTY protocol=", floor_preparation_report_sentinel),
+      " instrument=none")) == "POPULATION_EMPTY_NOT_A_REPORT"
+}
+
+fn junk_is_not_a_report() -> Bool {
+  floor_preparation_classify_report_line(line: "floor-preparation-split hello world") == "UNRECOGNISED_OUTPUT" &&
+  floor_preparation_classify_report_line(line: "everything is fine") == "UNRECOGNISED_OUTPUT"
+}
+
+fn report_sentinel_is_model_rendered() -> Bool {
+  floor_preparation_report_sentinel == "protocol=floor-preparation-split-v1"
+}
+
+test fn floor_preparation_a_refusal_cannot_read_as_a_report() -> Bool {
+  refusal_is_not_a_report()
+    && empty_population_is_not_a_report()
+    && junk_is_not_a_report()
+    && report_sentinel_is_model_rendered()
+    && text_contains(runner_module_text(), "expected_rc=2")
+}
+
+// ----------------------------------------------------------------------------------------------
+// 22. THE WALL BOUND IS A TYPED DURATION. Kills: a bare-Int bound. run8 is the artifact this claim
+// exists for -- a Millisecond number reached a seconds operand and `timeout 2400000` meant 27 days,
+// no bound at all, while the file recorded the incident with the numbers still typed `Int`. The
+// bounds are std.measure Second (DESIGN gunbc.design_argument::single_authority: durations belong to
+// the shared quantity model); the seconds spelling exists ONLY at the timeout(1) transport, through
+// `floor_preparation_bound_operand`, which is CHECKED: a real bound renders its own digits, and a
+// run8-shaped milliseconds figure (or zero) is refused rather than obeyed.
+// ----------------------------------------------------------------------------------------------
+
+fn bound_operand_renders(bound: Second, digits: String) -> Bool {
+  match floor_preparation_bound_operand(bound: bound) {
+    Present { value: v } => v == digits
+    Absent => false
+  }
+}
+
+fn bound_operand_refuses(bound: Second) -> Bool {
+  match floor_preparation_bound_operand(bound: bound) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn floor_preparation_the_wall_bound_is_a_typed_second() -> Bool {
+  bound_operand_renders(bound: floor_preparation_untrimmed_bound(), digits: "14400")
+    && bound_operand_renders(bound: floor_preparation_graded_bound(), digits: "10800")
+    && bound_operand_renders(bound: floor_preparation_claims_bound(), digits: "2700")
+    && bound_operand_renders(bound: floor_preparation_report_bound(), digits: "1200")
+    && bound_operand_refuses(bound: second(count: 2400000))
+    && bound_operand_refuses(bound: second(count: 0))
+    && !text_contains(runner_module_text(), "bound_seconds: Int")
+    && text_contains(runner_module_text(), "-> Second")
+}

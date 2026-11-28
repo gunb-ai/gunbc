@@ -1155,6 +1155,13 @@ fn floor_cost_debt_straddling_population() -> Int {
   length(xs: floor_cost_debt_straddling_roster())
 }
 
+// NOT THE COST SPLIT, and it must not be read as one. This report answers WHICH enrolled identities
+// the over-cost withholding holds back from published census rows; it does not measure where a floor
+// run's wall time went. That is `v2.workflow.floor_preparation_split::floor_preparation_split_report`
+// (node `ci-cost-floor-preparation-cut`), which folds the phase lines one required-floor run printed,
+// at module grain. Neither authority claims the other's subject; the witness
+// `the_split_fold_is_not_the_cost_debt_fold` in
+// `dag/test/claim/floor/floor_preparation_split_witness.dag` refuses if they ever start to.
 fn floor_cost_debt_population_report() -> String {
   join(
     [

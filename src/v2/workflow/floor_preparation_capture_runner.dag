@@ -1,0 +1,1658 @@
+module v2.workflow.floor_preparation_capture_runner
+
+// THE CAPTURE RUNNER, MODELLED. This module is the re-derivation entry point the node's handback
+// names, and it replaces the hand-written shell that used to drive the preparation measurement.
+// Per the lane ruling (royal-newt-240: HOLD on any shell scaffold), every step that DECIDES lives
+// here as .dag, and the three operations an earlier escalation called "residues" are realized on
+// admitted extdeps surfaces rather than in a script:
+//
+//   (a) invoking the pinned binaries and reading real exit codes -- shell.Exec.RunArgv, a declared
+//       service operation whose realization spawns the process and returns exit_code / stdout /
+//       stderr as typed output (dag/extdeps/shell/exec.dag); the wet witnesses
+//       (dag/test/claim/cursor_runtime_root_wet_witness.dag, dag/test/claim/
+//       dispatch_credential_acquisition_witness.dag) establish this surface executes for real;
+//   (b) acquiring and releasing the machine-wide heavy slot -- RunArgv on /usr/bin/env carrying
+//       HEAVY_OWNER=<session> as an argv environment binding with $HOME/bin/heavy-slot as the next
+//       word, so the slot wrapper is the outermost program of every leg and the evidence rule's
+//       "exported outside and before heavy-slot" is satisfied by construction;
+//   (c) moving bytes from run output into artifact files -- Filesystem.Read / Filesystem.Write
+//       (dag/extdeps/filesystem/filesystem_io.dag).
+//
+// WORKFLOW, NOT AN INSTRUMENT (gunbc.design_ruling::instrument_is_a_row_not_a_flag asked and
+// answered here): this module adds no measurement program -- it spawns NO new binary and makes no
+// measurement of its own. Every verdict it reads comes from instruments already rostered as rows
+// of gunbc.instrument_targets through gunbc.target_binding TargetProducers (claim_batch and the
+// v2-native gunbc, the same instruments the required floor workflow drives, itself a workflow and
+// not a row). Its own three duties are not measurements: supply verification (digests below),
+// slot acquisition through the machine limiter, and byte movement. The ruling's three naming
+// duties are named where they bind: real consumer = the 22-claim roster in
+// dag/test/claim/floor/floor_preparation_split_witness.dag plus this node's fold; discriminator =
+// the red control (a planted floor-claim break is refused on the landing revision, raw in the
+// EXECUTION-BLOCK); acceptable cost = the wall bounds on the leg receipts, executed on the
+// heavy-slot limiter. Adding a NEW producer arm for this module would require a Rust seed change,
+// outside this node's authority, and is not warranted: there is no new program to address.
+//
+// There is no bash script. Re-deriving the split is one command a reader can paste (layout from
+// the caller's environment, see the required variables below):
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
+//     --function floor_preparation_capture_run
+//
+// run from the checkout the pins point at. The split itself is read by the fold in
+// `v2.workflow.floor_preparation_split`, which this module calls and never reimplements: the shell
+// that used to fold at module grain in its own vocabulary is gone, and the fold is one function.
+
+import std.types { Bool, Int, List, Present, Absent, String }
+import std.algebra { length, list_push }
+import std.measure { Millisecond, millisecond, millisecond_count, ByteSize, byte_size, byte_size_count, Second, second, second_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.workflow.floor_preparation_split {
+  floor_preparation_strip_prefix,
+  floor_preparation_strip_suffix,
+  floor_preparation_has_exact_row,
+  floor_preparation_any_row_starts_with,
+  floor_preparation_split_report,
+  floor_preparation_ask,
+  floor_preparation_report_sentinel,
+  floor_preparation_report_prefix,
+  floor_preparation_classify_report_line,
+  floor_preparation_contains,
+  FloorPreparationPopulationRow,
+  floor_preparation_population_rows,
+  floor_preparation_pass_prefix,
+  floor_preparation_fail_prefix,
+  floor_preparation_unobserved_prefix,
+  floor_preparation_witness_prefix,
+  floor_preparation_cause_refused,
+  floor_preparation_cause_unobserved,
+  floor_preparation_cause_no_verdict,
+  floor_preparation_graded_disposition,
+  floor_preparation_excluded_disposition
+}
+import v2.workflow.floor_preparation_diff_scope {
+  floor_preparation_scope_line_parse,
+  floor_preparation_scope_planned_entries,
+  FloorPreparationScopePlanned,
+  Planned,
+  Refused,
+}
+
+// ----------------------------------------------------------------------------------------------
+// SUPPLY DATA. Paths and digests the measurement is pinned to. One authority, read by every leg;
+// the digests are NOT trusted from here -- each is recomputed from disk at run time by sha256sum
+// through RunArgv and compared to these values, and the run refuses before spawning any leg when
+// a supply disagrees, is 0 bytes, or hashes to the empty-string digest. The model's PIN is the
+// authority; agreement with a locally-held copy of release-bins.manifest is CORROBORATION only,
+// so the receipt renders the manifest as a token -- `manifest=matched` when the local line equals
+// the recomputed digest, `manifest=absent` when no line exists -- never as a claim that the
+// manifest was consulted when it was not. No release-bins.manifest ships in the repo and no
+// downloadable release-bins artifact exists on main today, so "manifest-pinned" is never claimed:
+// the binaries are release-bins UNPACKED, pinned by the values below, cross-checked against the
+// caller-supplied manifest copy when one is present. A 0-byte download that exits 0 has fooled this lane; the byte count is checked beside
+// the digest for exactly that reason.
+// ----------------------------------------------------------------------------------------------
+
+// No operator path, no session id, and NO host layout is written into this module -- not even as
+// a fallback (reviews 97807 / 97828 / 97845 / 97851 converged here): layout is workflow policy,
+// and policy enters only through the caller's environment, which is the parameter channel for an
+// entry point that takes no argv. The caller MUST set: FLOOR_CHECKOUT (the checkout under
+// measurement), FLOOR_HEAVY_SLOT (the shared limiter's location), FLOOR_CLAIM_BATCH, FLOOR_GUNBC
+// (the pinned release binaries, release-bins UNPACKED -- the model pins are the authority) and
+// FLOOR_MANIFEST (a copy of release-bins.manifest used only for cross-checking; a supply whose
+// manifest has no line for it renders manifest=absent, never a fabricated match); HEAVY_OWNER carries the slot attribution, and the limiter itself refuses an unset
+// owner with exit 64, so no leg can run unattributed. When a required variable is unset the run
+// refuses on the verify-pinned-supplies receipt NAMING the variables -- no invented default can
+// quietly point a measurement at the wrong tree. The pasteable entry point therefore carries its
+// layout from the caller's shell, e.g. on the shared host:
+//
+//   export FLOOR_CHECKOUT=$HOME/scratch/$HEAVY_OWNER/pr \
+//     FLOOR_HEAVY_SLOT=$HOME/bin/heavy-slot \
+//     FLOOR_CLAIM_BATCH=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/claim_batch \
+//     FLOOR_GUNBC=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/gunbc \
+//     FLOOR_LEG_DRIVER=$HOME/scratch/$HEAVY_OWNER/bin/eagle-leg-driver-v4 \
+//     FLOOR_MANIFEST=$HOME/scratch/$HEAVY_OWNER/bin/bins/release-bins.manifest
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
+//     --function floor_preparation_capture_run
+//
+// The leg driver is this fixed text (its sha256 is the pinned supply value above; recreate with
+// FLOOR_LEG_DRIVER points at the path the runner EMITS the driver to from
+// floor_preparation_leg_driver_lines (typed carrier; review 99613) -- the operator creates
+// NO file by hand; the supply gate re-derives the sha of the emitted bytes at run time:
+// The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
+// against the same release.
+//
+// CONSUMER STATUS (review 99562, finding 1; DESIGN gunbc.design_argument::consumption).
+// NAMED CONSUMERS OVER EXECUTING ROUTES: (a) the two witness modules over the claim route --
+// dag/test/claim/floor/floor_preparation_split_witness.dag (22 claims) and
+// dag/test/claim/floor/floor_preparation_diff_scope_witness.dag (28 claims) -- executed by
+// claim_batch on srv1 inside heavy-slot; the run links on this PR ARE those executions.
+// (b) the preparation route itself: floor_preparation_capture_run, re-runnable by anyone with the
+// pasteable entry point above and the supplies it pins.
+// THE NARROWING DECISION IS CONSUMED BY A NAMED LATER CHANGE: the second step of
+// gunbc.roadmap ci-cost-floor-preparation-cut -- putting the required witnesses floor back on the
+// merge path -- consumes floor_preparation_runner_plan_over through SCOPE_DECISION_LINE.
+// TRIGGER: the preparation measurement this runner prints fits under the fleet budget (run10
+// observed preparation_ms=3544311 against claim_ms=1403 -- preparation dominates, which is why
+// the cut must come from preparation). TRACKING: gunbc.rung_drop witness_floor_off_the_required_gate
+// (dag/gunbc/rung_drop/v1_required_lanes_withdrawn.dag), retired by that restoration.
+// PRECONDITION, non-negotiable (review 99562, finding 2): NO narrowing on a required route until
+// the compiler itself emits per-entry closure facts the edge map can be checked against -- a
+// grep-derived map can under-cover, and under-coverage skips an entry the diff really reaches.
+// Until then capture_run plans the WHOLE population and says so on its receipts.
+// TYPED SCAFFOLD STANDING (lane ruling royal-newt-240, 2026-11-28, option B; reviews 99562 +
+// 99570; guarantee_ladder: a frontier trigger names the CAPABILITY restored, never a budget).
+// (a) THE NARROWING FRONTIER: plan_over is unwired on the consumer route until the compiler
+// itself can check a candidate narrowing -- see floor_preparation_runner_plan_whole.
+data floor_preparation_plan_over_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: required-route consumption of floor_preparation_runner_plan_over via SCOPE_DECISION_LINE. DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads, and every candidate narrowing is checked against that publication BEFORE a required run may skip preparation -- an unchecked grep-map narrowing can under-cover and skip an entry the diff reaches (review 99562). Until then the consumer route plans the whole population. TRACKING: tracking row owned by the planning lane, id pending; retirement pair gunbc.rung_drop witness_floor_off_the_required_gate.")
+
+// (b) THE SHELL-REPLACEMENT MARKER the reviewer advisory asked for (ctrl hand-shell policy;
+// bash_emit.dag:189 precedent): typed argv through shell.Exec.RunArgv replaced hand-written
+// shell scaffolds; the foreign-executor pieces that REMAIN are named, not silent.
+data floor_preparation_shell_bound_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the timeout(1)+pinned-driver leg legs of floor_preparation_spawn_slot_captured -- bounded foreign-executor processes carrying the wall bound and the leg log until a typed bounded-process effect lands on host_effect_apply (same frontier as bash_emit's dissolve-on). DISSOLVES WHEN that typed bounded-process effect exists AND the release route binds a child to the slot cgroup in-model. Until then the driver's PINNED sha256 is the supply authority and a bound death is transport, never a verdict.")
+
+// TYPED CARRIER (review 99613, gunbc.design_argument::source_annotations -- "a fact that must
+// survive belongs in a typed carrier", "Nothing may depend on a comment for correctness"): the
+// leg driver's bytes live in floor_preparation_leg_driver_lines; the runner EMITS them through
+// the modelled Filesystem.Write effect BEFORE the supply gate, chmods them executable through
+// the typed RunArgv spawn, and the gate re-derives sha256 against
+// floor_preparation_pinned_leg_driver_sha. Deleting or reflowing a comment can no longer strand
+// the pin; deleting a data line reds the gate. The scaffold declaration and version history are
+// the first lines of the carrier itself, so the runner carries its own marker (review 99598).
+data floor_preparation_leg_driver_lines: List<String> = [
+  "#!/usr/bin/sh",
+  "# eagle-leg-driver-v4.1 (crisp-eagle-244, run11+).",
+  "#",
+  "# SCAFFOLD DECLARATION (hand-shell policy): this file is a hand-written POSIX shell leg driver.",
+  "# Typed argv through shell.Exec.RunArgv already replaced the hand-written shell scaffolds around",
+  "# it; WHAT REMAINS HERE is bounded foreign-executor transport: it opens the leg log, prints the",
+  "# acquisition-identity block from the leg's own process, and execs the program verbatim. It",
+  "# DISSOLVES WHEN a typed bounded-process effect lands on host_effect_apply AND the release route",
+  "# binds a child to the slot cgroup in-model -- the same capability the model trigger names:",
+  "# floor_preparation_shell_bound_dissolution_trigger in",
+  "# src/v2/workflow/floor_preparation_capture_runner.dag (review 99598 asked that the runner carry",
+  "# its own marker, not only the model).",
+  "#",
+  "# v4.1 (review 99598): the driver NO LONGER JUDGES the binary pins -- the same sha256 was decided",
+  "# in three places. The single authority is the model's supply gate",
+  "# (floor_preparation_pinned_claim_batch_sha / _gunbc_sha / _leg_driver_sha compared against",
+  "# sha256sum re-derived from disk, in floor_preparation_capture_runner.dag, before any leg spawns).",
+  "# The driver only OBSERVES: [leg-binary] prints path/bytes/sha of every file operand and the",
+  "# model owns the verdict. v4 added: when TRACKED_DIRTY is nonzero the boot line NAMES the dirty",
+  "# tracked paths (comma-joined from the porcelain path column) and tags OPTION=b_dirty_paths_named,",
+  "# so a leg judging in-run spliced bytes carries its own doctrine-option-(b) evidence in its log",
+  "# (run10 claims-a printed OPTION=a_clean_checkout at TRACKED_DIRTY=1 -- the dirt was the fold-legs",
+  "# splice of src/v2/workflow/floor_preparation_split.dag). v3 added pin enforcement, now retired",
+  "# to the model per above. v2 (sha 19df9ae3381a) added the acquisition-identity block.",
+  "#",
+  "# argv[1] is the log path; the rest is program+arguments passed verbatim to exec, streams appended",
+  "# to that log. No shell string is built from leg data. The identity block prints, INSIDE the leg",
+  "# and from the leg's own process, what the leg judges: pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY",
+  "# (tracked dirt only, --untracked-files=no per the repo_self_build.dag:302-311 doctrine: untracked",
+  "# scratch reaches neither rustc nor the identity; at these legs it is zero by construction -- a",
+  "# clean checkout of the judged head), and sha256+bytes of every file operand.",
+  "LOG=\"$1\"",
+  "shift",
+  ": > \"$LOG\"",
+  "\{",
+  "  echo \"[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4.1\"",
+  "  echo \"[leg-cgroup] $(cat /proc/self/cgroup 2>/dev/null | head -1)\"",
+  "  TRACK_OUT=$(git status --porcelain --untracked-files=no 2>/dev/null || true)",
+  "  if [ -z \"$TRACK_OUT\" ]; then TRACK_DIRTY=0; TRACK_PATHS=none; OPTION_TAG=a_clean_checkout; else TRACK_DIRTY=$(printf '%s\\n' \"$TRACK_OUT\" | grep -c '^[^?]' || true); TRACK_PATHS=$(printf '%s\\n' \"$TRACK_OUT\" | cut -c4- | sort -u | tr '\\n' ',' | sed 's/,$//'); OPTION_TAG=b_dirty_paths_named; fi",
+  "  echo \"[leg-git] HEAD=$(git rev-parse HEAD 2>/dev/null) TREE=$(git rev-parse 'HEAD^\{tree\}' 2>/dev/null) TRACKED_DIRTY=$TRACK_DIRTY OPTION=$OPTION_TAG TRACKED_PATHS=$TRACK_PATHS\"",
+  "  for a in \"$@\"; do",
+  "    if [ -f \"$a\" ]; then",
+  "      echo \"[leg-binary] path=$a bytes=$(stat -c%s \"$a\") sha256=$(sha256sum \"$a\" | cut -d' ' -f1)\"",
+  "    fi",
+  "  done",
+  "  echo \"[leg-argv] $*\"",
+  "\} >> \"$LOG\" 2>&1",
+  "exec >>\"$LOG\" 2>&1 \"$@\""
+]
+
+fn floor_preparation_emit_leg_driver() -> Bool {
+  let target = floor_preparation_leg_driver_binary()
+  let written = (Filesystem.Write(path: target,
+    content: concat(join(floor_preparation_leg_driver_lines, "\n"), "\n"))).success
+  if !written {
+    false
+  } else {
+    (floor_preparation_spawn_plain(binary: "/bin/chmod", args: ["0755", target])).rc == 0
+  }
+}
+
+fn floor_preparation_env_value(name: String) -> String {
+  let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
+  match floor_preparation_lines(text: ran.stdout).first() {
+    Present { value: v } => v
+    Absent {} => ""
+  }
+}
+
+fn floor_preparation_session_owner() -> String {
+  floor_preparation_env_value(name: "HEAVY_OWNER")
+}
+
+fn floor_preparation_required_env_missing() -> String {
+  let missing = filter(
+    ["FLOOR_CHECKOUT", "FLOOR_HEAVY_SLOT", "FLOOR_CLAIM_BATCH", "FLOOR_GUNBC", "FLOOR_MANIFEST", "FLOOR_LEG_DRIVER", "HEAVY_OWNER"],
+    predicate: fn(v) { floor_preparation_env_value(name: v) == "" })
+  if length(xs: missing) > 0 { join(missing, ",") } else { "" }
+}
+
+fn floor_preparation_runner_root() -> String {
+  floor_preparation_env_value(name: "FLOOR_CHECKOUT")
+}
+
+fn floor_preparation_heavy_slot_binary() -> String {
+  floor_preparation_env_value(name: "FLOOR_HEAVY_SLOT")
+}
+
+fn floor_preparation_pinned_claim_batch() -> String {
+  floor_preparation_env_value(name: "FLOOR_CLAIM_BATCH")
+}
+
+fn floor_preparation_pinned_gunbc() -> String {
+  floor_preparation_env_value(name: "FLOOR_GUNBC")
+}
+
+fn floor_preparation_manifest_path() -> String {
+  floor_preparation_env_value(name: "FLOOR_MANIFEST")
+}
+
+fn floor_preparation_leg_driver_binary() -> String {
+  floor_preparation_env_value(name: "FLOOR_LEG_DRIVER")
+}
+
+
+data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
+
+data floor_preparation_env_binary: String = "/usr/bin/env"
+
+// The pty wrapper that writes a leg's complete stream to disk (see spawn_slot_captured).
+
+data floor_preparation_sha256_binary: String = "/usr/bin/sha256sum"
+
+data floor_preparation_pinned_claim_batch_sha: String =
+  "b395a556775931296f8f8aa8b9307f304d34442579f88d749189e273a4b0aee5"
+
+data floor_preparation_pinned_gunbc_sha: String =
+  "3283cc8aeccd690d175a349d23eacd2c2a5d4c8215557dcdadad4f703bed6e7f"
+
+// THE LEG DRIVER (run9e). The seed's RunArgv host keeps stdout to 8 MiB but reduces STDERR to a
+// 16 KiB TAIL (v1_interpreter.rs MAX_STDERR_TRACE = 16384, measured 2026-11-26: a leg's early
+// [floor-phase] lines were gone from the in-memory stream while its PASS lines -- stdout, not
+// tailed -- survived). The phase lines ARE the measurement, so a leg must write its COMPLETE
+// stream to disk itself. /usr/bin/script cannot do it in argv form (util-linux 2.39.3 rejects
+// `script -qef LOG -- CMD` outright; the -c form would route every leg argument through a shell
+// string -- a second authority over argv, refused). The driver is a pinned, sha256-verified
+// supply like claim_batch: argv[1] is the log path, the rest is program+arguments passed verbatim
+// to exec with the streams appended to that file. No shell string is built from leg data; the
+// driver is a fixed lane tool, not generated text, and a tampered driver cannot fake the verdict
+// lines the census claim cross-checks against the retained log. v3 (the pinned sha below) also
+// enforces the claim_batch pin AT THE LEG LAYER -- the leg refuses (exit 97) rather than exec a
+// claim_batch whose on-disk sha256 is not the model's pinned release -- and prints the
+// acquisition-identity block (pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY with tracked dirt only
+// per the repo_self_build.dag:302-311 doctrine, and sha256+bytes of every file operand) from the
+// leg's own process, so the log itself carries what the leg judged. v4 (the pinned sha below)
+// keeps every v3 guarantee and adds the one run10 proved missing: at TRACKED_DIRTY>0 the boot
+// line NAMES the dirty tracked paths and tags OPTION=b_dirty_paths_named (run10's claims-a judged
+// THIS run's splice of src/v2/workflow/floor_preparation_split.dag -- TRACKED_DIRTY=1 beside a
+// stale OPTION=a label; the named path plus the splice receipt is doctrine option (b), in the
+// leg's own log).
+data floor_preparation_pinned_leg_driver_sha: String =
+  "085785d20849a9eb73cd000c196efe89f3def5573876107fed337d0029d471dd"
+
+data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
+
+data floor_preparation_witness_module: String =
+  "dag/test/claim/floor/floor_preparation_split_witness.dag"
+
+data floor_preparation_authority_path: String = "src/v2/workflow/floor_preparation_split.dag"
+
+
+data floor_preparation_retained_file: String =
+  "dag/test/claim/floor/floor_preparation_split_retained.txt"
+
+data floor_preparation_empty_sha: String =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+data floor_preparation_block_begin: String = "BEGIN GENERATED CAPTURE BLOCK"
+
+data floor_preparation_block_end: String = "END GENERATED CAPTURE BLOCK"
+
+// Transport keeps, as MODEL DATA. The shell carried this as a grep regex; the fold classifies
+// what these rows are, and this list only decides which stdout lines are retained. A row the fold
+// must see that no keep matches is a runner defect, and the fold refusing such a row catches it.
+data floor_preparation_keep_prefixes: List<String> = [
+  "[floor-phase] ", "[resolve] ", "[witness] ", "[floor-reach-probe] ", "[floor-shared-fill] ",
+  "PASS ", "FAIL ", "UNOBSERVED ", "claim_batch: resolving "
+]
+
+// timeout(1) enforces these as a real process, and exit 124 is reported as a KILL and never as
+// a refusal -- a wall-clock timeout is not gunbc refusing.
+// WALL BOUNDS ARE TYPED DURATIONS, not bare Ints. run8 is the cautionary artifact: a Millisecond
+// number was handed where seconds were wanted and `timeout 2400000` meant 27 days -- no bound at
+// all, wearing the costume of one. DESIGN gunbc.design_argument::single_authority assigns durations
+// to the shared quantity model (std.measure::Second), so a bound CANNOT be a unitless number here;
+// the seconds spelling exists only at the timeout(1) transport, one checked conversion away, and an
+// operand large enough to be a milliseconds number smuggled in is REFUSED there rather than obeyed.
+
+fn floor_preparation_untrimmed_bound() -> Second {
+  second(count: 14400)
+}
+
+fn floor_preparation_graded_bound() -> Second {
+  // run9o: the graded leg carried 11 entry groups in ONE claim_batch invocation and was killed
+  // at the bound -- its provenance line printed rc=124 kept_rows=97. A timeout is the transport
+  // ending the process, not gunbc refusing: not a verdict, and it truncates the very evidence the
+  // census and cache witnesses read. The graded leg re-runs every entry that carries a passing
+  // claim, so its population tracks the untrimmed one -- it gets the same order of bound.
+  second(count: 10800)
+}
+
+fn floor_preparation_claims_bound() -> Second {
+  // run10: the claims legs died at 900 s with ZERO verdict lines under load 30-40 / 400 G of
+  // 502 G in use -- the resolve had not finished when the bound fired. 900 s was priced for a
+  // warm-cache probe, not a contended peak; probe2 had resolved the same 22 names under an
+  // 1800 s bound at idle. The bound is a bound, and a death at it is now a NAMED transport
+  // refusal, not a silent gate-missing (royal-newt ruling 2026-11-28). The witness asserts
+  // these digits against THIS function -- one source, lockstep by construction.
+  second(count: 2700)
+}
+
+fn floor_preparation_report_bound() -> Second {
+  // Same contention lesson as the claims bound (run10); the report leg spawns the full gunbc
+  // binary over the whole-tree roots and must not be the cheapest-bound leg in the run.
+  second(count: 1200)
+}
+
+// THE ONE CHECKED CONVERSION to the timeout(1) transport. A bound is meaningful only inside
+// [1, one day) of seconds: 0 means no bound, and anything a day or longer is the run8 shape -- a
+// milliseconds figure that lost its units on the way here. Absent is a typed refusal; the caller
+// refuses the leg rather than spawning an unbounded process.
+fn floor_preparation_bound_operand(bound: Second) -> Optional<String> {
+  let n = second_count(s: bound)
+  if n < 1 {
+    Absent
+  } else {
+    if n > 86399 {
+      Absent
+    } else {
+      Present { value: to_string(n) }
+    }
+  }
+}
+
+// A refused bound is reported as what it is: a leg that cannot run, with the bound's own digits in
+// the cause. Never a verdict about the claims.
+fn floor_preparation_bound_refused(bound: Second) -> FloorPreparationSpawnObservation {
+  FloorPreparationSpawnObservation {
+    rc: 97,
+    stdout: "",
+    stderr: concat("bound refused: ", concat(to_string(second_count(s: bound)),
+      " seconds is outside [1,86400) -- a wall bound this large or small is a unit error, not a bound")),
+  }
+}
+
+// The roster is MODEL DATA, not a shell constant. The witness module declares one test fn per
+// name; the claim gate refuses unless every one of these printed its own PASS line.
+data floor_preparation_claim_roster: List<String> = [
+  "floor_preparation_capture_grammar_is_closed",
+  "floor_preparation_split_conserves_to_the_independent_total",
+  "floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost",
+  "floor_preparation_the_fold_bills_the_reach_probe_fill_once",
+  "floor_preparation_committed_fill_rows_are_paired",
+  "floor_preparation_the_fold_refuses_what_it_cannot_read",
+  "floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row",
+  "floor_preparation_verdict_rows_match_an_independent_prefix_scan",
+  "floor_preparation_preparation_side_dominates_the_claim_side",
+  "floor_preparation_entry_resolve_is_charged_to_the_module_it_names",
+  "floor_preparation_preparation_sides_partition_by_scale",
+  "floor_preparation_the_committed_census_is_honest",
+  "floor_preparation_the_excluded_population_is_stated_with_its_causes",
+  "floor_preparation_the_untrimmed_leg_is_the_same_floor",
+  "floor_preparation_the_split_fold_is_not_the_cost_debt_fold",
+  "floor_preparation_the_committed_capture_is_measured_not_authored",
+  "floor_preparation_the_capture_tool_runs_the_fold_and_holds_none",
+  "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
+  "floor_preparation_the_runner_process_is_modelled",
+  "floor_preparation_the_roadmap_names_the_floor_fold",
+  "floor_preparation_a_refusal_cannot_read_as_a_report",
+  "floor_preparation_the_wall_bound_is_a_typed_second"
+]
+
+// The runner's own steps, as data. The witness binds these names to code paths in this module by
+// requiring each step's receipt line to appear in a run; no marker comments, no grep of a script.
+
+// THE CONSUMER ROSTER (leg b): the three committed-capture witnesses that read the retained log the
+// runner just stamped. They run AFTER the write, over the model-rendered claims argv.
+data floor_preparation_consumer_claims: List<String> = [
+  "floor_preparation_the_committed_census_is_honest",
+  "floor_preparation_the_committed_capture_is_measured_not_authored",
+  "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
+]
+
+data floor_preparation_runner_modelled_steps: List<String> = [
+  "verify-pinned-supplies", "build-argv-from-population", "leg-untrimmed",
+  "derive-pass-set", "leg-graded", "fold-legs", "write-retained", "splice-capture-rows",
+  "claim-gate", "report-print", "terminal-gate"
+]
+
+type FloorPreparationSpawnObservation {
+  rc: Int,
+  stdout: String,
+  stderr: String,
+}
+
+// TYPED VERDICT CARRIERS (review 97909). A supply check and a leg each decide their Bool in
+// model code and carry it as a FIELD; the gates fold over the fields, never over rendered prose.
+// The String forms below are print-boundary renderers only. Optional readings name their
+// absence: an unreadable checksum or count is Absent, rendered SHA_UNREADABLE / BYTES_UNREADABLE.
+type FloorPreparationSupplyReceipt {
+  name: String,
+  digest: Optional<String>,
+  bytes: Optional<ByteSize>,
+  manifest: String,
+  expected: String,
+  admitted: Bool,
+}
+
+// Typed resolve outcome for a claim_batch leg. Resolved carries the resolve banner verbatim
+// (module count included); ResolveFailed carries the error and cause lines; NotObserved means
+// the leg produced no resolve signal at all -- never clean.
+type FloorPreparationResolveOutcome
+  = Resolved { banner: String }
+  | ResolveFailed { cause: String }
+  | NotObserved {}
+
+type FloorPreparationLegReceipt {
+  label: String,
+  entries_joined: String,
+  rc: Int,
+  binary: String,
+  digest: Optional<String>,
+  bytes: Optional<ByteSize>,
+  tree_sha: String,
+  kept_count: Int,
+  verdict_count: Int,
+  resolve: FloorPreparationResolveOutcome,
+  out_bytes: Optional<ByteSize>,
+  clean: Bool,
+}
+
+// ----------------------------------------------------------------------------------------------
+// TEXT PRIMITIVES. The language carries split; prefix and membership are defined once, here, and
+// every gate below reads through them.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_lines(text: String) -> List<String> {
+  fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
+    if line == "" { acc } else { list_push(xs: acc, item: line) })
+}
+
+// THE SPLICE PRESERVES BLANK LINES. lines() above drops them, which is right for verdict rows
+// and wrong for rewriting a source file: an earlier splice routed the whole file through
+// lines() and deleted every blank line from the committed artifact -- it still parsed, but a
+// splice that rewrites the untouched 90% of a module is not a splice, it is a reformat wearing
+// a splice's clothes.
+fn floor_preparation_lines_preserving(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
+fn floor_preparation_first_token(line: String) -> String {
+  match split(s: line, delimiter: " ").first() {
+    Present { value: v } => v
+    Absent {} => line
+  }
+}
+
+
+
+fn floor_preparation_kept_line(line: String) -> Bool {
+  fold(floor_preparation_keep_prefixes, init: false, f: (acc, prefix) =>
+    acc || starts_with(s: line, prefix: prefix))
+}
+
+fn floor_preparation_kept(text: String) -> List<String> {
+  fold(floor_preparation_lines(text: text), init: [], f: (acc, line) =>
+    if floor_preparation_kept_line(line: line) { list_push(xs: acc, item: line) } else { acc })
+}
+
+// THE GRADED CAPTURE IS GREEN BY CONSTRUCTION. The measured and cache witnesses read FAIL and
+// UNOBSERVED rows from the UNTRIMMED block only, where the census gives each one a cause; a
+// graded block carrying them makes those witnesses refuse on every run of main, because the ten
+// externally-owned FAILs reappear in the graded leg too (the survivors are ENTRY-grained: an
+// entry with any surviving claim re-runs its failed siblings as well -- observed in run9m, where
+// kept_graded carried FAIL/UNOBSERVED rows and all three committed-capture consumers refused).
+// So the two verdict classes are trimmed HERE, at the two boundaries that feed committed
+// artifacts -- the rendered capture block and the retained log's graded section -- with each
+// trimmed verdict taking its paired [witness] line with it. What is trimmed stays observable:
+// the leg transcript on disk keeps the raw output, and the header tallies fold the UNTRIMMED
+// kept rows, so the external counts still print the ten and the five.
+type FloorPreparationTrimState {
+  kept: List<String>,
+  dropping: Bool,
+}
+
+fn floor_preparation_trim_step(acc: FloorPreparationTrimState, line: String) -> FloorPreparationTrimState {
+  if starts_with(s: line, prefix: floor_preparation_fail_prefix) {
+    FloorPreparationTrimState { kept: acc.kept, dropping: true }
+  } else if starts_with(s: line, prefix: floor_preparation_unobserved_prefix) {
+    FloorPreparationTrimState { kept: acc.kept, dropping: true }
+  } else if acc.dropping {
+    if starts_with(s: line, prefix: floor_preparation_witness_prefix) {
+      FloorPreparationTrimState { kept: acc.kept, dropping: true }
+    } else {
+      FloorPreparationTrimState { kept: list_push(xs: acc.kept, item: line), dropping: false }
+    }
+  } else {
+    FloorPreparationTrimState { kept: list_push(xs: acc.kept, item: line), dropping: false }
+  }
+}
+
+fn floor_preparation_trim_green(rows: List<String>) -> List<String> {
+  fold(rows, init: FloorPreparationTrimState { kept: [], dropping: false },
+    f: (acc, line) => floor_preparation_trim_step(acc: acc, line: line)).kept
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE SPAWN SURFACE. Every slot-bound leg arrives as
+//   timeout <secs> env HEAVY_OWNER=<session> heavy-slot <binary> <args...>
+// through shell.Exec.RunArgv; heavy-slot forwards the command's exit status and timeout forwards
+// it too, so the observation's rc IS the leg's rc. Supply probes run WITHOUT the slot: a
+// sha256sum needs no heavy slot, and holding one to hash a file is how a lane starves.
+// ----------------------------------------------------------------------------------------------
+
+// One place builds the slot-bound argv; the observation fields are copied into this module's own
+// type at the boundary so the runner's dataflow never depends on the operation's record shape.
+fn floor_preparation_spawn_slot(bound: Second, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  match floor_preparation_bound_operand(bound: bound) {
+    Absent => floor_preparation_bound_refused(bound: bound)
+    Present { value: operand } =>
+      let ran = shell.Exec.RunArgv(
+        program: floor_preparation_timeout_binary,
+        arguments: concat(
+          [operand, floor_preparation_env_binary,
+           concat("HEAVY_OWNER=", floor_preparation_session_owner()),
+           floor_preparation_heavy_slot_binary(), binary],
+          args)
+      )
+      FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+  }
+}
+
+// FULL-STREAM CAPTURE (run8). The seed's host drain keeps stdout up to 8 MiB but reduces STDERR
+// to a digest plus a 16 KiB TAIL (src/v1/stage0/src/bounded_shell_host_drain.rs), so a leg's
+// in-memory stderr is a tail, not a transcript: run8's two whole-tree legs came back truncated
+// at exactly 16383 bytes with their early pool-phase lines gone, and the in-memory streams could
+// not be the fold's or the gate's input. Each claim_batch leg therefore runs under the pinned
+// leg driver, which writes the child's COMPLETE interleaved stream to a file in the checkout and
+// execs the child so the observation's rc is still the leg's real rc; the inner timeout(1) -- in
+// SECONDS -- bounds claim_batch itself; the outer timeout guards a wedged runner.
+// THE PATH IS UNIQUE PER ATTEMPT. A log at a fixed path can be overwritten between the fold's
+// read and a later poll -- run9e's gate saw 8 PASS lines while the same path later showed none,
+// and a log that reads differently at two times is not evidence (review ruling, 2026-11-26).
+// FLOOR_RUN_TAG, set by the acquisition script and printed in its header, namespaces the name;
+// when unset the name is unchanged, so an untagged caller still gets the documented file.
+fn floor_preparation_leg_log_path(label: String) -> String {
+  let tag = floor_preparation_env_value(name: "FLOOR_RUN_TAG")
+  let stem = if tag == "" { label } else { concat(concat(label, "-"), tag) }
+  concat(concat(floor_preparation_runner_root(), "/"), concat(stem, ".log"))
+}
+
+fn floor_preparation_spawn_slot_captured(label: String, bound: Second, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  match floor_preparation_bound_operand(bound: bound) {
+    Absent => floor_preparation_bound_refused(bound: bound)
+    Present { value: operand } =>
+      // THE CAPTURE IS A PINNED DRIVER, NOT A PTY GRAFT AND NOT AN IN-MEMORY COPY
+      // (measured, srv1 2026-11-26). Two failed shapes: /usr/bin/script -qef LOG -- CMD is
+      // rejected outright by util-linux 2.39.3 ("unexpected number of arguments"; the -c form
+      // would route leg argv through a shell string -- refused as a second authority), and
+      // copying ran.stdout+ran.stderr into the log replays the seed's own truncation, because
+      // the RunArgv host tails STDERR at 16 KiB (v1_interpreter.rs MAX_STDERR_TRACE) -- which
+      // deletes the early [floor-phase] lines that ARE the measurement. The pinned driver takes
+      // the log path as argv[1] and exec's program+arguments verbatim with both streams appended
+      // to that file, so the transcript is complete before any host drain touches it. The
+      // observation's rc is the leg's real rc through the exec chain; read_captured is the only
+      // transcript source, and an empty log reads as zero verdicts -- never as an empty-but-honest
+      // run.
+      let ran = shell.Exec.RunArgv(
+        program: floor_preparation_timeout_binary,
+        arguments: concat(
+          [to_string(second_count(s: bound) + 300), floor_preparation_env_binary,
+           concat("HEAVY_OWNER=", floor_preparation_session_owner()),
+           floor_preparation_heavy_slot_binary(),
+           floor_preparation_leg_driver_binary(), floor_preparation_leg_log_path(label), binary],
+          args)
+      )
+      FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+  }
+}
+
+// A captured log is read back through the model's read effect; a pty adds carriage returns, so
+// the transcript is normalized once here and every downstream parser sees plain lines. A failed
+// read is the EMPTY stream -- verdicts and resolve markers then read absent and the leg is not
+// clean, which is honest: a leg whose transcript cannot be read has not been observed.
+fn floor_preparation_read_captured(label: String) -> String {
+  let read = Filesystem.Read(path: floor_preparation_leg_log_path(label))
+  let raw = if read.success { read.content } else { "" }
+  // ELISION AND SILENCE REFUSE SEPARATELY (ruling, 2026-11-26). The host's bounded drain
+  // (src/v1/stage0/src/bounded_shell_host_drain.rs: DigestAndBoundedTail is the DEFAULT policy,
+  // DEFAULT_SHELL_STDERR_TAIL_BYTES = 16 KiB at :88, RingTail retains only the SUFFIX) makes a
+  // silently missing head the dangerous case: rows==0 could mean the carrier stopped printing
+  // OR that the reader dropped the head, and those must not share a refusal. The pinned driver
+  // keeps the host from ever owning the leg evidence; this check keeps the READ from owning it
+  // silently either: the file's byte count is observed separately (wc -c), and a transcript
+  // shorter than the file it came from is ELISION -- the run refuses -- while a zero-byte file
+  // is the carrier having stopped printing -- a different refusal text. Equal, nonzero lengths
+  // are the only state that reads as a transcript at all. (Leg lines are ASCII verdicts, banners
+  // and phase receipts; a multibyte byte/char mismatch refuses rather than trusting the shorter
+  // reading -- refusal is safe in both directions.)
+  let disk = floor_preparation_bytes_of(path: floor_preparation_leg_log_path(label))
+  let complete = match disk {
+    Present { value: b } => byte_size_count(b) > 0 && byte_size_count(b) == raw.length()
+    Absent {} => false
+  }
+  let marker = if complete {
+    ""
+  } else {
+    if raw.length() == 0 { "\nCAPTURE_SILENT_CARRIER_ZERO_BYTES" } else { "\nCAPTURE_ELIDED_READ_SHORTER_THAN_FILE" }
+  }
+  let normalized = join(fold(floor_preparation_lines(text: raw), init: [], f: (acc, line) =>
+    list_push(xs: acc, item: match floor_preparation_strip_suffix(text: line, suffix: "\r") {
+      Present { value: v } => v
+      Absent {} => line
+    })), "\n")
+  concat(normalized, marker)
+}
+
+fn floor_preparation_spawn_plain(binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  let ran = shell.Exec.RunArgv(program: binary, arguments: args)
+  FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+}
+
+fn floor_preparation_receipt(step: String, detail: String) -> String {
+  concat(concat("[runner-step] step=", step), concat(" detail=", detail))
+}
+
+// ----------------------------------------------------------------------------------------------
+// SUPPLY INTEGRITY. sha256sum runs through the same spawn surface; the comparisons are model
+// code against the PINNED value above, which is the authority. The caller-supplied manifest line
+// is corroboration: its token is rendered on the receipt (matched/absent) and a line that exists
+// must agree, but no check claims a manifest it did not read.
+// ----------------------------------------------------------------------------------------------
+
+// Absence is TYPED, never a fabricated "" or -1 (review 97872): a failed checksum command or an
+// unparseable count returns Absent, and the supply gate refuses naming WHICH reading was absent.
+fn floor_preparation_sha_of(path: String) -> String? {
+  let outcome = floor_preparation_spawn_plain(
+    binary: floor_preparation_sha256_binary,
+    args: [path])
+  let token = floor_preparation_first_token(outcome.stdout)
+  if outcome.rc == 0 && token != "" { Present { value: token } } else { Absent {} }
+}
+
+fn floor_preparation_bytes_of(path: String) -> Optional<ByteSize> {
+  let ran = floor_preparation_spawn_plain(binary: "/usr/bin/wc", args: ["-c", path])
+  let token = floor_preparation_first_token(ran.stdout)
+  match parse_int(s: token) {
+    Present { value: n } => match checked_int_to_nat(n: n) {
+      Present { value: k } => Present { value: byte_size(count: k) }
+      Absent {} => Absent {}
+    }
+    Absent {} => Absent {}
+  }
+}
+
+// The tree sha under measurement, read through the same spawn surface (no shell: argv direct).
+// OBSERVED ON THIS HOST (run6, 2026-11-24, reproduced at head 59b1c8d with the pinned binaries):
+// claim_batch PANICS (rc=101, src/v1/stage0/src/cli_run.rs:570) when its cwd is not inside a git
+// checkout -- "workspace_root: ... is not inside a git checkout; run from the workspace (the
+// compile-time CARGO_MANIFEST_DIR fallback was removed...)". A checkout materialized by `git
+// archive` (no .git) therefore runs NO legs at all: every spawn dies at once with out_bytes=4641
+// and zero verdicts, and the empty `TREE_SHA=GIT_TREE_UNREADABLE` above is the runner reading
+// back the same absence. The runner route must be a real git checkout (clone + checkout of the
+// head commit); these two probes then report the identity they are measuring.
+fn floor_preparation_git_tree_sha() -> String {
+  let outcome = floor_preparation_spawn_plain(
+    binary: "/usr/bin/git",
+    args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD^\{tree\}"])
+  if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "GIT_TREE_UNREADABLE" }
+}
+
+fn floor_preparation_git_head_sha() -> String {
+  let outcome = floor_preparation_spawn_plain(
+    binary: "/usr/bin/git",
+    args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD"])
+  if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "GIT_HEAD_UNREADABLE" }
+}
+
+fn floor_preparation_manifest_sha(kind: String) -> String {
+  // filesystem_read THROWS on a missing file (observed: TypeError "No such file or directory"),
+  // which would crash the very gate that must REPORT an unreadable supply. Probe first, read
+  // only what exists; a missing manifest renders as "" and the typed comparison refuses.
+  let probe = floor_preparation_spawn_plain(binary: "/usr/bin/test",
+    args: ["-f", floor_preparation_manifest_path()])
+  let content = if probe.rc == 0 {
+    filesystem_read(path: floor_preparation_manifest_path()).content
+  } else {
+    ""
+  }
+  let hits = filter(xs: floor_preparation_lines(text: content), predicate: fn(line) { floor_preparation_contains(haystack: line, needle: concat(" ", kind)) })
+  match hits.first() {
+    Present { value: v } => floor_preparation_first_token(v)
+    Absent {} => ""
+  }
+}
+
+fn floor_preparation_supply_check(name: String, path: String, expected: String) -> FloorPreparationSupplyReceipt {
+  let digest_opt = floor_preparation_sha_of(path: path)
+  let bytes_opt = floor_preparation_bytes_of(path: path)
+  let manifest = floor_preparation_manifest_sha(kind: name)
+  let admitted = match digest_opt {
+    Present { value: d } => match bytes_opt {
+      Present { value: b } => d != floor_preparation_empty_sha && d == expected
+        && (manifest == "" || manifest == d) && byte_size_count(b) > 0
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+  FloorPreparationSupplyReceipt {
+    name: name,
+    digest: digest_opt,
+    bytes: bytes_opt,
+    manifest: manifest,
+    expected: expected,
+    admitted: admitted,
+  }
+}
+
+fn floor_preparation_supply_env_receipt(admitted: Bool, note: String) -> FloorPreparationSupplyReceipt {
+  FloorPreparationSupplyReceipt {
+    name: "required-env",
+    digest: Absent {},
+    bytes: Absent {},
+    manifest: note,
+    expected: note,
+    admitted: admitted,
+  }
+}
+
+// Print-boundary renderers. Nothing downstream reads these strings back to recover a verdict:
+// the gates consume SupplyReceipt / LegReceipt fields, not this text (review 97909).
+fn floor_preparation_supply_line(r: FloorPreparationSupplyReceipt) -> String {
+  let digest_text = match r.digest {
+    Present { value: d } => d
+    Absent {} => "SHA_UNREADABLE"
+  }
+  let bytes_text = match r.bytes {
+    Present { value: b } => to_string(byte_size_count(b))
+    Absent {} => "BYTES_UNREADABLE"
+  }
+  let manifest_matched_flag = r.manifest == digest_text
+  let manifest_token_if_line = if manifest_matched_flag { "matched" } else { "unmatched" }
+  let manifest_token = if r.manifest == "" { "absent" } else { manifest_token_if_line }
+  if r.admitted {
+    // A required-env receipt carries no digest or count: render only what it read. An admitted
+    // binary receipt must print both, so Absent never rides along on a pass line.
+    match r.digest {
+      Present { value: d } => {
+        let supply_line_1 = concat("[runner-supply] name=", r.name)
+        let supply_line_2 = concat(supply_line_1, concat(" sha256=", d))
+        let supply_line_3 = concat(supply_line_2, concat(" bytes=", bytes_text))
+        concat(supply_line_3, concat(" manifest=", manifest_token))
+      }
+      Absent {} => concat("[runner-supply] name=", r.name)
+    }
+  } else {
+    concat(concat(concat(concat(concat("[runner-supply-REFUSED] name=", r.name), " disk="), digest_text),
+      concat(" manifest=", r.manifest)), concat(" bytes=", bytes_text))
+  }
+}
+
+fn floor_preparation_supply_lines(receipts: List<FloorPreparationSupplyReceipt>) -> List<String> {
+  fold(receipts, init: [], f: (acc, r) => list_push(xs: acc, item: floor_preparation_supply_line(r: r)))
+}
+
+fn floor_preparation_supplies_hold(receipts: List<FloorPreparationSupplyReceipt>) -> Bool {
+  fold(receipts, init: true, f: (acc, r) => acc && r.admitted)
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE ARGV, model-rendered. The population is the model's own rows (the fold module owns them);
+// entries aggregate their claims into one --entry block each, and every leg is one claim_batch
+// claim_batch invocation over the three source roots. The committed population file is compared
+// to the model's rendering before any leg spawns; disagreement refuses the run.
+// ----------------------------------------------------------------------------------------------
+
+// The typed rows fold straight into the argv: no rendering round trip, no second representation,
+// no dropped-row widening (review 97839).
+fn floor_preparation_population_entries() -> List<String> {
+  fold(floor_preparation_population_rows(), init: [], f: (acc, row) =>
+    if floor_preparation_has_exact_row(rows: acc, wanted: row.entry) { acc }
+    else { list_push(xs: acc, item: row.entry) })
+}
+
+// THE REVISION PLAN (review 98336, finding 2 -- the decision's consumer). The scope tool runs the
+// grep map over the tree and PRINTS one authority-owned line; this runner is what consumes it, so
+// the scoping decides real work instead of being an unread ledger. The line is parsed back through
+// the authority's own reader (never a second format), and the plan it yields is what the legs run:
+// entries the diff does not reach do not pay preparation on THAT revision; a reachable entry still
+// pays, and a missing or corrupt line never plans "whatever the string said" -- absence is the
+// sweep (the full roster, the shape that preserves red_control), corruption is a refusal.
+type FloorPreparationRunnerPlan
+  = Sweep { entries: List<String>, reason: String }
+  | Scoped { entries: List<String>, reason: String }
+  | PlanRefused { cause: String }
+
+// THE CONSUMER ROUTE PLANS THE WHOLE POPULATION, ALWAYS (review 99562, finding 2). A narrowed
+// line is only as good as the edge map behind it; that map is grep-derived (scope_tool) and can
+// UNDER-cover the compiler's real closure, and an under-covered closure skips preparing an entry
+// the diff really reaches -- a correctness loss, not a time loss. Over-approximation is the goal,
+// not a guarantee, so until the compiler itself emits per-entry closure facts to check the map
+// against, the preparation route refuses every narrowing. plan_over stays for the named later
+// change (CONSUMER STATUS in this module's header) and is witnessed behaviourally by
+// dag/test/claim/floor/floor_preparation_diff_scope_witness.dag.
+fn floor_preparation_runner_plan_whole() -> FloorPreparationRunnerPlan {
+  Sweep { entries: floor_preparation_population_entries(),
+    reason: "whole-population by policy: scope-decision-not-consumable-yet, edge-map-is-grep-derived; narrowing arrives with the gate-restoration step ONLY on compiler-emitted closure facts" }
+}
+
+fn floor_preparation_runner_plan() -> FloorPreparationRunnerPlan {
+  floor_preparation_runner_plan_from_line(line: floor_preparation_env_value(name: "SCOPE_DECISION_LINE"))
+}
+
+// The plan function proper, split from its environment read so the BEHAVIOUR of consuming a
+// decision line is witnessed directly -- an env-gated function alone would let the claim pass on
+// the absence path while the parse path rotted.
+fn floor_preparation_runner_plan_from_line(line: String) -> FloorPreparationRunnerPlan {
+  floor_preparation_runner_plan_over(line: line, population: floor_preparation_population_entries())
+}
+
+// Population is a PARAMETER, not a read from inside: a consumer that compared the line's counts
+// against a population it invented itself would be a second decider about what "narrowed" means.
+// Production passes the model's rows; the witness passes the fixture's, and both flow through the
+// same code path -- which is what makes the behavioural claims real instead of decorative.
+fn floor_preparation_runner_plan_over(line: String, population: List<String>) -> FloorPreparationRunnerPlan {
+  if line == "" {
+    Sweep {
+      entries: population,
+      reason: "no-scope-decision: full roster pays preparation (the sweep behaviour that preserves red_control)",
+    }
+  } else {
+    match floor_preparation_scope_planned_entries(
+      read: floor_preparation_scope_line_parse(line: line),
+      population: population) {
+      Planned { entries: e, reason: r, narrowed: _ } =>
+        if length(xs: e) < length(xs: population) {
+          Scoped { entries: e, reason: r }
+        } else {
+          Sweep { entries: e, reason: r }
+        }
+      Refused { cause: c } => PlanRefused { cause: c }
+    }
+  }
+}
+
+fn floor_preparation_plan_entries(plan: FloorPreparationRunnerPlan) -> List<String> {
+  match plan {
+    Sweep { entries: e, reason: _ } => e
+    Scoped { entries: e, reason: _ } => e
+    PlanRefused { cause: _ } => []
+  }
+}
+
+fn floor_preparation_plan_receipt(plan: FloorPreparationRunnerPlan) -> String {
+  match plan {
+    Sweep { entries: e, reason: r } =>
+      concat("mode=sweep entries=", concat(to_string(length(xs: e)), concat(" reason=", r)))
+    Scoped { entries: e, reason: r } =>
+      concat("mode=scoped entries=", concat(to_string(length(xs: e)), concat(" reason=", r)))
+    PlanRefused { cause: c } => concat("mode=REFUSED cause=", c)
+  }
+}
+
+fn floor_preparation_functions_for(entry: String) -> String {
+  join(floor_preparation_entry_claim_names(entry: entry), ",")
+}
+
+// THE CLAIMS-LEG ARGV, AS MODEL RENDERING (not inline at the spawn site): the same structural
+// witness that checks the untrimmed/graded argv shape checks THIS one, witness entry included.
+// An argv built inline at the spawn site is invisible to `leg_argv_is_model_rendered`, which is how
+// the claims legs went red forever: the population never names the witness module as an entry, so
+// only a claims-specific renderer can carry the hint.
+fn floor_preparation_claims_leg_argv(roster: List<String>) -> List<String> {
+  let roots = fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root]))
+  concat(roots, ["--entry", floor_preparation_witness_module, "--functions", join(roster, ",")])
+}
+
+fn floor_preparation_leg_argv(entries: List<String>) -> List<String> {
+  let roots = fold(floor_preparation_source_roots, init: [], f: (acc, root) =>
+    concat(acc, ["--source-root", root]))
+  fold(entries, init: roots, f: (acc, entry) =>
+    concat(acc, ["--entry", entry,
+                 "--functions", floor_preparation_functions_for(entry: entry)]))
+}
+
+fn floor_preparation_pass_names(stdout_text: String) -> List<String> {
+  fold(floor_preparation_lines(text: stdout_text), init: [], f: (acc, line) =>
+    if starts_with(s: line, prefix: "PASS ") {
+      list_push(xs: acc, item: floor_preparation_first_token(
+        floor_preparation_strip_prefix(text: line, prefix: "PASS ")))
+    } else { acc })
+}
+
+fn floor_preparation_entry_claim_names(entry: String) -> List<String> {
+  let rows = filter(xs: floor_preparation_population_rows(), predicate: fn(row) { row.entry == entry })
+  fold(rows, init: [], f: (acc, row) => list_push(xs: acc, item: row.claim))
+}
+
+fn floor_preparation_surviving_entries(untrimmed_stdout: String) -> List<String> {
+  let passed = floor_preparation_pass_names(stdout_text: untrimmed_stdout)
+  filter(xs: floor_preparation_population_entries(), predicate: fn(entry) {
+    let claims = floor_preparation_entry_claim_names(entry: entry)
+    // A graded claim is one that printed PASS in the UNTRIMMED leg, and the census requires every
+    // graded claim to print PASS AGAIN in the graded block. So the graded leg must re-run every
+    // entry that carries AT LEAST ONE passing claim -- run9n proved the old selection (entries
+    // where NOT every claim passed, i.e. "has a failure to re-check") silently dropped fully-
+    // green entries: their graded claims appeared in the census but had no PASS row to find in
+    // the capture, so the census consumer refused on a roster the runner itself had chosen.
+    // Entries with no passing claim at all have nothing graded to measure and stay out.
+    fold(claims, init: false, f: (acc, claim) =>
+      acc || floor_preparation_has_exact_row(rows: passed, wanted: claim))
+  })
+}
+
+fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String {
+  "closure-authority-refusal"
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE RUN. Receipt lines accumulate into the returned String -- a returned String prints on
+// refusal (the documented convention at src/v2/workflow/floor_cost_debt.dag), so both the
+// receipts and any refusal text reach the terminal. Every leg's printed rc is part of its receipt
+// line: a leg that exits 0 without its named lines is a FAILURE decided in model code below,
+// never inferred from a missing guard message.
+// ----------------------------------------------------------------------------------------------
+
+// Every leg headlines its real rc, the instrument it ran, the instrument's sha256 AND byte count
+// read back FROM DISK at run time, the tree sha under measurement, and the kept-row count -- the
+// 0-byte-downloaded-binary-that-exits-0 failure mode seen in this lane fails the supply gate, and
+// a sha drifting from the pin fails it too.
+// A leg's verdict is a FIELD on a record, not a prefix on a line (review 97909). The record
+// captures the spawn observation plus the binary's on-disk identity at leg time; the gates read
+// .rc / .clean / .kept_count and the renderer exists only for the printed receipt.
+// A leg that carried VERDICTS is clean; a leg that carried none is not, whatever its exit code.
+// rc 1 is claim_batch's honest verdict-bearing exit (any FAIL or UNOBSERVED anywhere in the
+// batch), and a gate demanding rc 0 could never capture a population that contains FAILs -- the
+// red control needs FAILs to be CAPTURABLE. rc >= 2 is usage, resolve failure or the forwarded
+// timeout: never clean. (Adopted from the run5 forensics with the lane manager.)
+fn floor_preparation_verdict_count(text: String) -> Int {
+  fold(floor_preparation_lines(text: text), init: 0, f: (acc, line) =>
+    if starts_with(s: line, prefix: "PASS ")
+      || starts_with(s: line, prefix: "FAIL ")
+      || starts_with(s: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
+}
+
+fn floor_preparation_spawn_completed(rc: Int) -> Bool {
+  rc == 0 || rc == 1
+}
+
+// A resolve death must not masquerade as a verdict-bearing run: both run5 legs emitted rc=1
+// with kept phase lines BEFORE claim_batch aborted on a resolve error, and a clean rule keyed
+// only on rc and verdict-line counts reads that as clean. The claim_batch resolve banner and any
+// resolve-error line are captured onto the typed receipt: a leg is clean only when its resolve
+// outcome is Resolved. (run5 forensics, adopted with the lane manager.)
+fn floor_preparation_resolve_outcome(text: String) -> FloorPreparationResolveOutcome {
+  let lines = floor_preparation_lines(text: text)
+  let failed = filter(xs: lines, predicate: fn(line) {
+    floor_preparation_contains(haystack: line, needle: "error: resolve failed")
+  })
+  if length(xs: failed) > 0 {
+    let first_error = match failed.first() {
+      Present { value: f } => f
+      Absent {} => "resolve failed"
+    }
+    let causes = filter(xs: lines, predicate: fn(line) {
+      floor_preparation_contains(haystack: line, needle: "cause:")
+    })
+    let cause_tail = match causes.first() {
+      Present { value: c } => c
+      Absent {} => ""
+    }
+    ResolveFailed { cause: concat(first_error, cause_tail) }
+  } else {
+    let banners = filter(xs: lines, predicate: fn(line) {
+      floor_preparation_contains(haystack: line, needle: " resolving ")
+    })
+    match banners.first() {
+      Present { value: b } => Resolved { banner: b }
+      Absent {} => NotObserved {}
+    }
+  }
+}
+
+fn floor_preparation_resolved(outcome: FloorPreparationResolveOutcome) -> Bool {
+  match outcome {
+    Resolved { banner: b } => true
+    ResolveFailed { cause: c } => false
+    NotObserved {} => false
+  }
+}
+
+fn floor_preparation_resolve_text(outcome: FloorPreparationResolveOutcome) -> String {
+  match outcome {
+    Resolved { banner: b } => concat(" resolve=ok[", b, "]")
+    ResolveFailed { cause: c } => concat(" resolve=FAILED[", c, "]")
+    NotObserved {} => " resolve=NOT_OBSERVED"
+  }
+}
+
+fn floor_preparation_leg_record(
+    label: String, entries: List<String>, binary: String, tree_sha: String,
+    kept_count: Int, outcome: FloorPreparationSpawnObservation,
+    captured: String) -> FloorPreparationLegReceipt {
+  // The TRANSCRIPT, not the in-memory tail, is what a leg is judged on (run8: the drain caps
+  // stderr at a 16 KiB tail; PASS verdicts ride stdout, resolve banners stderr -- a leg judged
+  // from either in-memory stream alone mis-sees its own run).
+  // bind before the literal: match is statement position here, not a record-field expression
+  let out_bytes_opt = match checked_int_to_nat(n: captured.length()) {
+    Present { value: k } => Present { value: byte_size(count: k) }
+    Absent {} => Absent {}
+  }
+  FloorPreparationLegReceipt {
+    label: label,
+    entries_joined: join(entries, ","),
+    rc: outcome.rc,
+    binary: binary,
+    digest: floor_preparation_sha_of(path: binary),
+    bytes: floor_preparation_bytes_of(path: binary),
+    tree_sha: tree_sha,
+    kept_count: kept_count,
+    verdict_count: floor_preparation_verdict_count(text: captured),
+    resolve: floor_preparation_resolve_outcome(text: captured),
+    out_bytes: out_bytes_opt,
+    clean: floor_preparation_spawn_completed(rc: outcome.rc)
+      && floor_preparation_verdict_count(text: captured) > 0
+      && floor_preparation_contains(haystack: captured, needle: "CAPTURE_ELIDED") == false
+      && floor_preparation_contains(haystack: captured, needle: "CAPTURE_SILENT_CARRIER") == false
+      && floor_preparation_resolved(outcome: floor_preparation_resolve_outcome(text: captured)),
+  }
+}
+
+fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
+  let digest_text = match r.digest {
+    Present { value: d } => d
+    Absent {} => "SHA_UNREADABLE"
+  }
+  let bytes_text = match r.bytes {
+    Present { value: b } => to_string(byte_size_count(b))
+    Absent {} => "BYTES_UNREADABLE"
+  }
+  let out_text = match r.out_bytes {
+    Present { value: b } => to_string(byte_size_count(b))
+    Absent {} => "BYTES_UNREADABLE"
+  }
+  concat(concat(concat("[runner-leg] leg=", r.label), concat(" entries=", r.entries_joined)),
+    concat(concat(concat(" rc=", to_string(r.rc)), concat(" verdicts=", to_string(r.verdict_count))),
+      concat(floor_preparation_resolve_text(outcome: r.resolve),
+      concat(concat(" instrument=", r.binary),
+        concat(concat(" BINARY_SHA256=", digest_text),
+          concat(concat(" BINARY_BYTES=", bytes_text),
+            concat(concat(" TREE_SHA=", r.tree_sha),
+              concat(" out_bytes=", out_text))))))))
+}
+
+fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
+  concat(concat("SECTION untrimmed\n", join(floor_preparation_kept(text: untrimmed_stdout), "\n")),
+    concat("\nSECTION graded\n", join(floor_preparation_trim_green(rows: floor_preparation_kept(text: graded_stdout)), "\n")))
+}
+
+fn floor_preparation_byte_text(value: Optional<ByteSize>) -> String {
+  match value {
+    Present { value: b } => to_string(byte_size_count(b))
+    Absent {} => "BYTES_UNREADABLE"
+  }
+}
+
+fn floor_preparation_provenance(
+    leg: String, binary_sha: String, binary_bytes: String,
+    head_sha: String, tree_sha: String, rc: Int, kept_count: Int) -> String {
+  // The keys here are the CONTRACT the committed-capture witness reads (binary_sha256,
+  // binary_bytes, head_sha, tree_sha): a provenance line without an identity key makes that
+  // witness refuse, so the cache cannot be spliced in without its identities.
+  fold(["[capture-provenance] leg=", leg, " binary_sha256=", binary_sha,
+        " binary_bytes=", binary_bytes, " head_sha=", head_sha, " tree_sha=", tree_sha,
+        " rc=", to_string(rc), " kept_rows=", to_string(kept_count)],
+    init: "", f: (acc, s) => concat(acc, s))
+}
+
+// A LANE-TOOL supply check. release-bins.manifest lists release binaries only; the leg driver is
+// a lane tool, so its identity is the PINNED sha plus the same anti-hoax guards (nonzero bytes,
+// never the empty-string digest). A manifest line that DOES exist must still agree.
+fn floor_preparation_tool_supply_check(name: String, path: String, expected: String) -> FloorPreparationSupplyReceipt {
+  let digest_opt = floor_preparation_sha_of(path: path)
+  let bytes_opt = floor_preparation_bytes_of(path: path)
+  let manifest = floor_preparation_manifest_sha(kind: name)
+  let admitted = match digest_opt {
+    Present { value: d } => match bytes_opt {
+      Present { value: b } => d != floor_preparation_empty_sha && d == expected
+        && (manifest == "" || manifest == d) && byte_size_count(b) > 0
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+  FloorPreparationSupplyReceipt {
+    name: name,
+    digest: digest_opt,
+    bytes: bytes_opt,
+    manifest: manifest,
+    expected: expected,
+    admitted: admitted,
+  }
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE SPLICE (run9e). The five capture functions in the authority are GENERATED, and until now
+// the run printed a "splice-capture-rows blocks=5" receipt without writing anything -- a receipt
+// that described intent, not an effect. That is exactly the shape the fold claims exist to catch:
+// an empty capture read as a completed measurement. The splice now reads the authority, replaces
+// ONLY the text between the two markers with rendered rows from THIS run's transcripts, writes it
+// back through the modelled write effect, and reports what it actually wrote. A missing marker,
+// a failed read or a failed write refuses the splice; a refused splice refuses the terminal gate;
+// and a capture whose kept rows contain no [floor-phase] row at all -- the signature of a
+// truncated transcript -- refuses too, because a green split over zero costed lines measures
+// nothing. Row rendering escapes backslash first, then quote, so any byte of a leg line survives
+// the round trip into source.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_render_row(row: String) -> String {
+  let escaped_backslash = row.replace(pattern: "\\", replacement: "\\\\")
+  let escaped = escaped_backslash.replace(pattern: "\"", replacement: "\\\"")
+  concat(concat("\"", escaped), "\",")
+}
+
+fn floor_preparation_render_fn_block(name: String, rows: List<String>) -> List<String> {
+  // The bracket lines are load-bearing: the skeleton this replaces is
+  //   fn NAME() -> List<String> {
+  //     []
+  //   }
+  // and rendering rows without the opening "  [" and closing "  ]" leaves the first row parsed
+  // as the function body expression, so the comma after its closing quote fails with
+  // "expected expression, found Comma" at the row's last column (observed in capture-run9e: the
+  // spliced split.dag refused to parse at the first untrimmed row, line 1483 column 259 where the
+  // row ends at exactly 259 characters; every claim in floor_preparation_split_witness.dag then
+  // came back UNOBSERVED with cause=parse-failed). The brackets were the defect, not the escaping.
+  let header = [concat(concat("fn ", name), "() -> List<String> {"), "  ["]
+  let body = fold(rows, init: header,
+    f: (acc, row) => list_push(xs: acc, item: floor_preparation_render_row(row: row)))
+  let with_close = list_push(xs: body, item: "  ]")
+  list_push(xs: with_close, item: "}")
+}
+
+// The census rows the split's honesty witnesses parse: module|claim|disposition|cause, where a
+// claim is graded only if it printed PASS in the UNTRIMMED capture, and every excluded claim
+// names the verdict line that actually appeared for it (or names no_verdict_line when neither a
+// FAIL nor an UNOBSERVED row exists). Rendered from the same captures the witness re-checks, so
+// the census is checkable, not merely stated.
+fn floor_preparation_render_requested_row(row: FloorPreparationPopulationRow, untrimmed: List<String>) -> String {
+  let pass_row = concat(floor_preparation_pass_prefix, row.claim)
+  let fail_prefix_row = concat(floor_preparation_fail_prefix, row.claim)
+  let head = concat(concat(row.entry, "|"), row.claim)
+  if floor_preparation_has_exact_row(rows: untrimmed, wanted: pass_row) {
+    concat(concat(head, "|"), concat(floor_preparation_graded_disposition, "|"))
+  } else {
+    // PREFIX check on the FAIL class: refused rows print their cause after the claim name, so
+    // exact equality silently re-labelled real refusals as no_verdict_line (run9n, the two
+    // ci_floor_batch clamp rows). PASS rows print bare and stay on exact equality.
+    let cause = if floor_preparation_any_row_starts_with(rows: untrimmed, prefix: fail_prefix_row) {
+      floor_preparation_cause_refused
+    } else {
+      if floor_preparation_any_row_starts_with(rows: untrimmed,
+          prefix: concat(floor_preparation_unobserved_prefix, row.claim)) {
+        floor_preparation_cause_unobserved
+      } else {
+        floor_preparation_cause_no_verdict
+      }
+    }
+    concat(concat(concat(concat(head, "|"), floor_preparation_excluded_disposition), "|"), cause)
+  }
+}
+
+fn floor_preparation_render_requested_rows(untrimmed: List<String>) -> List<String> {
+  fold(floor_preparation_population_rows(), init: [],
+    f: (acc, row) =>
+      list_push(xs: acc, item: floor_preparation_render_requested_row(row: row, untrimmed: untrimmed)))
+}
+
+fn floor_preparation_render_capture_block(
+    untrimmed: List<String>, graded: List<String>,
+    provenance: List<String>, requested: List<String>) -> List<String> {
+  concat(
+    concat(
+      concat(
+        floor_preparation_render_fn_block(name: "floor_preparation_capture", rows: graded),
+        floor_preparation_render_fn_block(name: "floor_preparation_capture_provenance", rows: provenance)),
+      concat(
+        floor_preparation_render_fn_block(name: "floor_preparation_untrimmed_capture", rows: untrimmed),
+        floor_preparation_render_fn_block(name: "floor_preparation_untrimmed_capture_provenance", rows: provenance))),
+    floor_preparation_render_fn_block(name: "floor_preparation_requested_rows", rows: requested))
+}
+
+// Split at the markers with ONE fold; absence of either marker (or end before begin) is Absent,
+// never a partial write. The before/after lists are exactly the file outside the block.
+type FloorPreparationSpliceState {
+  inside: Bool,
+  closed: Bool,
+  before: List<String>,
+  after: List<String>,
+}
+
+fn floor_preparation_spliced(original: String, block: List<String>) -> String? {
+  // THREE regions, and the middle one is DISCARDED, not preserved. An earlier version pushed
+  // the inside lines into `after`, which re-emitted the old generated text after the END marker:
+  // capture-run9g's spliced split.dag carried the new block AND the skeleton fns, and every
+  // witness in the claims leg came back FAIL with "duplicate declaration 'floor_preparation_capture'"
+  // at the first duplicate. A splice REPLACES: before = everything up to BEGIN, the generated
+  // region is dropped on the floor, after = everything following END.
+  let folded = fold(floor_preparation_lines_preserving(text: original),
+    init: FloorPreparationSpliceState { inside: false, closed: false, before: [], after: [] },
+    f: (acc, line) =>
+      if !acc.inside && !acc.closed && floor_preparation_contains(haystack: line, needle: floor_preparation_block_begin) {
+        FloorPreparationSpliceState { inside: true, closed: false, before: acc.before, after: acc.after }
+      } else {
+        if acc.inside && !acc.closed && floor_preparation_contains(haystack: line, needle: floor_preparation_block_end) {
+          FloorPreparationSpliceState { inside: false, closed: true, before: acc.before, after: acc.after }
+        } else {
+          if acc.closed {
+            FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: acc.before, after: list_push(xs: acc.after, item: line) }
+          } else {
+            if !acc.inside {
+              FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: list_push(xs: acc.before, item: line), after: acc.after }
+            } else {
+              acc
+            }
+          }
+        }
+      })
+  if folded.closed {
+    Present { value: concat(concat(join(list_push(xs: folded.before,
+        item: concat("// === ", floor_preparation_block_begin)), "\n"),
+      concat("\n", concat(join(block, "\n"), "\n"))),
+      concat(concat("// === ", floor_preparation_block_end),
+        concat("\n", join(folded.after, "\n")))) }
+  } else {
+    Absent {}
+  }
+}
+
+fn floor_preparation_has_phase_row(rows: List<String>) -> Bool {
+  fold(rows, init: false, f: (acc, row) =>
+    acc || starts_with(s: row, prefix: "[floor-phase] "))
+}
+
+fn floor_preparation_capture_run() -> String {
+  let env_missing = floor_preparation_required_env_missing()
+  let env_receipt = floor_preparation_supply_env_receipt(
+    admitted: env_missing == "", note: concat("unset=", env_missing))
+  let emitted = floor_preparation_emit_leg_driver()
+  let emit_receipt = floor_preparation_receipt("emit-leg-driver",
+    concat("ok=", if emitted { "yes" } else { "no" }))
+  let supply_receipts = [
+    env_receipt,
+    floor_preparation_supply_check(name: "claim_batch",
+      path: floor_preparation_pinned_claim_batch(),
+      expected: floor_preparation_pinned_claim_batch_sha),
+    floor_preparation_supply_check(name: "gunbc",
+      path: floor_preparation_pinned_gunbc(),
+      expected: floor_preparation_pinned_gunbc_sha),
+    floor_preparation_tool_supply_check(name: "leg-driver",
+      path: floor_preparation_leg_driver_binary(),
+      expected: floor_preparation_pinned_leg_driver_sha)
+  ]
+  let supplies = list_push(xs: floor_preparation_supply_lines(receipts: supply_receipts), item: emit_receipt)
+  let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
+    concat("lines=", to_string(length(xs: supplies))))
+  if !floor_preparation_supplies_hold(receipts: supply_receipts) || !emitted {
+    concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
+  } else {
+    let plan = floor_preparation_runner_plan_whole()
+    let whole_plan_receipt = floor_preparation_receipt("preparation-population",
+      concat("entries=", to_string(length(xs: floor_preparation_plan_entries(plan: plan))),
+        concat(" narrowed=never reason=scope-decision-not-consumable-yet warrant=compiler-closure-facts-absent-on-released-routes review=99562")))
+    let entries = floor_preparation_plan_entries(plan: plan)
+    let plan_receipt = floor_preparation_receipt("revision-plan", floor_preparation_plan_receipt(plan: plan))
+    // (preparation-population receipt defined with the plan above; it joins the receipts list)
+    let tree_sha = floor_preparation_git_tree_sha()
+    let head_sha = floor_preparation_git_head_sha()
+    let untrimmed = floor_preparation_spawn_slot_captured(
+      label: "leg-untrimmed", bound: floor_preparation_untrimmed_bound(),
+      binary: floor_preparation_pinned_claim_batch(),
+      args: floor_preparation_leg_argv(entries: entries))
+    let untrimmed_transcript = floor_preparation_read_captured(label: "leg-untrimmed")
+    let kept_untrimmed = floor_preparation_kept(text: untrimmed_transcript)
+    let untrimmed_record = floor_preparation_leg_record(
+      label: "leg-untrimmed", entries: entries, binary: floor_preparation_pinned_claim_batch(),
+      tree_sha: tree_sha, kept_count: length(xs: kept_untrimmed), outcome: untrimmed,
+      captured: untrimmed_transcript)
+    let untrimmed_receipt = floor_preparation_leg_receipt(r: untrimmed_record)
+    let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed_transcript)
+    // The graded leg RE-RUNS SURVIVORS ONLY; when the untrimmed leg passed every claim there is
+    // nothing to re-run, and spawning claim_batch with zero entries would die on usage -- a
+    // missing leg is recorded as skipped, and legs_clean states the skip instead of pretending.
+    let graded = if length(xs: survivors) == 0 {
+      FloorPreparationSpawnObservation { rc: 0, stdout: "", stderr: "" }
+    } else {
+      floor_preparation_spawn_slot_captured(
+        label: "leg-graded", bound: floor_preparation_graded_bound(),
+        binary: floor_preparation_pinned_claim_batch(),
+        args: floor_preparation_leg_argv(entries: survivors))
+    }
+    let graded_transcript = if length(xs: survivors) == 0 { "" } else {
+      floor_preparation_read_captured(label: "leg-graded")
+    }
+    let kept_graded = floor_preparation_kept(text: graded_transcript)
+    let graded_record = floor_preparation_leg_record(
+      label: "leg-graded", entries: survivors, binary: floor_preparation_pinned_claim_batch(),
+      tree_sha: tree_sha, kept_count: length(xs: kept_graded), outcome: graded,
+      captured: graded_transcript)
+    let graded_receipt = floor_preparation_leg_receipt(r: graded_record)
+    // TRANSPORT TRUNCATION IS A HARD STOP (run9o, royal-newt ruling 2026-11-27). A leg killed at
+    // its bound -- claim_batch exit 124 from /usr/bin/timeout -- has NOT completed, whatever rows
+    // it printed first: run9o's graded leg died at rc=124 with kept_rows=97 of the untrimmed 139,
+    // and the census then refused on missing graded rows for a reason its text did not state.
+    // A bound is legitimate; treating a truncated leg as a completed one is not. So a 124 here
+    // refuses BEFORE the consumer/census legs run against partial rows, and the refusal NAMES the
+    // leg and the timeout bound. The skipped legs record rc=124 with empty transcripts themselves:
+    // skipped, never silently green.
+    let transport_timeout_rc = 124
+    let untrimmed_truncated = untrimmed.rc == transport_timeout_rc
+    let graded_truncated = length(xs: survivors) > 0 && graded.rc == transport_timeout_rc
+    let transport_ok = !untrimmed_truncated && !graded_truncated
+    // transport_line renders AFTER the claims legs (below): a claims leg killed at its bound is
+    // the same truncation class as a fold-leg kill and must be NAMED the same way -- run10's
+    // claims legs died at the bound and the only trace was gate-missing, which royal-newt's
+    // ruling calls out as how a truncation becomes a clean.
+    // TRANSCRIPT RECEIPTS. Each leg's full stream already lives on disk (script -qef LOG --);
+    // the receipt names the file and counts what the transcript holds, so a spawn that produced
+    // no transcript is visible on the receipts as bytes=0 verdicts=0 rather than as silence.
+    let leg_stderr_untrimmed = floor_preparation_receipt("leg-stderr-untrimmed",
+      concat(concat("file=", floor_preparation_leg_log_path(label: "leg-untrimmed")),
+        concat(concat(" bytes=", to_string(untrimmed_transcript.length())),
+          concat(" verdicts=", to_string(floor_preparation_verdict_count(text: untrimmed_transcript))))))
+    let leg_stderr_graded = floor_preparation_receipt("leg-stderr-graded",
+      if length(xs: survivors) == 0 { "file=skipped entries=0" } else {
+        concat(concat("file=", floor_preparation_leg_log_path(label: "leg-graded")),
+          concat(concat(" bytes=", to_string(graded_transcript.length())),
+            concat(" verdicts=", to_string(floor_preparation_verdict_count(text: graded_transcript))))) })
+    let fold_legs_receipt = floor_preparation_receipt("fold-legs",
+      concat(concat("kept_untrimmed=", to_string(length(xs: kept_untrimmed))),
+        concat(" kept_graded=", to_string(length(xs: kept_graded)))))
+    let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed_transcript, graded_stdout: graded_transcript)
+    // THE SPLICE IS AN EFFECT, NOT A RECEIPT (measured defect, srv1 2026-11-26). This run printed
+    // "splice-capture-rows blocks=5" while writing nothing: the empty committed capture the
+    // witness then checked was the skeleton, not the run. The splice now reads the authority,
+    // replaces ONLY the marker region, and writes it back through the modelled write effect --
+    // BEFORE the claims leg runs, so the committed-capture witnesses check this run's bytes. A
+    // kept stream with no [floor-phase] row at all is the truncated-transcript signature and
+    // refuses the splice outright: a green split over zero costed rows measures nothing.
+    let phase_rows_present = floor_preparation_has_phase_row(rows: kept_untrimmed)
+      && (length(xs: survivors) == 0 || floor_preparation_has_phase_row(rows: kept_graded))
+    let requested_rows_rendered = floor_preparation_render_requested_rows(untrimmed: kept_untrimmed)
+    let provenance_rows = [
+      floor_preparation_provenance(leg: "untrimmed",
+        binary_sha: floor_preparation_pinned_claim_batch_sha,
+        binary_bytes: floor_preparation_byte_text(value: untrimmed_record.bytes),
+        head_sha: head_sha, tree_sha: tree_sha,
+        rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
+      floor_preparation_provenance(leg: "graded",
+        binary_sha: floor_preparation_pinned_claim_batch_sha,
+        binary_bytes: floor_preparation_byte_text(value: graded_record.bytes),
+        head_sha: head_sha, tree_sha: tree_sha,
+        rc: graded_record.rc, kept_count: graded_record.kept_count)]
+    let capture_block = floor_preparation_render_capture_block(
+      untrimmed: kept_untrimmed, graded: floor_preparation_trim_green(rows: kept_graded),
+      provenance: provenance_rows, requested: requested_rows_rendered)
+    let authority_path_abs = concat(concat(floor_preparation_runner_root(), "/"), floor_preparation_authority_path)
+    let authority_read = Filesystem.Read(path: authority_path_abs)
+    let spliced_content = if authority_read.success && phase_rows_present {
+      floor_preparation_spliced(original: authority_read.content, block: capture_block)
+    } else {
+      Absent {}
+    }
+    let splice_written = match spliced_content {
+      Present { value: body } => (Filesystem.Write(path: authority_path_abs, content: body)).success
+      Absent {} => false
+    }
+    let splice_ok = phase_rows_present && splice_written
+    // THE RETAINED LOG IS RAW LEG OUTPUT, WRITTEN UNCONDITIONALLY (royal-newt-240 ruling,
+    // 2026-11-26, after run9i proved the clean-bit suppression unsatisfiable on main: the ten
+    // externally-owned FAILs -- pre-existing at 03cf3587 by the pristine leg's identical-text
+    // observation -- made 'clean legs' unreachable, so the gate discriminated nothing). The file
+    // carries a HEADER the runner stamps from its own data: the run's tree sha, the claims-roster
+    // record's OWN-ROSTER verdict, the survivor count, and the external (Candidate/Extra) counts
+    // printed SEPARATELY from own-population counts. Gating moved from the write to CONSUMPTION,
+    // over the MODULE'S OWN ROSTER: the claims leg is split in two -- leg a runs every claim that
+    // PRODUCES or ANALYSES (own roster, excluding the three committed-capture consumers), its
+    // transcript stamps claims_own_roster_clean; the retained log is then written UNCONDITIONALLY
+    // with that stamp; leg b runs the three committed-capture CONSUMER witnesses, which read the
+    // stamped file and REFUSE when the stamp says not-clean. Red control preserved and testable:
+    // break one of this module's own floor claims -> leg a prints the FAIL -> the stamp says
+    // not-clean -> the cache witness refuses -> and the terminal gate refuses the run. Main's ten
+    // no longer decide this module's verdict: they are printed, labelled, and not gating.
+    let leg_a_roster = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
+      if floor_preparation_has_exact_row(rows: floor_preparation_consumer_claims, wanted: name) {
+        acc
+      } else {
+        list_push(xs: acc, item: name)
+      })
+    let claims_a_args = floor_preparation_claims_leg_argv(leg_a_roster)
+    let claims_a = if transport_ok {
+      floor_preparation_spawn_slot_captured(
+        label: "leg-claims-a", bound: floor_preparation_claims_bound(),
+        binary: floor_preparation_pinned_claim_batch(),
+        args: claims_a_args)
+    } else {
+      FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
+        stderr: "skipped: a capture leg was truncated at its transport bound; census legs do not judge partial rows" }
+    }
+    // A gate that discards the only stream telling it WHAT IT EXECUTED is not a gate. The claim
+    // leg's FULL transcript -- PASS/FAIL/UNOBSERVED verdicts (claim_batch.rs prints them with
+    // println!, i.e. STDOUT; run8's gate read stderr and could never see a verdict) plus every
+    // resolve banner and phase line -- is read back from the script log and its size reported,
+    // so a missing-roster verdict can be read, not guessed.
+    // A claims leg's own rc is a transport fact too: 124 means the roster was never judged.
+    // (Defined AFTER the claims_a binding -- a forward reference is a resolve error, and
+    // claim_batch's closure gate is what caught it at preflight on 2026-11-28.)
+    let claims_a_truncated = transport_ok && claims_a.rc == transport_timeout_rc
+    let claims_transcript = if transport_ok {
+      floor_preparation_read_captured(label: "leg-claims-a")
+    } else {
+      "transport truncated: leg-claims-a skipped"
+    }
+    let claims_stderr_text = match checked_int_to_nat(n: claims_transcript.length()) {
+      Present { value: k } => to_string(byte_size_count(byte_size(count: k)))
+      Absent {} => "BYTES_UNREADABLE"
+    }
+    let passed_a = floor_preparation_pass_names(stdout_text: claims_transcript)
+    let missing_a = fold(leg_a_roster, init: [], f: (acc, name) =>
+      if floor_preparation_has_exact_row(rows: passed_a, wanted: name) { acc } else { list_push(xs: acc, item: name) })
+    let own_fail_a = fold(floor_preparation_lines(text: claims_transcript), init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "FAIL ") { acc + 1 } else { acc })
+    let own_pass_a = fold(floor_preparation_lines(text: claims_transcript), init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "PASS ") { acc + 1 } else { acc })
+    // OWN-ROSTER verdict: every leg-a claim printed its own PASS line and no FAIL row appeared.
+    let own_roster_clean = length(xs: missing_a) == 0 && own_fail_a == 0
+    let external_pass = fold(kept_graded, init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "PASS ") { acc + 1 } else { acc })
+    let external_fail = fold(kept_graded, init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "FAIL ") { acc + 1 } else { acc })
+    let external_unobserved = fold(kept_graded, init: 0, f: (acc, line) =>
+      if starts_with(s: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
+    let clean_word = if own_roster_clean { "true" } else { "false" }
+    let hdr1 = concat("# gunbc-floor-retained tree_sha=", tree_sha)
+    let hdr2 = concat(hdr1, concat(" claims_own_roster_clean=", clean_word))
+    let hdr3 = concat(hdr2, concat(" survivors=", to_string(length(xs: survivors))))
+    let hdr4 = concat(hdr3, concat(" own_pass=", to_string(own_pass_a)))
+    let hdr5 = concat(hdr4, concat(" own_fail=", to_string(own_fail_a)))
+    let hdr6 = concat(hdr5, concat(" external_pass=", to_string(external_pass)))
+    let hdr7 = concat(hdr6, concat(" external_fail=", to_string(external_fail)))
+    let retained_header = concat(hdr7, concat(" external_unobserved=", to_string(external_unobserved)))
+    // UNCONDITIONAL write (no clean-bit), stamped, BEFORE the consumer leg reads the file.
+    let retained_write = (Filesystem.Write(
+      path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
+      content: concat(concat(retained_header, "\n"), retained))).success
+    let claims_b_args = floor_preparation_claims_leg_argv(floor_preparation_consumer_claims)
+    let claims_b = if transport_ok && !claims_a_truncated {
+      floor_preparation_spawn_slot_captured(
+        label: "leg-claims-b", bound: floor_preparation_claims_bound(),
+        binary: floor_preparation_pinned_claim_batch(),
+        args: claims_b_args)
+    } else {
+      FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
+        stderr: "skipped: a capture leg was truncated at its transport bound; census legs do not judge partial rows" }
+    }
+    let claims_b_transcript = if transport_ok && !claims_a_truncated {
+      floor_preparation_read_captured(label: "leg-claims-b")
+    } else {
+      "transport truncated: leg-claims-b skipped"
+    }
+    let passed_b = floor_preparation_pass_names(stdout_text: claims_b_transcript)
+    let missing_b = fold(floor_preparation_consumer_claims,
+      init: [], f: (acc, name) =>
+      if floor_preparation_has_exact_row(rows: passed_b, wanted: name) { acc } else { list_push(xs: acc, item: name) })
+    let missing = concat(missing_a, missing_b)
+    let claims_b_truncated = transport_ok && !claims_a_truncated && claims_b.rc == transport_timeout_rc
+    let transport_line = if untrimmed_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-untrimmed rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_untrimmed_bound()))))
+    } else if graded_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-graded rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_graded_bound()))))
+    } else if claims_a_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-claims-a rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_claims_bound()))))
+    } else if claims_b_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-claims-b rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_claims_bound()))))
+    } else {
+      "[leg-transport] hold=clean no leg died at its bound"
+    }
+    // A truncated claims leg is not a completed leg: the report leg does not certify a run whose
+    // roster legs died at their bounds (transport ruling, royal-newt 2026-11-28).
+    let report = if !claims_a_truncated && !claims_b_truncated {
+      floor_preparation_spawn_slot(
+      bound: floor_preparation_report_bound(),
+      binary: floor_preparation_pinned_gunbc(),
+      args: concat(
+        ["run"], concat(
+          fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
+          ["--entry", floor_preparation_authority_path, "--function", "floor_preparation_split_report"])))
+    } else {
+      FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
+        stderr: "skipped: a claims leg was truncated at its transport bound; the report leg does not certify a truncated run" }
+    }
+    let build_argv_receipt = floor_preparation_receipt("build-argv-from-population",
+      concat("entries=", to_string(length(xs: entries))))
+    let splice_receipt = floor_preparation_receipt("splice-capture-rows",
+      concat(concat("blocks=", if splice_ok { "5" } else { "NONE" }),
+        concat(concat(" rows_untrimmed=", to_string(length(xs: kept_untrimmed))),
+          concat(concat(" rows_graded=", to_string(length(xs: kept_graded))),
+            concat(concat(" rows_requested=", to_string(length(xs: requested_rows_rendered))),
+              concat(concat(" phase_rows=", if phase_rows_present { "present" } else { "ABSENT" }),
+                concat(" write=", if splice_written { "ok" } else { "failed_or_refused" })))))))
+    // The host prints the returned String on the REFUSAL line -- observed on this host: the
+    // report text arrives on STDERR inside "error: function `floor_preparation_split_report`
+    // returned `...`, not `ProcessExit`", so the report lines are read from stderr.
+    let report_lines = fold(floor_preparation_lines(text: report.stderr), init: [], f: (acc, line) =>
+      if starts_with(s: line, prefix: floor_preparation_report_prefix) {
+        list_push(xs: acc, item: line)
+      } else { acc })
+    let classifications = fold(report_lines, init: [], f: (acc, line) =>
+      list_push(xs: acc, item: floor_preparation_classify_report_line(line: line)))
+    let classification_text = join(classifications, ",")
+    let report_read = floor_preparation_has_exact_row(rows: classifications, wanted: "REPORT_READ")
+      && floor_preparation_contains(haystack: join(report_lines, "\n"), needle: floor_preparation_report_sentinel)
+    // The leg's real exit status, printed on its own receipt line and asserted against the
+    // expected value for THIS path: the report function RETURNS a String, and the host has no
+    // success channel for one -- observed on this host ("returned `22|12`, not `ProcessExit`",
+    // rc=2, value printed in the refusal; royal-newt's ruling reads the report from that print).
+    // So rc==2 IS the expected status for the report leg; rc==0, rc==1 or 124 is a defect, not a
+    // pass -- a well-formed report that exited 0 would be a success-channel fabrication.
+    let report_record = floor_preparation_leg_record(
+      label: "report-print", entries: [floor_preparation_authority_path],
+      binary: floor_preparation_pinned_gunbc(), tree_sha: tree_sha, kept_count: 0, outcome: report,
+      captured: concat(report.stdout, "\n"))
+    let report_rc_receipt = floor_preparation_receipt("report-print",
+      concat(concat("rc=", to_string(report_record.rc)), concat(" expected_rc=2 classifications=", classification_text)))
+    // The gate reads RECORD FIELDS (review 97909): graded_record.clean is exactly "graded.rc == 0
+    // and its kept set is non-empty"; report_record.rc is the command's own exit status.
+    let report_ok = report_read && report_record.rc == 2
+    let receipts = concat(concat(concat(supplies, [verify_receipt, plan_receipt, whole_plan_receipt]),
+        [build_argv_receipt,
+         untrimmed_receipt,
+         leg_stderr_untrimmed,
+         floor_preparation_receipt("derive-pass-set",
+           concat("excluded=", to_string(length(xs: survivors))))]),
+      [graded_receipt,
+       leg_stderr_graded,
+       fold_legs_receipt,
+       floor_preparation_receipt("retained-body-rendered",
+         concat("rows=", to_string(length(xs: retained)))),
+       splice_receipt,
+       floor_preparation_provenance(leg: "untrimmed",
+         binary_sha: floor_preparation_pinned_claim_batch_sha,
+         binary_bytes: floor_preparation_byte_text(value: untrimmed_record.bytes),
+         head_sha: head_sha, tree_sha: tree_sha,
+         rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
+       floor_preparation_provenance(leg: "graded",
+         binary_sha: floor_preparation_pinned_claim_batch_sha,
+         binary_bytes: floor_preparation_byte_text(value: graded_record.bytes),
+         head_sha: head_sha, tree_sha: tree_sha,
+         rc: graded_record.rc, kept_count: graded_record.kept_count),
+       floor_preparation_receipt("claim-gate",
+         concat(concat("missing=", join(missing, ",")),
+           concat(concat(" claims_transcript_bytes=", claims_stderr_text),
+             concat(" claims_b_missing=", join(missing_b, ","))))),
+       floor_preparation_receipt("retained-header",
+         concat(concat("claims_own_roster_clean=", if own_roster_clean { "true" } else { "false" }),
+           concat(concat(" survivors=", to_string(length(xs: survivors))),
+             concat(concat(" own_pass=", to_string(own_pass_a)),
+               concat(concat(" own_fail=", to_string(own_fail_a)),
+                 concat(concat(" external_pass=", to_string(external_pass)),
+                   concat(concat(" external_fail=", to_string(external_fail)),
+                     concat(" external_unobserved=", to_string(external_unobserved))))))))),
+       report_rc_receipt])
+    // The retained log is LEG OUTPUT, not verdict output: royal-newt-240's ruling (after run9i)
+    // made the write UNCONDITIONAL -- a gate no run of main can satisfy is a broken gate, not a
+    // strict one -- and moved the clean check to CONSUMPTION over this module's own roster via
+    // the stamped header. Refusing a red gate must never destroy the raw evidence of the run;
+    // writing the file is still not a pass: the consumer witnesses read the stamp, the claim
+    // gates below still refuse without every roster PASS row, and the terminal gate refuses.
+    // A skipped graded leg (nothing survived the untrimmed pass) is CLEAN BY CONSTRUCTION: there
+    // was nothing to re-run. Stated, not assumed -- the receipts print 'skipped entries=0'.
+    // The retained log is LEG OUTPUT: it is written UNCONDITIONALLY before the consumer leg
+    // (see RETAINED WRITE ABOVE); this receipt only reports what that write reported to itself
+    // (review 97945) and stamps the header verdict the consumers gated on.
+    let write_receipt = if retained_write {
+      if own_roster_clean { "retained=written own_roster_clean=true" } else { "retained=written own_roster_clean=false" }
+    } else { "retained=WRITE_FAILED" }
+    let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
+    let receipts_with_transport = list_push(xs: all_receipts, item: transport_line)
+    if !report_ok || length(xs: missing) > 0 || !splice_ok || !retained_write || !own_roster_clean || !transport_ok || claims_a_truncated || claims_b_truncated {
+      concat(join(receipts_with_transport, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
+    } else {
+      concat(join(receipts_with_transport, "\n"),
+        concat("\n", concat(join(report_lines, "\n"),
+          concat("\n", floor_preparation_receipt("terminal-gate", "ALL_GATES_GREEN")))))
+    }
+  }
+}
+
+
