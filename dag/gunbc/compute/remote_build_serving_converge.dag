@@ -32,7 +32,7 @@ import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, Typ
 // shape every host-side door run shares. The leg itself decides nothing.
 import gunbc.compute.work_request { GunbcDriver, gunbc_binary_name, gunbc_cargo_package }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading, recover_catalog_unknown_leg_reason,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading, recover_catalog_unknown_leg_reason,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
@@ -754,7 +754,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // the next assessment — once the checkout write has delivered the door — asks it. Never a fabricated
   // empty census, and never an unknown for a door that was simply not asked.
   let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, checkout_door: checkout_door_value, serve_binary: serve_binary, dispatched_revision: pin.dispatched_revision) {
-    CensusGateAsk => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
+    CensusGateAsk => census_reading_for_checkout(leg: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid), checkout_revision: checkout_revision_value, dispatched_revision: pin.dispatched_revision)
     CensusGateDefer { reason: r } => RecoverCatalogLegDeferred { reason: r }
   }
   // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
@@ -1648,6 +1648,37 @@ fn converge_as_user_outcome(kind: FleetLegKind, target: SshTarget, context: Flee
     context: context,
     argv: argv_words(command: sudo_elevate_as_command(user: account as NonEmptyStr, command: argv))
   )
+}
+
+// AN UNKNOWN CENSUS ON A CHECKOUT THAT TRAILS THE PIN IS A DEFERRAL, NOT A VERDICT (review 99586).
+// The gate proved the tree CARRIES the door; this decides what an unfavourable ANSWER means. A door
+// that cannot run at revision P (its sources no longer load under the dispatched binary, a signature
+// the binary no longer accepts) answers Unknown — and an Unknown census dominates the assessment, an
+// indeterminate assessment plans nothing, and the checkout write that would replace that very tree
+// never lands: the permanent stall returns by a new route, which the manager's 2026-11-28 ruling
+// forbids ("a checkout behind the pin is drift the apply writes, and the census runs in the
+// post-checkout assessment"). So while the checkout is ESTABLISHED BEHIND the dispatched revision, an
+// Unknown downgrades to Deferred, naming the detachment that reopens the census. Every other reading
+// keeps its meaning: an ESTABLISHED census answers live seat facts read through the door and plans
+// recovery whatever revision carried the door code; an Unknown at an ALIGNED host (or where alignment
+// was never established) is an observation the model genuinely lacks — it dominates, and recovery
+// refuses toward it (fail_closed: never plan a write toward an unreadable seat).
+fn census_reading_for_checkout(leg: RecoverCatalogLegReading, checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, dispatched_revision: String) -> RecoverCatalogLegReading {
+  let behind = match checkout_revision {
+    Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
+      true => false
+      false => true
+    }
+    Absent => false
+  }
+  match leg {
+    RecoverCatalogLegUnknown { detail: d } => match behind {
+      true => RecoverCatalogLegDeferred { reason: join(["the census door at the trailing checkout revision could not answer (", d, "); the checkout write this plan carries detaches that tree at the dispatched revision ", dispatched_revision, " and the census is asked again from that tree"], "") }
+      false => RecoverCatalogLegUnknown { detail: d }
+    }
+    RecoverCatalogLegEstablished { entries: es } => RecoverCatalogLegEstablished { entries: es }
+    RecoverCatalogLegDeferred { reason: r } => RecoverCatalogLegDeferred { reason: r }
+  }
 }
 
 // Whether the census door may be asked at all, decided over the READ values so a claim exercises the
