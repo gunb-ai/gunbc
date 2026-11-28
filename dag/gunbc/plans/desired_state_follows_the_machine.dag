@@ -71,9 +71,15 @@ data desired_state_follows_the_machine_plan: Plan = Plan {
 }
 
 // WHERE THE HOW LIVES (cited, not contained -- gunbc.design_argument::planning_has_one_home,
-// plans_are_intentions): the model-side claims and the roster-refusal seam this intention asks
-// for are realized in gunbc.fleet.fleet_desired_state_claim (ModelAxisClaim, FollowsTheMachine,
-// desired_state_follows_the_machine), a fleet module -- the same shape as sibling row
-// fleet-truth-per-host-read, whose carrier is fleet_converge_workflow.dag while its model lives in
-// fleet_host_truth_read.dag. This plan stays a pure intention: it never holds the how, so editing
-// the prose here invalidates no compiler input and no production consumer.
+// plans_are_intentions): the model-side claims and the roster-refusal seam this intention asks for
+// are realized in #gunbc.fleet.fleet_desired_state_claim::ModelAxisClaim (the five claims, one arm
+// each), #gunbc.fleet.fleet_desired_state_claim::enabled_unit_marking (the one authority for the
+// marking form the unit axes compare) and
+// #gunbc.fleet.fleet_desired_state_claim::desired_state_follows_the_machine (the seam a roster
+// consumer calls) -- a fleet module, the same shape as sibling row fleet-truth-per-host-read, whose
+// verdict this module imports rather than re-declares
+// (#gunbc.fleet.fleet_host_truth_read::HostTruthVerdict). This plan stays a pure intention: it
+// never holds the how, so editing the prose here invalidates no compiler input and no production
+// consumer. A symbol cited
+// here is citable and decidable -- an arm this module does not declare is a stale citation
+// (gunbc.design_argument::single_authority).
