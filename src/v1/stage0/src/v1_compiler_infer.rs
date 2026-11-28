@@ -299,11 +299,12 @@ pub use crate::v1_compiler_infer_method::{
 use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, ConstructorsOpen};
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
-    check_match_exhaustiveness, constructor_fields, constructor_roster_for,
-    expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion, lookup_field_in_variant,
-    lookup_result_subject, lookup_variant_in_type, node_is_never_declaration, pattern_binding_type,
-    pattern_matches_constructor, pattern_subject_from_inferred, pattern_subject_from_node,
-    ConstructorRoster, NodeLookupResult, PatternSubject,
+    blocked_scrutinee_exhaustiveness_diags, check_match_exhaustiveness, constructor_fields,
+    constructor_roster_for, expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion,
+    lookup_field_in_variant, lookup_result_subject, lookup_variant_in_type,
+    node_is_never_declaration, pattern_binding_type, pattern_matches_constructor,
+    pattern_subject_from_inferred, pattern_subject_from_node, ConstructorRoster, NodeLookupResult,
+    PatternSubject,
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
@@ -19849,7 +19850,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         scope.module_name.clone(),
                     ),
                     PatternSubject::PatternDynamic { span: _, .. } => Rc::new(vec![]),
-                    PatternSubject::PatternLookupBlocked => Rc::new(vec![]),
+                    PatternSubject::PatternLookupBlocked => {
+                        crate::v1_compiler_infer_patterns::blocked_scrutinee_exhaustiveness_diags(
+                            typed_arms.clone(),
+                            scrut_typed.clone(),
+                            scope.type_env.clone(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                            scope.caller_decl_name.clone(),
+                        )
+                    }
                 };
             let unresolved_present_arm_diags =
                 match (*resolve_pattern_subject(scope.clone(), scrut_subject.clone())).clone() {

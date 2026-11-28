@@ -563,12 +563,13 @@ fn collection_roster_primitive_call_signature_at(path: String) -> RosterSignatur
 // The lookup over a SUPPLIED roster, so the unreadable arm's RED is authorable at this interface (gunbc.design_argument::guarantee_ladder,
 // review 76235): the production lookup above passes the one real roster.
 fn collection_roster_primitive_call_signature_in(rows: List<CollectionRosterRow>, path: String) -> RosterSignatureLookup {
-  match fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
+  let found: Optional<CollectionRosterRow> = fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
     match acc {
       Present { value: _ } => acc
       Absent => if r.row.module_path + "." + r.row.decl_name == path { optional_present(value: r) } else { acc }
     }
-  }) {
+  })
+  match found {
     Absent => NotARosterPrimitiveCallRow
     Present { value: r } =>
       match r.form {

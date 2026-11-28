@@ -692,6 +692,12 @@ pub enum CompilerDiagnostic {
         missing: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    ExhaustivenessUnknown {
+        scrutinee: String,
+        declaration: String,
+        module_path: String,
+        span: Rc<SourceSpan>,
+    },
     CircularDependency {
         modules: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
@@ -1107,6 +1113,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { span: s, .. } => s.clone(),
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ExhaustivenessUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeAliasCycle { span: s, .. } => s.clone(),
@@ -1201,6 +1208,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("two sibling operands of '".to_string(), c.clone()), "' each reach a declared effect ('".to_string()), a.clone()), "' and '".to_string()), b.clone()), "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '".to_string()), c.clone()), "'".to_string()),
     CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern: p, .. } => v1_rt::concat(v1_rt::concat("a '".to_string(), p.clone()), "' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
+    CompilerDiagnostic::ExhaustivenessUnknown { scrutinee: t, .. } => v1_rt::concat(v1_rt::concat("exhaustiveness not established for a match on '".to_string(), t.clone()), "': its constructor roster could not be looked up (the scrutinee's variant/field lookup was blocked, so the checker cannot enumerate the constructors to decide whether the arms cover them all). This is not a proof of exhaustiveness and not a proof of a missing arm, so it refuses rather than passing an unestablished match as accepted. Make the scrutinee's type establishable: construct the value the match scrutinizes inside a scope where its type is declared (annotate the binding, or give the producing call an expected type), so the coproduct's constructors can be looked up.".to_string()),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeAliasCycle { members: ms, .. } => v1_rt::concat("type alias cycle: ".to_string(), ms.clone().join(&" -> ".to_string())),
@@ -1402,6 +1410,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::NonExhaustiveMatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ExhaustivenessUnknown { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
