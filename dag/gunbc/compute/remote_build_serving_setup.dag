@@ -49,6 +49,7 @@ import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCa
 // ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host, compute_root }
+import gunbc.compute.compute_attempt_slots_root { compute_attempts_path }
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_admission → observed_cgroup_bound) that
 // serving_user_work_slice_deviations settles on, plus the slice's canonical unit name.
@@ -630,11 +631,13 @@ type RemoteBuildServingDesired {
   scratch_root_dir: String
   scratch_root_mode: FileMode
 
-  // The compute ATTEMPTS directory: <instance>/compute/attempts, the directory the census recovery door
-  // (gunbc.compute.work_provider_local::compute_recover_catalog_serving_cli) LISTS to establish the seat
-  // census. It is a child of scratch_root_dir (the capacity authority's compute root, the same one the
-  // provider derives), so this path is that one authority joined with "attempts" -- never a second path
-  // this module re-derives. The door's listing is what needs the directory to EXIST:
+  // The compute ATTEMPTS directory: the census recovery door
+  // (gunbc.compute.work_provider_local::compute_recover_catalog_serving_cli) LISTS the compute attempt
+  // seats to establish the seat census, and that listing is derived from
+  // gunbc.compute.compute_attempt_slots_root::compute_attempts_path (the module owning the single `attempts`
+  // member declaration). This field is THAT accessor's value -- not a compute_root ++ "attempts"
+  // re-derivation -- so the door's listing target and this write's target share one source
+  // (single_authority / minimize_redundancy). The door's listing is what needs the directory to EXIST:
   // gunbc.compute.compute_attempt_slots_root deliberately refuses an absent attempts directory as
   // ComputeSeatsUnreadable (absent is NOT "no seats"), so on a fresh host the census can never settle
   // until this write exists. Its owner/mode ride the scratch root's authority (the serving account,
@@ -914,9 +917,13 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     // instance, the same NonEmptyStr the serve route's provider reads. One authority, one path.
     scratch_root_dir: compute_root(instance: instance) as String,
     scratch_root_mode: scratch_root_mode,
-    // The attempts dir is the scratch root joined with "attempts" -- the SAME capacity compute root, so the
-    // door's listing target and this write's target cannot drift apart (single_authority).
-    compute_attempts_dir: concat(compute_root(instance: instance) as String, "/attempts"),
+    // The attempts dir is the OWNER's path, not a re-derivation: the census recovery door lists the
+    // compute attempt seats through gunbc.compute.work_provider_local -> compute_seat_store, which derives
+    // the flat seat from gunbc.compute.compute_attempt_slots_root::compute_attempts_path (the module that
+    // owns the single `attempts` member declaration). Reading that accessor here -- instead of joining
+    // compute_root with a second "/attempts" literal -- is what keeps this write's target and the door's
+    // listing target from drifting apart (single_authority / minimize_redundancy).
+    compute_attempts_dir: compute_attempts_path(instance: instance) as String,
     forced_command_line: serving_forced_command_line(host: host),
             } } } } }
           }
