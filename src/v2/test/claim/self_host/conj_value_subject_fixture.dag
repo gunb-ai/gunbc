@@ -1,0 +1,13 @@
+module v2.test.claim.self_host.conj_value_subject_fixture
+
+// Pure boolean-CONJUNCTION value-position subject with BOTH operands simple bindings. This isolates
+// the v2-core-emitter-lowers-conjunction-in-value-position lowering from the corpus subject's exotic
+// operands. The corpus subject (gunbc.rust_decl_type_overlay) has an outer Conj whose operands are a
+// prefix-not (`!closed_alias`) and a comparison against a literal (`resolved_child_count > 0`); this
+// subject has none of those -- `fn conj_subject(a: Bool, b: Bool) -> Bool { a && b }` -- so if the
+// Conj arm lowers to the proven `and` realisation (InfixToken &&), this EMITS. Placed under the
+// self-host claim tree, NOT the production dag corpus, so it is not counted by the population row
+// a_possibly_empty_producer_enters_a_nonempty_consumer.
+fn conj_subject(a: Bool, b: Bool) -> Bool {
+  a && b
+}

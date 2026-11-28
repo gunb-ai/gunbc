@@ -1,0 +1,14 @@
+module v2.test.claim.self_host.prefix_not_operand_subject_fixture
+
+// ISOLATION SUBJECT for operand-blocker #1 of the corpus subject gunbc.rust_decl_type_overlay. The
+// corpus body is `authored_is_leaf && !closed_alias && resolved_child_count > 0`; one operand is a
+// one-operand PREFIX `!closed_alias`. Here the prefix operand is a plain BINDING (closed_alias), so the
+// ONLY thing wrong with this subject is that `!closed_alias` is a ComputationNode{Transform} with TWO
+// positional children (op, operand). It therefore cannot pass the three-positional-child shape that
+// target_project_binary_primitive_apply_in_arrow_scope requires (op_not is an AlgebraPrimitive routed to
+// that binary branch), independently of any operand-binding issue. It pins the refusing arm to the
+// positional/arity shape check, not to the operand-binding path. Lives under the self-host claim tree,
+// NOT the production dag corpus (not counted by the population row).
+fn prefix_not_operand_subject(closed_alias: Bool) -> Bool {
+  !closed_alias
+}

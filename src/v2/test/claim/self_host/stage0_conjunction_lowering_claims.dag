@@ -1,0 +1,247 @@
+module v2.test.claim.self_host.stage0_conjunction_lowering_claims
+
+// CONSOLIDATED done-condition claim set for node v2-core-emitter-lowers-conjunction-in-value-position.
+// It observes each subject through the SAME door as stage0_operand_blocker_confirm
+// (observe_provenanced_rust_emission_from_ingest against stage0_production_target_model), so verdicts are
+// comparable to the corpus_probes_* instrument and to the retired pre-change blocker claims. Subjects live
+// under the self-host claim tree, NOT the production dag corpus, so none is counted by the population row.
+//
+// Post-change expectations (this PR):
+//   conj / disj        `a && b`, `a || b`                     -- 3-positional-child binary; op_and/op_or have
+//       InfixToken rows -> must EMIT. Proves the binary path and the lowering are intact (arity 3 = binary).
+//   prefix_not         `!closed_alias`                         -- 2-positional-child prefix; op_not now has a
+//       PrefixToken row (rust_not_operator_realization_row) reached through the (ii) prefix branch -> EMITS.
+//       POSITIVE (ii) control: the 2-child prefix path renders a prefix operator.
+//   prefix_negate      `-x`                                    -- 2-positional-child prefix; op_negate has NO
+//       operator-realization row -> must REFUSE with the token fold's own arity/realization reason and NEVER
+//       target_value_expr_reason_transform_shape_invalid. NEGATIVE (ii) control: a prefix primitive without a
+//       PrefixToken row is refused by a named reason, not the generic transform-shape one.
+//   literal_compare    `n > 0`                                 -- the numeral sits as an operator operand; HALF 1
+//       (target_arrow_scope_positional_operand_value) now recognises it via the int-literal spine instead of the
+//       scope-bound-binding path. If it EMITS, HALF 1 stands alone; if it refuses, the reason must name the
+//       integer-literal spelling, never body_scope_binding_invalid and never transform_shape_invalid -- i.e. the
+//       residual is the target spelling of the literal, NOT the (i) operand widening neat-badger declined.
+//   int_literal_value  `fn() -> Int { 42 }`                    -- a numeral DIRECTLY in value position, decided by
+//       the authorised atom/literal dispatcher beside the Bool case, independent of the operand route. Same
+//       invariant: never body_scope_binding_invalid, never transform_shape_invalid.
+
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.compiler.self_host.stage0_production_target { stage0_production_target_model }
+import v2.compiler.source_authority { SourceRef }
+import v2.compiler.source_authority_read {
+  source_ref_for_observed_storage_path,
+  source_root_ingest_from_source_refs
+}
+import std.algebra { Cons, Empty, string_contains }
+import std.types { Bool, Int }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_reason_lexemes }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+data conj_path: String = "src/v2/test/claim/self_host/conj_value_subject_fixture.dag"
+data conj_name: String = "v2.test.claim.self_host.conj_value_subject_fixture"
+data disj_path: String = "src/v2/test/claim/self_host/disj_value_subject_fixture.dag"
+data disj_name: String = "v2.test.claim.self_host.disj_value_subject_fixture"
+data prefix_path: String = "src/v2/test/claim/self_host/prefix_not_operand_subject_fixture.dag"
+data prefix_name: String = "v2.test.claim.self_host.prefix_not_operand_subject_fixture"
+data negate_path: String = "src/v2/test/claim/self_host/prefix_negate_operand_subject_fixture.dag"
+data negate_name: String = "v2.test.claim.self_host.prefix_negate_operand_subject_fixture"
+data literal_path: String = "src/v2/test/claim/self_host/literal_compare_operand_subject_fixture.dag"
+data literal_name: String = "v2.test.claim.self_host.literal_compare_operand_subject_fixture"
+data intvalue_path: String = "src/v2/test/claim/self_host/int_literal_value_subject_fixture.dag"
+data intvalue_name: String = "v2.test.claim.self_host.int_literal_value_subject_fixture"
+// THE NODE SUBJECT: gunbc.rust_decl_type_overlay (an outer TypeNode Conj in value position whose operands
+// are a binding, a one-operand PREFIX !closed_alias, and a comparison resolved_child_count > 0 whose right
+// operand is the Int LITERAL 0). Its done condition is corpus_probes_emits_holds over the same door and the
+// same stage0_production_target_model as the production corpus probe.
+data corpus_path: String = "dag/gunbc/rust_decl_type_overlay.dag"
+data corpus_name: String = "gunbc.rust_decl_type_overlay"
+
+fn refs_for(path: String) -> List<SourceRef> {
+  Cons { head: source_ref_for_observed_storage_path(path: path, source_root: DagTree), tail: Empty }
+}
+
+fn admission_for(name: String) -> Admission {
+  Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: name) }, imports: Empty }
+}
+
+fn door_for(path: String, name: String) -> Outcome<ProvenancedRustEmissionObservation> {
+  match source_root_ingest_from_source_refs(refs: refs_for(path: path)) {
+    Accepted { value: ingest, diagnostics: d } =>
+      Accepted {
+        value: observe_provenanced_rust_emission_from_ingest(
+          ingest: ingest,
+          admission: admission_for(name: name),
+          target: stage0_production_target_model(),
+          module_path: path
+        ),
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn reason_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: AssemblyRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: InferenceRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: ProducerReceiptRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact-produced"
+    Rejected { diagnostics: ds } => diagnostics_reason_lexemes(diagnostics: ds)
+  }
+}
+
+// ---- binary path intact: 3-positional-child operators emit (arity 3 == binary) ----
+
+test fn conj_binary_emits_holds() -> Bool {
+  reason_for(path: conj_path, name: conj_name) == "artifact-produced"
+}
+
+test fn disj_binary_emits_holds() -> Bool {
+  reason_for(path: disj_path, name: disj_name) == "artifact-produced"
+}
+
+// ---- POSITIVE (ii) control: 2-positional-child prefix whose op has a PrefixToken row renders ----
+
+test fn prefix_not_emits_holds() -> Bool {
+  reason_for(path: prefix_path, name: prefix_name) == "artifact-produced"
+}
+
+// ---- NEGATIVE (ii) control: prefix whose op has NO row refuses with a NAMED reason, not transform-shape ----
+
+test fn prefix_negate_refuses_holds() -> Bool {
+  reason_for(path: negate_path, name: negate_name) != "artifact-produced"
+}
+
+test fn prefix_negate_refusal_is_not_transform_shape_holds() -> Bool {
+  !(string_contains(reason_for(path: negate_path, name: negate_name), "transform_shape_invalid"))
+}
+
+// ---- HALF 1 operand-numeral: the residual must be the literal spelling, never the operand widening ----
+
+test fn literal_compare_operand_not_binding_wall_holds() -> Bool {
+  !(string_contains(reason_for(path: literal_path, name: literal_name), "body_scope_binding_invalid"))
+}
+
+test fn literal_compare_operand_not_transform_shape_holds() -> Bool {
+  !(string_contains(reason_for(path: literal_path, name: literal_name), "transform_shape_invalid"))
+}
+
+test fn literal_compare_emits_holds() -> Bool {
+  reason_for(path: literal_path, name: literal_name) == "artifact-produced"
+}
+
+// ---- HALF 1 authorised spine: a numeral directly in value position ----
+
+test fn int_literal_value_not_binding_wall_holds() -> Bool {
+  !(string_contains(reason_for(path: intvalue_path, name: intvalue_name), "body_scope_binding_invalid"))
+}
+
+test fn int_literal_value_not_transform_shape_holds() -> Bool {
+  !(string_contains(reason_for(path: intvalue_path, name: intvalue_name), "transform_shape_invalid"))
+}
+
+test fn int_literal_value_emits_holds() -> Bool {
+  reason_for(path: intvalue_path, name: intvalue_name) == "artifact-produced"
+}
+
+// ---- THE NODE SUBJECT: gunbc.rust_decl_type_overlay ----
+// corpus_probes_emits_holds is the row's verbatim done-condition claim (the door produces an artifact rather
+// than refusing). corpus_probes_first_refusal_is_transform_shape_holds and corpus_probes_refused_at_emission_holds
+// are the two pre-change refusal claims the row retires/inverts in this PR: they now assert the OPPOSITE -- the
+// subject is no longer refused at emission and its first refusal is no longer the generic transform-shape one.
+
+fn stage_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: _ }, diagnostics: _ } => "emission"
+    Accepted { value: AssemblyRejected { diagnostics: _ }, diagnostics: _ } => "assembly"
+    Accepted { value: InferenceRejected { diagnostics: _ }, diagnostics: _ } => "inference"
+    Accepted { value: ProducerReceiptRejected { diagnostics: _ }, diagnostics: _ } => "producer_receipt"
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact"
+    Rejected { diagnostics: _ } => "ingest_rejected"
+  }
+}
+
+test fn corpus_probes_emits_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "artifact-produced"
+}
+
+test fn corpus_probes_no_longer_refused_at_emission_holds() -> Bool {
+  stage_for(path: corpus_path, name: corpus_name) != "emission"
+}
+
+test fn corpus_probes_first_refusal_is_not_transform_shape_holds() -> Bool {
+  !(string_contains(reason_for(path: corpus_path, name: corpus_name), "transform_shape_invalid"))
+}
+
+// ---- REASON TRIANGULATION BATTERY (spare acquisition): pin WHERE each failing subject refuses. ----
+// Defect side (inside the authorized (ii) route: the PrefixToken row is reached but not found/spelled) ->
+//   lexemes target_operator_realization_catalog_miss, target_operator_realization_wire_malformed,
+//   target_operator_shape_wire_malformed, target_operator_shape_field_token.
+// Wall side (operand tokenization is binary-infix only, the declined HALF-2 widening) ->
+//   lexeme target_value_expr_operand_wire_malformed (plus field_callable_arg / field_operand region).
+// Literal spelling -> target_value_expr_int_literal_form_unwired / _form_malformed / _wire_malformed.
+// The negate subject (op_negate, NO catalog row) is the reference: its reason MUST contain catalog_miss. If
+// prefix_not (op_not, WITH the declared PrefixToken row) yields the SAME catalog_miss, the (ii) route never
+// found the row -> a DEFECT to fix inside the authorization. If prefix_not instead lands on an operand/shape
+// lexeme while negate stays catalog_miss, the route found the row and the operand tokenization is the wall.
+
+fn probe(p: String, n: String, needle: String) -> Bool {
+  string_contains(s: reason_for(path: p, name: n), pattern: needle)
+}
+
+// prefix_not (`!closed_alias`, op_not WITH a PrefixToken row) -- the positive (ii) control that FAILED emits.
+test fn pn_has_catalog_miss() -> Bool { probe(prefix_path, prefix_name, "catalog_miss") }
+test fn pn_has_op_realization_wire_malformed() -> Bool { probe(prefix_path, prefix_name, "operator_realization_wire_malformed") }
+test fn pn_has_op_shape_wire_malformed() -> Bool { probe(prefix_path, prefix_name, "operator_shape_wire_malformed") }
+test fn pn_has_op_shape_field_token() -> Bool { probe(prefix_path, prefix_name, "operator_shape_field_token") }
+test fn pn_has_operand_wire_malformed() -> Bool { probe(prefix_path, prefix_name, "operand_wire_malformed") }
+test fn pn_has_field_callable_arg() -> Bool { probe(prefix_path, prefix_name, "field_callable_arg") }
+test fn pn_has_arity() -> Bool { probe(prefix_path, prefix_name, "arity") }
+test fn pn_has_transform_shape() -> Bool { probe(prefix_path, prefix_name, "transform_shape") }
+test fn pn_has_body_scope_binding() -> Bool { probe(prefix_path, prefix_name, "body_scope_binding") }
+test fn pn_exact_operand_wire_malformed() -> Bool {
+  reason_for(path: prefix_path, name: prefix_name) == "target_value_expr_operand_wire_malformed"
+}
+
+// negate (`-x`, op_negate with NO row) -- the reference; expected catalog_miss.
+test fn ng_has_catalog_miss() -> Bool { probe(negate_path, negate_name, "catalog_miss") }
+test fn ng_has_operand_wire_malformed() -> Bool { probe(negate_path, negate_name, "operand_wire_malformed") }
+test fn ng_has_op_shape_wire_malformed() -> Bool { probe(negate_path, negate_name, "operator_shape_wire_malformed") }
+test fn ng_has_arity() -> Bool { probe(negate_path, negate_name, "arity") }
+test fn ng_exact_catalog_miss() -> Bool {
+  reason_for(path: negate_path, name: negate_name) == "target_operator_realization_catalog_miss"
+}
+
+// literal_compare (`n > 0`, numeral as an operator operand) -- the HALF-1 operand-numeral that FAILED emits.
+test fn lc_has_operand_wire_malformed() -> Bool { probe(literal_path, literal_name, "operand_wire_malformed") }
+test fn lc_has_field_callable_arg() -> Bool { probe(literal_path, literal_name, "field_callable_arg") }
+test fn lc_has_int_literal() -> Bool { probe(literal_path, literal_name, "int_literal") }
+test fn lc_has_catalog_miss() -> Bool { probe(literal_path, literal_name, "catalog_miss") }
+test fn lc_has_arity() -> Bool { probe(literal_path, literal_name, "arity") }
+test fn lc_has_transform_shape() -> Bool { probe(literal_path, literal_name, "transform_shape") }
+test fn lc_exact_operand_wire_malformed() -> Bool {
+  reason_for(path: literal_path, name: literal_name) == "target_value_expr_operand_wire_malformed"
+}
+
+// corpus (authored_is_leaf && !closed_alias && resolved_child_count > 0) -- first refusal was transform_shape.
+test fn co_has_transform_shape() -> Bool { probe(corpus_path, corpus_name, "transform_shape") }
+test fn co_has_operand_wire_malformed() -> Bool { probe(corpus_path, corpus_name, "operand_wire_malformed") }
+test fn co_has_catalog_miss() -> Bool { probe(corpus_path, corpus_name, "catalog_miss") }
+test fn co_has_int_literal() -> Bool { probe(corpus_path, corpus_name, "int_literal") }
+test fn co_has_arity() -> Bool { probe(corpus_path, corpus_name, "arity") }
+test fn co_has_body_scope_binding() -> Bool { probe(corpus_path, corpus_name, "body_scope_binding") }
+test fn co_first_lexeme_is_transform_shape() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_transform_shape_invalid"
+}

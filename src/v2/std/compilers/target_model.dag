@@ -21,7 +21,7 @@ import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_e
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
-import v2.std.integer { integer_decimal_magnitude_node_to_int }
+import v2.std.integer { integer_decimal_magnitude_node_to_int, integer_decimal_magnitude_node, decimal_digits_to_magnitude, integer_string_to_decimal_digits_optional }
 import std.integer { int_to_decimal_string }
 import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
@@ -1703,6 +1703,28 @@ fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
   }
 }
 
+// Classification on CanonicalOperation itself (closed-variant predicates belong with the type, not
+// at call sites): the comparison variants are exactly those whose realized form is an infix
+// operator and whose catalog row governs chain participation. Both the chain-shape predicate and
+// the operand-slot predicate consult this one decision.
+// 🟢 predicate-dissolution disposition: this IS the single authority for "is a comparison" over
+// CanonicalOperation — a classification of the closed sum, not a flag hiding a decision elsewhere.
+// Total by enumeration: every variant is named, so a new comparison variant forces this decision
+// (gunbc.design_argument::fail_closed: make the wrong state unwritable, not merely caught).
+// Typed carrier below (review 98497: prose alone is an insufficient disposition carrier).
+data canonical_operation_is_comparison_dissolve_on: DissolutionCondition =
+  unbound_dissolution(description: "🟢 never dissolves as long as the only second candidate carrier is the catalog chains fact: shape semantics (which canonical family an operator belongs to) and target permission (may that family nest) are two facts with two homes, and merging them fails open for a target that omits the edge -- routing the shape test through chains would read an undeclared target as 'not a comparison' and emit `a < b == c`. BOUNDED REVISIT TRIGGER: dissolve into a single authority IF a target-neutral semantic-family field (a declared comparison group per catalog row) is ever added; no such field exists today and no roadmap row owns adding one, so there is no expiry being missed.")
+
+fn canonical_operation_is_comparison(op: CanonicalOperation) -> Bool {
+  match op {
+    OrderingComparison { compare_field: _, predicate: _ } => true
+    EqualityComparison { eq_field: _, predicate: _ } => true
+    AlgebraPrimitive { algebra_field: _ } => false
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+    CoercionCrossing { homomorphism_rule: _ } => false
+  }
+}
+
 fn canonical_operation_op_add() -> CanonicalOperation {
   AlgebraPrimitive { algebra_field: ^ring_field_add }
 }
@@ -1787,9 +1809,47 @@ type TargetOperatorShape
 // e.g. `"lit" as NonEmptyStr` where NonEmptyStr is String in Rust) -- not the target's own `as`,
 // which converts numerics and would claim a different operation.
 
+// The chaining permission of an operator row, as a DECLARED three-state sum (review 98497 at
+// 9581ae9ddac: an Optional<Bool> here hand-rolled the same three states, leaving the difference
+// between "declared no" and "never declared" to comments alone; a choice that changes meaning must
+// be stated -- gunbc.design_argument::declared_intent). ChainsYes lets a comparison take a
+// comparison operand; ChainsNo is an explicit refusal; ChainsUndeclared means the target made no
+// declaration (no chains edge, or no row at all) and refuses, because silence fabricates no
+// permission to emit a form the target may reject (gunbc.design_argument::fail_closed).
+type OperatorChainsPolicy
+  = ChainsYes
+  | ChainsNo
+  | ChainsUndeclared
+
+// Three states for "does this value expression PROVE it is a comparison apply". The unknown is
+// its own state and is never collapsed into either known answer (gunbc.design_argument::
+// declared_intent -- review 99405: squeezing comparison / not-a-comparison / undecodable into a
+// Bool hides the choice). The consumer seams take their opposite safe directions from this one
+// state: grouping WRAPS an undecodable operand (extra parens are correct by construction), and the
+// chain guard does NOT claim it is a comparison -- a refusal under
+// target_value_expression_emit_comparison_operand_is_comparison for an operand never SHOWN to be
+// a comparison is a plausible fabrication (gunbc.design_argument::fail_closed). The undecodable
+// operand is refused instead by its own emit, under the decode reason it owns
+// (target_value_expr_operand_wire_malformed, located at the operand node): the guard not firing
+// is not fail-open, it is the refusal arriving with the true reason.
+type OperandComparisonState
+  = ComparisonDetected
+  | NotComparison
+  | OperandOperationEdgeUndecodable
+
 type TargetOperatorRealization {
   operation: CanonicalOperation
   shape: TargetOperatorShape
+  // Per-target operator binding strength, supplied by the language realization (never a
+  // target-agnostic table). Absent means the target declared no precedence for this operator, and
+  // the grouping predicate then WRAPS (always-grouped is correct by construction); there is no
+  // numeric sentinel that could fail open by treating an undeclared operator as binding tightest.
+  precedence: Optional<Int>
+  // Whether this operator may take an operand that is itself the same comparison family. The fact
+  // belongs to the language. Today only Rust declares one (ChainsNo: the Rust Reference marks its
+  // comparison group non-associative). Every other target carries no chains edge, so nesting there
+  // decodes ChainsUndeclared and refuses. See OperatorChainsPolicy above for the three states.
+  chains: OperatorChainsPolicy
 }
 
 type TargetBindingRefShape {
@@ -2903,6 +2963,16 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
         children: row.children
       ) != 1 {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: ^target_operator_realization_field_precedence,
+        children: row.children
+      ) > 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: ^target_operator_realization_field_chains,
+        children: row.children
+      ) > 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
       } else {
         match fold(
           row.children,
@@ -2913,6 +2983,8 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
                 Authored { name: n } =>
                   n == ^target_operator_realization_field_operation
                   || n == ^target_operator_realization_field_shape
+                  || n == ^target_operator_realization_field_precedence
+                  || n == ^target_operator_realization_field_chains
                 StructuralLabel { label: _ } => false
                 Positional => false
               }
@@ -2939,6 +3011,20 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
   }
 }
 
+fn target_operator_chains_from_wire_node(wire: Node) -> Outcome<OperatorChainsPolicy> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_operator_chains_yes {
+        outcome_accepted(ChainsYes)
+      } else if id == ^target_operator_chains_no {
+        outcome_accepted(ChainsNo)
+      } else {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
+      }
+    _ => outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
+  }
+}
+
 fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperatorRealization> {
   bind_outcome(
     o: target_operator_realization_row_wire_schema_valid(row: row),
@@ -2955,10 +3041,37 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                   bind_outcome(
                     o: target_operator_shape_from_wire_node(wire: shape_wire),
                     f: fn(shape) {
-                      outcome_accepted(
-                        TargetOperatorRealization {
-                          operation: canonical_op,
-                          shape: shape
+                      bind_outcome(
+                        match find_named_child(root: row, name: ^target_operator_realization_field_precedence) {
+                          Accepted { value: precedence_wire, diagnostics: _ } =>
+                            bind_outcome(
+                              o: integer_decimal_magnitude_node_to_int(node: precedence_wire),
+                              f: fn(precedence_level) {
+                                outcome_accepted(optional_present(value: precedence_level))
+                              }
+                            )
+                          Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+                        },
+                        fn(precedence) {
+                          bind_outcome(
+                            match find_named_child(root: row, name: ^target_operator_realization_field_chains) {
+                              Accepted { value: chains_wire, diagnostics: _ } =>
+                                target_operator_chains_from_wire_node(wire: chains_wire)
+                              // No chains edge on the row: the target never declared a policy.
+                              Rejected { diagnostics: _ } =>
+                                outcome_accepted(ChainsUndeclared)
+                            },
+                            fn(chains) {
+                              outcome_accepted(
+                                TargetOperatorRealization {
+                                  operation: canonical_op,
+                                  shape: shape,
+                                  precedence: precedence,
+                                  chains: chains
+                                }
+                              )
+                            }
+                          )
                         }
                       )
                     }
@@ -2989,6 +3102,89 @@ fn target_operator_realization_node(
       )
     ]
   )
+}
+
+// Same row with a declared precedence level, carried as an integer magnitude node. A language
+// that does not group operands by precedence keeps the two-field builder above, whose rows decode
+// precedence to Absent (the grouping predicate then always wraps — correct by construction).
+fn target_operator_realization_node_with_precedence(
+  operation: CanonicalOperation,
+  shape: TargetOperatorShape,
+  precedence_node: Node
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: operation)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: shape)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: precedence_node
+      )
+    ]
+  )
+}
+
+// Wire encoding for a declared precedence level: the integer magnitude node the decoder reads back
+// with integer_decimal_magnitude_node_to_int. The NUMBER is a fact about the target language and
+// lives in that language's catalog rows; this function only encodes it. The whole number is
+// encoded through the existing decimal-digits route (a level of 12 is two digits, never a folded
+// last digit). A level that is not a decimal digit string at all (a negative) cannot become a
+// magnitude; it lands as a plain atom the row decoder refuses with the malformed diagnostic, so
+// the row refuses at lookup and emission rather than decoding to a plausible wrong level
+// (gunbc.design_argument::fail_closed: no plausible output is fabricated).
+fn target_operator_precedence_level_node(level: Int) -> Node {
+  match integer_string_to_decimal_digits_optional(s: int_to_decimal_string(value: level)) {
+    Present { value: digits } =>
+      integer_decimal_magnitude_node(magnitude: decimal_digits_to_magnitude(digits: digits))
+    Absent =>
+      target_model_type_atom_node(identity: ^target_operator_precedence_level_not_a_decimal_magnitude)
+  }
+}
+
+// Same row with a declared precedence level AND a declared chaining permission. Comparison rows
+// that must say whether their target lets a comparison take a comparison operand (Rust: no) build
+// through this; everything else keeps the builders above.
+fn target_operator_realization_node_with_precedence_and_chains(
+  operation: CanonicalOperation,
+  shape: TargetOperatorShape,
+  precedence_node: Node,
+  chains_node: Node
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: operation)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: shape)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: precedence_node
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_chains,
+        target: chains_node
+      )
+    ]
+  )
+}
+
+// Wire spellings for the chaining declaration: typed atoms, no Bool sentinel on the wire.
+fn target_operator_chains_yes_node() -> Node {
+  target_model_type_atom_node(identity: ^target_operator_chains_yes)
+}
+
+fn target_operator_chains_no_node() -> Node {
+  target_model_type_atom_node(identity: ^target_operator_chains_no)
 }
 
 fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
@@ -5712,7 +5908,14 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bo
   }
 }
 
-fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
+// OPERAND VALUE-EXPRESSIONS (widening, authorized by neat-badger-614): each operand of a primitive apply is
+// reified as a TARGET VALUE-EXPRESSION rather than required to be a flat binding Symbol. A flat binding operand
+// reifies to a TargetValueExprBindingRef and renders byte-identically to the old binding-Symbol path; a literal
+// operand (n > 0), a one-operand prefix (!x) and a nested value-expression operand ((a || b) && c) now flow to
+// the value-expression token render in target_operator_shape_emit_primitive_apply_tokens, which is responsible
+// for Rust operator PRECEDENCE (grouping). Operands the catalog cannot spell still refuse, but at the value-
+// expression token path / operator-realization lookup with their OWN named reason, never a generic one.
+fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<TargetValueExpression>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: wire),
     f: fn(_) {
@@ -5722,17 +5925,17 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
         f: fn(acc, edge) {
           match acc {
             Rejected { diagnostics: r } => acc
-            Accepted { value: bindings, diagnostics: d } =>
+            Accepted { value: operands, diagnostics: d } =>
               match edge.label {
                 Authored { name: n } =>
                   if n == ^target_value_expr_field_operation {
                     acc
                   } else if n == ^target_value_expr_field_operand {
                     bind_outcome(
-                      o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
-                      f: fn(binding) {
+                      o: target_value_expression_reify_from_wire(wire: edge.target),
+                      f: fn(operand) {
                         outcome_accepted(
-                          list_snoc_item(xs: bindings, item: binding)
+                          list_snoc_item(xs: operands, item: operand)
                         )
                       }
                     )
@@ -5753,8 +5956,8 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
           }
         }
       ) {
-        Accepted { value: bindings, diagnostics: d } =>
-          Accepted { value: bindings, diagnostics: d }
+        Accepted { value: operands, diagnostics: d } =>
+          Accepted { value: operands, diagnostics: d }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
@@ -6450,6 +6653,91 @@ fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: T
   }
 }
 
+// A comparison operand that is itself a comparison would render as a chained comparison, which Rust
+// rejects (its comparison operators do not chain). The emitter refuses it with its own typed reason.
+fn target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_expression_emit_comparison_operand_is_comparison,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// The target never declared a chaining policy for this comparison operator (a row without a
+// chains edge). Refused identically to an explicit ChainsNo -- silence fabricates no permission
+// -- but under its OWN reason so a reader tells a target that never spoke from one that said no
+// (review 98497; gunbc.design_argument::declared_intent).
+fn target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_expression_emit_comparison_nesting_policy_undeclared,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// True when the enclosing operator is a comparison (canonical_operation_is_comparison) and either
+// positional operand is a PROVEN comparison apply -- the shape Rust rejects because its comparison
+// operators do not chain. An undecodable operand is not claimed as a comparison here (review
+// 99405); it meets its true refusal at its own emit. The variant decision lives in the
+// classification, not here.
+fn target_value_expr_operands_form_comparison_chain(
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> Bool {
+  if canonical_operation_is_comparison(op: enclosing_op) {
+    target_value_expr_operands_hold_comparison(operands: operands)
+  } else {
+    false
+  }
+}
+
+fn target_value_expr_operands_hold_comparison(operands: List<TargetValueExpression>) -> Bool {
+  // A chain is PROVEN only by a slot whose operation decoded to a comparison. An
+  // OperandOperationEdgeUndecodable slot proves no chain and is never reported as one (review
+  // 99405): the enclosing emit proceeds, reaches that operand, and the operand's own emit refuses
+  // with the decode reason it owns, located at the operand. Nothing renders either way -- the
+  // refusal moves to the arm that can name the true reason, it does not disappear.
+  match target_value_expr_operand_slot_comparison_state(operands: operands, index: 0) {
+    ComparisonDetected => true
+    _ =>
+      match target_value_expr_operand_slot_comparison_state(operands: operands, index: 1) {
+        ComparisonDetected => true
+        _ => false
+      }
+  }
+}
+
+// THE ONE decision both emit-seam rules consult about an operand: what it PROVES about being a
+// comparison apply, with the undecodable operation edge kept as its own state (OperandComparisonState
+// above; review 99405). A non-apply operand is never "an apply whose op failed": a binding ref,
+// literal or closure is what its kind says it is, so the rules cannot diverge on that distinction
+// again. One decode, three states, both seams consult it.
+fn target_value_expr_operand_comparison_state(operand: TargetValueExpression) -> OperandComparisonState {
+  match operand.kind {
+    TargetValueExprPrimitiveApply =>
+      match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
+        Accepted { value: op, diagnostics: _ } =>
+          if canonical_operation_is_comparison(op: op) {
+            ComparisonDetected
+          } else {
+            NotComparison
+          }
+        Rejected { diagnostics: _ } => OperandOperationEdgeUndecodable
+      }
+    _ => NotComparison
+  }
+}
+
+fn target_value_expr_operand_slot_comparison_state(
+  operands: List<TargetValueExpression>,
+  index: Int
+) -> OperandComparisonState {
+  match list_at_optional(xs: operands, index: index) {
+    Present { value: operand } => target_value_expr_operand_comparison_state(operand: operand)
+    Absent => NotComparison
+  }
+}
+
 fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> Diagnostic {
   Diagnostic {
     reason: ^target_operator_realization_catalog_miss,
@@ -6735,114 +7023,316 @@ fn target_value_expression_binding_refs_intersperse_separator(
   )
 }
 
+// ---- OPERATOR PRECEDENCE (authorized operand-value-expression widening) ------------------------------
+// The old operand spine demanded flat binding SYMBOLS because a Symbol operand cannot change Rust's meaning
+// when spliced. Now that operands are lowered value-expressions, splicing one into a bigger expression is a
+// PRECEDENCE decision. The levels are NOT held here: they are rows in each language's realization catalog
+// (extdeps.languages.rust for Rust), and the model only asks the catalog for a level. When an operand's own
+// operator binds LOOSER than the enclosing operator, the operand is wrapped in grouping parentheses so
+// (a || b) && c does not render as the meaning-changing a || b && c, and !(a && b) does not render as
+// !a && b. When either side has no declared level the operand is wrapped (correct by construction). A flat
+// binding/literal operand is never wrapped (byte-identical to the old path), and a left operand of equal
+// precedence is not wrapped (preserves left-assoc a && b && c).
+// Per-target operator precedence, read from the language realization catalog. Absent when the
+// target declares no precedence for the operation, or the operation has no operator row.
+fn target_operator_realization_precedence(
+  catalog: TargetRealizationCatalog,
+  op: CanonicalOperation
+) -> Optional<Int> {
+  match target_operator_realization_catalog_lookup(catalog: catalog.operators, canonical_op: op) {
+    Accepted { value: row, diagnostics: _ } => row.precedence
+    _ => Absent
+  }
+}
+
+// Per-target chaining permission, read from the same catalog rows. Absent when the target declares
+// nothing (or the operation has no row).
+fn target_operator_realization_chains(
+  catalog: TargetRealizationCatalog,
+  op: CanonicalOperation
+) -> OperatorChainsPolicy {
+  match target_operator_realization_catalog_lookup(catalog: catalog.operators, canonical_op: op) {
+    Accepted { value: row, diagnostics: _ } => row.chains
+    // No row at all: the target never spoke about this operator. Same permission state as a row
+    // with no chains edge -- absence of a declaration is absence of permission either way
+    // (fail-closed). The emit seam refuses a missing row with catalog_miss before this runs, so
+    // ChainsUndeclared here is reachable only via a row that exists but does not declare chains.
+    _ => ChainsUndeclared
+  }
+}
+
+// Whether a comparison carrying a comparison operand must be refused. The FACT (which comparison
+// operators chain) is a row in the language catalog; today only Rust declares one (chains=no).
+// Every other target's comparison rows carry no chains edge, so nesting there decodes Absent and
+// this refuses. The model holds only the POLICY: nesting needs a permission, and a row that does
+// not declare chains=yes cannot fabricate permission to emit a form the target may reject
+// (gunbc.design_argument::fail_closed).
+// Whether a comparison carrying a comparison operand must be refused, and UNDER WHICH POLICY.
+// Present(ChainsNo) means the target explicitly said its comparison operators do not chain;
+// Present(ChainsUndeclared) means the target never spoke (row without a chains edge -- a missing
+// row cannot reach here, the emit seam refuses catalog_miss first). The two states refuse
+// IDENTICALLY (fail-closed: silence fabricates no permission) but are carried apart so the emit
+// seam renders them under visibly different reasons: a reader can tell a target that never spoke
+// from a target that said no (review 98497). Absent means no refusal.
+fn target_value_expr_comparison_chain_refusal_policy(
+  catalog: TargetRealizationCatalog,
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> Optional<OperatorChainsPolicy> {
+  if target_value_expr_operands_form_comparison_chain(
+    enclosing_op: enclosing_op,
+    operands: operands
+  ) {
+    match target_operator_realization_chains(catalog: catalog, op: enclosing_op) {
+      ChainsYes => optional_absent()
+      ChainsNo =>
+        optional_present(value: ChainsNo)
+      ChainsUndeclared =>
+        optional_present(value: ChainsUndeclared)
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+// Operand grouping is decided by the TARGET's declared precedence, never a table in the model.
+// When either side's precedence is absent the operand is wrapped: always-grouped output is correct
+// by construction (extra parens), whereas treating an undeclared operator as binding tightest
+// could render a wrong expression that looks correct. A flat binding/literal operand is never
+// wrapped, and a left operand of equal precedence is not wrapped (preserves left-assoc a && b && c).
+fn target_value_expression_operand_needs_grouping(
+  operand: TargetValueExpression,
+  enclosing: CanonicalOperation,
+  is_right: Bool,
+  catalog: TargetRealizationCatalog
+) -> Bool {
+  match operand.kind {
+    TargetValueExprPrimitiveApply =>
+      match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
+        Accepted { value: operand_op, diagnostics: _ } =>
+          match target_operator_realization_precedence(catalog: catalog, op: operand_op) {
+            Absent => true
+            Present { value: operand_prec } =>
+              match target_operator_realization_precedence(catalog: catalog, op: enclosing) {
+                Absent => true
+                Present { value: enclosing_prec } =>
+                  if operand_prec < enclosing_prec {
+                    true
+                  } else if is_right && operand_prec == enclosing_prec {
+                    true
+                  } else {
+                    false
+                  }
+              }
+          }
+        // An operand shaped as a primitive apply whose operation cannot be decoded is WRAPPED:
+        // every unknown in the grouping rule fails closed (extra parens are correct by
+        // construction); there is no invariant making this arm unreachable, since the decision is
+        // callable on any value-expression node. This is the same decode decision the
+        // OperandComparisonState seams consult (target_value_expr_operand_comparison_state keys
+        // on exactly this Accepted/Rejected split), so the grouping rule and the chain rule
+        // cannot diverge on the distinction; they differ only in safe direction -- WRAP here,
+        // no-fabricated-refusal in the chain guard (review 99405).
+        Rejected { diagnostics: _ } => true
+      }
+    TargetValueExprConditional => true
+    _ => false
+  }
+}
+
+fn target_value_expression_group_operand(
+  operand: TargetValueExpression,
+  enclosing: CanonicalOperation,
+  is_right: Bool,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(expr: operand, projection: projection, catalog: catalog),
+    f: fn(tokens) {
+      if target_value_expression_operand_needs_grouping(
+        operand: operand,
+        enclosing: enclosing,
+        is_right: is_right,
+        catalog: catalog
+      ) {
+        outcome_accepted(
+          list_append(
+            left: Cons {
+              head: FixedToken { token_class: projection.primitive_apply_form.open },
+              tail: Empty
+            },
+            right: list_append(
+              left: tokens,
+              right: Cons {
+                head: FixedToken { token_class: projection.primitive_apply_form.close },
+                tail: Empty
+              }
+            )
+          )
+        )
+      } else {
+        outcome_accepted(tokens)
+      }
+    }
+  )
+}
+
 fn target_operator_shape_emit_primitive_apply_tokens(
   shape: TargetOperatorShape,
   projection: TargetValueExpressionProjection,
-  bindings: List<Symbol>,
-  expr: TargetValueExpression
+  operands: List<TargetValueExpression>,
+  expr: TargetValueExpression,
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match shape {
     InfixToken { token: op_token } =>
-      if length(xs: bindings) != 2 {
-        outcome_rejected(
-          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
-        )
-      } else {
-        match list_at_optional(xs: bindings, index: 0) {
-          Absent =>
+      bind_outcome(
+        o: target_value_expr_primitive_apply_operation_from_wire(wire: expr.node),
+        f: fn(enclosing_op) {
+          if length(xs: operands) != 2 {
             outcome_rejected(
               target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
             )
-          Present { value: left_binding } =>
-            match list_at_optional(xs: bindings, index: 1) {
+          } else {
+            match target_value_expr_comparison_chain_refusal_policy(
+              catalog: catalog,
+              enclosing_op: enclosing_op,
+              operands: operands
+            ) {
+              // The target's catalog row either declares its comparison operators do not chain
+              // (only Rust declares a chains row today, ChainsNo) or never declared a policy (no
+              // chains edge -- every other target); both refuse, because a comparison carrying a
+              // comparison operand would render a form that target rejects. The two refusals name
+              // DIFFERENT reasons (review 98497): declared-no says the target spoke, undeclared
+              // says it never did. Absent means no chain was proven (or ChainsYes permits it) and
+              // emission proceeds. One match decides (review 99420): the former Bool wrapper
+              // target_value_expr_comparison_chain_refuses dissolved this three-state policy into a
+              // guard and made the call site compute the same decision twice, with a fail-safe arm
+              // that could name a cause nobody established.
+              Present { value: ChainsNo } =>
+                outcome_rejected(
+                  target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
+                )
+              Present { value: _ } =>
+                outcome_rejected(
+                  target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(expr: expr)
+                )
+              Absent =>
+            match list_at_optional(xs: operands, index: 0) {
               Absent =>
                 outcome_rejected(
                   target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
                 )
-              Present { value: right_binding } =>
-                outcome_accepted(
-                  Cons {
-                    head: target_value_expression_binding_ref_token(
-                      binding: left_binding,
-                      projection: projection
-                    ),
-                    tail: Cons {
-                      head: FixedToken { token_class: op_token },
-                      tail: Cons {
-                        head: target_value_expression_binding_ref_token(
-                          binding: right_binding,
-                          projection: projection
-                        ),
-                        tail: Empty
+              Present { value: left_operand } =>
+                match list_at_optional(xs: operands, index: 1) {
+                  Absent =>
+                    outcome_rejected(
+                      target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+                    )
+                  Present { value: right_operand } =>
+                    bind_outcome(
+                      o: target_value_expression_group_operand(
+                        operand: left_operand,
+                        enclosing: enclosing_op,
+                        is_right: false,
+                        projection: projection,
+                        catalog: catalog
+                      ),
+                      f: fn(left_tokens) {
+                        bind_outcome(
+                          o: target_value_expression_group_operand(
+                            operand: right_operand,
+                            enclosing: enclosing_op,
+                            is_right: true,
+                            projection: projection,
+                            catalog: catalog
+                          ),
+                          f: fn(right_tokens) {
+                            outcome_accepted(
+                              list_append(
+                                left: left_tokens,
+                                right: list_append(
+                                  left: Cons { head: FixedToken { token_class: op_token }, tail: Empty },
+                                  right: right_tokens
+                                )
+                              )
+                            )
+                          }
+                        )
                       }
-                    }
-                  }
-                )
+                    )
+                }
             }
+            }
+          }
         }
-      }
+      )
     PrefixToken { token: op_token } =>
-      if length(xs: bindings) != 1 {
+      if length(xs: operands) != 1 {
         outcome_rejected(
           target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
         )
       } else {
-        match list_at_optional(xs: bindings, index: 0) {
+        match list_at_optional(xs: operands, index: 0) {
           Absent =>
             outcome_rejected(
               target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
             )
-          Present { value: binding } =>
-            outcome_accepted(
-              Cons {
-                head: FixedToken { token_class: op_token },
-                tail: Cons {
-                  head: target_value_expression_binding_ref_token(
-                    binding: binding,
-                    projection: projection
-                  ),
-                  tail: Empty
-                }
+          Present { value: operand } =>
+            bind_outcome(
+              o: target_value_expression_group_operand(
+                operand: operand,
+                enclosing: canonical_operation_op_not(),
+                is_right: false,
+                projection: projection,
+                catalog: catalog
+              ),
+              f: fn(operand_tokens) {
+                outcome_accepted(
+                  list_append(
+                    left: Cons { head: FixedToken { token_class: op_token }, tail: Empty },
+                    right: operand_tokens
+                  )
+                )
               }
             )
         }
       }
     CallIdent { ident: callee } =>
-      outcome_accepted(
-        list_append(
-          left: list_append(
-            left: Cons {
-              head: FixedToken { token_class: projection.primitive_apply_form.open },
-              tail: Cons {
-                head: FixedToken { token_class: callee },
+      bind_outcome(
+        o: target_value_expr_tokenize_intersperse(
+          exprs: operands,
+          projection: projection,
+          catalog: catalog,
+          separator: projection.primitive_apply_form.separator
+        ),
+        f: fn(arg_tokens) {
+          outcome_accepted(
+            list_append(
+              left: list_append(
+                left: Cons {
+                  head: FixedToken { token_class: projection.primitive_apply_form.open },
+                  tail: Cons { head: FixedToken { token_class: callee }, tail: Empty }
+                },
+                right: arg_tokens
+              ),
+              right: Cons {
+                head: FixedToken { token_class: projection.primitive_apply_form.close },
                 tail: Empty
               }
-            },
-            right: target_value_expression_binding_refs_intersperse_separator(
-              bindings: bindings,
-              projection: projection,
-              separator: projection.primitive_apply_form.separator
             )
-          ),
-          right: Cons {
-            head: FixedToken { token_class: projection.primitive_apply_form.close },
-            tail: Empty
-          }
-        )
+          )
+        }
       )
     MethodIdent { ident: _ } =>
       outcome_rejected(
         target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: expr)
       )
     OperandUnchanged =>
-      match bindings {
-        Cons { head: binding, tail: Empty } =>
-          outcome_accepted(
-            Cons {
-              head: target_value_expression_binding_ref_token(binding: binding, projection: projection),
-              tail: Empty
-            }
-          )
+      match operands {
+        Cons { head: operand, tail: Empty } =>
+          target_value_expression_to_concrete_tokens(expr: operand, projection: projection, catalog: catalog)
         _ =>
           outcome_rejected(
             target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
@@ -6864,7 +7354,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
         f: fn(canonical_op) {
           bind_outcome(
             o: target_value_expr_primitive_apply_operand_bindings(wire: expr.node),
-            f: fn(bindings) {
+            f: fn(operands) {
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
                   catalog: catalog.operators,
@@ -6874,8 +7364,9 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
                   target_operator_shape_emit_primitive_apply_tokens(
                     shape: operator_row.shape,
                     projection: projection,
-                    bindings: bindings,
-                    expr: expr
+                    operands: operands,
+                    expr: expr,
+                    catalog: catalog
                   )
                 }
               )
@@ -15540,19 +16031,71 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
   canonical_op: CanonicalOperation,
-  target: TargetModel
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match canonical_op {
     CoercionCrossing { homomorphism_rule: _ } =>
       target_project_cast_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
     AlgebraPrimitive { algebra_field: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
     AlgebraInverseCompose { binary_field: _, inverse_field: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
     OrderingComparison { compare_field: _, predicate: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
     EqualityComparison { eq_field: _, predicate: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
+  }
+}
+
+// HALF 1 of widening (iii): a primitive-apply OPERAND lowers through the SAME atom/literal spine the body's
+// atoms use, so a numeral operand (the `0` in `resolved_child_count > 0`) is recognised by the EXISTING
+// int-literal spine -- target_value_expr_is_int_literal_atom / target_value_expr_project_int_literal_atom --
+// beside the Bool case and keyed the same way on the source literal form, not hard-wired to `0`. It covers
+// every numeral the target can spell; a numeral the target CANNOT spell refuses inside that spine with its
+// OWN named reason (target_value_expr_int_literal_form_unwired), never body_scope_binding_invalid and never
+// the generic transform-shape reason. A non-literal operand keeps exactly the scope-bound binding it was
+// before, so every primitive apply that emitted before still binds the same two operands and emits the
+// same bytes. The operand VALUE (binding or literal) is what the primitive-apply fold stores; the operator
+// tokenization downstream is unchanged by this function.
+fn target_arrow_scope_positional_operand_value(
+  arrow: Node,
+  body: Node,
+  index: Int,
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: index) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: body
+        )
+      )
+    Present { value: operand } =>
+      if target_value_expr_is_int_literal_atom(node: operand) {
+        target_value_expr_project_int_literal_atom(node: operand)
+      } else {
+        match target_value_expr_local_reference_leaf(node: operand) {
+          Present { value: _ } =>
+            bind_outcome(
+              o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: index, target: target),
+              f: fn(scoped_operand_binding) {
+                outcome_accepted(
+                  target_value_expression_binding_ref(
+                    binding: scoped_operand_binding
+                  )
+                )
+              }
+            )
+          // A primitive-use operand (a nested apply: binary, prefix, or comparison) is neither a
+          // numeral atom nor a bare binding leaf. It lowers through the SAME transform callback the
+          // body uses -- the single route into the transform lowering -- so a nested apply reaches the
+          // operand list as a value-expression instead of being coerced to a binding ref and refused.
+          Absent => handle_transform(arrow, operand, target)
+        }
+      }
   }
 }
 
@@ -15560,39 +16103,64 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
   canonical_op: CanonicalOperation,
-  target: TargetModel
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  if !all_edges_positional(children: body.children)
-    || length(xs: positional_child_target_nodes(node: body)) != 3 {
+  let positional_count = length(xs: positional_child_target_nodes(node: body))
+  if !all_edges_positional(children: body.children) {
     outcome_rejected(
       target_value_expr_diagnostic(
         reason: ^target_value_expr_reason_transform_shape_invalid,
         node: body
       )
     )
-  } else {
+  } else if positional_count == 3 {
     bind_outcome(
-      o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
-      f: fn(scoped_left_binding) {
+      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target, handle_transform: handle_transform),
+      f: fn(left_operand) {
         bind_outcome(
-          o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 2, target: target),
-          f: fn(scoped_right_binding) {
+          o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 2, target: target, handle_transform: handle_transform),
+          f: fn(right_operand) {
             outcome_accepted(
               target_value_expression_primitive_apply(
                 operation: canonical_op,
                 operands: [
-                  target_value_expression_binding_ref(
-                    binding: scoped_left_binding
-                  ),
-                  target_value_expression_binding_ref(
-                    binding: scoped_right_binding
-                  )
+                  left_operand,
+                  right_operand
                 ]
               )
             )
           }
         )
       }
+    )
+  } else if positional_count == 2 {
+    // A PREFIX primitive use (operator + one operand) carries exactly TWO positional children. It lowers
+    // to a ONE-operand primitive apply whose spelling is decided downstream by the target's operator-
+    // realization row: a `PrefixToken` row renders `op operand`, and a row that is not prefix-shaped
+    // refuses at the token fold with its OWN arity reason (`..._arity_invalid`), never the generic
+    // transform-shape reason. The branch keys on the positional-child count alone, so it is general --
+    // it is not keyed on any one primitive (a prefix use of `not` and a prefix use of any other algebra
+    // primitive take this same route).
+    bind_outcome(
+      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target, handle_transform: handle_transform),
+      f: fn(operand) {
+        outcome_accepted(
+          target_value_expression_primitive_apply(
+            operation: canonical_op,
+            operands: [
+              operand
+            ]
+          )
+        )
+      }
+    )
+  } else {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
     )
   }
 }
@@ -15892,6 +16460,91 @@ fn target_value_expr_transform_shape_invalid(node: Node) -> Outcome<TargetValueE
       node: node
     )
   )
+}
+
+// CONJ AND DISJ IN VALUE POSITION ARE BOOLEAN CONNECTIVES, not type-shaped expressions to refuse: they
+// lower to the target's realisation of the PROVEN `and` / `or` canonical operations, whose Rust rows are
+// InfixToken && / || (src/v2/extdeps/languages/rust.dag rust_operator_realizations_catalog_node
+// rust_token_andand / rust_token_barbar). Each operand is lowered through the SAME single body-expression
+// lowering; an n-ary connective folds RIGHT-NESTED into binary applies because the InfixToken realisation
+// renders exactly two operands (target_operator_shape_emit_primitive_apply_tokens). An operand that is not
+// a value the realisation can bind (a prefix operator with no realization, a nested computation) refuses
+// at the operand, which is reported rather than widened here.
+fn target_value_expr_project_logical_connective_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  connective_op: CanonicalOperation,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  target_value_expr_lower_logical_connective_operands(
+    arrow: arrow,
+    operands: positional_child_target_nodes(node: body),
+    connective_op: connective_op,
+    target: target,
+    source_bool_form: source_bool_form,
+    handle_transform: handle_transform
+  )
+}
+
+fn target_value_expr_lower_logical_connective_operands(
+  arrow: Node,
+  operands: List<Node>,
+  connective_op: CanonicalOperation,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match operands {
+    Empty =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_logical_connective_operand_count_invalid,
+          node: arrow
+        )
+      )
+    Cons { head: operand, tail: rest } =>
+      if is_empty(xs: rest) {
+        target_value_expr_project_body_subexpression(
+          arrow: arrow,
+          node: operand,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      } else {
+        bind_outcome(
+          o: target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: operand,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          ),
+          f: fn(left) {
+            bind_outcome(
+              o: target_value_expr_lower_logical_connective_operands(
+                arrow: arrow,
+                operands: rest,
+                connective_op: connective_op,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(right) {
+                outcome_accepted(
+                  target_value_expression_primitive_apply(
+                    operation: connective_op,
+                    operands: [left, right]
+                  )
+                )
+              }
+            )
+          }
+        )
+      }
+  }
 }
 
 fn target_value_expr_project_atom_literal_or(
@@ -16853,11 +17506,13 @@ fn target_value_expr_project_body_subexpression(
         if declaration_reference_body_marked(target: node) {
           handle_transform(arrow, node, target)
         } else {
-          outcome_rejected(
-            target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
-              node: node
-            )
+          target_value_expr_project_logical_connective_in_arrow_scope(
+            arrow: arrow,
+            body: node,
+            connective_op: canonical_operation_op_and(),
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
           )
         }
       }
@@ -16877,9 +17532,34 @@ fn target_value_expr_project_body_subexpression(
         target: target,
         source_bool_form: source_bool_form
       )
-    TypeNode { connective: Disj } => target_value_expr_transform_shape_invalid(node: node)
-    TypeNode { connective: Instantiation } => target_value_expr_transform_shape_invalid(node: node)
-    ComputationNode { behavior: Value } => target_value_expr_transform_shape_invalid(node: node)
+    TypeNode { connective: Disj } =>
+      target_value_expr_project_logical_connective_in_arrow_scope(
+        arrow: arrow,
+        body: node,
+        connective_op: canonical_operation_op_or(),
+        target: target,
+        source_bool_form: source_bool_form,
+        handle_transform: handle_transform
+      )
+    // A type Instantiation reaching value position is a TYPE application, not a value expression: it has
+    // no operand value the target could spell, so it is refused by name rather than as a transform shape.
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_type_instantiation_not_a_value_expression,
+          node: node
+        )
+      )
+    // A bare ComputationNode in value position is a computation, not a value expression; the shapes the
+    // lowering admits (Transform/Branch/Bind/Loop/Match/RecordConstruct) are handled above. This residual
+    // behavior carries no value spelling, so it is refused by name rather than as a transform shape.
+    ComputationNode { behavior: Value } =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_computation_value_not_a_value_expression,
+          node: node
+        )
+      )
   }
 }
 

@@ -1,0 +1,10 @@
+module v2.test.claim.self_host.prec_or_grouped_subject_fixture
+
+// ITEM 4 SEMANTIC CONTROL (grouped side). Rust binds && tighter than ||, so the AUTHORING grouping
+// (a || b) && c is load-bearing: the ||-node is the LEFT operand of the &&-node and MUST be wrapped so the
+// emitted Rust is "(a || b) && c". Compared against prec_or_flat_subject_fixture (a || b && c, which Rust
+// parses as a || (b && c)) their emitted bodies must DIFFER, proving the value-expression operand render keeps
+// the grouping and does not flatten both trees to one meaning. Lives under the self-host claim tree.
+fn prec_or_grouped_subject(a: Bool, b: Bool, c: Bool) -> Bool {
+  (a || b) && c
+}

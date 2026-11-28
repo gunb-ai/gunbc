@@ -1,0 +1,14 @@
+module v2.test.claim.self_host.int_literal_value_subject_fixture
+
+// ISOLATION SUBJECT for the authorized (iii) HALF 1 numeral spine, tested WITHOUT the operator-operand
+// route. This is a numeral DIRECTLY in value position: the arrow body IS the integer literal `42`, so it
+// is decided by the atom/literal dispatcher (target_value_expr_project_int_literal_atom beside the Bool
+// case), not by target_arrow_scope_positional_operand_value (the operator-operand HALF 1 edit) and not by
+// the operand-token render that HALF 2 would widen. If this subject EMITS, the authorized HALF 1 spine
+// recognizes a numeral in value position on its own; if it refuses, the residual is the target's spelling
+// of the integer literal at the token fold (IntLiteralDecimal vs IntLiteralUnwired), NOT the (i) operand
+// widening. Lives under the self-host claim tree, NOT the production dag corpus (not counted by the
+// population row).
+fn int_literal_value_subject() -> Int {
+  42
+}

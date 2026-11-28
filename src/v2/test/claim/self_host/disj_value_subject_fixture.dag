@@ -1,0 +1,10 @@
+module v2.test.claim.self_host.disj_value_subject_fixture
+
+// Pure boolean-DISJUNCTION value-position subject with BOTH operands simple bindings:
+// `fn disj_subject(a: Bool, b: Bool) -> Bool { a || b }`. Isolates the Disj->or lowering from the
+// corpus subject's exotic operands. If the Disj arm lowers to the proven `or` realisation
+// (InfixToken ||), this EMITS. Placed under the self-host claim tree, NOT the production dag corpus,
+// so it is not counted by the population row a_possibly_empty_producer_enters_a_nonempty_consumer.
+fn disj_subject(a: Bool, b: Bool) -> Bool {
+  a || b
+}

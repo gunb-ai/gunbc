@@ -1,0 +1,10 @@
+module v2.test.claim.self_host.prec_not_grouped_subject_fixture
+
+// ITEM 4 SEMANTIC CONTROL (prefix over a grouped operand). ! binds tighter than its && operand here, so the
+// authoring parentheses !(a && b) are load-bearing: the &&-node sits as the OPERAND of the prefix !-node and,
+// being looser than a prefix, MUST be wrapped so the emitted Rust is "!(a && b)" and not "!a && b". Its emitted
+// body must not equal the body of prec_not_flat_subject_fixture (where !a is negated alone). Lives under the
+// self-host claim tree.
+fn prec_not_grouped_subject(a: Bool, b: Bool) -> Bool {
+  !(a && b)
+}

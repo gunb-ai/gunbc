@@ -1,0 +1,370 @@
+module v2.test.claim.self_host.stage0_conjunction_emission_claims
+
+// GREEN CONSOLIDATED CLAIM SET for node v2-core-emitter-lowers-conjunction-in-value-position, executed at the
+// final head with the value-expression operand widening in place. It is the post-widening sibling of
+// stage0_conjunction_lowering_claims.dag and shares its door VERBATIM
+// (observe_provenanced_rust_emission_from_ingest against stage0_production_target_model), so verdicts are
+// comparable to the corpus_probes_* instrument. The row-criteria claims here (conj/disj emits, the literal and
+// int-literal emits, the corpus named-refusal pair, the negate named-refusal battery, the prec_or grouping
+// controls, the flat-binding no-redundant-parens control) must PASS; the entry ALSO carries declared sibling
+// surface -- prefix_not_emits_holds, prec_not_grouped_and_flat_bodies_differ_holds,
+// prec_not_grouped_wraps_operand_holds -- which FAILs at this head pending
+// v2-core-emitter-emits-prefix-not-in-value-position (see the PR's declared-surface section), plus a
+// reason-naming battery with exactly one PASSing arm. Evidence runs as TWO native package-form adjudications
+// through the gunbc test NATIVE route — //v2/test/claim/target_model_external_authority_decode and
+// //v2/test/claim/self_host/stage0_conjunction_emission_claims — one acquisition each; the per-identity rows
+// folded by the emitted binary are the green evidence, and an entry-wide exit status is NOT it
+// (v2.workflow.native_route_member_termination; gunbc.recurring_failure_mode
+// route_scoped_qualification_read_as_one_members_verdict). An earlier revision of this header asserted the
+// CLAIM-route form claim-by-claim, one claim label per operand: that was true only under claim_batch, was
+// stale from #16872 (which deleted claim_batch), and is structurally impossible now — every module here
+// declares `module v2.test.claim....`, so its only //test/claim/... spelling cannot match by module-path
+// identity, and //v2/... operands are contained in the native route universe
+// (NATIVE_ROUTE_DEFAULT_PATTERN = "//v2/...", native_route_seed_boundary_generated.rs:5; containment
+// classification target_invocation_host.rs:3694-3696; native is one operand per invocation). Do not "correct"
+// this header back to the claim-route form. The
+// pre-widening reason-triangulation battery (which pinned the RED) stays in stage0_conjunction_lowering_claims
+// and is NOT folded in here, because with the widening its "subject refuses" witnesses contradict reality.
+//
+// Covers, in neat-badger's gate order:
+//   (1) byte identity is measured separately by the compile census, not a claim; the flat-binding controls here
+//       (conj/disj emit, no-redundant-parens) are its claim-level shadow showing the already-emitting path did
+//       not move.
+//   (2) every previously-refusing subject either now EMITS (named below) or still refuses with its OWN named
+//       reason (prefix_negate) -- none flips to the generic target_value_expr_reason_transform_shape_invalid.
+//   (3) an operand form the catalog cannot spell (op_negate, no realization row) refuses with a NAMED reason and
+//       never the generic transform-shape one and never body_scope_binding_invalid.
+//   (4) precedence: (a||b)&&c and !(a&&b) emit with grouping kept, and the grouped/ungrouped PAIRS emit unequal
+//       bodies (semantic control, printer independent), with a flat-binding control proving grouping is not
+//       achieved by wrapping everything.
+//   (5) corpus_probes_emits_holds, prefix !x, and n > 0 all PASS.
+
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.compiler.self_host.stage0_production_target { stage0_production_target_model }
+import v2.compiler.source_authority { SourceRef }
+import v2.test.claim.self_host.stage0_subject_paths { subject_path_for_module }
+import v2.compiler.source_authority_read {
+  source_ref_for_observed_storage_path,
+  source_root_ingest_from_source_refs
+}
+import std.algebra { Cons, Empty, string_contains }
+import std.types { Bool, Int }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_reason_lexemes }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+data conj_name: String = "v2.test.claim.self_host.conj_value_subject_fixture"
+data conj_path: String = subject_path_for_module(module_name: conj_name)
+data disj_name: String = "v2.test.claim.self_host.disj_value_subject_fixture"
+data disj_path: String = subject_path_for_module(module_name: disj_name)
+data prefix_name: String = "v2.test.claim.self_host.prefix_not_operand_subject_fixture"
+data prefix_path: String = subject_path_for_module(module_name: prefix_name)
+data negate_name: String = "v2.test.claim.self_host.prefix_negate_operand_subject_fixture"
+data negate_path: String = subject_path_for_module(module_name: negate_name)
+// The same unspellable op_negate sit as the RIGHT operand of a REALISABLE binary arithmetic apply `y + (-x)`.
+// The inner-gate claim compares this subject's refusal against the standalone negate's refusal, so no lexeme is
+// hard-coded -- the comparison is what proves the inner reason propagated intact through the operand recursion.
+data negate_wrapped_name: String = "v2.test.claim.self_host.negate_wrapped_operand_subject_fixture"
+data negate_wrapped_path: String = subject_path_for_module(module_name: negate_wrapped_name)
+data literal_name: String = "v2.test.claim.self_host.literal_compare_operand_subject_fixture"
+data literal_path: String = subject_path_for_module(module_name: literal_name)
+data intvalue_name: String = "v2.test.claim.self_host.int_literal_value_subject_fixture"
+data intvalue_path: String = subject_path_for_module(module_name: intvalue_name)
+data prec_or_grouped_name: String = "v2.test.claim.self_host.prec_or_grouped_subject_fixture"
+data prec_or_grouped_path: String = subject_path_for_module(module_name: prec_or_grouped_name)
+data prec_or_flat_name: String = "v2.test.claim.self_host.prec_or_flat_subject_fixture"
+data prec_or_flat_path: String = subject_path_for_module(module_name: prec_or_flat_name)
+data prec_not_grouped_name: String = "v2.test.claim.self_host.prec_not_grouped_subject_fixture"
+data prec_not_grouped_path: String = subject_path_for_module(module_name: prec_not_grouped_name)
+data prec_not_flat_name: String = "v2.test.claim.self_host.prec_not_flat_subject_fixture"
+data prec_not_flat_path: String = subject_path_for_module(module_name: prec_not_flat_name)
+// THE NODE SUBJECT: gunbc.rust_decl_type_overlay, an outer TypeNode Conj in value position whose operands are a
+// binding, a one-operand PREFIX !closed_alias, and a comparison resolved_child_count > 0 whose right operand is
+// the Int LITERAL 0. Done condition corpus_probes_emits_holds over the same door and the same
+// stage0_production_target_model as the production corpus probe.
+// Name is the authority; the path is DERIVED from it by the ONE shared production-rule
+// derivation (v2.test.claim.self_host.stage0_subject_paths: module_file over
+// repository_storage_layout, review 98522) -- no local root rule lives in this probe.
+
+data corpus_name: String = "gunbc.rust_decl_type_overlay"
+data corpus_path: String = subject_path_for_module(module_name: corpus_name)
+
+fn refs_for(path: String) -> List<SourceRef> {
+  Cons { head: source_ref_for_observed_storage_path(path: path, source_root: DagTree), tail: Empty }
+}
+
+fn admission_for(name: String) -> Admission {
+  Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: name) }, imports: Empty }
+}
+
+fn door_for(path: String, name: String) -> Outcome<ProvenancedRustEmissionObservation> {
+  match source_root_ingest_from_source_refs(refs: refs_for(path: path)) {
+    Accepted { value: ingest, diagnostics: d } =>
+      Accepted {
+        value: observe_provenanced_rust_emission_from_ingest(
+          ingest: ingest,
+          admission: admission_for(name: name),
+          target: stage0_production_target_model(),
+          module_path: path
+        ),
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn reason_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: AssemblyRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: InferenceRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: ProducerReceiptRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact-produced"
+    Rejected { diagnostics: ds } => diagnostics_reason_lexemes(diagnostics: ds)
+  }
+}
+
+// emitted_text_for returns the emitted Rust source text of a subject's first ACCEPTED emission, or the empty
+// string when the subject does not emit. Item 4 asserts on THIS text (grouping present, and two subjects' bodies
+// unequal) rather than inferring the shape, so the precedence controls are checked against what was written.
+fn emitted_text_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: ArtifactProduced { artifact: a }, diagnostics: _ } => a.source.carried
+    _ => ""
+  }
+}
+
+fn stage_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: _ }, diagnostics: _ } => "emission"
+    Accepted { value: AssemblyRejected { diagnostics: _ }, diagnostics: _ } => "assembly"
+    Accepted { value: InferenceRejected { diagnostics: _ }, diagnostics: _ } => "inference"
+    Accepted { value: ProducerReceiptRejected { diagnostics: _ }, diagnostics: _ } => "producer_receipt"
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact"
+    Rejected { diagnostics: _ } => "ingest_rejected"
+  }
+}
+
+// ---- GATE (5) / core emits: the three subjects named by the row go PASS ----
+
+// conj / disj: 3-positional-child binary, op_and/op_or InfixToken rows -> EMIT (binary path intact).
+test fn conj_binary_emits_holds() -> Bool {
+  reason_for(path: conj_path, name: conj_name) == "artifact-produced"
+}
+
+test fn disj_binary_emits_holds() -> Bool {
+  reason_for(path: disj_path, name: disj_name) == "artifact-produced"
+}
+
+// prefix !x (2-positional-child prefix, op_not now has a PrefixToken row through the (ii) branch) -> EMITS.
+test fn prefix_not_emits_holds() -> Bool {
+  reason_for(path: prefix_path, name: prefix_name) == "artifact-produced"
+}
+
+// n > 0 (numeral as an operator operand, HALF 1 recognises it via the int-literal spine) -> EMITS.
+test fn literal_compare_emits_holds() -> Bool {
+  reason_for(path: literal_path, name: literal_name) == "artifact-produced"
+}
+
+// a numeral DIRECTLY in value position, decided by the authorised atom/literal dispatcher -> EMITS.
+test fn int_literal_value_emits_holds() -> Bool {
+  reason_for(path: intvalue_path, name: intvalue_name) == "artifact-produced"
+}
+
+// THE NODE SUBJECT. corpus_probes_emits_holds is the row's verbatim done condition.
+test fn corpus_probes_emits_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "artifact-produced"
+}
+
+// The two pre-change refusal claims, inverted: the subject is no longer refused at emission and its reason is no
+// longer the generic transform-shape one.
+test fn corpus_no_longer_refused_at_emission_holds() -> Bool {
+  stage_for(path: corpus_path, name: corpus_name) == "artifact"
+}
+
+test fn corpus_reason_is_not_transform_shape_holds() -> Bool {
+  !(string_contains(s: reason_for(path: corpus_path, name: corpus_name), pattern: "transform_shape_invalid"))
+}
+
+// ---- GATE (3) / (ii) NEGATIVE control: an operand form the catalog cannot spell refuses with its OWN reason ----
+// prefix_negate `-x`: op_negate has NO operator-realization row, so the 2-child prefix route must refuse with a
+// NAMED reason (an operator-realization/shape/arity lexeme), never the generic transform-shape one and never
+// body_scope_binding_invalid.
+
+test fn negate_refuses_not_emits_holds() -> Bool {
+  reason_for(path: negate_path, name: negate_name) != "artifact-produced"
+}
+
+test fn negate_reason_is_named_not_transform_shape_holds() -> Bool {
+  !(string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "transform_shape_invalid"))
+}
+
+test fn negate_reason_is_not_body_scope_holds() -> Bool {
+  !(string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "body_scope_binding_invalid"))
+}
+
+// Its refusal must NAME the operator/operand/arity region (whichever arm it hits), showing it is a specific
+// target-shaped diagnostic and not an unrelated or generic reason. Disjoined because the exact arm (catalog miss
+// vs realization vs arity) is what the run, not this claim, decides; the row forbids assuming which.
+test fn negate_reason_names_operator_operand_or_arity_holds() -> Bool {
+  string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "operator")
+    || string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "operand")
+    || string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "arity")
+}
+
+// ---- GATE added on authorisation: INNER-REFUSAL ---------------------------------------------------------------
+// A nested operand whose inner apply refuses must surface the INNER named reason -- not the generic
+// target_value_expr_reason_transform_shape_invalid bucket, and not the OUTER binary apply's reason. Self-calibrating:
+// the wrapped subject `y + (-x)` has a realisable outer op (op_add has a row) and an unspellable inner operand
+// (op_negate, no row), so IF the lowering descends into the operand the refusal EQUALS, exactly, the standalone
+// negate subject's refusal (same op_negate). A shallow operand render instead coerces `-x` to a binding and reports
+// the outer operand-binding reason, or falls back to the generic bucket, so this exact equality is the single
+// strongest test of the recursion. It also asserts the subject still refuses and is never the generic bucket.
+test fn inner_refusal_surfaces_inner_reason_holds() -> Bool {
+  reason_for(path: negate_wrapped_path, name: negate_wrapped_name)
+    == reason_for(path: negate_path, name: negate_name)
+    && reason_for(path: negate_wrapped_path, name: negate_wrapped_name) != "artifact-produced"
+    && !(string_contains(s: reason_for(path: negate_wrapped_path, name: negate_wrapped_name), pattern: "transform_shape_invalid"))
+}
+
+// ---- GATE (4) precedence: SEMANTIC control (primary), printer independent ----
+// (a||b)&&c and a||b&&c are DIFFERENT trees in Rust (&& binds tighter), so a correct value-expression operand
+// render keeps the grouping and their emitted bodies are NOT equal. If the render dropped grouping they would
+// collapse to the same string and this claim goes red -- exactly the wrong-Rust case gate (4) exists to catch.
+
+test fn prec_or_grouped_and_flat_bodies_differ_holds() -> Bool {
+  emitted_text_for(path: prec_or_grouped_path, name: prec_or_grouped_name)
+    != emitted_text_for(path: prec_or_flat_path, name: prec_or_flat_name)
+}
+
+// The grouped body carries the parentheses around the ||-operand. The substring "(a || b)" is made only of
+// confirmed renders (lparen "(", ident "a", the or-lexeme " || ", ident "b", rparen ")"), so it does not depend
+// on the unverified bang render, and it cannot appear in a parameter list, which never spells " || " between two
+// single-letter idents. This is the grouping-specific check; a bare "(" would be trivially true from the signature.
+test fn prec_or_grouped_has_grouping_holds() -> Bool {
+  string_contains(s: emitted_text_for(path: prec_or_grouped_path, name: prec_or_grouped_name), pattern: "(a || b)")
+}
+
+// The ungrouped body must NOT have gained a redundant grouping around the left operand, yet must still spell both
+// operators. ") && " is produced only when a rparen immediately precedes the and-lexeme, i.e. only by grouping a
+// left operand -- a signature's rparen is followed by " ->", never " && ".
+test fn prec_or_flat_has_no_grouping_holds() -> Bool {
+  !(string_contains(s: emitted_text_for(path: prec_or_flat_path, name: prec_or_flat_name), pattern: ") && "))
+    && string_contains(s: emitted_text_for(path: prec_or_flat_path, name: prec_or_flat_name), pattern: " || ")
+}
+
+// !(a&&b) vs !a && b: the prefix ! over a grouped operand vs over a single operand emit unequal bodies.
+test fn prec_not_grouped_and_flat_bodies_differ_holds() -> Bool {
+  emitted_text_for(path: prec_not_grouped_path, name: prec_not_grouped_name)
+    != emitted_text_for(path: prec_not_flat_path, name: prec_not_flat_name)
+}
+
+// The grouped-prefix body wraps its &&-operand in parentheses: the substring "(a && b)" appears because the prefix
+// operand (an &&-node, looser than the prefix) was grouped. It sits after the bang token, so the substring is
+// independent of the bang's exact render. In prec_not_flat_subject the prefix operand is the bare ident "a" (an
+// atom, never grouped), so "(a && b)" does not appear there.
+test fn prec_not_grouped_wraps_operand_holds() -> Bool {
+  string_contains(s: emitted_text_for(path: prec_not_grouped_path, name: prec_not_grouped_name), pattern: "(a && b)")
+}
+
+// ---- GATE (4) control / GATE (1) shadow: a flat binding operand still emits WITHOUT redundant parens ----
+// conj `a && b` has two flat binding operands; neither is looser than the enclosing &&, so no grouping is added.
+// This proves the precedence rule did not solve grouping by wrapping every operand. ") && " and "(a && b)" are
+// grouping-only substrings (a signature's rparen is followed by " ->", never " && "), and " && " confirms the
+// operator still renders -- so this shows a flat operand emits with the operator present and NO grouping parens.
+test fn flat_binding_operand_emits_without_redundant_parens_holds() -> Bool {
+  string_contains(s: emitted_text_for(path: conj_path, name: conj_name), pattern: " && ")
+    && !(string_contains(s: emitted_text_for(path: conj_path, name: conj_name), pattern: ") && "))
+    && !(string_contains(s: emitted_text_for(path: conj_path, name: conj_name), pattern: "(a && b)"))
+}
+
+// ---- REASON-NAMING BATTERY for the composite row subject (2026-11-26, red-control naming) ----
+// corpus_probes_emits_holds FAILs at this head; the Bool cannot say WHICH named arm refuses the
+// composite subject (Conj of [binding, PREFIX !closed_alias, comparison resolved_child_count > 0]).
+// One exact-equality test per candidate refusal lexeme carried verbatim from the emitter sources
+// (src/v2/std/compilers/target_model.dag), so the PASSing name in the log IS the arm, no inference.
+// This battery adds no emitter behavior: it only reads the same door's diagnostics. If the composite
+// EMITS, corpus_emits_at_head_holds PASSes and every reason test below FAILs, and the pair member
+// "the composite refuses" does not exist — that outcome is reported, not worked around.
+
+test fn corpus_emits_at_head_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "artifact-produced"
+}
+
+test fn corpus_refusal_is_emission_stage_holds() -> Bool {
+  stage_for(path: corpus_path, name: corpus_name) == "emission"
+}
+
+test fn corpus_refusal_reason_transform_shape_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_transform_shape_invalid"
+}
+
+test fn corpus_refusal_reason_logical_connective_operand_count_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_logical_connective_operand_count_invalid"
+}
+
+test fn corpus_refusal_reason_computation_value_not_a_value_expression_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_computation_value_not_a_value_expression"
+}
+
+test fn corpus_refusal_reason_type_instantiation_not_a_value_expression_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_type_instantiation_not_a_value_expression"
+}
+
+test fn corpus_refusal_reason_body_scope_binding_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_body_scope_binding_invalid"
+}
+
+test fn corpus_refusal_reason_arrow_body_form_unsupported_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_arrow_body_form_unsupported"
+}
+
+test fn corpus_refusal_reason_function_type_position_unrealized_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_function_type_position_unrealized"
+}
+
+test fn corpus_refusal_reason_closure_parameter_order_absent_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_closure_parameter_order_absent"
+}
+
+test fn corpus_refusal_emit_unsupported_kind_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_unsupported_kind"
+}
+
+test fn corpus_refusal_emit_operator_shape_unsupported_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_operator_shape_unsupported"
+}
+
+test fn corpus_refusal_emit_primitive_apply_arity_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_primitive_apply_arity_invalid"
+}
+
+test fn corpus_refusal_emit_comparison_operand_is_comparison_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_comparison_operand_is_comparison"
+}
+
+test fn corpus_refusal_emit_comparison_nesting_policy_undeclared_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_comparison_nesting_policy_undeclared"
+}
+
+test fn corpus_refusal_operator_realization_catalog_miss_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_operator_realization_catalog_miss"
+}
+
+test fn corpus_refusal_operator_realization_catalog_ambiguous_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_operator_realization_catalog_ambiguous"
+}
+
+test fn corpus_refusal_operator_realization_wire_malformed_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_operator_realization_wire_malformed"
+}

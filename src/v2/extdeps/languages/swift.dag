@@ -118,6 +118,8 @@ import v2.std.compilers.target_model {
   canonical_operation_op_coerce,
   target_bind_let_separator_present,
   target_operator_realization_node,
+  target_operator_realization_node_with_precedence,
+  target_operator_precedence_level_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node
 }
@@ -739,6 +741,10 @@ fn swift_block_evaluation_mode() -> BlockEvaluationMode {
 fn swift_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(
     rows: [
+      // No precedence edge, and deliberately so (review 98079): the row is OperandUnchanged — the
+      // emitter renders the operand's tokens with no grouping, so Swift's real cast binding is not
+      // what this row realizes; a declared level would let an enclosing binary splice this
+      // operand's looser tokens ungrouped. Absent makes enclosing operators wrap.
       target_operator_realization_node(
         operation: canonical_operation_op_coerce(),
         shape: OperandUnchanged

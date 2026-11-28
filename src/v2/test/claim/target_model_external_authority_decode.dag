@@ -2,16 +2,49 @@ module v2.test.claim.target_model_external_authority_decode
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
-import std.algebra { Empty, list_snoc_item, fold_list }
+import std.algebra { Empty, list_snoc_item, fold_list, string_contains }
+import std.optional { Absent, Optional, Present }
 import v2.std.compilers.target_model {
-  target_external_authority_bundle_node,
-  target_external_authority_from_node,
+  canonical_operation_op_add,
+  canonical_operation_op_and,
+  canonical_operation_op_lt,
+  canonical_operation_op_mul,
+  InfixToken,
+  target_model_canonical_operation_wire_node,
   target_model_named_edge,
+  target_model_operator_shape_wire_node,
   target_model_type_atom_node,
   target_model_type_conj_node,
+  target_operator_chains_no_node,
+  target_operator_chains_yes_node,
+  target_operator_precedence_level_node,
+  target_operator_realization_from_wire_row,
+  target_operator_realization_node,
+  target_operator_realization_node_with_precedence,
+  target_operator_realization_node_with_precedence_and_chains,
+  target_operator_realization_row_wire_schema_valid,
+  target_operator_realizations_catalog_node,
+  target_value_expression_binding_ref,
+  target_value_expression_int_literal,
+  target_value_expression_operand_needs_grouping,
+  target_value_expression_primitive_apply,
+  target_value_expr_comparison_chain_refusal_policy,
+  target_value_expr_primitive_apply_operation_from_wire,
+  target_value_expression_emit_comparison_operand_is_comparison_diagnostic,
+  target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic,
+  ChainsYes,
+  ChainsNo,
+  ChainsUndeclared,
+  CanonicalOperation,
+  TargetRealizationCatalog,
+  TargetValueExpression,
+  TargetValueExprPrimitiveApply,
+  PrimitiveRealizationsUnwired,
+  target_external_authority_bundle_node,
+  target_external_authority_from_node,
   target_uri_scheme_discriminant
 }
-import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_reason_lexemes }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 import std.types { NonEmptyStr, List }
@@ -129,4 +162,515 @@ test fn distinct_scheme_discriminants_decode_to_distinct_schemes() -> Bool {
   !(target_uri_scheme_discriminant(scheme: Http)
     == target_uri_scheme_discriminant(scheme: Https))
     && ((uri_scheme_wire(s: Http) as String) == "http://")
+}
+
+// ---- OPERATOR-REALIZATION ROW: the precedence edge is typed, never a sentinel -------------------
+// The grouping predicate reads an operator's binding strength from this row's Optional<Int>.
+// Absence is TYPED (Absent), so an operator whose precedence was never declared cannot be treated
+// as binding tightest and rendered ungrouped: the predicate wraps instead, and an extra pair of
+// parentheses is correct by construction where a wrong binding would be a fabricated plausible
+// output (gunbc.design_argument::fail_closed). These four legs are the discriminating evidence for
+// that shape. Each goes red for a different edit: a numeric default for an absent edge reddens the
+// second leg; widening the row schema to accept any edge reddens the third and fourth; dropping the
+// edge from the decoder reddens the first.
+
+test fn operator_row_with_declared_precedence_decodes_to_present() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand },
+      precedence_node: target_operator_precedence_level_node(level: 3)
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.precedence {
+        Present { value: level } => level == 3
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn operator_row_without_precedence_edge_decodes_to_absent() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand }
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.precedence {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn operator_row_with_an_unnamed_extra_edge_still_refuses() -> Bool {
+  match target_operator_realization_row_wire_schema_valid(
+    row: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_and())
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: InfixToken { token: ^claim_token_andand })
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: target_operator_precedence_level_node(level: 3)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_associativity,
+        target: target_operator_precedence_level_node(level: 3)
+      )
+    ])
+  ) {
+    Accepted { value: valid, diagnostics: _ } => valid == false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn operator_row_with_a_duplicated_precedence_edge_refuses() -> Bool {
+  match target_operator_realization_row_wire_schema_valid(
+    row: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_and())
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: InfixToken { token: ^claim_token_andand })
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: target_operator_precedence_level_node(level: 3)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: target_operator_precedence_level_node(level: 4)
+      )
+    ])
+  ) {
+    Accepted { value: valid, diagnostics: _ } => valid == false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// The encoder carries the WHOLE number (review 98015): a level of 12 must decode to 12, not to a
+// folded last digit 2, or the grouping predicate would compare a corrupted level. Red for a
+// single-digit encoder.
+test fn operator_row_level_above_nine_encodes_whole_number() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand },
+      precedence_node: target_operator_precedence_level_node(level: 12)
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.precedence {
+        Present { value: level } => level == 12
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A level that is not a decimal digit string cannot become a magnitude node; the row must REFUSE
+// to decode rather than yield a plausible precedence (fail_closed: no fabricated plausible output).
+test fn operator_row_unencodable_precedence_level_refuses_decode() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand },
+      precedence_node: target_operator_precedence_level_node(level: -1)
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// ---- OPERATOR-REALIZATION ROW: the chaining declaration is per-target -------------------------
+// Review 98029: "this comparison does not chain" is a fact about the target language (Rust rejects
+// a < b == c; C17, Swift and ECMAScript accept it), so it rides the catalog rows beside the
+// precedence level and the model only asks the row. These legs pin the decode side; the emission
+// side (refuse unless a row declares chains=yes) is carried by the census, whose emitted corpus
+// contains the comparison renders under the Rust catalog.
+
+fn chains_row_decode(chains_node: Node) -> OperatorChainsPolicy {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence_and_chains(
+      operation: canonical_operation_op_lt(),
+      shape: InfixToken { token: ^claim_token_lt },
+      precedence_node: target_operator_precedence_level_node(level: 3),
+      chains_node: chains_node
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } => realization.chains
+    // Unreachable in these legs (the rows built here are well-formed); a malformed row would have
+    // to refuse, and refusing is exactly what ChainsUndeclared drives at the emit seam.
+    Rejected { diagnostics: _ } => ChainsUndeclared
+  }
+}
+
+// The three-state chains fact is a DECLARED sum (review 98497 at 9581ae9ddac: it was an
+// Optional<Bool>, which hand-rolled the same three states and left Absent-vs-declared-no to
+// comments). Each state decodes to its own variant.
+test fn operator_row_with_chains_yes_decodes_chains_yes() -> Bool {
+  match chains_row_decode(chains_node: target_operator_chains_yes_node()) {
+    ChainsYes => true
+    _ => false
+  }
+}
+
+test fn operator_row_with_chains_no_decodes_chains_no() -> Bool {
+  match chains_row_decode(chains_node: target_operator_chains_no_node()) {
+    ChainsNo => true
+    _ => false
+  }
+}
+
+test fn operator_row_without_chains_edge_decodes_chains_undeclared() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_lt(),
+      shape: InfixToken { token: ^claim_token_lt },
+      precedence_node: target_operator_precedence_level_node(level: 3)
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.chains {
+        ChainsUndeclared => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The two refusal states render under DIFFERENT reasons (review 98497): a target that declared
+// ChainsNo and a target that never declared a policy must be tellable apart by a reader of the
+// diagnostic. These legs pin the two reason names at the constructors the emit seam selects.
+test fn comparison_chain_declared_no_diagnostic_carries_declared_reason() -> Bool {
+  match target_value_expression_emit_comparison_operand_is_comparison_diagnostic(
+    expr: target_value_expression_int_literal(lexeme: "0", source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom))
+  ) {
+    Diagnostic { reason: reason, at: _, correction: _ } =>
+      reason == ^target_value_expression_emit_comparison_operand_is_comparison
+    _ => false
+  }
+}
+
+test fn comparison_chain_undeclared_diagnostic_carries_undeclared_reason() -> Bool {
+  match target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(
+    expr: target_value_expression_int_literal(lexeme: "0", source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom))
+  ) {
+    Diagnostic { reason: reason, at: _, correction: _ } =>
+      reason == ^target_value_expression_emit_comparison_nesting_policy_undeclared
+    _ => false
+  }
+}
+
+test fn operator_row_with_a_duplicated_chains_edge_refuses() -> Bool {
+  match target_operator_realization_row_wire_schema_valid(
+    row: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_lt())
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: InfixToken { token: ^claim_token_lt })
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_chains,
+        target: target_operator_chains_yes_node()
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_chains,
+        target: target_operator_chains_no_node()
+      )
+    ])
+  ) {
+    Accepted { value: valid, diagnostics: _ } => valid == false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// ---- GROUPING POLICY ARMS (decision-level; each Absent arm witnessed by name) -------------------
+// The grouping rule and the chaining rule fail closed in opposite SAFE directions: unknown
+// precedence WRAPS (extra parens), unknown chaining REFUSES (no fabricated permission). Each arm
+// below goes red only if its fail-open opposite is introduced.
+
+fn claim_grouping_catalog(rows: List<Node>) -> TargetRealizationCatalog {
+  TargetRealizationCatalog {
+    operators: target_operator_realizations_catalog_node(rows: rows),
+    primitives: PrimitiveRealizationsUnwired
+  }
+}
+
+fn claim_add_apply() -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: canonical_operation_op_add(),
+    operands: [
+      target_value_expression_binding_ref(binding: ^claim_binding_x),
+      target_value_expression_binding_ref(binding: ^claim_binding_y)
+    ]
+  )
+}
+
+fn claim_lt_apply() -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: canonical_operation_op_lt(),
+    operands: [
+      target_value_expression_binding_ref(binding: ^claim_binding_x),
+      target_value_expression_binding_ref(binding: ^claim_binding_y)
+    ]
+  )
+}
+
+fn claim_flat_binding() -> TargetValueExpression {
+  target_value_expression_binding_ref(binding: ^claim_binding_z)
+}
+
+test fn grouping_operand_precedence_absent_wraps() -> Bool {
+  target_value_expression_operand_needs_grouping(
+    operand: claim_add_apply(),
+    enclosing: canonical_operation_op_mul(),
+    is_right: false,
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node(
+        operation: canonical_operation_op_add(),
+        shape: InfixToken { token: ^claim_token_plus }
+      ),
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_mul(),
+        shape: InfixToken { token: ^claim_token_star },
+        precedence_node: target_operator_precedence_level_node(level: 5)
+      )
+    ])
+  )
+}
+
+test fn grouping_enclosing_precedence_absent_wraps() -> Bool {
+  target_value_expression_operand_needs_grouping(
+    operand: claim_add_apply(),
+    enclosing: canonical_operation_op_mul(),
+    is_right: false,
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_add(),
+        shape: InfixToken { token: ^claim_token_plus },
+        precedence_node: target_operator_precedence_level_node(level: 4)
+      ),
+      target_operator_realization_node(
+        operation: canonical_operation_op_mul(),
+        shape: InfixToken { token: ^claim_token_star }
+      )
+    ])
+  )
+}
+
+// A primitive-apply operand whose operation edge is absent is NOT assumed tightest: the arm wraps.
+// Reachable from decoded models (the typed constructor always writes a decodable op edge).
+test fn grouping_undecodable_apply_operand_wraps() -> Bool {
+  target_value_expression_operand_needs_grouping(
+    operand: TargetValueExpression {
+      kind: TargetValueExprPrimitiveApply,
+      node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+    },
+    enclosing: canonical_operation_op_mul(),
+    is_right: false,
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_mul(),
+        shape: InfixToken { token: ^claim_token_star },
+        precedence_node: target_operator_precedence_level_node(level: 5)
+      )
+    ])
+  )
+}
+
+// The comparison-chain refusal is a three-state policy and the claims assert it BY VARIANT,
+// never through a dissolved Bool (review 99420; same dissolution the chain guard carried before
+// review 98497 replaced Optional<Bool> with OperatorChainsPolicy). "no" = the target declared
+// chains=no and refuses; "undeclared" = the target never declared a policy and refuses;
+// "absent" = no chain was proven (or ChainsYes permits it) and emission proceeds.
+fn chain_policy_variant(
+  catalog: TargetRealizationCatalog,
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> String {
+  match target_value_expr_comparison_chain_refusal_policy(
+    catalog: catalog,
+    enclosing_op: enclosing_op,
+    operands: operands
+  ) {
+    Present { value: ChainsNo } => "no"
+    Present { value: ChainsUndeclared } => "undeclared"
+    // ChainsYes makes the policy return Absent, so this arm is totality evidence, not a state.
+    Present { value: _ } => "permitted"
+    Absent => "absent"
+  }
+}
+
+test fn chains_undeclared_refuses_nested_comparison() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_lt_apply(), claim_flat_binding()]
+  ) == "undeclared"
+}
+
+test fn chains_declared_no_refuses_nested_comparison() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence_and_chains(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3),
+        chains_node: target_operator_chains_no_node()
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_lt_apply(), claim_flat_binding()]
+  ) == "no"
+}
+
+test fn chains_declared_yes_permits_nested_comparison() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence_and_chains(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3),
+        chains_node: target_operator_chains_yes_node()
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_lt_apply(), claim_flat_binding()]
+  ) == "absent"
+}
+
+// Chain-side counterpart of grouping_undecodable_apply_operand_wraps, rewritten for review 99405:
+// an operand whose operation edge cannot be decoded is UNDECIDED about being a comparison, and the
+// chain guard must never report it as one. The old claim named
+// chains_undecodable_operand_treated_as_comparison_refuses asserted the guard treating it as a
+// comparison (refuse under target_value_expression_emit_comparison_operand_is_comparison) -- the
+// review's defect: a reader sent looking for a chained comparison that was never shown to exist
+// (gunbc.design_argument::fail_closed, "a wrong answer is a loud, typed, located error, never a
+// plausible fabrication"). The guard now refuses only PROVEN chains; the undecodable operand meets
+// its true refusal at its own emit, under target_value_expr_operand_wire_malformed located at the
+// operand (witnessed below). Fail-closed is preserved: nothing renders in either direction.
+
+// A primitive-apply value expression whose operation edge cannot be decoded: the atom node carries
+// no operation edge at all. This is review 99405's failure-scenario shape (lt(x, <apply with a
+// malformed op edge>)), constructed at decision level because the ingest pipeline cannot author a
+// malformed op edge from a well-typed source.
+fn claim_undecodable_apply() -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprPrimitiveApply,
+    node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+  }
+}
+
+test fn chains_undecodable_operand_alone_proves_no_chain_does_not_refuse() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_undecodable_apply(), claim_flat_binding()]
+  ) == "absent"
+}
+
+// The OTHER slot proving the chain still refuses: the shape reason is TRUE then, and the
+// undecodable slot neither masks nor fabricates it.
+test fn chains_undecodable_operand_with_proven_comparison_sibling_refuses() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_undecodable_apply(), claim_lt_apply()]
+  ) == "undeclared"
+}
+
+// The refusal the undecodable operand actually meets: decoding its operation edge rejects under
+// target_value_expr_operand_wire_malformed -- the true reason the chain guard must not pre-empt
+// with a comparison-shape claim, and the reason the operand's own emit carries.
+test fn undecodable_op_edge_decode_refuses_under_operand_wire_malformed() -> Bool {
+  match target_value_expr_primitive_apply_operation_from_wire(
+    wire: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      string_contains(s: diagnostics_reason_lexemes(diagnostics: ds), pattern: "operand_wire_malformed")
+  }
+}
+
+// The chain check's scope is the chaining POLICY, not operand decodability: with chains=yes
+// declared, an undecodable operand does not make THIS check refuse — the operand's own emit path
+// rejects it with its own typed reason. Keeps the refusal attributed to the right decision.
+test fn chains_undecodable_operand_chains_yes_does_not_refuse() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence_and_chains(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3),
+        chains_node: target_operator_chains_yes_node()
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [
+      TargetValueExpression {
+        kind: TargetValueExprPrimitiveApply,
+        node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+      },
+      claim_flat_binding()
+    ]
+  ) == "absent"
+}
+
+// NEGATIVE CASE of the class that regressed at head c5ad78cb8eb (measured: subject
+// v2.test.claim.self_host.literal_compare_operand_subject_fixture, body `n > 0`, refused emission —
+// witness of the FAIL in leg_LEG1.20261125T123320Z.log): a NON-apply operand (Int literal, binding
+// ref) is not "an apply whose operation failed to decode", so it must never be classified as an
+// unknown comparison. Without the kind gate this witness refuses and goes red.
+test fn chains_two_non_apply_operands_do_not_refuse() -> Bool {
+  chain_policy_variant(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [
+      claim_flat_binding(),
+      target_value_expression_int_literal(
+        lexeme: "0",
+        source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom)
+      )
+    ]
+  ) == "absent"
 }
