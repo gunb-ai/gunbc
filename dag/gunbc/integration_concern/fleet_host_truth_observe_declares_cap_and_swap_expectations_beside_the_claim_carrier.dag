@@ -13,13 +13,17 @@ import std.optional { Absent, Present }
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
 import gunbc.integration_concern {
-  ConcernSighting, IntegrationConcern, ExistingHome, PreservedObligation, RequirementUnestablished,
+  ConcernSighting, IntegrationConcern, ExistingHome, PreservedObligation, RequirementEstablished,
   SuspectedCapabilityGap, CitesDeclaration, Triaged,
 }
 import gunbc.guarantee_stall { climbs_when }
 
 // The revision this sighting was made against: origin/main at the time both producers were read.
 data fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_claim_carrier_sighting_revision: CommitSha = "89aed82ed892eefe81a97589fabd6ae60a9a315c"
+
+// The main revision the DIRECTION was decided against: the tip read at the moment the planning owner's
+// ruling was relayed to this row (git and GitHub agreeing on it in the same turn).
+data fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_claim_carrier_decision_revision: CommitSha = "f87e669f2aaa514849f431fd934e93b8a360a804"
 
 // TWO PRODUCERS OF THE SAME DECLARATION, ONE HOST, NO JOIN BETWEEN THEM.
 //
@@ -63,12 +67,14 @@ data fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_clai
       decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_desired"),
     ],
   },
-  question: "Which producer decides what a host's cap and swap axes declare: the observe route, taking the value from the runner slot's declared shape for every host, or the claim carrier, taking it from the authority that declares that host's role -- and which one joins the other? The join has two directions and only one of them is safe: the observe route consuming claims (one producer, values from the host's own authority), or the carrier delegating to the observe route (one producer, values from the runner slot, which cannot express srv4). Whichever way it goes, the axis's declared_by must keep naming the authority the value actually came from.",
+  question: "Which producer decides what a host's cap and swap axes declare: the observe route, taking the value from the runner slot's declared shape for every host, or the claim carrier, taking it from the authority that declares that host's role -- and which one joins the other? The join has two directions and only one of them is safe: the observe route consuming claims (one producer, values from the host's own authority), or the carrier delegating to the observe route (one producer, values from the runner slot, which cannot express srv4). Whichever way it goes, the axis's declared_by must keep naming the authority the value actually came from. WHICH WAY IT WENT is not left to the reader: see this row's second sighting and its next rung.",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_observe", decl_name: "host_truth_observe_expectations"),
     requirement: "ONE producer turns a host's model claims into expectations for every axis, so the verdict a roster relies on and the verdict the standing read prints cannot state different values for one axis of one host. Today the two readable axes have a producer inside the observe route that is fixed to the runner slot, and the model side has a second producer that carries per-host values.",
-    standing: RequirementUnestablished {
-      decided_by: "the first host admitted on a claim that differs from the runner slot's declared shape -- the specimen is already in the operator's report (srv4's serving set at 40 GiB against a 56 GiB working set, which is not the runner slot), and the consumer that would collide with it is the roster admission of row fleet-truth-rosters-consume-the-read. If the fleet's reads and rosters stay one-slot-per-host for a full quarter the two producers cannot state different values and this row closes as distinct.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.fleet.fleet_desired_state_claim", decl_name: "LeafCapClaim"),
+      },
     },
   },
   sightings: [
@@ -89,6 +95,20 @@ data fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_clai
       },
       account: "Found while building the model side of row fleet-truth-follows-the-machine, and named in review 99615 on that PR. Measured at the revision above: host_truth_observe_expectations returns exactly two HostTruthDeclared entries, cap and swap, with sizes taken from gunbc_runner_slot_desired() and declared_by naming the observe route; the three unread axes are deliberately given NO expectation so they fall into the refusal class. gunbc.fleet.fleet_desired_state_claim adds a second way to produce the same two entries from a per-host ModelClaims. Nothing calls the second way in production: its only caller today is the witness, and the follow-up row that will wire it is fleet-truth-rosters-consume-the-read. So today the two producers cannot disagree in any running route -- the fork is latent, not yet live -- which is why this row records it rather than treating it as a defect in the read route.",
     },
+    ConcernSighting {
+      revision: fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_claim_carrier_decision_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.fleet_desired_state_claim", decl_name: "LeafCapClaim"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_observe", decl_name: "host_truth_observe_cap_expectation"),
+          },
+        ],
+      },
+      account: "THE DIRECTION IS DECIDED, and this sighting is the record of the decision rather than of an observation. Relayed to this row by the lane manager on 2026-11-28 from the planning owner (Manager B): the observe route is to CONSUME claims. His reason, in the relayed form: only the claims form can express srv4's cap against the working set that host's role declares, so comparing every host against the runner slot's declared shape is this row's own failure mode -- the repository asserting a limit the host was never asked about. The requirement's standing is therefore Established, cited by the claim type that carries the per-host value the runner slot cannot express and by the observe route's cap declaration it is to replace. No roadmap row is opened for the repair, and none is needed: the repair belongs to sibling row fleet-truth-per-host-read, whose module this PR does not touch while its PR is the closest of this lane's to merge.",
+    },
   ],
   disposition: Triaged {
     home: ExistingHome {
@@ -108,6 +128,6 @@ data fleet_host_truth_observe_declares_cap_and_swap_expectations_beside_the_clai
         statement: "the join stays a producer join and never becomes a second admission decision: the seam passes the read module's verdict through unchanged, and joining the expectation producers must not add a rule beside gunbc.fleet.fleet_host_truth_read::fleet_truth_admits_host about which arm admits",
       },
     ],
-    next: climbs_when(capability: "the observe route builds its cap and swap declarations from the same claim carrier the roster consumer uses, or the carrier delegates to the observe route's producer -- one producer for a host's cap and swap axes, with declared_by naming the authority the value came from, and the planted-cap-divergence witness running against the declaration the standing read prints"),
+    next: climbs_when(capability: "the observe route builds its cap and swap declarations by CONSUMING the claim carrier the roster consumer uses -- the ruled direction, not an open question: claims in, one producer, declared_by naming the authority the value actually came from, and the runner-slot value retired for hosts that never declared one -- with the planted-cap-divergence witness then running against the same declaration the standing read prints"),
   },
 }
