@@ -633,3 +633,86 @@ passes claim_run  declared: source_roots, target, receipt_rel
 
 and the PR was closed unmerged. The instrument's own lane at this head: **28 claims — 28 held, 0 did not hold,
 0 unobserved** (12 m), engine built at head under the freshness gate.
+## §16 — review 99547: the step reddened the required job on every reused fast-lane run
+
+A fourth review (99547) found that the step as enrolled at §15 fails `v2-bootstrap` on a *reused fast-lane*
+run, and it is right. I verified each premise against the committed document before changing anything,
+because the last round taught me that an arm reasoned about locally can still be wrong about the runner:
+
+- `:621` — "Build the compiler" carries `if: steps.fast_lane.outputs.skip != 'true'`; the two emit steps
+  (`:693`, `:722`) carry the same condition. A reused run builds no compiler.
+- `:575-579` — the Cargo cache restores `registry/index/`, `registry/cache/`, `git/db/` and **no `target/`**,
+  so nothing puts `target/release/gunbc` back on a reused run.
+- The only binary a reused run holds is `gunbc-fast-lane-native-cli`, a copy of `$GEN_ONE`
+  (`dag/gunbc/read_set_publish.dag:97`), whose verbs are emit / check-layout / check-references /
+  parse-population. Handled a `run` it prints `REFUSED: unknown verb run` and exits 2 (run 46025990627,
+  job 140597407049) — the same fact that pushed §15 onto `target/release/gunbc` in the first place.
+- The job states its own convention: the classify notice at `:541` reads *"the whole-tree checks run with the
+  native CLI main built at that commit (REUSED, not fresh)"*, and the two whole-tree steps at `:743`/`:749`
+  are gated `if: steps.fast_lane.outputs.skip == 'true'` because they must use the restored CLI. A step that
+  needs `run` has no such gate and no such binary.
+- And the population the review named is the population this check exists for: classify matches changed paths
+  against recorded reads plus `src/v1/ .cargo/ fixtures/ .github/` (`:533-537`), so a `.dag` outside the
+  recorded read set reuses the lane while still presenting a non-empty `.dag` diff. Plans, extdeps, product,
+  roadmap rows — most of what a route author edits.
+
+§14's arm A5 recorded this case with only a local absence as evidence and concluded that refusing loudly beat
+skipping. That conclusion was wrong, and the reason it was wrong is the distinction this row keeps failing
+to draw finely enough: **a refusal must be a finding about the diff.** `fail_closed` requires every
+degradation to be typed, located and countable; it does not require — and here forbids — turning the
+pipeline's own missing tool into a verdict on somebody's change. A required gate that reliably fails correct
+PRs is not fail-closed, it is a defect wearing fail-closed's clothes.
+
+I reached twice for a closer, and twice the closer was not there. First `merge_group`, on the strength of the
+trigger list at `:11`: `gh run list --workflow witnesses.yml --limit 200` returns **184 `pull_request`, 16
+`push`, zero `merge_group`** — the workflow is written for a queue the repository does not run. Then the `push`
+lane on main, which is genuinely immune to reuse (the restore and classify steps are
+`if: github.event_name == 'pull_request'`, `:213`, `:552`) and genuinely always builds — and which is still not
+a closer, because **this step is enrolled only on the events that carry a base commit** and a push carries none.
+Main compiles a CLI this step never asks for. The draft sentence "main judges these files in full the moment
+they land" was written, and it was false for the same reason the queue sentence was: both arguments reasoned
+about the job's lanes and neither about this step's own condition. The annotation now states the hole and names
+the row that ends it; two claims refuse both sentences in the emitted script, so the wrong argument cannot come
+back as prose. What is enforced and what is not is in the next-to-last paragraph, unstarched.
+
+**The change.** Between the empty-scope skip and the carrier preflight, an arm on the job's own classify
+output — read through the environment (`GUNBC_DECLARED_ENTRY_FAST_LANE_SKIP: ${{ steps.fast_lane.outputs.skip }}`),
+never re-derived here, per `single_authority` — that when the lane was reused *and* the diff carries `.dag`
+changes prints an annotation naming the absent tool and the lane that will judge, prints
+`judged=0 reason=fast_lane_reused deferred=<n> .dag files, <m> lines`, and exits 0. The preflight survives as
+a hard refusal for the state it actually describes: a run classified full whose promised compiler is missing.
+Four claims hold it, one clause each: the question is asked through the environment only; the deferral is
+typed and names the closing row; the tally counts what went unjudged; and the ordering — deferral strictly
+after the empty-scope skip, strictly before the preflight, asserted from both sides with `w_before_first` — so
+the arm cannot drift back into a pass-with-nothing-judged or a reused-lane failure.
+
+**How those needles were checked, because the first version of them was wrong.** The claims read the step's
+*model* text, and a needle assembled one space short (`"$VAR"' '='` where the emitter writes `"$VAR" '='`) is
+not visible in a YAML listing and not visible in a Pass/Fail line. The needles are now checked byte-exactly
+against the model bytes: a throwaway `gunbc run` entry (`tools/regen/`, never committed) writes the step's
+`run` and rendered `env` to a file and the needles are matched against that. Two process rules fell out and
+are worth keeping: an exit code read through a pipe is the pipe's, not the engine's — the tally is the
+`HELD` / `DID-NOT-HOLD` / `UNOBSERVED` line count, never `$?`; and a duplicated `test fn` name reddens the
+*whole* claim file as `UNOBSERVED outcome=ClosureDiagnostics`, so a claim count is checked against the file's
+declaration list before it is quoted anywhere.
+
+**Rejected, with the reason kept.** Giving the fast-lane CLI a `run` verb dies on bootstrapping: the restored
+unit was built at an ancestor and predates the verb, so every reused run would fail `unknown verb` until
+main's cache turned over — this repo has a named recurring failure for exactly that
+(`a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand`). Gating the step on
+`skip != 'true'` produces a log with no annotation and no tally: indistinguishable from the silent skip the
+round before blocked. Building the compiler in the step is the job's deliberate skip and a budget question
+outside my authority. The honest route to PR-time coverage is a **fourth file in the fast-lane unit** — the
+seed CLI beside the read-set receipt, the native CLI and the compiler identity, with its own identity digest;
+its inputs are `src/**`, which the read set already claims, so reuse stays sound. That changes
+`gunbc.read_set_publish` and `gunbc.read_set_restore` and the cache size, so it is its own row and not a
+hitchhiker here.
+
+**Recorded plainly, because it is a narrowing and not a victory.** After this change the check enforces on every
+`pull_request` whose diff touches the compiler's read set, and in the reuse population it judges **nothing**:
+the reused PR lane defers, the queue does not run, and the push lane does not enroll this step. The population
+affected is the majority of route edits. There is no other event that enrolls this step to fall back on:
+`merge_group` has never run on this repo and the `push` run on main does not carry a base commit, so this is a
+hole with a name, not coverage-by-another-event. What closes it is the fast-lane-unit change above, and the row
+is not called done until that lands -- no acceptance request before it. The witness tally at this head: **32 claims — 32 held, 0 did not hold, 0 unobserved**, one process, engine fresh at head under the freshness gate (inputs=267).
+

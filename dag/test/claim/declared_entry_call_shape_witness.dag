@@ -37,7 +37,8 @@ import gunbc.witness.declared_entry_call_shape_step {
   declared_entry_call_shape_step, declared_entry_call_shape_step_name,
   declared_entry_call_shape_if_condition, declared_entry_call_shape_line_ceiling,
   declared_entry_call_shape_instrument_entry,
-  declared_entry_base_env_name, declared_entry_event_name_env_name, declared_entry_head_env_name
+  declared_entry_base_env_name, declared_entry_event_name_env_name, declared_entry_head_env_name,
+  declared_entry_fast_lane_skip_env_name, declared_entry_deferral_tally_prefix
 }
 import extdeps.languages.yaml.types {
   YamlKeyValue, YamlValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence,
@@ -432,8 +433,9 @@ test fn the_expressions_reach_the_document_through_the_environment_only() -> Boo
 // staged generator, whose verbs are emit / check-layout / check-references / parse-population: it printed
 // `REFUSED: unknown verb run` and reddened the required lane (run 46025990627, job 140597407049). The full CLI
 // is this job's own "Build the compiler" product, and a step reaching for the staged copy again is a red claim
-// here rather than a red runner. Its absence is also not a silence: a reused fast lane leaves no CLI, and the
-// step refuses that state out loud rather than skipping a diff it was asked to judge.
+// here rather than a red runner. When the job did not build one at all -- a reused fast lane -- the step does
+// not blame the diff: it defers, in the open, to the lane that cannot reuse. See
+// the_step_defers_on_a_reused_fast_lane_and_counts_what_it_defers.
 test fn the_step_asks_a_binary_that_owns_the_run_verb() -> Bool {
   let run = w_step_run(step: w_step())
   w_has(hay: run, needle: concat("'", concat(w_step_bin, "' 'run'")))
@@ -444,18 +446,86 @@ test fn the_step_asks_a_binary_that_owns_the_run_verb() -> Bool {
     && !w_has(hay: run, needle: "runner.temp")
 }
 
-// THE ONE SKIP IS THE EMPTY DIFF, AND IT IS COUNTABLE. `exit 0` appears exactly once in the script, on the
-// branch where the diff names no .dag file, and the sentence says so; every other refusal is `exit 1` with a
-// `::error` annotation naming what is missing. A run that judged nothing is never green, and a degradation
-// that lives only in log prose is not a degradation the fleet can see.
+// THE SKIP IS THE EMPTY DIFF, AND THE ONLY OTHER PASS WITHOUT A JUDGEMENT IS A COUNTED DEFERRAL. Two
+// sentences end this step at zero: the diff naming no .dag file, and a reused fast lane holding no run-capable
+// CLI. Both announce themselves, the deferral additionally leaves a machine-readable tally of the work it
+// pushed to the queue, and every refusal is `exit 1` with a `::error` annotation naming what is missing. A run
+// that judged nothing is never silent, and a degradation that lives only in prose is not a degradation the
+// fleet can count (gunbc.design_argument::fail_closed).
 test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
   let run = w_step_run(step: w_step())
   w_has(hay: run, needle: join(["if '[' '!' '-s' ", shv(name: "changed"), " ']'; then"], ""))
     && w_has(hay: run, needle: "'skipped: no .dag change in this diff, scope empty'")
-    && w_count_lines(hay: run, needle: "; exit 0; fi") == 1
+    && w_count_lines(hay: run, needle: "; exit 0; fi") == 2
     && w_count_lines(hay: run, needle: "; exit 1; fi") == 9
     && w_has(hay: run, needle: "'sort' '-u'")
 }
+
+// A REUSED FAST LANE DEFERS, IT DOES NOT FAIL, AND IT CLAIMS NO CLOSER IT DOES NOT HAVE. `Build the compiler`
+// is gated on this job's own classify output, so a reused run has no CLI carrying `run` -- the restored native
+// CLI's verbs are emit / check-layout / check-references / parse-population (the refusal run 46025990627 proved
+// the generator refuses `run`). Reddening the required job for a tool the job chose not to build puts a
+// pipeline defect on every author whose .dag is outside the compiler's read set, so the arm is a TYPED DEFERRAL:
+// it sits between the empty-scope skip and the carrier preflight (it fires only with real work pending and no
+// way to do it), it prints a tally of what it deferred, and it names the row that closes the gap -- the
+// fast-lane unit carrying a run-verb CLI.
+//
+// What this claim exists to stop is the sentence, not just the exit code. Two closers were argued for this arm
+// and both are false: the merge queue, which has run zero times in the last 200 witnesses runs (184
+// pull_request, 16 push) though the workflow declares the trigger; and the push run on main, which always
+// builds because only a pull_request can reuse -- but this step is enrolled only on the events that carry a
+// base commit, and a push carries none, so main compiles a CLI this step never asks for. Both refusals are
+// pinned below: the annotation states the hole, and neither lane may be named as a closer in the script.
+// THE STEP ASKS THE FAST LANE ITS QUESTION, AND ASKS IT THROUGH THE ENVIRONMENT ONLY. The step never reads
+// the job's classify output directly -- a GitHub expression inside a run block would be substituted before
+// bash sees it, which is the defect the environment-only rule exists to stop.
+// THE STEP ASKS THE FAST LANE ITS QUESTION, AND ASKS IT THROUGH THE ENVIRONMENT ONLY. The step never reads
+// the job's classify output directly -- a GitHub expression inside a run block would be substituted before
+// bash sees it, which is the defect the environment-only rule exists to stop. The question is asked with the
+// job's own word, `steps.fast_lane.outputs.skip`, so the step cannot disagree with the lane's own decision.
+test fn the_step_asks_the_fast_lane_question_through_the_environment() -> Bool {
+  let run = w_step_run(step: w_step())
+  let env = w_step_env(step: w_step())
+  w_has(hay: env, needle: concat(declared_entry_fast_lane_skip_env_name, concat(": ", w_dollar_brace(text: "{ steps.fast_lane.outputs.skip }}"))))
+    && w_has(hay: run, needle: shv(name: declared_entry_fast_lane_skip_env_name))
+    && w_has(hay: run, needle: concat("if '[' ", concat(shv(name: declared_entry_fast_lane_skip_env_name), " '=' 'true' ']'; then")))
+}
+
+// THE DEFERRAL IS TYPED AND LOCATED IN ITS REASON: it names the lane that was reused, the tool that is
+// missing, the population it covers, and the row that closes it. Neither of the two false closers may
+// reappear -- the merge queue that has never run on this repo, and the push run on main that builds a
+// compiler this step is not enrolled on.
+test fn the_step_defers_on_a_reused_fast_lane_with_a_notice_that_names_the_closing_row() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "'deferred: the fast lane was reused")
+    && w_has(hay: run, needle: "no CLI here can run the instrument")
+    && w_has(hay: run, needle: "nothing judges these")
+    && w_has(hay: run, needle: "The fast-lane unit carrying a run-verb CLI closes this")
+    && w_has(hay: run, needle: "roadmap: remote-build-fast-lane-seed-cli")
+    && !w_has(hay: run, needle: "The push run on main")
+    && !w_has(hay: run, needle: "the moment they land")
+    && !w_has(hay: run, needle: "merge queue")
+}
+
+// AND IT IS COUNTABLE. A skip that only exists as prose in a log is not a degradation the ledger can see;
+// the tally line names how many .dag files and how many lines went unjudged, under the reason the fast lane
+// was reused.
+test fn the_step_defers_with_a_tally_naming_what_went_unjudged() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: declared_entry_deferral_tally_prefix)
+    && w_has(hay: w_after_first(hay: run, marker: declared_entry_deferral_tally_prefix), needle: shv(name: "scope"))
+    && w_has(hay: w_after_first(hay: run, marker: declared_entry_deferral_tally_prefix), needle: shv(name: "lines"))
+}
+
+// THE ARM SITS BETWEEN THE TWO ARMS IT MUST NOT REPLACE: after the honest empty-scope skip, and before the
+// carrier preflight -- so the preflight stays a refusal for the state it actually describes, a full run that
+// promised a build and produced no CLI.
+test fn the_step_places_the_deferral_between_the_empty_scope_skip_and_the_carrier_preflight() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: w_before_first(hay: run, marker: "judged=0 reason=fast_lane_reused"), needle: "'skipped: no .dag change in this diff, scope empty'")
+    && w_has(hay: w_before_first(hay: run, marker: "no executable run-verb CLI at "), needle: "judged=0 reason=fast_lane_reused")
+}
+
 
 // THE CARRIER CARRIES ITS OWN DISSOLUTION, ON THE LINE THE RUNNER READS FIRST. The step is the one place on
 // this route where a model cannot answer for itself -- a whole-tree `git grep` it could only reply to by

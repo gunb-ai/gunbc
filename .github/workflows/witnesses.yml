@@ -772,7 +772,8 @@ jobs:
           merge_base=$('git' 'merge-base' "$GUNBC_DECLARED_ENTRY_BASE_SHA" "$head")
           'git' 'diff' '--name-only' '--diff-filter=d' "$merge_base" "$head" '--' '*.dag' > "$changed"
           if '[' '!' '-s' "$changed" ']'; then 'echo' '::notice title=declared entry call shape::''skipped: no .dag change in this diff, scope empty'; exit 0; fi
-          if ! 'test' '-x' 'target/release/gunbc'; then 'echo' '::error title=declared entry call shape::''no executable run-verb CLI at target/release/gunbc: this job'\''s compiler build is skipped on a reused fast-lane run, and this diff carries .dag changes for the check to judge. Re-run with the fast lane not reused, or carry the CLI in the fast-lane cache'; exit 1; fi
+          if '[' "$GUNBC_DECLARED_ENTRY_FAST_LANE_SKIP" '=' 'true' ']'; then 'echo' '::notice title=declared entry call shape::''deferred: the fast lane was reused, so this job built no compiler and no CLI here can run the instrument, and no other event enrolls this step -- nothing judges these '"$scope"' .dag files on this run. The fast-lane unit carrying a run-verb CLI closes this (roadmap: remote-build-fast-lane-seed-cli)'; 'echo' 'judged=0 reason=fast_lane_reused deferred='"$scope"' .dag files, '"$lines"' lines'; exit 0; fi
+          if ! 'test' '-x' 'target/release/gunbc'; then 'echo' '::error title=declared entry call shape::''no executable run-verb CLI at target/release/gunbc: this is not a reused-fast-lane run, so the job promised a compiler build and this diff carries .dag changes for the check to judge. Re-run, or carry the CLI in the fast-lane cache'; exit 1; fi
           'target/release/gunbc' 'run' '--source-root' 'dag' '--source-root' 'src/v2' '--entry' 'dag/gunbc/instruments/declared_entry_call_shape.dag' '--function' 'declared_entry_call_shape_stems_emit' '--arg' 'changed_paths_file='"$dir"'changed.txt' '--arg' 'stems_file='"$dir"'stems.txt'
           ':' > "$candidates"
           if '[' '-s' "$stems" ']'; then if 'git' 'grep' '-l' '-F' '-f' "$stems" '--' '*.dag' > "$candidates"'.grep'; then ':'; else rc="$?"; if '[' "$rc" '-gt' '1' ']'; then 'echo' '::error title=declared entry call shape::''git grep refused the reverse-import search: this is a repository error, not an empty answer'; exit 1; fi; fi; 'cat' "$candidates"'.grep' >> "$candidates"; fi
@@ -788,6 +789,7 @@ jobs:
           GUNBC_DECLARED_ENTRY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           GUNBC_DECLARED_ENTRY_EVENT_NAME: ${{ github.event_name }}
           GUNBC_DECLARED_ENTRY_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUNBC_DECLARED_ENTRY_FAST_LANE_SKIP: ${{ steps.fast_lane.outputs.skip }}
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
       - name: Restore parse-verdict unit for base ancestor 0
         id: parse_receipts_0

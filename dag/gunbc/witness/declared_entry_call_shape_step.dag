@@ -241,6 +241,22 @@ data declared_entry_gunbc_bin: String = "target/release/gunbc"
 // in the annotation, and which event arrived is the fact that decided it.
 data declared_entry_event_name_expression: String = "${{ github.event_name }}"
 
+// WHETHER THIS JOB BUILT A COMPILER AT ALL, AS THE JOB ALREADY DECIDES IT. `steps.fast_lane.outputs.skip`
+// is the job's own answer to "is the materialization reused", written by its "Decide whether the fast-lane
+// unit covers this change" step and already consumed the same way by the whole-tree steps that run with the
+// restored CLI. Reading that output rather than re-deriving reuse keeps one authority for the question
+// (gunbc.design_argument::single_authority); the check only asks it, it never classifies.
+data declared_entry_fast_lane_skip_env_name: String = "GUNBC_DECLARED_ENTRY_FAST_LANE_SKIP"
+
+data declared_entry_fast_lane_skip_expression: String = "${{ steps.fast_lane.outputs.skip }}"
+
+data declared_entry_fast_lane_reused_value: String = "true"
+
+// The machine-readable tally a deferral leaves behind. One line, greppable, counting the work the PR lane
+// pushed to the queue: without it a deferral is prose, and prose is not countable
+// (gunbc.design_argument::fail_closed, "every degradation is typed, located and countable").
+data declared_entry_deferral_tally_prefix: String = "judged=0 reason=fast_lane_reused deferred="
+
 // ── THE SCRIPT, AS CONSTRUCTS ──────────────────────────────────────────────────────────────────────────
 //
 // The body is authored as bash_build NODES and rendered by v2.workflow.bash_emit -- the route the fleet
@@ -452,16 +468,51 @@ fn declared_entry_call_shape_scope_statements(
         bash_build_exit(code: "0")
       ],
     ),
-    // THE CARRIER MUST EXIST BEFORE IT IS BLAMED. The CLI that owns `run` is this job's own "Build the
-    // compiler" product, and the fast lane skips that build when the materialization is reused -- a reused run
-    // has no run-capable binary at all. A .dag-empty diff has already skipped above, so arriving here with no
-    // carrier means there IS a diff to judge and nothing to judge it with. That is refused, not skipped: a
-    // check that passes when it could not run is the green this row exists to end
-    // (gunbc.design_argument::fail_closed, "every degradation is typed, located and countable").
+    // THE FAST LANE MAY HOLD THE TOOLCHAIN, AND THE LANE THAT CLOSES THIS CANNOT SKIP.
+    // `Build the compiler` is gated on `steps.fast_lane.outputs.skip != 'true'`: when the job's own classify
+    // step reuses the materialization it builds no compiler, and the only CLI that run has is the restored
+    // native CLI -- whose verbs are emit, check-layout, check-references and parse-population, no `run` (the
+    // job says so itself: "the whole-tree checks run with the native CLI main built at that commit (REUSED,
+    // not fresh)"). So a reused run holds nothing that can execute this instrument, whatever the diff says.
+    // That is a MISSING TOOL, not a finding about the diff, and failing the required job for it would put a
+    // defect of the pipeline on every author whose PR touches .dag outside the compiler's read set -- the
+    // majority of the population this check exists to judge. So the deferral is honest rather than fatal, and
+    // honest in the way fail_closed requires: TYPED (its own notice, naming the cause and the tool that was
+    // absent), LOCATED (this arm, between the empty-scope skip and the carrier preflight -- it fires only
+    // when there is real work and no way to do it), COUNTABLE (the tally line, naming how much was deferred).
+    // AND IT CLAIMS NO CLOSER IT DOES NOT HAVE. Two candidates were argued here and both are false as written,
+    // so neither is said anywhere in the emitted script -- there are claims refusing them. (a) The merge queue:
+    // the workflow declares `merge_group`, but the last 200 witnesses runs held none (184 pull_request, 16
+    // push), so the queue does not run. (b) The push run on main: it never reuses the fast lane and always
+    // builds, which sounds like the closer -- except this step is enrolled only on the events that carry a base
+    // commit, which is what refuses an unjudged run, and a `push` carries none. So main builds a compiler this
+    // step never asks. The honest statement is that in this population nothing judges the diff today; what ends
+    // that is the fast-lane unit carrying a run-verb CLI, named in the annotation by its row id
+    // (remote-build-fast-lane-seed-cli), with enrolling the push lane on a base it can compute as that row's
+    // second half. Design note §16 carries the same account.
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [
+        w_var(declared_entry_fast_lane_skip_env_name), w_lit("="), w_lit(declared_entry_fast_lane_reused_value)
+      ], spelling: BracketQuoted),
+      then_stmts: [
+        cs_announce_node(prefix: declared_entry_notice_prefix, message: bash_build_word_concat_from_nodes(parts: [
+          w_lit("deferred: the fast lane was reused, so this job built no compiler and no CLI here can run the instrument, and no other event enrolls this step -- nothing judges these "),
+          w_var("scope"), w_lit(" .dag files on this run. The fast-lane unit carrying a run-verb CLI closes this (roadmap: remote-build-fast-lane-seed-cli)")
+        ])),
+        bash_build_command_with_words(words: [w_lit("echo"), bash_build_word_concat_from_nodes(parts: [
+          w_lit(declared_entry_deferral_tally_prefix), w_var("scope"), w_lit(" .dag files, "), w_var("lines"), w_lit(" lines")
+        ])]),
+        bash_build_exit(code: "0")
+      ],
+    ),
+    // THE CARRIER MUST EXIST BEFORE IT IS BLAMED -- when the job claimed it would build one. A full run that
+    // reaches here with no run-capable CLI is a contradiction inside the job itself: `Build the compiler`
+    // said it would run and its product is not there. That is refused, not skipped; a check that passes when
+    // it could not run is the green this row exists to end (gunbc.design_argument::fail_closed).
     bash_build_if_from_stmts(
       cond: bash_build_negation(inner: bash_build_command_with_words(words: [w_lit("test"), w_lit("-x"), w_lit(bin)])),
       then_stmts: [
-        cs_refusal(concat("no executable run-verb CLI at ", concat(bin, ": this job's compiler build is skipped on a reused fast-lane run, and this diff carries .dag changes for the check to judge. Re-run with the fast lane not reused, or carry the CLI in the fast-lane cache"))),
+        cs_refusal(concat("no executable run-verb CLI at ", concat(bin, ": this is not a reused-fast-lane run, so the job promised a compiler build and this diff carries .dag changes for the check to judge. Re-run, or carry the CLI in the fast-lane cache"))),
         bash_build_exit(code: "1")
       ],
     ),
@@ -644,7 +695,8 @@ fn declared_entry_call_shape_env() -> List<YamlKeyValue> {
   [
     kv(key: declared_entry_base_env_name, value: yaml_string(s: declared_entry_base_sha_expression)),
     kv(key: declared_entry_event_name_env_name, value: yaml_string(s: declared_entry_event_name_expression)),
-    kv(key: declared_entry_head_env_name, value: yaml_string(s: declared_entry_head_sha_expression))
+    kv(key: declared_entry_head_env_name, value: yaml_string(s: declared_entry_head_sha_expression)),
+    kv(key: declared_entry_fast_lane_skip_env_name, value: yaml_string(s: declared_entry_fast_lane_skip_expression))
   ]
 }
 
