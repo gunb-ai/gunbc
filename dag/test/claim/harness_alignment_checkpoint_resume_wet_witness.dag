@@ -1,0 +1,1304 @@
+module test.claim.harness_alignment_checkpoint_resume_wet_witness
+
+// WITNESSES FOR rn_HALIGN0CHECKPOINT0RESUME0A (harness-alignment-checkpoint-resume). The row's four
+// red controls, run against the REAL authorities on gunbc.harness.harness_turn -- the boundary's
+// emission, the admitted-root projection, the adjudication, the publication and the resume gate --
+// over real files in a real temp directory. Nothing here stubs the boundary it grades: the evidence is
+// written to disk by the boundary's own persistence step, and adjudication and the gate read it back
+// with their own readers. Effects: shell.Mktemp, Filesystem reads/writes, shell.Remove.RecursiveForce;
+// local-repo wet lane. G0: no dispatch, no drain, no belt tick, no launcher -- these tests only touch
+// files under /tmp and call pure/IO model functions.
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.logic { Bool }
+import std.optional { Present }
+import std.types { String, List, Int, FilePath }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
+import std.algebra { trim, length, string_contains }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, ReasoningOff }
+import gunbc.harness.harness_wire { harness_context_budget_for }
+import gunbc.harness.harness_tool { harness_tool_environment, ValidationNotOffered }
+import gunbc.harness.harness_cli {
+  harness_turn_exit, harness_default_wire_shape, harness_default_max_tokens, harness_request_deadline,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap.roadmap_alignment_verdict { AlignmentVerdict, Aligned, Misaligned, CatastrophicallyMisaligned }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentChainLink, AlignmentChain, AlignmentChained, AlignmentChainUnrooted,
+  alignment_chain_fingerprint, alignment_checkpoint_identity_digest, AlignmentCheckpointIdentity,
+  alignment_base_cadence_state, AlignmentCadenceState, alignment_state_interval,
+  alignment_next_interval, CadenceStepInterval, CadenceStepStopTheLine,
+  alignment_resolve_chain, AlignmentReady,
+}
+import gunbc.harness.harness_turn {
+  HarnessTurnConfig, Unsupervised, BackendAdmittedBySeat, CompletesOnProviderStop,
+  TurnAlignmentCheckpointDue, TurnSupervisionUnavailable, TurnStoppedBySupervision,
+  HarnessSupervisionPause,
+  HarnessAlignmentCheckpointEvidence, HarnessAlignmentChainProjection, ProjectionAdmitted, ProjectionRefused,
+  HarnessAlignmentAdjudication, HarnessAlignmentAdjudicationRead, AdjudicationPublished, AdjudicationRefused,
+  HarnessAlignmentResume, ResumedOnce, ResumeRefused, StoppedByVerdict,
+  harness_alignment_chain_projection, harness_alignment_adjudicate, harness_alignment_resume_gate,
+  harness_alignment_adjudicate_and_resume, harness_alignment_resume_apply,
+  harness_alignment_epoch_opened_path, harness_alignment_epoch_record_present,
+  EpochRecordPresent, EpochRecordAbsent, EpochRecordUnreadable,
+  harness_alignment_epoch_opened_line,
+  harness_alignment_open_epoch, EpochOpened, EpochAlreadyOpen, EpochOpeningUnwritable,
+  harness_alignment_publication_path, harness_alignment_publication_text, harness_alignment_publish,
+  harness_alignment_observation_digest, harness_alignment_fingerprint_of, harness_alignment_checkpoint_digest,
+  harness_event_alignment_checkpoint_due, harness_turn_checkpoint_due, harness_alignment_conversation_tip,
+  harness_supervision_artifact_path, harness_supervision_observation_text, harness_supervision_verdict_name,
+  HarnessNestedTurnRead, NestedTurnUndecided, NestedTurnWrote, harness_nested_turn,
+}
+
+fn fresh_dir(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_align_", tag, ".XXXXXX"], "")).path
+}
+
+fn admitted_root() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority")
+}
+
+// THE FIXTURE SPINE: task -> project -> admitted root, every link filled. The chains are built from
+// the chain authority's own types and their fingerprints are taken from the chain authority's own
+// digest -- this module derives no fingerprint, no digest and no refusal of its own.
+fn link_of(node_id: String, red_control: String, contribution: String) -> AlignmentChainLink {
+  AlignmentChainLink {
+    node_id: node_id,
+    purpose: join(["the purpose of ", node_id], ""),
+    boundary: join(["the boundary of ", node_id], ""),
+    current_approach: join(["the approach of ", node_id], ""),
+    red_control: red_control,
+    handback: join(["the handback of ", node_id], ""),
+    displaced_cost: join(["the displaced cost of ", node_id], ""),
+    contribution_to_parent: contribution,
+  }
+}
+
+fn spine(red_control: String) -> AlignmentChain {
+  AlignmentChained {
+    task: link_of(node_id: "align-witness-task", red_control: red_control, contribution: "the task contributes its evidence"),
+    projects: [link_of(node_id: "align-witness-project", red_control: "the project's red control", contribution: "the project contributes the spine")],
+    root: admitted_root(),
+  }
+}
+
+fn spine_unrooted() -> AlignmentChain {
+  AlignmentChainUnrooted {
+    walked: [
+      link_of(node_id: "align-witness-task", red_control: "the task's red control", contribution: "the task contributes its evidence"),
+      link_of(node_id: "align-witness-project", red_control: "the project's red control", contribution: "the project contributes the spine"),
+    ],
+    at: "align-witness-orphan",
+  }
+}
+
+// THE ROUND'S OWN MESSAGE STATE. Empty evidence is no evidence -- adjudication refuses it on purpose
+// -- so the witnesses hand the boundary a real conversation to persist, exactly as a real turn does.
+fn round_messages() -> List<JsonValue> {
+  [
+    json_object(members: [
+      json_kv(key: "role", value: json_string(s: "user")),
+      json_kv(key: "text", value: json_string(s: "carry the checkpoint across the epoch boundary")),
+    ]),
+    json_object(members: [
+      json_kv(key: "role", value: json_string(s: "assistant")),
+      json_kv(key: "text", value: json_string(s: "persisted the round's evidence and returned control")),
+    ]),
+  ]
+}
+
+fn observation_text(steps: Int) -> String {
+  harness_supervision_observation_text(messages: round_messages(), round_steps: steps)
+}
+
+fn observation_in(dir: String, steps: Int) -> String {
+  harness_supervision_artifact_path(check_directory: dir, kind: "observation", steps_taken: steps, extension: ".txt")
+}
+
+fn verdict_in(dir: String, steps: Int) -> String {
+  join([dir, "/", harness_supervision_verdict_name(kind: "check", steps_taken: steps)], "")
+}
+
+fn write_file(path: String, content: String) -> Bool {
+  Filesystem.Write(path: path, content: content).success
+}
+
+fn read_file(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { read.content } else { "" }
+}
+
+fn events_in(dir: String) -> String {
+  join([dir, "/provider-events.jsonl"], "")
+}
+
+// THE TIP THE BOUNDARY ITSELF RECORDS, read from the same authority the emission calls. The witness
+// never supplies its own tip string: doing so would have it witness its own invention instead of the
+// binding adjudication is required to honour.
+fn boundary_tip() -> String {
+  harness_alignment_conversation_tip(messages: round_messages())
+}
+
+// RUN THE REAL BOUNDARY, so the durable checkpoint event exists before anything adjudicates. Tests ask
+// the boundary to produce the record they are then checked against; none of them hand adjudication a
+// hand-written event, because a fixture that fabricates the binding witnesses nothing.
+fn emit_boundary(dir: String, chain: AlignmentChain, steps: Int) -> Bool {
+  match harness_turn_checkpoint_due(
+    config: turn_config(dir: dir),
+    chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: observation_text(steps: steps), steps: steps),
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+  ) {
+    TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } => true
+    _ => false
+  }
+}
+
+// THE EVIDENCE AS PRESENTED FOR ADJUDICATION. The fingerprint here is a CLAIM -- the projection travels
+// to adjudication from the caller -- so adjudication checks it against the durable record instead of
+// trusting it, and one witness leg below deliberately gets it wrong to prove that check has teeth.
+fn evidence_in(dir: String, observation: String, steps: Int, claimed_fingerprint: String) -> HarnessAlignmentCheckpointEvidence {
+  HarnessAlignmentCheckpointEvidence {
+    observation_path: observation_in(dir: dir, steps: steps),
+    observation_digest: harness_alignment_observation_digest(observation: observation),
+    conversation_tip: boundary_tip(),
+    chain_fingerprint: claimed_fingerprint,
+    round_steps: steps,
+    steps_taken: steps,
+  }
+}
+
+fn project(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> HarnessAlignmentChainProjection {
+  project_claiming(chain: chain, dir: dir, observation: observation, steps: steps, claimed_fingerprint: derive_fingerprint(chain: chain, steps: steps))
+}
+
+// A projection whose evidence CLAIMS a fingerprint of the caller's choosing. Used by the red control 3
+// legs, which need to show that a claim buys nothing: the durable record decides.
+fn project_claiming(chain: AlignmentChain, dir: String, observation: String, steps: Int, claimed_fingerprint: String) -> HarnessAlignmentChainProjection {
+  harness_alignment_chain_projection(
+    chain: chain,
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    evidence: evidence_in(dir: dir, observation: observation, steps: steps, claimed_fingerprint: claimed_fingerprint),
+  )
+}
+
+// WHAT THE CHAIN AUTHORITY DERIVES TODAY, asked of the authority itself rather than through a
+// projection -- a projection would need an evidence claim, which would need this, and the witness would
+// be defining its own expectation.
+fn derive_fingerprint(chain: AlignmentChain, steps: Int) -> String {
+  match alignment_resolve_chain(chain: chain, turns_elapsed: steps, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain: resolved, due_levels: _, rendered_prompt: _ } => alignment_chain_fingerprint(chain: resolved)
+    _ => ""
+  }
+}
+
+fn fingerprint(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> String {
+  derive_fingerprint(chain: chain, steps: steps)
+}
+
+fn checkpoint_bound_to(chain: AlignmentChain, dir: String, observation: String, steps: Int, lineage: String, epoch: Int) -> AlignmentCheckpointIdentity {
+  AlignmentCheckpointIdentity {
+    attempt_lineage: lineage,
+    epoch: epoch,
+    checkpoint_ordinal: 1,
+    chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: observation, steps: steps),
+    conversation_tip: boundary_tip(),
+    candidate_subject: "align-witness-candidate",
+  }
+}
+
+// THE PAUSE THE RESUME STEP ACTS ON, built the way the boundary builds it: the same config, the same
+// round, the same observation the boundary persisted. It is the carrier the continuation effect runs on,
+// so the witnesses that speak about "the lineage resumed" drive THIS, not a hand-rolled gate call.
+fn pause_in(dir: String, steps: Int) -> HarnessSupervisionPause {
+  HarnessSupervisionPause {
+    config: turn_config(dir: dir),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    observation: observation_text(steps: steps),
+    messages: round_messages(),
+    steps_taken: steps,
+    repairs_used: 0,
+  }
+}
+
+fn turn_config(dir: String) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: "http://127.0.0.1:1/v1",
+    model: "align-witness-model",
+    max_tokens: harness_default_max_tokens,
+    serving_unit: DeepseekV4FlashOnVllm,
+    reasoning_mode: ReasoningOff,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: "align-witness",
+    supervision: Unsupervised,
+    request_scratch_path: join([dir, "/request.json"], "") as FilePath,
+    events_path: join([dir, "/provider-events.jsonl"], "") as FilePath,
+    context_budget: harness_context_budget_for(unit: DeepseekV4FlashOnVllm),
+    request_deadline: harness_request_deadline,
+    environment: harness_tool_environment(
+      working_directory: dir as FilePath,
+      timeout_program: "/usr/bin/timeout" as FilePath,
+      job_output_directory: dir as FilePath,
+      validation: ValidationNotOffered,
+    ),
+    completion: CompletesOnProviderStop,
+    backend_access: BackendAdmittedBySeat,
+  }
+}
+
+// RED CONTROL 1 -- AN UNROOTED TASK REFUSES ITS CHAIN. The projection is asked for the chain of a
+// walk that dies before the admitted root, and it must REFUSE with the chain authority's own cause;
+// the rooted spine must be admitted with the authority's fingerprint intact. No local notion of
+// "rooted enough" is consulted on either path -- the refusal text is the resolver's, the fingerprint
+// is the digester's.
+test fn an_unrooted_task_refuses_its_chain_and_a_rooted_one_is_admitted() -> Bool {
+  let dir = fresh_dir(tag: "unrooted")
+  let observation = observation_text(steps: 4)
+  let refused = project(chain: spine_unrooted(), dir: dir, observation: observation, steps: 4)
+  let admitted = project(chain: spine(red_control: "the task's red control"), dir: dir, observation: observation, steps: 4)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  removed.success
+    && match refused {
+         // BY NAME: the refusal must be the chain authority's own unrooted verdict -- an
+         // AlignmentWalkUnrooted reason, not merely "some cause came back". A non-empty-cause check
+         // would still pass if a fixture defect made some unrelated arm refuse.
+         ProjectionRefused { cause } => string_contains(s: cause, pattern: "not an admitted root")
+         ProjectionAdmitted { chain: _, evidence: _ } => false
+       }
+    && match admitted {
+         ProjectionAdmitted { chain, evidence: _ } =>
+           harness_alignment_fingerprint_of(chain: chain) == alignment_chain_fingerprint(chain: chain)
+             && trim(s: harness_alignment_fingerprint_of(chain: chain)) != ""
+         ProjectionRefused { cause: _ } => false
+       }
+}
+
+// RED CONTROL 2 -- A WORKER'S OWN ALIGNED ASSERTION CANNOT MINT A CONTINUATION RECEIPT. Three refusals:
+// (a) the boundary persisted the round's evidence and the worker then overwrote that file with its own
+// claim of alignment -- adjudication refuses, because the digest the boundary recorded no longer
+// matches the artifact; (b) the check's verdict artifact is absent -- an undecided checkpoint resumes
+// nothing, however loudly the conversation asserts alignment; (c) a publication keyed to a DIFFERENT
+// checkpoint cannot resume this lineage, so a receipt minted elsewhere buys nothing here.
+test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> Bool {
+  let dir = fresh_dir(tag: "assertion")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 9
+  let honest = observation_text(steps: steps)
+  let emitted = harness_turn_checkpoint_due(
+    config: turn_config(dir: dir),
+    chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: honest, steps: steps),
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+  )
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: honest, steps: steps, lineage: "align-witness-assertion", epoch: 6)
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  // (a) the graded party rewrites its own evidence to assert alignment.
+  let tampered = write_file(path: path, content: join([honest, "\nWORKER ASSERTION: aligned, ship it\n"], ""))
+  let wrote_verdict = write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let tampered_read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  // (b) restore the honest bytes; take the verdict artifact away.
+  let restored = write_file(path: path, content: honest)
+  let no_verdict = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: join([dir, "/supervision-check-verdict-after-turn-404.json"], ""),
+    cadence: alignment_base_cadence_state(),
+  )
+  // (c) the same honest bytes, but the caller presents a DIFFERENT claim about them: a projection whose
+  // evidence digest is the worker's own assertion about the round rather than the digest the boundary
+  // wrote. A claim about the evidence is not the evidence, and the durable record is the arbiter.
+  let fabricated = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: "I, the worker, assert this round is aligned", steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  // (d) a receipt published for another checkpoint (different lineage and epoch, so another digest).
+  let other = checkpoint_bound_to(chain: chain, dir: dir, observation: honest, steps: steps, lineage: "align-witness-elsewhere", epoch: 99)
+  let foreign = harness_alignment_resume_gate(
+    checkpoint: checkpoint,
+    published: harness_alignment_publish(
+      check_directory: dir,
+      adjudication: HarnessAlignmentAdjudication {
+        checkpoint: other,
+        verdict: Aligned,
+        cadence: alignment_base_cadence_state(),
+      },
+    ),
+  )
+  // (e) THE POSITIVE CONTROL, inside this witness and not only across the module: honest bytes, an
+  // honest projection and the real verdict artifact DO adjudicate and DO resume, once, into the next
+  // epoch. Without it the four refusals above could all pass on a pipeline that refuses everything --
+  // a red control that cannot go green is not a control.
+  let honest_adjudicated = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  let honest_gate = harness_alignment_resume_gate(
+    checkpoint: checkpoint,
+    published: harness_alignment_publish(
+      check_directory: dir,
+      adjudication: HarnessAlignmentAdjudication {
+        checkpoint: checkpoint,
+        verdict: Aligned,
+        cadence: alignment_base_cadence_state(),
+      },
+    ),
+  )
+  // (f) THE REFUSAL DOES NOT EAT ITS EVIDENCE. A dispatcher whose conversation has moved on cannot make
+  // its own text become the evidence. The durable bytes are asserted, byte for byte, to still be the
+  // ones this leg wrote, AFTER an entry-level adjudication that refused on the digest -- so the refusal
+  // is a refusal and not an erasure, and the checkpoint stays re-adjudicable. Before this fix the
+  // check-convening step rebuilt the round from the caller's `messages` and wrote the result over the
+  // boundary's file, so the digest refusal arrived only once the evidence was already gone: this leg
+  // could not pass, which is the point of writing it.
+  let dispatcher_body = join([honest, "\nDISPATCHER REWRITE OF THE ROUND\n"], "")
+  let wrote_dispatcher = write_file(path: path, content: dispatcher_body)
+  let entry_with_divergent_messages = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: [
+      json_object(members: [
+        json_kv(key: "role", value: json_string(s: "user")),
+        json_kv(key: "text", value: json_string(s: "the conversation has moved on since the boundary; grade THIS instead")),
+      ]),
+    ],
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let evidence_survived_the_refusal = read_file(path: path) == dispatcher_body
+  // (f) A VERDICT PLANTED BEFORE THE CHECK RUNS IS NOT THAT CHECK'S VERDICT. The check-convening step
+  // refuses outright when a verdict artifact already sits at the path the check would write -- the graded
+  // party's own commands can write under the attempt's state directory -- so a planted "{"kind": "aligned"}"
+  // buys no continuation. It is asked in a directory of its own, so nothing earlier in this claim can be
+  // the reason it refuses, and BY NAME on the pre-existing-verdict cause.
+  let pre_stamp_dir = fresh_dir(tag: "prestamp")
+  let planted_verdict = verdict_in(dir: pre_stamp_dir, steps: steps)
+  let planted = write_file(path: planted_verdict, content: "{\"kind\": \"aligned\"}")
+  let pre_stamp_refused = harness_nested_turn(
+    config: turn_config(dir: pre_stamp_dir),
+    prompt: "grade this round against the node's red control",
+    step_budget: steps,
+    verdict_path: planted_verdict,
+  )
+  let pre_stamp_refused_it = match pre_stamp_refused {
+    NestedTurnUndecided { cause, carried: _ } =>
+      string_contains(s: cause, pattern: "before it ran")
+        && string_contains(s: cause, pattern: planted_verdict)
+        && !string_contains(s: cause, pattern: "does not match the digest")
+    NestedTurnWrote { text: _, carried: _ } => false
+  }
+  let pre_stamp_cleaned = shell.Remove.RecursiveForce(path: pre_stamp_dir)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  match emitted {
+    TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } =>
+      removed.success && tampered && wrote_verdict && restored
+        && wrote_dispatcher && evidence_survived_the_refusal
+        && planted && pre_stamp_refused_it && pre_stamp_cleaned.success
+        && match entry_with_divergent_messages {
+             // BY NAME on the digest refusal, and the bytes on disk are the discriminator: the entry
+             // refused because the persisted evidence is not what the boundary recorded -- and refused
+             // WITHOUT overwriting it with the caller's conversation.
+             TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+               string_contains(s: cause, pattern: "does not match the digest the boundary recorded")
+                 // BY EXCLUSION, and this pair is what "the round is disqualified before anything is paid
+                 // for it" means observably. "found a verdict already at" is the check-convening step's own
+                 // refusal (harness_nested_turn), so seeing it would mean a check had been convened on a
+                 // round the durable record already disqualified; "already recorded as opened" is the replay
+                 // arm's. Neither may appear in an entry refusal that is supposed to precede both.
+                 && !string_contains(s: cause, pattern: "found a verdict already at")
+                 && !string_contains(s: cause, pattern: "already recorded as opened")
+             _ => false
+           }
+        && match tampered_read {
+             // WHICH check fired is part of the claim: the expectation is the durable event's, so the
+             // refusal must be the digest refusal and not the empty-file or missing-verdict one.
+             AdjudicationRefused { cause } => string_contains(s: cause, pattern: "digest")
+             AdjudicationPublished { adjudication: _ } => false
+           }
+        && match fabricated {
+             AdjudicationRefused { cause } => string_contains(s: cause, pattern: "not the evidence the durable checkpoint event bound")
+             AdjudicationPublished { adjudication: _ } => false
+           }
+        && match no_verdict {
+             // BY NAME: the missing-verdict refusal, not whichever check happened to fire first.
+             AdjudicationRefused { cause } => string_contains(s: cause, pattern: "verdict artifact is unreadable")
+             AdjudicationPublished { adjudication: _ } => false
+           }
+        && match foreign {
+             // BY NAME: the key mismatch is the refusal, not an unreadable body or a missing cadence.
+             ResumeRefused { cause } => string_contains(s: cause, pattern: "keyed to a different checkpoint")
+             // A receipt minted for another checkpoint may not resume this lineage whether it offers an
+             // epoch or a stop: neither was adjudicated against this checkpoint's evidence.
+             ResumedOnce { next_epoch: _, checkpoint: _, verdict: _, cadence: _ } => false
+             StoppedByVerdict { verdict: _, cadence: _ } => false
+           }
+        && match honest_adjudicated {
+             AdjudicationPublished { adjudication: graded } =>
+               match graded.verdict {
+                 Aligned => true
+                 _ => false
+               }
+             AdjudicationRefused { cause: _ } => false
+           }
+        && match honest_gate {
+             // The honest path resumes into exactly checkpoint.epoch + 1 -- the epoch the boundary's own
+             // identity numbers next, not any epoch.
+             ResumedOnce { next_epoch: opened, checkpoint: _, verdict: _, cadence: _ } => opened == 7
+             ResumeRefused { cause: _ } => false
+             StoppedByVerdict { verdict: _, cadence: _ } => false
+           }
+    _ => false
+  }
+}
+
+// RED CONTROL 3 -- A CHANGED NODE CONTRACT OR EDGE CONTRIBUTION INVALIDATES EARLIER RECEIPTS. The
+// checkpoint is bound to the fingerprint the chain authority derived for the spine as it stood; re-word
+// one link's red control and the derived fingerprint moves. Four legs, each pinning WHICH refusal fires
+// by its named cause, because three different mismatches refuse here and a witness that only checks
+// "something refused" would not notice the wrong one firing:
+//   stale       the caller keeps the old identity while the chain moved -- the identity binding refuses;
+//   revived     the caller re-mints its identity under TODAY's fingerprint and presents the same
+//               tip and evidence -- the fingerprint recorded in the durable checkpoint event refuses,
+//               which is the leg that makes the durable event load-bearing rather than decorative;
+//   misclaimed  the caller presents evidence claiming a fingerprint of its own choosing -- the durable
+//               record refuses the claim, so a projection cannot pick its own binding;
+//   honoured    the untouched chain still publishes, under the identity digest the chain authority
+//               derives -- no second key exists here.
+test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipts() -> Bool {
+  let dir = fresh_dir(tag: "retuned")
+  let steps = 3
+  let observation = observation_text(steps: steps)
+  let before = spine(red_control: "the task's red control")
+  let after = spine(red_control: "THE TASK'S RED CONTROL WAS EDITED AFTER THE CHECKPOINT WAS BOUND")
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  // the boundary itself persists the evidence and appends the durable checkpoint event, under the
+  // chain as it stood; only the check's verdict artifact is placed by hand here.
+  let emitted = emit_boundary(dir: dir, chain: before, steps: steps)
+  let wrote = emitted && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let fingerprint_before = fingerprint(chain: before, dir: dir, observation: observation, steps: steps)
+  let fingerprint_after = fingerprint(chain: after, dir: dir, observation: observation, steps: steps)
+  let checkpoint = checkpoint_bound_to(chain: before, dir: dir, observation: observation, steps: steps, lineage: "align-witness-retuned", epoch: 2)
+  let stale = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: after, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  // THE CASE THE DURABLE EVENT EXISTS FOR. The plan moves, and the caller re-mints its identity under
+  // TODAY's fingerprint -- same conversation tip, same evidence, an identity the checkpoint authority
+  // itself would derive. Comparing the derived fingerprint only against a caller-supplied identity lets
+  // that through; it is the fingerprint the boundary wrote at the boundary that invalidates the earlier
+  // receipt, so this leg must refuse, and refuse BY NAME of the durable event.
+  let revived = harness_alignment_adjudicate(
+    checkpoint: checkpoint_bound_to(chain: after, dir: dir, observation: observation, steps: steps, lineage: "align-witness-retuned", epoch: 2),
+    projection: project(chain: after, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  // AND A CLAIM BUYS NOTHING. Evidence presented under a fingerprint of the caller's choosing -- here,
+  // today's fingerprint against the untouched chain -- is refused on the durable record, under its own
+  // cause, so the two mismatched-presentation refusals stay distinguishable rather than collapsing into
+  // one "something did not match".
+  let misclaimed = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project_claiming(chain: before, dir: dir, observation: observation, steps: steps, claimed_fingerprint: fingerprint_after),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  let honoured = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: before, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success
+    && trim(s: fingerprint_before) != ""
+    && fingerprint_before != fingerprint_after
+    && match stale {
+         // WHICH refusal fired is part of the claim: the identity is the thing that went stale here, so
+         // the cause must name the identity binding, and must not be the durable-event refusal.
+         AdjudicationRefused { cause } =>
+           string_contains(s: cause, pattern: "but the checkpoint is bound to")
+             && !string_contains(s: cause, pattern: "durable checkpoint event was admitted under")
+         AdjudicationPublished { adjudication: _ } => false
+       }
+    && match revived {
+         // The durable event's fingerprint is what refuses, and it names both fingerprints so a reader
+         // can see the drift rather than being told a check failed.
+         AdjudicationRefused { cause } =>
+           string_contains(s: cause, pattern: "durable checkpoint event was admitted under")
+             && string_contains(s: cause, pattern: fingerprint_before)
+             && string_contains(s: cause, pattern: fingerprint_after)
+         AdjudicationPublished { adjudication: _ } => false
+       }
+    && match misclaimed {
+         AdjudicationRefused { cause } =>
+           string_contains(s: cause, pattern: "the evidence presented for adjudication is bound to chain fingerprint")
+             && string_contains(s: cause, pattern: fingerprint_after)
+             && string_contains(s: cause, pattern: fingerprint_before)
+         AdjudicationPublished { adjudication: _ } => false
+       }
+    && match honoured {
+         AdjudicationPublished { adjudication } =>
+           harness_alignment_checkpoint_digest(checkpoint: adjudication.checkpoint)
+             == alignment_checkpoint_identity_digest(id: checkpoint)
+         AdjudicationRefused { cause: _ } => false
+       }
+}
+
+// RED CONTROL 4 -- A CRASH AFTER VERDICT PUBLICATION PRODUCES EXACTLY ONE NEXT EPOCH, WITNESSED THROUGH
+// THE CONTINUATION EFFECT ITSELF. The row's clause is about what happens to the LINEAGE, so the witness
+// drives the leg production drives -- the resume step, whose tail applies the adjudicated verdict to the
+// worker's turn -- and asserts on what is durable, never on a return value a caller may discard.
+//
+// LEG 1  the resume step adjudicates, publishes, gates, OPENS THE EPOCH and applies the verdict; the
+//        turn's own log then carries the opening, which is the witness that the effect really ran.
+// LEG 3  a replay that walks around the front door -- the resume step again, with the evidence log still
+//        intact -- is refused by the create-if-absent record, so the effect cannot be entered twice.
+// LEG 4  a replay through the entry the belt lane calls is refused on the same record BEFORE the
+//        evidence log is read, the chain resolved, or a check convened. It runs after LEG 3 on purpose:
+//        a refusal writes the turn's carried log (that is the harness convention on every terminal path),
+//        so legs still needing the boundary's durable checkpoint event must go first.
+// LEG 5  with the evidence log WIPED, the entry still refuses on the keyed record and its cause never
+//        names the checkpoint event it was never asked to read: the record is consulted first, so the
+//        single-next-epoch claim is asserted through the record and not through a value a process handed
+//        back.
+// LEG 6  THE FIRST PUBLICATION IS THE RECORD: a second adjudication of the same checkpoint, coming back
+//        with a different verdict, is refused by the create-new and leaves the published bytes untouched
+//        (asserted by reading the receipt back, not by trusting the refusal).
+// LEG 7  THE CREATE CALL IS THE ARBITER OF THE EPOCH NAME: an epoch record planted by "the resumer that
+//        won" is refused by the opening and its bytes are left alone.
+//        WHAT THESE TWO LEGS DO NOT CLAIM: a sequential harness cannot interleave two resumers, so it
+//        cannot reproduce the race itself -- it witnesses the consequence the primitive guarantees (one
+//        name, one winner, the loser told so by the call that failed) and the race-freedom rests on the
+//        filesystem authority's create-new, which this repo exercises in its own create-new witnesses.
+// Finally: the epoch-13 record does not exist, and the epoch-12 body is byte for byte what LEG 1 wrote.
+// The verdict and cadence sit in the durable publication as one body -- no half-publication to recover
+// from.
+test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> Bool {
+  let dir = fresh_dir(tag: "crash")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 5
+  let observation = observation_text(steps: steps)
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(path: verdict_in(dir: dir, steps: steps), content: "{\"kind\": \"aligned\"}")
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-crash", epoch: 11)
+  let pause = pause_in(dir: dir, steps: steps)
+  let projection = project(chain: chain, dir: dir, observation: observation, steps: steps)
+  let opened_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: checkpoint, next_epoch: 12)
+  let beyond_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: checkpoint, next_epoch: 13)
+  let first = harness_alignment_resume_apply(
+    pause: pause,
+    checkpoint: checkpoint,
+    projection: projection,
+    cadence: alignment_base_cadence_state(),
+    events: [],
+  )
+  let log_after_first = read_file(path: events_in(dir: dir))
+  let body_after_first = read_file(path: opened_path)
+  let replay_at_resume = harness_alignment_resume_apply(
+    pause: pause,
+    checkpoint: checkpoint,
+    projection: projection,
+    cadence: alignment_base_cadence_state(),
+    events: [],
+  )
+  let replay_at_entry = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  // LEG 6  THE FIRST PUBLICATION IS THE RECORD. The publication is create-new, not an overwrite: a second
+  //        adjudication of the same checkpoint whose check came back differently is REFUSED, and the bytes
+  //        the lineage already resumed on survive byte for byte. The verdict reaches the published body
+  //        through the check's own artifact, so restamping that artifact is exactly how a second
+  //        adjudication would otherwise carry a different verdict into the same name. Discriminating input:
+  //        under the overwrite publication this leg is red -- the durable body would read the stop verdict
+  //        and the second publish would report success, so no other leg in this module can cover it.
+  let restamped = write_file(
+    path: verdict_in(dir: dir, steps: steps),
+    content: "{\"kind\": \"catastrophically-misaligned\", \"reason\": \"the second check saw a drift the first did not\"}",
+  )
+  let second_adjudication = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: projection,
+    events_path: events_in(dir: dir),
+    observation_path: observation_in(dir: dir, steps: steps),
+    verdict_path: verdict_in(dir: dir, steps: steps),
+    cadence: alignment_base_cadence_state(),
+  )
+  let second_publication_refused = match second_adjudication {
+    AdjudicationPublished { adjudication: second } => {
+      let attempt = harness_alignment_publish(check_directory: dir, adjudication: second)
+      let second_saw_a_different_verdict = match second.verdict { Aligned => false, _ => true }
+      // The premise has to have FORMED: the second check really did decide differently, and what stopped
+      // it is the occupied record -- not an earlier leg refusing for an unrelated reason, which would let
+      // this pass while the overwrite defect stayed live.
+      second_saw_a_different_verdict
+        && !attempt.success
+        && string_contains(s: attempt.detail, pattern: "a different verdict is already published")
+    }
+    AdjudicationRefused { cause: _ } => false
+  }
+  let wiped = write_file(path: events_in(dir: dir), content: "")
+  let replay_without_log = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let body_after_replays = read_file(path: opened_path)
+  let publication = read_file(path: harness_alignment_publication_path(check_directory: dir, checkpoint: checkpoint))
+  // The continued round posts to a backend this witness does not serve, so LEG 1's terminal outcome is
+  // not the point -- what must NOT appear is any refusal to ENTER the continuation.
+  let first_leg_ran_the_effect = match first {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } => !string_contains(s: cause, pattern: "already recorded as opened")
+    _ => true
+  }
+  let resume_refused_the_replay = match replay_at_resume {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: "already recorded as opened")
+        // The replay's publish found the name occupied by ITS OWN identical body and stood on it, so the
+        // flow reached the epoch open at all. Had create-new been read as a plain failure here, the refusal
+        // would name an unpublished verdict and a crash between publication and opening would strand the
+        // lineage -- the opposite half of the same red control.
+        && !string_contains(s: cause, pattern: "never published")
+    _ => false
+  }
+  let entry_refused_the_replay = match replay_at_entry {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: "already recorded as opened")
+        && string_contains(s: cause, pattern: "convenes no check")
+    _ => false
+  }
+  let refused_on_the_record = match replay_without_log {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: "already recorded as opened")
+        && !string_contains(s: cause, pattern: "turn.alignment_checkpoint_due")
+    _ => false
+  }
+  // The epoch-13 name must be genuinely ABSENT -- not merely "not opened", which the deleted Bool
+  // predicate also answered true for an unreadable record.
+  let epoch_13_absent = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: checkpoint, next_epoch: 13) {
+    EpochRecordAbsent => true
+    EpochRecordPresent => false
+    EpochRecordUnreadable { detail: _ } => false
+  }
+  let durable = trim(s: body_after_first) != ""
+    // The durable opening is the authority's OWN line, byte for byte -- not a fixture's approximation of
+    // it, and not a body this witness assembled to look right.
+    && trim(s: body_after_first) == trim(s: harness_alignment_epoch_opened_line(checkpoint: checkpoint, next_epoch: 12, verdict: Aligned))
+    && string_contains(s: body_after_first, pattern: harness_alignment_checkpoint_digest(checkpoint: checkpoint))
+    && body_after_replays == body_after_first
+    && epoch_13_absent
+    && read_file(path: beyond_path) == ""
+    && string_contains(s: log_after_first, pattern: "alignment.epoch_opened")
+    && string_contains(s: publication, pattern: "\"verdict\"")
+    && string_contains(s: publication, pattern: "\"cadence\"")
+    // LEG 6's consequence, read off the disk rather than off a return value: the receipt the lineage
+    // resumed on still carries the FIRST verdict, and the second adjudication's verdict never entered it.
+    && string_contains(s: publication, pattern: "\"aligned\"")
+    && !string_contains(s: publication, pattern: "catastrophically-misaligned")
+  // LEG 7  THE CREATE CALL DECIDES, NOT A READ. The epoch name for 14 is planted with ANOTHER resumer's
+  //        bytes -- the winner of the race the read-then-write used to lose -- and the opening must be
+  //        refused by the create itself, leaving those bytes alone. A loser that rewrote the winner's
+  //        record would put its own verdict in the durable place the lineage reads, which is the same
+  //        defect one file over from LEG 6.
+  let rival_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: checkpoint, next_epoch: 14)
+  let rival_body = "{\"type\": \"alignment.epoch_opened\", \"written_by\": \"the resumer that created the name first\"}"
+  let planted = write_file(path: rival_path, content: rival_body)
+  let rival_opening = harness_alignment_open_epoch(check_directory: dir, checkpoint: checkpoint, next_epoch: 14, verdict: Aligned)
+  let loser_refused_without_overwriting = match rival_opening {
+    EpochAlreadyOpen { path: p, detail: _ } => p == rival_path && read_file(path: rival_path) == rival_body
+    EpochOpened { path: _ } => false
+    EpochOpeningUnwritable { cause: _ } => false
+  }
+  // LEG 8  AN UNREADABLE RECORD IS REPORTED AS UNREADABLE, NOT AS A RESUME THAT NEVER HAPPENED. A
+  //        directory sits at the next epoch's name for a DIFFERENT lineage's checkpoint, the belt's entry
+  //        is called, and the refusal must quote the arm it actually got -- the path, and the fact that
+  //        nothing about it can be read -- while saying nothing about a checkpoint that was adjudicated
+  //        and resumed, which is exactly the history nobody recorded. Under the Bool shortcut the
+  //        unreadable arm collapsed into "already opened" and this leg is red; the refusal itself was
+  //        right in both cases, the invented reason was the defect. The premise is asserted independently
+  //        (the classifier really did answer EpochRecordUnreadable), so an unrelated refusal cannot pass
+  //        this leg by accident.
+  let blocked_checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-unreadable-record", epoch: 11)
+  let blocked_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: blocked_checkpoint, next_epoch: 12)
+  let planted_dir = shell.Mkdir.Parents(path: blocked_path as FilePath)
+  let blocked_entry = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: blocked_checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let premise_is_unreadable = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: blocked_checkpoint, next_epoch: 12) {
+    EpochRecordUnreadable { detail: _ } => true
+    EpochRecordPresent => false
+    EpochRecordAbsent => false
+  }
+  let unreadable_cause_is_honest = match blocked_entry {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: blocked_path)
+        && string_contains(s: cause, pattern: "convenes no check")
+        && !string_contains(s: cause, pattern: "has been adjudicated and resumed once")
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && restamped && second_publication_refused && planted && loser_refused_without_overwriting && planted_dir.success && premise_is_unreadable && unreadable_cause_is_honest && durable
+}
+
+// THE SAME RED CONTROL, IN THREE LEGS THAT STAND ON THEIR OWN. The crash claim above runs eight legs in
+// one conjunction, so when it goes red nothing says WHICH leg refused -- and an acquisition is the only
+// way to ask. These three legs (the create-new arbiter, the second publication, the unreadable record)
+// are reproduced here on their own fixtures, with the resumer that won asserted rather than assumed, so
+// a red here and a green there localises the failure without buying another slot. The claim above is
+// NOT weakened by this: it keeps its own copy of every leg, byte for byte.
+test fn the_epoch_record_is_created_once_and_an_unreadable_record_is_reported_as_unreadable() -> Bool {
+  let dir = fresh_dir(tag: "createonce")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 5
+  let observation = observation_text(steps: steps)
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(path: verdict_in(dir: dir, steps: steps), content: "{\"kind\": \"aligned\"}")
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-create-once", epoch: 11)
+  let pause = pause_in(dir: dir, steps: steps)
+  let projection = project(chain: chain, dir: dir, observation: observation, steps: steps)
+  let opened_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: checkpoint, next_epoch: 12)
+  // THE PREMISE MUST HAVE FORMED BEFORE ANY OF THE THREE LEGS MEANS ANYTHING: a resumer ran, published,
+  // and opened epoch 12 with the authority's own line. Without this, a leg below could report the refusal
+  // of a flow that never got as far as the record it is supposed to be arguing about.
+  let first = harness_alignment_resume_apply(
+    pause: pause,
+    checkpoint: checkpoint,
+    projection: projection,
+    cadence: alignment_base_cadence_state(),
+    events: [],
+  )
+  let body_after_first = read_file(path: opened_path)
+  let first_opened_the_epoch = trim(s: body_after_first) != ""
+    && trim(s: body_after_first) == trim(s: harness_alignment_epoch_opened_line(checkpoint: checkpoint, next_epoch: 12, verdict: Aligned))
+  let first_was_not_a_replay_refusal = match first {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } => !string_contains(s: cause, pattern: "already recorded as opened")
+    _ => true
+  }
+  // LEG 6  THE FIRST PUBLICATION IS THE RECORD. The publication is create-new, not an overwrite: a second
+  //        adjudication of the same checkpoint whose check came back differently is REFUSED, and the bytes
+  //        the lineage already resumed on survive byte for byte. The verdict reaches the published body
+  //        through the check's own artifact, so restamping that artifact is exactly how a second
+  //        adjudication would otherwise carry a different verdict into the same name. Discriminating input:
+  //        under the overwrite publication this leg is red -- the durable body would read the stop verdict
+  //        and the second publish would report success, so no other leg in this module can cover it.
+  let restamped = write_file(
+    path: verdict_in(dir: dir, steps: steps),
+    content: "{\"kind\": \"catastrophically-misaligned\", \"reason\": \"the second check saw a drift the first did not\"}",
+  )
+  let second_adjudication = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: projection,
+    events_path: events_in(dir: dir),
+    observation_path: observation_in(dir: dir, steps: steps),
+    verdict_path: verdict_in(dir: dir, steps: steps),
+    cadence: alignment_base_cadence_state(),
+  )
+  let second_publication_refused = match second_adjudication {
+    AdjudicationPublished { adjudication: second } => {
+      let attempt = harness_alignment_publish(check_directory: dir, adjudication: second)
+      let second_saw_a_different_verdict = match second.verdict { Aligned => false, _ => true }
+      // The premise has to have FORMED: the second check really did decide differently, and what stopped
+      // it is the occupied record -- not an earlier leg refusing for an unrelated reason, which would let
+      // this pass while the overwrite defect stayed live.
+      second_saw_a_different_verdict
+        && !attempt.success
+        && string_contains(s: attempt.detail, pattern: "a different verdict is already published")
+    }
+    AdjudicationRefused { cause: _ } => false
+  }
+  // LEG 7  THE CREATE CALL DECIDES, NOT A READ. The epoch name for 14 is planted with ANOTHER resumer's
+  //        bytes -- the winner of the race the read-then-write used to lose -- and the opening must be
+  //        refused by the create itself, leaving those bytes alone. A loser that rewrote the winner's
+  //        record would put its own verdict in the durable place the lineage reads, which is the same
+  //        defect one file over from LEG 6.
+  let rival_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: checkpoint, next_epoch: 14)
+  let rival_body = "{\"type\": \"alignment.epoch_opened\", \"written_by\": \"the resumer that created the name first\"}"
+  let planted = write_file(path: rival_path, content: rival_body)
+  let rival_opening = harness_alignment_open_epoch(check_directory: dir, checkpoint: checkpoint, next_epoch: 14, verdict: Aligned)
+  let loser_refused_without_overwriting = match rival_opening {
+    EpochAlreadyOpen { path: p, detail: _ } => p == rival_path && read_file(path: rival_path) == rival_body
+    EpochOpened { path: _ } => false
+    EpochOpeningUnwritable { cause: _ } => false
+  }
+  // LEG 8  AN UNREADABLE RECORD IS REPORTED AS UNREADABLE, NOT AS A RESUME THAT NEVER HAPPENED. A
+  //        directory sits at the next epoch's name for a DIFFERENT lineage's checkpoint, the belt's entry
+  //        is called, and the refusal must quote the arm it actually got -- the path, and the fact that
+  //        nothing about it can be read -- while saying nothing about a checkpoint that was adjudicated
+  //        and resumed, which is exactly the history nobody recorded. Under the Bool shortcut the
+  //        unreadable arm collapsed into "already opened" and this leg is red; the refusal itself was
+  //        right in both cases, the invented reason was the defect. The premise is asserted independently
+  //        (the classifier really did answer EpochRecordUnreadable), so an unrelated refusal cannot pass
+  //        this leg by accident.
+  let blocked_checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-unreadable-record", epoch: 11)
+  let blocked_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: blocked_checkpoint, next_epoch: 12)
+  let planted_dir = shell.Mkdir.Parents(path: blocked_path as FilePath)
+  let blocked_entry = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: blocked_checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let premise_is_unreadable = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: blocked_checkpoint, next_epoch: 12) {
+    EpochRecordUnreadable { detail: _ } => true
+    EpochRecordPresent => false
+    EpochRecordAbsent => false
+  }
+  let unreadable_cause_is_honest = match blocked_entry {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: blocked_path)
+        && string_contains(s: cause, pattern: "convenes no check")
+        && !string_contains(s: cause, pattern: "has been adjudicated and resumed once")
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success && first_opened_the_epoch && first_was_not_a_replay_refusal
+    && restamped && second_publication_refused
+    && planted && loser_refused_without_overwriting
+    && planted_dir.success && premise_is_unreadable && unreadable_cause_is_honest
+}
+
+// THE PUBLICATION IS INDIVISIBLE: A RECORD WITHOUT ITS CADENCE IS NOT A PUBLICATION. The verdict and the
+// cadence state are written in one body because the resume decision needs both -- the verdict says what
+// was found, the cadence says what the interval law does about it. So the gate refuses a record whose
+// cadence member is missing, and one whose cadence member will not decode, instead of defaulting the
+// cadence and opening an epoch on half a record.
+test fn the_gate_refuses_a_publication_that_carries_no_decodable_cadence() -> Bool {
+  let dir = fresh_dir(tag: "nocadence")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 5
+  let observation = observation_text(steps: steps)
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(path: verdict_in(dir: dir, steps: steps), content: "{\"kind\": \"aligned\"}")
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-nocadence", epoch: 7)
+  let read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: observation_in(dir: dir, steps: steps),
+    verdict_path: verdict_in(dir: dir, steps: steps),
+    cadence: alignment_base_cadence_state(),
+  )
+  let outcome = match read {
+    AdjudicationRefused { cause: _ } => false
+    AdjudicationPublished { adjudication } => {
+      let published = harness_alignment_publish(check_directory: dir, adjudication: adjudication)
+      let path = harness_alignment_publication_path(check_directory: dir, checkpoint: adjudication.checkpoint)
+      // The honest record opens exactly one epoch -- so the refusals below are about the body, not about
+      // a fixture that never published anything at all.
+      let whole = match harness_alignment_resume_gate(checkpoint: adjudication.checkpoint, published: published) {
+        ResumedOnce { next_epoch: opened, checkpoint: _, verdict: _, cadence: _ } => opened == 8
+        _ => false
+      }
+      // The tampered bodies keep the key and the verdict -- only the cadence is taken away or made
+      // unreadable. A body that dropped the digest too would be refused for the digest, and the witness
+      // would be asserting the wrong refusal for the right reason.
+      let digest = harness_alignment_checkpoint_digest(checkpoint: adjudication.checkpoint)
+      let stripped = write_file(path: path, content: join([
+        "{\"type\": \"alignment.checkpoint_adjudicated\", \"checkpoint_digest\": \"", digest, "\", \"verdict\": {\"kind\": \"aligned\"}}",
+      ], ""))
+      let without_cadence = match harness_alignment_resume_gate(checkpoint: adjudication.checkpoint, published: published) {
+        ResumeRefused { cause } => string_contains(s: cause, pattern: "cadence")
+        _ => false
+      }
+      let corrupt = write_file(path: path, content: join([
+        "{\"type\": \"alignment.checkpoint_adjudicated\", \"checkpoint_digest\": \"", digest,
+        "\", \"verdict\": {\"kind\": \"aligned\"}, \"cadence\": {\"level_intervals\": [10], \"last_verdicts\": [{\"kind\": \"aligned\"}]}}",
+      ], ""))
+      let undecodable_cadence = match harness_alignment_resume_gate(checkpoint: adjudication.checkpoint, published: published) {
+        ResumeRefused { cause } => string_contains(s: cause, pattern: "cadence")
+        _ => false
+      }
+      // No epoch-absence assertion lives here: the gate opens nothing -- opening is the continuation
+      // effect's own step -- so asserting an absent record after a gate call would be a tautology, and a
+      // tautology in a witness is a false comfort. That the opening happens exactly once is witnessed
+      // where the effect actually runs, in RED CONTROL 4, through the durable keyed record.
+      whole && stripped && without_cadence && corrupt && undecodable_cadence
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success && outcome
+}
+
+// WHICH VERDICT STOPS THE LINE IS NOT DECIDED HERE (single authority). The cadence authority in
+// gunbc.roadmap.roadmap_alignment maps a verdict to its next interval and, for the verdict that ends a
+// lineage, to CadenceStepStopTheLine; the same authority's step is what builds the cadence this PR
+// publishes. So the gate asks that authority the stop question about the published body and matches its
+// coproduct -- it holds no predicate of its own to fall out of step with. A stopped lineage is also not a
+// supervision failure: the verdict was adjudicated, so it travels out as StoppedByVerdict, reaches the
+// verdict-to-action authority, and lands as the durable stopped-by-supervision outcome with its reason --
+// while NO epoch is opened for it.
+test fn a_stopped_lineage_is_stopped_by_the_cadence_authority_and_opens_no_epoch() -> Bool {
+  let dir = fresh_dir(tag: "stopped")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 5
+  let observation = observation_text(steps: steps)
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(
+    path: verdict_in(dir: dir, steps: steps),
+    content: "{\"kind\": \"catastrophically-misaligned\", \"reason\": \"deletes the gate\"}",
+  )
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-stopped", epoch: 7)
+  let projection = project(chain: chain, dir: dir, observation: observation, steps: steps)
+  let read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: projection,
+    events_path: events_in(dir: dir),
+    observation_path: observation_in(dir: dir, steps: steps),
+    verdict_path: verdict_in(dir: dir, steps: steps),
+    cadence: alignment_base_cadence_state(),
+  )
+  let outcome = match read {
+    AdjudicationRefused { cause: _ } => false
+    AdjudicationPublished { adjudication } => {
+      let published = harness_alignment_publish(check_directory: dir, adjudication: adjudication)
+      let gate_says_stop = match harness_alignment_resume_gate(checkpoint: adjudication.checkpoint, published: published) {
+        // The exact arm is what must match: the cadence authority stopped the line ON THIS VERDICT, and
+        // the check's reason travelled with it. Any other verdict kind opening or refusing the epoch --
+        // and any offer of an epoch at all -- is a false here.
+        StoppedByVerdict { verdict: CatastrophicallyMisaligned { reason }, cadence: _ } => reason == "deletes the gate"
+        ResumedOnce { next_epoch: _, checkpoint: _, verdict: _, cadence: _ } => false
+        ResumeRefused { cause: _ } => false
+        _ => false
+      }
+      // The stop reaches the worker as itself, and opens no epoch.
+      let stopped = match harness_alignment_resume_apply(
+        pause: pause_in(dir: dir, steps: steps),
+        checkpoint: checkpoint,
+        projection: projection,
+        cadence: alignment_base_cadence_state(),
+        events: [],
+      ) {
+        TurnStoppedBySupervision { verdict: _, detail, steps_taken: _ } => detail == "deletes the gate"
+        _ => false
+      }
+      let body = read_file(path: harness_alignment_publication_path(check_directory: dir, checkpoint: adjudication.checkpoint))
+      // DURABLY STOPPED, NOT DURABLY BROKEN. The attempt's own log is what a later reader judges the
+      // lineage by, so it must carry the check's stop with the check's reason, and must NOT carry the
+      // supervision-unavailable event: a check that ran and decided is not supervision being absent.
+      let log = read_file(path: events_in(dir: dir))
+      // The stopped lineage's next-epoch name must be genuinely ABSENT. The deleted Bool predicate also
+      // answered "opened" for an unreadable record, which would have let this leg pass on a fixture that
+      // was merely unreadable rather than on a stop that opened nothing.
+      let epoch_8_absent = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: adjudication.checkpoint, next_epoch: 8) {
+        EpochRecordAbsent => true
+        EpochRecordPresent => false
+        EpochRecordUnreadable { detail: _ } => false
+      }
+      let no_epoch = epoch_8_absent
+        && read_file(path: harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: adjudication.checkpoint, next_epoch: 8)) == ""
+      gate_says_stop && stopped && no_epoch
+        && string_contains(s: body, pattern: "catastrophically")
+        && string_contains(s: log, pattern: "\"turn.stopped_by_supervision\"")
+        && string_contains(s: log, pattern: "deletes the gate")
+        && !string_contains(s: log, pattern: "\"turn.supervision_unavailable\"")
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success && outcome
+}
+
+// THE EMISSION AND ITS DURABLE EVENT (handback items: the outcome, the durable event, and the
+// adjudication boundary's absence at the boundary). At the epoch boundary the turn persists its
+// evidence, appends turn.alignment_checkpoint_due bound to the fingerprint the config was admitted
+// with, and RETURNS the typed outcome -- it convenes no check and continues no loop. The CLI's exit maps
+// that outcome to a labelled refusal, never to success: a checkpoint hands control back, it does not
+// declare the work finished.
+test fn the_boundary_emits_the_checkpoint_and_returns_control() -> Bool {
+  let dir = fresh_dir(tag: "emission")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 7
+  let honest = observation_text(steps: steps)
+  let bound = fingerprint(chain: chain, dir: dir, observation: honest, steps: steps)
+  let emitted = harness_turn_checkpoint_due(
+    config: turn_config(dir: dir),
+    chain_fingerprint: bound,
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+  )
+  let path = observation_in(dir: dir, steps: steps)
+  let persisted = read_file(path: path)
+  let streamed = read_file(path: join([dir, "/provider-events.jsonl"], ""))
+  let exit: ProcessExit = harness_turn_exit(outcome: emitted)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  match emitted {
+    TurnAlignmentCheckpointDue { chain_fingerprint: bound_out, conversation_tip: tip, observation_path: written, round_steps: rounds, steps_taken: taken } =>
+      removed.success
+        && bound_out == bound
+        && rounds == steps
+        && taken == steps
+        && written == path
+        && trim(s: tip) != ""
+        && trim(s: persisted) != ""
+        && string_contains(s: streamed, pattern: "turn.alignment_checkpoint_due")
+        && string_contains(s: streamed, pattern: bound)
+        && match exit {
+             ExitSuccess => false
+             ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "alignment-checkpoint-due")
+           }
+    _ => false
+  }
+}
+
+// THE DURABLE EVENT'S OWN SHAPE, asserted on one emitted line: the fingerprint and the evidence digest
+// are MEMBERS of the line, so whoever reads it learns which chain the boundary was admitted under and
+// which bytes adjudication is entitled to grade -- without asking the worker.
+test fn the_checkpoint_event_carries_the_fingerprint_and_evidence_binding() -> Bool {
+  let line = harness_event_alignment_checkpoint_due(
+    chain_fingerprint: "fp-witness-1234",
+    conversation_tip: "the tip",
+    observation_path: "/tmp/witness/observation.txt",
+    observation_digest: "digest-witness",
+    round_steps: 12,
+    steps_taken: 12,
+  )
+  trim(s: line) != ""
+    && string_contains(s: line, pattern: "turn.alignment_checkpoint_due")
+    && string_contains(s: line, pattern: "fp-witness-1234")
+    && string_contains(s: line, pattern: "digest-witness")
+    && string_contains(s: line, pattern: "observation_path")
+    && string_contains(s: line, pattern: "conversation_tip")
+}
+
+// THE CADENCE STATE TRAVELS WITH THE VERDICT (handback item: durable cadence state). The published
+// record is built by the cadence authority's own step, so a witness that reads the durable body sees
+// the interval law's output beside the verdict that moved it -- never a cadence this file invented.
+test fn the_published_record_carries_the_verdict_and_the_stepped_cadence() -> Bool {
+  let dir = fresh_dir(tag: "cadence")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 6
+  let observation = observation_text(steps: steps)
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let carried = AlignmentCadenceState {
+    level_intervals: [alignment_state_interval(state: alignment_base_cadence_state(), level_index: 0), 200],
+    last_verdicts: [Aligned, Misaligned { direction: "the project drifted off its stated boundary" }],
+  }
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-cadence", epoch: 3)
+  let read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: carried,
+  )
+  // THE BASE STATE IS NOT A MUTE, and it is the state every lineage really starts from: both lists
+  // empty, every level reading its declared magnitudinal base. A fold that only REPLACES an existing
+  // head answered this step with the empty list back -- the interval the interval law had just computed
+  // and the verdict that decided it both dropped out, the ladder never left its starting rung, and the
+  // published record still read like a cadence. So the base is adjudicated here too, and the published
+  // state must GAIN exactly one entry carrying the authority's own interval and the deciding verdict.
+  // Under the fold-that-only-replaced code this leg cannot pass: the lengths come out 0, not 1.
+  let from_base = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-cadence-from-base", epoch: 4)
+  let read_from_base = harness_alignment_adjudicate(
+    checkpoint: from_base,
+    projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  // THE STEP IS TAKEN FROM THE STATE THAT WAS CARRIED IN, not from a fresh base, and level 0 is the
+  // HEAD that moves -- a deeper level the lineage already recorded survives. Both halves of that
+  // sentence are load-bearing: a publication that restarted from the base would keep the ladder at its
+  // starting rung forever, and one that APPENDED would grow a level list the cadence codec refuses to
+  // decode. The expected interval is the interval authority's own answer, never one computed here.
+  wrote && removed.success
+    && match alignment_next_interval(level_index: 0, current: alignment_state_interval(state: carried, level_index: 0), verdict: Aligned) {
+         CadenceStepInterval { turns } =>
+           match read {
+             AdjudicationPublished { adjudication } => {
+               let body = harness_alignment_publication_text(adjudication: adjudication)
+               adjudication.cadence.level_intervals == [turns, 200]
+                 && length(xs: adjudication.cadence.level_intervals) == length(xs: adjudication.cadence.last_verdicts)
+                 && length(xs: adjudication.cadence.last_verdicts) == 2
+                 && match adjudication.cadence.last_verdicts.first() {
+                      Present { value: Aligned } => true
+                      _ => false
+                    }
+                 && match adjudication.cadence.last_verdicts.last() {
+                      Present { value: Misaligned { direction } } => direction == "the project drifted off its stated boundary"
+                      _ => false
+                    }
+                 && string_contains(s: body, pattern: "alignment.checkpoint_adjudicated")
+                 && string_contains(s: body, pattern: alignment_checkpoint_identity_digest(id: adjudication.checkpoint))
+             }
+             AdjudicationRefused { cause: _ } => false
+           }
+         // An ALIGNED verdict never stops the line; if the interval authority ever says otherwise this
+         // witness has no answer to give and must fail rather than assume one.
+         CadenceStepStopTheLine => false
+       }
+    // THE BASE-STATE LEG -- the discriminating one for the cadence step. The state every lineage
+    // starts from has NO level 0 to replace, so this is where a step that only replaces an existing
+    // head silently publishes the input back and leaves the ladder at its starting rung forever.
+    && match alignment_next_interval(level_index: 0, current: alignment_state_interval(state: alignment_base_cadence_state(), level_index: 0), verdict: Aligned) {
+         CadenceStepInterval { turns } =>
+           match read_from_base {
+             AdjudicationPublished { adjudication: stepped } => {
+               let body_from_base = harness_alignment_publication_text(adjudication: stepped)
+               // One entry, the authority's own interval, and the verdict that decided it -- the lists
+               // stay the same length, which is the codec's own invariant, and neither stays empty.
+               length(xs: stepped.cadence.level_intervals) == 1
+                 && stepped.cadence.level_intervals == [turns]
+                 && length(xs: stepped.cadence.last_verdicts) == 1
+                 && match stepped.cadence.last_verdicts.first() {
+                      Present { value: Aligned } => true
+                      _ => false
+                    }
+                 && string_contains(s: body_from_base, pattern: "alignment.checkpoint_adjudicated")
+                 && string_contains(s: body_from_base, pattern: alignment_checkpoint_identity_digest(id: stepped.checkpoint))
+             }
+             // The base state is a legitimate input, not a missing artifact: the boundary ran and the
+             // verdict artifact is present, so a refusal here is the defect wearing a different hat.
+             AdjudicationRefused { cause: _ } => false
+           }
+         CadenceStepStopTheLine => false
+       }
+}
+
+// THE BELT'S ENTRY, REFUSED BEFORE ANY CHECK IS CONVENED. The entry point adjudication runs is asked
+// for the chain of a task the declared authority does not admit, and it must hand back a typed
+// supervision refusal WITHOUT convening a check -- no check request artifact appears in the directory,
+// because a lineage whose chain is refused never reaches the grading step at all.
+test fn the_adjudication_entry_refuses_an_unadmitted_chain_before_convening_any_check() -> Bool {
+  let dir = fresh_dir(tag: "entry")
+  let steps = 4
+  let observation = observation_text(steps: steps)
+  // THE BOUNDARY RAN, so the entry has real durable evidence to bind to: the refusal this test asserts
+  // is the chain's, not a missing artifact's.
+  let wrote = emit_boundary(dir: dir, chain: spine(red_control: "the task's red control"), steps: steps)
+  let outcome = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: checkpoint_bound_to(
+      chain: spine(red_control: "the task's red control"),
+      dir: dir,
+      observation: observation,
+      steps: steps,
+      lineage: "align-witness-entry",
+      epoch: 1,
+    ),
+    node_id: "align-witness-node-absent-from-the-declared-authority",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "the check prompt",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success
+    && match outcome {
+         // BY NAME, and BY EXCLUSION: the refusal must be this node's chain verdict -- the reason names
+         // the node the walk could not admit -- and must not be any of the refusals that fire BEFORE or
+         // AFTER it. The replay arm, the evidence arm, the persisted-bytes arm and the check-convening
+         // step's own arm are each excluded by its cause: an entry that reached the chain resolver had to
+         // pass the first three, and the fourth appears only if a check was actually convened. (An earlier
+         // version of this leg instead asserted the absence of a "check-request" artifact; grep of the
+         // whole carrier says nobody writes that name -- 0 hits -- so that absence could not fail and
+         // witnessed nothing. It is removed rather than kept as a decoration.)
+         TurnSupervisionUnavailable { cause, steps_taken: taken } =>
+           string_contains(s: cause, pattern: "align-witness-node-absent-from-the-declared-authority")
+             && !string_contains(s: cause, pattern: "already recorded as opened")
+             && !string_contains(s: cause, pattern: "verdict artifact")
+             && !string_contains(s: cause, pattern: "no durable checkpoint evidence")
+             && !string_contains(s: cause, pattern: "does not match the digest the boundary recorded")
+             && !string_contains(s: cause, pattern: "found a verdict already at")
+             && taken == steps
+         _ => false
+       }
+}
