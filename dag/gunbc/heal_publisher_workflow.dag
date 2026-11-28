@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count, Gibibyte, gibibyte, byte_size_count, gibibyte_to_byte_size }
 import std.optional { Optional, Present, Absent }
 import v2.std.diagnostic {
-  Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, module_unavailable_diagnostic,
+  Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, sequence_outcome, StageDiagnosticPolicy, ShortCircuit, module_unavailable_diagnostic,
   Diagnostic, NonEmptyDiagnostics, diagnostics_singleton, diagnostics_reason_lexemes,
   Textual, WholeFile, Unavailable, CorrectionNotModeled
 }
@@ -447,8 +447,8 @@ fn heal_publisher_bound_steps(
                 route_steps
               ),
               [
-                HealPublisherBoundStep { step: admit_step, role: capability_neutral },
-                HealPublisherBoundStep { step: publish_step, role: capability_neutral }
+                HealPublisherBoundStep { step: outcome_accepted(value: admit_step), role: capability_neutral },
+                HealPublisherBoundStep { step: outcome_accepted(value: publish_step), role: capability_neutral }
               ]
             )
           )

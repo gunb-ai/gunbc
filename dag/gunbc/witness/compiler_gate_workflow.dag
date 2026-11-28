@@ -1202,7 +1202,7 @@ fn compiler_gate_parse_verdict_audit_bound_steps() -> Outcome<List<CompilerGateB
 
 fn compiler_gate_parse_verdict_audit_job_of(profile: RepositoryCiProfile) -> Outcome<Job> {
   bind_outcome(
-    o: sequence_outcome(xs: list_map(xs: compiler_gate_parse_verdict_audit_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    o: bind_outcome(o: compiler_gate_parse_verdict_audit_bound_steps(), f: fn(bound) { outcome_accepted(value: list_map(xs: bound, f: fn(b) { b.step })) }),
     f: fn(steps) {
       outcome_accepted(value: Job {
       id: parse_verdict_audit_job_id,
@@ -1290,7 +1290,7 @@ fn compiler_gate_required_job() -> Outcome<Job> {
 
 fn compiler_gate_required_job_of(profile: RepositoryCiProfile) -> Outcome<Job> {
   bind_outcome(
-    o: sequence_outcome(xs: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    o: bind_outcome(o: compiler_gate_emit_build_bound_steps(), f: fn(bound) { outcome_accepted(value: list_map(xs: bound, f: fn(b) { b.step })) }),
     f: fn(steps) {
       outcome_accepted(value: Job {
       id: profile.roster.required_context as String,
