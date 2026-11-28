@@ -1,5 +1,9 @@
 module test.claim.anonymous_record_literal_roster_witness
 
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit }
+import std.process { ProcessExit }
+import std.types { Bool, String }
+
 // THE CLASS THIS FILE HOLDS OPEN (gunbc.recurring_failure_mode an_anonymous_record_literal_skips_its_expected_roster).
 // v1.compiler.infer infer_record_lit_structural keyed every roster read on the literal's own name, so a literal
 // written without one -- `data xs: List<Spec> = [{ a: 1 }]`, the corpus's ordinary spelling of a typed list --
@@ -42,4 +46,45 @@ test fn an_anonymous_data_initializer_refuses_a_missing_field_test() -> Bool {
 
 test fn an_anonymous_data_initializer_with_the_full_roster_compiles_test() -> Bool {
   compile_dag_rust_emit_check(arl_source(module_leaf: "direct", body: "data s: Spec = { a: 1, b: 2 }\n\nfn f() -> Int {\n  s.a\n}\n"), "src/arls_direct.rs", ["fn f"], ["compile_error"])
+}
+
+// THE DECLARED-DEFAULTS HALF OF THE BOUNDARY (floor-record-construction-wall: "defaults apply only where
+// declared"). THIS CLASS HAD NO CONSTRUCTION WITNESS AT MAIN: the only default-adjacent claim witnesses
+// (test.claim.field_default_declaring_scope_witness and friends) judge a default's EVALUATION SCOPE, not
+// whether an omitted field is owed at construction; this file's seven legs above carry no fixture whose
+// type declares a field default. These three legs state and close that silence, PAIRED in one commit so
+// acceptance alone cannot pass: an omitted field that carries a declared default is accepted, an omitted
+// field that carries none refuses with one MissingField whose SUBJECT IS THE FIELD NAME ('a'), keyed on
+// class AND subject so a refusal of some other field cannot satisfy it -- the same census authority the
+// union witness uses (gunbc.compile_census_probe), because compile_dag_rust_emit_check can observe a
+// refusal but cannot name which field it refused. v1.compiler.infer declared_field_is_required (sf.body
+// == none) is the ONE predicate deciding both halves, so this pair flips red with the wall: a red probe
+// observed it (probe_ref red-control/floor-record-construction-wall). Fixture type names carry a Zz
+// prefix because bare names resolve by global uniqueness and could bind a corpus declaration.
+
+data arlz_omitted_defaulted_field_source: String = "module arlz_default_ctl\ntype ZzArlzSpec1 {\n  a: Int\n  b: Int = 2\n}\n\ndata s: ZzArlzSpec1 = { a: 1 }\n\nfn f() -> Int {\n  s.a\n}\n"
+
+data arlz_omitted_required_field_source: String = "module arlz_default_red\ntype ZzArlzSpec2 {\n  a: Int\n  b: Int = 2\n}\n\ndata s: ZzArlzSpec2 = { b: 2 }\n\nfn f() -> Int {\n  s.b\n}\n"
+
+data arlz_named_literal_omitted_defaulted_field_source: String = "module arlz_default_named_ctl\ntype ZzArlzSpec3 {\n  a: Int\n  b: Int = 2\n}\n\ndata s: ZzArlzSpec3 = ZzArlzSpec3 { a: 1 }\n\nfn f() -> Int {\n  s.a\n}\n"
+
+// THE ACCEPTED HALF: omitting a field that carries a declared default owes nothing -- zero blocking rows.
+test fn an_omitted_field_with_a_declared_default_is_accepted_test() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: arlz_omitted_defaulted_field_source), holds: fn(n) { n == 0 }))
+}
+
+// THE REFUSED HALF, PAIRED IN THIS SAME COMMIT: omitting a field that carries NO declared default refuses
+// with exactly one MissingField AT THE FIELD NAME ('a' -- the omitted required field, not the supplied
+// defaulted one), and the total blocking count is that single refusal, not a cascade.
+test fn an_omitted_field_without_a_declared_default_refuses_naming_the_field_test() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_subject_census(source: arlz_omitted_required_field_source, wanted_class: "MissingField", wanted_subject: "a"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: arlz_omitted_required_field_source), holds: fn(n) { n == 1 }),
+  ])
+}
+
+// THE NAMED-LITERAL CONTROL: the same declared-default omission through the NAMED constructor is accepted,
+// pinning that the default rule is the declaration's, not an artifact of the anonymous arm.
+test fn a_named_literal_omitting_a_declared_default_field_is_accepted_test() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: arlz_named_literal_omitted_defaulted_field_source), holds: fn(n) { n == 0 }))
 }
