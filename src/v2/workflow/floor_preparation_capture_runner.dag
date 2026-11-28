@@ -123,19 +123,29 @@ import v2.workflow.floor_preparation_diff_scope {
 // The leg driver is this fixed text (its sha256 is the pinned supply value above; recreate with
 // cat > "$FLOOR_LEG_DRIVER" exactly, chmod +x, and the supply gate re-derives the sha at run time):
 //   #!/usr/bin/sh
-//   # eagle-leg-driver-v4 (crisp-eagle-244, run11+). v4 adds what run10 proved was missing: when
-//   # TRACKED_DIRTY is nonzero the boot line NAMES the dirty tracked paths (comma-joined, cut from
-//   # the porcelain path column) and tags OPTION=b_dirty_paths_named, so a leg that judges in-run
-//   # spliced bytes carries its own doctrine-option-(b) evidence in its log instead of a stale
-//   # OPTION=a label on dirty bytes (run10 claims-a printed OPTION=a_clean_checkout at
-//   # TRACKED_DIRTY=1 -- the dirt was this run's fold-legs splice of src/v2/workflow/
-//   # floor_preparation_split.dag; the splice receipt was the proof, and now the boot line is too).
-//   # v3 (the version below) added: The leg-layer pin enforcement this layer lacked:
-//   # a leg must refuse to exec a program whose on-disk sha256 is not the model's pinned sha -- the
-//   # supply check upstream is a model-visible gate but its view of the binaries predates the leg; the
-//   # leg judges the bytes it is about to run. v2 (sha 19df9ae3381aeb40bcf1549705b036528313a749e1ae4080ce0772349f3e082a)
-//   # added the acquisition-identity block but no pin; the capture script's external pin guard is
-//   # outside the model and must not be the only layer.
+//   # eagle-leg-driver-v4.1 (crisp-eagle-244, run11+).
+//   #
+//   # SCAFFOLD DECLARATION (hand-shell policy): this file is a hand-written POSIX shell leg driver.
+//   # Typed argv through shell.Exec.RunArgv already replaced the hand-written shell scaffolds around
+//   # it; WHAT REMAINS HERE is bounded foreign-executor transport: it opens the leg log, prints the
+//   # acquisition-identity block from the leg's own process, and execs the program verbatim. It
+//   # DISSOLVES WHEN a typed bounded-process effect lands on host_effect_apply AND the release route
+//   # binds a child to the slot cgroup in-model -- the same capability the model trigger names:
+//   # floor_preparation_shell_bound_dissolution_trigger in
+//   # src/v2/workflow/floor_preparation_capture_runner.dag (review 99598 asked that the runner carry
+//   # its own marker, not only the model).
+//   #
+//   # v4.1 (review 99598): the driver NO LONGER JUDGES the binary pins -- the same sha256 was decided
+//   # in three places. The single authority is the model's supply gate
+//   # (floor_preparation_pinned_claim_batch_sha / _gunbc_sha / _leg_driver_sha compared against
+//   # sha256sum re-derived from disk, in floor_preparation_capture_runner.dag, before any leg spawns).
+//   # The driver only OBSERVES: [leg-binary] prints path/bytes/sha of every file operand and the
+//   # model owns the verdict. v4 added: when TRACKED_DIRTY is nonzero the boot line NAMES the dirty
+//   # tracked paths (comma-joined from the porcelain path column) and tags OPTION=b_dirty_paths_named,
+//   # so a leg judging in-run spliced bytes carries its own doctrine-option-(b) evidence in its log
+//   # (run10 claims-a printed OPTION=a_clean_checkout at TRACKED_DIRTY=1 -- the dirt was the fold-legs
+//   # splice of src/v2/workflow/floor_preparation_split.dag). v3 added pin enforcement, now retired
+//   # to the model per above. v2 (sha 19df9ae3381a) added the acquisition-identity block.
 //   #
 //   # argv[1] is the log path; the rest is program+arguments passed verbatim to exec, streams appended
 //   # to that log. No shell string is built from leg data. The identity block prints, INSIDE the leg
@@ -146,9 +156,8 @@ import v2.workflow.floor_preparation_diff_scope {
 //   LOG="$1"
 //   shift
 //   : > "$LOG"
-//   PIN_CLAIM_BATCH="b395a556775931296f8f8aa8b9307f304d34442579f88d749189e273a4b0aee5"
 //   {
-//     echo "[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4"
+//     echo "[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4.1"
 //     echo "[leg-cgroup] $(cat /proc/self/cgroup 2>/dev/null | head -1)"
 //     TRACK_OUT=$(git status --porcelain --untracked-files=no 2>/dev/null || true)
 //     if [ -z "$TRACK_OUT" ]; then TRACK_DIRTY=0; TRACK_PATHS=none; OPTION_TAG=a_clean_checkout; else TRACK_DIRTY=$(printf '%s\n' "$TRACK_OUT" | grep -c '^[^?]' || true); TRACK_PATHS=$(printf '%s\n' "$TRACK_OUT" | cut -c4- | sort -u | tr '\n' ',' | sed 's/,$//'); OPTION_TAG=b_dirty_paths_named; fi
@@ -156,14 +165,6 @@ import v2.workflow.floor_preparation_diff_scope {
 //     for a in "$@"; do
 //       if [ -f "$a" ]; then
 //         echo "[leg-binary] path=$a bytes=$(stat -c%s "$a") sha256=$(sha256sum "$a" | cut -d' ' -f1)"
-//         case "$a" in
-//           */claim_batch)
-//             if [ "$(sha256sum "$a" | cut -d' ' -f1)" != "$PIN_CLAIM_BATCH" ]; then
-//               echo "[leg-refuse] claim_batch sha256 is not the pinned release: $a"
-//               exit 97
-//             fi
-//             ;;
-//         esac
 //       fi
 //     done
 //     echo "[leg-argv] $*"
@@ -281,7 +282,7 @@ data floor_preparation_pinned_gunbc_sha: String =
 // stale OPTION=a label; the named path plus the splice receipt is doctrine option (b), in the
 // leg's own log).
 data floor_preparation_pinned_leg_driver_sha: String =
-  "8a6820ebb6dd69844725cdb368e6e45e1cc8241b9f84e830915df50d286dd0b6"
+  "085785d20849a9eb73cd000c196efe89f3def5573876107fed337d0029d471dd"
 
 data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
