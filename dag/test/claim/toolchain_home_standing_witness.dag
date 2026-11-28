@@ -238,7 +238,13 @@ fn workflow_is_admitted(workflow: Workflow) -> Bool {
 }
 
 test fn every_witnesses_yml_job_carries_a_toolchain_home_standing() -> Bool {
-  workflow_is_admitted(workflow: witness_floor_workflow)
+  // witness_floor_workflow is now Outcome<Workflow> after the orch-emitter cutover; a Rejected is a
+  // refusal, so nothing was emitted, so nothing carries a standing, so this claim goes red (which is
+  // what gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved needs).
+  match witness_floor_workflow {
+    Accepted { value: wf, diagnostics: _ } => workflow_is_admitted(workflow: wf)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool {

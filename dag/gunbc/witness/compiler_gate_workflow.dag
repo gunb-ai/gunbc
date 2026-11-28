@@ -233,25 +233,14 @@ fn compiler_gate_checkout_step() -> Step {
   }
 }
 
-// THE UNWRAP IS SAFE: the orch-emitted pipelines are fixed command sequences the emitter always renders.
-// If they refuse, the generation gate refuses the whole workflow via the renderability check.
-fn compiler_gate_unwrap_orch_step(o: Outcome<Step>) -> Step {
-  match o {
-    Accepted { value: s, diagnostics: _ } => s
-    Rejected { diagnostics: _ } => RunStep { name: none, id: none, run: "", shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
-  }
-}
-
-fn compiler_gate_orch_steps_are_renderable() -> Bool {
-  match toolchain_home_isolation_step() {
-    Accepted { value: _, diagnostics: _ } =>
-      match toolchain_pin_rustup_default_step() {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
+// THE ORCH-EMITTED STEPS (toolchain-home isolation, pin rustup default) return Outcome<Step> after the
+// __GUNBC_ORCH_EMIT_REFUSED__ poison was deleted from v2.workflow.ci_workflow_run_emit (see
+// gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved). The two builders
+// below bind_outcome over both, so a refusal means the whole prelude list cannot be built; that
+// propagates up to compiler_gate_workflow (an Outcome<Workflow>), unwrapped once at
+// expected_compiler_gate_yml into the workflow's GenerationRefused with the orchestration diagnostics
+// attached. No fabricated step, no separate renderability gate standing where construction was
+// available (DESIGN fail_closed).
 
 type CompilerGateBoundStep {
   step: Step
@@ -259,15 +248,21 @@ type CompilerGateBoundStep {
   step_name: String
 }
 
-fn compiler_gate_hosted_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
-  [
+fn compiler_gate_hosted_build_prelude_bound_steps() -> Outcome<List<CompilerGateBoundStep>> {
+  bind_outcome(
+    o: toolchain_home_isolation_step(),
+    f: fn(isolate_step) {
+      bind_outcome(
+        o: toolchain_pin_rustup_default_step(),
+        f: fn(pin_step) {
+          outcome_accepted(value: [
     CompilerGateBoundStep {
       step: compiler_gate_checkout_step(),
       role: capability_neutral,
       step_name: "Checkout",
     },
     CompilerGateBoundStep {
-      step: compiler_gate_unwrap_orch_step(toolchain_home_isolation_step()),
+      step: isolate_step,
       role: capability_neutral,
       step_name: "Isolate toolchain homes",
     },
@@ -277,7 +272,7 @@ fn compiler_gate_hosted_build_prelude_bound_steps() -> List<CompilerGateBoundSte
       step_name: "Install Rust toolchain",
     },
     CompilerGateBoundStep {
-      step: compiler_gate_unwrap_orch_step(toolchain_pin_rustup_default_step()),
+      step: pin_step,
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
@@ -289,7 +284,11 @@ fn compiler_gate_hosted_build_prelude_bound_steps() -> List<CompilerGateBoundSte
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: compiler_gate_build_step_name,
     },
-  ]
+          ])
+        }
+      )
+    }
+  )
 }
 
 data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
@@ -530,8 +529,14 @@ fn compiler_gate_compose_caller_step() -> Step {
 }
 
 // THE HEAD OF EVERY FLEET JOB: the judged checkout, an isolated toolchain home and a pinned default.
-fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(compiler_gate_fleet_judged_head_bound_steps(), compiler_gate_fleet_toolchain_bound_steps())
+// THE TOOLCHAIN PAIR IS THE ORCH-EMITTED ONE; a refusal propagates the whole head list's build.
+fn compiler_gate_fleet_head_bound_steps() -> Outcome<List<CompilerGateBoundStep>> {
+  bind_outcome(
+    o: compiler_gate_fleet_toolchain_bound_steps(),
+    f: fn(toolchain) {
+      outcome_accepted(value: concat(compiler_gate_fleet_judged_head_bound_steps(), toolchain))
+    }
+  )
 }
 
 // THE STEPS THAT ASSEMBLE THE JUDGED TREE: gunbc's own checkout, or, in the called form, gunbc's default
@@ -597,10 +602,16 @@ fn compiler_gate_fleet_judged_head_bound_steps() -> List<CompilerGateBoundStep> 
 }
 
 // AN ISOLATED TOOLCHAIN HOME AND A PINNED DEFAULT.
-fn compiler_gate_fleet_toolchain_bound_steps() -> List<CompilerGateBoundStep> {
-  [
+fn compiler_gate_fleet_toolchain_bound_steps() -> Outcome<List<CompilerGateBoundStep>> {
+  bind_outcome(
+    o: toolchain_home_isolation_step(),
+    f: fn(isolate_step) {
+      bind_outcome(
+        o: toolchain_pin_rustup_default_step(),
+        f: fn(pin_step) {
+          outcome_accepted(value: [
     CompilerGateBoundStep {
-      step: compiler_gate_unwrap_orch_step(toolchain_home_isolation_step()),
+      step: isolate_step,
       role: capability_neutral,
       step_name: "Isolate toolchain homes",
     },
@@ -610,11 +621,15 @@ fn compiler_gate_fleet_toolchain_bound_steps() -> List<CompilerGateBoundStep> {
       step_name: "Install Rust toolchain",
     },
     CompilerGateBoundStep {
-      step: compiler_gate_unwrap_orch_step(toolchain_pin_rustup_default_step()),
+      step: pin_step,
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
-  ]
+          ])
+        }
+      )
+    }
+  )
 }
 
 // THE REQUIRED JOB. Its subject and the discriminating red it buys are
@@ -941,12 +956,15 @@ fn compiler_gate_fast_lane_check_bound_steps() -> List<CompilerGateBoundStep> {
   ]
 }
 
-fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(
+fn compiler_gate_emit_build_bound_steps() -> Outcome<List<CompilerGateBoundStep>> {
+  bind_outcome(
+    o: compiler_gate_fleet_toolchain_bound_steps(),
+    f: fn(toolchain) {
+      outcome_accepted(value: concat(
     concat(
       concat(compiler_gate_fleet_judged_head_bound_steps(), compiler_gate_fast_lane_decision_bound_steps()),
       concat(
-        compiler_gate_fleet_toolchain_bound_steps(),
+        toolchain,
         [
           compiler_gate_cache_cargo_bound_step(),
           compiler_gate_fast_lane_guarded(b: compiler_gate_seed_build_bound_step()),
@@ -965,6 +983,8 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
         compiler_gate_emit_build_tail_bound_steps(),
       ),
     ),
+      ))
+    }
   )
 }
 
@@ -1129,12 +1149,15 @@ data parse_verdict_audit_job_id: String = "parse-verdict-audit"
 // those steps unconditioned -- every audit run builds, like the qualification floor
 // (compiler_gate_floor_steps_after_checkout). The only steps allowed to be condition-skipped here are
 // the publish pair, whose guards are passed in explicitly for exactly that reason.
-fn compiler_gate_parse_verdict_audit_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(
+fn compiler_gate_parse_verdict_audit_bound_steps() -> Outcome<List<CompilerGateBoundStep>> {
+  bind_outcome(
+    o: compiler_gate_fleet_toolchain_bound_steps(),
+    f: fn(toolchain) {
+      outcome_accepted(value: concat(
     concat(
       compiler_gate_fleet_judged_head_bound_steps(),
       concat(
-        compiler_gate_fleet_toolchain_bound_steps(),
+        toolchain,
         [
           compiler_gate_cache_cargo_bound_step(),
           compiler_gate_seed_build_bound_step(),
@@ -1162,6 +1185,8 @@ fn compiler_gate_parse_verdict_audit_bound_steps() -> List<CompilerGateBoundStep
         },
       ]
     ),
+      ))
+    }
   )
 }
 
