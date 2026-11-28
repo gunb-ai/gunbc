@@ -1,0 +1,89 @@
+module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
+
+import v2.test.claim.manual.annotation_gap_v1_v2_agreement {
+  ManualUngated, GatedRow,
+  agreement_control_module_name, agreement_control_rung
+}
+import v2.workflow.required_floor { required_gate_admits }
+import std.dissolution { DissolutionCondition, dissolution_is_bound, unbound_dissolution }
+
+// THE ONE CLAIM THAT REACHES OUTSIDE THIS FILE, and why it survives. This module used to carry its own receipt
+// -- the kind of probe, the ref the broken tree is durable on, the two commits where the control was observed
+// failing and passing, the date, the roster arm it removed, the three source roots and the run-log pointers --
+// and the only reader of all of it was a claim in this same file running `string_contains` over those same
+// strings. Data that no consumer outside its own file reads cannot refuse anything: it is self-certification
+// with extra steps (gunbc.design_argument::consumption, "a witness asserting existence rather than exercising
+// behavior"; gunbc.design_argument::source_annotations, a `String` declaration whose only purpose is commentary
+// is misplaced or dead data). Every one of those carriers is gone, along with the well-formedness claim that read
+// them.
+//
+// A SECOND CLAIM used to live here too, and it is gone for the same reason with a sharper edge: it compared this
+// module's copies of the control's module path and entry-fn name against the control's published carriers. That
+// is a copy checked against its original. Renaming the control's entry fn leaves BOTH literals untouched, so the
+// claim stayed green while its own comment promised red -- two places independently deciding one fact
+// (gunbc.design_argument::single_authority) and a `.contains()` grep standing in for a consumer
+// (gunbc.design_argument::fail_closed). The entry fn is no longer published by the control at all; the name is
+// consumed by the executor's `--functions` argv, which refuses a rename with
+// "does not declare requested function(s)" at rc=2, and that refusal is recorded in the pull-request run log.
+//
+// WHAT REMAINS is a claim that compares something published HERE against something computed ELSEWHERE, so an
+// edit on the other side can turn it red: the control's declared rung, matched against `required_gate_admits`,
+// which the floor computes from its own selector rosters. Enrolling this control without restating its rung, or
+// raising the rung while no roster names it, refuses. Admitting a required-gate row is an operator act on a
+// recorded ruling (gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling). The carrier of the moment
+// this rung may rise is `front_end_placement_control_next_rung`, declared in THIS module. It used to be
+// declared in `v2.compiler.staged_front_end`, and that was the wrong home for the wrong reason to check: a
+// statement about how a manual test control will be governed is not a fact about the front end, and
+// gunbc.design_argument::single_authority puts a fact's home at its layer of meaning. What keeps the row from
+// being self-certification is what it is compared against -- `required_gate_admits`, which the floor computes
+// from its OWN selector rosters in another module -- not where it is written.
+//
+// WHERE THE EXECUTIONS ARE, since they are deliberately NOT stored here: no predicate in this language
+// observes a process or a filesystem, so a Bool or a commit-sha string beside a run certifies nothing about
+// it. The raw PASS/FAIL lines, each command's real exit status, the exact argv, the binary's sha256 and the
+// tree sha it ran on are recorded in the pull-request run log; the deliberately-broken tree (the roster arm
+// of `v2.compiler.parse` `parse_node_is_source_region` removed, so a comment before `2 * 3` loses `2 * 3` as
+// its neighbour on the v2 side while v1 still names it) is durable as a named ref in the same repository, and
+// its history shows every plant, including the one whose diff against its first parent was EMPTY and which is
+// therefore a parent of the break and not a break. Both are named, with their hashes, in that run log rather
+// than repeated here where nothing could read them.
+
+
+// THE RUNG IS CHECKED AGAINST THE GATE'S OWN DECISION, AND THE TWO ARMS ARE NOT THE SAME QUESTION.
+// `agreement_control_rung` is published by the control; admission is computed ELSEWHERE by
+// `required_gate_admits`, from the floor's own selector rosters, so the claim cannot be satisfied by the rung's
+// own value. The arms answer two different questions, and that is the whole point:
+//   ManualUngated  -- the floor must admit this path under NEITHER selector kind. A family row that later swept
+//                     this path in fails this arm, so silence here is not a confession filed for readers to trust.
+//   GatedRow       -- the floor DOES admit it. Admitting is an operator act; the rung may not outrun the roster.
+// There is deliberately NO "executed by the floor" arm: `required_gate_admits` answers ADMITS, not EXECUTED, and
+// nothing anywhere observes execution -- the required-floor runner is deleted
+// (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow passes `--required-floor`
+// (witnessed in the negative by dag.test.claim.witness_floor_workflow_consolidation_witness). An arm whose
+// predicate was the same admission question would let the rung be raised on an admission alone, which is an
+// inflated rung passing; the variant and its arm are added together with the authority that could decide them.
+// WHEN that moment is, is carried by the row declared just below; this claim reads it too: it must stay unbound
+// exactly while the floor admits nothing.
+
+// THE MOMENT THIS RUNG MAY RISE, carried as a typed condition instead of as a promise in a comment. UNBOUND,
+// and nothing in the tree fires it: the runner that judged this floor is deleted
+// (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted), no workflow passes `--required-floor`, and
+// admitting this control to a required-gate roster is its own roadmap row
+// (parse-comment-gap-agreement-control-gated, dispatch NotDispatchable until a floor that CAN execute exists).
+// Binding it today would be a trigger that can never fire beside a control that is never run. It is not
+// asserted from beside itself: the claim below compares it against the floor's own admission, so enrolling the
+// control in a roster while this stays unbound, or binding this while no roster enrols the control, refuses.
+data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, this control stays manual and ungated. At that moment agreement_control_rung in the control must be restated, which the claim in this module refuses if it is left stale.")
+
+test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
+  // Three separate authorities state one moment, and only one of them is written here: the rung is published
+  // by the control, the admission is computed by the floor from its own selector rosters, and the trigger is
+  // declared above. The two that are READ, not written, are what make this falsifiable -- an edit to the
+  // control's rung or to the floor's roster turns it red without touching this file.
+  let admits = required_gate_admits(module_path: agreement_control_module_name)
+  let rung_agrees = match agreement_control_rung {
+    ManualUngated => !admits
+    GatedRow => admits
+  }
+  rung_agrees && (dissolution_is_bound(condition: front_end_placement_control_next_rung) == admits)
+}

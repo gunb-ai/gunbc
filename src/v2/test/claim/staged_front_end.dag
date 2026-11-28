@@ -1,20 +1,26 @@
 module v2.test.claim.staged_front_end
 
 import std.types { List }
+import std.algebra { fold_list }
+import v2.std.node { Symbol }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
+  FrontEndParse,
   FrontEndRefused,
   FrontEndResolvedModule,
   FrontEndRun,
   FrontEndStage,
   FrontEndStagePassed,
   FrontEndStageRejected,
+  ParsedModule,
   front_end_stage_index,
   front_end_run_outcome,
+  front_end_bounded_diagnostics,
+  front_end_incomplete_diagnostics,
   run_front_end,
-  run_front_end_to
+  run_front_end_to,
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, DeclarerRefused, Diagnostic, Rejected, Unavailable }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -122,4 +128,107 @@ fn first_refusal_reason(source: String) -> Symbol {
 
 test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
   first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// THE PARSE STAGE IS A PRODUCTION CONSUMER OF THE AUTHORED PARSE, AND THESE PIN IT.
+// Roadmap node parse-comment-gap-attachment-v2-consumed put parse_module_authored on the production
+// front end (v2.compiler.staged_front_end front_end_parse_step), which is the route every .dag
+// candidate the acceptance harness runs walks. The four tests above pin the ladder's SHAPE -- which
+// stage a candidate dies at -- and every one of them would still pass if the parse stage dropped the
+// authored artifact's annotations, because none of them reads the attachment. These read it:
+// staged_front_end_produces_the_authored_parse_for_an_annotated_module requires annotation_count > 0 on a
+// comment-bearing module AND == 0 on an uncommented one, and that zero leg is what keeps the count from
+// being a constant. Annotation-attachment LOSS is checked by NOTHING in this module: the guard that asked
+// whether every capture was covered turned out to be a declaration whose only consumers were tests of
+// itself, so it and its fixtures were deleted rather than left asserting their own existence, and the hole
+// it covered is tracked by the gunbc roadmap node rn_ZR45MIQ7KTC56XVLT23LXQ3W4A
+// (source-annotation-fold-carries-absorbed-capture-count), whose carrier is dag/std/source_annotation.dag.
+// The v1/v2 agreement half --
+// WHICH gap a capture landed in -- is the MANUAL, UNGATED control
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe pair
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair re-derives that control's rung from
+// v2.workflow.required_floor required_gate_admits. It sits under manual/, no
+// gated row admits it and the required floor executes nothing, so none of these tests stands in for it and
+// none of them is run by CI either; the executed evidence for all of these lives in this PR's run-log
+// comments, not in carriers inside these modules.
+
+data annotated_candidate_source: String = "module m\n\n// why the reader needs this\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn parse_stage_passed_with_nodes(run: FrontEndRun) -> Bool {
+  fold(run.steps, init: false, f: fn(acc, step) {
+    match step {
+      FrontEndStagePassed { stage: FrontEndParse, receipt: ParsedModule { node_count: n, annotation_count: _ }, diagnostics: _ } =>
+        acc || n > 0
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+    }
+  })
+}
+
+// THE ROW'S HANDBACK CLAIM, AND THE CONSUMER THE CONSUMPTION ARGUMENT REQUIRES. The production parse stage
+// calls parse_module_authored, a module carrying a comment reaches resolve, and the annotation half that call
+// produced is read back out of the stage's own receipt: a positive annotation_count for the commented module and
+// zero for the uncommented one. The zero leg is the point -- a read that returns a positive number whatever the
+// input is decoration, and the two legs together are what make the read mean something. Falsifiable both ways:
+// delete the comment line from annotated_candidate_source and the positive leg goes red; add one to
+// candidate_accepted_source and the negative leg goes red.
+// WHAT IT DOES NOT PROVE, SAID RATHER THAN LEFT TO BE ASSUMED: the count comes from the fold and is only
+// counted here, so it shows the fold emitted rows for the capture -- not WHICH gap a capture landed in
+// (placement is the v1/v2 agreement control's question), and not that an interior loss inside a joined block is
+// caught.
+fn parse_stage_annotation_count(run: FrontEndRun) -> Int {
+  fold(run.steps, init: 0, f: fn(acc, step) {
+    match step {
+      FrontEndStagePassed { stage: FrontEndParse, receipt: ParsedModule { node_count: _, annotation_count: a }, diagnostics: _ } =>
+        acc + a
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+    }
+  })
+}
+
+test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -> Bool {
+  let run = run_front_end(source: annotated_candidate_source, file: ^candidate_module)
+  let bare = run_front_end(source: candidate_accepted_source, file: ^candidate_module)
+  match run.completion {
+    FrontEndResolvedModule { resolved: _ } =>
+      passed_stage_count(run: run) == 4
+        && parse_stage_passed_with_nodes(run: run)
+        && parse_stage_annotation_count(run: run) > 0
+        && parse_stage_annotation_count(run: bare) == 0
+    FrontEndBoundReached { last: _ } => false
+    FrontEndRefused => false
+  }
+}
+
+
+
+
+fn claim_names_a_refused_declarer(d: Diagnostic) -> Bool {
+  match d.correction {
+    Unavailable { reason: DeclarerRefused { declarer: _ } } => true
+    _ => false
+  }
+}
+
+fn claim_refused_declarer_count(xs: List<Diagnostic>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, d) { if claim_names_a_refused_declarer(d: d) { acc + 1 } else { acc } })
+}
+
+// DeclarerRefused is a correction arm a stage refusal COULD use, and this is the claim that the refusals this
+// front end actually produces do not use it: every diagnostic of the bounded run and of the incomplete run is
+// checked for a DeclarerRefused correction, and none may carry one. That is a decision about what the compiler
+// emits, so a refusal that starts naming a declarer turns it red. The module used to also spell
+// std.source_annotation::annotation_attach_step by hand and compare that Cons chain to a literal of the same
+// path; a copy checked against its original stays green through any rename, which is the defect
+// gunbc.design_argument::single_authority names and which this branch had already deleted once in
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair. Both sides of that comparison are gone.
+test fn front_end_sibling_refusals_name_no_refused_declarer() -> Bool {
+  let bounded = front_end_bounded_diagnostics(last: FrontEndParse)
+  let incomplete = front_end_incomplete_diagnostics()
+  !claim_names_a_refused_declarer(d: bounded.head)
+    && !claim_names_a_refused_declarer(d: incomplete.head)
+    && claim_refused_declarer_count(xs: bounded.tail) == 0
+    && claim_refused_declarer_count(xs: incomplete.tail) == 0
 }
