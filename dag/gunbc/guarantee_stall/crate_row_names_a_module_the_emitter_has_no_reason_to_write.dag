@@ -1,0 +1,103 @@
+module gunbc.guarantee_stall.crate_row_names_a_module_the_emitter_has_no_reason_to_write
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A STALL, NOT A DROP -- recorded under neat-badger-614's 2026-11-27 no-fabricated-event ruling
+// (the stall-versus-drop block of gunbc.rung_drop.dag). This row is the in-place conversion of
+// gunbc.rung_drop.crate_row_names_a_module_the_emitter_has_no_reason_to_write, whose file is DELETED
+// in the same commit that authors this one. The conversion is the whole point of writing a STALL here
+// rather than keeping a RungDrop: a DROP is an event and its previous/temporary/reason fields answer
+// "what fell". NOTHING FELL HERE. A body the emitter was never given a reason to write is not a body
+// that was lost, and the regenerate-the-partition-to-a-fresh-receipt deliverable was never executed,
+// so it never held a rung either. Forcing previous/temporary on either subject would fabricate an
+// event that did not happen -- which is precisely what that ruling forbids. A STALL is the standing
+// state that fits: a class sits below its attainable ceiling and has not moved, and it is obliged to
+// say why, separating what can climb after one grounding from what is permanent.
+
+// BOTH SUBJECTS ARE CARRIED HERE, IN THIS ONE ROW; no second home is created.
+//   (A) THE EMITTED-BODY DEMAND -- the modules a GeneratedPartitionCrateRow can name but for which no
+//       emitted body exists, so placing them in a crate row makes the generated crate lib.rs declare a
+//       path to a file that does not exist.
+//   (B) THE CONVERGENCE / regenerate-to-receipt half -- that a heal or regen round reaches the seed's
+//       fixed point once such a crate row is placed. This half was never executed (see bold-lark-538's
+//       pair_b_with_carrier.log below), so it, too, never held a rung.
+// The ROADMAP row gunbc.roadmap.stage0-crate-partition-covers-every-emitted-module names this row in
+// its typed carriers field (not merely in prose), and its own handback stops at the ADMISSION-COUNT leg.
+
+// WHAT IS STILL MEASURED AND READ, UNCHANGED. The emitted-edge admission still runs, still refuses, and
+// still names every uncovered endpoint: a round over --source-root dag --source-root src/v2 prints its
+// Stage0EmittedEdgesNotCovered population and per-module counts, and a worker reads that count as the
+// measure of their own placement. Nothing else loses its blocking result: a semantic red, a missing
+// witness, a mirror drift, an unsealed candidate and a wall interruption all stay armed, on other gates.
+
+// WHY THIS IS NOT A STEP ORDERING A WORKER CAN REORDER, WHICH IS WHAT IT FIRST LOOKED LIKE. Measured
+// 2026-11-25 on origin/main from the host realization of v2.workflow.required_regen, in the file
+// src/v1/stage0/src/required_regen_host.rs: the round calls emit_generated_surface first, then
+// write_emitted_tree, and only then reaches seed_cargo_build at its round.rebuild_from_installed sites.
+// Emit, then write, then build. So a body absent at the build is not a body whose write step came too
+// late; it is a body the emitter was never given a reason to produce, which the same file's own header
+// comment distinguishes ("WHICH EMITTED SURFACES ARE MISSING BECAUSE THE CHANGE IS NEW, not because the
+// emitter ..."). Reachability, not sequence, is the missing input: the claim-test module bodies that do
+// exist in the seed root are each referenced by an authored source, and the modules listed below are
+// referenced by nothing.
+
+// MEASURED BASIS, all counts printed on origin/main the same day, no slot spent. Every module named by a
+// GeneratedPartitionCrateRow has an emitted body on disk in src/v1/stage0/src: 100 named, 100 present, 0
+// missing. The thirteen modules enumerated in the population below have 0 bodies between them. Zero
+// claim-test modules appear in the generated carrier or in src/v2/workflow/rust_crate_partition.dag,
+// while fourteen claim-test bodies exist in the seed root and are named by src/v1/stage0/src/lib.rs with
+// its 90 pub mod lines -- which is the host shell the admission's own refusal text names as the
+// alternative to a partition row, in gunbc_stage0_stage0_emitted_edge_admission at its
+// Stage0EmittedEdgesNotCovered display. A crate row naming a body-less module therefore makes the
+// generated crate lib.rs declare a path to a file that does not exist, and the build behind it fails at
+// cargo exit status 101 with "couldn't read ... No such file or directory". The seed's include scheme is
+// NOT the defect: all 55 #[path = "../../stage0/src/*.rs"] targets in src/v1/stage0_std_core/src/lib.rs
+// resolve to bodies on disk, so the gap is a missing emitted body, not a path bug.
+
+// THE BUILD FAILURE AND THE ADMISSION REFUSAL ARE DIFFERENT ROUNDS; do not conflate them. The ADMISSION
+// refusal is the roadmap row's green_at 0d29c21d8d3649cada56ca1d1f90bc3a15980f80, which refused AT the
+// admission with 22 residual endpoints (the twelve owned modules zeroed; dry_run held 4 and
+// v1_tests_claim_v1_source_chars_once_identity held 18). The cargo exit-status-101 build failure is the
+// SEPARATE a6b round at f0c3c72dfb7 (heal run 45582811039), which PASSED the admission at zero uncovered
+// and then died at the seed cargo build -- a build failure behind the emit, not an admission refusal.
+// THE NEVER-EXECUTED half, in bold-lark-538's own words: pair_b_with_carrier.log (tree 0d29c21d, 128
+// lines) prints the admission refusal at 22 residual (line 97), then
+// "regen-round-cost: refused: rebuilt seed produced no fresh generation receipt at
+// .../pairB/target/stage0-regen-receipt.json; status=exit status: 1" (line 123), then
+// ROUND_REAL_EXIT_STATUS=1 (line 126). Both matched-pair legs came back rc=1; neither produced a fresh
+// generation receipt. The regenerate-the-partition-to-a-receipt deliverable was therefore NEVER EXECUTED;
+// only the admission-count leg was executed (235 endpoints at red_at 4c61f5a3 falling to 22 at green_at
+// 0d29c21d on one instrument, the discriminating evidence being the differing count and std_template
+// going from named-with-10 to absent).
+
+// POPULATION NOTE: the BoundedPopulation members are bare module names -- the machine-readable
+// population the emitter has no reason to write (0 emitted bodies among them). Two of them are
+// CARRIED here but are NOT in the roadmap row's owned placement set: extdeps_exec_program (the
+// emitter does not write it; excluded from the owned set by the headline's own terms) and dry_run
+// (assigned to adhoc-132254e5-c25 per the operator ruling). They stay listed because they are
+// still body-less named modules in the emitted population, not because this row places them.
+
+data crate_row_names_a_module_the_emitter_has_no_reason_to_write: GuaranteeStall = GuaranteeStall {
+  subject: "the convergence half of the emitted-edge coverage certification over the modules a GeneratedPartitionCrateRow names that the emitter has no reason to write, AND the regenerate-the-partition-to-a-fresh-generation-receipt deliverable -- neither rung was ever held, so neither fell; the admission count over the declared partition is still read and reported per module by the roadmap row gunbc.roadmap.stage0-crate-partition-covers-every-emitted-module, which carries this row in its typed carriers field",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation { members: [
+    "extdeps_exec_command",
+    "extdeps_tools_ls",
+    "extdeps_posix_shell_command_language",
+    "extdeps_filesystem_filesystem_io",
+    "extdeps_tools_env",
+    "extdeps_exec_program",
+    "extdeps_posix_process",
+    "gunbc_remote_shell_command",
+    "extdeps_access_posix",
+    "std_operation_argv",
+    "std_template",
+    "std_env_binding",
+    "dry_run"
+  ] },
+  next_rung_trigger: climbs_when(capability: "an operator ruling on seed growth recorded in gunbc.design_ruling, in the operator's own words, that names which of these modules may have an emitted body and by which authored reference, and places the rest -- an authored reference for a module meant to be reachable so the emit writes its body, or host-shell placement named in the seed's own lib.rs population for one meant to be reachable only as a claim -- so that no GeneratedPartitionCrateRow names a module whose emitted body cannot exist. Two things do NOT retire this stall: rerunning the round unchanged, which reproduces the same cargo exit status 101 at the build behind the emit; and hand-writing a body, which is seed Rust and is outside every worker's authority on this lane. A default closure of an ask is not the ruling -- msg_f631425e closed Hold by timeout and is cited here precisely because it decided nothing")
+}
