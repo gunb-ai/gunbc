@@ -183,3 +183,9 @@ fn serving_child_engine_bound_is_positive() -> Bool {
 fn no_serving_child_host_override_undercuts_the_engine() -> Bool {
   first_where(serving_child_host_overrides, o => byte_size_count(b: o.bytes) < byte_size_count(b: serving_child_engine_bound.bytes)) == Absent
 }
+
+// THE UNIT NAME OF THE SLICE EVERY FIGURE IN THIS MODULE IS ABOUT. It belongs beside the bounds it
+// prices: the door's pre-hand-off admission, the door's child-exit diagnostic, the envelope's peer
+// read and the slice-bounds ceiling all name the SAME slice, and a string literal copied into each
+// is a meaning fork waiting for one of them to drift (gunbc.design_argument::single_authority).
+data serving_child_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"

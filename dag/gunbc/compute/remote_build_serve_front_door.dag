@@ -2,6 +2,7 @@ module gunbc.compute.remote_build_serve_front_door
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
+import std.nat { nat_to_decimal_string }
 import std.optional { Present, Absent }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
@@ -16,6 +17,7 @@ import gunbc.compute.remote_build_wire {
   remote_build_protocol_word, remote_build_leg_is_probe, remote_build_serve_answer,
   remote_build_ending_of_answer,
   RemoteBuildHandOff, remote_build_serve_hand_off, remote_build_ssh_command_variable,
+  remote_build_capacity_body, remote_build_capacity_retry_floor,
 }
 import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import std.integer { int_to_decimal_string }
@@ -23,6 +25,23 @@ import gunbc.compute.remote_build_serve_principal {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
   remote_build_serve_probe_principal,
 }
+import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance }
+import gunbc.compute.host_capacity {
+  host_capacity_subject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
+  ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
+  compute_capacity_store, SeatChargeReading, ChargeScansRead, ChargeScansUnreadable,
+  SeatChargeScan, ScanOpen, compute_seat_charge_scans, host_capacity_pool_slots_for_home,
+  HostCapacityPool, ComputeBuildPool,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
+import extdeps.systemd { systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice }
+import extdeps.linux.cgroup_v2_memory {
+  MemoryCurrent, MemoryEvents, cgroup_memory_interface_file_name,
+  parse_cgroup_nonnegative_bytes, parse_cgroup_memory_events, cgroup_memory_events_wire,
+}
+import std.measure { byte_size_count }
+import gunbc.live_deploy.serving_child_observations { serving_child_slice_unit_name }
 
 // THE FRONT DOOR: the entry sshd RUNS, which answers the probe and hands everything else to the
 // serving entry.
@@ -99,6 +118,11 @@ fn remote_build_serve_front_door_turn(
   accept_instant: String,
   raw_command: String?,
   principal: RemoteBuildServePrincipal,
+  // LAZY, AND DELIBERATELY SO (review 99441): the ledger is asked ONLY at the hand-off gate below.
+  // The probe arm returns before this is ever called, so a probe never resolves the capacity subject,
+  // opens the capacity store or scans the seat-charge map -- a demand an arm does not consume is not
+  // paid for by that arm (gunbc.design_argument::minimize_redundancy).
+  ask_admission: fn(String) -> RemoteBuildDoorAdmission,
 ) -> RemoteBuildFrontDoorTurn {
   if serve_binary == "" || repo_root == "" || host == "" || leg_ceiling == "" {
     // The words came from the roster through remote_build_serve_front_door_run_words and arrived
@@ -139,14 +163,48 @@ fn remote_build_serve_front_door_turn(
             detail: "remote-build: the request does not name the remote-build contract",
           }
         } else {
-          FrontDoorHandOffToChild {
-            hand_off: remote_build_serve_hand_off(
-              serve_binary: serve_binary as NonEmptyStr,
-              repo_root: repo_root as NonEmptyStr,
-              host: host,
-              leg_ceiling: leg_ceiling as NonEmptyStr,
-              accept_instant: accept_instant as NonEmptyStr,
-            ),
+          // THE PRE-HAND-OFF ADMISSION, asked before anything is booted and consulted before
+          // anything is handed off. A seat is an open charge in the pool's own ledger; a pool whose
+          // open charges already reach its declared seat count cannot take another child through a
+          // resolve-to-OOM, and the OOM that came from that boot is the fact this gate closes
+          // (gunbc.live_deploy.serving_child_observations). Only an admitted verdict boots; every
+          // refusal is an answer, minted in the ONE capacity vocabulary the request path also uses
+          // (gunbc.compute.remote_build_wire) -- the same capacity-limited body with its retry
+          // allowance, so a door that refuses speaks exactly like a host that is full. Fail-closed:
+          // a ledger the door cannot read never hands off (gunbc.design_argument::fail_closed);
+          // the ending is the room/readiness class, which moves the request on rather than
+          // refusing it outright. This gate is the pre-check that stops the boot pile-up; the
+          // child's own ledger compare-and-set remains the exclusion between concurrent
+          // acquisitions, unchanged.
+          match ask_admission(host) {
+            DoorAdmitted { held: _, seats: _ } => FrontDoorHandOffToChild {
+              hand_off: remote_build_serve_hand_off(
+                serve_binary: serve_binary as NonEmptyStr,
+                repo_root: repo_root as NonEmptyStr,
+                host: host,
+                leg_ceiling: leg_ceiling as NonEmptyStr,
+                accept_instant: accept_instant as NonEmptyStr,
+              ),
+            }
+            DoorPoolFull { held, seats } => FrontDoorAnswer {
+              ending: ServeHostFull,
+              detail: remote_build_capacity_body(
+                retry_after: remote_build_capacity_retry_floor,
+                detail: join([
+                  "remote-build: the seat pool is full: ",
+                  nat_to_decimal_string(value: held), " of ", nat_to_decimal_string(value: seats),
+                  " seats are held; the hand-off would boot a child that could not get a seat",
+                ], ""),
+              ),
+            }
+            DoorLedgerUnreadable { detail } => FrontDoorAnswer {
+              ending: ServeHostCannotServe,
+              detail: concat("remote-build: the front door cannot read its seat ledger to admit the hand-off: ", detail),
+            }
+            DoorSubjectUnresolved { detail } => FrontDoorAnswer {
+              ending: ServeHostCannotServe,
+              detail: concat("remote-build: the front door cannot resolve this host's capacity subject to admit the hand-off: ", detail),
+            }
           }
         }
     }
@@ -171,6 +229,70 @@ fn remote_build_serve_front_door_probe_answer(host: String, principal: RemoteBui
       // (gunbc.compute.remote_build remote_build_probe_from_exit).
       detail: concat("remote-build: the front door is ready on ", host),
     }
+  }
+}
+
+// THE PRE-HAND-OFF ADMISSION.
+//
+// WHAT THE DOOR ASKS THE POOL BEFORE IT BOOTS A CHILD. A seat is an open charge in the pool's
+// own ledger (gunbc.compute.host_capacity compute_seat_charge_scans: ScanOpen is held, every
+// other scan is not), and the pool's size is the declared seat count the ledger's appropriation
+// divides by (host_capacity_pool_slots_for_home -- the same read that sizes the reservation, one
+// authority for both questions). The door holds no policy of its own: it counts open charges
+// against declared seats and nothing else.
+//
+// WHY AN UNREADABLE LEDGER REFUSES RATHER THAN ADMITTING. An empty pool and an unreadable pool
+// look identical to a reader that guesses; only the ledger knows which it is. Admitting on a
+// guess is exactly how a full pool got another child booted into a resolve-to-OOM, so the
+// fail-closed direction is refusal (gunbc.design_argument::fail_closed), in the room/readiness
+// ending that moves the request to the next host rather than refusing the request itself.
+//
+// THE WET READER IS remote_build_serve_front_door_admission; the turn above is pure and asks for the
+// verdict through a THUNK the CLI fills, so every arm is decidable in the witness without a host and
+// the probe arm never reaches the ledger at all (review 99441: an effectful demand with no consumer
+// on the arm that pays for it). What the entry statically carries is declared, not smuggled: the
+// seat ledger (gunbc.compute.host_capacity) rides every leg of this door. The instrument for what
+// the entry carries is the door's own `gunbc run --entry ... --function ...` [pre-entry] counters
+// (demand_acquired_modules, resolve_entry_graph_inclusive ms); the figures are read there, never
+// transcribed here. What stays BANNED at the door is the systemctl/host-effect machinery for the
+// hand-off diagnostic -- the same counters showed it far past the ceiling the slice-diagnostic
+// comment refuses to cross, and a probe re-read of that instrument must catch any regression.
+type RemoteBuildDoorAdmission
+  = DoorAdmitted { held: Nat, seats: Nat }
+  | DoorPoolFull { held: Nat, seats: Nat }
+  | DoorLedgerUnreadable { detail: String }
+  | DoorSubjectUnresolved { detail: String }
+
+// ASK THE LEDGER. The instance is the roster's own serving instance for this host -- the same
+// mint the request path uses -- so the subject, the store and the seat count all come from the
+// host's declared rows, never from arguments the caller could steer.
+fn remote_build_serve_front_door_admission(host: String) -> RemoteBuildDoorAdmission {
+  match host_capacity_subject(instance: remote_build_serving_instance(host: host as HostIdentity), pool: ComputeBuildPool) {
+    ComputeSubjectHostUnresolved { host: h } => DoorSubjectUnresolved { detail: join(["host ", h as String, " has no capacity home"], "") }
+    ComputeSubjectResolved { subject: subject, appropriation: _ } =>
+      match compute_capacity_store(subject: subject) {
+        ComputeCapacityStoreUnready { area: area, detail: detail } =>
+          DoorLedgerUnreadable { detail: join(["the capacity store area ", area, " is not standing: ", detail], "") }
+        ComputeCapacityStoreReady { store: store } =>
+          match compute_seat_charge_scans(store: store, partition: subject.partition) {
+            ChargeScansUnreadable { detail: detail } => DoorLedgerUnreadable { detail: detail }
+            ChargeScansRead { scans: scans, generation: _ } => {
+              // HELD IS WHAT IS OPEN, by the ledger's own answer per reference -- never a directory
+              // listing, which cannot tell a live holder from a corpse (that is why the settle pass
+              // reads this map and not the filesystem).
+              let held = length(map_keys(m: scans) |> filter(k => match scans.get(k) {
+                Present { value: s } => match s { ScanOpen { acquired_at: _ } => true  _ => false }
+                Absent => false
+              }))
+              let seats = host_capacity_pool_slots_for_home(home: subject.home, pool: ComputeBuildPool)
+              if held >= seats {
+                DoorPoolFull { held: held, seats: seats }
+              } else {
+                DoorAdmitted { held: held, seats: seats }
+              }
+            }
+          }
+      }
   }
 }
 
@@ -201,6 +323,7 @@ fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_ro
         accept_instant: int_to_decimal_string(value: epoch_secs_of_millis(millis: accepted)),
         raw_command: shell.Env.Get(name: remote_build_ssh_command_variable).value,
         principal: remote_build_serve_probe_principal(),
+        ask_admission: h => remote_build_serve_front_door_admission(host: h),
       ) {
         FrontDoorAnswer { ending, detail } => remote_build_serve_answer(ending: ending, text: detail)
         FrontDoorHandOffToChild { hand_off } => remote_build_serve_front_door_hand_off(hand_off: hand_off)
@@ -219,10 +342,24 @@ fn remote_build_serve_front_door_hand_off(hand_off: RemoteBuildHandOff) -> CliWi
   )
   let code = child.exit_code
   let receipts = remote_build_answer_body_is_a_receipt(stdout: child.stdout)
-  let bytes = if receipts || child.stderr == "" {
-    child.stdout
+  // WHEN THE CHILD DIES WITHOUT ANSWERING, THE DOOR RECORDS THE SLICE'S OWN ACCOUNT. A child that
+  // exits with no header and a non-zero code gave the client nothing and left the host with no
+  // account either -- which is how an in-slice OOM stayed invisible across two proof runs. The
+  // door reads the slice's current usage and its memory.events straight from the cgroup's own
+  // interface files under the slice's nested cgroup directory (the nesting rule is extdeps.systemd's),
+  // and prepends it as evidence, not verdict:
+  // the numbers say what the cgroup saw; naming the cause stays the observer's job. A read that
+  // cannot be made says so; it never blocks the answer the child did produce.
+  let headerless = match remote_build_ending_of_answer(stdout: child.stdout) { Absent => true  Present { value: _ } => false }
+  let diagnostic = if code == 0 || !headerless {
+    ""
   } else {
-    join([child.stdout, child.stderr], "\n")
+    concat(remote_build_serve_front_door_slice_diagnostic(unit: serving_child_slice_unit_name), "\n")
+  }
+  let bytes = if receipts || child.stderr == "" {
+    concat(diagnostic, child.stdout)
+  } else {
+    join([concat(diagnostic, child.stdout), child.stderr], "\n")
   }
   CliWirePrintable {
     bytes: bytes,
@@ -238,5 +375,39 @@ fn remote_build_answer_body_is_a_receipt(stdout: String) -> Bool {
   match remote_build_ending_of_answer(stdout: stdout) {
     Present { value: e } => e == ServeServed || e == ServeWorkEndedUnsuccessfully || e == ServeWorkInFlight
     Absent => false
+  }
+}
+
+// THE SLICE'S ACCOUNT, one line, minted only when the child left no answer of its own. Every arm
+// is data: a refusal to read is recorded as a refusal, never as silence and never as a number
+// that was not observed. THE READ IS THE CGROUP'S OWN INTERFACE FILES, read the same plain way the
+// rest of this module reads nothing heavier than a file: the door may not import the systemctl or
+// host-effect machinery, because the PROBE leg runs this same entry and those imports would widen
+// the probe's demand closure past 800 modules again (gunbc.design_argument::demand_before_materialization);
+// the names of these files belong to extdeps.linux.cgroup_v2_memory, never here).
+fn remote_build_serve_front_door_slice_diagnostic(unit: NonEmptyStr) -> String {
+  // THE SLICE'S CGROUP DIRECTORY IS NESTED, NOT FLAT: systemd places a dashed slice under its
+  // ancestors (gunbc.slice/gunbc-user.slice/gunbc-user-work.slice), and extdeps.systemd holds that
+  // rule -- the door borrows it, it does not re-derive it (gunbc.design_argument::single_authority).
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: unit) {
+    SliceNameNotASlice { spelling: s } => concat("remote-build door diagnostic: (refused: not-a-slice-name ", s, ")")
+    SliceCgroupPath { path: dir } => {
+      let current_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryCurrent)) as String)
+      let current = if !current_read.success {
+        concat("(refused: ", current_read.error, ")")
+      } else {
+        match parse_cgroup_nonnegative_bytes(text: current_read.content) {
+          Present { value: b } => nat_to_decimal_string(value: byte_size_count(b: b))
+          Absent => "(unreadable)"
+        }
+      }
+      let events_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryEvents)) as String)
+      let events = if !events_read.success {
+        concat("(refused: ", events_read.error, ")")
+      } else {
+        cgroup_memory_events_wire(reading: parse_cgroup_memory_events(body: events_read.content))
+      }
+      join(["remote-build door diagnostic: slice ", unit as String, " memory_current=", current, " memory_events=", events], "")
+    }
   }
 }
