@@ -1601,6 +1601,7 @@ fn multi_entry_index_shell_body(
         parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
         provider_layout: RefCell::new(None),
+        census_keyed: Cell::new(false),
     }
 }
 

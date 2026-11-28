@@ -464,7 +464,7 @@ impl ClaimRouteLayoutReads {
 
 pub(crate) struct ClaimRouteAcquisition {
     layout: Rc<ClaimRouteLayoutReads>,
-    parse_work: std::cell::RefCell<Option<super::ParseWork>>,
+    carried: std::cell::RefCell<Option<super::CarriedWork>>,
 }
 
 pub(crate) struct ClaimEntryResolved {
@@ -519,7 +519,7 @@ pub(crate) fn claim_route_acquisition(
     Ok((
         ClaimRouteAcquisition {
             layout,
-            parse_work: std::cell::RefCell::new(None),
+            carried: std::cell::RefCell::new(None),
         },
         selected,
     ))
@@ -574,7 +574,7 @@ impl ClaimRouteAcquisition {
                 Err(ResolveFailure::ProvidersOutsideIndex(outside)) => Err(outside),
                 Err(failure) => Ok(Err(EntryResolveRefusal::from(failure))),
             };
-            *self.parse_work.borrow_mut() = Some(index.take_parse_work());
+            *self.carried.borrow_mut() = Some(index.take_carried_work());
             let fresh: Vec<String> = match step {
                 Ok(outcome) => return outcome,
                 Err(outside) => outside.into_iter().filter(|m| !seeds.contains(m)).collect(),
@@ -631,8 +631,9 @@ impl ClaimRouteAcquisition {
             &layout.source_roots,
             facts,
         ));
-        if let Some(work) = self.parse_work.borrow_mut().take() {
-            index.adopt_parse_work(work);
+        index.key_typecheck_by_census();
+        if let Some(work) = self.carried.borrow_mut().take() {
+            index.adopt_carried_work(work);
         }
         let answers = layout.clone();
         index.answer_providers_from(Rc::new(

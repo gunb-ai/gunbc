@@ -11818,33 +11818,42 @@ pub struct MultiEntryIndex {
         >,
     >,
     provider_layout: RefCell<Option<ProviderLayout>>,
+    census_keyed: Cell<bool>,
 }
 
 pub(crate) type ProviderLayout = Rc<dyn Fn(&str) -> provider_acquire::PoolAnswer>;
 
-pub(crate) struct ParseWork {
+pub(crate) struct CarriedWork {
     intern_table: Rc<InternTable>,
     parse_cache: std::collections::HashMap<String, ParseCacheEntry>,
     normalize_diag_cache: std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>,
+    typed_module_cache:
+        std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>,
 }
 
 impl MultiEntryIndex {
-    pub(crate) fn take_parse_work(&self) -> ParseWork {
-        ParseWork {
+    pub(crate) fn take_carried_work(&self) -> CarriedWork {
+        CarriedWork {
             intern_table: self.intern_table.borrow().clone(),
             parse_cache: std::mem::take(&mut *self.parse_cache.borrow_mut()),
             normalize_diag_cache: std::mem::take(&mut *self.normalize_diag_cache.borrow_mut()),
+            typed_module_cache: std::mem::take(&mut *self.typed_module_cache.borrow_mut()),
         }
     }
 
-    pub(crate) fn adopt_parse_work(&self, work: ParseWork) {
+    pub(crate) fn adopt_carried_work(&self, work: CarriedWork) {
         *self.intern_table.borrow_mut() = work.intern_table;
         *self.parse_cache.borrow_mut() = work.parse_cache;
         *self.normalize_diag_cache.borrow_mut() = work.normalize_diag_cache;
+        *self.typed_module_cache.borrow_mut() = work.typed_module_cache;
     }
 
     pub(crate) fn answer_providers_from(&self, layout: ProviderLayout) {
         *self.provider_layout.borrow_mut() = Some(layout);
+    }
+
+    pub(crate) fn key_typecheck_by_census(&self) {
+        self.census_keyed.set(true);
     }
 }
 
@@ -14060,6 +14069,7 @@ fn try_reconcile_all_cache_hits(
     cycle_residue_slots: &HashSet<usize>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
+    census_terms: Option<&[String]>,
 ) -> Result<Option<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands)>, String> {
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
@@ -14096,7 +14106,7 @@ fn try_reconcile_all_cache_hits(
                 &closure_path_to_authored_name,
                 !cycle_residue_slots.contains(&slot),
             ) {
-                Ok(key) => key,
+                Ok(key) => census_scoped_key(key, census_terms, slot),
                 Err(ref e) if typed_key_dependency_hash_not_ready(e) => {
                     next_pending.push(slot);
                     continue;
@@ -14482,6 +14492,18 @@ fn tree_census_nodes(
     root: &str,
 ) -> Result<Rc<im::Vector<Rc<Node>>>, String> {
     let pool = pool_parse(index)?;
+    let reached = tree_census_files(index, root)?;
+    Ok(Rc::new(
+        pool.nodes_by_file
+            .iter()
+            .filter(|(file, _)| reached.contains(file))
+            .map(|(_, node)| node.clone())
+            .collect(),
+    ))
+}
+
+fn tree_census_files(index: &MultiEntryIndex, root: &str) -> Result<HashSet<String>, String> {
+    let pool = pool_parse(index)?;
     let trimmed = root.trim_end_matches('/');
     let prefix = format!("{trimmed}/");
     let mut reached: HashSet<String> = HashSet::new();
@@ -14502,13 +14524,7 @@ fn tree_census_nodes(
             }
         }
     }
-    Ok(Rc::new(
-        pool.nodes_by_file
-            .iter()
-            .filter(|(file, _)| reached.contains(file))
-            .map(|(_, node)| node.clone())
-            .collect(),
-    ))
+    Ok(reached)
 }
 
 /// The existing raw census preserves candidate multiplicity, service keys and corpus
@@ -14686,6 +14702,232 @@ fn build_symbol_index_for_reconcile(
     symbol_index
 }
 
+struct CensusKeyScope {
+    census: Rc<SymbolIndex>,
+    tree_files: HashSet<String>,
+    file_keyed: std::collections::HashMap<String, Vec<String>>,
+}
+
+impl CensusKeyScope {
+    fn new(census: Rc<SymbolIndex>, tree_files: HashSet<String>) -> Self {
+        let mut file_keyed: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        let mut note = |key: &str, rendered: String| {
+            if let Some((file, _)) = key.split_once("::") {
+                file_keyed
+                    .entry(file.to_string())
+                    .or_default()
+                    .push(format!("{key}={rendered}"));
+            }
+        };
+        for (key, rep) in census.transparent_alias_rep.iter() {
+            note(key, format!("rep:{rep}"));
+        }
+        for (key, cycle) in census.alias_cycles.iter() {
+            note(key, format!("cycle:{}", cycle.join(",")));
+        }
+        for (key, exposure) in census.type_head_exposures.iter() {
+            note(key, format!("head:{exposure:?}"));
+        }
+        for rows in file_keyed.values_mut() {
+            rows.sort();
+        }
+        CensusKeyScope {
+            census,
+            tree_files,
+            file_keyed,
+        }
+    }
+}
+
+fn census_key_words(content: &str) -> std::collections::BTreeSet<String> {
+    let mut words = std::collections::BTreeSet::new();
+    let mut run = String::new();
+    let flush = |run: &mut String, words: &mut std::collections::BTreeSet<String>| {
+        let chain = run.trim_matches('.');
+        for segment in chain.split('.') {
+            if segment
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+            {
+                words.insert(segment.to_string());
+            }
+        }
+        if chain.contains('.') {
+            words.insert(chain.to_string());
+        }
+        run.clear();
+    };
+    for c in content.chars() {
+        if c.is_alphanumeric() || c == '_' || c == '.' {
+            run.push(c);
+        } else if !run.is_empty() {
+            flush(&mut run, &mut words);
+        }
+    }
+    if !run.is_empty() {
+        flush(&mut run, &mut words);
+    }
+    words
+}
+
+fn census_key_module_digest(
+    index: &MultiEntryIndex,
+    scope: &CensusKeyScope,
+    closure: &HashSet<&str>,
+    path_to_module: &std::collections::HashMap<String, String>,
+    module: &str,
+) -> (String, Vec<String>) {
+    let Some(source) = index.source_files.get(module) else {
+        return (format!("unheld:{module}"), Vec::new());
+    };
+    let file = workspace_relative_repo_path(&source.path);
+    let mut edges: Vec<String> = Vec::new();
+    let mut parts: Vec<String> = vec![
+        module.to_string(),
+        v1_rt::atom_identity_hash(source.content.clone()),
+        format!(
+            "closure={} tree={}",
+            closure.contains(module),
+            scope.tree_files.contains(&file)
+        ),
+    ];
+    for word in census_key_words(&source.content) {
+        let mut answer: Vec<String> = Vec::new();
+        if let Some(state) = scope.census.global_bare.get(&word) {
+            match state.as_ref() {
+                GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
+                    answer.push(format!("unique:{module_path}"));
+                    edges.push(module_path.clone());
+                }
+                GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                    let mut owners: Vec<String> =
+                        candidates.iter().map(|c| c.module_path.clone()).collect();
+                    owners.sort();
+                    answer.push(format!("ambiguous:{}", owners.join(",")));
+                    edges.extend(owners);
+                }
+            }
+        }
+        if let Some(service) = scope.census.services.get(&word) {
+            answer.push(format!("service:{}", service.module_path));
+            edges.push(service.module_path.clone());
+        }
+        if scope.census.entries.contains_key(&word) {
+            answer.push("entry".to_string());
+        }
+        if word.contains('.') {
+            let segments: Vec<&str> = word.split('.').collect();
+            for len in 1..=segments.len() {
+                let prefix = segments[..len].join(".");
+                if index.source_files.contains_key(&prefix) {
+                    edges.push(prefix);
+                }
+            }
+        }
+        if !answer.is_empty() {
+            parts.push(format!("{word}={}", answer.join(";")));
+        }
+    }
+    for import in extract_import_paths(&source.content) {
+        edges.push(import);
+    }
+    if let Some(rows) = scope.file_keyed.get(&file) {
+        for row in rows {
+            for token in
+                row.split(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '.' | '/' | '-')))
+            {
+                if let Some(target) = path_to_module.get(token) {
+                    edges.push(target.clone());
+                }
+            }
+            parts.push(row.clone());
+        }
+    }
+    edges.sort();
+    edges.dedup();
+    (v1_rt::atom_identity_hash(parts.join("\n")), edges)
+}
+
+pub(crate) type ComposedCensusByRoot = std::collections::HashMap<String, Rc<SymbolIndex>>;
+
+fn census_key_terms(
+    index: &MultiEntryIndex,
+    closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
+    closure_names: &[String],
+    symbol_index: &Rc<SymbolIndex>,
+) -> Result<(Vec<String>, ComposedCensusByRoot), String> {
+    let closure: HashSet<&str> = closure_names.iter().map(String::as_str).collect();
+    let path_to_module: std::collections::HashMap<String, String> = index
+        .source_files
+        .iter()
+        .map(|(module, source)| (workspace_relative_repo_path(&source.path), module.clone()))
+        .collect();
+    let mut composed: ComposedCensusByRoot = std::collections::HashMap::new();
+    let mut scopes: std::collections::HashMap<Option<String>, CensusKeyScope> =
+        std::collections::HashMap::new();
+    let mut digests: std::collections::HashMap<(Option<String>, String), (String, Vec<String>)> =
+        std::collections::HashMap::new();
+    let mut terms: Vec<String> = Vec::with_capacity(closure_modules.len());
+    for (resolved, name) in closure_modules.iter().zip(closure_names.iter()) {
+        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+        let root = source_tree_root_of(&index.source_roots, &decl_file);
+        if !scopes.contains_key(&root) {
+            let scope = match &root {
+                Some(root) => {
+                    let tree = tree_bare_census_for_root(index, root)?;
+                    let census =
+                        v1_compiler_infer::symbol_index_with_bare_fill(symbol_index.clone(), tree);
+                    composed.insert(root.clone(), census.clone());
+                    CensusKeyScope::new(census, tree_census_files(index, root)?)
+                }
+                None => CensusKeyScope::new(symbol_index.clone(), HashSet::new()),
+            };
+            scopes.insert(root.clone(), scope);
+        }
+        let scope = &scopes[&root];
+        let mut reached: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
+        queue.push_back(name.clone());
+        while let Some(module) = queue.pop_front() {
+            if reached.contains_key(&module) {
+                continue;
+            }
+            let (digest, edges) = digests
+                .entry((root.clone(), module.clone()))
+                .or_insert_with(|| {
+                    census_key_module_digest(index, scope, &closure, &path_to_module, &module)
+                })
+                .clone();
+            reached.insert(module, digest);
+            for edge in edges {
+                if !reached.contains_key(&edge) {
+                    queue.push_back(edge);
+                }
+            }
+        }
+        let rendered: Vec<String> = reached
+            .into_iter()
+            .map(|(module, digest)| format!("{module}={digest}"))
+            .collect();
+        terms.push(v1_rt::atom_identity_hash(format!(
+            "root={}\n{}",
+            root.as_deref().unwrap_or("-"),
+            rendered.join("\n")
+        )));
+    }
+    Ok((terms, composed))
+}
+
+fn census_scoped_key(key: String, terms: Option<&[String]>, slot: usize) -> String {
+    match terms {
+        Some(terms) => format!("{key}+census:{}", terms[slot]),
+        None => key,
+    }
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -14718,6 +14960,15 @@ fn reconcile_with_typed_cache(
     let (schedule, cycle_residue_slots) =
         module_schedule_batches(&closure_modules, &closure_names, index);
     resolve_stage_slot_add(|s| s.assembly_schedule += schedule_started.elapsed().as_nanos());
+    let census_keyed = if index.census_keyed.get() {
+        let symbol_index = build_symbol_index_for_reconcile(graph.clone(), source_indices.clone());
+        let (terms, composed) =
+            census_key_terms(index, &closure_modules, &closure_names, &symbol_index)?;
+        Some((symbol_index, terms, composed))
+    } else {
+        None
+    };
+    let census_terms = census_keyed.as_ref().map(|(_, terms, _)| terms.as_slice());
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,
         &closure_names,
@@ -14725,6 +14976,7 @@ fn reconcile_with_typed_cache(
         &cycle_residue_slots,
         source_indices.clone(),
         index,
+        census_terms,
     )? {
         return Ok(assembled);
     }
@@ -14743,7 +14995,10 @@ fn reconcile_with_typed_cache(
     // and any cold child whose closure fully hits the typed/cross-process caches —
     // must not pay closure census construction. Genuine misses reach the build below
     // exactly as before.
-    let symbol_index = build_symbol_index_for_reconcile(graph.clone(), source_indices.clone());
+    let symbol_index = match &census_keyed {
+        Some((symbol_index, _, _)) => symbol_index.clone(),
+        None => build_symbol_index_for_reconcile(graph.clone(), source_indices.clone()),
+    };
     // Whole-closure variant-owner base for merge_global_bare_variant_locals
     // (the merge_global_bare_variant_locals_cost_note annotation in v1.compiler.infer): eligibility
     // depends only on (global_bare, si), so it is computed once per symbol index —
@@ -14813,7 +15068,7 @@ fn reconcile_with_typed_cache(
                     &closure_path_to_authored_name,
                     !cycle_residue_slots.contains(&slot),
                 ) {
-                    Ok(key) => key,
+                    Ok(key) => census_scoped_key(key, census_terms, slot),
                     Err(ref e) if typed_key_dependency_hash_not_ready(e) => {
                         next_pending.push(slot);
                         continue;
@@ -14875,6 +15130,12 @@ fn reconcile_with_typed_cache(
                                             None => {
                                                 let (composed, composed_nanos) =
                                                     nanos_net_of_pool_parse(|| {
+                                                        if let Some(built) = census_keyed
+                                                            .as_ref()
+                                                            .and_then(|(_, _, c)| c.get(&root))
+                                                        {
+                                                            return Ok(built.clone());
+                                                        }
                                                         tree_bare_census_for_root(index, &root).map(
                                                             |tree| {
                                                                 v1_compiler_infer::symbol_index_with_bare_fill(
