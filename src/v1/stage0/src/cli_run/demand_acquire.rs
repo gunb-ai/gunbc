@@ -491,6 +491,7 @@ pub(crate) fn claim_route_acquisition(
     });
     let mut candidates: std::collections::BTreeMap<String, Rc<v1_compiler_compile::SourceFile>> =
         std::collections::BTreeMap::new();
+    let mut walked: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = Vec::new();
     for scope in scopes {
         let name = scope.module_segments.join(".");
         if !name.is_empty() {
@@ -500,18 +501,16 @@ pub(crate) fn claim_route_acquisition(
         }
         if scope.beneath {
             for (module, source) in layout_modules_beneath(source_roots, &name)? {
-                admit_claim_candidate(&mut candidates, module, source)?;
+                admit_claim_candidate(&mut candidates, module.clone(), source.clone())?;
+                walked.push((module, source));
             }
         }
     }
     for (module, source) in &layout.custom {
         admit_claim_candidate(&mut candidates, module.clone(), source.clone())?;
     }
-    for (module, source) in &candidates {
-        layout
-            .reads
-            .borrow_mut()
-            .insert(module.clone(), Ok(Some(source.clone())));
+    for (module, source) in walked {
+        layout.reads.borrow_mut().insert(module, Ok(Some(source)));
     }
     let selected = candidates
         .into_iter()
