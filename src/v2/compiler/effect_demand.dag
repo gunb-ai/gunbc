@@ -1731,45 +1731,22 @@ data filesystem_effect_direct_reach_debt_contract: List<FilesystemEffectSite> = 
 // Membership: is this located site one of the contracted debt sites? Identity equality via the census's
 // own site comparison -- the same keys the census locates offenders by.
 fn filesystem_effect_debt_membership(site: FilesystemEffectSite) -> Bool {
-  fold_list(
-    xs: filesystem_effect_direct_reach_debt_contract,
-    empty: false,
-    cons: fn(acc, contracted) {
-      match acc {
-        true => true
-        false => filesystem_effect_site_eq(left: site, right: contracted)
-      }
-    }
-  )
+  any(xs: filesystem_effect_direct_reach_debt_contract, predicate: fn(contracted) { filesystem_effect_site_eq(left: site, right: contracted) })
 }
 
 // Every site in the contract is located by the census's DIRECT reaches (the completeness direction of
 // the join): a contracted debt the census failed to see means the census never exercised its named
 // population, which is worse than a red census -- it is a blind one.
 fn filesystem_effect_debt_contract_located(reaches: List<FilesystemEffectReach>) -> Bool {
-  fold_list(
-    xs: filesystem_effect_direct_reach_debt_contract,
-    empty: true,
-    cons: fn(acc, contracted) {
-      match acc {
-        false => false
-        true => fold_list(
-          xs: reaches,
-          empty: false,
-          cons: fn(any, reach) {
-            match reach {
-              ReachedFreePrimitiveDirectly { site: site, cause: _ } =>
-                match any {
-                  true => true
-                  false => filesystem_effect_site_eq(left: site, right: contracted)
-                }
-              ReachedThroughHandler { site: _ } => any
-            }
-          }
-        )
+  any(xs: filesystem_effect_direct_reach_debt_contract, predicate: fn(contracted) {
+    any(xs: reaches, predicate: fn(reach) {
+      match reach {
+        ReachedFreePrimitiveDirectly { site: site, cause: _ } =>
+          filesystem_effect_site_eq(left: site, right: contracted)
+        ReachedThroughHandler { site: _ } => false
       }
-    }
-  )
+    })
+  })
 }
 
 // THE IDENTITY JOIN: direct reaches are within the contract AND the contract is within the direct
@@ -1812,13 +1789,13 @@ fn filesystem_effect_debt_site_identity(site: FilesystemEffectSite) -> String {
 // below the member count and the census log face prints both numbers side by side, so the contract
 // cannot be four-and-three at once.
 fn filesystem_effect_debt_contract_identity_strings() -> List<String> {
-  fold_list(
+  list_reverse(xs: fold_list(
     xs: filesystem_effect_direct_reach_debt_contract,
     empty: [],
     cons: fn(acc, contracted) {
-      list_append(left: acc, right: [filesystem_effect_debt_site_identity(site: contracted)])
+      Cons { head: filesystem_effect_debt_site_identity(site: contracted), tail: acc }
     }
-  )
+  ))
 }
 
 // DISTINCT identity count over the contract (review 98769 finding 2). The previous shape called the
@@ -1832,17 +1809,17 @@ fn filesystem_effect_debt_contract_identity_strings() -> List<String> {
 // witness exercises the helper directly where an entry occurs exactly twice (the case the old shape
 // got wrong: it returned n-2 there) and where nothing duplicates (the case it must not change).
 fn distinct_string_count(xs: List<String>) -> Int {
-  length(xs: fold_list(
+  length(xs: list_reverse(xs: fold_list(
     xs: xs,
     empty: [],
     cons: fn(seen, identity) {
       if any(xs: seen, predicate: fn(other) { other == identity }) {
-        list_append(left: seen, right: [])
+        seen
       } else {
-        list_append(left: seen, right: [identity])
+        Cons { head: identity, tail: seen }
       }
     }
-  ))
+  )))
 }
 
 fn filesystem_effect_debt_contract_distinct_count() -> Int {
@@ -1894,36 +1871,34 @@ fn filesystem_effect_census_log(report: FilesystemEffectCensusReport) -> String 
 // identity string itself, in the run that claims it, beside the refused count -- a log carrying only a
 // count would be the frozen-number defect wearing a new name. One line per member, in contract order.
 fn debt_contract_log_lines() -> List<String> {
-  fold_list(
+  list_reverse(xs: fold_list(
     xs: filesystem_effect_debt_contract_identity_strings(),
     empty: [],
     cons: fn(acc, identity) {
-      list_append(left: acc, right: [concat("debt_site ", identity)])
+      Cons { head: concat("debt_site ", identity), tail: acc }
     }
-  )
+  ))
 }
 
 // One line per refused offender, LOCATED: module#enclosing_declaration#occurrence. A census that refused
 // without naming the sites would be an oracle, not a report.
 fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
-  fold_list(
+  list_reverse(xs: fold_list(
     xs: offenders,
     empty: [],
     cons: fn(acc, reach) {
       let site = filesystem_effect_reach_site(reach: reach)
-      list_append(
-        left: acc,
-        right: [
-          string_concat_join(fields: [
-            "offender ",
-            qualified_name_to_dotted_string(qn: site.module),
-            "#",
-            symbol_lexeme(sym: site.enclosing_declaration),
-            "#",
-            int_to_decimal_string(value: site.site_occurrence)
-          ], separator: "")
-        ]
-      )
+      Cons {
+        head: string_concat_join(fields: [
+          "offender ",
+          qualified_name_to_dotted_string(qn: site.module),
+          "#",
+          symbol_lexeme(sym: site.enclosing_declaration),
+          "#",
+          int_to_decimal_string(value: site.site_occurrence)
+        ], separator: ""),
+        tail: acc
+      }
     }
-  )
+  ))
 }
