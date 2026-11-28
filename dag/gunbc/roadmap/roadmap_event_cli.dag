@@ -301,8 +301,8 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 //     --arg repo_root=<instance repo> --arg receipt_line=<acceptance line> \
 //     --arg pr_url=<review thread> --arg head_sha=<head accepted> \
 //     --arg author=principal:<authority>/<namespace>/<subject> \
-//     --arg red-kind=on_main|probe --arg red-at=<failing commit> --arg green-at=<passing commit> \
-//     [--arg red-base=<base a probe breaks> --arg probe-ref=red-control/<row-id>]   (the probe arm only)
+//     --arg red_kind=on_main|probe --arg red_at=<failing commit> --arg green_at=<passing commit> \
+//     [--arg red_base=<base a probe breaks> --arg probe_ref=red-control/<row-id>]   (the probe arm only)
 //
 //   THE RED OBSERVATION: --red-kind SAYS WHICH STANDING the executed red control holds and is required:
 //   `on_main` (red_at an ancestor of green_at on main — an obligation the CLI does not judge offline, the
