@@ -39,6 +39,7 @@ import gunbc.demand_engine_restatement_follow_up {
   NewRestatementRowRefused,
 
   demand_restatement_identity_eq,
+  demand_restatement_identity_text,
   demand_restatement_row_verdict,
   demand_restatement_new_row_refusals,
   demand_restatement_wall_holds
@@ -1376,8 +1377,21 @@ test fn demand_restatement_new_row_refuses_against_the_real_roster() -> Bool {
     authored_type: "std.resources.Filesystem" as NonEmptyStr
   }
   let arriving = Cons { head: newcomer, tail: demand_restatement_authorized_roster }
-  (length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: demand_restatement_authorized_roster)) == 1)
+  let refusals = demand_restatement_new_row_refusals(arriving: arriving, roster: demand_restatement_authorized_roster)
+  // CONSUMER of demand_restatement_identity_text (review 99609): the single refused identity is
+  // rendered to prose here and the rendered text is pinned to the EXACT concatenation the renderer's
+  // definition fixes -- module # declaration # alias # authored_type. The renderer therefore has an
+  // executing consumer on the refusal path (the wall's refused arrival is NAMED, not just counted),
+  // and a renderer that drops, reorders or reseparates a field fails this arm.
+  let rendered_ok = match refusals {
+    Cons { head: refused, tail: _ } =>
+      demand_restatement_identity_text(row: refused)
+        == "v2.compiler.brand_new_restatement#a_restated_demand_never_retained#NeverRetained#std.resources.Filesystem"
+    Empty => false
+  }
+  (length(xs: refusals) == 1)
     && (!demand_restatement_wall_holds(arriving: arriving, roster: demand_restatement_authorized_roster))
+    && rendered_ok
 }
 
 // A REAL RETAINED ROW CARRIES THROUGH THE WALL AS AUTHORIZED via its NESTED identity (review 98769
