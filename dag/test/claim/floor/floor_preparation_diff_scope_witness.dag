@@ -625,6 +625,26 @@ test fn floor_preparation_the_runner_actually_references_the_decision() -> Bool 
     && text_contains(runner_text, "SCOPE_DECISION_LINE")
 }
 
+// 15b. THE CONSUMER ROUTE SWEEPS WHOLE, AND THE CLASSIFICATION IS ON THE RECORD (review 99562,
+// findings 1+2, dashboard 2026-11-28). The runner's capture route must not be narrowing off the
+// grep map, and the three modules must state the truth about it: the named consumers, the named
+// later change with its trigger and tracking row, and the retraction of the "can never cost
+// correctness" sentence. A re-added narrowing call, a deleted classification, or a restored
+// false-absolute bullet all turn this red.
+test fn floor_preparation_the_consumer_route_sweeps_whole_until_compiler_facts_exist() -> Bool {
+  let runner_text = filesystem_read(path: "src/v2/workflow/floor_preparation_capture_runner.dag").content
+  let diff_scope_text = filesystem_read(path: "src/v2/workflow/floor_preparation_diff_scope.dag").content
+  let tool_text = filesystem_read(path: "src/v2/workflow/floor_preparation_scope_tool.dag").content
+  text_contains(runner_text, "floor_preparation_runner_plan_whole()")
+    && text_contains(runner_text, "reason=scope-decision-not-consumable-yet")
+    && text_contains(runner_text, "CONSUMER STATUS")
+    && text_contains(runner_text, "witness_floor_off_the_required_gate")
+    && !text_contains(runner_text, "let plan = floor_preparation_runner_plan()")
+    && text_contains(diff_scope_text, "CORRECTION (review 99562")
+    && !text_contains(diff_scope_text, "can never cost correctness.\n")
+    && text_contains(tool_text, "INSTRUMENT")
+}
+
 // ----------------------------------------------------------------------------------------------
 // 16. AN UNVERIFIED MAP CANNOT NARROW (review 98532). Kills: the grep-and-guess edge map narrowing
 // a run's preparation while the compiler cross-check has seen ZERO rows -- the map's only warrant is

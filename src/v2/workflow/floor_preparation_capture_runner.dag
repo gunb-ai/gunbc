@@ -172,6 +172,25 @@ import v2.workflow.floor_preparation_diff_scope {
 //
 // The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
 // against the same release.
+//
+// CONSUMER STATUS (review 99562, finding 1; DESIGN gunbc.design_argument::consumption).
+// NAMED CONSUMERS OVER EXECUTING ROUTES: (a) the two witness modules over the claim route --
+// dag/test/claim/floor/floor_preparation_split_witness.dag (22 claims) and
+// dag/test/claim/floor/floor_preparation_diff_scope_witness.dag (28 claims) -- executed by
+// claim_batch on srv1 inside heavy-slot; the run links on this PR ARE those executions.
+// (b) the preparation route itself: floor_preparation_capture_run, re-runnable by anyone with the
+// pasteable entry point above and the supplies it pins.
+// THE NARROWING DECISION IS CONSUMED BY A NAMED LATER CHANGE: the second step of
+// gunbc.roadmap ci-cost-floor-preparation-cut -- putting the required witnesses floor back on the
+// merge path -- consumes floor_preparation_runner_plan_over through SCOPE_DECISION_LINE.
+// TRIGGER: the preparation measurement this runner prints fits under the fleet budget (run10
+// observed preparation_ms=3544311 against claim_ms=1403 -- preparation dominates, which is why
+// the cut must come from preparation). TRACKING: gunbc.rung_drop witness_floor_off_the_required_gate
+// (dag/gunbc/rung_drop/v1_required_lanes_withdrawn.dag), retired by that restoration.
+// PRECONDITION, non-negotiable (review 99562, finding 2): NO narrowing on a required route until
+// the compiler itself emits per-entry closure facts the edge map can be checked against -- a
+// grep-derived map can under-cover, and under-coverage skips an entry the diff really reaches.
+// Until then capture_run plans the WHOLE population and says so on its receipts.
 fn floor_preparation_env_value(name: String) -> String {
   let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
   match floor_preparation_lines(text: ran.stdout).first() {
@@ -797,6 +816,19 @@ type FloorPreparationRunnerPlan
   | Scoped { entries: List<String>, reason: String }
   | PlanRefused { cause: String }
 
+// THE CONSUMER ROUTE PLANS THE WHOLE POPULATION, ALWAYS (review 99562, finding 2). A narrowed
+// line is only as good as the edge map behind it; that map is grep-derived (scope_tool) and can
+// UNDER-cover the compiler's real closure, and an under-covered closure skips preparing an entry
+// the diff really reaches -- a correctness loss, not a time loss. Over-approximation is the goal,
+// not a guarantee, so until the compiler itself emits per-entry closure facts to check the map
+// against, the preparation route refuses every narrowing. plan_over stays for the named later
+// change (CONSUMER STATUS in this module's header) and is witnessed behaviourally by
+// dag/test/claim/floor/floor_preparation_diff_scope_witness.dag.
+fn floor_preparation_runner_plan_whole() -> FloorPreparationRunnerPlan {
+  Sweep { entries: floor_preparation_population_entries(),
+    reason: "whole-population by policy: scope-decision-not-consumable-yet, edge-map-is-grep-derived; narrowing arrives with the gate-restoration step ONLY on compiler-emitted closure facts" }
+}
+
 fn floor_preparation_runner_plan() -> FloorPreparationRunnerPlan {
   floor_preparation_runner_plan_from_line(line: floor_preparation_env_value(name: "SCOPE_DECISION_LINE"))
 }
@@ -1252,9 +1284,13 @@ fn floor_preparation_capture_run() -> String {
   if !floor_preparation_supplies_hold(receipts: supply_receipts) {
     concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
   } else {
-    let plan = floor_preparation_runner_plan()
+    let plan = floor_preparation_runner_plan_whole()
+    let whole_plan_receipt = floor_preparation_receipt("preparation-population",
+      concat("entries=", to_string(length(xs: floor_preparation_plan_entries(plan: plan))),
+        concat(" narrowed=never reason=scope-decision-not-consumable-yet warrant=compiler-closure-facts-absent-on-released-routes review=99562")))
     let entries = floor_preparation_plan_entries(plan: plan)
     let plan_receipt = floor_preparation_receipt("revision-plan", floor_preparation_plan_receipt(plan: plan))
+    // (preparation-population receipt defined with the plan above; it joins the receipts list)
     let tree_sha = floor_preparation_git_tree_sha()
     let head_sha = floor_preparation_git_head_sha()
     let untrimmed = floor_preparation_spawn_slot_captured(
@@ -1520,7 +1556,7 @@ fn floor_preparation_capture_run() -> String {
     // The gate reads RECORD FIELDS (review 97909): graded_record.clean is exactly "graded.rc == 0
     // and its kept set is non-empty"; report_record.rc is the command's own exit status.
     let report_ok = report_read && report_record.rc == 2
-    let receipts = concat(concat(concat(supplies, [verify_receipt, plan_receipt]),
+    let receipts = concat(concat(concat(supplies, [verify_receipt, plan_receipt, whole_plan_receipt]),
         [build_argv_receipt,
          untrimmed_receipt,
          leg_stderr_untrimmed,

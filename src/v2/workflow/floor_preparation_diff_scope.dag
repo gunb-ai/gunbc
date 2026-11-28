@@ -37,7 +37,14 @@ import std.algebra { length }
 // modelled rather than promised:
 //
 //   * a diff file that appears in NO entry's closure is UNCOVERED, and selects the whole population.
-//     Fail-closed: a missing edge costs time and can never cost correctness.
+//   * CORRECTION (review 99562, finding 2): the sentence this bullet used to carry -- "a missing
+//     edge costs time and can never cost correctness" -- was FALSE as stated. An edge the map
+//     MISSES can cost correctness: an under-covered closure lets a narrowing SKIP an entry the
+//     diff really reaches. Only the no-closure-at-all case fails closed. The map's superset shape
+//     is therefore an ASPIRATION, not a warrant, and no required route may narrow on it -- the
+//     consumer route (v2.workflow.floor_preparation_capture_runner::floor_preparation_capture_run)
+//     plans the whole population until the compiler emits the closure facts this map claims to
+//     over-approximate.
 //   * any file matching a universal marker (seed Rust, the grammar, the kernel) selects the whole
 //     population, because those change what EVERY entry resolves to -- which is exactly the work that
 //     the other construction would have cached.

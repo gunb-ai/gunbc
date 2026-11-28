@@ -27,8 +27,11 @@ module v2.workflow.floor_preparation_scope_tool
 // scoping decision is a decision, not a verdict (same convention as the capture runner).
 //
 // SAFETY, inherited from the authority and enforced here by construction:
-//   * the map over-approximates three edge kinds -- import, module-decl, read-literal -- including
-//     path literals inside string arguments, which a plain import walk misses;
+//   * the map records three edge kinds -- import, module-decl, read-literal -- including path
+//     literals inside string arguments, which a plain import walk misses. OVER-APPROXIMATION IS
+//     THE GOAL, NOT A GUARANTEE (review 99562): grep can miss an edge the compiler follows. This
+//     tool is accordingly an INSTRUMENT -- its line may never be the warrant for narrowing a
+//     required run (see CONSUMER STATUS in v2.workflow.floor_preparation_capture_runner);
 //   * a diff file in no entry's closure is UNCOVERED and selects the whole population (the
 //     authority's fail-closed rule; the tool never reports "nothing to prepare" from an empty map);
 //   * a reverse walk that hits the depth cap reports DEPTH_CAP and the run refuses to narrow;
