@@ -5854,7 +5854,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_K6EVN9SKS7WV617GECTH3N2TPQ",
       id: "ci-cost-floor-preparation-cut",
       owner: "ci-cost",
-      carriers: carrier(path: "docs/design-rung-drops.md"),
+      carriers: carrier(path: "dag/gunbc/rung_drop.dag"),
       line: ticket(t: updated(t: fields(
         headline: "Make the floor affordable enough to be a merge gate again",
         boundary: "Cut the required fold's PREPARATION cost until the floor fits the fleet, then put it back on the merge path. THE CLAIMS WERE NEVER THE EXPENSE -- claim execution is a small fraction of the floor's wall time while strict-preparation and reach probes dominate it. Re-derive that split from the phase lines a required-witnesses-floor run prints (gunbc.witness.witness_floor_workflow); THAT NO ENTRY POINT RE-DERIVES IT IS PART OF WHAT THIS NODE FIXES, which is why no figure is carried here. The two candidate constructions are reusing resolved-module and reach-probe results across runs, or scoping preparation to a diff's closure.",
