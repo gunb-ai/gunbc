@@ -199,19 +199,19 @@ data floor_preparation_leg_driver_lines: List<String> = [
   "LOG=\"$1\"",
   "shift",
   ": > \"$LOG\"",
-  "{",
+  "\{",
   "  echo \"[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4.1\"",
   "  echo \"[leg-cgroup] $(cat /proc/self/cgroup 2>/dev/null | head -1)\"",
   "  TRACK_OUT=$(git status --porcelain --untracked-files=no 2>/dev/null || true)",
   "  if [ -z \"$TRACK_OUT\" ]; then TRACK_DIRTY=0; TRACK_PATHS=none; OPTION_TAG=a_clean_checkout; else TRACK_DIRTY=$(printf '%s\\n' \"$TRACK_OUT\" | grep -c '^[^?]' || true); TRACK_PATHS=$(printf '%s\\n' \"$TRACK_OUT\" | cut -c4- | sort -u | tr '\\n' ',' | sed 's/,$//'); OPTION_TAG=b_dirty_paths_named; fi",
-  "  echo \"[leg-git] HEAD=$(git rev-parse HEAD 2>/dev/null) TREE=$(git rev-parse 'HEAD^{tree}' 2>/dev/null) TRACKED_DIRTY=$TRACK_DIRTY OPTION=$OPTION_TAG TRACKED_PATHS=$TRACK_PATHS\"",
+  "  echo \"[leg-git] HEAD=$(git rev-parse HEAD 2>/dev/null) TREE=$(git rev-parse 'HEAD^\{tree\}' 2>/dev/null) TRACKED_DIRTY=$TRACK_DIRTY OPTION=$OPTION_TAG TRACKED_PATHS=$TRACK_PATHS\"",
   "  for a in \"$@\"; do",
   "    if [ -f \"$a\" ]; then",
   "      echo \"[leg-binary] path=$a bytes=$(stat -c%s \"$a\") sha256=$(sha256sum \"$a\" | cut -d' ' -f1)\"",
   "    fi",
   "  done",
   "  echo \"[leg-argv] $*\"",
-  "} >> \"$LOG\" 2>&1",
+  "\} >> \"$LOG\" 2>&1",
   "exec >>\"$LOG\" 2>&1 \"$@\""
 ]
 
