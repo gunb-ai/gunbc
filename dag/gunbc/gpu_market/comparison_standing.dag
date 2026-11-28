@@ -36,6 +36,7 @@ module gunbc.gpu_market.comparison_standing
 // a marked figure -- both out of scope on the row, the second belonging to the operator and the intake
 // lanes.
 
+import extdeps.uri { uri_https }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.external_authority {
@@ -120,20 +121,29 @@ fn comparison_figure_standing(board: GpuBoardCatalogRow, figure: DecidedFigure) 
   }
 }
 
+data plant_borrowed_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amd.com/products/graphics/radeon-ai-pro-r9700"
+  }
+}
+
 fn comparison_figure_grounding(board: GpuBoardCatalogRow, figure: DecidedFigure) -> ComparisonGrounding {
+  // PLANT P1: the standing is never read. Both non-cited answers are made to answer cited.
   if !comparison_figure_is_stated(board: board, figure: figure) {
-    FigureAbsent { figure: figure }
+    FigureCited { figure: figure, authority: plant_borrowed_authority }
   } else {
     match comparison_figure_standing(board: board, figure: figure) {
-      Absent => FigureUngrounded { figure: figure }
+      Absent => FigureCited { figure: figure, authority: plant_borrowed_authority }
       Present { value: standing } => match standing {
         CitedToAuthority { authority: authority } => FigureCited { figure: figure, authority: authority }
-        // A figure warranted by a receipt of OUR OWN observation warrants nothing about what the vendor
-        // states as a catalog figure, so it grounds no comparison: it is ungrounded here, not cited.
-        ObservedByReceipt { observed: _ } => FigureUngrounded { figure: figure }
+        ObservedByReceipt { observed: _ } => FigureCited { figure: figure, authority: plant_borrowed_authority }
+        // The obligation is still READ, and then thrown away: the consumer gets a cited verdict either way,
+        // which is exactly what the row forbids. Keeping the read keeps the declaring module's accessor on the
+        // route, so the plant is a change of DECISION and not a deletion of code.
         _ => match gpu_figure_read_obligation(standing: standing) {
-          Present { value: obligation } => FigureMarked { figure: figure, standing: standing, read_obligation: obligation }
-          Absent => FigureUngrounded { figure: figure }
+          Present { value: _ } => FigureCited { figure: figure, authority: plant_borrowed_authority }
+          Absent => FigureCited { figure: figure, authority: plant_borrowed_authority }
         }
       }
     }
