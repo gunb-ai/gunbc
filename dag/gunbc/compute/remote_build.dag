@@ -37,7 +37,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   IsolatedJobToolchainHomes, fleet_compute_hermetic_toolchain,
 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
-import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance }
+import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance, RemoteBuildHostRow }
 import gunbc.compute.remote_build_wire {
   remote_build_retry_after_word, remote_build_capacity_retry_floor, remote_build_capacity_body,
   remote_build_retry_hint_of_body,

@@ -80,7 +80,7 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
   compute_pre_launch_ceiling_seconds,
 }
-
+import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance }
 import gunbc.compute.seat_cgroup_absence { SeatCgroupEndProof, SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable, observe_seat_cgroup_end_proof }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }
@@ -4627,7 +4627,7 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
 // same account-home path strings, so registering both would break
 // dashboard_declared_repo_roots_are_unique, and registering only srv1 would make the census answer
 // depend on which hosts happen to be registered. The instance is the PARAMETRIC model object
-// gunbc.compute.remote_build remote_build_serving_instance(host) — the same object the serving setup
+// gunbc.compute.remote_build_serving_identity remote_build_serving_instance(host) — the same object the serving setup
 // and the seat charge already use, which is what puts the seat census in the very compute root the
 // serve route charged (/home/<account>/.local/share/... under the serving account). These entries are
 // THIN and decide NOTHING: the host must be one the serving route is PROVISIONED on (the candidate row,
