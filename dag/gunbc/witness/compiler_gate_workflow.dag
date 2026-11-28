@@ -71,7 +71,7 @@ import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, sequence_outcome, StageDiagnosticPolicy, ShortCircuit, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   BracketQuoted,
@@ -882,13 +882,18 @@ fn compiler_gate_v1_unit_test_bound_step() -> CompilerGateBoundStep {
   }
 }
 
-fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(compiler_gate_fleet_head_bound_steps(), [
+fn compiler_gate_emit_build_prelude_bound_steps() -> Outcome<List<CompilerGateBoundStep>> {
+  bind_outcome(
+    o: compiler_gate_fleet_head_bound_steps(),
+    f: fn(head) {
+      outcome_accepted(value: concat(head, [
     compiler_gate_cache_cargo_bound_step(),
     compiler_gate_seed_build_bound_step(),
     compiler_gate_homes_guard_bound_step(),
     compiler_gate_v1_unit_test_bound_step(),
-  ])
+      ]))
+    }
+  )
 }
 
 // THE PLANNING FAST LANE (gunbc.read_set_restore). On a pull request, right behind the stamp guard and
@@ -1041,15 +1046,20 @@ fn compiler_gate_step_assembles_the_judged_tree(s: Step) -> Bool {
   }
 }
 
-fn compiler_gate_floor_steps_after_checkout() -> List<Step> {
-  list_map(
-    xs: filter(
-      list_map(xs: concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()), f: fn(b) { b.step }),
-      s => !compiler_gate_step_assembles_the_judged_tree(s: s)
-        && s != compiler_gate_contract_stamp_guard_step()
-        && s != compiler_gate_contract_stamp_evidence_step(),
-    ),
-    f: fn(s) { if s == witness_toolchain_homes_isolated_guard_step() { witness_toolchain_homes_isolated_guard_step_under(condition: none) } else { s } },
+fn compiler_gate_floor_steps_after_checkout() -> Outcome<List<Step>> {
+  bind_outcome(
+    o: compiler_gate_emit_build_prelude_bound_steps(),
+    f: fn(prelude) {
+      outcome_accepted(value: list_map(
+      xs: filter(
+        list_map(xs: concat(prelude, compiler_gate_emit_build_subject_bound_steps()), f: fn(b) { b.step }),
+        s => !compiler_gate_step_assembles_the_judged_tree(s: s)
+          && s != compiler_gate_contract_stamp_guard_step()
+          && s != compiler_gate_contract_stamp_evidence_step(),
+      ),
+      f: fn(s) { if s == witness_toolchain_homes_isolated_guard_step() { witness_toolchain_homes_isolated_guard_step_under(condition: none) } else { s } },
+      ))
+    }
   )
 }
 
@@ -1190,46 +1200,58 @@ fn compiler_gate_parse_verdict_audit_bound_steps() -> Outcome<List<CompilerGateB
   )
 }
 
-fn compiler_gate_parse_verdict_audit_job_of(profile: RepositoryCiProfile) -> Job {
-  Job {
-    id: parse_verdict_audit_job_id,
-    name: none,
-    runner: ci_runner_target_spec(target: profile.roster.runner),
-    environment: none,
-    steps: list_map(xs: compiler_gate_parse_verdict_audit_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: Present { value: compiler_gate_required_job_env() },
-    outputs: none,
-    // SCHEDULE ONLY, AND NOT EVEN workflow_dispatch: a heal revalidation dispatch of this workflow
-    // would otherwise also burn an hour of fleet on an audit its verdict does not need. Pull requests
-    // never run this job, so pull requests still never publish -- the same policy edge
-    // materialization_audit_publish_if states at step grain, now stated at job grain too.
-    if_condition: Present { value: "github.event_name == 'schedule'" },
-    // THE SAME CEILING AS THE REQUIRED JOB, READ FROM THE SAME ROSTER ROW rather than copied: the
-    // audit's work is the required job's chain plus the walk, which is what that 60-minute cap
-    // measured on healthy hosts (runs 45473779590 and 45476598011 passed the same steps inside it).
-    // Reading the row keeps ci_job_budgets_closed_to_growth honest -- if the ceiling ever shrinks,
-    // the audit shrinks with it; nothing here can grow it.
-    timeout_minutes: Present { value: minute_count(m: profile.roster.timeout) },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present { value: compiler_gate_permissions }
-  }
+fn compiler_gate_parse_verdict_audit_job_of(profile: RepositoryCiProfile) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: list_map(xs: compiler_gate_parse_verdict_audit_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
+      id: parse_verdict_audit_job_id,
+      name: none,
+      runner: ci_runner_target_spec(target: profile.roster.runner),
+      environment: none,
+      steps: steps,
+      needs: [],
+      env: Present { value: compiler_gate_required_job_env() },
+      outputs: none,
+      // SCHEDULE ONLY, AND NOT EVEN workflow_dispatch: a heal revalidation dispatch of this workflow
+      // would otherwise also burn an hour of fleet on an audit its verdict does not need. Pull requests
+      // never run this job, so pull requests still never publish -- the same policy edge
+      // materialization_audit_publish_if states at step grain, now stated at job grain too.
+      if_condition: Present { value: "github.event_name == 'schedule'" },
+      // THE SAME CEILING AS THE REQUIRED JOB, READ FROM THE SAME ROSTER ROW rather than copied: the
+      // audit's work is the required job's chain plus the walk, which is what that 60-minute cap
+      // measured on healthy hosts (runs 45473779590 and 45476598011 passed the same steps inside it).
+      // Reading the row keeps ci_job_budgets_closed_to_growth honest -- if the ceiling ever shrinks,
+      // the audit shrinks with it; nothing here can grow it.
+      timeout_minutes: Present { value: minute_count(m: profile.roster.timeout) },
+      continue_on_error: none,
+      concurrency: none,
+      permissions: Present { value: compiler_gate_permissions }
+    })
+    }
+  )
 }
 
-fn compiler_gate_parse_verdict_audit_job() -> Job {
+fn compiler_gate_parse_verdict_audit_job() -> Outcome<Job> {
   compiler_gate_parse_verdict_audit_job_of(profile: gunbc_repository_ci_profile())
 }
 
 fn compiler_gate_emit_build_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(
-      steps: list_map(
-        xs: compiler_gate_emit_build_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  match compiler_gate_emit_build_bound_steps() {
+    // The capability closure reads step_name and role only, never the step body. A refusal means the
+    // bound steps could not be built at all, so the closure cannot be said to hold -- fail closed, and
+    // the same refusal is reported located and typed by compiler_gate_render at the artifact boundary.
+    Rejected { diagnostics: _ } => false
+    Accepted { value: bound_steps } =>
+      capability_closure_is_closed(
+        v: workflow_job_capability_closure(
+          steps: list_map(
+            xs: bound_steps,
+            f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+          )
+        ),
       )
-    ),
-  )
+  }
 }
 
 // A WRAPPED COMMAND THAT CANNOT BE SERIALIZED RENDERS A REFUSAL MARKER WHERE ITS SCRIPT BELONGS
@@ -1262,31 +1284,36 @@ data compiler_gate_required_job_id: String = gunbc_roster_gate().required_contex
 
 data compiler_gate_emit_build_timeout: Minute = gunbc_roster_gate().timeout
 
-fn compiler_gate_required_job() -> Job {
+fn compiler_gate_required_job() -> Outcome<Job> {
   compiler_gate_required_job_of(profile: gunbc_repository_ci_profile())
 }
 
-fn compiler_gate_required_job_of(profile: RepositoryCiProfile) -> Job {
-  Job {
-    id: profile.roster.required_context as String,
-    name: none,
-    // THE MACHINE CLASS IS SELECTED, NOT STATED. The profile row carries a CiRunnerTarget and the spec is
-    // projected from it (gunbc.ci.ci_runner_target ci_runner_target_spec), which keeps the label, the
-    // memory regime and the RAM-speed budget as three projections of one row instead of three facts a
-    // reviewer has to see agree. The fleet-only ruling below still binds: an editor moving the required
-    // merge path to a hosted target is refused at emission.
-    runner: ci_runner_target_spec(target: profile.roster.runner),
-    environment: none,
-    steps: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: Present { value: compiler_gate_required_job_env() },
-    outputs: none,
-    if_condition: Present { value: compiler_gate_fleet_job_condition() },
-    timeout_minutes: Present { value: minute_count(m: profile.roster.timeout) },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present { value: compiler_gate_permissions }
-  }
+fn compiler_gate_required_job_of(profile: RepositoryCiProfile) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
+      id: profile.roster.required_context as String,
+      name: none,
+      // THE MACHINE CLASS IS SELECTED, NOT STATED. The profile row carries a CiRunnerTarget and the spec is
+      // projected from it (gunbc.ci.ci_runner_target ci_runner_target_spec), which keeps the label, the
+      // memory regime and the RAM-speed budget as three projections of one row instead of three facts a
+      // reviewer has to see agree. The fleet-only ruling below still binds: an editor moving the required
+      // merge path to a hosted target is refused at emission.
+      runner: ci_runner_target_spec(target: profile.roster.runner),
+      environment: none,
+      steps: steps,
+      needs: [],
+      env: Present { value: compiler_gate_required_job_env() },
+      outputs: none,
+      if_condition: Present { value: compiler_gate_fleet_job_condition() },
+      timeout_minutes: Present { value: minute_count(m: profile.roster.timeout) },
+      continue_on_error: none,
+      concurrency: none,
+      permissions: Present { value: compiler_gate_permissions }
+    })
+    }
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -1346,8 +1373,17 @@ fn compiler_gate_merge_path_runs_on_the_fleet_in(profile: RepositoryCiProfile, w
 // GUNBC'S OWN PROJECTIONS, for the claims that ask "does the committed workflow place the merge path on the
 // fleet" - one read of gunbc's workflow through the same functions the render path applies to the row it
 // admitted. They are not a second copy of any fact: they are a call on the row.
+//
+// compiler_gate_workflow is now an Outcome<Workflow>. These projections read the committed workflow,
+// which renders in practice; a refusal unwraps to the fail-closed bottom (no hosted jobs, and -- for the
+// merge-path standing -- the required job NOT proven on the fleet, which is the refusal direction) rather
+// than dereferencing a Variant. The located refusal for a build that cannot render is carried by
+// compiler_gate_render, which unwraps the same Outcome typed once at the artifact boundary.
 fn compiler_gate_hosted_job_ids() -> List<String> {
-  compiler_gate_hosted_job_ids_in(workflow: compiler_gate_workflow)
+  match compiler_gate_workflow {
+    Accepted { value: workflow } => compiler_gate_hosted_job_ids_in(workflow: workflow)
+    Rejected { diagnostics: _ } => []
+  }
 }
 
 fn compiler_gate_merge_path_job_ids() -> List<String> {
@@ -1355,10 +1391,14 @@ fn compiler_gate_merge_path_job_ids() -> List<String> {
 }
 
 fn compiler_gate_merge_path_runs_on_the_fleet() -> Bool {
-  compiler_gate_merge_path_runs_on_the_fleet_in(
-    profile: gunbc_repository_ci_profile(),
-    workflow: compiler_gate_workflow
-  )
+  match compiler_gate_workflow {
+    Accepted { value: workflow } =>
+      compiler_gate_merge_path_runs_on_the_fleet_in(
+        profile: gunbc_repository_ci_profile(),
+        workflow: workflow
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // Pending runs are replaced as before; a running PR build is cancelled by the next push. The
@@ -1370,37 +1410,49 @@ data compiler_gate_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFl
   running: SupersedeRunningForEvent { event: github_event_name_pull_request }
 }
 
-fn compiler_gate_workflow_of(profile: RepositoryCiProfile) -> Workflow {
-  Workflow {
-  name: witness_floor_workflow_name,
-  run_name: none,
-  on: list_append(
-    left: list_append(left: witness_floor_triggers(), right: [WorkflowCall { inputs: [compiler_gate_compose_caller_input] }]),
-    right: [Schedule { cron: parse_verdict_audit_cron }]
-  ),
-  concurrency: Present {
-    value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
-  },
-  env: Present { value: [
-    kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-    kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: required_ci_contract_epoch_yaml_value())),
-    // THE INVOCATION-CONTRACT STAMP, as a literal of the file GitHub EXECUTED. The generated guard step
-    // compares this against the copy committed in the tree it is judging; the two can differ only if the
-    // instruction and the subject came from different revisions
-    // (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions, silent arm).
-    kv(key: (compiler_gate_contract_stamp_env_key as String), value: yaml_string(s: compiler_gate_contract_stamp_yaml_value()))
-  ] },
-  permissions: Present { value: compiler_gate_permissions },
-    // THE REQUIRED JOB, AND THE CLOCK'S AUDIT — two jobs, no third: the claim
-    // (test.claim.compiler_gate_emit_build_lane_witness the_workflow_runs_exactly_the_required_job_and_the_audit)
-    // admits exactly these two ids and reds on any other, so a regrown aggregate or a returned lane
-    // is a refusal, not a review miss.
-    jobs: [compiler_gate_required_job_of(profile: profile), compiler_gate_parse_verdict_audit_job_of(profile: profile)]
-  }
+fn compiler_gate_workflow_of(profile: RepositoryCiProfile) -> Outcome<Workflow> {
+  bind_outcome(
+    o: sequence_outcome(
+      xs: [compiler_gate_required_job_of(profile: profile), compiler_gate_parse_verdict_audit_job_of(profile: profile)],
+      policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+    ),
+    f: fn(gate_jobs) {
+      outcome_accepted(value: Workflow {
+      name: witness_floor_workflow_name,
+      run_name: none,
+      on: list_append(
+        left: list_append(left: witness_floor_triggers(), right: [WorkflowCall { inputs: [compiler_gate_compose_caller_input] }]),
+        right: [Schedule { cron: parse_verdict_audit_cron }]
+      ),
+      concurrency: Present {
+        value: concurrency_of_policy(policy: compiler_gate_concurrency_policy, group: witness_floor_concurrency_group())
+      },
+      env: Present { value: [
+        kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+        kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: required_ci_contract_epoch_yaml_value())),
+        // THE INVOCATION-CONTRACT STAMP, as a literal of the file GitHub EXECUTED. The generated guard step
+        // compares this against the copy committed in the tree it is judging; the two can differ only if the
+        // instruction and the subject came from different revisions
+        // (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions, silent arm).
+        kv(key: (compiler_gate_contract_stamp_env_key as String), value: yaml_string(s: compiler_gate_contract_stamp_yaml_value()))
+      ] },
+      permissions: Present { value: compiler_gate_permissions },
+        // THE REQUIRED JOB, AND THE CLOCK'S AUDIT — two jobs, no third: the claim
+        // (test.claim.compiler_gate_emit_build_lane_witness the_workflow_runs_exactly_the_required_job_and_the_audit)
+        // admits exactly these two ids and reds on any other, so a regrown aggregate or a returned lane
+        // is a refusal, not a review miss.
+        jobs: gate_jobs
+      })
+    }
+  )
 }
 
-// GUNBC'S COMMITTED WORKFLOW, built by the SAME function the emitter calls with the row it admitted.
-data compiler_gate_workflow: Workflow = compiler_gate_workflow_of(profile: gunbc_repository_ci_profile())
+// GUNBC'S COMMITTED WORKFLOW, built by the SAME function the emitter calls with the row it admitted. It is
+// an Outcome<Workflow>: the required and audit jobs carry their orch-emitted steps (Isolate toolchain homes,
+// Pin rustup default) as Outcome<Step>, so a refusal in v2.workflow.ci_workflow_run_emit travels the type to
+// here and is unwrapped ONCE, typed, at compiler_gate_render -- never rendered as a marker into committed
+// bytes (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved).
+data compiler_gate_workflow: Outcome<Workflow> = compiler_gate_workflow_of(profile: gunbc_repository_ci_profile())
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.witness.compiler_gate_workflow: the required job's capability closure does not hold, a subject step's script is not renderable, the required job runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28), or the required CI obligation identities are duplicated. No workflow yaml was emitted. Fix the step roles in the job's bound steps, or put the job on gunbc_ci_selected_runner_spec."
 
@@ -1470,17 +1522,14 @@ fn compiler_gate_generation_gate_first_failure(profile: RepositoryCiProfile, wor
     CompilerGateGenerationGate {
       name: "compiler_gate_compose_caller_script_is_renderable (the called form's compose step cannot be built as nodes, or lost its marker or refusal)",
       holds: compiler_gate_compose_caller_script_is_renderable()
-    },
-    // The orch-emitted prelude steps (Isolate toolchain homes, Pin rustup default) return an
-    // Outcome<Step> after v2.workflow.ci_workflow_run_emit was retyped off the __GUNBC_ORCH_EMIT_REFUSED__
-    // poison (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved). The
-    // unwrap helper falls through to an empty RunStep on Reject so the byte-for-byte shape of the
-    // committed workflow is unchanged; THIS gate is what turns a rejection into a refusal rather than
-    // a silently-committed empty step -- the empty step is a shape only this gate path can produce.
-    CompilerGateGenerationGate {
-      name: "compiler_gate_orch_steps_are_renderable (the toolchain-home isolation or pin-rustup-default orch pipeline refused to render)",
-      holds: compiler_gate_orch_steps_are_renderable()
     }
+    // The orch-emitted prelude steps (Isolate toolchain homes, Pin rustup default) are an
+    // Outcome<Step> at their source (v2.workflow.ci_workflow_run_emit was retyped off the
+    // __GUNBC_ORCH_EMIT_REFUSED__ poison by gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved).
+    // A refusal now travels the type to compiler_gate_workflow_of, which is an Outcome<Workflow>
+    // unwrapped once at compiler_gate_render into a typed refusal; a separate
+    // compiler_gate_orch_steps_are_renderable gate is therefore redundant and was deleted with the
+    // fabricated-default unwrap helper it stood behind.
   ]
   let first_false = list_find_first(xs: gates, predicate: fn(g) { !g.holds })
   return match first_false {
@@ -1517,8 +1566,20 @@ fn compiler_gate_yml_for(profile: RepositoryCiProfile) -> WitnessFloorGeneration
 // that very workflow through every admission - the action-use check, the checkout-ref check, the toolchain
 // check, the capability gate and the emit - so no check in this chain can be looking at a different
 // repository's job than the one that lands in .github/workflows.
+//
+// THE ORCHESTRATION REFUSAL IS UNWRAPPED HERE, ONCE, TYPED. compiler_gate_workflow_of is an
+// Outcome<Workflow> because the required and audit jobs carry the orch-emitted steps (Isolate toolchain
+// homes, Pin rustup default) as Outcome<Step> off v2.workflow.ci_workflow_run_emit's retyped pipeline. A
+// rejection therefore reaches these committed bytes as THIS refusal -- located, with the emitter's
+// diagnostics -- and never as a __GUNBC_ORCH_EMIT_REFUSED__ marker standing in for a step that ran nothing
+// (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved). No fabricated
+// empty-step fallback stands here; the shape a refusal can no longer hide behind is gone.
 fn compiler_gate_yml_after_profile_admission(profile: RepositoryCiProfile) -> WitnessFloorGenerationOutcome {
-  compiler_gate_render(profile: profile, workflow: compiler_gate_workflow_of(profile: profile))
+  match compiler_gate_workflow_of(profile: profile) {
+    Rejected { diagnostics: d } =>
+      WitnessFloorGenerationRefused { reason: join(["REFUSED gunbc.witness.compiler_gate_workflow: an orchestration step refused to render, so no workflow yaml was emitted. Diagnostic: ", diagnostics_reason_lexemes(diagnostics: d)], "") }
+    Accepted { value: wf } => compiler_gate_render(profile: profile, workflow: wf)
+  }
 }
 
 fn compiler_gate_render(profile: RepositoryCiProfile, workflow: Workflow) -> WitnessFloorGenerationOutcome {
