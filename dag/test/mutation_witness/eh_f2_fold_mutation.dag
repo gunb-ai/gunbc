@@ -1,0 +1,144 @@
+module test.mutation_witness.eh_f2_fold_mutation
+
+// WHERE THIS LIVES AND WHY. This is a COMMITTED witness module, and it is deliberately NOT in
+// `dag/test/claim/`, which is the discovery home named by
+// #gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs. Three of its legs below are mutation
+// demonstrations that return the mutated member's own exit code rather than a verdict (that is the
+// shape the alias-leg rule demands: the fold must be shown answering with the mutated member, not
+// asserted at), so under a discovery fold they would enter the required witness population as claims
+// whose expected state is DID-NOT-HOLD -- a red lane that reports no finding. They are therefore
+// selected BY NAME from outside the discovery scan dirs, which is also why the batch's header prints
+// the selection-count line for every leg: a name that selects nothing is a vacuous run, never a pass.
+//
+// PURPOSE. The mutation demonstration the alias-leg rule demands (bold-pike-529, 2026-11-28): a fold
+// leg is evidence only if a mutation of what it folds is SHOWN to turn it DID-NOT-HOLD, executed in
+// the same acquisition. The fold operator itself (#gunbc.compile_census_probe::census_legs_wire) is
+// IMPORTED here, never re-implemented, so nothing in this file re-forks the authority it exercises;
+// the two sides of every leg below are synthesized ProcessExit values or real censuses over two
+// DIFFERENT sources, never one route compared to itself.
+//
+// HOW TO RUN. `gunbc test --wet --source-root dag --source-root src/v2
+// "//test/mutation_witness/eh_f2_fold_mutation:<leg>"`, from the repository root, with the roots
+// EXACTLY the two of #gunbc.ci.ci_layer_roots::witness_layer_roots. A third root (src/v1) is not a
+// wider read: the fixture closure opens its own pool over the witness layer roots, and a run whose
+// resident roots differ is refused `SharedIndexSecondResidentPool` -- measured, empty-caused, at
+// 4a97d5b355de on 2026-11-28 -- so the legs would report nothing at all.
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  censuses_differ_by_exactly_the_target_key
+}
+import gunbc.compile_census_probe {
+  census_verdict_all,
+  census_ran,
+  census_premise,
+  census_leg_wire,
+  census_legs_wire,
+  census_wire_exit
+}
+import gunbc.instruments.list_append_element_argument_wall {
+  census_of,
+  eh_f2_repro_ticket_source,
+  eh_f2_pair_same_container_source,
+  target_class,
+  target_subject
+}
+
+// MUTATION 1 -- THE FOLD IS LIVE. Two members: one held, one deliberately inverted to a finding.
+// The fold must answer with the mutated member's code (rc 1). If the fold operator ever ABSORBED a
+// member (the failure `list-append-wall-fold-cannot-absorb-a-two` exists to catch), this leg prints
+// HELD while a member is broken -- which is exactly the decorative fold the rule deletes.
+test fn mutation_fold_flips_when_a_member_flips() -> ProcessExit {
+  census_wire_exit(census_legs_wire(
+    [
+      census_leg_wire(identity: "mutation/member_a", verdict: ExitSuccess),
+      census_leg_wire(identity: "mutation/member_b", verdict: ExitFailure { code: 1, reason: "MUTATION: inverted member" })
+    ],
+    subject: "mutation-fold"
+  ))
+}
+
+// MUTATION 2 -- COULD-NOT-RUN IS NEVER DEMOTED. Same fold shape, one member at code 2. The fold must
+// answer rc 2, not rc 1: `census_worst_exit` is a maximum on the code, so a batch holding one finding
+// and one door-that-never-answered must not print the answered-question code.
+test fn mutation_fold_keeps_could_not_run_at_two() -> ProcessExit {
+  census_wire_exit(census_legs_wire(
+    [
+      census_leg_wire(identity: "mutation/member_a", verdict: ExitSuccess),
+      census_leg_wire(identity: "mutation/member_b", verdict: ExitFailure { code: 2, reason: "MUTATION: unobserved member" })
+    ],
+    subject: "mutation-fold"
+  ))
+}
+
+// THE FOLD'S OWN CONTROL -- both members held, so the two mutations above are not a harness artifact:
+// the fold answers rc 0 when nothing is broken.
+test fn mutation_fold_all_held_control() -> ProcessExit {
+  census_wire_exit(census_legs_wire(
+    [
+      census_leg_wire(identity: "mutation/member_a", verdict: ExitSuccess),
+      census_leg_wire(identity: "mutation/member_b", verdict: ExitSuccess)
+    ],
+    subject: "mutation-fold"
+  ))
+}
+
+// MUTATION 3 -- THE DIFFERENTIAL LEG IS NOT A TAUTOLOGY. `list-append-wall-arms-differ-by-target-row`
+// compares two censuses built from two sources; its alias risk is that both sides expand to the same
+// thing, in which case it would print HELD forever. Here BOTH arms are built from the SAME source,
+// through the same authority the real leg calls (#censuses_differ_by_exactly_the_target_key over the
+// blocking rows). The differ must refuse: rc 1.
+test fn mutation_arms_collapse_to_the_same_source() -> ProcessExit {
+  let red = census_of(source: eh_f2_repro_ticket_source())
+  let green = census_of(source: eh_f2_repro_ticket_source())
+  census_verdict_all([
+    census_ran(census: red),
+    census_ran(census: green),
+    census_premise(
+      name: "MUTATION both arms are the same source, so the differ must refuse",
+      holds: match red {
+        CensusObserved { rows: red_rows } => match green {
+          CensusObserved { rows: green_rows } =>
+            censuses_differ_by_exactly_the_target_key(
+              red: census_blocking_rows(rows: red_rows),
+              green: census_blocking_rows(rows: green_rows),
+              target_class: target_class,
+              target_subject: target_subject
+            )
+          CensusNotRunnable { cause: _ } => false
+        }
+        CensusNotRunnable { cause: _ } => false
+      }
+    )
+  ])
+}
+
+// THE COUNTER-CONTROL TO MUTATION 3 -- the real pair of sources, one token apart, through the identical
+// expression: rc 0. Together the two legs show the differ keys on the ONE AXIS and on nothing else.
+test fn mutation_arms_keep_their_one_axis() -> ProcessExit {
+  let red = census_of(source: eh_f2_repro_ticket_source())
+  let green = census_of(source: eh_f2_pair_same_container_source())
+  census_verdict_all([
+    census_ran(census: red),
+    census_ran(census: green),
+    census_premise(
+      name: "CONTROL the two sources differ by exactly the target row",
+      holds: match red {
+        CensusObserved { rows: red_rows } => match green {
+          CensusObserved { rows: green_rows } =>
+            censuses_differ_by_exactly_the_target_key(
+              red: census_blocking_rows(rows: red_rows),
+              green: census_blocking_rows(rows: green_rows),
+              target_class: target_class,
+              target_subject: target_subject
+            )
+          CensusNotRunnable { cause: _ } => false
+        }
+        CensusNotRunnable { cause: _ } => false
+      }
+    )
+  ])
+}
