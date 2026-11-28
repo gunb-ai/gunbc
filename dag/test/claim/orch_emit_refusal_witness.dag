@@ -1,0 +1,70 @@
+module test.claim.orch_emit_refusal_witness
+
+// EXECUTED EVIDENCE that v2.workflow.ci_workflow_run_emit's retyped pipeline refuses typed, and the
+// deleted __GUNBC_ORCH_EMIT_REFUSED__ poison (ci_workflow_run_emit_refused_poison) can no longer
+// reach committed bytes. gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved
+// recorded that this producer collapsed a rejection into an in-band marker string; the only witness
+// checking the token absent asserted it on ONE script (the compiler-gate contract-stamp witness), so
+// any other committed workflow's refusal reached committed bytes silently. The retyped chain carries
+// the Outcome<Step> through the job-body chain and unwraps ONCE at the artifact boundary (the
+// generated-yml functions under gunbc.tier_o_artifact_emit), where a Rejected refuses generation
+// rather than emitting a marker line.
+//
+// THE TWO CONTROLS BELOW STAY ENROLLED AFTER THE CUTOVER LANDS -- deleting them recreates
+// specification-without-execution one rung up (gunbc.design_argument::guarantee_ladder,
+// dissolution-on-climb applies to the production handling only, never the evidence). The shape
+// mirrors v2.workflow.gunbc_invoke_step_emit's own controls in test.claim.gunbc_invoke_witness: the
+// same "typed refusal at the retyped producer's boundary, marker must be absent in every arm" that
+// closed emitter_string_return_carries_no_typed_refusal (PR #16721).
+
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
+import v2.std.orchestration { Comment, FailFast, Pipeline }
+import v2.workflow.ci_workflow_run_emit {
+  ci_toolchain_home_isolation_intent,
+  ci_workflow_run_emit_pipeline
+}
+
+// THE TOKEN THE CONCERN NAMED, spelled out. It was the value of the DELETED
+// ci_workflow_run_emit_refused_poison constant, and it was the substring the compiler-gate contract-
+// stamp witness asserted absent on one script. Both are deleted in the same change this witness
+// discharges (gunbc.design_argument::replacement_migration -- the old authority ends at its root,
+// no fallback, no scan). A witness that only checks the constant is gone would still be green with
+// an in-band marker re-introduced under a different name; every arm here asserts the exact token is
+// absent from what the retyped pipeline hands back.
+data orch_emit_poison_token: String = "__GUNBC_ORCH_EMIT_REFUSED__"
+
+// POSITIVE CONTROL. The fixed toolchain-home isolation intent -- the actual pipeline the committed
+// fleet and witness-floor workflows render -- accepts through the retyped producer to real bash, and
+// the poison token is not among the bytes. Deleting this would leave the RED below satisfiable by a
+// producer that refuses everything; it is what makes the RED discriminating.
+test fn the_isolate_toolchain_intent_renders_and_carries_no_poison_holds() -> Bool {
+  match ci_workflow_run_emit_pipeline(p: ci_toolchain_home_isolation_intent()) {
+    Accepted { value: s, diagnostics: _ } =>
+      string_contains(s: s, pattern: "rm -rf")
+        && string_contains(s: s, pattern: "RUSTUP_HOME")
+        && string_contains(s: s, pattern: "CARGO_HOME")
+        && !string_contains(s: s, pattern: orch_emit_poison_token)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// DISCRIMINATING RED. A multiline Comment is unrenderable through the bash orchestration medium
+// (v2.compiler.emit_orchestration orch_emit_comment_multiline_refused: a newline in a comment would
+// silently terminate the emitted line and let the rest parse as shell), so this is a body the
+// emitter MUST refuse. It does, as a typed Rejected whose reason lexeme names the refusal; the
+// deleted poison token appears nowhere in what the retyped producer hands back. If the retype is
+// undone -- or if any future refactor re-introduces an in-band marker -- this claim goes red: the
+// Rejected arm becomes Accepted{value: "__GUNBC_ORCH_EMIT_REFUSED__..."}, the reason-lexeme check
+// fails, and the token-absent conjunct fails.
+test fn a_multiline_comment_body_refuses_typed_at_the_producer_holds() -> Bool {
+  match ci_workflow_run_emit_pipeline(p: Pipeline {
+    steps: [Comment { text: "first line\nsecond line" }],
+    on_failure: FailFast
+  }) {
+    Rejected { diagnostics: d } =>
+      let reason = diagnostics_reason_lexemes(diagnostics: d)
+      string_contains(s: reason, pattern: "orch_emit_comment_multiline_refused")
+        && !string_contains(s: reason, pattern: orch_emit_poison_token)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

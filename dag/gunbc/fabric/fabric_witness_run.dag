@@ -39,6 +39,13 @@ import extdeps.github.action_release { ActionRelease }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program }
+import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import std.types { String, List }
+import std.algebra { Cons, Empty, FreeSemigroup }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.github.github { Repository, github_https_clone_url }
+import gunbc.gunbc_cli_command { gunbc_test_command }
 
 // THE ORCH-EMITTED SCRIPTS carry their refusal typed; the fabric spec renders them into committed
 // workflow bytes, so the refusal must not reach the bytes. Unwrap: if the emitter refused, the script
@@ -49,13 +56,6 @@ fn fabric_unwrap_orch_script(o: Outcome<String>) -> String {
     Rejected { diagnostics: _ } => ""
   }
 }
-import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
-import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import std.types { String, List }
-import std.algebra { Cons, Empty, FreeSemigroup }
-import extdeps.bazel.label { Label, render_label }
-import extdeps.github.github { Repository, github_https_clone_url }
-import gunbc.gunbc_cli_command { gunbc_test_command }
 
 // THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
 //
