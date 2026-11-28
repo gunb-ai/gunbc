@@ -14794,28 +14794,64 @@ fn census_key_module_digest(
         module.to_string(),
         v1_rt::atom_identity_hash(source.content.clone()),
         format!(
-            "closure={} tree={}",
-            closure.contains(module),
-            scope.tree_files.contains(&file)
+            "censused={}",
+            closure.contains(module) || scope.tree_files.contains(&file)
         ),
     ];
-    for word in census_key_words(&source.content) {
+    let words: std::collections::BTreeSet<String> = match parsed_file_references_of(index, source) {
+        Ok(refs) => {
+            let mut words: std::collections::BTreeSet<String> = refs
+                .bare
+                .iter()
+                .chain(refs.authored_types.iter())
+                .chain(refs.self_declared.iter())
+                .cloned()
+                .collect();
+            for chain in &refs.chains {
+                words.insert(chain.join("."));
+            }
+            for line in source
+                .content
+                .lines()
+                .filter(|l| l.trim_start().starts_with("import "))
+            {
+                words.extend(census_key_words(line));
+            }
+            words
+        }
+        Err(cause) => {
+            parts.push(format!("unread:{cause}"));
+            census_key_words(&source.content)
+        }
+    };
+    for word in words {
         let mut answer: Vec<String> = Vec::new();
+        let mut owners: Vec<String> = Vec::new();
         if let Some(state) = scope.census.global_bare.get(&word) {
             match state.as_ref() {
                 GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
                     answer.push(format!("unique:{module_path}"));
-                    edges.push(module_path.clone());
+                    owners.push(module_path.clone());
                 }
                 GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                    let mut owners: Vec<String> =
+                    let mut candidates: Vec<String> =
                         candidates.iter().map(|c| c.module_path.clone()).collect();
-                    owners.sort();
-                    answer.push(format!("ambiguous:{}", owners.join(",")));
-                    edges.extend(owners);
+                    candidates.sort();
+                    answer.push(format!("ambiguous:{}", candidates.join(",")));
+                    owners.extend(candidates);
                 }
             }
         }
+        for owner in &owners {
+            if scope
+                .census
+                .entries
+                .contains_key(&format!("{owner}.{word}"))
+            {
+                answer.push(format!("entry:{owner}"));
+            }
+        }
+        edges.extend(owners);
         if let Some(service) = scope.census.services.get(&word) {
             answer.push(format!("service:{}", service.module_path));
             edges.push(service.module_path.clone());
