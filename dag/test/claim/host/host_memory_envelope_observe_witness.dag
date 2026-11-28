@@ -27,7 +27,7 @@ import gunbc.host.host_memory_envelope_observe {
   host_memory_envelope_includes_slice,
   host_memory_quiescent_read_for_subject,
   host_memory_quiescent_receipt_text,
-  systemd_cgroup_memory_limit_wire,
+  host_memory_envelope_limit_label,
   PeerSliceEventsRead, PeerSliceObserved, PeerSliceUnreadable, peer_show_field,
   host_memory_envelope_receipt_text,
   is_top_level_slice_unit,
@@ -313,9 +313,9 @@ test fn peer_show_field_reads_the_keyed_line_and_nothing_else() -> Bool {
 // a limit the manager would not answer -- because a receipt that prints "0" for the third would
 // read as a slice with no memory at all.
 test fn the_limit_wires_render_the_three_standings_apart() -> Bool {
-  systemd_cgroup_memory_limit_wire(limit: MemoryLimitUnbounded) == "infinity"
-    && systemd_cgroup_memory_limit_wire(limit: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 26214400)) }) == "26843545600"
-    && string_contains(s: systemd_cgroup_memory_limit_wire(limit: MemoryLimitAbsent), pattern: "unreadable")
+  host_memory_envelope_limit_label(limit: MemoryLimitUnbounded) == "infinity"
+    && host_memory_envelope_limit_label(limit: MemoryLimitBytes { bytes: kibibyte_to_byte_size(k: kibibyte(count: 26214400)) }) == "26843545600"
+    && host_memory_envelope_limit_label(limit: MemoryLimitAbsent) == "(absent)"
 }
 
 // ── THE DOOR ────────────────────────────────────────────────────────────────────────────────────────

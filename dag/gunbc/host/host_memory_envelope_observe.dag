@@ -31,7 +31,7 @@ import gunbc.live_deploy.serving_child_observations { serving_child_slice_unit_n
 import extdeps.systemd {
   MemoryMax, MemoryHigh, MemoryCurrent, MemorySwapMax, MemoryEventsProperty, SystemdUnitProperty,
   SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent,
-  parse_systemd_memory_limit_show,
+  parse_systemd_memory_limit_show, systemd_memory_limit_wire_label,
   systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice,
   systemd_slice_ancestor_names, systemd_slice_suffix, systemd_root_slice_name,
 }
@@ -65,12 +65,12 @@ import gunbc.typed_argv_exec {
 
 data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"
 
-fn systemd_cgroup_memory_limit_wire(limit: SystemdCgroupMemoryLimit) -> String {
-  match limit {
-    MemoryLimitUnbounded => "infinity"
-    MemoryLimitBytes { bytes: bytes } => to_string(byte_size_count(b: bytes))
-    MemoryLimitAbsent => "(unreadable)"
-  }
+// THE LIMIT'S PRINTED FORM HAS ONE HOME (extdeps.systemd::systemd_memory_limit_wire_label);
+// this receipt only decides how its OWN receipt shows the empty (absent) arm, so a bare
+// "memory_max=" can never read as a value.
+fn host_memory_envelope_limit_label(limit: SystemdCgroupMemoryLimit) -> String {
+  let label = systemd_memory_limit_wire_label(limit: limit)
+  if label == "" { "(absent)" } else { label }
 }
 
 type SliceMemoryReading {
@@ -374,9 +374,9 @@ fn host_memory_envelope_receipt_text(obs: HostMemoryEnvelopeObservation) -> Stri
     join(map(obs.slice_readings, r => join([
       "slice=", r.slice_unit as String,
       " memory_current=", to_string(byte_size_count(b: r.memory_current)),
-      " memory_high=", systemd_cgroup_memory_limit_wire(limit: r.memory_high),
-      " memory_max=", systemd_cgroup_memory_limit_wire(limit: r.memory_max),
-      " memory_swap_max=", systemd_cgroup_memory_limit_wire(limit: r.memory_swap_max),
+      " memory_high=", host_memory_envelope_limit_label(limit: r.memory_high),
+      " memory_max=", host_memory_envelope_limit_label(limit: r.memory_max),
+      " memory_swap_max=", host_memory_envelope_limit_label(limit: r.memory_swap_max),
       " memory_events=", cgroup_memory_events_wire(reading: r.memory_events),
       "\n",
     ], "")), ""),
@@ -586,7 +586,7 @@ fn host_memory_quiescent_receipt_text(read: HostMemAvailableQuiescentRead, user_
     PeerSliceObserved { slice_unit: unit, memory_max: max, memory_current: current, memory_events: events } =>
       join([
         "\nslice=", unit as String,
-        " memory_max=", systemd_cgroup_memory_limit_wire(limit: max),
+        " memory_max=", host_memory_envelope_limit_label(limit: max),
         " memory_current=", match current { Present { value: b } => to_string(byte_size_count(b: b))  Absent => "unreadable(MemoryCurrent)" },
         " memory_events=", cgroup_memory_events_wire(reading: events),
       ], "")

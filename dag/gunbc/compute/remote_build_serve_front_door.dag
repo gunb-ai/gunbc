@@ -35,6 +35,7 @@ import gunbc.compute.host_capacity {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
+import extdeps.systemd { systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice }
 import extdeps.linux.cgroup_v2_memory {
   MemoryCurrent, MemoryEvents, cgroup_memory_interface_file_name,
   parse_cgroup_nonnegative_bytes, parse_cgroup_memory_events, cgroup_memory_events_wire,
@@ -342,8 +343,9 @@ fn remote_build_serve_front_door_hand_off(hand_off: RemoteBuildHandOff) -> CliWi
   // WHEN THE CHILD DIES WITHOUT ANSWERING, THE DOOR RECORDS THE SLICE'S OWN ACCOUNT. A child that
   // exits with no header and a non-zero code gave the client nothing and left the host with no
   // account either -- which is how an in-slice OOM stayed invisible across two proof runs. The
-  // door reads the slice's current usage and its memory.events the way every other read here does
-  // -- systemctl show through the declared transport -- and prepends it as evidence, not verdict:
+  // door reads the slice's current usage and its memory.events straight from the cgroup's own
+  // interface files under the slice's nested cgroup directory (the nesting rule is extdeps.systemd's),
+  // and prepends it as evidence, not verdict:
   // the numbers say what the cgroup saw; naming the cause stays the observer's job. A read that
   // cannot be made says so; it never blocks the answer the child did produce.
   let headerless = match remote_build_ending_of_answer(stdout: child.stdout) { Absent => true  Present { value: _ } => false }
@@ -382,21 +384,28 @@ fn remote_build_answer_body_is_a_receipt(stdout: String) -> Bool {
 // the probe's demand closure past 800 modules again (gunbc.design_argument::demand_before_materialization);
 // the names of these files belong to extdeps.linux.cgroup_v2_memory, never here).
 fn remote_build_serve_front_door_slice_diagnostic(unit: NonEmptyStr) -> String {
-  let dir = cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: unit)
-  let current_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryCurrent)) as String)
-  let current = if !current_read.success {
-    concat("(refused: ", current_read.error, ")")
-  } else {
-    match parse_cgroup_nonnegative_bytes(text: current_read.content) {
-      Present { value: b } => nat_to_decimal_string(value: byte_size_count(b: b))
-      Absent => "(unreadable)"
+  // THE SLICE'S CGROUP DIRECTORY IS NESTED, NOT FLAT: systemd places a dashed slice under its
+  // ancestors (gunbc.slice/gunbc-user.slice/gunbc-user-work.slice), and extdeps.systemd holds that
+  // rule -- the door borrows it, it does not re-derive it (gunbc.design_argument::single_authority).
+  match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: unit) {
+    SliceNameNotASlice { spelling: s } => concat("remote-build door diagnostic: (refused: not-a-slice-name ", s, ")")
+    SliceCgroupPath { path: dir } => {
+      let current_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryCurrent)) as String)
+      let current = if !current_read.success {
+        concat("(refused: ", current_read.error, ")")
+      } else {
+        match parse_cgroup_nonnegative_bytes(text: current_read.content) {
+          Present { value: b } => nat_to_decimal_string(value: byte_size_count(b: b))
+          Absent => "(unreadable)"
+        }
+      }
+      let events_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryEvents)) as String)
+      let events = if !events_read.success {
+        concat("(refused: ", events_read.error, ")")
+      } else {
+        cgroup_memory_events_wire(reading: parse_cgroup_memory_events(body: events_read.content))
+      }
+      join(["remote-build door diagnostic: slice ", unit as String, " memory_current=", current, " memory_events=", events], "")
     }
   }
-  let events_read = Filesystem.Read(path: cgroup_v2_child_path(parent: dir, child: cgroup_memory_interface_file_name(f: MemoryEvents)) as String)
-  let events = if !events_read.success {
-    concat("(refused: ", events_read.error, ")")
-  } else {
-    cgroup_memory_events_wire(reading: parse_cgroup_memory_events(body: events_read.content))
-  }
-  join(["remote-build door diagnostic: slice ", unit as String, " memory_current=", current, " memory_events=", events], "")
 }

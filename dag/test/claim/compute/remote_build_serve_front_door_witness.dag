@@ -1,10 +1,13 @@
 module test.claim.compute.remote_build_serve_front_door_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.algebra { skip, trim }
+import std.algebra { skip, trim, string_contains }
 import std.optional { Present, Absent }
 import std.list { first_where }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.systemd { systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice }
+import gunbc.live_deploy.serving_child_observations { serving_child_slice_unit_name }
 import gunbc.cli_wire { CliWirePrintable }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_name, fleet_posix_operator_user,
@@ -618,6 +621,23 @@ fn w_forbidden_probe_imports() -> List<String> {
 // that deletion is itself a roster/declaration disagreement the next CI pass surfaces as a missing
 // claim, and the wet schedule rows that run this module name claims by hand besides.
 
+
+// THE DOOR'S OOM EVIDENCE READS THE NESTED SLICE CGROUP DIR (review 99502). A dashed slice is
+// nested under its ancestors by systemd; a flat path would make both reads refuse in exactly the
+// headerless-death case the diagnostic exists for. The nesting rule has ONE home -- the door must
+// borrow extdeps.systemd's, not re-derive it, and the rendered path must be the nested one.
+test fn the_diagnostic_borrows_the_nested_slice_path_from_systemd() -> Bool {
+  let src = Filesystem.Read(path: "dag/gunbc/compute/remote_build_serve_front_door.dag")
+  if !src.success { return false }
+  let uses_home = string_contains(s: src.content, pattern: "systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: unit)")
+  let no_fork = !string_contains(s: src.content, pattern: "cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: unit)")
+  let nested = match systemd_slice_cgroup_path(mount_point: cgroup_v2_mount_point, slice: serving_child_slice_unit_name) {
+    SliceCgroupPath { path: p } => (p as String) == "/sys/fs/cgroup/gunbc.slice/gunbc-user.slice/gunbc-user-work.slice"
+    SliceNameNotASlice { spelling: _ } => false
+  }
+  uses_home && no_fork && nested
+}
+
 fn door_source_lines() -> List<String> {
   let src = Filesystem.Read(path: "dag/test/claim/compute/remote_build_serve_front_door_witness.dag")
   if !src.success { return [] }
@@ -658,6 +678,7 @@ fn check_or_name(name: String, held: Bool) -> String {
 fn run_remote_build_serve_front_door_witness() -> ProcessExit {
   let red = join([
     check_or_name(name: "the_door_roster_lists_every_test_fn_and_nothing_else", held: the_door_roster_lists_every_test_fn_and_nothing_else()),
+    check_or_name(name: "the_diagnostic_borrows_the_nested_slice_path_from_systemd", held: the_diagnostic_borrows_the_nested_slice_path_from_systemd()),
     check_or_name(name: "an_admitted_principal_answers_the_probe_ready_and_the_client_sends_the_request", held: an_admitted_principal_answers_the_probe_ready_and_the_client_sends_the_request()),
     check_or_name(name: "a_refused_principal_moves_the_request_on_and_never_stops_the_walk", held: a_refused_principal_moves_the_request_on_and_never_stops_the_walk()),
     check_or_name(name: "the_ledger_membership_the_probe_no_longer_checks_still_refuses_the_request", held: the_ledger_membership_the_probe_no_longer_checks_still_refuses_the_request()),
