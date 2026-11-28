@@ -802,8 +802,11 @@ data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
 // with room until plan run 43593733352 (2026-11-14) was killed at 30m in this step: on srv1 the
 // child compile alone measured 1607 s and the step 1798 s wall, 13.6 GB peak. Raised to 45 on the
 // operator's explicit sign-off, ruling gunbc.design_ruling serve_entry_verdict_step_raised_to_45_minutes.
+// RETURNED TO 30: since #16518 (565a40f7c618) the step no longer runs the whole-closure compile; it runs
+// `gunbc run` to the ingress bind refusal, measured at main 4a63370f4a67 on srv1 at 613 s wall, 8.2 GiB, exit 1.
+// The ruling's remedy was runtime reduction, after which the bound comes down; a decrease is not growth.
 // The job backstop does not add this term, so the job's timeout is unchanged.
-data gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes: Duration = 45
+data gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes: Duration = 30
 
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 
