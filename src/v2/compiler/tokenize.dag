@@ -6,7 +6,7 @@ import std.types { List, Map }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_reverse, empty_map, map_insert, map_lookup, list_at_optional }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_empty, length, list_map, list_reverse, empty_map, map_insert, map_lookup, list_at_optional }
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }
@@ -849,6 +849,22 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: LexCursor) -> LexRuleAppl
   )
 }
 
+// THE ONE REPRESENTATION-SPECIFIC STEP, named once. The shared placement rules in
+// std.source_annotation are stated over CODE POINTS (advance_line_prefix_indent_only,
+// advance_annotation_line_state), because the two realizations do not share a string
+// representation and the rule must be single-authored, not spelled twice. This realization's
+// lexeme is #v2.std.text::String, which is `std.algebra.FreeMonoid<Char>` — a run of characters, not a
+// run of code points. The crossing is the declared one this module already takes for extents in
+// `lexeme_utf8_octet_count` and `lex_unmatched_scalar_octets`:
+// #std.unicode.char_class::unicode_char_code_point reads each character's code point, mapped over the
+// run. It is a conversion the author names,
+// never an implicit coercion, so a lexeme is never poured into a code-point parameter
+// unconverted (gunbc.design_argument::closed_grounded_substrate). One function, six call sites;
+// the rules themselves stay over code points, so there is no second placement rule.
+fn lexeme_code_points(lexeme: v2.std.text.String) -> List<Int> {
+  list_map(xs: lexeme, f: fn(c) { unicode_char_code_point(c: c) })
+}
+
 // The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token.
 // A lexeme's extent in UTF-8 OCTETS. Every walk offset (`pos`, Token and annotation start/end) is
 // carried as v2.std.diagnostic ByteRange, so it advances by the encoding form's octet count per
@@ -1125,8 +1141,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 remaining: remaining,
                 tokens: acc.tokens,
                 annotations: acc.annotations,
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                line_state: advance_annotation_line_state(state: acc.line_state, code_points: lexeme, is_annotation: false),
+                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme_code_points(lexeme)),
+                line_state: advance_annotation_line_state(state: acc.line_state, code_points: lexeme_code_points(lexeme), is_annotation: false),
                 pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
@@ -1182,8 +1198,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                   },
                   tail: acc.annotations
                 },
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                line_state: advance_annotation_line_state(state: acc.line_state, code_points: lexeme, is_annotation: true),
+                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme_code_points(lexeme)),
+                line_state: advance_annotation_line_state(state: acc.line_state, code_points: lexeme_code_points(lexeme), is_annotation: true),
                 pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
@@ -1246,8 +1262,8 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
           tail: acc.tokens
         },
         annotations: acc.annotations,
-        line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-        line_state: advance_annotation_line_state(state: acc.line_state, code_points: lexeme, is_annotation: false),
+        line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme_code_points(lexeme)),
+        line_state: advance_annotation_line_state(state: acc.line_state, code_points: lexeme_code_points(lexeme), is_annotation: false),
         pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
         done: false,
         error: false,

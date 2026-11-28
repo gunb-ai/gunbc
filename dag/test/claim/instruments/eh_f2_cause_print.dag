@@ -1,0 +1,139 @@
+module test.claim.instruments.eh_f2_cause_print
+
+// WHERE THIS LIVES AND WHY. A COMMITTED witness module, filed with its sibling
+// #test.claim.instruments.eh_f2_fold_mutation beside the claim modules that speak about instruments.
+// The sibling's header carries the measured reason this cannot live in a directory of its own: the
+// `v2-bootstrap` lane refuses any module whose namespace has no row in
+// #gunbc.layout_namespace_row.gunbc_tree, and adding such a row is a mint-authority decision.
+//
+// PURPOSE. The census door's cause string has been quoted in a row and in a message without ever
+// being printed, and a property test over an unprinted string proves nothing about it (review round:
+// p_cause_* returned verdicts for a string no log carried). Every leg below therefore hands the RAW
+// cause back as its own ExitFailure reason, which is how the harness renders it: verbatim, in
+// `detail=`.
+//
+// THE SIX `p_*` LEGS ARE PRINTS, NOT ASSERTIONS -- they exit 1 whatever they observe, so the harness
+// always emits their line, and each line carries the property's verdict AND the cause it was computed
+// from. The assertions for those same properties stand elsewhere, on the record: the legs in
+// #gunbc.instruments.list_append_element_argument_wall. A reader can compare the printed string
+// against each verdict without trusting this file's prose. On a route where the door ANSWERS there is
+// no cause to print, and every leg here says so by name (`ANSWERED rows=`), which is the reading the
+// instrument route gives.
+//
+// HOW TO RUN. `gunbc test --wet --source-root dag --source-root src/v2
+// "//test/claim/instruments/eh_f2_cause_print:<leg>"`, roots EXACTLY
+// #gunbc.ci.ci_layer_roots::witness_layer_roots; a third root is refused by the closure authority
+// (`SharedIndexSecondResidentPool`) and yields no observation. See the sibling module's header for
+// the measured refusal.
+
+import std.types { String, Int, Bool }
+import std.process { ProcessExit, ExitFailure }
+import std.algebra { string_contains }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  compile_dag_diagnostic_census
+}
+
+fn repro_source() -> String {
+  "module eh_f2_subject\n"
+    + "import std.algebra { list_append }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_append([\"a\"], \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+fn pair_source() -> String {
+  "module eh_f2_subject\n"
+    + "import std.algebra { list_append }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_append([\"a\"], [\"bc\"]), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+fn push_source() -> String {
+  "module eh_f2_list_push\n"
+    + "import std.algebra { list_push }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_push(xs: [\"a\"], item: \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+// The raw cause, or the answering arm named as such. The exit code is 1 on every path so the harness
+// prints the reason rather than swallowing it: these are prints.
+fn raw_cause(arm: String, source: String) -> ProcessExit {
+  match compile_dag_diagnostic_census(source: source) {
+    CensusNotRunnable { cause: cause } =>
+      ExitFailure { code: 1, reason: concat(concat(arm, " CAUSE["), concat(cause, "]")) }
+    CensusObserved { rows: rows } =>
+      ExitFailure { code: 1, reason: concat(concat(arm, " ANSWERED rows="), to_string(count(rows))) }
+  }
+}
+
+// One property, printed beside the string it was read from. `held` is this leg's OWN reading; the
+// committed reading lives in the probe module and the reader can compare them.
+fn print_prop(prop: String, needle: String, cause: String) -> ProcessExit {
+  ExitFailure {
+    code: 1,
+    reason: concat(
+      concat(concat(concat(concat(prop, " HELD="), to_string(string_contains(s: cause, pattern: needle))), " NEEDLE["), concat(needle, "] CAUSE[")),
+      concat(cause, "]")
+    )
+  }
+}
+
+fn cause_of_repro() -> String {
+  match compile_dag_diagnostic_census(source: repro_source()) {
+    CensusNotRunnable { cause: cause } => cause
+    CensusObserved { rows: _ } => "<the census ANSWERED on this route; no cause exists>"
+  }
+}
+
+test fn cause_repro() -> ProcessExit {
+  raw_cause(arm: "REPRO", source: repro_source())
+}
+
+test fn cause_pair() -> ProcessExit {
+  raw_cause(arm: "PAIR", source: pair_source())
+}
+
+test fn cause_push() -> ProcessExit {
+  raw_cause(arm: "PUSH", source: push_source())
+}
+
+test fn p_cause_is_not_empty() -> ProcessExit {
+  print_prop(prop: "p_cause_is_not_empty", needle: "census", cause: cause_of_repro())
+}
+
+test fn p_cause_names_the_builtin() -> ProcessExit {
+  print_prop(prop: "p_cause_names_the_builtin", needle: "compile_dag_diagnostic_census", cause: cause_of_repro())
+}
+
+test fn p_cause_names_an_import() -> ProcessExit {
+  print_prop(prop: "p_cause_names_an_import", needle: "std.algebra", cause: cause_of_repro())
+}
+
+test fn p_cause_names_a_root() -> ProcessExit {
+  print_prop(prop: "p_cause_names_a_root", needle: "source root", cause: cause_of_repro())
+}
+
+test fn p_cause_has_closure_word() -> ProcessExit {
+  print_prop(prop: "p_cause_has_closure_word", needle: "Closure", cause: cause_of_repro())
+}
+
+test fn p_cause_has_panicked() -> ProcessExit {
+  print_prop(prop: "p_cause_has_panicked", needle: "panicked", cause: cause_of_repro())
+}
+
+// The non-empty property read the honest way: the string's own length, beside the string.
+test fn p_cause_length() -> ProcessExit {
+  let cause = cause_of_repro()
+  ExitFailure {
+    code: 1,
+    reason: concat(concat(concat("p_cause_length LEN=", to_string(cause.length())), " CAUSE["), concat(cause, "]"))
+  }
+}

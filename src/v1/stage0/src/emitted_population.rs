@@ -102,6 +102,7 @@
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
 // src/std_types.rs
+// src/std_unicode_char_class.rs
 // src/std_unicode_scalar.rs
 // src/std_unicode_types.rs
 // src/std_workspace_artifact.rs
