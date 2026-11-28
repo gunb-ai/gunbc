@@ -1879,6 +1879,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "the_wet_words_reach_the_route_held"),
   bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "the_record_words_reach_the_route_with_their_store"),
   bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "overlapping_operands_select_the_shared_claim_once"),
+  bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "a_package_wide_all_runs_the_package_on_the_route"),
   bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "a_source_root_does_not_license_a_non_claim_operand"),
   bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "an_absolute_root_outside_the_checkout_refuses_without_unwinding"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_failure_verdict_reaches_nonzero_exit"),

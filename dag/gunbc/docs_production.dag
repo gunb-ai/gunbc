@@ -1,0 +1,14 @@
+module gunbc.docs_production
+
+import gunbc.generated_artifact { DocsProjection, DesignFailureModesProjection, DesignRungDropsProjection, ContributorOnboardingProjection }
+import gunbc.generated_artifact_production { GeneratedArtifactProduction }
+import gunbc.design_ledgers { design_failure_modes_artifact_production, design_rung_drops_artifact_production }
+import gunbc.contributor_onboarding_path { contributor_onboarding_artifact_production }
+
+fn docs_production(projection: DocsProjection) -> GeneratedArtifactProduction {
+  match projection {
+    DesignFailureModesProjection => design_failure_modes_artifact_production
+    DesignRungDropsProjection => design_rung_drops_artifact_production
+    ContributorOnboardingProjection => contributor_onboarding_artifact_production
+  }
+}

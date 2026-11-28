@@ -47,6 +47,8 @@ import product.printed_chassis.standoff_gauge {
   StandoffGaugeGeometry, standoff_gauge_plate, standoff_gauge_holes,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { CouponCadQueryProgramArtifact }
 // THE HANDLER TAKES ONE ARGUMENT AND IT IS THE CAPABILITY, WHICH IS THE WHOLE DESIGN.
 //
 // realize_admitted's parameter is AdmittedRealizationV0 and nothing else. There is deliberately no
@@ -609,4 +611,18 @@ fn realize_review_parts(parts:List<AssemblyPart>) -> ReviewCadQueryEmission {
  if length(parts)==0||!all(parts,p=>length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))) {return ReviewCadQueryRefused {reason:"Empty or non-positive review geometry"}}
  let scan=fold(flat_map(parts,p=>review_part_lines(p:p)),init:LineScan {lines:[],refusal:NoDimensionRefused},f:scan_line)
  match scan.refusal {DimensionRefused {micrometres:_}=>ReviewCadQueryRefused {reason:"Dimension unrenderable"} NoDimensionRefused=>ReviewCadQueryEmitted {program:ReviewCadQueryProgram {source:join([cadquery_preamble,"_review_shapes = []\n",join(scan.lines,"")],"") as NonEmptyStr}}}
+}
+
+fn coupon_cad_query_program_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_coupon_cadquery_program() {
+      CouponProgramGenerated { content } => ArtifactGenerated { content: content }
+      CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+data coupon_cad_query_program_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: CouponCadQueryProgramArtifact,
+  generate: coupon_cad_query_program_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

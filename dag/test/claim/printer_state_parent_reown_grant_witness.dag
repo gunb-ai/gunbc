@@ -14,7 +14,8 @@ import std.algebra { string_contains }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact }
-import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_artifact_production }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.printer_state_parent_reown { printer_state_parent_reown_target, printer_state_parent_reown_prior }
 import gunbc.host_state_root { host_state_tree }
@@ -30,7 +31,7 @@ data real_execution_home_doc: String = "Inhabitance for the sudoers-grant witnes
 test fn witness_the_host_grants_exactly_the_words_the_leg_runs() -> Bool {
   let tree = host_state_tree()
   let target = printer_state_parent_reown_target(tree: tree)
-  let sudoers = match artifact_generate(a: RunnerHostSudoersArtifact { host: operator_host_srv1 }) {
+  let sudoers = match runner_host_sudoers_artifact_production(host: operator_host_srv1).generate() {
     ArtifactGenerated { content } => content
     ArtifactGenerationRefused { reason: _ } => ""
   }
@@ -54,7 +55,7 @@ test fn witness_no_grant_can_reopen_the_parent_or_reown_it_by_hand() -> Bool {
   let target = printer_state_parent_reown_target(tree: tree)
   let prior = printer_state_parent_reown_prior()
   let parent = owned_directory_path(t: target) as String
-  let sudoers = match artifact_generate(a: RunnerHostSudoersArtifact { host: operator_host_srv1 }) {
+  let sudoers = match runner_host_sudoers_artifact_production(host: operator_host_srv1).generate() {
     ArtifactGenerated { content } => content
     ArtifactGenerationRefused { reason: _ } => ""
   }

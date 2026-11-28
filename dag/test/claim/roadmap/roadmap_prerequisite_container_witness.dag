@@ -1,0 +1,105 @@
+module test.claim.roadmap.roadmap_prerequisite_container_witness
+
+import std.types { NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap.roadmap_authority { roadmap_authority }
+import gunbc.roadmap.roadmap_estimate_derivation {
+  prerequisite_edges_into_own_containers,
+  prerequisite_edges_onto_own_contained,
+  live_prerequisite_edges_into_own_containers,
+  live_prerequisite_edges_onto_own_contained,
+}
+import gunbc.roadmap.roadmap_decomposition { decomposition, findings_family, WorkDecomposition, StageDependency }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, MemberOf, Pointer, RoadmapNodeIdentity, NotDispatchable }
+import test.claim.roadmap.roadmap_authority {
+  edges,
+  nodes,
+  red_ticket,
+  tnid,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A fixture row: a self-contained RoadmapNode. `project` is the MemberOf container slug (empty => root, parent none).
+fn own_container_fixture(id: String, project: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: join(["rnfx_owncontainer_", id], "") as RoadmapNodeIdentity,
+    node: tnid(s: id),
+    line: red_ticket(),
+    carriers: [Pointer { label: "fixture", path: "dag/test/claim/roadmap/roadmap_authority.dag" }],
+    dispatch: NotDispatchable,
+    execution: ExecutionContractUnspecified,
+    owner: "cool-fox-418",
+    parent: if project == "" { none } else { Present { value: MemberOf { project: project, contribution: "fixture contribution" as NonEmptyStr } } },
+    centering: none,
+  }
+}
+
+// A MEMBEROF violation refuses, naming both the edge (child -> parent) and the container the edge points at.
+test fn witness_authoring_refuses_prerequisite_into_own_memberof_container() -> Bool {
+  let graph = [own_container_fixture(id: "own-container", project: ""), own_container_fixture(id: "own-leaf", project: "own-container")]
+  let into_own = [RoadmapEdge { child: tnid(s: "own-leaf"), parent: tnid(s: "own-container") }]
+  let found = prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: [] as List<WorkDecomposition>)
+  count(found) == 1
+    && any(found, r => r.child == tnid(s: "own-leaf") && r.parent == tnid(s: "own-container"))
+}
+
+// A DECOMPOSITION-PIECE violation refuses identically, even though MemberOf alone does not link leaf to container:
+// proves the single walk counts pieces and that a MemberOf-only walk would have missed it.
+test fn witness_authoring_refuses_prerequisite_into_own_decomposition_container() -> Bool {
+  let graph = [own_container_fixture(id: "piece-container", project: ""), own_container_fixture(id: "piece-leaf", project: "")]
+  let pieces = [decomposition(
+    node: "piece-container",
+    waits_on: [] as List<StageDependency>,
+    stages: [[findings_family(label: "piece", days: 1, probe: "fixture-probe", owner: "piece-leaf")]],
+  )]
+  let into_own = [RoadmapEdge { child: tnid(s: "piece-leaf"), parent: tnid(s: "piece-container") }]
+  count(prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: pieces)) == 1
+    // MemberOf-only, the SAME graph with no pieces, must NOT refuse -- this is the arm the walk had to gain.
+    && count(prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: [] as List<WorkDecomposition>)) == 0
+}
+
+// A LEGAL cross-item edge between two siblings under one container passes both checks (neither contains the other).
+test fn witness_authoring_allows_legal_cross_item_prerequisite() -> Bool {
+  let graph = [
+    own_container_fixture(id: "legal-container", project: ""),
+    own_container_fixture(id: "legal-a", project: "legal-container"),
+    own_container_fixture(id: "legal-b", project: "legal-container"),
+  ]
+  let legal = [RoadmapEdge { child: tnid(s: "legal-a"), parent: tnid(s: "legal-b") }]
+  count(prerequisite_edges_into_own_containers(nodes: graph, edges: legal, decompositions: [] as List<WorkDecomposition>)) == 0
+    && count(prerequisite_edges_onto_own_contained(nodes: graph, edges: legal, decompositions: [] as List<WorkDecomposition>)) == 0
+}
+
+// A CONTAINER waiting on its own contained child is REDUNDANT, not contradictory: FLAGged, never REFUSED.
+test fn witness_authoring_flags_parent_on_own_child_without_refusing() -> Bool {
+  let graph = [
+    own_container_fixture(id: "redundant-container", project: ""),
+    own_container_fixture(id: "redundant-child", project: "redundant-container"),
+  ]
+  let waits_down = [RoadmapEdge { child: tnid(s: "redundant-container"), parent: tnid(s: "redundant-child") }]
+  count(prerequisite_edges_into_own_containers(nodes: graph, edges: waits_down, decompositions: [] as List<WorkDecomposition>)) == 0
+    && count(prerequisite_edges_onto_own_contained(nodes: graph, edges: waits_down, decompositions: [] as List<WorkDecomposition>)) == 1
+}
+
+// THE LIVE GATE: the declared authority graph carries no prerequisite edge into the source's own container. Red on
+// any violating live edge; the RED-FIRST run lists them. (Redundant container->child edges are advisory flags, not
+// refusals, so the live gate is the refusal count only.)
+test fn witness_live_authority_has_no_prerequisite_into_own_container() -> Bool {
+  count(live_prerequisite_edges_into_own_containers()) == 0
+}
+
+// The live redundant read (a container waiting on something it contains) has a named consumer: this claim route
+// calls it and checks the invariant over whatever the live graph holds -- an edge the redundant read flags is NEVER
+// also refused by the containment law (the two live reads stay consistent: redundant is flagged, never refused).
+// Consumption is shown by the named consumer + executing route, not by forcing the live population to be non-empty
+// (DESIGN *Fail-closed*: a live count against a literal is a change detector; the flag exists precisely to prompt
+// removing these edges, so requiring them to exist would punish the fix). The fixture witness
+// witness_authoring_flags_parent_on_own_child_without_refusing proves the flag arm works.
+test fn witness_live_redundant_prerequisites_are_flagged_not_refused() -> Bool {
+  let flagged = live_prerequisite_edges_onto_own_contained()
+  let refused = live_prerequisite_edges_into_own_containers()
+  all(flagged, f => f.container != f.waited_on
+    && !any(refused, r => r.child == f.container && r.parent == f.waited_on))
+}

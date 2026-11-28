@@ -60,18 +60,18 @@ test fn an_entry_that_imports_only_the_registry_rows_is_admitted() -> Bool {
   generated_artifact_closure_excludes_forbidden(closure: fixture_closure(entry: "fx/registry_clean.dag"))
 }
 
-// INHABITANCE: the real registry entry's live import closure excludes both named paths, AND reaches
-// the two modules it must reach -- the merge-driver script's own module (a location row reads its
-// constants) and gunbc.os_install (the host autoinstall the fleet-manifest row folds). A walk that
-// returned nothing, or that stopped at the entry, would pass the exclusion vacuously; these two
-// conjunctions are what stop it.
+// INHABITANCE: the real registry entry's live import closure excludes both named paths, reaches
+// gunbc.os_install (the host autoinstall the fleet-manifest row folds), and does not reach the
+// merge-driver script's producer module, whose location row the registry now owns. A walk that
+// returned nothing, or that stopped at the entry, would pass the exclusion vacuously; the os_install
+// conjunction is what stops it.
 test fn the_real_registry_closure_excludes_the_renderer_and_the_admission_chain() -> Bool {
   let closure = import_closure_live(
     entry_path: "dag/gunbc/generated_artifact.dag",
     pool_roots: ["dag", "src/v2"]
   )
   generated_artifact_closure_excludes_forbidden(closure: closure)
-    && contains(xs: closure, item: "dag/gunbc/generated_artifact_merge_driver.dag", eq: string_eq)
+    && !contains(xs: closure, item: "dag/gunbc/generated_artifact_merge_driver.dag", eq: string_eq)
     && contains(xs: closure, item: "dag/gunbc/os_install.dag", eq: string_eq)
 }
 

@@ -157,14 +157,7 @@ test fn an_absolute_root_outside_the_checkout_refuses_without_unwinding() -> Boo
     string_contains(s: result.stderr, pattern: "ClaimRouteSourceRootOutsideWorkspace")
 }
 
-// A PACKAGE-WIDE `:all` IS NOT A CLAIM SELECTION ON THE CLAIM ROUTE. This is the discriminating RED control
-// the cutover ruling requires: the route -- not just the model -- must refuse `//test/claim/<pkg>:all` with
-// exit 2 and the typed cause `ClaimRouteAllNotAClaimSelection`. It is discriminating because the SAME
-// package, taken by its subtree form (`/...`, exercised in `overlapping_operands_select_the_shared_claim_once`),
-// and each claim by its exact label, both run: only the `:all`/`:*` spelling refuses. The population is real
-// (this package's claims), so this is not the outside-every-universe refusal -- it is refused to keep one
-// entrypoint to one selection rule (gunbc.design_ruling::claim_execution_has_one_v1_entrypoint).
-test fn a_package_wide_all_refuses_on_the_route() -> Bool {
+test fn a_package_wide_all_runs_the_package_on_the_route() -> Bool {
   let command = gunbc_test_batch_command(
     operands: ["//test/claim/run_verdict_exit_status_fixture:all"],
     mode: HermeticBatch {},
@@ -176,8 +169,7 @@ test fn a_package_wide_all_refuses_on_the_route() -> Bool {
     bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
     args: command.arguments
   )
-  result.exit_code == 2 &&
-    !string_contains(s: result.stdout, pattern: "HELD outcome=Pass") &&
-    !string_contains(s: result.stderr, pattern: "panicked at") &&
-    string_contains(s: result.stderr, pattern: "ClaimRouteAllNotAClaimSelection")
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: "run_verdict_exit_status_fixture:verdict_success HELD") &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
 }

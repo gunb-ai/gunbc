@@ -93,6 +93,8 @@ import gunbc.provisioning.install_media_store { install_media_store_directory }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host_is_derived_srv1 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_generation_produced }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -963,4 +965,20 @@ fn printer_state_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarge
 
 fn printer_state_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
   executor_privileged_owned_directory_plans(targets: printer_state_store_targets(spec: spec))
+}
+
+fn runner_host_sudoers_artifact_generated(host: HostIdentity) -> ArtifactGenerationOutcome {
+  match runner_host_sudoers_body(host: host, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: host })) {
+      RunnerHostSudoersBodyProduced { content } => ArtifactGenerated { content: content }
+      RunnerHostSudoersBodyRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn runner_host_sudoers_artifact_production(host: HostIdentity) -> GeneratedArtifactProduction {
+  GeneratedArtifactProduction {
+    artifact: RunnerHostSudoersArtifact { host: host },
+    generate: fn() { runner_host_sudoers_artifact_generated(host: host) },
+    extra_valid: artifact_generation_produced,
+    provenance: none,
+  }
 }

@@ -5,10 +5,12 @@ import std.types { Bool, String }
 import std.measure { byte_size, byte_size_count }
 import std.algebra { string_contains }
 import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
-import gunbc.generated_artifact { FleetConvergeYamlArtifact, GitignoreArtifact, GithooksPreCommitArtifact }
+import gunbc.generated_artifact { FleetConvergeYamlArtifact, GithooksPreCommitArtifact }
 import gunbc.tier_o_artifact_emit {
-  tier_o_artifact_body, tier_o_workflow_admitted, TierOArtifactBody, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO,
+  tier_o_artifact_body, tier_o_workflow_admitted, TierOArtifactBody, TierOArtifactProduced, TierOArtifactRefused,
 }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_yaml_artifact_production }
+import gunbc.gitignore_emit { gitignore_artifact_production }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -52,11 +54,11 @@ test fn an_oversize_workflow_is_refused_with_its_path_and_size() -> Bool {
 // workflow, the one nearest the ceiling, is produced through tier_o_artifact_body and admitted, and a
 // non-workflow artifact is not measured against a workflow limit.
 test fn the_real_fleet_converge_workflow_is_admitted_under_the_ceiling() -> Bool {
-  let fleet = match tier_o_artifact_body(a: FleetConvergeYamlArtifact) {
+  let fleet = match tier_o_artifact_body(production: fleet_converge_yaml_artifact_production) {
     TierOArtifactProduced { content } => workflow_file_within(content: content, max: workflow_file_size_max)
     _ => false
   }
-  let ignore = match tier_o_artifact_body(a: GitignoreArtifact) {
+  let ignore = match tier_o_artifact_body(production: gitignore_artifact_production) {
     TierOArtifactProduced { content: _ } => true
     _ => false
   }

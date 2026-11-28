@@ -34,6 +34,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_if_else_from_stmts, bash_build_test_bracket,
   bash_build_with_redir, bash_build_with_redir_to_file, bash_build_exit,
 }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { MicrovmShakedownYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, ArtifactGenerated }
 
 // THE ONE JOB A MICROVM SLOT'S GUEST RUNNER EXISTS TO SERVE DURING THE SHAKEDOWN.
 //
@@ -279,4 +282,25 @@ fn expected_microvm_shakedown_yml_with(workflow: Workflow) -> MicrovmShakedownWo
       }
   }
   }
+}
+
+fn microvm_shakedown_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_microvm_shakedown_yml() {
+      MicrovmShakedownWorkflowGenerated { content } => ArtifactGenerated { content: content }
+      MicrovmShakedownWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn microvm_shakedown_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: MicrovmShakedownYamlArtifact))
+}
+
+data microvm_shakedown_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: MicrovmShakedownYamlArtifact,
+  generate: microvm_shakedown_yaml_artifact_generated,
+  extra_valid: microvm_shakedown_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.runner.runner_microvm_shakedown_workflow expected_microvm_shakedown_yml",
+    authority: "gunbc.runner.runner_microvm_shakedown_workflow microvm_shakedown_workflow",
+  } },
 }

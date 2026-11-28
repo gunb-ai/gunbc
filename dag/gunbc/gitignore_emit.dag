@@ -21,6 +21,8 @@ import std.layout {
   render
 }
 import std.render { config_comment_prefix }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { GitignoreArtifact }
 
 // THE committed byte projection of gunbc.repo_workspace (tool footprints, each artifact
 // carrying its meaning and typed ignore reason) joined with the generated-artifact arm
@@ -257,4 +259,15 @@ fn pattern_matches(pattern: String, path: String) -> Bool {
 
 fn path_is_ignored(path: String) -> Bool {
   any(ignore_patterns(), p => pattern_matches(pattern: p, path: path))
+}
+
+fn gitignore_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_gitignore() }
+}
+
+data gitignore_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: GitignoreArtifact,
+  generate: gitignore_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

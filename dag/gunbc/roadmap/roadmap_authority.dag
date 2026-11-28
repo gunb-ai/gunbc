@@ -3312,6 +3312,387 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "gunbc-project-root", contribution: "Known gaps and recurring failure modes, each retired against its rostered trigger, stop charging every later change for the same defect."),
     ),
     roadmap_node(
+      identity: "rn_32ETACQLIVB34CDUZKSNZHOQVA",
+      id: "fallback-retirement",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: level_fields(
+          headline: "Standing fallback arms are retired in priority order, each refusing where it used to search, substitute or widen",
+          boundary: "One batch admitted under gunbc.plans.debt_payoff section 3 (gunbc.design_ruling::standing_fallbacks_are_retired_in_priority_order_2026_11_26). Scope is the live fallback arms a 2026-11-26 read-only survey at daf23d4fb46 found in the seed, the v2 compiler, the harness and the workflows, in seven families: names answered by search, the interpreter's second name answer, refusals erased into answers, spelling standing in for identity, two mechanisms for one question, integrity failures that widen, and environment presence standing in for a declared fact. The seed is in scope.",
+          approach: "Members in priority order: claim-route-loads-by-layout-demand, interpreter-evaluates-the-resolved-call-target (both layer 0 of gunbc.plans.names_without_imports), refusals-are-not-erased-into-answers, spelling-is-not-identity, one-mechanism-per-question, integrity-failures-refuse, environment-is-not-a-declared-fact. Each lands the next step on its terminal's path, not the whole terminal. Arms already owned elsewhere stay there: the v2 AmbientBindingTable tiers and the pattern-atom corpus lookup with names-bind-to-the-unique-declaration, the kernel type rows with one-standard-library. The admitting pull request carries the surveyed population per member, as section 3 requires.",
+          red_control: "A member that swaps one fallback for another (a cache, a wider default, a second search) is not payoff. A member is retired only with a discriminating RED that reaches the former fallback arm and now refuses, typed and located, and a positive control green on the production route.",
+          displaced_cost: "Each arm answers a question nobody declared, so a judgment's real input is wider than its source says: a claim run parses the whole tree for a closure of a few dozen files, a refusal becomes a plausible wrong answer, and a corrupted cache becomes a slower green.",
+          handback: "Per member: the arm deleted or refusing, its RED enrolled, the production route green, and that family's surveyed population empty or each remaining site named with its owner."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "Fallbacks are forbidden by gunbc.design_argument::fail_closed; this batch retires the standing arms that predate or escaped that law, most damaging first."),
+    ),
+    roadmap_node(
+      identity: "rn_YVY3346RXI4LPIVXQXAHGJWM2I",
+      id: "claim-route-loads-by-layout-demand",
+      owner: "namespace",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
+      line: ticket(t: fields(
+          headline: "The seed's claim route loads a claim's closure by its references and the layout rule, and the whole-tree name census is deleted",
+          boundary: "Serves gunbc.plans.names_without_imports layer 0 (the seed loads by the same demands), a step short of names-bind-to-the-unique-declaration. run_claim_route acquires through demand_acquire build_demand_acquired_index, which gunbc run already uses, locating each module by gunbc.source_layout (source_layout_lookup module_storage_relative) instead of the whole-tree module path index. The bare-provider channel and its census are deleted (visit_bare_reference_providers, closure_name_census, tree_census_nodes, pool_census_for_name, run_required_bare_reference_admission), and the typechecker's tree_bare_census_for_root fill is confined to the closure.",
+          displaced_cost: "Every claim process parses every module in the tree before the claim's own closure is touched, and an unrelated file anywhere can change what a bare name binds. Reading of 2026-11-26 (srv1, pre-#16872 claim_batch process-partition lines over 50 src/v2 claim modules): the whole-tree index and the bare-reference edge index were over 40 percent of each process, claim evaluation about 2 percent. The survey found every .dag file under dag and src/v2 stored at its layout path, and only 3 of the 445 import-less files with an ancestor declarer the census could lawfully supply.",
+          first_slice: "Done in gunbc#17167: run_claim_route selects by layout (a module stored off its layout path refuses with ModuleOffLayoutPath), acquires the union closure of the selected entries through demand acquisition into one index, and the bare-name census reads only that closure. Next: delete the census functions, which gunbc compile and the floor still reach through the whole-tree index; attribute the front-end time that remains outside typecheck; and qualify the three import-less files with an ancestor declarer (dag/std/filesystem/types.dag, src/v2/lens/extdeps_shape_transport_policy/module_refs.dag, src/v2/compiler/self_host/stage0_boundary_add_probe.dag) if a claim needs them.",
+          red_control: "A module stored off its layout path refuses naming both paths; a bare reference only the census could answer refuses as unbound, located; a claim run reads no source file outside its closure. Positive control: the native-seven claim modules give the same verdicts on the new route as on the old.",
+          out_of_scope: "Rewriting references or deleting the import grammar corpus-wide (names-bind-to-the-unique-declaration, import-grammar-and-lines-deleted); the v2 loader; pattern selection beyond walking the named package's directory.",
+          handback: "run_claim_route on demand acquisition, the census functions deleted, the REDs enrolled, and a claim run's pre-entry cost scaling with its closure rather than the tree."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "Names stop being answered by searching the whole tree on the route every claim run takes."),
+    ),
+    roadmap_node(
+      identity: "rn_YH5MWVXHBANQC243CDHNQTE7WQ",
+      id: "interpreter-evaluates-the-resolved-call-target",
+      owner: "namespace",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+          headline: "The seed interpreter evaluates the call target the checker resolved, and its own name search is deleted",
+          boundary: "Serves gunbc.plans.names_without_imports layer 0 (its resolved-declaration evaluation prerequisite). eval_call answers a call head a second time: local binding, site_resolved_fn, the fold intercept, the generated lookup_eval_builtin_inner table by spelling, then a slot keyed by bare name (fn_nodes, first-write-wins or last-write-wins by module_order). The checker already records CallTargetIdentity and the Rust emitter consumes it. The interpreter consumes the same per-site target, an unresolved call refuses NoSuchFunction, and the bare-name slot and the table's free-call arms are deleted.",
+          displaced_cost: "The interpreter and the emitter can bind one call to two declarations (gunbc.recurring_failure_mode an_unimported_bare_name_binds_differently_per_realization), the answer can depend on module load order, and service_ops keys collide last-write-wins.",
+          first_slice: "Key the recorded CallTargetIdentity by call-site occurrence and read it in eval_call ahead of every tier; over the native-seven claims, record which tier answered each call before any tier is deleted.",
+          red_control: "Two modules declaring one spelling, one of them imported: the call evaluates the imported one under either load order. A call head only the builtin table or the bare slot could answer refuses as unbound.",
+          out_of_scope: "Method-call dispatch (spelling-is-not-identity); the v2 resolver's tables (names-bind-to-the-unique-declaration).",
+          handback: "eval_call reading recorded targets only, the bare slot deleted, the REDs enrolled, and the native-seven claims unchanged."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "One answer to which function a call means, shared by the interpreter and the emitter."),
+    ),
+    roadmap_node(
+      identity: "rn_RIC7KJVGYEL3OSNZQP7L44UGHM",
+      id: "refusals-are-not-erased-into-answers",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "src/v1/coercion.dag"),
+      line: ticket(t: fields(
+          headline: "A refusal reaching a fallback arm stays a refusal: no emitted spelling, Null, absent or leaf match stands in for it",
+          boundary: "Four places turn a computed refusal into a plausible answer. coerce_primitive_type, through realized_checkpoint, emits the bare source spelling for RealizationRefused at 22 emitter sites. The seed interpreter pads missing arguments, missing variant fields, out-of-range indexes and unkeyable map keys with Null or false (apply_closure, match_pattern, eval_index, raw_map_lookup), and eval_var evaluates a data item naming itself to its own name. v2 infer reads a contested provider as absent (infer_indexes_lookup, infer_resolved_payload and six more). v2 match coverage compares an arm's leaf name, not its declaring coproduct (infer_coproduct_arm_pattern_constructed).",
+          displaced_cost: "Silent wrongness, which gunbc.design_argument::guarantee_ladder places outside the ladder: an emitted type can bind an unrelated target type of the same name, evaluation continues on a fabricated Null, and a match can count as covered by name.",
+          first_slice: "coerce_primitive_type renders RealizationRefused as a located compile_error! carrying its cause, after counting how many emissions over the self-host closure reach that arm.",
+          red_control: "Per place, a specimen that reaches the former substitute and now refuses typed and located: a type whose realization is refused; an arity mismatch and a missing field under the interpreter; two providers for one name under infer; an arm naming Other.Foo against a scrutinee that declares Foo.",
+          out_of_scope: "A Null that is the seed's carrier for an omitted optional field, until that carrier is told apart (measured first).",
+          handback: "Each place refusing with its RED enrolled, and the self-host emission and native-seven claims unchanged except where a refusal is the correct new answer, each such case listed."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "Refusals already computed stop being thrown away."),
+    ),
+    roadmap_node(
+      identity: "rn_6P44OKAOKA2PA5WAPLGVA5GPHQ",
+      id: "spelling-is-not-identity",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "src/v1/05_emit_rust.dag"),
+      line: ticket(t: fields(
+          headline: "Declaration identity, not spelling, selects realizations, lowerings and target names",
+          boundary: "Spelling stands in for identity in: the emitter's checkpoint lookup by bare dag_name ahead of the identity-keyed arm (type_realization_decision); the name == trim arm of rust_host_string_op_fn_emit; method dispatch by spelling in eval_method_call and emit_typed_method_call, whose PlainMethodSemantics arm emits recv.method(args) verbatim; emit_typed_call's spelling intercepts; eval_cast comparing type spellings; v2 resolved_reference_identity turning any declaration whose leaf is a canonical symbol into the kernel atom; bound_spelling_from_map printing the source name when the target has none; nullary_coproduct_arm_binding_spelling emitting Parent::Leaf.",
+          displaced_cost: "Two declarations that share a leaf name can share a realization or a target name: an unrelated trim, same-named coproduct arms in two modules, a declaration whose name ends in a token-class name.",
+          first_slice: "Key the trim arm on its std.primitive_projection row as the neighbouring string_contains bridge already is, and make the PlainMethodSemantics arm refuse without a template as emit_rust_generic_method_call already does.",
+          red_control: "A second declaration named trim in another module keeps its authored body; a method with no template refuses at emission; two coproducts with one arm name in two modules emit distinct paths.",
+          out_of_scope: "Kernel type rows (one-standard-library and the kernel-type layer rule); the v2 AmbientBindingTable tiers (names-bind-to-the-unique-declaration).",
+          handback: "Each listed site keyed on declaration identity or refusing, with its RED enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "A leaf name stops standing in for the declaration it names."),
+    ),
+    roadmap_node(
+      identity: "rn_4OVFCEEVNHKDQFVIXSIEUMSEAQ",
+      id: "one-mechanism-per-question",
+      owner: "debt",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
+      line: ticket(t: fields(
+          headline: "Each listed question has one answering mechanism, and the second is deleted",
+          boundary: "Two mechanisms answer one question in: name lookup policy (v2.std.resolution_policy ImportScoped beside NamespaceOnlyY; the seed's ImportScoped resolver, reached only by tests); a file's dependencies (the loader's edges beside ReferenceSelectionTier, whose produce_one gives an unreadable or unaccounted file no references and so drops it from the typed-cache key); whether a file has imports (source_declares_import_lines beside the parsed imports); demand_acquire falling back to extract_import_paths; the workspace root (five arms across two stores, bind_checkout_root ignoring a late set); the seed build identity (commit or tree).",
+          displaced_cost: "Two answers to one question eventually disagree, and the disagreement surfaces far from either: a cache key missing a file's references, a run whose two roots differ, a binary stamped with an older commit.",
+          first_slice: "Delete the seed's ImportScoped resolver with its test-only setter, and make ReferenceSelectionTier produce_one refuse on Unaccounted.",
+          red_control: "An unreadable file in a closure refuses the run rather than leaving the cache key; reading the workspace root before it is bound refuses; v2 reference_check and the compiler bind one name the same way.",
+          out_of_scope: "The workspace manifest that replaces the root search (source-workspace-manifest); this member only makes the existing arms single and refusing.",
+          handback: "Each listed second mechanism deleted or refusing, with its RED enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "One authority per question, applied to the mechanisms that still answer twice."),
+    ),
+    roadmap_node(
+      identity: "rn_JAFCNIJNM5KNZCN7CR6XHWXOCQ",
+      id: "integrity-failures-refuse",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run/native_product_cache.rs"),
+      line: ticket(t: fields(
+          headline: "A cache or receipt that fails its integrity check refuses and is counted, instead of widening to a full run",
+          boundary: "Two arms absorb integrity failures into the slow path. The pull-request fast lane (gunbc.read_set_restore fast_lane_decision_step) runs with continue-on-error, so a crashed decision or a corrupted restored unit becomes a full run with no classify line, and its rule is stated twice (fast_lane_decide and the emitted script). The native product cache (native_product_cache lookup) turns a hash or manifest mismatch under its SHA-256 key into a rebuild, and record_outcome can drop its receipt line silently.",
+          displaced_cost: "Store corruption and writer bugs stay hidden behind green, slower runs: the absorbing fallback of gunbc.design_argument::fail_closed, applied to caches.",
+          first_slice: "A native product cache mismatch quarantines the entry and refuses with a typed cause, and record_outcome exits on a failed write as demand_acquire read_set_record_to already does.",
+          red_control: "A planted byte flip in a stored product refuses naming its key; a planted malformed fast-lane unit reds the step with its cause; a missing unit or a changed input still selects the full run.",
+          out_of_scope: "Whether the fast lane exists or how it is keyed (gunbc.plans.read_set_convergence).",
+          handback: "Both arms refusing, the fast-lane rule stated once, and the REDs enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "A corrupted cache becomes a red, not a slower green."),
+    ),
+    roadmap_node(
+      identity: "rn_R4PHG2GSMKRZUSEQKELGQFGPYM",
+      id: "environment-is-not-a-declared-fact",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/extdeps/git.dag"),
+      line: ticket(t: fields(
+          headline: "Environment presence and shell or-chains stop standing in for declared facts",
+          boundary: "Facts chosen by what happens to be set: ROOT from git rev-parse or else pwd, emitted about 130 times from extdeps.git git_toplevel_shell_subexpr_with_fallback beside a strict twin; the instrument-dispatch memory guard reading an unreadable memory.max as max; CI cargo taken from PATH when the isolated one is absent; user_work_scope classifying a process CiExempt by GITHUB_ACTIONS before reading its cgroup; select_access_token_source choosing a principal by which variables exist; malformed GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES and GUNBC_MEMORY_BUDGET_BYTES ignored; heal coordinates and the host-cap release host chosen by expression truthiness.",
+          displaced_cost: "A run does something other than what it was asked without saying so: it builds against an unintended root or toolchain, admits an unbounded job, presents an unintended principal, or drops an operator's mistyped request.",
+          first_slice: "Emit the strict git_toplevel_shell_subexpr at every site and delete the fallback variant from extdeps.git, where it is also policy inside an interface layer.",
+          red_control: "An emitted workflow with git unavailable refuses before any step reads ROOT; an unreadable memory.max refuses the dispatch; a malformed override refuses naming the variable; a missing isolated cargo refuses ToolchainHomesNotIsolated.",
+          out_of_scope: "The authorization pattern itself (gunbc.auth.authorization_pattern_selection), beyond the selector reading a declared principal.",
+          handback: "Each listed site refusing or reading a declared input, with its RED enrolled."
+        )),
+      parent: in_project(project: "fallback-retirement", contribution: "What a run acts on is declared, not inferred from what happens to be set."),
+    ),
+    roadmap_node(
+      identity: "rn_Y7AXY6R3KGRWGV5GAYSZBXW4SM",
+      id: "claim-loop-is-tight",
+      owner: "debt",
+      carriers: carrier(path: "src/v1/stage0/src/target_invocation_host.rs"),
+      line: ticket(t: level_fields(
+          headline: "Running a claim and landing a planning change take minutes, not hours",
+          boundary: "The friction one planning change met on 2026-11-26 (gunbc#17167): six claim files verified by exact label took about 80 minutes, a 2-claim file took 981 seconds, a branch build took 14 minutes, and the help text named selection forms that select nothing. Members are the frictions no node owned. Those already owned stay there: the per-process whole-tree front end with claim-route-loads-by-layout-demand, and claims absent from the required check with required-check-named-witnesses-runs-no-claim-module.",
+          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), test-everything-runs-what-changed (the goal: bazel test //... behavior), a-claim-module-pays-only-for-its-subject, test-discovery-reads-the-parse, one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
+          red_control: "A member that makes a slow step cheaper to repeat (a cache, a wider pool, a timeout) without removing the repeated work is not payoff, by gunbc.design_argument minimize_redundancy.",
+          displaced_cost: "Slow verification is why claims stopped being run regularly: authors and agents batch, wait, or skip, and the wait is where defects accumulate unseen.",
+          handback: "Per member: the step's before and after on the same instrument, and the surplus work deleted rather than cached."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "The loop every change goes through stops charging for work no change asked for."),
+    ),
+    roadmap_node(
+      identity: "rn_7LUWKLFHXJCGO7TEYGXBYPCXNQ",
+      id: "claim-selection-forms-are-stated",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/cli_dispatch_surface.dag"),
+      line: ticket(t: fields(
+          headline: "gunbc test's help and refusals name the claim selection forms that work",
+          boundary: "The test operand doc promised labels under //dag/test/claim and that a bare //dag/test/claim/x selects a package. Labels have no dag/ prefix, and a bare label is bazel shorthand for the one claim x:x, so it selected nothing after the whole-tree index was paid. The verb doc said set forms run only on the native route, while //pkg/... runs on the claim route. The help now states the working forms; //pkg:all selects one module's claims as in bazel (gunbc.design_ruling::claim_selection_follows_bazel_target_patterns_2026_11_27), and an empty selection from a single label names the module's :all form.",
+          displaced_cost: "Each wrong form cost a run of minutes before it reported nothing, and every agent that reads the help repeats it.",
+          first_slice: "Admit //pkg:all as one module's claims, correct the help in gunbc.cli_dispatch_surface and both mirrors, and enroll the clap witness that runs :all; landed with gunbc#17167.",
+          red_control: "gunbc_test_clap_surface_witness a_package_wide_all_runs_the_package_on_the_route runs the fixture module's claim through :all; target_invocation_host unit tests admit :all and :* as the one module, and an empty single-label selection names its :all form while a subtree-only selection keeps the plain note that claim_batch_unobserved_exit_witness reads.",
+          out_of_scope: "Selecting only the claims a change affects (gunbc test //... running the affected set), and :all-targets, which stays refused.",
+          handback: "Landed by gunbc#17167."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A reader of the help selects the claims they meant on the first run."),
+    ),
+    roadmap_node(
+      identity: "rn_FWOZ7G3NZTELT6P437IH6QPWWM",
+      id: "test-everything-runs-what-changed",
+      owner: "harness",
+      carriers: carrier(path: "src/v1/stage0/src/target_invocation_host.rs"),
+      line: ticket(t: fields(
+          headline: "gunbc test //... runs the claims a change affects, quickly, as bazel test //... does",
+          boundary: "Operator goal 2026-11-27: \"bazel like behavior like bazel // ... and it would just quickly run your affected tests\". A claim's verdict is a product of what its evaluation read; it stays valid while that read set is unchanged and is re-run otherwise, so //... over a change runs only the claims whose read set it touched and reports the rest from their recorded verdicts, each marked as such. The read-set authority is read-set-convergence's and the demand keys are demand-engine's; this member is the claim route consuming them.",
+          displaced_cost: "Today a whole-repository claim run pays the front end per process and re-evaluates every claim, so nobody runs it; a change's real blast radius is unknown until CI or a later author finds it.",
+          first_slice: "Record each claim's read set (the closure it resolved and the files it read) beside its verdict on the claim route, and report for a diff which claims that read set says are affected, before running anything.",
+          red_control: "Editing a file one claim reads re-runs that claim and not an unrelated one; a recorded verdict whose read set cannot be established is re-run, never reported as held.",
+          out_of_scope: "The per-process front end (claim-route-loads-by-layout-demand) and the label grammar (claim-selection-forms-are-stated).",
+          handback: "gunbc test //... on a one-file change running only the affected claims, with the before and after wall time."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Running every test is cheap because only the affected ones run."),
+    ),
+    roadmap_node(
+      identity: "rn_WKTZCK5YLXV4WPOMSHAQJT7F4Y",
+      id: "a-claim-module-pays-only-for-its-subject",
+      owner: "debt",
+      carriers: carrier(path: "dag/test/claim/roadmap/roadmap_authority.dag"),
+      line: ticket(t: fields(
+          headline: "A claim pays for the declarations it references, not for the files they live in",
+          boundary: "A claim's closure is computed per module: the seed follows import lines (declared_import_closure), so one claim that uses one function from a hub pays for the hub's whole import closure, and every claim in the module pays the union. On 2026-11-27 test.claim.roadmap.roadmap_authority took 4,468 s on srv1, 18.7 s of it claim evaluation, over an import closure of 2,499 modules. Across 3,692 short claim modules the median import closure is 135 modules, 523 reach 1,000 or more, and 61 reach about 2,500. The member is the claim route's slice of namespace-reference-derived-closure: the closure is the declaration-demand fixed point from the claim function, the file stays the unit of reading and parsing, and the declaration is the unit of resolution, typechecking and evaluation.",
+          displaced_cost: "A claim about one interface pays for hundreds of unrelated modules on every run, any edit to any of them marks it affected, and authors keep narrowing hubs and splitting files by hand to buy back time the layout should never have cost.",
+          first_slice: "Done in gunbc#17167, by authority rather than layout: the 13 roadmap_authority claims moved to three modules by subject, and each generated artifact's production moved into its producer module (gunbc.design_ruling::generated_artifact_production_lives_with_its_producer_2026_11_27). Next: for claim modules whose references resolve without the bare-name census, the claim route demands declarations from the claim function instead of following import lines, and reports both closures for one hub consumer of gunbc.fleet.fleet_converge_workflow.",
+          red_control: "A claim's demanded declarations are identical whichever other claims, modules or files are loaded, and a reference that only the whole-pool census could answer refuses rather than widening the closure to the module. Splitting a hub file or copying a helper to shrink a closure is not this member.",
+          out_of_scope: "The per-process whole-tree index (claim-route-loads-by-layout-demand); rewriting bare names to qualified ones (names_without_imports); deleting unused imports (its own change).",
+          handback: "For each converted claim module: its declaration-demand closure beside its import closure, wall time before and after on the same binary, and verdicts unchanged."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A claim run pays for what its claims are about."),
+    ),
+    roadmap_node(
+      identity: "rn_SQGCOCJN6B65SF5U67FQQVJZFY",
+      id: "test-discovery-reads-the-parse",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/workflow/floor_discovery_source_authority.dag"),
+      line: ticket(t: fields(
+          headline: "Test discovery decides from the parse's facts instead of re-scanning source text",
+          boundary: "Both front ends parse each file, keep only the test names, and hand the raw text to v2.workflow.floor_discovery_source_authority, which re-scans it line by line with string helpers for the disposition row and wire-contract declarations: a fact computed, discarded and re-derived (the declared scaffold floor_discovery_surface_text_scan_scaffold). The corpus-walk producer re-reads and re-scans every file for its two callers, gunbc.instruments.layout_witness_join and v2.compiler.effect_demand_floor_join. Operator 2026-11-27: delete the permanently red live census rather than grow the interpreter for it, and run this as its own session.",
+          displaced_cost: "Every claim run and floor run re-parses declarations by string matching, and the scan admits comment text as semantics.",
+          first_slice: "A parse-tree capture of data declarations (name, declared type path, initializer path) in the seed (heads parse plus pooled tokens) and v2 (beside test_marker_content, feeding acquisition_requests_ok and acquisition_test_markers); AcquiredModule and source_root_eval carry it; the producer takes (repo_path, marked, data_declarations) from its callers; the authority decides from it. Delete the 12 string helpers, the content parameter, the scaffold and its dissolution rows, and witness_execution_class_live_census with its long-lane row; rewrite the 33 text-fixture claims as fact fixtures.",
+          red_control: "Every refusal stays (malformed and duplicate disposition, misplaced wire contract, unparseable source) except a trailing comment on a disposition row, which DESIGN section 4c says cannot change semantics; no corpus file has one.",
+          out_of_scope: "Relocating the placement and disposition rules out of discovery.",
+          handback: "Discovered rows over the floor's full prepared inventory identical old against new, each difference named; self-host and v2-native-cli builds green; the rewritten claims held."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Finding the tests costs nothing the parse did not already pay."),
+    ),
+    roadmap_node(
+      identity: "rn_YCI5MTHYVH4H3TMLMH4Z3746ZU",
+      id: "one-claim-process-serves-many-modules",
+      owner: "harness",
+      carriers: carrier(path: "src/v1/stage0/src/target_invocation_host.rs"),
+      line: ticket(t: fields(
+          headline: "Verifying a change runs its claims in one process, so the fixed front end is paid once",
+          boundary: "gunbc test already runs several operands in one process, and //pkg/... selects a module. On 2026-11-26 one process per claim file cost 786 to 1012 seconds each, with every claim evaluating in under a second, so six files cost about 80 minutes of a front end paid six times. The member makes one process the route a change's verification takes: the selection a change demands is computed once and handed to one invocation, by agents and by the harness.",
+          displaced_cost: "Verification time scales with the number of files touched rather than with the claims they hold, which is what pushes authors to skip it.",
+          first_slice: "Measure one invocation over the six files of gunbc#17167 against the per-file runs on the same binary, and record whether the front end is paid once.",
+          red_control: "A one-process run over N modules whose wall time grows like N times the single-module front end refutes the premise and stops the member.",
+          out_of_scope: "Shrinking the front end itself (claim-route-loads-by-layout-demand).",
+          handback: "The measured ratio, and the verification route using one process."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Verification costs one front end, not one per file."),
+    ),
+    roadmap_node(
+      identity: "rn_EKC22PHSEUTGDPAKAZRZXAIMLQ",
+      id: "a-branch-build-is-not-a-quarter-hour",
+      owner: "ci-cost",
+      carriers: carrier(path: ".cargo/config.toml"),
+      line: ticket(t: fields(
+          headline: "Building gunbc for a branch takes minutes, not a quarter hour",
+          boundary: "On 2026-11-26 a release build of gunbc in a fresh srv1 worktree took 14m11s, and every branch worktree pays it again. .cargo/config.toml caps every cargo run at jobs = 2, and nearly all the time is one crate, v1-compiler, recompiled whole on any edit (cli_run.rs alone is over 44,000 lines). That the single crate dominates is inferred from the build log, not measured.",
+          displaced_cost: "Every branch verification starts with a quarter hour no change asked for, which is why agents reuse stale binaries.",
+          first_slice: "Done in gunbc#17167: binary freshness keys on source content (gunbc.target_invocation InputDiffersFromThisCheckout), so a binary built in one checkout runs from any checkout with identical sources and refuses, naming the file, where they differ. Next, measure with cargo build --timings on srv1: the time in v1-compiler against its dependencies, and whether jobs = 2 binds on a host with the memory to lift it.",
+          red_control: "A change that only adds a cache in front of the same whole-crate compile is not this member.",
+          out_of_scope: "Remote build serving (the remote-build program).",
+          handback: "The timing breakdown, and the build split or reconfigured so an edit to one area does not recompile the seed whole."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A branch is verifiable without a quarter-hour build first."),
+    ),
+    roadmap_node(
+      identity: "rn_A3K5DE6O5SZ34H6XLJQAWOFQSQ",
+      id: "roadmap-claims-hold-on-main",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_intention_binding.dag"),
+      line: ticket(t: fields(
+          headline: "The roadmap intention-binding claims hold on main",
+          boundary: "Two roadmap_intention_binding_witness claims do not hold at daf23d4fb46 or at main: no_node_is_bound_twice, because work-exec-5-ci-verdict-from-receipt serves both gunbc.plans.github_actions_retirement and gunbc.plans.factory_dogfood; and every_binding_reaches_a_terminal_of_its_intention, because no terminal of gunbc.plans.planning_consolidation reaches roadmap-work-item-projection-unbound-coverage. Nothing runs these claims on main, so the reds stood unnoticed (gunbc.recurring_failure_mode witnesses_red_on_main_with_no_failure_mode_row).",
+          displaced_cost: "Every planning change that verifies the roadmap claims must first rule these out by hand.",
+          first_slice: "The owner of each binding decides: one intention for work-exec-5-ci-verdict-from-receipt, and an edge or an unbinding for roadmap-work-item-projection-unbound-coverage.",
+          red_control: "Both claims already discriminate; they turn green.",
+          out_of_scope: "Putting roadmap claims in the required check (required-check-named-witnesses-runs-no-claim-module).",
+          handback: "roadmap_intention_binding_witness 11 of 11 held on main."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A planning change starts from green roadmap claims."),
+    ),
+    roadmap_node(
+      identity: "rn_X35I5NNHLCMATWA2UT5HKTPCHU",
+      id: "a-verification-run-does-not-hold-publication",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_guidance.dag"),
+      line: ticket(t: fields(
+          headline: "An agent publishes its change before a long verification finishes, and reports the run while it waits",
+          boundary: "On 2026-11-26 a finished planning change sat unpublished for over an hour while its claim runs completed one file at a time, and the operator saw no progress. The operator reports the same stall across agents: a step is agreed, then the agent waits silently on a long run. The change can be published at once and its verification reported into it as each result lands; the wait is then visible and nothing downstream of review is held.",
+          displaced_cost: "Review and discussion that could proceed beside verification are serialized behind it, and the operator cannot tell a waiting agent from a stuck one.",
+          first_slice: "State the order in gunbc.harness.harness_guidance: publish first, report each running step with its expected duration, fill checks in as they land.",
+          red_control: "A session whose change exists locally while a verification it launched is still running, with no pull request and no progress line, is the failure.",
+          out_of_scope: "Making the verification itself faster (one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, claim-route-loads-by-layout-demand).",
+          handback: "The brief carrying the order, and the next long verification observed published first."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Waiting on a run is visible and holds nothing else."),
+    ),
+    roadmap_node(
+      identity: "rn_5CM43VXJ2NWLNZQWTOMTD6WP3I",
+      id: "source-carries-no-comments",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: level_fields(
+          headline: "Source carries no comments: what a comment was for gets a home that is checked",
+          boundary: "Operator direction 2026-11-26: \"we will probably be banning comments in the long run - they are basically dual representations better left out of the code completely (moreso left to planning items/etc, not the literal code)\". A comment restates what code or a plan owns, and nothing checks they agree. Specimen: target_invocation_host said a bare claim label selects a package; the code selected nothing. At 4507527721b about 507,000 of 2.78 million .dag lines and 31,000 of 415,000 seed Rust lines are comments.",
+          approach: "Members: comments-are-audited-by-use, comment-uses-have-homes (the ruling), roadmap-items-cite-declarations, concerns-surface-where-code-is-edited, comment-guidance-is-one-authority, review-rejects-new-comments. The direction is decided and does not wait on the audit (operator: one bad comment is reason enough to remove them all and change guidance); guidance and review change now. The audit decides where each use goes, and existing comments are removed as their uses get homes, so a concern is never lost.",
+          red_control: "Deleting comments with no disposition is not this project; neither is moving them into String data rows, which DESIGN section 4c already measured as the worse outcome.",
+          displaced_cost: "A reader trusts the comment, the code does something else, and the cost is paid as trial runs; a concern written beside the code is never ranked, so it is never fixed.",
+          handback: "The ruling, each use with its home consumed, guidance projected from one authority, and review refusing new comments."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "One representation per fact: the code says what it does, and concerns and reasons live where they are ranked and checked."),
+    ),
+    roadmap_node(
+      identity: "rn_Q25LGLM7BGBAI26VSSY3TRI3V4",
+      id: "comments-are-audited-by-use",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: fields(
+          headline: "An audit of what the comments in this repository are actually used for, and what the code looks like without them",
+          boundary: "Two readings, both over the seed Rust and the .dag corpus. A census: every comment classified by use (restatement, rationale, concern about the implementation, invariant or warning, temporary-arm note, disabled code, commentary disguised as a String), with counts and specimens per use, and each wrong comment found counted with what it got wrong. A specimen: representative modules shown with their comments stripped, read for what is lost; each loss is either a home the ruling must provide or a fix in the code itself, a name or type that should have said it.",
+          displaced_cost: "Without the census the ruling guesses at the uses; without the specimen nobody sees whether the code stands without its comments.",
+          first_slice: "Classify a stratified sample from both corpora, including target_invocation_host, and strip comments from three modules of different kinds (seed host Rust, a std .dag module, a v2 compiler stage) for the operator to read.",
+          red_control: "A census that only counts comment lines, without a use per comment and the wrong ones named, does not discharge this member.",
+          out_of_scope: "Deciding whether comments go: the direction is decided.",
+          handback: "The census by use with specimens and the wrong comments found, and the stripped modules with each loss dispositioned."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "The homes are designed from what comments are really used for."),
+    ),
+    roadmap_node(
+      identity: "rn_ACSSRQVGDUJLCPX65TKP6TKTWQ",
+      id: "comment-uses-have-homes",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: fields(
+          headline: "A ruling gives every legitimate use of a comment a checked home, revising DESIGN section 4c",
+          boundary: "Comments often carry an author's concern about the implementation. That concern is either fixed now, by stopping and replanning, which the ruling states as the expected move rather than a failure, or it becomes a roadmap item citing the declaration it concerns. Why-this-shape rationale goes to a ruling or plan row; an invariant, lifetime or invalidation story goes to the typed carrier that owns it; a temporary arm is a scaffold admission; a restatement of the code is deleted; generated help text is data.",
+          displaced_cost: "Without a home per use, a ban either loses the concerns or pushes them into prose rows nothing reads.",
+          first_slice: "Draft the ruling with the operator from comments-are-audited-by-use: its census fixes the list of uses, and its uncommented specimens show what code must say for itself.",
+          red_control: "A use found in the audit with no home in the ruling gets a home designed; it is never grounds for keeping comments.",
+          out_of_scope: "Moving any comment before the ruling lands.",
+          handback: "The ruling, DESIGN section 4c regenerated from it, and the census."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "Each thing a comment was for has a place that is checked."),
+    ),
+    roadmap_node(
+      identity: "rn_P72RIMZ7Z47K4DXX6DL7UYQKTI",
+      id: "roadmap-items-cite-declarations",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_model.dag"),
+      line: ticket(t: fields(
+          headline: "A roadmap item can cite the declaration it concerns, not only a file",
+          boundary: "A concern moved out of a comment must keep its anchor. Roadmap carriers are Pointer label and path, so the finest anchor is a file. A carrier names a declaration by module and symbol (std.decl_ref DeclarationRef), verified to resolve, as DESIGN section 3 requires: cite the symbol, not the position; a position only beside it where no symbol exists. A declaration's open concerns are then a query over the roadmap.",
+          displaced_cost: "File-grain anchors make a moved concern harder to find than the comment it replaced, which is why authors keep the comment.",
+          first_slice: "Add a declaration carrier beside the path carrier, with a claim that every declaration carrier resolves; cite the declarations named by this project's own members.",
+          red_control: "A declaration carrier naming a symbol that does not resolve refuses, located.",
+          out_of_scope: "Rewriting existing path carriers.",
+          handback: "The carrier, its resolution claim, and the query from a declaration to its open items."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "A concern leaves the code without losing where it points."),
+    ),
+    roadmap_node(
+      identity: "rn_5UWMFV7KKO53EOUWZHFXU6T2HM",
+      id: "concerns-surface-where-code-is-edited",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_guidance.dag"),
+      line: ticket(t: fields(
+          headline: "A declaration's open concerns reach whoever edits or reviews it",
+          boundary: "Operator observation 2026-11-26: when comments are removed, authors leave them as data instead (a string holding a long warning), so they are desperate to leave warnings, and that is a symptom. The symptom's cause: a comment is the only channel sure to be in front of the next editor of that code, and a roadmap item is not. When a change touches a declaration, the roadmap items citing it are put in the author's brief and the reviewer's input, so a warning written as a plan item is read at least as reliably as a comment.",
+          displaced_cost: "Without this, removing comments loses the warnings, so authors keep smuggling them back and review fights the symptom forever.",
+          first_slice: "For a diff, compute the declarations it touches and the roadmap items citing them (roadmap-items-cite-declarations), and carry them into the factory's worker and reviewer context as evidence inputs (harness-prompt-context-model).",
+          red_control: "A planted roadmap item citing a declaration a test diff touches appears in that diff's review input; an item citing an untouched declaration does not.",
+          out_of_scope: "Turning a warning that states an invariant into a type or refusal; that is the invariant's own fix, which comment-uses-have-homes routes to its typed carrier.",
+          handback: "Briefs and review inputs carrying the touched declarations' open items, observed on a real review."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "A warning moved out of the code is still read by the person it was for."),
+    ),
+    roadmap_node(
+      identity: "rn_7DW3ZQSVN7MUMKQX6EHZUSIC7U",
+      id: "comment-guidance-is-one-authority",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_guidance.dag"),
+      line: ticket(t: fields(
+          headline: "Every agent's comment guidance is projected from the one ruling",
+          boundary: "The daily workspace is the factory: its worker and reviewer prompts are projections of typed guidance inputs (harness-prompt-context-model), so the ruling enters there as one guidance input, beside gunbc.harness.harness_guidance and harness_review_guidance. The ctrl session dashboard is the legacy route being retired: while it still dispatches, its AGENTS.md, CODING.md and gunbc reviewer prompt (scripts/chatgpt-reviewer/prompts/gunbc.md) are brought into agreement and get no further investment. Today ctrl CODING.md tells authors to name a cache's lifetime in code comments, which the direction reverses.",
+          displaced_cost: "Guidance copies drift, and an agent obeying one copy is rejected by a reviewer reading another.",
+          first_slice: "Change the guidance now, ahead of the ruling: no new comments, and a concern is fixed or planned. List every surface the factory's workers and reviewers read and every one the legacy dashboard still serves, with what each says about comments today; make the factory's a projection and correct the legacy ones by hand until they retire.",
+          red_control: "A guidance surface stating a comment rule different from the ruling is detected, not discovered in review.",
+          out_of_scope: "Guidance on any topic other than comments.",
+          handback: "The surfaces enumerated, the factory's projected from the ruling, and the legacy ones in agreement until they retire."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "Authors and reviewers read one rule."),
+    ),
+    roadmap_node(
+      identity: "rn_SFXTI5KNKZQLZOOP2YXJTFMJY4",
+      id: "review-rejects-new-comments",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_review_criteria.dag"),
+      line: ticket(t: fields(
+          headline: "Review rejects a diff that adds a comment, and names the home its content belongs in",
+          boundary: "Enforcement is strict from the start, in review: gunbc.roadmap.roadmap_review_criteria derives a criterion from the ruling, and a diff adding a comment is a hard reject whose finding names its home from comment-uses-have-homes. Commentary disguised as data counts as a comment: a String row or literal whose only reader is a person (DESIGN section 4c records 215 such rows swept once already). Review is mitigation on the ladder; the climb is a parse refusal once the existing population is dispositioned.",
+          displaced_cost: "A rule review does not enforce is advice, and every new comment adds to the population the ruling must disposition.",
+          first_slice: "Add the criterion row and apply it to the next reviewed diffs, recording each finding's home.",
+          red_control: "A diff adding a comment is rejected, and so is one adding a String row or literal that only a person reads; a diff whose only text is generated help rows, which a program prints, is not.",
+          out_of_scope: "The parse refusal, which waits until existing comments are dispositioned.",
+          handback: "The criterion enrolled and its findings observed on real reviews."
+        )),
+      parent: in_project(project: "source-carries-no-comments", contribution: "New comments stop arriving while the old ones are dispositioned."),
+    ),
+    roadmap_node(
       identity: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE",
       id: "printed-chassis-python-kernel-retirement",
       owner: "debt",
@@ -3459,7 +3840,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "DP-M3: the 844 subject refs the drain migrated meet the resolver that already exists",
           boundary: "One authority transition: an ExternalSubjectRef stops being a value that is compared and becomes a reference that resolves. Measured on main: 833 files under dag/ and src/ carry 844 rows of subject: ExternalSubjectRef (grep over the tree) -- the type is extdeps.external_authority::ExternalSubjectRef (dag/extdeps/external_authority.dag), holding a DeclarationRef of module_path plus decl_name -- and 859 files declare extdeps_model_scope. Nothing asks whether the named module declares the named thing. The model says so in its own words (dag/gunbc/extdeps_scope_frontier.dag, WHAT THE RULE DOES NOT BUY): nothing resolves an ExternalSubjectRef module_path/decl_name against the declarations of the module it names, the claim corpus reads the field only as a value, and String offers string_contains and split but no substring and no index, so a text scan cannot bound a name. Its only consumer today compares hand-typed values: test.claim.external_model_scope_witness::adopted_vendor_scopes_coherent_by_execution (dag/test/claim/external_model_scope_witness.dag) compares two literals through extdeps.external_authority::external_subject_ref_eq, and the module's other 29 claims build synthetic refs (fn subject, fn synthetic_scope) or check carrier text. The boundary: the resolver that already exists is applied to that population -- v2.std.decl_ref_resolution_host::resolve_declaration_ref_live and ::declaration_ref_resolution_census_live (src/v2/std/decl_ref_resolution_host.dag), built on the containment-tree module census rather than a text scan, with typed arms ModuleAbsent, DeclarationAbsent, FieldAbsent and Ambiguous -- refusing a name the declaring module does not declare, a prefix-only service match (spelling cron where the module declares service cron.Tab, the frontier's own named failure), a reference to a module that is neither the carrier nor its sanctioned subject-carrier sibling, and a name declared twice. It executes over the full 844-row population. No second checker is written: 33 .dag files already import this resolver, including dag/test/claim/long/decl_ref_resolution_witness.dag and dag/test/claim/long/carrier_reference_integrity_witness.dag, which resolve named carriers red-on-base.",
-          approach: "3-6 files, 50-150 changed lines, one red-on-base/green-on-head claim, host grain. Measured reasons for that grain, so the node does not repeat a dead end: the full-population parse-grain walk in claims is OFFLINE by operator decision -- src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag is excluded from CI discovery by gunbc.ci.ci_layer_roots::witness_exclusion_substrings (dag/gunbc/ci/ci_layer_roots.dag) because the interpreted parse measured ~33s per module on 2026-07-22 -- and the construction door cannot carry it either, because v2.compiler.compile::required_compile_lens_roster (src/v2/compiler/compile.dag) admits only a pure fold over the tree being compiled, which cannot see a sanctioned subject-carrier sibling's declarations. So the consumer lands at the census grain the resolver was minted for, joining the consumers it already has -- dag/gunbc/generated_artifact_producer_coverage.dag, dag/gunbc/integration_concern.dag, src/v2/lens/common/outside_modeled_guarantee_join.dag and the claim witnesses dag/test/claim/long/decl_ref_resolution_witness.dag, dag/test/claim/long/carrier_reference_integrity_witness.dag, dag/test/claim/fleet_naming_witness.dag and dag/test/claim/decl_ref_keyed_read_agreement_witness.dag -- and NOT as a new corpus-wide CI job: gunbc.rung_drop.cited_symbol_census declares that very check retired (declared 2026-08-23, standing Retired with trigger fired 2026-08-25), so a second corpus-wide job would resurrect a rung the model has already dropped. The carrier population is enumerated from the same walk the census already runs; the four phantom arms are planted as red controls. ZERO bulk carrier migration in this node: no carrier file is edited and the legacy manifest stays at its measured 176 rows (wc -l on dag/gunbc/legacy_extdeps_scope_frontier.tsv, halved from 352 by gunbc#16511, c7efe927c4f6) -- no further drain runs until this consumer executes.",
+          approach: "3-6 files, 50-150 changed lines, one red-on-base/green-on-head claim, host grain. Measured reasons for that grain, so the node does not repeat a dead end: the full-population parse-grain walk in claims is OFFLINE by operator decision -- src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag is excluded from CI discovery by gunbc.ci.ci_layer_roots::witness_exclusion_substrings (dag/gunbc/ci/ci_layer_roots.dag) because the interpreted parse measured ~33s per module on 2026-07-22 -- and the construction door cannot carry it either, because v2.compiler.compile::required_compile_lens_roster (src/v2/compiler/compile.dag) admits only a pure fold over the tree being compiled, which cannot see a sanctioned subject-carrier sibling's declarations. So the consumer lands at the census grain the resolver was minted for, joining the consumers it already has -- dag/gunbc/integration_concern.dag, src/v2/lens/common/outside_modeled_guarantee_join.dag and the claim witnesses dag/test/claim/long/decl_ref_resolution_witness.dag, dag/test/claim/long/carrier_reference_integrity_witness.dag, dag/test/claim/fleet_naming_witness.dag and dag/test/claim/decl_ref_keyed_read_agreement_witness.dag -- and NOT as a new corpus-wide CI job: gunbc.rung_drop.cited_symbol_census declares that very check retired (declared 2026-08-23, standing Retired with trigger fired 2026-08-25), so a second corpus-wide job would resurrect a rung the model has already dropped. The carrier population is enumerated from the same walk the census already runs; the four phantom arms are planted as red controls. ZERO bulk carrier migration in this node: no carrier file is edited and the legacy manifest stays at its measured 176 rows (wc -l on dag/gunbc/legacy_extdeps_scope_frontier.tsv, halved from 352 by gunbc#16511, c7efe927c4f6) -- no further drain runs until this consumer executes.",
           red_control: "The four phantom classes, each planted and each green on base under every existing witness because all of them read the row as text or as a value: a name the target module never declared; a prefix-only service match; a reference to a module that is neither the carrier nor a sanctioned subject-carrier sibling; a name declared twice in the target module. Each must refuse under the resolver.",
           displaced_cost: "844 rows read as an authority claim and are checked as a string, so the model's subject story rests on rows nobody reads: a phantom costs one editing keystroke, the drain cannot be re-run against any criterion, and every further drain PR pays the same hand re-verification cost with no consumer to amortize it against.",
           handback: "One executing consumer over all 844 subject rows on the census route the resolver already runs, green on main and red on each of the four planted phantoms, with the manifest unmoved at 176 rows by this node."
@@ -9730,6 +10111,14 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
     // gunb.ai: the refresh waits on the cutover, so the content is written once, in gunbc (merry-eagle-717, 2026-11-24).
     edge(child: "gunb-ai-content-refresh", parent: "gunb-ai-deploy-cutover"),
+    // Fallback retirement (2026-11-26, gunbc.design_ruling::standing_fallbacks_are_retired_in_priority_order_2026_11_26):
+    // the two name members delete the seed's global pool of bare names on the claim route and in the interpreter,
+    // which namespace-legacy-choice-retirement names among the mechanisms it removes, so it waits on both.
+    edge(child: "namespace-legacy-choice-retirement", parent: "claim-route-loads-by-layout-demand"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "interpreter-evaluates-the-resolved-call-target"),
+    edge(child: "test-everything-runs-what-changed", parent: "read-set-convergence"),
+    edge(child: "test-everything-runs-what-changed", parent: "claim-route-loads-by-layout-demand"),
+    edge(child: "required-check-named-witnesses-runs-no-claim-module", parent: "test-everything-runs-what-changed"),
     // findings reach a replan (swift-deer-673, 2026-11-27): the model first, then the worker exit and the dispatch
     // refusal, then the continuation route that consumes both and the brief that renders the exit.
     edge(child: "disproved-premise-is-a-submission-outcome", parent: "replan-criterion-and-decision-modeled"),

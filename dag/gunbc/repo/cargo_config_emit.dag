@@ -8,6 +8,8 @@ import extdeps.rust.cargo_config {
   CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
   cargo_config_document
 }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { CargoConfigArtifact }
 
 // THE COMMITTED PROJECTION OF THIS REPOSITORY'S OWN CARGO CONFIGURATION, and the only channel
 // through which the warning denial reaches an ORDINARY `cargo build` or `cargo test` run from a
@@ -90,4 +92,15 @@ fn expected_cargo_config_toml() -> String {
     build_annotations: cargo_config_build_annotations(),
     env: cargo_config_env_vars
   ))
+}
+
+fn cargo_config_artifact_generated() -> ArtifactGenerationOutcome {
+  ArtifactGenerated { content: expected_cargo_config_toml() }
+}
+
+data cargo_config_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: CargoConfigArtifact,
+  generate: cargo_config_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }

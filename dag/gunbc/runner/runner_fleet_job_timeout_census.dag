@@ -151,7 +151,7 @@ type FleetWorkflowCensusOmission {
 
 // WitnessFloorYamlArtifact is the artifact witnesses.yml is generated from, and
 // gunbc.witness.compiler_gate_workflow is the authority that emits its body
-// (gunbc.tier_o_artifact_emit tier_o_unadorned_body) — the v2-bootstrap required job, 60 minutes.
+// (gunbc.witness.compiler_gate_workflow witness_floor_yaml_artifact_production) — the v2-bootstrap required job, 60 minutes.
 // gunbc.witness.witness_floor_workflow's lanes are the withdrawn v1 floor (gunbc.rung_drop) and emit
 // no committed workflow, so it is not in the emitted population.
 // THE EMITTED POPULATION, READ FROM THE PROFILE. The heal, publisher and drift workflows are obtained by

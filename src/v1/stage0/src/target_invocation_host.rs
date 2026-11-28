@@ -2243,16 +2243,25 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     )
 }
 
-/// WHY A PACKAGE-WIDE `:all` / `:*` IS REFUSED *INSIDE* THE CLAIM UNIVERSE (distinct from
-/// `test_operand_set_form_refusal_rendered`, which is for a set form outside every universe). Here the
-/// population is real -- it is the claims of one package -- but `:all` is not a claim selection: the route
-/// runs claims named exactly by label, or a whole package/subtree by their own forms. The typed cause names
-/// the contract (the operand's doc, the generated help, and
-/// `gunbc.design_ruling::claim_execution_has_one_v1_entrypoint`) so the refusal says why, not just that.
-fn claim_route_all_refusal_rendered(operand: &str) -> String {
-    format!(
-        "gunbc test: {operand} names a package-wide target set (`:all`/`:*`), which is not a claim selection on the claim route; cause: ClaimRouteAllNotAClaimSelection -- name each claim by its exact label, or take a whole package or subtree by its own form; `:all` is refused here so one entrypoint keeps one selection rule"
-    )
+fn claim_route_empty_selection_note(patterns: &[TargetPattern]) -> String {
+    let subtrees: Vec<String> = patterns
+        .iter()
+        .filter_map(|pattern| match pattern {
+            TargetPattern::SingleTarget(label) => {
+                Some(format!("`//{}:all`", label.package_segments.join("/")))
+            }
+            TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => None,
+        })
+        .collect();
+    if subtrees.is_empty() {
+        " — the pattern selected no discovered claim".to_string()
+    } else {
+        format!(
+            " — the pattern selected no discovered claim; an exact label names one claim, and every \
+             claim of its module is {}",
+            subtrees.join(", ")
+        )
+    }
 }
 
 /// `gunbc.discovery_census` `claim_route_universe`, mirrored: `//test/claim/...`, the subtree
@@ -2496,6 +2505,26 @@ fn quote_detail(text: &str) -> String {
 /// labels reads those modules rather than the corpus; the corpus roots arrive from the caller's
 /// `admitted_source_roots` (the witness-layer roots when no option was given) and are the floor's own
 /// authority for them.
+fn claim_selection_scopes(patterns: &[TargetPattern]) -> Vec<cli_run::ClaimSelectionScope> {
+    patterns
+        .iter()
+        .map(|pattern| match pattern {
+            TargetPattern::SingleTarget(label) => cli_run::ClaimSelectionScope {
+                module_segments: label.package_segments.clone(),
+                beneath: false,
+            },
+            TargetPattern::PackageTargets(package) => cli_run::ClaimSelectionScope {
+                module_segments: package.clone(),
+                beneath: false,
+            },
+            TargetPattern::SubtreeTargets(package) => cli_run::ClaimSelectionScope {
+                module_segments: package.clone(),
+                beneath: true,
+            },
+        })
+        .collect()
+}
+
 fn run_claim_selection(
     patterns: &[TargetPattern],
     roots: &[String],
@@ -2525,8 +2554,10 @@ fn run_claim_selection(
             target_pattern_within(&TargetPattern::SingleTarget(label.clone()), pattern)
         })
     };
+    let scopes = claim_selection_scopes(patterns);
     let members = match cli_run::run_claim_route(
         roots,
+        &scopes,
         &module_selected,
         &claim_selected,
         execution_mode,
@@ -2571,9 +2602,9 @@ fn run_claim_selection(
         };
     }
     let note = if fold.verdicts.is_empty() {
-        " — the pattern selected no discovered claim"
+        claim_route_empty_selection_note(patterns)
     } else {
-        ""
+        String::new()
     };
     InvocationOutcome {
         termination: fold.termination(),
@@ -2590,7 +2621,7 @@ pub enum BinaryInput {
     NotNewer(String),
     Newer(String),
     Missing(String),
-    OutsideWorktree(String),
+    DiffersFromThisCheckout(String),
 }
 
 /// `gunbc.target_invocation` `BinaryInputObservation`, mirrored.
@@ -2624,25 +2655,18 @@ pub enum BinaryFreshness {
     },
 }
 
-fn binary_built_elsewhere(binary: &str, path: &str) -> BinaryFreshness {
-    BinaryFreshness::Undecided {
-        binary: binary.to_string(),
-        reason: format!(
-            "its dep-info names an input outside this worktree ({path}); it was built from another checkout, so nothing here says whether it answers for this one"
-        ),
-    }
-}
-
 /// `gunbc.target_invocation` `binary_freshness_step`, mirrored arm for arm.
 fn binary_freshness_step(acc: BinaryFreshness, input: &BinaryInput) -> BinaryFreshness {
     match acc {
         BinaryFreshness::Undecided { .. } => acc,
-        BinaryFreshness::Stale { ref binary, .. } => match input {
-            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(binary, p),
-            _ => acc,
-        },
+        BinaryFreshness::Stale { .. } => acc,
         BinaryFreshness::Fresh { binary, inputs } => match input {
-            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(&binary, p),
+            BinaryInput::DiffersFromThisCheckout(p) => BinaryFreshness::Stale {
+                binary,
+                input: p.clone(),
+                why: "differs from the file the binary was built from in another checkout"
+                    .to_string(),
+            },
             BinaryInput::Newer(p) => BinaryFreshness::Stale {
                 binary,
                 input: p.clone(),
@@ -2732,9 +2756,9 @@ pub fn dep_info_inputs(dep_info: &str) -> Result<Vec<String>, String> {
 }
 
 /// THE CRATE THE BINARY WAS BUILT FROM is the directory of the first `Cargo.toml` its dep-info
-/// lists; the checkout is that manifest's `src/v1/stage0` ancestor. Comparing that ONE root
-/// against ours is the "built elsewhere" test -- not a list of excluded prefixes. Registry and
-/// sysroot inputs are outside every checkout and are judged by mtime like any other input.
+/// lists; the checkout is that manifest's `src/v1/stage0` ancestor. When that root is not ours,
+/// each input under it is also compared byte for byte with ours at the same relative path. Registry
+/// and sysroot inputs are outside every checkout and are judged by mtime like any other input.
 ///
 /// Git paths are skipped, with a reason: build.rs watches `HEAD`, `index`, `packed-refs` and the
 /// branch ref only to re-stamp `GUNBC_BUILD_IDENTITY`, the version string. `packed-refs` moves on
@@ -2757,26 +2781,160 @@ pub fn classify_binary_inputs(
             "its dep-info names no src/v1/stage0/Cargo.toml, so the checkout it was built from is unknown"
                 .to_string()
         })?;
+    let built_elsewhere = std::path::Path::new(&build_root) != workspace;
+    let root_prefix = format!("{build_root}/");
     let mut out = Vec::new();
-    if std::path::Path::new(&build_root) != workspace {
-        out.push(BinaryInput::OutsideWorktree(build_root.clone()));
-    }
     for input in inputs {
         if input.contains("/.git/") {
             continue;
         }
         // Only NotFound is `Missing`; any other stat failure (permission, I/O) is a reading we
         // could not take, which refuses with its own cause rather than a wrong label (review 74474).
-        let classified = match std::fs::metadata(input).and_then(|m| m.modified()) {
+        let classified = match std::fs::metadata(input) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 BinaryInput::Missing(input.clone())
             }
             Err(e) => return Err(format!("cannot stat dep-info input {input}: {e}")),
-            Ok(modified) if modified > built_at => BinaryInput::Newer(input.clone()),
-            Ok(_) => BinaryInput::NotNewer(input.clone()),
+            Ok(meta) => match changed_since(std::path::Path::new(input), &meta, built_at)? {
+                Some(changed) => BinaryInput::Newer(changed.display().to_string()),
+                None => BinaryInput::NotNewer(input.clone()),
+            },
+        };
+        let classified = match (&classified, input.strip_prefix(&root_prefix)) {
+            (BinaryInput::NotNewer(_), Some(relative)) if built_elsewhere => {
+                input_against_this_checkout(input, &workspace.join(relative))?.unwrap_or(classified)
+            }
+            _ => classified,
         };
         out.push(classified);
     }
+    Ok(out)
+}
+
+fn changed_since(
+    path: &std::path::Path,
+    meta: &std::fs::Metadata,
+    built_at: std::time::SystemTime,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let newer = |p: &std::path::Path, m: &std::fs::Metadata| {
+        m.modified()
+            .map(|modified| modified > built_at)
+            .map_err(|e| format!("cannot stat dep-info input {}: {e}", p.display()))
+    };
+    let mut changed_dir = None;
+    if meta.is_dir() {
+        for (relative, is_dir) in tree_entries(path)? {
+            let full = path.join(&relative);
+            let entry = std::fs::metadata(&full)
+                .map_err(|e| format!("cannot stat {}: {e}", full.display()))?;
+            if newer(&full, &entry)? {
+                if !is_dir {
+                    return Ok(Some(full));
+                }
+                changed_dir.get_or_insert(full);
+            }
+        }
+    }
+    if changed_dir.is_none() && newer(path, meta)? {
+        changed_dir = Some(path.to_path_buf());
+    }
+    Ok(changed_dir)
+}
+
+fn input_against_this_checkout(
+    built_from: &str,
+    here: &std::path::Path,
+) -> Result<Option<BinaryInput>, String> {
+    let built = input_content(std::path::Path::new(built_from))?
+        .ok_or_else(|| format!("dep-info input {built_from} vanished while it was read"))?;
+    let differing = match (&built, input_content(here)?) {
+        (built, Some(content)) if content == *built => return Ok(None),
+        (InputContent::Tree(theirs), Some(InputContent::Tree(ours))) => {
+            first_differing_path(theirs, &ours)
+                .map(|relative| here.join(relative))
+                .unwrap_or_else(|| here.to_path_buf())
+        }
+        _ => here.to_path_buf(),
+    };
+    Ok(Some(BinaryInput::DiffersFromThisCheckout(
+        differing.display().to_string(),
+    )))
+}
+
+fn first_differing_path(
+    theirs: &[(std::path::PathBuf, Vec<u8>)],
+    ours: &[(std::path::PathBuf, Vec<u8>)],
+) -> Option<std::path::PathBuf> {
+    use std::cmp::Ordering;
+    let (mut i, mut j) = (0, 0);
+    loop {
+        match (theirs.get(i), ours.get(j)) {
+            (None, None) => return None,
+            (Some((path, _)), None) | (None, Some((path, _))) => return Some(path.clone()),
+            (Some((a, a_bytes)), Some((b, b_bytes))) => match a.cmp(b) {
+                Ordering::Less => return Some(a.clone()),
+                Ordering::Greater => return Some(b.clone()),
+                Ordering::Equal if a_bytes != b_bytes => return Some(a.clone()),
+                Ordering::Equal => {
+                    i += 1;
+                    j += 1;
+                }
+            },
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum InputContent {
+    File(Vec<u8>),
+    Tree(Vec<(std::path::PathBuf, Vec<u8>)>),
+}
+
+fn input_content(path: &std::path::Path) -> Result<Option<InputContent>, String> {
+    let unreadable = |e: std::io::Error| format!("cannot read {}: {e}", path.display());
+    match std::fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(unreadable(e)),
+        Ok(meta) if meta.is_dir() => {
+            let files: Vec<std::path::PathBuf> = tree_entries(path)?
+                .into_iter()
+                .filter_map(|(relative, is_dir)| (!is_dir).then_some(relative))
+                .collect();
+            let mut tree = Vec::with_capacity(files.len());
+            for relative in files {
+                let full = path.join(&relative);
+                let bytes = std::fs::read(&full)
+                    .map_err(|e| format!("cannot read {}: {e}", full.display()))?;
+                tree.push((relative, bytes));
+            }
+            Ok(Some(InputContent::Tree(tree)))
+        }
+        Ok(_) => std::fs::read(path)
+            .map(|bytes| Some(InputContent::File(bytes)))
+            .map_err(unreadable),
+    }
+}
+
+fn tree_entries(root: &std::path::Path) -> Result<Vec<(std::path::PathBuf, bool)>, String> {
+    let mut out = Vec::new();
+    let mut pending = vec![std::path::PathBuf::new()];
+    while let Some(relative) = pending.pop() {
+        let dir = root.join(&relative);
+        let entries =
+            std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+            let child = relative.join(entry.file_name());
+            let kind = entry
+                .file_type()
+                .map_err(|e| format!("cannot stat {}: {e}", root.join(&child).display()))?;
+            if kind.is_dir() {
+                pending.push(child.clone());
+            }
+            out.push((child, kind.is_dir()));
+        }
+    }
+    out.sort();
     Ok(out)
 }
 
@@ -3694,24 +3852,7 @@ fn classify_test_operands(
         if target_pattern_within(&pattern, native_universe) {
             native.push(pattern);
         } else if target_pattern_within(&pattern, claim_universe) {
-            match pattern {
-                // A package-wide set form (`:all`, `:*`) is NOT a claim selection on the claim route.
-                // The operand's own doc (gunbc_cli_dispatch_surface `CliClaimNameOperand`), the generated
-                // help (gunbc_cli_dispatch_generated), and
-                // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint all refuse it here; a route
-                // that silently expanded `:all` into the package's claims was the defect. A claim is named
-                // exactly by label, or a whole package/subtree is taken by its own form -- never `:all`.
-                // `PackageTargets` is exactly the `:all`/`:*` spelling (parse_target_pattern strips those
-                // suffixes into it), so this refuses `:all` while leaving a bare package (SingleTarget) and
-                // a subtree (`/...`, SubtreeTargets) admitted, as the operand doc permits.
-                TargetPattern::PackageTargets(_) => {
-                    return Err(InvocationOutcome {
-                        termination: Termination::Refused,
-                        message: claim_route_all_refusal_rendered(operand),
-                    })
-                }
-                admitted => claim.push(admitted),
-            }
+            claim.push(pattern);
         } else {
             match pattern {
                 // An exact label outside both universes is the registry's to answer (an instrument
@@ -4881,6 +5022,7 @@ mod claim_route_result_contract_tests {
         // asks, which `execution_mode_for` answers Hermetic, and passes no fixture store.
         cli_run::run_claim_route(
             &roots,
+            &[],
             module_selected,
             &|_, _| true,
             crate::v1_interpreter::ExecutionMode::Hermetic,
@@ -5024,13 +5166,17 @@ mod binary_freshness_tests {
             BinaryFreshness::Stale { input, .. } => assert_eq!(input, "b"),
             other => panic!("{other:?}"),
         }
-        assert!(matches!(
-            assess_binary_freshness(&obs(vec![
-                BinaryInput::Newer("b".into()),
-                BinaryInput::OutsideWorktree("/w/other".into()),
-            ])),
-            BinaryFreshness::Undecided { .. }
-        ));
+        match assess_binary_freshness(&obs(vec![
+            BinaryInput::NotNewer("a".into()),
+            BinaryInput::DiffersFromThisCheckout("/w/here/b".into()),
+            BinaryInput::Newer("c".into()),
+        ])) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(input, "/w/here/b");
+                assert!(why.contains("another checkout"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
         assert!(matches!(
             assess_binary_freshness(&BinaryInputObservation::DepInfoUnreadable {
                 binary: "bin".into(),
@@ -5076,10 +5222,9 @@ mod binary_freshness_tests {
             ws.join("gone.rs").display().to_string()
         )));
         let elsewhere = classify_binary_inputs(&inputs, &dir.join("other"), built_at).unwrap();
-        assert_eq!(
-            elsewhere[0],
-            BinaryInput::OutsideWorktree(ws.display().to_string())
-        );
+        assert!(elsewhere.contains(&BinaryInput::DiffersFromThisCheckout(
+            dir.join("other/old file.rs").display().to_string()
+        )));
         // NO MANIFEST, NO VERDICT: dep-info without the crate's Cargo.toml refuses rather than
         // judging the other inputs by mtime alone (review 74282's silent-Fresh case).
         let no_manifest = dep_info_inputs(&format!(
@@ -5088,6 +5233,223 @@ mod binary_freshness_tests {
         ))
         .unwrap();
         assert!(classify_binary_inputs(&no_manifest, &dir.join("other"), built_at).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_binary_built_in_another_checkout_is_judged_by_content() {
+        let dir = std::env::temp_dir().join(format!("freshness-content-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let checkout = |name: &str, lib: &str| {
+            let root = dir.join(name);
+            std::fs::create_dir_all(root.join("src/v1/stage0/src")).unwrap();
+            std::fs::write(root.join("src/v1/stage0/Cargo.toml"), "[package]").unwrap();
+            std::fs::write(root.join("src/v1/stage0/src/lib.rs"), lib).unwrap();
+            root
+        };
+        let built = checkout("built", "fn a() {}");
+        let registry = dir.join("registry/dep.rs");
+        std::fs::create_dir_all(registry.parent().unwrap()).unwrap();
+        std::fs::write(&registry, "dep").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let built_at = std::time::SystemTime::now();
+        let same = checkout("same", "fn a() {}");
+        let edited = checkout("edited", "fn a() { edited() }");
+        let inputs = vec![
+            built.join("src/v1/stage0/Cargo.toml").display().to_string(),
+            built.join("src/v1/stage0/src").display().to_string(),
+            built.join("src/v1/stage0/src/lib.rs").display().to_string(),
+            registry.display().to_string(),
+        ];
+        let verdict = |workspace: &std::path::Path| {
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "bin".into(),
+                inputs: classify_binary_inputs(&inputs, workspace, built_at).unwrap(),
+            })
+        };
+        assert!(matches!(
+            verdict(&same),
+            BinaryFreshness::Fresh { inputs: 4, .. }
+        ));
+        match verdict(&edited) {
+            BinaryFreshness::Stale { input, .. } => {
+                assert_eq!(
+                    input,
+                    edited
+                        .join("src/v1/stage0/src/lib.rs")
+                        .display()
+                        .to_string()
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+        let added = checkout("added", "fn a() {}");
+        std::fs::write(added.join("src/v1/stage0/src/extra.rs"), "").unwrap();
+        match verdict(&added) {
+            BinaryFreshness::Stale { input, .. } => {
+                assert_eq!(
+                    input,
+                    added
+                        .join("src/v1/stage0/src/extra.rs")
+                        .display()
+                        .to_string()
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            verdict(&dir.join("absent")),
+            BinaryFreshness::Stale { .. }
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(built.join("src/v1/stage0/src/lib.rs"), "fn a() {}").unwrap();
+        match verdict(&same) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(
+                    input,
+                    built.join("src/v1/stage0/src/lib.rs").display().to_string()
+                );
+                assert!(why.contains("changed after"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_workspace_build_file_that_differs_from_this_checkout_is_stale() {
+        let dir = std::env::temp_dir().join(format!("freshness-manifest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let checkout = |name: &str, overflow_checks: &str, jobs: &str| {
+            let root = dir.join(name);
+            std::fs::create_dir_all(root.join("src/v1/stage0/src")).unwrap();
+            std::fs::create_dir_all(root.join(".cargo")).unwrap();
+            std::fs::write(
+                root.join("Cargo.toml"),
+                format!("[profile.release]\noverflow-checks = {overflow_checks}\n"),
+            )
+            .unwrap();
+            std::fs::write(root.join("Cargo.lock"), "version = 4\n").unwrap();
+            std::fs::write(
+                root.join(".cargo/config.toml"),
+                format!("[build]\njobs = {jobs}\n"),
+            )
+            .unwrap();
+            std::fs::write(root.join("src/v1/stage0/Cargo.toml"), "[package]").unwrap();
+            std::fs::write(root.join("src/v1/stage0/src/lib.rs"), "fn a() {}").unwrap();
+            root
+        };
+        let built = checkout("built", "true", "2");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let built_at = std::time::SystemTime::now();
+        let inputs: Vec<String> = [
+            "src/v1/stage0/Cargo.toml",
+            "src/v1/stage0/src",
+            "Cargo.toml",
+            "Cargo.lock",
+            ".cargo/config.toml",
+        ]
+        .iter()
+        .map(|relative| built.join(relative).display().to_string())
+        .collect();
+        let verdict = |workspace: &std::path::Path| {
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "bin".into(),
+                inputs: classify_binary_inputs(&inputs, workspace, built_at).unwrap(),
+            })
+        };
+        assert!(matches!(
+            verdict(&checkout("same", "true", "2")),
+            BinaryFreshness::Fresh { inputs: 5, .. }
+        ));
+        let wrapping = checkout("wrapping", "false", "2");
+        match verdict(&wrapping) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(input, wrapping.join("Cargo.toml").display().to_string());
+                assert!(why.contains("another checkout"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let configured = checkout("configured", "true", "4");
+        match verdict(&configured) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(
+                input,
+                configured.join(".cargo/config.toml").display().to_string()
+            ),
+            other => panic!("{other:?}"),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(
+            built.join("Cargo.toml"),
+            "[profile.release]\noverflow-checks = false\n",
+        )
+        .unwrap();
+        match verdict(&built) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(input, built.join("Cargo.toml").display().to_string());
+                assert!(why.contains("changed after"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_change_below_a_watched_directory_is_stale_at_any_depth() {
+        let dir = std::env::temp_dir().join(format!("freshness-nested-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let checkout = |name: &str| {
+            let root = dir.join(name);
+            std::fs::create_dir_all(root.join("src/v1/stage0/src/cli_run")).unwrap();
+            std::fs::write(root.join("src/v1/stage0/Cargo.toml"), "[package]").unwrap();
+            std::fs::write(root.join("src/v1/stage0/src/cli_run/a.rs"), "fn a() {}").unwrap();
+            root
+        };
+        let built = checkout("built");
+        let here = checkout("here");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let built_at = std::time::SystemTime::now();
+        let inputs = vec![
+            built.join("src/v1/stage0/Cargo.toml").display().to_string(),
+            built.join("src/v1/stage0/src").display().to_string(),
+        ];
+        let verdict = |workspace: &std::path::Path| {
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "bin".into(),
+                inputs: classify_binary_inputs(&inputs, workspace, built_at).unwrap(),
+            })
+        };
+        assert!(matches!(
+            verdict(&here),
+            BinaryFreshness::Fresh { inputs: 2, .. }
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        for root in [&built, &here] {
+            std::fs::write(root.join("src/v1/stage0/src/cli_run/invalid.rs"), "fn (").unwrap();
+        }
+        let added = built.join("src/v1/stage0/src/cli_run/invalid.rs");
+        for workspace in [&here, &built] {
+            match verdict(workspace) {
+                BinaryFreshness::Stale { input, why, .. } => {
+                    assert_eq!(input, added.display().to_string());
+                    assert!(why.contains("changed after"), "{why}");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        for root in [&built, &here] {
+            std::fs::remove_file(root.join("src/v1/stage0/src/cli_run/invalid.rs")).unwrap();
+        }
+        match verdict(&here) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(
+                input,
+                built
+                    .join("src/v1/stage0/src/cli_run")
+                    .display()
+                    .to_string()
+            ),
+            other => panic!("{other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -5988,30 +6350,34 @@ mod test_batch_admission_controls {
         assert_eq!(classes.claim.len(), 2);
     }
 
-    /// A PACKAGE-WIDE `:all` (`:*` likewise) IS NOT A CLAIM SELECTION ON THE CLAIM ROUTE. It names a real
-    /// population (a package's claims), so it is not the "outside every universe" refusal; it is refused
-    /// because one entrypoint keeps one selection rule, per the operand doc, the generated help, and
-    /// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint. The typed cause is named so the refusal
-    /// says why. A bare package and a subtree (`/...`) remain admissible; only `:all`/`:*` refuses.
     #[test]
-    fn a_package_wide_all_refuses_on_the_claim_route() {
-        let all = refused(&["//test/claim/x:all"]);
-        assert_eq!(all.termination, Termination::Refused);
-        assert!(
-            all.message.contains("ClaimRouteAllNotAClaimSelection"),
-            "{}",
-            all.message
-        );
-        assert!(
-            all.message.contains("not a claim selection"),
-            "{}",
-            all.message
-        );
-        let colon_star = refused(&["//test/claim/x:*"]);
-        assert_eq!(colon_star.termination, Termination::Refused);
-        // A subtree over the same package stays admitted (the operand doc permits it).
+    fn a_package_wide_all_selects_the_package_on_the_claim_route() {
+        for operand in ["//test/claim/x:all", "//test/claim/x:*"] {
+            let all = admitted(&[operand]);
+            assert_eq!(all.claim.len(), 1, "{operand}");
+            assert_eq!(
+                all.claim[0],
+                TargetPattern::PackageTargets(vec![
+                    "test".to_string(),
+                    "claim".to_string(),
+                    "x".to_string()
+                ]),
+                "{operand}"
+            );
+        }
         let subtree = admitted(&["//test/claim/x/..."]);
         assert_eq!(subtree.claim.len(), 1);
+    }
+
+    #[test]
+    fn an_empty_single_label_selection_names_the_module_form() {
+        let bare = parse_target_pattern("//test/claim/a/b").expect("a bare label parses");
+        let note = claim_route_empty_selection_note(&[bare]);
+        assert!(note.contains("selected no discovered claim"), "{note}");
+        assert!(note.contains("`//test/claim/a/b:all`"), "{note}");
+        let subtree = parse_target_pattern("//test/claim/a/b/...").expect("a subtree parses");
+        let plain = claim_route_empty_selection_note(&[subtree]);
+        assert_eq!(plain, " — the pattern selected no discovered claim");
     }
 
     /// A SET FORM OUTSIDE EVERY UNIVERSE REFUSES RATHER THAN WIDENING: `//not/a/universe/...` names no
@@ -6109,6 +6475,7 @@ mod test_batch_admission_controls {
         };
         let members = match cli_run::run_claim_route(
             &roots,
+            &claim_selection_scopes(&patterns),
             &module_selected,
             &claim_selected,
             crate::v1_interpreter::ExecutionMode::Hermetic,

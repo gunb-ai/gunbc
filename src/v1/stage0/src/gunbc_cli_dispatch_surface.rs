@@ -678,13 +678,13 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "test".to_string(),
     variant: "Test".to_string(),
-    doc: Rc::new(vec!["Run a target named by an absolute label or a bazel-style target PATTERN, and".to_string(), "report the standing its own producer answers in. An exact label routes to".to_string(), "its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is".to_string(), "admitted and refused with status 2: it runs only through the native test".to_string(), "route, never the interpreter. A form the pattern grammar does not admit, or".to_string(), "an unbound or unknown target, refuses rather than reporting a pass.".to_string()]),
+    doc: Rc::new(vec!["Run a target named by an absolute label or a bazel-style target PATTERN, and".to_string(), "report the standing its own producer answers in. An exact label routes to".to_string(), "its bound producer. Under `//test/claim` patterns mean what they mean in".to_string(), "bazel: `//pkg:all` runs one module's claims and `//pkg/...` runs it and every".to_string(), "module beneath it. Outside it a set form runs only through the native test".to_string(), "route, or is refused with status 2.".to_string(), "A form the pattern grammar does not admit, or an unbound or unknown target,".to_string(), "refuses rather than reporting a pass.".to_string()]),
     operands: Rc::new(vec![Rc::new(CliOperandRow {
     field: "operands".to_string(),
     placeholder: "TARGET_PATTERN".to_string(),
     value: CliOperandValue::CliTargetPatternOperand {},
     arity: CliOperandArity::CliOneOrMoreOperands {},
-    doc: Rc::new(vec!["Names of the claims to run: absolute labels (`//dag/test/claim/x:the_claim`),".to_string(), "a package (`//dag/test/claim/x`) or a subtree (`//dag/test/claim/...`).".to_string(), "Several operands run exactly the claims they denote, together in ONE".to_string(), "process; an identity two operands both denote is selected once.".to_string(), "`:all` is not a claim selection here -- it is refused on the claim route.".to_string()]),
+    doc: Rc::new(vec!["Names of the claims to run: an exact label (`//test/claim/x:the_claim`),".to_string(), "every claim of one module (`//test/claim/x:all`), or a module and everything".to_string(), "beneath it (`//test/claim/x/...`). A bare `//test/claim/x` is bazel shorthand".to_string(), "for the one claim `//test/claim/x:x`. Several operands run exactly the claims".to_string(), "they denote, together in ONE process; an identity two operands both denote".to_string(), "is selected once.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     options: Rc::new(vec![Rc::new(CliOptionRow {

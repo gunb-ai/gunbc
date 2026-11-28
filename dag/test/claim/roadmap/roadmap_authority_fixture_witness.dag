@@ -1,0 +1,381 @@
+module test.claim.roadmap.roadmap_authority_fixture_witness
+
+import std.content_hash { content_hash_eq_structural }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String }
+import gunbc.roadmap.roadmap_authority {
+  declared_roadmap_nodes,
+  roadmap_acceptance_receipts,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
+  roadmap_authority,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RetiredNodeIdsLoaded,
+  RetiredNodeIdsRefused,
+  roadmap_retired_node_ids_of,
+  RoadmapEventEnvelope,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_events_read_dir,
+  roadmap_events_read_all_synced,
+  RoadmapEventCarrierLayout,
+  AllEventsRead,
+  AllEventsReadRefused,
+}
+import gunbc.roadmap.roadmap_model {
+  roadmap_node_ids_contain,
+  RoadmapNode,
+  RoadmapNodeId,
+  remains_superseded_revocations_join,
+  RemainsSupersededRevocationsJoined,
+  RemainsSupersededRevocationOnUnretiredNode,
+  RemainsSupersededRevocationOnUndeclaredNode,
+  RemainsSupersededRevocationOnAmbiguousDeclaredNode,
+  receipt_node_match_verdict,
+  ReceiptMatchesNode,
+  LiveReceiptOnRetiredNode,
+  ReceiptDoesNotMatchNode,
+  receipt_matches_node,
+  node_criteria_digest,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap.roadmap_authority_fixture {
+  roadmap_authority_fixture_worktree_root,
+  roadmap_authority_fixture_absent_node,
+  roadmap_authority_fixture_scenarios,
+  roadmap_authority_fixture_accepted_scenario,
+  roadmap_authority_fixture_superseded_scenario,
+  roadmap_authority_fixture_declared_rows,
+  roadmap_authority_fixture_digest,
+}
+import gunbc.generated_artifact { GeneratedArtifact, artifact_directory, artifact_name, artifact_path, artifact_eq }
+import gunbc.generated_artifact_registry { committed_generated_artifacts }
+import gunbc.generated_artifact_emit { artifact_generate }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.instruments.generated_artifact_gate { artifact_selection_for_path, ArtifactSelected, ArtifactSelectionEmpty }
+import std.filesystem { path_parent_directory }
+import gunbc.live_deploy.member_identity { structural_digest_wire }
+import test.claim.roadmap.roadmap_authority {
+  fixture_retired_node_ids,
+  nodes,
+  scenario_accepted,
+  scenario_active_id_exists,
+  scenario_event_history,
+  scenario_history,
+  scenario_withheld,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FIXTURE'S ROWS, selected from the committed roster by their directory. Selecting by directory rather than
+// by naming five constructors here keeps this module from holding its own list of what the fixture contains; the
+// count in witness_committed_fixture_is_the_rosters_five_rows is what notices if a row moves out.
+// The provider is named explicitly, not left to the bare-name candidate search. This module's closure also
+// reaches `std.resources`'s resource `Filesystem`, so a bare `Filesystem.Read` is answered by TWO candidates
+// (std.resources, extdeps.filesystem.filesystem_io) and refuses; importing the service by name binds the
+// receiver uniquely to the transport contract this witness actually calls (it reads committed artifact bytes).
+
+// THE COMMITTED EVENT LOG, AS A GENERATED ARTIFACT. This module reads the fixture and never produces it: the
+// roster (gunbc.generated_artifact) owns where the files live, the producer
+// (gunbc.roadmap.roadmap_authority_fixture) owns what their bytes are, the gate
+// (gunbc.instruments.generated_artifact_gate) owns putting them on disk, and this module only ever asks the
+// filesystem what is actually there. An earlier revision imported a writer from here and wrote the log itself;
+// that route is deleted, and every name below is a read.
+fn roadmap_authority_fixture_rows() -> List<GeneratedArtifact> {
+  filter(
+    committed_generated_artifacts(),
+    a => artifact_directory(a: a).starts_with(prefix: concat(roadmap_authority_fixture_worktree_root(), "/")),
+  )
+}
+
+// THE DIRECTORY THE WALK RUNS OVER, off the roster. A fixture whose rows were spread over two directories would
+// not be one log, and the walk would silently read one of them; the agreement is asserted, not assumed.
+fn roadmap_authority_fixture_walk_root() -> String? {
+  match first(roadmap_authority_fixture_rows()) {
+    Absent => Absent
+    Present { value: a } => Present { value: path_parent_directory(path: artifact_directory(a: a)) }
+  }
+}
+
+// THE FIXTURE IS FIVE ROWS, IN ONE DIRECTORY, EACH WITH ITS OWN PATH. A roster edit that renamed a row, moved a
+// file out of the fixture, or let a second row claim the same path would otherwise arrive as a baffling reader
+// failure; here it fails as the roster defect it is. Two rows on one path is the case worth naming: the wet run
+// would write both and the last would win, silently -- which is why the gate's own selection counts matches
+// instead of stopping at the first, and why this witness counts them too.
+test fn witness_committed_fixture_is_the_rosters_five_rows() -> Bool {
+  let rows = roadmap_authority_fixture_rows()
+  match roadmap_authority_fixture_walk_root() {
+    Absent => false
+    Present { value: root } =>
+      count(rows) == 5
+        && all(rows, a => artifact_path(a: a).starts_with(prefix: concat(root, "/")))
+        && all(rows, a => path_parent_directory(path: artifact_directory(a: a)) == root)
+        && all(rows, a => string_length(s: artifact_name(a: a)) > 0)
+        && all(rows, a => count(rows |> filter(x => artifact_path(a: x) == artifact_path(a: a))) == 1)
+  }
+}
+
+// THE GATE REFUSES AN UNROSTERED TARGET BY NAME, BEFORE ANY WRITE IS ATTEMPTED. This is the red control the
+// deleted local writer used to carry, and it is stronger here because it interrogates the route that actually
+// writes: an absolute path into the lab's real event log, a traversal out of the fixture, an ordinary file
+// elsewhere in the checkout, and the empty path must each select NOTHING -- and one genuinely rostered fixture
+// path must select exactly ONE row, or "refuses everything" would pass for the wrong reason. Hermetic by
+// construction: selection is a pure fold over the registry, and a refusal happens before mkdir or
+// Filesystem.Write is ever reached.
+// THE FIXTURE'S DIGESTS ARE ITS OWN ROWS' DIGESTS, AND THE FIXTURE READS NO PLAN. Two claims, one witness.
+// (1) EVERY digest in a committed event file is the digest the fixture's own scenario row derives from: the
+// two accepted rows carry their own, and the absent-node file -- the one file about a row nobody declares --
+// carries the accepted row's verbatim, because it is a stranger holding borrowed terms, not a row with an
+// invented number. The fold demands this: a receipt whose digest is not its row's is dropped, so a made-up
+// digest would not merely be dishonest, it would silently change what every other witness sees.
+// (2) NO FIXTURE NODE IS A REAL ROADMAP ROW. That is the fail-closed check on the coupling review 96520
+// found: these five files are a CommitRequired generated product, and DESIGN
+// gunbc.design_argument::planning_has_one_home forbids a generated product depending on plan content ("a
+// change that edits only plans invalidates neither the compiler nor any mirror"). If someone re-points a
+// fixture node at a live row, or reintroduces a lookup into the plan, the first clause reddens -- the digest
+// would no longer be the one this module's ticket fields derive -- and this clause reddens with it. It also
+// closes the fabricated-default question the approvals raised from the other side: there is no fallback left
+// to be unreachable, because the producer takes its numbers only from scenario rows defined beside it.
+test fn witness_fixture_digests_are_declared_or_borrowed() -> Bool {
+  let scenarios = roadmap_authority_fixture_scenarios()
+  let accepted = roadmap_authority_fixture_accepted_scenario()
+  let rows = roadmap_authority_fixture_declared_rows()
+  let accepted_wire = structural_digest_wire(h: roadmap_authority_fixture_digest(s: accepted))
+  let superseded_wire =
+    structural_digest_wire(h: roadmap_authority_fixture_digest(s: roadmap_authority_fixture_superseded_scenario()))
+  // (1a) The fixture's declared rows ARE its scenarios, and each row's criteria digest is the digest the
+  // receipts carry -- derived by the model's own criteria law, checked rather than asserted.
+  let rows_agree_with_their_own_criteria =
+    count(rows) == count(scenarios)
+      && all(scenarios, s => {
+           let mine = rows |> filter(r => r.node == s.node)
+           count(mine) == 1
+             && all(mine, r => match node_criteria_digest(rn: r) {
+                  Absent => false
+                  Present { value: d } =>
+                    content_hash_eq_structural(left: d, right: roadmap_authority_fixture_digest(s: s))
+                })
+         })
+  // (2) None of the fixture's three node ids is a row the roadmap declares.
+  let fixture_nodes_are_not_plan_rows = all(
+    [accepted.node, roadmap_authority_fixture_superseded_scenario().node, roadmap_authority_fixture_absent_node()],
+    id => !(declared_roadmap_nodes() |> any(n => n.node == id)),
+  )
+  match roadmap_authority_fixture_walk_root() {
+    Absent => false
+    Present { value: root } => {
+      let stranger_dir = concat(concat(root, "/"), roadmap_authority_fixture_absent_node() as String)
+      let accepted_dir = concat(concat(root, "/"), accepted.node as String)
+      let superseded_dir =
+        concat(concat(root, "/"), roadmap_authority_fixture_superseded_scenario().node as String)
+      let accepted_files = roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == accepted_dir)
+      let superseded_files =
+        roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == superseded_dir)
+      let stranger_files = roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == stranger_dir)
+      // (1b) Each scenario's own acceptance and revocation files carry ITS digest and not the other
+      // scenario's; the retirement file carries a receipt by no one, so it carries neither number. The
+      // absent-node file carries the ACCEPTED row's number verbatim -- the borrow is that row's bytes, not a
+      // lookalike -- and not the other scenario's, so a wrong-node borrow reddens this too.
+      let accepted_ok =
+        count(accepted_files) == 1
+          && all(accepted_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } =>
+                 content.contains(fragment: accepted_wire) && !content.contains(fragment: superseded_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+      let superseded_ok =
+        count(superseded_files) == 3
+          && count(superseded_files |> filter(a => artifact_name(a: a) == "03-retired.json")) == 1
+          && all(superseded_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } => !content.contains(fragment: accepted_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+          && all(
+               superseded_files |> filter(a => artifact_name(a: a) != "03-retired.json"),
+               a => match artifact_generate(a: a) {
+                 ArtifactGenerated { content } => content.contains(fragment: superseded_wire)
+                 ArtifactGenerationRefused { reason: _ } => false
+               })
+      let stranger_ok =
+        count(stranger_files) == 1
+          && all(stranger_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } =>
+                 content.contains(fragment: accepted_wire) && !content.contains(fragment: superseded_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+      rows_agree_with_their_own_criteria
+        && fixture_nodes_are_not_plan_rows
+        && accepted_ok
+        && superseded_ok
+        && stranger_ok
+        && string_length(s: accepted_wire) > 0
+        && string_length(s: superseded_wire) > 0
+    }
+  }
+}
+
+test fn witness_gate_refuses_an_unrostered_target_by_name() -> Bool {
+  all(
+    [
+      "/opt/gunbc/roadmap-events/roadmap-authority-scenario-accepted/01-acceptance.json",
+      "fixtures/roadmap_authority/events/../../../etc/passwd",
+      "dag/gunbc/roadmap/roadmap_authority.dag",
+      "",
+    ],
+    target => match artifact_selection_for_path(path: target) {
+      ArtifactSelectionEmpty { matches: n } => n == 0
+      ArtifactSelected { artifact: _, matches: _ } => false
+    },
+  )
+    && all(roadmap_authority_fixture_rows(), a => match artifact_selection_for_path(path: artifact_path(a: a)) {
+         ArtifactSelectionEmpty { matches: _ } => false
+         ArtifactSelected { artifact: selected, matches: n } => n == 1 && artifact_eq(a: a, b: selected)
+       })
+}
+
+// THE FIXTURE AS THE READER SEES IT: the committed route, the real directory walk, the real decode.
+fn roadmap_authority_fixture_envelopes() -> List<RoadmapEventEnvelope>? {
+  match roadmap_authority_fixture_walk_root() {
+    Absent => Absent
+    Present { value: root } => match roadmap_events_read_dir(dir: root) {
+      AllEventsRead { envelopes: envs } => Present { value: envs }
+      AllEventsReadRefused { step: _, reason: _ } => Absent
+    }
+  }
+}
+
+// THE SAME DIRECTORY THROUGH THE LIVE ROUTE: the live route builds its own path out of the layout and
+// calls the same one reader. Aimed at the fixture it must answer identically.
+fn roadmap_authority_fixture_live_route_envelopes() -> List<RoadmapEventEnvelope>? {
+  match roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout {
+    repo_root: roadmap_authority_fixture_worktree_root(),
+    worktree: roadmap_authority_fixture_worktree_root(),
+    git_program: "git",
+    directory_program: "install",
+    remote: "origin",
+  }) {
+    AllEventsRead { envelopes: envs } => Present { value: envs }
+    AllEventsReadRefused { step: _, reason: _ } => Absent
+  }
+}
+
+// THE LOG'S OWN RETIRED SET, read off the fixture rather than assumed.
+// THE SCENARIO'S OWN DECLARED GRAPH, as the committed-fixture witnesses see it. These two are the whole
+// reason the fixture declares rows at all: the fold validates a receipt against the DOCUMENT it is handed
+// (gunbc.roadmap.roadmap_model receipt_matches_node), so the committed route is checked against the same
+// small scenario that produced the bytes -- never against the plan. A generated product reading plan content
+// is what DESIGN gunbc.design_argument::planning_has_one_home forbids, and
+// witness_fixture_digests_are_declared_or_borrowed is the red control that keeps it that way.
+fn roadmap_authority_fixture_row_for(id: RoadmapNodeId) -> RoadmapNode? {
+  first(roadmap_authority_fixture_declared_rows() |> filter(r => r.node == id))
+}
+
+fn roadmap_authority_fixture_declares(id: RoadmapNodeId) -> Bool {
+  roadmap_authority_fixture_declared_rows() |> any(r => r.node == id)
+}
+
+fn roadmap_authority_fixture_retired(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match roadmap_retired_node_ids_of(envs: envs) {
+    RetiredNodeIdsLoaded { ids: ids } => ids
+    RetiredNodeIdsRefused { detail: _ } => []
+  }
+}
+
+test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
+  // THE COMMITTED ROUTE, END TO END: the real Filesystem.List walk over the checked-in fixture, the real
+  // decode, the real fold — then the claim this witness is for, that the log's receipts are valid and
+  // one-per-node. The fixture deliberately also carries a row the scenario does not declare; that row
+  // is the fail-closed half of the claim, and it is answered with types, never a crash. "Declared" is the
+  // fixture's own two rows (roadmap_authority_fixture_declared_rows) and never the plan: the fold validates
+  // a receipt against the document it is handed (roadmap_model receipt_matches_node), and a CommitRequired
+  // generated product may not read plan content (gunbc.design_argument::planning_has_one_home).
+  match roadmap_authority_fixture_envelopes() {
+    Absent => false
+    Present { value: envs } => {
+      match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
+        RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+        RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
+          let declared_receipts = receipts |> filter(r => roadmap_authority_fixture_declares(id: r.node))
+          let absent_receipts = receipts |> filter(r => !roadmap_authority_fixture_declares(id: r.node))
+          count(declared_receipts) > 0
+            && all(declared_receipts, r => count(declared_receipts |> filter(x => x.node == r.node)) == 1)
+            && all(declared_receipts, r => match roadmap_authority_fixture_row_for(id: r.node) {
+              Present { value: n } => match receipt_node_match_verdict(
+                r: r, rn: n, retired: fixture_retired_node_ids()
+              ) {
+                ReceiptMatchesNode => true
+                LiveReceiptOnRetiredNode { node: _ } => false
+                ReceiptDoesNotMatchNode => false
+              }
+              // A receipt whose row the fixture does not declare is not "nothing to check": the filter above
+              // selected it as declared, so a missing row here is the scenario being wrong. Red, not vacuous.
+              Absent => false
+            })
+            // THE ABSENT ROW IS IN THE LOG AND ANSWERS WITH NOTHING ADMITTED.
+            && count(absent_receipts) == 1
+            && all(absent_receipts, r => !roadmap_authority_fixture_declares(id: r.node))
+            && !scenario_active_id_exists(envs: envs, id: roadmap_authority_fixture_absent_node())
+            && !(scenario_accepted(envs: envs) |> any(a => a == roadmap_authority_fixture_absent_node()))
+            && !(scenario_withheld(envs: envs) |> any(w => w == roadmap_authority_fixture_absent_node()))
+        }
+      }
+    }
+  }
+}
+
+// THE COMMITTED BYTES ARE THE ENCODER'S OWN. Separated from the receipts witness on purpose: a byte that
+// drifted and a receipt that joined wrong are different failures, and a witness that folds them together
+// reports one of them and hides which. Every committed file is re-encoded from the fixture table and
+// compared byte for byte, so a hand-edit to the log reddens here, before any projection is consulted --
+// and the fixture cannot be quietly edited into agreement with a projection that has moved.
+test fn witness_committed_fixture_bytes_are_the_encoders_own() -> Bool {
+  all(roadmap_authority_fixture_rows(), a => {
+    let r = Filesystem.Read(path: artifact_path(a: a))
+    match artifact_generate(a: a) {
+      ArtifactGenerated { content } => r.success && r.content == content
+      ArtifactGenerationRefused { reason: _ } => false
+    }
+  })
+}
+
+// A REVOCATION THAT LEAVES A NODE OFF THE PLAN JOINS ONLY A NODE THE LOG RETIRED. The join used to
+// read `SupersededLine { by: … }` off the row; the row no longer states an ending, and the retired
+// set — the log's own — is passed in, so the verdict cannot be manufactured by editing a plan row.
+test fn witness_live_remains_superseded_revocations_join_retired_nodes() -> Bool {
+  // THE SAME-READER WITNESS. Two routes reach the event log: the committed route names a directory and
+  // the live route assembles one from the carrier layout -- and BOTH call roadmap_events_read_dir, the
+  // one walk and the one decode (dag/gunbc/roadmap/roadmap_event_carrier.dag). Aimed at the same
+  // directory they must answer with the same envelopes; if either route grew its own walk, or its own
+  // parser, this reddens while every scenario witness above stays green. Then the join this witness is
+  // named for runs over what that reader returned: a revocation that leaves a node off the plan joins
+  // only a node THE LOG RETIRED, and the retired set here is the log's own, not a caller's assertion.
+  let superseded_row = roadmap_authority_fixture_superseded_scenario().node
+  match roadmap_authority_fixture_envelopes() {
+    Absent => false
+    Present { value: committed } => match roadmap_authority_fixture_live_route_envelopes() {
+      Absent => false
+      Present { value: live } =>
+        count(committed) == 5
+          && live == committed
+          && match remains_superseded_revocations_join(
+            history: scenario_event_history(envs: live),
+            nodes: roadmap_authority_fixture_declared_rows(),
+            retired: roadmap_authority_fixture_retired(envs: live),
+          ) {
+            RemainsSupersededRevocationsJoined =>
+              match roadmap_authority_fixture_row_for(id: superseded_row) {
+                Present { value: n } => roadmap_node_ids_contain(
+                  ids: roadmap_authority_fixture_retired(envs: live), node: n.node)
+                // The join verdict says the row exists in the document it was handed; if the fixture's own
+                // rows no longer hold it, the scenario drifted and the witness goes red.
+                Absent => false
+              }
+            RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
+            RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+            RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+          }
+          && !(scenario_accepted(envs: live) |> any(a => a == superseded_row))
+    }
+  }
+}

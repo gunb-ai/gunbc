@@ -4,167 +4,70 @@ import std.types { List, String }
 import extdeps.github.actions { workflow_file_size_max, workflow_file_within, workflow_file_octets }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.github.ci { github_actions_workflows_dir }
-import gunbc.generated_artifact {
-  GeneratedArtifact, artifact_path, artifact_directory,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact,
-  InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
-  BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact,
-  GitignoreArtifact, GitattributesArtifact,
-  GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, Fci1BoundedExecutionContextArtifact,
-  RunnerHostSudoersArtifact
-}
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path, artifact_directory }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
-import gunbc.fleet.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
-import gunbc.runner.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
-import gunbc.instruments.instrument_dispatch_workflow { expected_instrument_dispatch_yml, InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused }
-import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
-import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
-import gunbc.fleet.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
-import gunbc.witness.hosted_runner_shadow_gate_workflow { expected_hosted_runner_shadow_gate_yml, ShadowGateWorkflowGenerated, ShadowGateWorkflowGenerationRefused }
-import gunbc.drift_watch_workflow { expected_drift_watch_workflow_yml, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
-import gunbc.site.gunb_ai_pages_workflow { expected_gunb_ai_pages_workflow_yml, GunbAiPagesWorkflowGenerated, GunbAiPagesWorkflowGenerationRefused }
-import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
-import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
-import gunbc.gitignore_emit { expected_gitignore }
-import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
-import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
-import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
-import gunbc.fabric.fci1_bounded_execution_context_emit {
-  expected_fci1_bounded_execution_context_env, Fci1BoundedExecutionContextEmitted, Fci1BoundedExecutionContextEmissionRefused
-}
-import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
-import gunbc.generated_workflow_provenance {
+import gunbc.generated_artifact_production {
+  GeneratedArtifactProduction, ArtifactGenerated, ArtifactGenerationRefused,
   generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable
 }
+import gunbc.drift_watch_workflow { drift_watch_workflow_yaml_artifact_production }
+import gunbc.fabric.fci1_bounded_execution_context_emit { fci1_bounded_execution_context_artifact_production }
+import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow_yaml_artifact_production }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_yaml_artifact_production }
+import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_check_script_artifact_production }
+import gunbc.gitattributes_emit { gitattributes_artifact_production }
+import gunbc.githooks.githooks_pre_commit_emit { githooks_pre_commit_artifact_production }
+import gunbc.githooks.githooks_pre_push_emit { githooks_pre_push_artifact_production }
+import gunbc.gitignore_emit { gitignore_artifact_production }
+import gunbc.heal_publisher_workflow { heal_publisher_workflow_yaml_artifact_production }
+import gunbc.heal_workflow { heal_workflow_yaml_artifact_production }
+import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_yaml_artifact_production }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_artifact_production }
+import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_yaml_artifact_production }
+import gunbc.site.gunb_ai_pages_workflow { gunb_ai_pages_workflow_yaml_artifact_production }
+import gunbc.witness.compiler_gate_workflow { witness_floor_yaml_artifact_production }
+import gunbc.witness.hosted_runner_shadow_gate_workflow { hosted_runner_shadow_gate_yaml_artifact_production }
 
-// THE ARTIFACTS A SCHEDULED DRIFT CHECK JUDGES, PRODUCED WITHOUT THE REGISTRY'S CLOSURE.
-//
-// The workflows, the per-host runner sudoers, the githooks, .gitignore, .gitattributes and the fci1
-// context are registry artifacts whose producers import no plan and no census. Asking
-// gunbc.generated_artifact_emit artifact_generate for one loads every producer the registry names --
-// a 2,659-file closure, 21.4 GiB peak measured for the whole-registry observation, too close to the
-// 22 GiB slot ceiling to run on it. These producers need none of that, so a check that must fit the
-// slot asks them here. gunbc.generated_artifact_emit delegates the same arms to this module: the
-// content has one author and this is the narrow door to it, not a second path beside it.
-//
-// NOT HERE: GeneratedArtifactMergeDriverArtifact, whose body takes the registry's
-// heal-regenerated path set and so cannot be produced without the registry; it stays with the
-// whole-registry observation.
 type TierOArtifactBody
   = TierOArtifactProduced { content: String }
   | TierOArtifactRefused { reason: String }
-  | TierOArtifactNotTierO
 
-fn tier_o_fixed_artifacts() -> List<GeneratedArtifact> {
+fn tier_o_fixed_productions() -> List<GeneratedArtifactProduction> {
   [
-    WitnessFloorYamlArtifact,
-    FleetConvergeYamlArtifact,
-    MicrovmShakedownYamlArtifact,
-    InstrumentDispatchYamlArtifact,
-    HealWorkflowYamlArtifact,
-    HealPublisherWorkflowYamlArtifact,
-    BranchRunGrantBrokerWorkflowYamlArtifact,
-    HostedRunnerShadowGateYamlArtifact,
-    DriftWatchWorkflowYamlArtifact,
-    GunbAiPagesWorkflowYamlArtifact,
-    GitignoreArtifact,
-    GitattributesArtifact,
-    GithooksPrePushArtifact,
-    GithooksPreCommitArtifact,
-    ReleaseBinsConsumerCheckScriptArtifact,
-    Fci1BoundedExecutionContextArtifact
+    witness_floor_yaml_artifact_production,
+    fleet_converge_yaml_artifact_production,
+    microvm_shakedown_yaml_artifact_production,
+    instrument_dispatch_yaml_artifact_production,
+    heal_workflow_yaml_artifact_production,
+    heal_publisher_workflow_yaml_artifact_production,
+    branch_run_grant_broker_workflow_yaml_artifact_production,
+    hosted_runner_shadow_gate_yaml_artifact_production,
+    drift_watch_workflow_yaml_artifact_production,
+    gunb_ai_pages_workflow_yaml_artifact_production,
+    gitignore_artifact_production,
+    gitattributes_artifact_production,
+    githooks_pre_push_artifact_production,
+    githooks_pre_commit_artifact_production,
+    release_bins_consumer_check_script_artifact_production,
+    fci1_bounded_execution_context_artifact_production
   ]
 }
 
-// The roster is the set of arms tier_o_artifact_body answers; a witness joins it to the registry by
-// path so a Tier O artifact added to one and not the other is a located finding.
+fn tier_o_productions() -> List<GeneratedArtifactProduction> {
+  concat(tier_o_fixed_productions(), map(fleet_intent_known_hosts, h => runner_host_sudoers_artifact_production(host: h.identity)))
+}
+
 fn tier_o_artifacts() -> List<GeneratedArtifact> {
-  concat(tier_o_fixed_artifacts(), map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity }))
+  map(tier_o_productions(), p => p.artifact)
 }
 
-// THE GENERATED-WORKFLOW REFUSAL GATE now lives in the carriers, not a scan (integration concern
-// `emitter_string_return_carries_no_typed_refusal` is integrated by this change). A run-step emission
-// refusal (word wall, orchestration rejection, or the unstored run-step target) is a typed Rejection in
-// v2.workflow.gunbc_invoke_step_emit; it propagates refused-script -> Outcome<Step> -> Outcome<Job> ->
-// Outcome<Workflow>, so each committed workflow's own expected_*_yml returns its typed *GenerationRefused
-// arm and artifact_generate unwraps it into ArtifactGenerationRefused. The three in-band sentinels and the
-// byte-scan that observed them are deleted (replacement_migration, no fallback): the gate refuses only via
-// a typed refusal, never by string matching, and a cleanly rendered workflow is returned unchanged.
-
-fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
-  match a {
-    WitnessFloorYamlArtifact => match expected_compiler_gate_yml() {
-      WitnessFloorGenerated { content } => TierOArtifactProduced { content: content }
-      WitnessFloorGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
-      FleetConvergeYamlGenerated { content } => TierOArtifactProduced { content: content }
-      FleetConvergeYamlGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    MicrovmShakedownYamlArtifact => match expected_microvm_shakedown_yml() {
-      MicrovmShakedownWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      MicrovmShakedownWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    InstrumentDispatchYamlArtifact => match expected_instrument_dispatch_yml() {
-      InstrumentDispatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      InstrumentDispatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
-      HealWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      HealWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    HealPublisherWorkflowYamlArtifact => match expected_heal_publisher_workflow_yml() {
-      HealPublisherWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      HealPublisherWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    BranchRunGrantBrokerWorkflowYamlArtifact => match expected_branch_run_grant_broker_workflow_yml() {
-      BranchRunGrantBrokerWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      BranchRunGrantBrokerWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    HostedRunnerShadowGateYamlArtifact => match expected_hosted_runner_shadow_gate_yml() {
-      ShadowGateWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      ShadowGateWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    DriftWatchWorkflowYamlArtifact => match expected_drift_watch_workflow_yml() {
-      DriftWatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      DriftWatchWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    GunbAiPagesWorkflowYamlArtifact => match expected_gunb_ai_pages_workflow_yml() {
-      GunbAiPagesWorkflowGenerated { content } => TierOArtifactProduced { content: content }
-      GunbAiPagesWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    GitignoreArtifact => TierOArtifactProduced { content: expected_gitignore() }
-    GitattributesArtifact => match expected_gitattributes() {
-      GitattributesGenerated { content } => TierOArtifactProduced { content: content }
-      GitattributesGenerationRefused => TierOArtifactRefused { reason: "generated projection path population refused" }
-    }
-    GithooksPrePushArtifact => TierOArtifactProduced { content: expected_githooks_pre_push_sh() }
-    GithooksPreCommitArtifact => TierOArtifactProduced { content: expected_githooks_pre_commit_sh() }
-    ReleaseBinsConsumerCheckScriptArtifact => TierOArtifactProduced { content: release_bins_consumer_key_check_script() }
-    Fci1BoundedExecutionContextArtifact => match expected_fci1_bounded_execution_context_env() {
-      Fci1BoundedExecutionContextEmitted { content } => TierOArtifactProduced { content: content }
-      Fci1BoundedExecutionContextEmissionRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    RunnerHostSudoersArtifact { host } => match runner_host_sudoers_body(host: host, artifact_path: artifact_path(a: a)) {
-      RunnerHostSudoersBodyProduced { content } => TierOArtifactProduced { content: content }
-      RunnerHostSudoersBodyRefused { reason } => TierOArtifactRefused { reason: reason }
-    }
-    _ => TierOArtifactNotTierO
-  }
-}
-
-// The committed bytes of a generated workflow open with its provenance header; every other Tier O
-// artifact is committed as produced. gunbc.generated_workflow_provenance owns which is which, so
-// this adds the header exactly where artifact_generate does.
-fn tier_o_artifact_body(a: GeneratedArtifact) -> TierOArtifactBody {
-  match tier_o_unadorned_body(a: a) {
-    TierOArtifactProduced { content } => match generated_workflow_provenance_header(a: a) {
-      GeneratedWorkflowProvenanceHeaderProduced { content: header } => tier_o_workflow_admitted(a: a, committed: concat(header, content), max: workflow_file_size_max)
+fn tier_o_artifact_body(production: GeneratedArtifactProduction) -> TierOArtifactBody {
+  match production.generate() {
+    ArtifactGenerated { content } => match generated_workflow_provenance_header(provenance: production.provenance) {
+      GeneratedWorkflowProvenanceHeaderProduced { content: header } => tier_o_workflow_admitted(a: production.artifact, committed: concat(header, content), max: workflow_file_size_max)
       GeneratedWorkflowProvenanceHeaderNotApplicable => TierOArtifactProduced { content: content }
     }
-    TierOArtifactRefused { reason } => TierOArtifactRefused { reason: reason }
-    TierOArtifactNotTierO => TierOArtifactNotTierO
+    ArtifactGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
   }
 }
 

@@ -1,190 +1,133 @@
-
 module gunbc.generated_artifact_emit
 
-import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_json }
-import gunbc.approve_ios_project { expected_approve_ios_project_yml, ApproveIosProjectGenerated, ApproveIosProjectRefused }
-import gunbc.approve_ios_swift_protocol { expected_approve_ios_protocol_swift }
-import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefused }
-import gunbc.approve_ios_swift_wire { expected_approve_ios_wire_swift }
-import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
-import gunbc.approve_ios_swift_enrolment_machine { expected_approve_ios_enrolment_machine_swift, expected_approve_ios_enrolment_machine_tests_swift }
-import gunbc.approve_ios_swift_operation_errors { expected_approve_ios_operation_errors_swift, expected_approve_ios_operation_errors_tests_swift }
-// THE ROADMAP-AUTHORITY EVENT LOG PRODUCER: the five committed JSON files, byte for byte, plus the check the
-// gate runs on each before it will call a write a success.
-import gunbc.roadmap.roadmap_authority_fixture {
-  expected_roadmap_authority_accepted_scenario_acceptance_json,
-  expected_roadmap_authority_superseded_scenario_acceptance_json,
-  expected_roadmap_authority_superseded_scenario_revocation_json,
-  expected_roadmap_authority_superseded_scenario_retired_json,
-  expected_roadmap_authority_absent_node_acceptance_json,
-  roadmap_authority_fixture_json_is_a_written_event,
+import std.types { String, List, Bool }
+import gunbc.generated_artifact {
+  GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact, DocsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, InstrumentRegistryGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact, RoadmapAuthorityAcceptedScenarioAcceptanceArtifact, RoadmapAuthoritySupersededScenarioAcceptanceArtifact, RoadmapAuthoritySupersededScenarioRevocationArtifact, RoadmapAuthoritySupersededScenarioRetiredArtifact, RoadmapAuthorityAbsentNodeAcceptanceArtifact,
+  artifact_path, artifact_eq, artifact_commit_policy, CommitRequired, NotCommitted,
+  GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
+  CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler
 }
-import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, InstrumentRegistryGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler, generated_artifact_author_regen_command }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
-import gunbc.whole_corpus_compile_demand_projection { expected_whole_corpus_compile_measured_root_demands_json }
-import gunbc.generated_workflow_provenance {
-  generated_workflow_provenance_header,
-  GeneratedWorkflowProvenanceHeaderProduced,
-  GeneratedWorkflowProvenanceHeaderNotApplicable,
+import gunbc.generated_artifact_production {
+  ArtifactGenerationOutcome, ArtifactGenerated, ArtifactGenerationRefused, GeneratedArtifactProduction,
+  generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable
 }
-import gunbc.fleet.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
-import gunbc.runner.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
-import gunbc.instruments.instrument_dispatch_workflow { expected_instrument_dispatch_yml, InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused }
-import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
-import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
-import gunbc.fleet.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
-import gunbc.witness.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
-import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
-import gunbc.ci.ci_yaml_validate { ci_yml_parses }
-import gunbc.tier_o_artifact_emit { tier_o_unadorned_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
-import gunbc.seed_build_artifact_emit { seed_build_artifact_body, SeedBuildArtifactProduced, SeedBuildArtifactRefused, SeedBuildArtifactNotSeedBuild }
-import gunbc.gitignore_emit { expected_gitignore }
-import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
-import gunbc.design_document { expected_design_md }
-import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
-import gunbc.contributor_onboarding_path { expected_contributor_onboarding_md }
-import gunbc.runner.runner_deploy_emit { expected_runner_deploy_manifest }
-import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
-import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
-import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
-import gunbc.runner.runner_host_grants {
-  runner_host_refused_sudoers_content, runner_host_sudoers_content }
-import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
-import gunbc.fabric.fci1_bounded_execution_context_emit {
-  expected_fci1_bounded_execution_context_env,
-  Fci1BoundedExecutionContextEmitted,
-  Fci1BoundedExecutionContextEmissionRefused,
-}
+import gunbc.seed_build_artifact_emit { file_transport_realization_generated_rs_artifact_production }
+import gunbc.approve_ios_project { approve_ios_project_yml_artifact_production }
+import gunbc.approve_ios_swift_enrolment_machine { approve_ios_enrolment_machine_swift_artifact_production, approve_ios_enrolment_machine_tests_swift_artifact_production }
+import gunbc.approve_ios_swift_operation_errors { approve_ios_operation_errors_swift_artifact_production, approve_ios_operation_errors_tests_swift_artifact_production }
+import gunbc.approve_ios_swift_protocol { approve_ios_protocol_swift_artifact_production }
+import gunbc.approve_ios_swift_protocol_vector_tests { approve_ios_protocol_vector_tests_swift_artifact_production }
+import gunbc.approve_ios_swift_wire { approve_ios_wire_swift_artifact_production }
+import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_artifact_production }
+import gunbc.design_document { design_artifact_production }
+import gunbc.docs_production { docs_production }
+import gunbc.drift_watch_workflow { drift_watch_workflow_yaml_artifact_production }
+import gunbc.evaluation_budget_consequence_emit { evaluation_budget_consequence_generated_rs_artifact_production }
+import gunbc.fabric.fci1_bounded_execution_context_emit { fci1_bounded_execution_context_artifact_production }
+import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow_yaml_artifact_production }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_yaml_artifact_production }
+import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_check_script_artifact_production }
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_artifact_production }
+import gunbc.gitattributes_emit { gitattributes_artifact_production }
+import gunbc.githooks.githooks_pre_commit_emit { githooks_pre_commit_artifact_production }
+import gunbc.githooks.githooks_pre_push_emit { githooks_pre_push_artifact_production }
+import gunbc.gitignore_emit { gitignore_artifact_production }
+import gunbc.heal_publisher_workflow { heal_publisher_workflow_yaml_artifact_production }
+import gunbc.heal_workflow { heal_workflow_yaml_artifact_production }
+import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_yaml_artifact_production }
+import gunbc.instruments.instrument_registry_emit { instrument_registry_generated_rs_artifact_production }
+import gunbc.native_route_seed_boundary_emit { native_route_seed_boundary_generated_rs_artifact_production }
+import gunbc.os_install_emit { autoinstall_user_data_artifact_production }
+import gunbc.release_locus_seed_constants_emit { release_locus_seed_constants_generated_rs_artifact_production }
+import gunbc.repo.cargo_config_emit { cargo_config_artifact_production }
+import gunbc.roadmap.roadmap_authority_fixture { roadmap_authority_accepted_scenario_acceptance_artifact_production, roadmap_authority_superseded_scenario_acceptance_artifact_production, roadmap_authority_superseded_scenario_revocation_artifact_production, roadmap_authority_superseded_scenario_retired_artifact_production, roadmap_authority_absent_node_acceptance_artifact_production }
+import gunbc.runner.runner_deploy_emit { runner_deploy_artifact_production }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_artifact_production }
+import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_yaml_artifact_production }
+import gunbc.site.gunb_ai_pages_workflow { gunb_ai_pages_workflow_yaml_artifact_production }
+import gunbc.stage0.seed_retention_frontier_emit { seed_retention_frontier_generated_rs_artifact_production }
+import gunbc.stage0.stage0_crate_layout_emit { stage0_crate_layout_generated_dag_artifact_production, stage0_crate_layout_generated_rs_artifact_production }
+import gunbc.stage0.stage0_crate_partition_emit { stage0_crate_partition_generated_dag_artifact_production }
+import gunbc.stage0.stage0_executable_assembly_emit { stage0_executable_assembly_generated_dag_artifact_production, stage0_linked_partition_crates_artifact_production }
+import gunbc.v1.v1_interpreter_dispatch_emit { v1_interpreter_dispatch_generated_rs_artifact_production }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_measured_root_demands_artifact_production }
+import gunbc.witness.compiler_gate_workflow { witness_floor_yaml_artifact_production }
+import gunbc.witness.hosted_runner_shadow_gate_workflow { hosted_runner_shadow_gate_yaml_artifact_production }
+import product.printed_chassis.cadquery_realization { coupon_cad_query_program_artifact_production }
 
-type ArtifactGenerationOutcome
-  = ArtifactGenerated { content: String }
-  | ArtifactGenerationRefused { reason: String }
-
-fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
-  ArtifactGenerated { content: content }
-}
-
-fn tier_o_outcome(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
-  match tier_o_unadorned_body(a: a) {
-    TierOArtifactProduced { content } => artifact_generated(content: content)
-    TierOArtifactRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    TierOArtifactNotTierO => ArtifactGenerationRefused { reason: "REFUSED gunbc.generated_artifact_emit: an artifact delegated to gunbc.tier_o_artifact_emit is absent from its roster" }
-  }
-}
-
-fn seed_build_outcome(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
-  match seed_build_artifact_body(a: a) {
-    SeedBuildArtifactProduced { content } => artifact_generated(content: content)
-    SeedBuildArtifactRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    SeedBuildArtifactNotSeedBuild => ArtifactGenerationRefused { reason: "REFUSED gunbc.generated_artifact_emit: an artifact delegated to gunbc.seed_build_artifact_emit is absent from its roster" }
-  }
-}
-
-fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+fn artifact_production(a: GeneratedArtifact) -> GeneratedArtifactProduction {
   match a {
-    DesignArtifact => artifact_generated(content: expected_design_md())
-    DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
-    DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
-    ContributorOnboardingArtifact => artifact_generated(content: expected_contributor_onboarding_md())
-    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
-      regen_command: generated_artifact_author_regen_command
-    ))
-    RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
-    WholeCorpusCompileMeasuredRootDemandsArtifact => artifact_generated(content: expected_whole_corpus_compile_measured_root_demands_json())
-    ApprovalDeviceVectorsArtifact => artifact_generated(content: approval_device_vectors_json())
-    ApproveIosProtocolSwiftArtifact => match expected_approve_ios_protocol_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    ApproveIosWireSwiftArtifact => match expected_approve_ios_wire_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    ApproveIosProtocolVectorTestsSwiftArtifact => match expected_approve_ios_protocol_vector_tests_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    ApproveIosEnrolmentMachineSwiftArtifact => match expected_approve_ios_enrolment_machine_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    ApproveIosOperationErrorsSwiftArtifact => match expected_approve_ios_operation_errors_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    ApproveIosEnrolmentMachineTestsSwiftArtifact => match expected_approve_ios_enrolment_machine_tests_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    ApproveIosOperationErrorsTestsSwiftArtifact => match expected_approve_ios_operation_errors_tests_swift() {
-      SwiftRowEmitted { source } => artifact_generated(content: source)
-      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
-    }
-    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => artifact_generated(content: expected_roadmap_authority_accepted_scenario_acceptance_json())
-    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => artifact_generated(content: expected_roadmap_authority_superseded_scenario_acceptance_json())
-    RoadmapAuthoritySupersededScenarioRevocationArtifact => artifact_generated(content: expected_roadmap_authority_superseded_scenario_revocation_json())
-    RoadmapAuthoritySupersededScenarioRetiredArtifact => artifact_generated(content: expected_roadmap_authority_superseded_scenario_retired_json())
-    RoadmapAuthorityAbsentNodeAcceptanceArtifact => artifact_generated(content: expected_roadmap_authority_absent_node_acceptance_json())
-    ApproveIosProjectYmlArtifact => match expected_approve_ios_project_yml() {
-      ApproveIosProjectGenerated { content } => artifact_generated(content: content)
-      ApproveIosProjectRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
-      CouponProgramGenerated { content } => artifact_generated(content: content)
-      CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    CargoConfigArtifact => seed_build_outcome(a: a)
-    Stage0CrateLayoutGeneratedDagArtifact => seed_build_outcome(a: a)
-    Stage0CrateLayoutGeneratedRsArtifact => seed_build_outcome(a: a)
-    Stage0CratePartitionGeneratedDagArtifact => seed_build_outcome(a: a)
-    Stage0ExecutableAssemblyGeneratedDagArtifact => seed_build_outcome(a: a)
-    Stage0LinkedPartitionCratesArtifact => seed_build_outcome(a: a)
-    SeedRetentionFrontierGeneratedRsArtifact => seed_build_outcome(a: a)
-    V1InterpreterDispatchGeneratedRsArtifact => seed_build_outcome(a: a)
-    EvaluationBudgetConsequenceGeneratedRsArtifact => seed_build_outcome(a: a)
-    ReleaseLocusSeedConstantsGeneratedRsArtifact => seed_build_outcome(a: a)
-    FileTransportRealizationGeneratedRsArtifact => seed_build_outcome(a: a)
-    NativeRouteSeedBoundaryGeneratedRsArtifact => seed_build_outcome(a: a)
-    InstrumentRegistryGeneratedRsArtifact => seed_build_outcome(a: a)
-    // The instrument table is a seed-build artifact too: its authority is
-    // gunbc.instruments.instrument_registry_emit, and gunbc.seed_build_artifact_emit
-    // seed_build_artifact_body owns the arm, so generation is delegated there exactly as
-    // the native-route boundary table is.
-    AutoinstallUserDataArtifact { spec } => match autoinstall_user_data(payload: spec.payload) {
-      AutoinstallUserDataRendered { content } => artifact_generated(content: content)
-      AutoinstallUserDataRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    RunnerHostSudoersArtifact { host: _ } => tier_o_outcome(a: a)
-    WitnessFloorYamlArtifact => tier_o_outcome(a: a)
-    FleetConvergeYamlArtifact => tier_o_outcome(a: a)
-    MicrovmShakedownYamlArtifact => tier_o_outcome(a: a)
-    InstrumentDispatchYamlArtifact => tier_o_outcome(a: a)
-    HealPublisherWorkflowYamlArtifact => tier_o_outcome(a: a)
-    HealWorkflowYamlArtifact => tier_o_outcome(a: a)
-    BranchRunGrantBrokerWorkflowYamlArtifact => tier_o_outcome(a: a)
-    HostedRunnerShadowGateYamlArtifact => tier_o_outcome(a: a)
-    GitignoreArtifact => tier_o_outcome(a: a)
-    GitattributesArtifact => tier_o_outcome(a: a)
-    GithooksPrePushArtifact => tier_o_outcome(a: a)
-    GithooksPreCommitArtifact => tier_o_outcome(a: a)
-    ReleaseBinsConsumerCheckScriptArtifact => tier_o_outcome(a: a)
-    Fci1BoundedExecutionContextArtifact => tier_o_outcome(a: a)
-    DriftWatchWorkflowYamlArtifact => tier_o_outcome(a: a)
-    GunbAiPagesWorkflowYamlArtifact => tier_o_outcome(a: a)
+    WitnessFloorYamlArtifact => witness_floor_yaml_artifact_production
+    FleetConvergeYamlArtifact => fleet_converge_yaml_artifact_production
+    MicrovmShakedownYamlArtifact => microvm_shakedown_yaml_artifact_production
+    InstrumentDispatchYamlArtifact => instrument_dispatch_yaml_artifact_production
+    HealWorkflowYamlArtifact => heal_workflow_yaml_artifact_production
+    HealPublisherWorkflowYamlArtifact => heal_publisher_workflow_yaml_artifact_production
+    DriftWatchWorkflowYamlArtifact => drift_watch_workflow_yaml_artifact_production
+    GunbAiPagesWorkflowYamlArtifact => gunb_ai_pages_workflow_yaml_artifact_production
+    BranchRunGrantBrokerWorkflowYamlArtifact => branch_run_grant_broker_workflow_yaml_artifact_production
+    HostedRunnerShadowGateYamlArtifact => hosted_runner_shadow_gate_yaml_artifact_production
+    GitignoreArtifact => gitignore_artifact_production
+    GitattributesArtifact => gitattributes_artifact_production
+    CargoConfigArtifact => cargo_config_artifact_production
+    DesignArtifact => design_artifact_production
+    DocsArtifact { projection } => docs_production(projection: projection)
+    GithooksPrePushArtifact => githooks_pre_push_artifact_production
+    GithooksPreCommitArtifact => githooks_pre_commit_artifact_production
+    ReleaseBinsConsumerCheckScriptArtifact => release_bins_consumer_check_script_artifact_production
+    GeneratedArtifactMergeDriverArtifact => generated_artifact_merge_driver_artifact_production
+    RunnerDeployArtifact => runner_deploy_artifact_production
+    Stage0CrateLayoutGeneratedDagArtifact => stage0_crate_layout_generated_dag_artifact_production
+    Stage0CrateLayoutGeneratedRsArtifact => stage0_crate_layout_generated_rs_artifact_production
+    Stage0CratePartitionGeneratedDagArtifact => stage0_crate_partition_generated_dag_artifact_production
+    Stage0ExecutableAssemblyGeneratedDagArtifact => stage0_executable_assembly_generated_dag_artifact_production
+    Stage0LinkedPartitionCratesArtifact => stage0_linked_partition_crates_artifact_production
+    SeedRetentionFrontierGeneratedRsArtifact => seed_retention_frontier_generated_rs_artifact_production
+    V1InterpreterDispatchGeneratedRsArtifact => v1_interpreter_dispatch_generated_rs_artifact_production
+    EvaluationBudgetConsequenceGeneratedRsArtifact => evaluation_budget_consequence_generated_rs_artifact_production
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => release_locus_seed_constants_generated_rs_artifact_production
+    FileTransportRealizationGeneratedRsArtifact => file_transport_realization_generated_rs_artifact_production
+    NativeRouteSeedBoundaryGeneratedRsArtifact => native_route_seed_boundary_generated_rs_artifact_production
+    InstrumentRegistryGeneratedRsArtifact => instrument_registry_generated_rs_artifact_production
+    Fci1BoundedExecutionContextArtifact => fci1_bounded_execution_context_artifact_production
+    AutoinstallUserDataArtifact { spec } => autoinstall_user_data_artifact_production(spec: spec)
+    RunnerHostSudoersArtifact { host } => runner_host_sudoers_artifact_production(host: host)
+    CouponCadQueryProgramArtifact => coupon_cad_query_program_artifact_production
+    WholeCorpusCompileMeasuredRootDemandsArtifact => whole_corpus_compile_measured_root_demands_artifact_production
+    ApprovalDeviceVectorsArtifact => approval_device_vectors_artifact_production
+    ApproveIosProjectYmlArtifact => approve_ios_project_yml_artifact_production
+    ApproveIosProtocolSwiftArtifact => approve_ios_protocol_swift_artifact_production
+    ApproveIosWireSwiftArtifact => approve_ios_wire_swift_artifact_production
+    ApproveIosProtocolVectorTestsSwiftArtifact => approve_ios_protocol_vector_tests_swift_artifact_production
+    ApproveIosEnrolmentMachineSwiftArtifact => approve_ios_enrolment_machine_swift_artifact_production
+    ApproveIosOperationErrorsSwiftArtifact => approve_ios_operation_errors_swift_artifact_production
+    ApproveIosEnrolmentMachineTestsSwiftArtifact => approve_ios_enrolment_machine_tests_swift_artifact_production
+    ApproveIosOperationErrorsTestsSwiftArtifact => approve_ios_operation_errors_tests_swift_artifact_production
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => roadmap_authority_accepted_scenario_acceptance_artifact_production
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => roadmap_authority_superseded_scenario_acceptance_artifact_production
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => roadmap_authority_superseded_scenario_revocation_artifact_production
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => roadmap_authority_superseded_scenario_retired_artifact_production
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => roadmap_authority_absent_node_acceptance_artifact_production
   }
 }
 
-// One bytes boundary owns workflow provenance. A workflow admitted by the commit-policy registry
-// without a provenance projection refuses here; non-workflow artifacts pass through unchanged.
-// This is a rung-3 wall, not a rung-4 constructor removal: the inconsistent pair remains writable
-// in the two authorities, but it cannot produce committed workflow bytes.
 fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
-  let generated = artifact_generate_unadorned(a: a)
-  match generated_workflow_provenance_header(a: a) {
+  let production = artifact_production(a: a)
+  if !artifact_eq(a: production.artifact, b: a) {
+    ArtifactGenerationRefused {
+      reason: concat(concat("the production matched to ", artifact_path(a: a)), concat(" generates ", artifact_path(a: production.artifact)))
+    }
+  } else {
+    artifact_generate_from(a: a, production: production)
+  }
+}
+
+fn artifact_generate_from(a: GeneratedArtifact, production: GeneratedArtifactProduction) -> ArtifactGenerationOutcome {
+  let generated = production.generate()
+  match generated_workflow_provenance_header(provenance: production.provenance) {
     GeneratedWorkflowProvenanceHeaderProduced { content: header } => match generated {
-      ArtifactGenerated { content } => artifact_generated(content: concat(header, content))
+      ArtifactGenerated { content } => ArtifactGenerated { content: concat(header, content) }
       ArtifactGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
     GeneratedWorkflowProvenanceHeaderNotApplicable => match artifact_commit_policy(a: a) {
@@ -204,111 +147,10 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   }
 }
 
-// P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED
-// generation outcome rather than calling artifact_generate itself. The two variants whose extra
-// check depends on generation success (Stage0EmitPlanGeneratedDagArtifact,
-// V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time
-// here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO
-// artifact_generate calls per artifact for those two variants, contradicting
-// gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller
-// now supplies the outcome it already produced (observe_generated_artifact reuses its own match
-// result); no second entry point to generation remains.
-
 fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
-  match a {
-    WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    MicrovmShakedownYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    InstrumentDispatchYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    HealWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    HealPublisherWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    DriftWatchWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    GunbAiPagesWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    BranchRunGrantBrokerWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    HostedRunnerShadowGateYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    GitignoreArtifact => true
-    GitattributesArtifact => true
-    CargoConfigArtifact => true
-    DesignArtifact => true
-    DesignFailureModesArtifact => true
-    DesignRungDropsArtifact => true
-    ContributorOnboardingArtifact => true
-    GithooksPrePushArtifact => true
-    GithooksPreCommitArtifact => true
-    ReleaseBinsConsumerCheckScriptArtifact => true
-    GeneratedArtifactMergeDriverArtifact => true
-    RunnerDeployArtifact => true
-    CouponCadQueryProgramArtifact => true
-    WholeCorpusCompileMeasuredRootDemandsArtifact => true
-    ApprovalDeviceVectorsArtifact => true
-    ApproveIosProjectYmlArtifact => true
-    ApproveIosProtocolSwiftArtifact => true
-    ApproveIosWireSwiftArtifact => true
-    ApproveIosProtocolVectorTestsSwiftArtifact => true
-    ApproveIosEnrolmentMachineSwiftArtifact => true
-    ApproveIosOperationErrorsSwiftArtifact => true
-    ApproveIosEnrolmentMachineTestsSwiftArtifact => true
-    ApproveIosOperationErrorsTestsSwiftArtifact => true
-    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => match generated {
-      ArtifactGenerated { content } => roadmap_authority_fixture_json_is_a_written_event(content: content, node: "roadmap-authority-scenario-accepted")
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => match generated {
-      ArtifactGenerated { content } => roadmap_authority_fixture_json_is_a_written_event(content: content, node: "roadmap-authority-scenario-superseded")
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    RoadmapAuthoritySupersededScenarioRevocationArtifact => match generated {
-      ArtifactGenerated { content } => roadmap_authority_fixture_json_is_a_written_event(content: content, node: "roadmap-authority-scenario-superseded")
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    RoadmapAuthoritySupersededScenarioRetiredArtifact => match generated {
-      ArtifactGenerated { content } => roadmap_authority_fixture_json_is_a_written_event(content: content, node: "roadmap-authority-scenario-superseded")
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    RoadmapAuthorityAbsentNodeAcceptanceArtifact => match generated {
-      ArtifactGenerated { content } => roadmap_authority_fixture_json_is_a_written_event(content: content, node: "roadmap-authority-scenario-absent-node")
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    Stage0CrateLayoutGeneratedDagArtifact => true
-    Stage0CrateLayoutGeneratedRsArtifact => true
-    Stage0CratePartitionGeneratedDagArtifact => true
-    Stage0ExecutableAssemblyGeneratedDagArtifact => true
-    Stage0LinkedPartitionCratesArtifact => true
-    SeedRetentionFrontierGeneratedRsArtifact => true
-    EvaluationBudgetConsequenceGeneratedRsArtifact => true
-    ReleaseLocusSeedConstantsGeneratedRsArtifact => true
-    V1InterpreterDispatchGeneratedRsArtifact => match generated {
-      ArtifactGenerated { content: _ } => true
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    FileTransportRealizationGeneratedRsArtifact => true
-    NativeRouteSeedBoundaryGeneratedRsArtifact => true
-    InstrumentRegistryGeneratedRsArtifact => true
-    // No extra shape test here: the authority itself refuses to render a table whose
-    // arms it cannot spell. The Rust unit test in the host (registry_matches_rows)
-    // is TYPECHECKED on the required path and does not EXECUTE there -- witnesses.yml runs
-    // cargo check --profile test -p v1-compiler --lib and runs no assertion. The
-    // executed control is the claim test.claim.instrument_registry_artifact_rendering_witness,
-    // run only by bounded operator-authorized runs, under gunbc.rung_drop
-    // v1_required_lanes_withdrawn.
-    Fci1BoundedExecutionContextArtifact => match generated {
-      ArtifactGenerated { content: _ } => true
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    AutoinstallUserDataArtifact { spec: _ } => true
-    RunnerHostSudoersArtifact { host: _ } => match generated {
-      ArtifactGenerated { content: _ } => true
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-  }
+  artifact_production(a: a).extra_valid(generated)
 }
 
-// WHY A THIRD STATE. The consumer asks "what is the generated body for this path", and the
-// honest answers are three, not two: produced, refused, and NOT A GENERATED ARTIFACT AT ALL.
-// Folding the third into ArtifactGenerationRefused would tell a caller holding an ordinary
-// mirror path that generation FAILED for it, which is false -- nothing was ever supposed to
-// generate it -- and a caller acting on that difference would act wrongly. Two zeros, one
-// spelling, is the conflation DESIGN names; the third variant is what keeps them apart.
 type GeneratedArtifactPathBody
   = GeneratedArtifactPathBodyProduced { content: String }
   | GeneratedArtifactPathBodyRefused { reason: String }

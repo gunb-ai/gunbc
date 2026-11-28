@@ -51,7 +51,7 @@ data filesystem_bare_name_census_cannot_separate_sibling_homonyms: IntegrationCo
     head: ConcernSighting {
       revision: filesystem_bare_name_census_sighting_revision,
       evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.roadmap.roadmap_authority", decl_name: "witness_committed_fixture_bytes_are_the_encoders_own") },
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.roadmap.roadmap_authority_fixture_witness", decl_name: "witness_committed_fixture_bytes_are_the_encoders_own") },
         tail: [
           CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_launching_uid") },
         ],

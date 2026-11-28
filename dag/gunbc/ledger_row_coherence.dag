@@ -5,7 +5,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact,
   HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact,
-  DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
+  DocsArtifact, DesignFailureModesProjection, DesignRungDropsProjection, ContributorOnboardingProjection,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact,
@@ -30,7 +30,7 @@ import gunbc.rung_drop.roster { rung_drop_roster }
 //
 // THE CLASS IS INVISIBLE BECAUSE IT IS REPAIRED, NOT BECAUSE IT IS RARE. Heal regenerates the
 // rung-drop ledger after a provisional merge -- gunbc.generated_artifact concurrent_divergence_repair
-// names DesignRungDropsArtifact as HealRegeneratesAfterProvisionalMerge (the failure-mode projection
+// names the DesignRungDropsProjection docs artifact as HealRegeneratesAfterProvisionalMerge (the failure-mode projection
 // is NotCommitted and is not a heal subject) -- so the ordinary life
 // of this defect is: a branch merges main, which imports a row FILE without regenerating the
 // projection; the head is authority-ahead-of-projection; heal regenerates and the difference is
@@ -102,17 +102,19 @@ type LedgerRow {
 // speak for this" never reads as "this is fine".
 fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
   match a {
-    DesignFailureModesArtifact =>
-      map(recurring_failure_mode_roster, r => LedgerRow {
-        identity: (r.identity as String),
-        body: authored(r: r)
-      })
-    DesignRungDropsArtifact =>
-      map(rung_drop_roster, d => LedgerRow {
-        identity: (d.identity as String),
-        body: rung_drop_declaration_message(d: d)
-      })
-    ContributorOnboardingArtifact => []
+    DocsArtifact { projection } => match projection {
+      DesignFailureModesProjection =>
+        map(recurring_failure_mode_roster, r => LedgerRow {
+          identity: (r.identity as String),
+          body: authored(r: r)
+        })
+      DesignRungDropsProjection =>
+        map(rung_drop_roster, d => LedgerRow {
+          identity: (d.identity as String),
+          body: rung_drop_declaration_message(d: d)
+        })
+      ContributorOnboardingProjection => []
+    }
     WitnessFloorYamlArtifact => []
     FleetConvergeYamlArtifact => []
     MicrovmShakedownYamlArtifact => []

@@ -1,0 +1,52 @@
+module test.claim.roadmap.roadmap_authority_document_witness
+
+import std.types { String, Map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap.roadmap_authority { active_roadmap_nodes_for_accepted }
+import gunbc.roadmap.roadmap_document { RoadmapDocument }
+import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
+import std.algebra { empty_map, map_insert, map_lookup }
+import test.claim.roadmap.roadmap_authority {
+  scenario_authority,
+  scenario_envelopes,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE AUTHORITY-WIDE HALF OF THE PAGE CLAIMS, AS A CENSUS THAT DOES NOT RENDER. The page claims read
+// the served folds over a projection holding a few named declared rows
+// (test.claim.roadmap.roadmap_authority_subtree_fixture); what made rendering the whole authority
+// look necessary was that the rows they read are the rows the real projection carries. That is an
+// identity join over the projection, so it is stated here once: the projected document carries
+// every active declared row (the completeness half -- witness_rendered_nodes_are_declared_or_derived
+// is the soundness half), and every row a subtree claim names is one of them.
+fn projected_document_id_set(doc: RoadmapDocument) -> Map<String, Bool> {
+  let empty: Map<String, Bool> = empty_map()
+  fold(doc_all_nodes(doc: doc), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true))
+}
+
+fn projected_document_carries(ids: Map<String, Bool>, id: String) -> Bool {
+  match map_lookup(m: ids, key: id) { Present { value: _ } => true  Absent => false }
+}
+
+test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
+  // THE SCENARIO: nothing accepted and nothing retired, so EVERY declared row is active and the census is
+  // a census -- the projected document must carry all of them, none may be silently dropped from the page
+  // it belongs on, and every row a subtree claim names must be among them. A non-empty frontier would
+  // make the claim smaller, not stronger: an accepted row is absent from the page by design.
+  match scenario_envelopes(label: "authority-document-census", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc: d, accepted, withheld } => {
+      let shown = projected_document_id_set(doc: d)
+      let active = active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+      count(active) > 0
+        && all(active, n => projected_document_carries(ids: shown, id: n.node as String))
+        && all(fx_subtree_fixture_ids(), id => any(active, n => (n.node as String) == id))
+    }
+    }
+  }
+}

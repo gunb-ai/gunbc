@@ -213,6 +213,9 @@ import gunbc.parse_verdict_publish {
   parse_verdict_publish_step_name,
   parse_verdict_save_step_name,
 }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
+import gunbc.generated_artifact_production { ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, GeneratedWorkflowProvenance, ArtifactGenerated }
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
@@ -1496,3 +1499,24 @@ fn compiler_gate_render(profile: RepositoryCiProfile, workflow: Workflow) -> Wit
 }
 
 data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["sha"] }
+
+fn witness_floor_yaml_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_compiler_gate_yml() {
+      WitnessFloorGenerated { content } => ArtifactGenerated { content: content }
+      WitnessFloorGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+fn witness_floor_yaml_artifact_extra_valid(_generated: ArtifactGenerationOutcome) -> Bool {
+  ci_yml_parses(path: artifact_path(a: WitnessFloorYamlArtifact))
+}
+
+data witness_floor_yaml_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: WitnessFloorYamlArtifact,
+  generate: witness_floor_yaml_artifact_generated,
+  extra_valid: witness_floor_yaml_artifact_extra_valid,
+  provenance: Present { value: GeneratedWorkflowProvenance {
+    generator: "gunbc.witness.compiler_gate_workflow expected_compiler_gate_yml",
+    authority: "gunbc.witness.compiler_gate_workflow compiler_gate_workflow",
+  } },
+}

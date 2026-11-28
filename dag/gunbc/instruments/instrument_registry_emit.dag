@@ -40,6 +40,8 @@ import gunbc.instrument_targets {
 }
 import gunbc.target_binding { TargetBinding, TargetProducer }
 import std.types { List, NonEmptyStr, String }
+import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, ArtifactGenerationRefused, GeneratedArtifactProduction, artifact_always_valid }
+import gunbc.generated_artifact { InstrumentRegistryGeneratedRsArtifact }
 
 // WHETHER THE TABLE COULD BE RENDERED, AND WHY NOT. A refusal carries the reason, so the artifact is
 // never committed as a plausible file: the same contract `expected_v1_interpreter_dispatch_generated_rs`
@@ -203,4 +205,18 @@ fn instrument_registry_generated_text() -> String {
     InstrumentRegistryGenerated { content } => content
     InstrumentRegistryGenerationRefused { reason } => concat("REFUSED: ", reason)
   }
+}
+
+fn instrument_registry_generated_rs_artifact_generated() -> ArtifactGenerationOutcome {
+  match expected_instrument_registry_generated_rs() {
+      InstrumentRegistryGenerated { content } => ArtifactGenerated { content: content }
+      InstrumentRegistryGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+}
+
+data instrument_registry_generated_rs_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
+  artifact: InstrumentRegistryGeneratedRsArtifact,
+  generate: instrument_registry_generated_rs_artifact_generated,
+  extra_valid: artifact_always_valid,
+  provenance: none,
 }
