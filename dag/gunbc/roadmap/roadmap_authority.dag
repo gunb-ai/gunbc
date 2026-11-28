@@ -6435,14 +6435,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         first_slice: "E2: bind one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics and retire the follow-up roster rows it discharges.",
         red_control: "A new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses under the handler binding.",
         out_of_scope: "Network and process effects are later program cuts.",
-        // Frontier (gunbc.design_argument::consumption): the census rows ClosureIndex.rows and
-        // ClosureDeclarations.rows (module v2.compiler.name_resolve) are carried for the compile-phase
-        // filesystem reach gate, not yet built, with trigger v2.compiler.effect_demand::FilesystemWallCompileGateTrigger.
+        // Frontier (gunbc.design_argument::consumption): the census rows rows of
+        // #v2.compiler.name_resolve::ClosureIndex and #v2.compiler.name_resolve::ClosureDeclarations
+        // are carried for the compile-phase filesystem reach gate, not yet built, with trigger
+        // #v2.compiler.effect_demand::FilesystemWallCompileGateTrigger.
         // DONE-WHEN: A compile-phase filesystem reach gate consumes the census result under
-        // v2.compiler.effect_demand::FilesystemWallCompileGateTrigger to refuse compilation when an emitted
-        // closure reaches filesystem_read directly, giving ClosureIndex.rows/ClosureDeclarations.rows a
-        // named production consumer. Declared per review 99567 F-b (B ruling msg_11533aaf, 2026-11-28);
-        // module::decl citations only, no line numbers.
+        // #v2.compiler.effect_demand::FilesystemWallCompileGateTrigger to refuse compilation when an
+        // emitted closure reaches filesystem_read directly, giving the census rows a named production
+        // consumer. Declared per review 99567 F-b (B ruling msg_11533aaf, 2026-11-28); module::decl
+        // citations only, no line numbers. LANDING ORDER: the trigger and both rows fields are
+        // declared in gunbc#17016 (head c8bbd3a0a26); this planning row is recorded after that PR
+        // merges, so every checked reference here resolves at the recording base.
         handback: "Return the landed cut, the handler binding, and the restatement refusal."
       ), on: "2026-09-23", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): Cut (c) lands through gunbc#11993 (the split-A landing; gunbc#11744 and gunbc#11895 are closed or quarry and do not land), and its in-flight population closed by the final-base census recorded in gunbc.demand_engine_restatement_follow_up: every authored uses row measured at the census base that range names (its tip), with that base's resolver, each with nonempty derived demand deleted except the identities retained under EditedWitnessHasNoHermeticRoute, and the retained population -- rows the criterion cannot type, and measured-deletable wet-witness rows blocked by a missing hermetic route -- carried at row identity with their own triggers. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide."), on: "2026-09-20", note: "Cut (c) lands in gunbc#11993 with the follow-up roster re-derived by semantic census at the frozen landing base; E2 and the restatement refusal remain the open slices."), on: "2026-11-28", note: "Frontier declared 2026-11-28 under gunbc.design_argument::consumption (review 99567 F-b, B ruling msg_11533aaf): the production consumer of the census rows ClosureIndex.rows and ClosureDeclarations.rows is a compile-phase filesystem reach gate, not yet built, with trigger v2.compiler.effect_demand::FilesystemWallCompileGateTrigger. DONE-WHEN: A compile-phase filesystem reach gate consumes the census result under v2.compiler.effect_demand::FilesystemWallCompileGateTrigger to refuse compilation when an emitted closure reaches filesystem_read directly, giving ClosureIndex.rows/ClosureDeclarations.rows a named production consumer.")),
       dispatch: dispatchable(),
