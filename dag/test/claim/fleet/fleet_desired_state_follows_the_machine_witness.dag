@@ -1,0 +1,173 @@
+module test.claim.fleet.fleet_desired_state_follows_the_machine_witness
+
+// THE MODEL SIDE, EXERCISED. Every value below is SUPPLIED by the claim (gunbc.design_argument::how_to_work:
+// a witness supplies values at its own boundary and does not re-run the production read). This witness does
+// NOT test the read's comparison -- that is gunbc.fleet.fleet_host_truth_read's own witness
+// (fleet_host_truth_read_witness) and row fleet-truth-per-host-read. What lives here is the row
+// fleet-truth-follows-the-machine's half: that the model's five claims each keep their own axis, that the
+// seam desired_state_follows_the_machine refuses where a read disagrees -- naming the arm that diverged --
+// and that a host with no current read is refused rather than admitted on the model alone
+// (gunbc.design_argument::fail_closed). The roster wiring that CONSUMES this seam is a different, unstaffed
+// row (fleet-truth-rosters-consume-the-read); these claims stop at the seam on purpose.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.list { distinct_by_key }
+import std.algebra { string_contains }
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthObserved,
+  TruthSize, TruthCount, TruthMarking, TruthUnbounded,
+  TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
+  TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
+  host_truth_axis_rule,
+}
+import gunbc.plans.desired_state_follows_the_machine {
+  ModelAxisClaim, EnumeratedHardware, EnabledUnits, HostKey, LeafCap, SwapBacking,
+  FollowsTheMachine, ModelAgrees, ModelDiverges, ModelRefused, ModelUnread,
+  model_claim_axis, desired_state_follows_the_machine,
+}
+
+// SUPPLIED-VALUE HELPERS at this claim's boundary.
+fn size_bytes(gib: Nat) -> ByteSize { gibibyte_to_byte_size(g: gibibyte(count: gib)) }
+fn size_val(gib: Nat) -> HostTruthValue { TruthSize { size: size_bytes(gib: gib) } }
+fn count_val(n: Nat) -> HostTruthValue { TruthCount { count: n } }
+fn mark_val(text: String) -> HostTruthValue { TruthMarking { text: text } }
+fn unbounded_val() -> HostTruthValue { TruthUnbounded }
+fn obs(host: NonEmptyStr, axis: HostTruthAxis, value: HostTruthValue) -> HostTruthRead {
+  HostTruthObserved { host: host, axis: axis, observed: value, at_run: "0" as NonEmptyStr, receipt: "supplied by the claim" }
+}
+
+// A host is admitted by a consumer only when the seam says the model and the machine agree.
+fn admits(result: FollowsTheMachine) -> Bool {
+  match result {
+    ModelAgrees { host: _, compared: _ } => true
+    ModelDiverges { host: _, diverged_arms: _ } => false
+    ModelRefused { host: _, refusals: _ } => false
+    ModelUnread { host: _, why: _ } => false
+  }
+}
+
+// THE ARM THAT BROKE IS NAMED: every diverged/refused arm carries the recognition rule of its axis, so a
+// divergence that "lost its axis" -- collapsed to a bare no -- would fail here.
+fn names_axis(result: FollowsTheMachine, axis: HostTruthAxis) -> Bool {
+  let rule = host_truth_axis_rule(axis: axis)
+  match result {
+    ModelDiverges { host: _, diverged_arms: arms } => arms.any(arm => string_contains(s: arm, pattern: rule))
+    ModelRefused { host: _, refusals: arms } => arms.any(arm => string_contains(s: arm, pattern: rule))
+    ModelAgrees { host: _, compared: _ } => false
+    ModelUnread { host: _, why: _ } => false
+  }
+}
+
+// THE FIVE CLAIMS ARE FIVE DISTINCT AXES, each carrying its own non-empty rule. A claim whose axis had
+// collapsed onto another cannot pass this, which is what keeps the five remedies distinguishable.
+test fn the_model_holds_five_distinct_axes() -> Bool {
+  let claims = [
+    EnumeratedHardware { host: "butch" as NonEmptyStr, device_class: "nvidia", count: 4 },
+    EnabledUnits { host: "dan" as NonEmptyStr, unit: "strata-expert-lock", hardware_enumerates: true },
+    HostKey { host: "butch" as NonEmptyStr, enrolled_fingerprint: "SHA256:anchor" },
+    LeafCap { host: "srv4" as NonEmptyStr, role: "expert", working_set: size_bytes(gib: 56) },
+    SwapBacking { host: "butch" as NonEmptyStr, slot: "runner-slot", backing: unbounded_val() },
+  ]
+  let rules = claims.map(claim => host_truth_axis_rule(axis: model_claim_axis(claim: claim)))
+  rules.length() == 5
+    && rules.all(rule => rule != "")
+    && distinct_by_key(xs: rules, key: fn(rule) { rule }).length() == 5
+}
+
+// RED AXIS 1 -- DESIRED STATE NAMES HARDWARE THAT NO LONGER ENUMERATES. butch, 2026-11-17: four A2s out of
+// PCI while the model still declared four. The seam diverges and says which arm.
+test fn RED_enumerated_hardware_no_longer_enumerating_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: [EnumeratedHardware { host: "butch" as NonEmptyStr, device_class: "nvidia", count: 4 }],
+    reads: [obs(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 0))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
+}
+
+// RED AXIS 2 -- AN ENABLED UNIT OVER HARDWARE THAT DOES NOT ENUMERATE. dan (reported as h11): the
+// expert-lock unit declares its hardware enumerating; the machine answers the hardware is absent.
+test fn RED_enabled_unit_over_absent_hardware_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "dan" as NonEmptyStr,
+    claims: [EnabledUnits { host: "dan" as NonEmptyStr, unit: "strata-expert-lock", hardware_enumerates: true }],
+    reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: "strata-expert-lock enabled with its hardware absent"))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthEnabledUnitHasItsHardware)
+}
+
+// RED AXIS 3 -- A PRESENTED KEY THAT IS NOT THE ENROLLED ANCHOR. butch .238 held another machine's host
+// key; the model anchors on the enrolled fingerprint and the machine presents another.
+test fn RED_presented_host_key_not_the_enrolled_anchor_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: [HostKey { host: "butch" as NonEmptyStr, enrolled_fingerprint: "SHA256:enrolled-anchor-AAA" }],
+    reads: [obs(host: "butch" as NonEmptyStr, axis: TruthIdentityAnchoredNotAddressed, value: mark_val(text: "SHA256:previous-occupant-BBB"))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthIdentityAnchoredNotAddressed)
+}
+
+// RED AXIS 4 -- A BINDING LEAF CAP BELOW THE WORKING SET THE ROLE DECLARES. srv4's expert set under a
+// 40 GiB memory.high against a 56 GiB declared working set: the cap is the report's quietest tier.
+test fn RED_leaf_cap_below_declared_working_set_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv4" as NonEmptyStr,
+    claims: [LeafCap { host: "srv4" as NonEmptyStr, role: "expert", working_set: size_bytes(gib: 56) }],
+    reads: [obs(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: size_val(gib: 40))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthCapBindsDeclaredWorkingSet)
+}
+
+// RED AXIS 5 -- SWAP BACKING DIFFERENT FROM WHAT THE ENVELOPE DECLARES. butch's 8 GiB swapfile against an
+// envelope that declares none (unbounded): the same drift in either direction.
+test fn RED_swap_backing_mismatch_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: [SwapBacking { host: "butch" as NonEmptyStr, slot: "runner-slot", backing: unbounded_val() }],
+    reads: [obs(host: "butch" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, value: size_val(gib: 8))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthSlotSwapBackingDeclared)
+}
+
+// RED -- A HOST WITH A CLAIM BUT NO CURRENT READ IS REFUSED, NEVER ADMITTED ON THE MODEL ALONE. This is the
+// row's red_control in its sharpest form: admission without a current read fails closed, and the refusal
+// names the axis that went unread rather than passing silently.
+test fn RED_a_claim_with_no_current_read_refuses_rather_than_admits() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: [EnumeratedHardware { host: "butch" as NonEmptyStr, device_class: "nvidia", count: 4 }],
+    reads: [],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
+}
+
+// A CLEAN HOST -- the read answers what the model claims -- agrees and would be admitted.
+test fn a_host_whose_read_matches_every_claim_agrees_and_admits() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv3" as NonEmptyStr,
+    claims: [EnumeratedHardware { host: "srv3" as NonEmptyStr, device_class: "nvidia", count: 4 }],
+    reads: [obs(host: "srv3" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4))],
+  )
+  admits(result: result) == true && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates) == false
+}
+
+// ONE DRIFTED AXIS BLOCKS THE HOST EVEN WHEN ANOTHER AXIS AGREES: a clean host must not carry a drifted
+// one, and only the drifted arm is named -- the agreeing axis is not reported as a divergence.
+test fn RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv4" as NonEmptyStr,
+    claims: [
+      EnumeratedHardware { host: "srv4" as NonEmptyStr, device_class: "nvidia", count: 4 },
+      LeafCap { host: "srv4" as NonEmptyStr, role: "expert", working_set: size_bytes(gib: 56) },
+    ],
+    reads: [
+      obs(host: "srv4" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4)),
+      obs(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: size_val(gib: 40)),
+    ],
+  )
+  admits(result: result) == false
+    && names_axis(result: result, axis: TruthCapBindsDeclaredWorkingSet)
+    && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates) == false
+}
