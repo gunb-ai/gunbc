@@ -3066,6 +3066,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "The lifecycle's mandatory steps are only workflow-owned if what the agent is TOLD is also derived and revisioned; modeled prompt inputs make prompt contradiction a dispatch-time refusal instead of a runtime prayer."),
     ),
     roadmap_node(
+      identity: "rn_01M86JC25E8M7NKAG6C4Y34J0C",
+      id: "harness-seat-binds-modeled-prompt-segments",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_cli.dag"),
+      line: ticket(t: fields(
+        headline: "The harness seat binds modeled prompt segments from the projection, never collapsed prose",
+        boundary: "The seat's guidance premises arrive only as a late projection of the admitted PromptContextSnapshot (gunbc.harness.harness_prompt_context); gunbc.harness.harness_guidance::harness_guidance_segments is the single guidance authority and the seat binding consumes its typed segments, so a changed guidance segment moves the seat binding and stale prose cannot be shipped independently of a render receipt. Provider envelopes remain late projections; no prose concatenation path reaches a configured seat. The seat binding admits a compacted prompt plan only through the compaction law established by the harness-prompt-context-model row; that law has no other authorized consumer, and this row is its declared frontier.",
+        displaced_cost: "Today gunbc.harness.harness_cli::harness_default_system_prompt collapses the modeled segments back to prose via gunbc.harness.harness_guidance::harness_guidance_prose, and the seat config carries that prose as HarnessTurnConfig.system_prompt (gunbc.harness.harness_turn::HarnessTurnConfig.system_prompt), with gunbc.harness.harness_cli::harness_bind_belt_seat and gunbc.harness.harness_cli::harness_model_request_inputs threading the String — so what the lineage ADMITTED and what the seat RECEIVES can differ with no witness and no refusal.",
+        first_slice: "Make the seat binding derive its guidance content from harness_guidance_segments through the PromptPlan projection: either gunbc.harness.harness_cli::harness_default_system_prompt becomes a render of the admitted snapshot's guidance segments with its render receipt pinned to the binding, or the seat configuration refuses; the HarnessTurnConfig.system_prompt prose path is removed or made a typed refusal at the config boundary.",
+        red_control: "Executed arms are the control, per gunbc.design_argument::fail_closed (a grep is not a consumer; hit counts print beside them as supporting evidence only): a configured seat's guidance content is digest-identical to the admitted snapshot's guidance segments; moving a guidance segment moves the seat binding; a seat cannot be configured from prose that no admitted snapshot renders — the planted stale-prose fixture refuses. Supporting grep evidence names symbols only: gunbc.harness.harness_cli::harness_default_system_prompt and HarnessTurnConfig.system_prompt (gunbc.harness.harness_turn::HarnessTurnConfig.system_prompt) show each collapsed path removed or typed-refused.",
+        out_of_scope: "No semantic contradiction inference between free-text inputs (typed refusal only): the compaction law is DEFINED by harness-prompt-context-model and CONSUMED here by the seat binding, not redefined here; provider-side rendering and the model's own word remain outside the binding.",
+        handback: "The seat binding derived from the projection, the removal or typed refusal of the collapsed prose paths, and the controls."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The lifecycle's mandatory steps are workflow-owned only if what the agent RECEIVES is the admitted projection itself; a seat bound from collapsed prose makes modeled prompt inputs decoration and the prose the real plan."),
+    ),
+    roadmap_node(
       identity: "rn_HCHECKPOINT0PLANNER000A",
       id: "harness-checkpoint-subject-planner",
       owner: "harness",
