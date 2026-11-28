@@ -10,9 +10,19 @@ module v2.test.claim.self_host.stage0_conjunction_emission_claims
 // surface -- prefix_not_emits_holds, prec_not_grouped_and_flat_bodies_differ_holds,
 // prec_not_grouped_wraps_operand_holds -- which FAILs at this head pending
 // v2-core-emitter-emits-prefix-not-in-value-position (see the PR's declared-surface section), plus a
-// reason-naming battery with exactly one PASSing arm. Evidence runs claim-by-claim through the gunbc test claim
-// route, one claim label per operand; claim_batch, which executed the recorded pair, was deleted on main by
-// #16872, and an entry-wide exit status is NOT the green evidence. The
+// reason-naming battery with exactly one PASSing arm. Evidence runs as TWO native package-form adjudications
+// through the gunbc test NATIVE route — //v2/test/claim/target_model_external_authority_decode and
+// //v2/test/claim/self_host/stage0_conjunction_emission_claims — one acquisition each; the per-identity rows
+// folded by the emitted binary are the green evidence, and an entry-wide exit status is NOT it
+// (v2.workflow.native_route_member_termination; gunbc.recurring_failure_mode
+// route_scoped_qualification_read_as_one_members_verdict). An earlier revision of this header asserted the
+// CLAIM-route form claim-by-claim, one claim label per operand: that was true only under claim_batch, was
+// stale from #16872 (which deleted claim_batch), and is structurally impossible now — every module here
+// declares `module v2.test.claim....`, so its only //test/claim/... spelling cannot match by module-path
+// identity, and //v2/... operands are contained in the native route universe
+// (NATIVE_ROUTE_DEFAULT_PATTERN = "//v2/...", native_route_seed_boundary_generated.rs:5; containment
+// classification target_invocation_host.rs:3694-3696; native is one operand per invocation). Do not "correct"
+// this header back to the claim-route form. The
 // pre-widening reason-triangulation battery (which pinned the RED) stays in stage0_conjunction_lowering_claims
 // and is NOT folded in here, because with the widening its "subject refuses" witnesses contradict reality.
 //
