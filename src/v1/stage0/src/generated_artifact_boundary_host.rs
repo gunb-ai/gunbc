@@ -44,17 +44,14 @@ pub const GENERATED_ARTIFACT_PRODUCING_COMMAND: &str =
     "gunbc run --source-root dag --source-root src/v2 \
      --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet";
 
-/// Regenerates only the two `docs/*.md` ledger projections and returns `ProcessExit`.
-/// Distinct from `GENERATED_ARTIFACT_PRODUCING_COMMAND`: that entry resolves the whole
-/// registry emit graph. This one is the two ledger paths only.
+/// Regenerates only the `docs/`-located projections and returns `ProcessExit`.
+/// Distinct from `GENERATED_ARTIFACT_PRODUCING_COMMAND`: that entry writes every committed
+/// artifact. This one writes and agrees the `docs/` paths only.
 /// The operator-facing recipe is `gunbc.instruments.docs_projection_agreement` `docs_projection_regen_command`
 /// and is already inside the gate's `ProcessExit` reason; this host does not mint a second copy.
 const DOCS_PROJECTION_GATE_ENTRY: &str = "dag/gunbc/instruments/docs_projection_gate.dag";
 
-/// Outcome of the docs-ledger agreement entry. Kept separate from
-/// `GeneratedArtifactBoundaryOutcome` because that carrier resolves the whole registry;
-/// this one must be able to refuse a stale `docs/design-failure-modes.md` even when that
-/// resolve never returns.
+/// Outcome of the docs-ledger agreement entry.
 pub enum DocsProjectionAgreement {
     Clean,
     Refused { cause: String },

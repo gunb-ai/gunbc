@@ -7,7 +7,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, GunbAiPagesWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, NativeRouteSeedBoundaryGeneratedRsArtifact, InstrumentRegistryGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, ApproveIosEnrolmentMachineSwiftArtifact, ApproveIosEnrolmentMachineTestsSwiftArtifact, ApproveIosOperationErrorsSwiftArtifact, ApproveIosOperationErrorsTestsSwiftArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact,
-  artifact_path, artifact_is_committed, artifact_eq,
+  artifact_path, artifact_location, artifact_is_committed, artifact_eq,
   artifact_is_project_documentation
 }
 
@@ -51,4 +51,22 @@ fn registry_contains(a: GeneratedArtifact) -> Bool {
   any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
 }
 
+data docs_projection_directory: String = "docs"
 
+fn artifact_is_docs_located(a: GeneratedArtifact) -> Bool {
+  artifact_location(a: a).directory == docs_projection_directory
+}
+
+fn docs_located_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_docs_located(a: a))
+}
+
+// THE COMMITTED POPULATION IS A FILTER OF THE DOCS POPULATION, NOT A SECOND WALK OF THE REGISTRY.
+//
+// It used to filter committed_generated_artifacts(), which itself filters the whole registry -- so
+// anything wanting both populations resolved the registry twice. Committed is a SUBSET of the
+// registry and the two predicates commute, so filtering the docs-located list by the commit policy
+// yields the identical set for one walk instead of two.
+fn committed_docs_located_artifacts() -> List<GeneratedArtifact> {
+  filter(docs_located_artifacts(), a => artifact_is_committed(a: a))
+}
