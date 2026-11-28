@@ -113,7 +113,7 @@ import v2.workflow.floor_preparation_diff_scope {
 //     FLOOR_HEAVY_SLOT=$HOME/bin/heavy-slot \
 //     FLOOR_CLAIM_BATCH=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/claim_batch \
 //     FLOOR_GUNBC=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/gunbc \
-//     FLOOR_LEG_DRIVER=$HOME/scratch/$HEAVY_OWNER/bin/eagle-leg-driver-v3 \
+//     FLOOR_LEG_DRIVER=$HOME/scratch/$HEAVY_OWNER/bin/eagle-leg-driver-v4 \
 //     FLOOR_MANIFEST=$HOME/scratch/$HEAVY_OWNER/bin/bins/release-bins.manifest
 //   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
@@ -123,9 +123,51 @@ import v2.workflow.floor_preparation_diff_scope {
 // cat > "$FLOOR_LEG_DRIVER" exactly, chmod +x, and the supply gate re-derives the sha at run time):
 //
 //   #!/usr/bin/sh
+//   # eagle-leg-driver-v4 (crisp-eagle-244, run11+). v4 adds what run10 proved was missing: when
+//   # TRACKED_DIRTY is nonzero the boot line NAMES the dirty tracked paths (comma-joined, cut from
+//   # the porcelain path column) and tags OPTION=b_dirty_paths_named, so a leg that judges in-run
+//   # spliced bytes carries its own doctrine-option-(b) evidence in its log instead of a stale
+//   # OPTION=a label on dirty bytes (run10 claims-a printed OPTION=a_clean_checkout at
+//   # TRACKED_DIRTY=1 -- the dirt was this run's fold-legs splice of src/v2/workflow/
+//   # floor_preparation_split.dag; the splice receipt was the proof, and now the boot line is too).
+//   # v3 (the version below) added: The leg-layer pin enforcement this layer lacked:
+//   # a leg must refuse to exec a program whose on-disk sha256 is not the model's pinned sha -- the
+//   # supply check upstream is a model-visible gate but its view of the binaries predates the leg; the
+//   # leg judges the bytes it is about to run. v2 (sha 19df9ae3381aeb40bcf1549705b036528313a749e1ae4080ce0772349f3e082a)
+//   # added the acquisition-identity block but no pin; the capture script's external pin guard is
+//   # outside the model and must not be the only layer.
+//   #
+//   # argv[1] is the log path; the rest is program+arguments passed verbatim to exec, streams appended
+//   # to that log. No shell string is built from leg data. The identity block prints, INSIDE the leg
+//   # and from the leg's own process, what the leg judges: pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY
+//   # (tracked dirt only, --untracked-files=no per the repo_self_build.dag:302-311 doctrine: untracked
+//   # scratch reaches neither rustc nor the identity; at these legs it is zero by construction -- a
+//   # clean checkout of the judged head), and sha256+bytes of every file operand.
 //   LOG="$1"
 //   shift
 //   : > "$LOG"
+//   PIN_CLAIM_BATCH="b395a556775931296f8f8aa8b9307f304d34442579f88d749189e273a4b0aee5"
+//   {
+//     echo "[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4"
+//     echo "[leg-cgroup] $(cat /proc/self/cgroup 2>/dev/null | head -1)"
+//     TRACK_OUT=$(git status --porcelain --untracked-files=no 2>/dev/null || true)
+//     if [ -z "$TRACK_OUT" ]; then TRACK_DIRTY=0; TRACK_PATHS=none; OPTION_TAG=a_clean_checkout; else TRACK_DIRTY=$(printf '%s\n' "$TRACK_OUT" | grep -c '^[^?]' || true); TRACK_PATHS=$(printf '%s\n' "$TRACK_OUT" | cut -c4- | sort -u | tr '\n' ',' | sed 's/,$//'); OPTION_TAG=b_dirty_paths_named; fi
+//     echo "[leg-git] HEAD=$(git rev-parse HEAD 2>/dev/null) TREE=$(git rev-parse 'HEAD^{tree}' 2>/dev/null) TRACKED_DIRTY=$TRACK_DIRTY OPTION=$OPTION_TAG TRACKED_PATHS=$TRACK_PATHS"
+//     for a in "$@"; do
+//       if [ -f "$a" ]; then
+//         echo "[leg-binary] path=$a bytes=$(stat -c%s "$a") sha256=$(sha256sum "$a" | cut -d' ' -f1)"
+//         case "$a" in
+//           */claim_batch)
+//             if [ "$(sha256sum "$a" | cut -d' ' -f1)" != "$PIN_CLAIM_BATCH" ]; then
+//               echo "[leg-refuse] claim_batch sha256 is not the pinned release: $a"
+//               exit 97
+//             fi
+//             ;;
+//         esac
+//       fi
+//     done
+//     echo "[leg-argv] $*"
+//   } >> "$LOG" 2>&1
 //   exec >>"$LOG" 2>&1 "$@"
 //
 // The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
@@ -203,9 +245,14 @@ data floor_preparation_pinned_gunbc_sha: String =
 // claim_batch whose on-disk sha256 is not the model's pinned release -- and prints the
 // acquisition-identity block (pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY with tracked dirt only
 // per the repo_self_build.dag:302-311 doctrine, and sha256+bytes of every file operand) from the
-// leg's own process, so the log itself carries what the leg judged.
+// leg's own process, so the log itself carries what the leg judged. v4 (the pinned sha below)
+// keeps every v3 guarantee and adds the one run10 proved missing: at TRACKED_DIRTY>0 the boot
+// line NAMES the dirty tracked paths and tags OPTION=b_dirty_paths_named (run10's claims-a judged
+// THIS run's splice of src/v2/workflow/floor_preparation_split.dag -- TRACKED_DIRTY=1 beside a
+// stale OPTION=a label; the named path plus the splice receipt is doctrine option (b), in the
+// leg's own log).
 data floor_preparation_pinned_leg_driver_sha: String =
-  "c09c3bf1754104cf0871e2eff617f7234c22f4b8322db003213c9a782a80da3c"
+  "8a6820ebb6dd69844725cdb368e6e45e1cc8241b9f84e830915df50d286dd0b6"
 
 data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
@@ -256,11 +303,19 @@ fn floor_preparation_graded_bound() -> Second {
 }
 
 fn floor_preparation_claims_bound() -> Second {
-  second(count: 900)
+  // run10: the claims legs died at 900 s with ZERO verdict lines under load 30-40 / 400 G of
+  // 502 G in use -- the resolve had not finished when the bound fired. 900 s was priced for a
+  // warm-cache probe, not a contended peak; probe2 had resolved the same 22 names under an
+  // 1800 s bound at idle. The bound is a bound, and a death at it is now a NAMED transport
+  // refusal, not a silent gate-missing (royal-newt ruling 2026-11-28). The witness asserts
+  // these digits against THIS function -- one source, lockstep by construction.
+  second(count: 2700)
 }
 
 fn floor_preparation_report_bound() -> Second {
-  second(count: 600)
+  // Same contention lesson as the claims bound (run10); the report leg spawns the full gunbc
+  // binary over the whole-tree roots and must not be the cheapest-bound leg in the run.
+  second(count: 1200)
 }
 
 // THE ONE CHECKED CONVERSION to the timeout(1) transport. A bound is meaningful only inside
@@ -1246,15 +1301,10 @@ fn floor_preparation_capture_run() -> String {
     let untrimmed_truncated = untrimmed.rc == transport_timeout_rc
     let graded_truncated = length(xs: survivors) > 0 && graded.rc == transport_timeout_rc
     let transport_ok = !untrimmed_truncated && !graded_truncated
-    let transport_line = if untrimmed_truncated {
-      concat(concat("[leg-transport-REFUSED] leg=leg-untrimmed rc=", to_string(transport_timeout_rc)),
-        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_untrimmed_bound()))))
-    } else if graded_truncated {
-      concat(concat("[leg-transport-REFUSED] leg=leg-graded rc=", to_string(transport_timeout_rc)),
-        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_graded_bound()))))
-    } else {
-      "[leg-transport] hold=clean no leg died at its bound"
-    }
+    // transport_line renders AFTER the claims legs (below): a claims leg killed at its bound is
+    // the same truncation class as a fold-leg kill and must be NAMED the same way -- run10's
+    // claims legs died at the bound and the only trace was gate-missing, which royal-newt's
+    // ruling calls out as how a truncation becomes a clean.
     // TRANSCRIPT RECEIPTS. Each leg's full stream already lives on disk (script -qef LOG --);
     // the receipt names the file and counts what the transcript holds, so a spawn that produced
     // no transcript is visible on the receipts as bytes=0 verdicts=0 rather than as silence.
@@ -1329,6 +1379,8 @@ fn floor_preparation_capture_run() -> String {
         list_push(xs: acc, item: name)
       })
     let claims_a_args = floor_preparation_claims_leg_argv(leg_a_roster)
+    // A claims leg's own rc is a transport fact too: 124 means the roster was never judged.
+    let claims_a_truncated = transport_ok && claims_a.rc == transport_timeout_rc
     let claims_a = if transport_ok {
       floor_preparation_spawn_slot_captured(
         label: "leg-claims-a", bound: floor_preparation_claims_bound(),
@@ -1381,7 +1433,7 @@ fn floor_preparation_capture_run() -> String {
       path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
       content: concat(concat(retained_header, "\n"), retained))).success
     let claims_b_args = floor_preparation_claims_leg_argv(floor_preparation_consumer_claims)
-    let claims_b = if transport_ok {
+    let claims_b = if transport_ok && !claims_a_truncated {
       floor_preparation_spawn_slot_captured(
         label: "leg-claims-b", bound: floor_preparation_claims_bound(),
         binary: floor_preparation_pinned_claim_batch(),
@@ -1390,7 +1442,7 @@ fn floor_preparation_capture_run() -> String {
       FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
         stderr: "skipped: a capture leg was truncated at its transport bound; census legs do not judge partial rows" }
     }
-    let claims_b_transcript = if transport_ok {
+    let claims_b_transcript = if transport_ok && !claims_a_truncated {
       floor_preparation_read_captured(label: "leg-claims-b")
     } else {
       "transport truncated: leg-claims-b skipped"
@@ -1400,13 +1452,36 @@ fn floor_preparation_capture_run() -> String {
       init: [], f: (acc, name) =>
       if floor_preparation_has_exact_row(rows: passed_b, wanted: name) { acc } else { list_push(xs: acc, item: name) })
     let missing = concat(missing_a, missing_b)
-    let report = floor_preparation_spawn_slot(
+    let claims_b_truncated = transport_ok && !claims_a_truncated && claims_b.rc == transport_timeout_rc
+    let transport_line = if untrimmed_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-untrimmed rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_untrimmed_bound()))))
+    } else if graded_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-graded rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_graded_bound()))))
+    } else if claims_a_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-claims-a rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_claims_bound()))))
+    } else if claims_b_truncated {
+      concat(concat("[leg-transport-REFUSED] leg=leg-claims-b rc=", to_string(transport_timeout_rc)),
+        concat(" timeout_bound_s=", to_string(second_count(s: floor_preparation_claims_bound()))))
+    } else {
+      "[leg-transport] hold=clean no leg died at its bound"
+    }
+    // A truncated claims leg is not a completed leg: the report leg does not certify a run whose
+    // roster legs died at their bounds (transport ruling, royal-newt 2026-11-28).
+    let report = if !claims_a_truncated && !claims_b_truncated {
+      floor_preparation_spawn_slot(
       bound: floor_preparation_report_bound(),
       binary: floor_preparation_pinned_gunbc(),
       args: concat(
         ["run"], concat(
           fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
           ["--entry", floor_preparation_authority_path, "--function", "floor_preparation_split_report"])))
+    } else {
+      FloorPreparationSpawnObservation { rc: transport_timeout_rc, stdout: "",
+        stderr: "skipped: a claims leg was truncated at its transport bound; the report leg does not certify a truncated run" }
+    }
     let build_argv_receipt = floor_preparation_receipt("build-argv-from-population",
       concat("entries=", to_string(length(xs: entries))))
     let splice_receipt = floor_preparation_receipt("splice-capture-rows",
@@ -1494,7 +1569,7 @@ fn floor_preparation_capture_run() -> String {
     } else { "retained=WRITE_FAILED" }
     let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
     let receipts_with_transport = list_push(xs: all_receipts, item: transport_line)
-    if !report_ok || length(xs: missing) > 0 || !splice_ok || !retained_write || !own_roster_clean || !transport_ok {
+    if !report_ok || length(xs: missing) > 0 || !splice_ok || !retained_write || !own_roster_clean || !transport_ok || claims_a_truncated || claims_b_truncated {
       concat(join(receipts_with_transport, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
       concat(join(receipts_with_transport, "\n"),
