@@ -44,6 +44,28 @@ fn watch_git_path(path: &str) {
     }
 }
 
+const SEED_BUILD_INPUT_FILES: [&str; 6] = [
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain",
+    "rust-toolchain.toml",
+    ".cargo/config",
+    ".cargo/config.toml",
+];
+
+fn watch_seed_build_input_files(manifest_dir: &Path) {
+    let repo_root = manifest_dir
+        .ancestors()
+        .nth(3)
+        .expect("gunbc build: the package directory has no repository root three levels above it");
+    for name in SEED_BUILD_INPUT_FILES {
+        let path = repo_root.join(name);
+        if path.is_file() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
+}
+
 /// The crates the executable links, read from the projection of the partition authority
 /// (`v2.compiler.self_host.stage0_executable_assembly` closed over
 /// `v2.workflow.rust_crate_partition`, rendered by `gunbc.stage0.stage0_executable_assembly_emit` and held
@@ -324,6 +346,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed={MATERIALIZED_TREE_IDENTITY_ENV}");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .expect("gunbc build: Cargo did not supply CARGO_MANIFEST_DIR to the build script");
+    watch_seed_build_input_files(Path::new(&manifest_dir));
     watch_linked_partition_crates(Path::new(&manifest_dir));
     let unguarded = unguarded_recursive_value_walkers(&Path::new(&manifest_dir).join("src"));
     assert!(

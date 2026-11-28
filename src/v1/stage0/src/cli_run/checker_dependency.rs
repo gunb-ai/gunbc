@@ -8,11 +8,13 @@
 //! file cannot be missing from it (gunbc.design_argument::single_authority, one authority: the build tool's record).
 //!
 //! THE RECORD IS CARGO'S DEP-INFO BESIDE THE RUNNING BINARY (`target/<profile>/<bin>.d`), which
-//! lists every source file rustc read for that binary, including `include_str!` inputs. Build
-//! manifests decide which of those files and crates are compiled, so the manifest of every
-//! workspace package the record reaches is an input too, as are the workspace's lockfile and
-//! toolchain pin. Paths outside the workspace (registry crates) are governed by the lockfile and
-//! are not repository paths a diff can name.
+//! lists every source file rustc read for that binary, including `include_str!` inputs, and every
+//! path the build script watches. Build manifests decide which of those files and crates are
+//! compiled, so the manifest of every workspace package the record reaches is an input too. The
+//! workspace's manifest, lockfile, toolchain pin and cargo configuration reach the record as
+//! watched paths of the build script (`gunbc.seed_build_inputs`), so they are not listed here.
+//! Paths outside the workspace (registry crates) are governed by the lockfile and are not
+//! repository paths a diff can name.
 
 use super::*;
 use std::collections::BTreeSet;
@@ -78,9 +80,8 @@ fn find_rule_colon(line: &str) -> Option<usize> {
     })
 }
 
-/// Workspace-relative checker inputs: every dep-info prerequisite inside `workspace_root`, the
-/// nearest `Cargo.toml` above each, and the workspace's `Cargo.toml`, `Cargo.lock` and
-/// `rust-toolchain.toml` where they exist.
+/// Workspace-relative checker inputs: every dep-info prerequisite inside `workspace_root` and the
+/// nearest `Cargo.toml` above each.
 pub(crate) fn checker_input_paths(prerequisites: &[String], workspace_root: &Path) -> Vec<String> {
     let mut inputs: BTreeSet<String> = BTreeSet::new();
     let mut manifests: BTreeSet<PathBuf> = BTreeSet::new();
@@ -105,12 +106,6 @@ pub(crate) fn checker_input_paths(prerequisites: &[String], workspace_root: &Pat
                 break;
             }
             dir = d.parent();
-        }
-    }
-    for name in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
-        let p = workspace_root.join(name);
-        if p.is_file() {
-            manifests.insert(p);
         }
     }
     for manifest in manifests {
@@ -467,12 +462,17 @@ mod tests {
             a.to_string_lossy().to_string(),
             "crate/src/relative_helper.rs".to_string(),
             "/registry/serde/src/lib.rs".to_string(),
+            root.join("Cargo.lock").to_string_lossy().to_string(),
+            root.join(".cargo/config.toml")
+                .to_string_lossy()
+                .to_string(),
         ];
         let inputs = checker_input_paths(&prerequisites, &root);
         assert!(inputs.contains(&"crate/src/infer_helper.rs".to_string()));
         assert!(inputs.contains(&"crate/src/relative_helper.rs".to_string()));
         assert!(inputs.contains(&"crate/Cargo.toml".to_string()));
         assert!(inputs.contains(&"Cargo.lock".to_string()));
+        assert!(inputs.contains(&".cargo/config.toml".to_string()));
         assert!(!inputs.iter().any(|p| p.contains("serde")));
         let _ = std::fs::remove_dir_all(&root);
     }

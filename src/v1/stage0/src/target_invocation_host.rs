@@ -2790,13 +2790,15 @@ pub fn classify_binary_inputs(
         }
         // Only NotFound is `Missing`; any other stat failure (permission, I/O) is a reading we
         // could not take, which refuses with its own cause rather than a wrong label (review 74474).
-        let classified = match std::fs::metadata(input).and_then(|m| m.modified()) {
+        let classified = match std::fs::metadata(input) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 BinaryInput::Missing(input.clone())
             }
             Err(e) => return Err(format!("cannot stat dep-info input {input}: {e}")),
-            Ok(modified) if modified > built_at => BinaryInput::Newer(input.clone()),
-            Ok(_) => BinaryInput::NotNewer(input.clone()),
+            Ok(meta) => match changed_since(std::path::Path::new(input), &meta, built_at)? {
+                Some(changed) => BinaryInput::Newer(changed.display().to_string()),
+                None => BinaryInput::NotNewer(input.clone()),
+            },
         };
         let classified = match (&classified, input.strip_prefix(&root_prefix)) {
             (BinaryInput::NotNewer(_), Some(relative)) if built_elsewhere => {
@@ -2807,6 +2809,36 @@ pub fn classify_binary_inputs(
         out.push(classified);
     }
     Ok(out)
+}
+
+fn changed_since(
+    path: &std::path::Path,
+    meta: &std::fs::Metadata,
+    built_at: std::time::SystemTime,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let newer = |p: &std::path::Path, m: &std::fs::Metadata| {
+        m.modified()
+            .map(|modified| modified > built_at)
+            .map_err(|e| format!("cannot stat dep-info input {}: {e}", p.display()))
+    };
+    let mut changed_dir = None;
+    if meta.is_dir() {
+        for (relative, is_dir) in tree_entries(path)? {
+            let full = path.join(&relative);
+            let entry = std::fs::metadata(&full)
+                .map_err(|e| format!("cannot stat {}: {e}", full.display()))?;
+            if newer(&full, &entry)? {
+                if !is_dir {
+                    return Ok(Some(full));
+                }
+                changed_dir.get_or_insert(full);
+            }
+        }
+    }
+    if changed_dir.is_none() && newer(path, meta)? {
+        changed_dir = Some(path.to_path_buf());
+    }
+    Ok(changed_dir)
 }
 
 fn input_against_this_checkout(
@@ -2864,9 +2896,10 @@ fn input_content(path: &std::path::Path) -> Result<Option<InputContent>, String>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(unreadable(e)),
         Ok(meta) if meta.is_dir() => {
-            let mut files = Vec::new();
-            tree_files(path, std::path::Path::new(""), &mut files)?;
-            files.sort();
+            let files: Vec<std::path::PathBuf> = tree_entries(path)?
+                .into_iter()
+                .filter_map(|(relative, is_dir)| (!is_dir).then_some(relative))
+                .collect();
             let mut tree = Vec::with_capacity(files.len());
             for relative in files {
                 let full = path.join(&relative);
@@ -2882,27 +2915,27 @@ fn input_content(path: &std::path::Path) -> Result<Option<InputContent>, String>
     }
 }
 
-fn tree_files(
-    root: &std::path::Path,
-    relative: &std::path::Path,
-    out: &mut Vec<std::path::PathBuf>,
-) -> Result<(), String> {
-    let dir = root.join(relative);
-    let entries =
-        std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
-        let child = relative.join(entry.file_name());
-        let kind = entry
-            .file_type()
-            .map_err(|e| format!("cannot stat {}: {e}", root.join(&child).display()))?;
-        if kind.is_dir() {
-            tree_files(root, &child, out)?;
-        } else {
-            out.push(child);
+fn tree_entries(root: &std::path::Path) -> Result<Vec<(std::path::PathBuf, bool)>, String> {
+    let mut out = Vec::new();
+    let mut pending = vec![std::path::PathBuf::new()];
+    while let Some(relative) = pending.pop() {
+        let dir = root.join(&relative);
+        let entries =
+            std::fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+            let child = relative.join(entry.file_name());
+            let kind = entry
+                .file_type()
+                .map_err(|e| format!("cannot stat {}: {e}", root.join(&child).display()))?;
+            if kind.is_dir() {
+                pending.push(child.clone());
+            }
+            out.push((child, kind.is_dir()));
         }
     }
-    Ok(())
+    out.sort();
+    Ok(out)
 }
 
 /// THE ANCHOR IS WHEN COMPILATION STARTED, NOT WHEN THE BINARY WAS LINKED. An input edited after
@@ -5242,7 +5275,10 @@ mod binary_freshness_tests {
             BinaryFreshness::Stale { input, .. } => {
                 assert_eq!(
                     input,
-                    edited.join("src/v1/stage0/src/lib.rs").display().to_string()
+                    edited
+                        .join("src/v1/stage0/src/lib.rs")
+                        .display()
+                        .to_string()
                 )
             }
             other => panic!("{other:?}"),
@@ -5253,7 +5289,10 @@ mod binary_freshness_tests {
             BinaryFreshness::Stale { input, .. } => {
                 assert_eq!(
                     input,
-                    added.join("src/v1/stage0/src/extra.rs").display().to_string()
+                    added
+                        .join("src/v1/stage0/src/extra.rs")
+                        .display()
+                        .to_string()
                 )
             }
             other => panic!("{other:?}"),
@@ -5272,6 +5311,143 @@ mod binary_freshness_tests {
                 );
                 assert!(why.contains("changed after"), "{why}");
             }
+            other => panic!("{other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_workspace_build_file_that_differs_from_this_checkout_is_stale() {
+        let dir = std::env::temp_dir().join(format!("freshness-manifest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let checkout = |name: &str, overflow_checks: &str, jobs: &str| {
+            let root = dir.join(name);
+            std::fs::create_dir_all(root.join("src/v1/stage0/src")).unwrap();
+            std::fs::create_dir_all(root.join(".cargo")).unwrap();
+            std::fs::write(
+                root.join("Cargo.toml"),
+                format!("[profile.release]\noverflow-checks = {overflow_checks}\n"),
+            )
+            .unwrap();
+            std::fs::write(root.join("Cargo.lock"), "version = 4\n").unwrap();
+            std::fs::write(
+                root.join(".cargo/config.toml"),
+                format!("[build]\njobs = {jobs}\n"),
+            )
+            .unwrap();
+            std::fs::write(root.join("src/v1/stage0/Cargo.toml"), "[package]").unwrap();
+            std::fs::write(root.join("src/v1/stage0/src/lib.rs"), "fn a() {}").unwrap();
+            root
+        };
+        let built = checkout("built", "true", "2");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let built_at = std::time::SystemTime::now();
+        let inputs: Vec<String> = [
+            "src/v1/stage0/Cargo.toml",
+            "src/v1/stage0/src",
+            "Cargo.toml",
+            "Cargo.lock",
+            ".cargo/config.toml",
+        ]
+        .iter()
+        .map(|relative| built.join(relative).display().to_string())
+        .collect();
+        let verdict = |workspace: &std::path::Path| {
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "bin".into(),
+                inputs: classify_binary_inputs(&inputs, workspace, built_at).unwrap(),
+            })
+        };
+        assert!(matches!(
+            verdict(&checkout("same", "true", "2")),
+            BinaryFreshness::Fresh { inputs: 5, .. }
+        ));
+        let wrapping = checkout("wrapping", "false", "2");
+        match verdict(&wrapping) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(input, wrapping.join("Cargo.toml").display().to_string());
+                assert!(why.contains("another checkout"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let configured = checkout("configured", "true", "4");
+        match verdict(&configured) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(
+                input,
+                configured.join(".cargo/config.toml").display().to_string()
+            ),
+            other => panic!("{other:?}"),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(
+            built.join("Cargo.toml"),
+            "[profile.release]\noverflow-checks = false\n",
+        )
+        .unwrap();
+        match verdict(&built) {
+            BinaryFreshness::Stale { input, why, .. } => {
+                assert_eq!(input, built.join("Cargo.toml").display().to_string());
+                assert!(why.contains("changed after"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_change_below_a_watched_directory_is_stale_at_any_depth() {
+        let dir = std::env::temp_dir().join(format!("freshness-nested-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let checkout = |name: &str| {
+            let root = dir.join(name);
+            std::fs::create_dir_all(root.join("src/v1/stage0/src/cli_run")).unwrap();
+            std::fs::write(root.join("src/v1/stage0/Cargo.toml"), "[package]").unwrap();
+            std::fs::write(root.join("src/v1/stage0/src/cli_run/a.rs"), "fn a() {}").unwrap();
+            root
+        };
+        let built = checkout("built");
+        let here = checkout("here");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let built_at = std::time::SystemTime::now();
+        let inputs = vec![
+            built.join("src/v1/stage0/Cargo.toml").display().to_string(),
+            built.join("src/v1/stage0/src").display().to_string(),
+        ];
+        let verdict = |workspace: &std::path::Path| {
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "bin".into(),
+                inputs: classify_binary_inputs(&inputs, workspace, built_at).unwrap(),
+            })
+        };
+        assert!(matches!(
+            verdict(&here),
+            BinaryFreshness::Fresh { inputs: 2, .. }
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        for root in [&built, &here] {
+            std::fs::write(root.join("src/v1/stage0/src/cli_run/invalid.rs"), "fn (").unwrap();
+        }
+        let added = built.join("src/v1/stage0/src/cli_run/invalid.rs");
+        for workspace in [&here, &built] {
+            match verdict(workspace) {
+                BinaryFreshness::Stale { input, why, .. } => {
+                    assert_eq!(input, added.display().to_string());
+                    assert!(why.contains("changed after"), "{why}");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        for root in [&built, &here] {
+            std::fs::remove_file(root.join("src/v1/stage0/src/cli_run/invalid.rs")).unwrap();
+        }
+        match verdict(&here) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(
+                input,
+                built
+                    .join("src/v1/stage0/src/cli_run")
+                    .display()
+                    .to_string()
+            ),
             other => panic!("{other:?}"),
         }
         let _ = std::fs::remove_dir_all(&dir);
