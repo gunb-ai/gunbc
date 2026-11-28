@@ -78,3 +78,43 @@ test fn a_same_module_census_callee_completes() -> Bool {
 test fn a_import_listed_census_callee_completes() -> Bool {
   completed_without_blocking(o: run_two(decoy: im_decoy, probe: im_probe))
 }
+
+// ANCESTOR GATE MEMBER - the one member that can make a census hit observable.
+// The caller lives UNDER its declarer (module cfx.pc declares, cfx.pc.child calls) and imports
+// NOTHING. Two independent consequences, both read from source rather than assumed:
+//   1. func_env_declared_func_sig MISSES with certainty. Under the namespace-only policy
+//      (v1_rt.rs:164, production default Cell::new(true)) a bare callee is found through
+//      parent_closure_callable_candidates (v1_compiler_infer_sigs.rs:321), which folds over
+//      env.parents - the IMPORT graph, not the module path. With no import there is no parent to
+//      fold, so the arm is entered and entry_D=1 is not in question.
+//   2. The census gate then PASSES on the ancestor disjunct ALONE
+//      (v1/04_env.dag:1124-:1129 - segment_lcp_len(declarer_segs, caller_segs) == count(declarer_segs)
+//      gives segment_lcp_len(["cfx","pc"], ["cfx","pc","child"]) == 2 == 2), with the import-listing
+//      alternative never needed.
+// So this is the only member of the family where a census answer is reachable: a census hit on
+// census_exit_anc_qv71 means the outer declaration DID enter symbol_index.global_bare and the None
+// came from reaching borrowed_census_decl (v1/04_lookup.dag:567) with the gate satisfied - a
+// silencing, cause (ii). census=0 with entry_D=1 and the gate satisfied by this construction means
+// the declaration never entered symbol_index.global_bare at all - cause (i).
+// The callee returns String, NOT the union, deliberately: a union return would force the child to
+// import the declarer's type, an import would make the declarer an env.parent, and func_env would
+// then resolve the callee before the arm is entered - which is exactly why
+// a_same_module_census_callee_completes was measured blind. This member discriminates pool
+// membership ONLY; it is not a red replication and must not be cited as one.
+data anc_decoy: String = "module cfx.pc\n\nfn census_exit_anc_qv71(reason: String) -> String {\n  reason\n}\n"
+
+data anc_probe: String = "module cfx.pc.child\n\nfn pick(flag: Bool) -> String {\n  if flag { \"a\" } else { census_exit_anc_qv71(\"b\") }\n}\n"
+
+fn run_ancestor(parent: String, child: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "cfx_pc.dag", content: parent),
+      fixture_source(path: "cfx_pc_child.dag", content: child)
+    ],
+    entry: "cfx_pc_child.dag"
+  })
+}
+
+test fn a_ancestor_scoped_census_callee_completes() -> Bool {
+  completed_without_blocking(o: run_ancestor(parent: anc_decoy, child: anc_probe))
+}
