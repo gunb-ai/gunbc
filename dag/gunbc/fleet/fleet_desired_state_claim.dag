@@ -1,16 +1,16 @@
 module gunbc.fleet.fleet_desired_state_claim
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.list { distinct_by_key }
+import std.optional { Absent, Present }
 import std.measure { ByteSize }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthExpectation, HostTruthDeclared,
-  HostTruthVerdict, HostTruthRefused, TruthDuplicateExpectation,
+  HostTruthVerdict,
   TruthSize, TruthCount, TruthMarking, TruthUnbounded,
   TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
   TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
-  host_truth_axes_match, host_truth_axis_rule, fleet_host_truth_verdict_for_host,
+  fleet_host_truth_verdict_for_host,
 }
 
 // THE MODEL SIDE OF fleet-truth-follows-the-machine: what the repository CLAIMS about a host,
@@ -29,145 +29,172 @@ import gunbc.fleet.fleet_host_truth_read {
 // in (gunbc.design_argument::epistemic_humility). Per gunbc.design_argument::fail_closed, a host
 // with no current read is refused, never admitted on the model alone.
 
-// THE FIVE CLAIMS, each a distinct arm of one sum. One sum rather than five records is what stops
-// an arm losing its axis: the axis is the CONSTRUCTOR, so a claim drifted onto the wrong axis
-// cannot be written at all. There is deliberately NO host field on an arm: a claim is about a host,
-// and the host is supplied ONCE at the seam (desired_state_follows_the_machine), so the state where
-// a caller judges one host using another host's claims is unwritable rather than detectable after
-// the fact (gunbc.design_argument::fail_closed -- stronger than catching a wrong state is making
-// it unwritable). declared_by is carried in, supplied by whoever builds the claim, and used only as
-// refusal TEXT, never as a model decision: an English string naming a module as data would be a
-// second, stale-able source of truth about where things live
+// THE FIVE CLAIMS, one type per axis. The carrier below holds AT MOST ONE claim of each type, so
+// the axis is fixed by the FIELD'S TYPE: a claim drifted onto another axis cannot be written, and
+// two claims on one axis cannot be written EITHER (see model_claims_axes_present). That is
+// construction rather than validation -- gunbc.design_argument::earliest_unjustified_boundary names
+// "validation where construction was available" as the tell of a second authority, and a detector
+// here for a doubled axis would be exactly that: the read module ALONE decides duplicate-declaration
+// (gunbc.fleet.fleet_host_truth_read::TruthDuplicateExpectation), and the comparison it pairs
+// against keys on (host, axis) only, so two claims on one axis would be judged against whichever
+// read sat on that axis -- a NIC count judged against a GPU count, a plausible answer fabricated out
+// of the wrong evidence (gunbc.design_argument::fail_closed).
+// There is deliberately NO host field on a claim: a claim is about a host, and the host is supplied
+// ONCE at the seam, so the state where a caller judges one host using another host's claims is
+// unwritable rather than detectable after the fact. declared_by is carried in, supplied by whoever
+// builds the claim, and used only as refusal TEXT, never as a model decision: an English string
+// naming a module as data would be a second, stale-able source of truth about where things live
 // (gunbc.design_argument::single_authority, source_annotations).
-type ModelAxisClaim
-  = EnumeratedHardware { device_class: String, count: Nat, declared_by: String }
-  | EnabledUnits { unit: String, hardware_enumerates: Bool, declared_by: String }
-  | HostKey { enrolled_fingerprint: String, declared_by: String }
-  | LeafCap { role: String, working_set: ByteSize, declared_by: String }
-  | SwapBacking { slot: String, backing: HostTruthValue, declared_by: String }
+type EnumeratedHardwareClaim { device_class: String, count: Nat, declared_by: String }
+type EnabledUnitsClaim { unit: String, hardware_enumerates: Bool, declared_by: String }
+type HostKeyClaim { enrolled_fingerprint: String, declared_by: String }
+type LeafCapClaim { role: String, working_set: ByteSize, declared_by: String }
+type SwapBackingClaim { slot: String, backing: HostTruthValue, declared_by: String }
 
-// THE AXIS IS READ BACK OFF THE CONSTRUCTOR, never carried as a free label that could disagree
-// with the value beside it.
-fn model_claim_axis(claim: ModelAxisClaim) -> HostTruthAxis {
-  match claim {
-    EnumeratedHardware { device_class: _, count: _, declared_by: _ } => TruthDeclaredHardwareEnumerates
-    EnabledUnits { unit: _, hardware_enumerates: _, declared_by: _ } => TruthEnabledUnitHasItsHardware
-    HostKey { enrolled_fingerprint: _, declared_by: _ } => TruthIdentityAnchoredNotAddressed
-    LeafCap { role: _, working_set: _, declared_by: _ } => TruthCapBindsDeclaredWorkingSet
-    SwapBacking { slot: _, backing: _, declared_by: _ } => TruthSlotSwapBackingDeclared
-  }
+// THE CLAIM SET. Each axis is OPTIONAL and appears at most once, which is what makes the fleet's
+// doubled-axis specimen (a host claiming four GPUs AND two NICs on one hardware axis) unstatable
+// until the read module's comparison carries the device qualifier itself -- the pairing key is
+// (host, axis) with no qualifier slot, so a qualifier carried only inside a value would not survive
+// it (gunbc.design_argument::fail_closed -- shape that cannot survive its consumer is not carried).
+// The absence is recorded, not hidden: a consumer that needs the doubled specimen sees this type.
+type ModelClaims {
+  hardware: EnumeratedHardwareClaim?,
+  units: EnabledUnitsClaim?,
+  identity: HostKeyClaim?,
+  cap: LeafCapClaim?,
+  swap: SwapBackingClaim?,
 }
 
-// THE MARKING FORM HAS ONE AUTHORITY: this function. The identity and enabled-unit axes relate MARKINGS
-// (a fingerprint is a marking; a unit's state is a marking), so what the model must not do is write an
-// English sentence here and let the read side write its own -- two places independently deciding a string
-// is a fork, and a wording difference would then read as a drift that never happened
-// (gunbc.design_argument::single_authority). So the marking is a canonical projection of the typed parts
-// the claim holds: the unit AND the Bool it carries, both visible in the token, neither lost in phrasing.
-// The read-side producer owed by row fleet-truth-per-host-read imports THIS function rather than restating
-// it; that no producer exists yet is the frontier named in gunbc.fleet.fleet_host_truth_observe, where the
-// enabled-unit read is a typed refusal today.
+// A unit is compared against whether its hardware ENUMERATES, which is a Bool. The read module relates
+// that axis by EQUALITY over the marking text
+// (gunbc.fleet.fleet_host_truth_read::host_truth_answer_against_declaration), so the spelling IS what is
+// compared: the marking must have exactly ONE author -- this function, used by BOTH the model side and the
+// witness that plants the drift. Prose written by hand at each call site turns a model-vs-read question
+// into a spelling question, and two authors of one representation is a fork
+// (gunbc.design_argument::single_authority); the drift this row exists to catch would then be found by
+// collision, or not at all.
+// TODO fleet-truth-follows-the-machine (owed to the read module, not this row's to edit): carry the
+// unit and the Bool as a typed HostTruthValue arm instead of a string, so "hardware_enumerates" is a
+// model-vs-read judgement and never a spelling.
 fn enabled_unit_marking(unit: String, hardware_enumerates: Bool) -> String {
-  let state = if hardware_enumerates { "enumerating" } else { "absent" }
-  "unit=" + unit + ";hardware_enumerates=" + state
+  "unit=" + unit
+    + ";hardware_enumerates="
+    + (if hardware_enumerates { "enumerating" } else { "absent" })
 }
 
-// THE VALUE THE MODEL CLAIMS, in the shape the read's axis relates (a count, a size, a marking).
-// The value is SUPPLIED by whoever holds the fact; this module never states one.
-fn model_claim_value(claim: ModelAxisClaim) -> HostTruthValue {
-  match claim {
-    EnumeratedHardware { device_class: _, count: c, declared_by: _ } => TruthCount { count: c }
-    EnabledUnits { unit: u, hardware_enumerates: e, declared_by: _ } => TruthMarking { text: enabled_unit_marking(unit: u, hardware_enumerates: e) }
-    HostKey { enrolled_fingerprint: f, declared_by: _ } => TruthMarking { text: f }
-    LeafCap { role: _, working_set: w, declared_by: _ } => TruthSize { size: w }
-    SwapBacking { slot: _, backing: b, declared_by: _ } => b
-  }
-}
-
-fn model_claim_declared_by(claim: ModelAxisClaim) -> String {
-  match claim {
-    EnumeratedHardware { device_class: _, count: _, declared_by: d } => d
-    EnabledUnits { unit: _, hardware_enumerates: _, declared_by: d } => d
-    HostKey { enrolled_fingerprint: _, declared_by: d } => d
-    LeafCap { role: _, working_set: _, declared_by: d } => d
-    SwapBacking { slot: _, backing: _, declared_by: d } => d
-  }
-}
-
-// A claim becomes an expectation against the ONE host the seam is judging.
-fn model_claim_expectation(host: NonEmptyStr, claim: ModelAxisClaim) -> HostTruthExpectation {
+// One claim, the expectation it declares. The axis is named by the FUNCTION, which the claim's type
+// selects -- there is no path from a claim to another axis.
+fn enumerated_hardware_claim_expectation(host: NonEmptyStr, claim: EnumeratedHardwareClaim) -> HostTruthExpectation {
   HostTruthDeclared {
     host: host,
-    axis: model_claim_axis(claim: claim),
-    expected: model_claim_value(claim: claim),
-    declared_by: model_claim_declared_by(claim: claim),
+    axis: TruthDeclaredHardwareEnumerates,
+    expected: TruthCount { count: claim.count },
+    declared_by: claim.declared_by,
   }
 }
 
-// THE VERDICT IS NOT RE-INVENTED HERE. The read module already owns the four-arm verdict
-// (gunbc.fleet.fleet_host_truth_read::HostTruthVerdict: Follows/Diverges/Refused/NothingRead), and
-// its Diverges/Refused arms carry the typed List<HostTruthComparison>, each comparison holding its
-// HostTruthAxis plus the observed/expected values. Re-declaring that sum here would fork it
-// (gunbc.design_argument::single_authority) and, worse, would flatten the typed axis to a string at
-// the model boundary -- a consumer could then only grep prose to find which axis broke. So this row
-// returns HostTruthVerdict directly. (gunbc.design_argument::minimize_redundancy: net concepts must
-// not grow by re-invention.) The handback's "saying which arm diverges" is satisfied because a
-// consumer matches the divergences on HostTruthAxis, or reads them aloud with the read module's own
-// host_truth_divergence_locator -- neither of which has to re-derive the axis from text.
-
-// THE SEAM. One host (supplied once), the model's claims about it, and the reads of that host. The
-// read module decides (fleet_host_truth_verdict_for_host); this row's whole job is to turn the typed
-// claims into expectations and hand them to that decision, returning its verdict unchanged. It does
-// NOT admit -- admission is decided generically by fleet_truth_admits_host in the read module. A
-// consumer that must say WHICH arm diverged matches the verdict's divergences/refusals on
-// HostTruthAxis (each comparison carries it), or reads them aloud with host_truth_divergence_locator.
-// CONSUMED BY a named later change: row fleet-truth-rosters-consume-the-read calls this to gate the
-// remote-build and serving rosters -- the declared frontier, its trigger being that row's dispatch.
-// HOW MANY CLAIMS COVER ONE AXIS FOR THIS HOST. The read pairs a declaration to a read by (host, axis),
-// because that is the grain the read answers at: one value per host per axis. A claim carries a qualifier
-// the value cannot always hold -- device_class on a count, role on a size, slot on a backing -- so two
-// claims landing on the same axis become two expectations the fold CANNOT tell apart. It would then
-// compare EACH of them against the one read on that axis and, because Diverges outranks Refused, report a
-// divergence the machine never showed: the fold silently choosing between two authorities the model never
-// ranked. That is the report's tier 4 wearing the model's own clothes
-// (gunbc.design_argument::declared_intent -- a choice between materially different meanings must come from
-// a declared authority; gunbc.design_argument::fail_closed -- guessing here is a fabricated finding, and a
-// fabricated divergence is not a safe direction to err). So the qualifier is never silently dropped: it
-// either rides the marking (the unit axes, where the marking IS the fact) or a claim set that collides on
-// one axis is refused before a single comparison is attempted, in the read module's own words for it.
-fn model_claim_count_on_axis(claims: List<ModelAxisClaim>, axis: HostTruthAxis) -> Int {
-  claims.filter(claim => host_truth_axes_match(left: model_claim_axis(claim: claim), right: axis)).length()
-}
-
-fn model_claim_axes_declared_more_than_once(claims: List<ModelAxisClaim>) -> List<HostTruthAxis> {
-  let axes = claims.map(claim => model_claim_axis(claim: claim))
-  let colliding = axes.filter(axis => model_claim_count_on_axis(claims: claims, axis: axis) > 1)
-  distinct_by_key(xs: colliding, key: fn(axis) { host_truth_axis_rule(axis: axis) })
-}
-
-fn desired_state_follows_the_machine(host: NonEmptyStr, claims: List<ModelAxisClaim>, reads: List<HostTruthRead>) -> HostTruthVerdict {
-  let colliding = model_claim_axes_declared_more_than_once(claims: claims)
-  if colliding.length() > 0 {
-    // Refused, not adjudicated, and named per axis with the count: the model has two claims for one fact
-    // this axis answers once. The arm below is the read module's OWN word for that state, not a new one
-    // (gunbc.design_argument::minimize_redundancy).
-    HostTruthRefused {
-      host: host,
-      refusals: colliding.map(axis => TruthDuplicateExpectation {
-        host: host,
-        axis: axis,
-        declaration_count: model_claim_count_on_axis(claims: claims, axis: axis),
-      }),
-    }
-  } else {
-    let expectations = claims.map(claim => model_claim_expectation(host: host, claim: claim))
-    fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations)
+fn enabled_units_claim_expectation(host: NonEmptyStr, claim: EnabledUnitsClaim) -> HostTruthExpectation {
+  HostTruthDeclared {
+    host: host,
+    axis: TruthEnabledUnitHasItsHardware,
+    expected: TruthMarking { text: enabled_unit_marking(unit: claim.unit, hardware_enumerates: claim.hardware_enumerates) },
+    declared_by: claim.declared_by,
   }
 }
 
-// THE OWED CHANGE, NAMED RATHER THAN WORKED AROUND: refusing a colliding claim set is correct but not the
-// end of it. A host really can enumerate four GPUs AND two NICs, and today the model cannot SAY that,
-// because the read pairs by (host, axis) and the expectation carries no qualifier. Unlocking it is a change
-// to gunbc.fleet.fleet_host_truth_read (pairing on host, axis AND the qualifier) -- another row's bytes
-// (row fleet-truth-per-host-read), so it goes to the lane manager as a standing change, and this row
-// refuses in the meantime rather than inventing a key the read cannot answer.
+fn host_key_claim_expectation(host: NonEmptyStr, claim: HostKeyClaim) -> HostTruthExpectation {
+  HostTruthDeclared {
+    host: host,
+    axis: TruthIdentityAnchoredNotAddressed,
+    expected: TruthMarking { text: claim.enrolled_fingerprint },
+    declared_by: claim.declared_by,
+  }
+}
+
+fn leaf_cap_claim_expectation(host: NonEmptyStr, claim: LeafCapClaim) -> HostTruthExpectation {
+  HostTruthDeclared {
+    host: host,
+    axis: TruthCapBindsDeclaredWorkingSet,
+    expected: TruthSize { size: claim.working_set },
+    declared_by: claim.declared_by,
+  }
+}
+
+fn swap_backing_claim_expectation(host: NonEmptyStr, claim: SwapBackingClaim) -> HostTruthExpectation {
+  HostTruthDeclared {
+    host: host,
+    axis: TruthSlotSwapBackingDeclared,
+    expected: claim.backing,
+    declared_by: claim.declared_by,
+  }
+}
+
+// Every claim present in the set, as the expectations the read compares. Unread axes stay absent
+// rather than becoming false (gunbc.design_argument::epistemic_humility); the read module's own
+// undeclared / nothing-read arms carry that (row fleet-truth-per-host-read).
+fn model_claims_expectations(host: NonEmptyStr, claims: ModelClaims) -> List<HostTruthExpectation> {
+  [match claims.hardware {
+     Absent => []
+     Present { value: claim } => [enumerated_hardware_claim_expectation(host: host, claim: claim)]
+   },
+   match claims.units {
+     Absent => []
+     Present { value: claim } => [enabled_units_claim_expectation(host: host, claim: claim)]
+   },
+   match claims.identity {
+     Absent => []
+     Present { value: claim } => [host_key_claim_expectation(host: host, claim: claim)]
+   },
+   match claims.cap {
+     Absent => []
+     Present { value: claim } => [leaf_cap_claim_expectation(host: host, claim: claim)]
+   },
+   match claims.swap {
+     Absent => []
+     Present { value: claim } => [swap_backing_claim_expectation(host: host, claim: claim)]
+   }].flat_map(each => each)
+}
+
+// The axes the set actually declares, each AT MOST ONCE -- the property the type gives and this
+// function makes readable to a witness. Five named axes at most; a doubled axis is not representable.
+fn model_claims_axes_present(claims: ModelClaims) -> List<HostTruthAxis> {
+  [match claims.hardware {
+     Absent => []
+     Present { value: _ } => [TruthDeclaredHardwareEnumerates]
+   },
+   match claims.units {
+     Absent => []
+     Present { value: _ } => [TruthEnabledUnitHasItsHardware]
+   },
+   match claims.identity {
+     Absent => []
+     Present { value: _ } => [TruthIdentityAnchoredNotAddressed]
+   },
+   match claims.cap {
+     Absent => []
+     Present { value: _ } => [TruthCapBindsDeclaredWorkingSet]
+   },
+   match claims.swap {
+     Absent => []
+     Present { value: _ } => [TruthSlotSwapBackingDeclared]
+   }].flat_map(each => each)
+}
+
+// THE JOIN A ROSTER CONSUMER CALLS: a host, its claim set, the reads of that host -- and the per-host
+// verdict the read module already computes for that (host, axis) pairing
+// (gunbc.fleet.fleet_host_truth_read::fleet_host_truth_verdict_for_host), which this passes through
+// unchanged rather than re-deciding, so one place decides what agreement, divergence and refusal
+// mean (gunbc.design_argument::single_authority). Admission itself is the read module's generic
+// predicate (fleet_truth_admits_host): ONLY Follows admits; a host with no read at all answers
+// NothingRead and is not admitted (gunbc.design_argument::fail_closed). This row's half is that the
+// claims are typed, per axis, and that the entry is one seam a consumer calls, not five.
+// TODO fleet-truth-follows-the-machine (owed to the read module, not this row's to edit): pair by
+// (host, axis, qualifier) so one device and one slot carry several claims each. While that is not
+// the case this carrier holds one claim per axis, and the doubled-axis specimen stays unstatable.
+fn desired_state_follows_the_machine(host: NonEmptyStr, claims: ModelClaims, reads: List<HostTruthRead>) -> HostTruthVerdict {
+  fleet_host_truth_verdict_for_host(
+    host: host,
+    reads: reads,
+    expectations: model_claims_expectations(host: host, claims: claims),
+  )
+}
