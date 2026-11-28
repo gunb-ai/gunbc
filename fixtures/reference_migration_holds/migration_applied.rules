@@ -1,0 +1,5 @@
+# THE SAME RULES AFTER THE APPLY ABOVE RAN: no resolve lines, because the occurrences they answered are
+# gone. The replan over the applied fixture must report zero proposed edits and hold.
+rule cite DESIGN 3 => gunbc.reference_migration_fixture_home::reference_migration_fixture_value
+rule cite DESIGN 2026 => delete sentence
+rule ref gunbc.reference_migration_fixture_home::reference_migration_fixture_other => gunbc.reference_migration_fixture_home::reference_migration_fixture_value
