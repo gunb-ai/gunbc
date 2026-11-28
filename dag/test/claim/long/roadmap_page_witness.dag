@@ -2690,8 +2690,8 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
       occurrence_count(s: h, pattern: "data-event-kind=\"result_returned\"") == 2
         && string_contains(s: h, pattern: "data-result-outcome=\"published\" data-attempt=\"feedfacefeedface\"")
         && string_contains(s: h, pattern: "<span class=\"site-avatar site-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"site-avatar-default-mark\" viewBox=\"0 0 64 64\" role=\"img\" aria-label=\"Fabric group\">")
-        && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
-        && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
+        && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to unrecognized principal")
+        && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to unrecognized principal")
         && string_contains(s: h, pattern: "issue-comment issue-publication")
   }
 }
@@ -2725,10 +2725,65 @@ test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "data-result-outcome=\"verification_failed\" data-attempt=\"feedfacefeedface\"")
-        && string_contains(s: h, pattern: "verification failed at 52c56a8: verdict validation-failed — returned to principal:google-oidc/accounts/sub-viewer")
+        && string_contains(s: h, pattern: "verification failed at 52c56a8: verdict validation-failed — returned to unrecognized principal")
         && !string_contains(s: h, pattern: "reassigned for merge")
         && !string_contains(s: h, pattern: "ready for review")
   }
+}
+
+// NO RENDERED SURFACE SHOWS A RAW PRINCIPAL IDENTIFIER (operator direction 2026-11-15, recorded as
+// gunbc.design_ruling::rendered_principals_are_never_raw). THE CONTROL, red on main: the SAME issue
+// detail render whose principals have no stored profile — srv1 lab item 12's Return To row, the
+// claimed event handed back to a principal the roster does not name, and the comment author the
+// picker shows — carries the TYPED UNDISPLAYABLE MARKER where the names belong and never spells the
+// sentence with a wire label. On main the never-blocks fallback rendered the label there, so every
+// arm below fails on its assertion (main's own witnesses pinned "reassigned for merge to
+// principal:google-oidc/accounts/sub-viewer" and "returned to principal:google-oidc/accounts/sub-viewer").
+// The reading is scoped to the main column, before the rail, so a wire identity ATTRIBUTE elsewhere
+// on the page (data-principal, data-assignee-label — the label is still the wire spelling, out of
+// this row's scope) can neither make the assertion green nor false by accident.
+test fn witness_unprofiled_principal_renders_the_undisplayable_marker_not_the_label() -> Bool {
+  match try_serialize_html_source(node: fx_issue_detail_body(
+    view: issue_detail_fixture_view(),
+    hierarchy: issue_detail_fixture_hierarchy(),
+    observation: gunbc.roadmap.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: fx_handoff_events(),
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "",
+    command_context: IssueFormContext { operation: "", csrf: "" },
+    profiles: [])) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "unrecognized principal")
+        && string_contains(s: fx_main_column_of(html: h), pattern: ">unrecognized principal</span>")
+        && string_contains(s: fx_main_column_of(html: h), pattern: "principal-undisplayable")
+        && !string_contains(s: fx_main_column_of(html: h), pattern: "reassigned for merge to principal:")
+        && !string_contains(s: fx_main_column_of(html: h), pattern: "returned to principal:")
+        && !string_contains(s: fx_main_column_of(html: h), pattern: "claimed by principal:")
+  }
+}
+
+// THE MAIN COLUMN ONLY: everything the page renders before the rail element, so an identifier that
+// belongs to the rail's own markup cannot mask a leak in the column a row is acted from (and the
+// rail is where it would hide). string_at returns "" when the delimiter is absent, which makes the
+// positive assertions below fail rather than pass vacuously.
+fn fx_main_column_of(html: String) -> String {
+  string_at(parts: split(s: html, delimiter: "<aside class=\"issue-rail\""), index: 0)
+}
+
+// THE MARKER IS ONE SPELLING FROM ONE PROJECTION: the assignee chip's avatar face and its hover
+// title both read the SAME typed arm, and neither can fall back to the label. Red on main, where the
+// same render put the wire label in the chip title and sniffed "does this name start with
+// principal:" to decide the unknown avatar — a name-shaped test for an identity-shaped fact.
+test fn witness_undisplayable_marker_has_one_spelling_across_chip_and_title() -> Bool {
+  let chip = fixture_assignee_chip_html(
+    holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() },
+    profiles: [])
+  string_contains(s: chip, pattern: "unrecognized principal")
+    && string_contains(s: chip, pattern: "no stored profile for this principal")
+    && !string_contains(s: chip, pattern: "principal:google-oidc/accounts/sub-stranger")
 }
 
 // THE CLIPPING FIX, pinned at the layout law (owner defect 2026-09-26: the slug and field labels
@@ -2933,6 +2988,19 @@ fn fixture_human_profile() -> PrincipalProfile {
   }
 }
 
+// A PROFILE THAT CANNOT NAME ITS PRINCIPAL: the record exists (it was stored at some point) and
+// carries neither a name nor an email — the second cause of the undisplayable arm.
+fn fixture_nameless_profile() -> PrincipalProfile {
+  PrincipalProfile {
+    principal: fixture_stranger_ref(),
+    name: Absent,
+    email: Absent,
+    picture: Absent,
+    updated_at: "2026-09-28T00:00:00Z",
+    source: ProfileSourceGoogleOidcLogin,
+  }
+}
+
 fn fixture_stranger_ref() -> gunbc.principal_projection.PrincipalRef {
   gunbc.principal_projection.PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-stranger" as NonEmptyStr }
 }
@@ -2947,20 +3015,42 @@ fn fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrinc
 // THE ASSIGNEE CHIP under the profile binding: a KNOWN principal (the store names them) renders
 // the email as the visible issue-assignee-text beside the chip, the title carries "name — email",
 // the initials come from the display name, and the picture resolves the avatar standing; an
-// UNKNOWN principal — an empty roster (the read failed or the store has no record) or a roster
-// naming a DIFFERENT principal — renders EXACTLY the pre-profile fallback: the chip alone with
-// the absent standing, the label title, no text span.
+// UNKNOWN principal — an empty roster (the read failed or the store has no record), a roster
+// naming a DIFFERENT principal, or a profile carrying neither a name nor an email — renders the
+// UNDISPLAYABLE ARM: the chip alone with the absent standing, the question-mark mark, and the ONE
+// marker spelling in its title. Never the wire label (gunbc.design_ruling::
+// rendered_principals_are_never_raw); on main this witness pinned "— unknown profile" beside the
+// label, which is the fallback the ruling retired.
 test fn witness_assignee_chip_renders_the_profile_identity_when_known() -> Bool {
   let known = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [fixture_human_profile()])
   let unknown = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [])
   let stranger = fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() }, profiles: [fixture_human_profile()])
+  let nameless = fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() }, profiles: [fixture_nameless_profile()])
   string_contains(s: known, pattern: "<img src=\"https://lh3.googleusercontent.com/a/fixture-picture\"")
     && string_contains(s: known, pattern: "class=\"issue-assignee-text\">viewer@gunb.ai</span>")
-    && string_contains(s: unknown, pattern: "— unknown profile")
+    && string_contains(s: unknown, pattern: "unrecognized principal")
+    && string_contains(s: unknown, pattern: "no stored profile for this principal")
+    && !string_contains(s: unknown, pattern: "principal:google-oidc/accounts/sub-viewer")
     && !string_contains(s: unknown, pattern: "issue-assignee-text")
-    && string_contains(s: stranger, pattern: "— unknown profile")
+    && string_contains(s: stranger, pattern: "unrecognized principal")
+    && string_contains(s: stranger, pattern: "no stored profile for this principal")
+    && !string_contains(s: stranger, pattern: "principal:google-oidc/accounts/sub-stranger")
     && !string_contains(s: stranger, pattern: "issue-assignee-text")
+    && string_contains(s: nameless, pattern: "unrecognized principal")
+    && string_contains(s: nameless, pattern: "the stored profile carries no name and no email")
+    && !string_contains(s: nameless, pattern: "principal:google-oidc/accounts/sub-stranger")
+}
 
+// THE SECOND UNDISPLAYABLE CAUSE, pinned beside the first: a profile THAT EXISTS but carries
+// neither a name nor an email still cannot name its principal. Its cause is its own, its marker is
+// the same one, and the line where the email would ride is not filled with the identifier.
+test fn witness_nameless_profile_renders_the_marker_and_names_its_cause() -> Bool {
+  let nameless_chip = fixture_assignee_chip_html(
+    holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() },
+    profiles: [fixture_nameless_profile()])
+  string_contains(s: nameless_chip, pattern: "unrecognized principal")
+    && string_contains(s: nameless_chip, pattern: "the stored profile carries no name and no email")
+    && !string_contains(s: nameless_chip, pattern: "principal:google-oidc/accounts/sub-stranger")
 }
 
 // THE DETAIL PAGE carries the roster on the decided row: the rail's assignee chip and the
@@ -3071,8 +3161,10 @@ test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> 
 
 // THE RAIL'S STANDING SENTENCE NAMES PRINCIPALS THE WAY THE CHIPS DO. The live rail printed
 // "claimed by principal:gunbc/workflows/fabric", an unbreakable token that ran past the 34ch rail;
-// the one ledger sentence now takes the page's display naming, so Fabric reads "Fabric" and a
-// human with a stored profile reads their name, while a principal nobody knows keeps its label.
+// the one ledger sentence now takes the page's display naming, so Fabric reads "Fabric", a human
+// with a stored profile reads their name, and a principal nobody knows reads the undisplayable
+// marker — never the wire label (gunbc.design_ruling::rendered_principals_are_never_raw; on main
+// this witness pinned "claimed by principal:google-oidc/accounts/sub-viewer").
 test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool {
   let fabric = issue_standing_text(s: NodeClaimed { by: fixture_fabric_principal(), since: "2026-09-30T15:15:48Z" }, profiles: [])
   let known = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [fixture_human_profile()])
@@ -3080,5 +3172,6 @@ test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool 
   fabric == "claimed by Fabric since 2026-09-30T15:15:48Z"
     && !string_contains(s: fabric, pattern: "principal:")
     && known == "claimed by Fixture Viewer"
-    && unknown == "claimed by principal:google-oidc/accounts/sub-viewer"
+    && unknown == "claimed by unrecognized principal"
+    && !string_contains(s: unknown, pattern: "principal:")
 }

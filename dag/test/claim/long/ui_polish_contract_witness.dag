@@ -1,5 +1,5 @@
 module test.claim.long.ui_polish_contract_witness
-import gunbc.roadmap.roadmap_page { issue_assign_action_nodes, EventPrincipalDisplay, issue_avatar_face }
+import gunbc.roadmap.roadmap_page { issue_assign_action_nodes, EventPrincipalNamed, issue_avatar_face }
 import extdeps.google.issue_tracker { AvatarResolved, AvatarAbsent }
 import gunbc.roadmap.roadmap_presentation { dependency_cycle_touches }
 import gunbc.roadmap.roadmap_authority { edge }
@@ -76,9 +76,10 @@ test fn assignee_is_one_picker_and_workflow_has_a_separate_commit() -> Bool {
     && element_count(f: form, tag_name: "button", attribute: "hidden", value: "") == 1
 }
 test fn real_photos_are_images_and_known_photo_less_people_keep_initials() -> Bool {
-  let photo = EventPrincipalDisplay { name: "Alex", detail: "fixture@example.invalid", initials: "A", avatar: AvatarResolved, picture: "https://example.invalid/avatar.png" }
-  let plain = EventPrincipalDisplay { name: "Alex", detail: "fixture@example.invalid", initials: "A", avatar: AvatarAbsent, picture: "" }
+  let photo_src = "https://example.invalid/avatar.png"
+  let photo = EventPrincipalNamed { name: "Alex", detail: Present { value: "fixture@example.invalid" }, initials: "A", avatar: AvatarResolved, picture: photo_src }
+  let plain = EventPrincipalNamed { name: "Alex", detail: Present { value: "fixture@example.invalid" }, initials: "A", avatar: AvatarAbsent, picture: "" }
   let image = Element { tag: "span", attributes: [], children: issue_avatar_face(display: photo, workflow: false) }
-  element_count(f: image, tag_name: "img", attribute: "src", value: photo.picture) == 1
+  element_count(f: image, tag_name: "img", attribute: "src", value: photo_src) == 1
     && issue_avatar_face(display: plain, workflow: false) == [FragmentText { content: "A" }]
 }

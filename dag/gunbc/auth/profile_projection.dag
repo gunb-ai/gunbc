@@ -25,8 +25,10 @@ import gunbc.auth.session { AuthenticatedSession }
 // are in hand) and the Directory source as the named later producer for principals who never
 // log in. THE PRINCIPAL STAYS THE ONLY IDENTITY: every member is presentation, and the
 // never-blocks law holds end to end — an absent, unreadable, or malformed profile never
-// refuses authentication, authorization, or rendering; the initials/principal-short-form
-// fallback renders instead. THE UPSERT IS A MERGE, never an overwrite: a login whose token
+// refuses authentication, authorization, or rendering. What rendering RENDERS for a principal no
+// profile names is no longer a short form of the identifier: gunbc.design_ruling::
+// rendered_principals_are_never_raw retired that fallback, and the display projection of
+// gunbc.roadmap.roadmap_page carries the typed undisplayable arm instead. THE UPSERT IS A MERGE, never an overwrite: a login whose token
 // omitted a member RETAINS the previously observed value (PhotoNotReturned is not
 // AccountHasNoPhoto — omission is never stored as absence), present members supersede, and
 // updated_at always advances. THE RETENTION POLICY for revoked access is a named follow-up

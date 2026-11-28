@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_serve {
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
-  serve_issue_assign_response_over,
+  serve_issue_assign_response_over, assignment_confirmation_display,
   serve_dispatch_handler_response_over,
   IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
@@ -840,7 +840,8 @@ test fn witness_human_assignment_never_dispatches() -> Bool {
     profiles: [],
   )
   r.status == 200
-    && string_contains(s: r.body, pattern: "assigned: some-node → principal:google-oidc/accounts/sub-human (event evt-1)")
+    && string_contains(s: r.body, pattern: "assigned: some-node → unrecognized principal (event evt-1)")
+    && !string_contains(s: r.body, pattern: "principal:")
     && !string_contains(s: r.body, pattern: "fabric")
     && !string_contains(s: r.body, pattern: "waiting on")
     && !string_contains(s: r.body, pattern: "session")
@@ -853,18 +854,18 @@ test fn witness_human_assignment_never_dispatches() -> Bool {
 test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> Bool {
   let blocked = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee_display: assignment_confirmation_display(assignee: fabric_workflow_principal, profiles: []),
     event_id: "evt-2",
     outcome: na(r: LaunchNotReady { missing: [GapDependencies { blockers: ["dep-a", "dep-b"] }] }),
   )
   let no_capacity = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee_display: assignment_confirmation_display(assignee: fabric_workflow_principal, profiles: []),
     event_id: "evt-3",
     outcome: na(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }),
   )
   blocked.status == 409
-    && string_contains(s: blocked.body, pattern: "assigned: some-node → principal:gunbc/workflows/fabric (event evt-2)")
+    && string_contains(s: blocked.body, pattern: "assigned: some-node → Fabric (fabric@gunb.ai) (event evt-2)")
     && string_contains(s: blocked.body, pattern: "waiting on fabric: not_ready")
     && string_contains(s: blocked.body, pattern: "prerequisites not closed: dep-a, dep-b")
     && string_contains(s: blocked.body, pattern: "the assignment stands")
@@ -880,12 +881,12 @@ test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> 
 test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee_display: assignment_confirmation_display(assignee: fabric_workflow_principal, profiles: []),
     event_id: "evt-4",
     outcome: Spawned { node_id: "some-node", session_name: "gunbc-some-node-abc", provider: "codex", launch: launch_identity_exemplar() },
   )
   r.status == 200
-    && string_contains(s: r.body, pattern: "assigned: some-node → principal:gunbc/workflows/fabric (event evt-4)")
+    && string_contains(s: r.body, pattern: "assigned: some-node → Fabric (fabric@gunb.ai) (event evt-4)")
     && string_contains(s: r.body, pattern: "fabric work request admitted: session gunbc-some-node-abc")
     && string_contains(s: r.body, pattern: "Work tab")
 }
@@ -896,7 +897,7 @@ test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
 test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee_display: assignment_confirmation_display(assignee: fabric_workflow_principal, profiles: []),
     event_id: "evt-5",
     outcome: na(r: LaunchAlreadyLive { session_name: "gunbc-some-node-abc" }),
   )

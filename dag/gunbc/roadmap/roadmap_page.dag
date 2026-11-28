@@ -40,6 +40,7 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
   fabric_workflow_principal, fabric_display_alias,
+  PrincipalUndisplayableReason, principal_undisplayable_marker, principal_undisplayable_note,
 }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap.roadmap_component { standing_chip_class }
@@ -635,8 +636,8 @@ fn issue_assign_suggestion_nodes(p: EventPrincipal, profiles: List<PrincipalProf
   ], concat(
     [ issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)) ],
     concat(
-      [ el_class("span", "issue-assign-name", [ txt(display.name) ]),
-        el_class("span", "issue-assign-email", [ txt(display.detail) ]) ],
+      [ issue_principal_name_span(class_name: "issue-assign-name", display: display),
+        el_class("span", "issue-assign-email", [ txt(event_principal_display_detail(d: display)) ]) ],
       [ el_class("span", "issue-assign-kind", [ txt(if event_principal_is_fabric(p: p) { "Group · starts a workflow run" } else { "Person" }) ]) ])))
 }
 
@@ -644,40 +645,85 @@ fn suggestion_kind_wire(p: EventPrincipal) -> String {
   if event_principal_is_fabric(p: p) { "workflow" } else { "human" }
 }
 
-// THE DISPLAY PROJECTION, what a chip or row renders: a legacy email shows its local part with
-// the legacy marker (readable history, never an identity claim); an authenticated principal shows
-// the fabric display alias for the workflow endpoint and its label for humans until the A9
-// directory binds profiles. NEVER BLOCKS: every input yields a row.
-type EventPrincipalDisplay {
-  name: String
-  detail: String
-  initials: String
-  avatar: AvatarStanding
-  picture: String
-}
+// THE DISPLAY PROJECTION, what a chip or row renders: a legacy email shows its local part with the
+// legacy marker (readable history, never an identity claim); the fabric workflow endpoint shows its
+// display alias; and a principal the program CANNOT NAME is the other arm —
+// EventPrincipalUndisplayable, rendered as the located marker. The arm replaces what this projection
+// used to render for an unnamed principal (its wire label): operator direction 2026-11-15, recorded
+// as gunbc.design_ruling::rendered_principals_are_never_raw, makes a raw principal identifier on a
+// rendered surface an error IN EVERY CASE. The label stays the wire spelling this module already
+// uses for identity (data-principal attributes, the ledger, the parse-back), and never a name.
+// NEVER BLOCKS still holds: every input yields an arm to render — for an unnamed principal that arm
+// says so, per gunbc.design_argument::fail_closed, instead of fabricating a plausible name.
+type EventPrincipalDisplay =
+    EventPrincipalNamed { name: String, detail: String?, initials: String, avatar: AvatarStanding, picture: String }
+  | EventPrincipalUndisplayable { reason: PrincipalUndisplayableReason }
 
 fn event_principal_display(p: EventPrincipal) -> EventPrincipalDisplay {
   match p {
     EventPrincipalAuthenticated { ref } =>
       if principal_ref_eq(a: ref, b: fabric_workflow_principal) {
-        EventPrincipalDisplay { name: "Fabric", detail: fabric_display_alias as String, initials: "F", avatar: AvatarAbsent, picture: "" }
+        EventPrincipalNamed { name: "Fabric", detail: Present { value: fabric_display_alias as String }, initials: "F", avatar: AvatarAbsent, picture: "" }
       } else {
-        EventPrincipalDisplay { name: principal_ref_label(p: ref), detail: principal_ref_label(p: ref), initials: principal_subject_initial(ref: ref), avatar: AvatarAbsent, picture: "" }
+        // No roster reached this call, so nothing can name the principal. That is the arm, not a
+        // second chance at the label.
+        EventPrincipalUndisplayable { reason: PrincipalHasNoStoredProfile }
       }
     LegacyEmailPrincipal { email, authentication_unestablished: _ } =>
-      EventPrincipalDisplay { name: principal_display_name_of(email: email as String), detail: join([email as String, " (legacy, unverified)"], ""), initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent, picture: "" }
+      EventPrincipalNamed { name: principal_display_name_of(email: email as String), detail: Present { value: join([email as String, " (legacy, unverified)"], "") }, initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent, picture: "" }
   }
+}
+
+// THE NAME A TEXT SITE SHOWS: the display name, or the one marker spelling. Every surface that
+// carries a principal in a sentence, a cell, a title or a sort key goes through this or through
+// issue_principal_name_span below — none composes its own fallback, which is exactly how the label
+// reached seven surfaces at once (the search the row names: git grep -n 'principal_ref_label' over
+// dag at the revision stated in the PR, inspected population the 19 non-test modules it lists).
+fn event_principal_display_name(d: EventPrincipalDisplay) -> String {
+  match d {
+    EventPrincipalNamed { name: n, detail: _, initials: _, avatar: _, picture: _ } => n
+    EventPrincipalUndisplayable { reason: _ } => principal_undisplayable_marker
+  }
+}
+
+// THE DETAIL A TEXT SITE SHOWS: the email, alias, or legacy note the projection has — or, when it
+// has none, the ONE note saying so, or for an unnamed principal the note naming why. The fact
+// itself stays typed on the arm (`detail: String?`, gunbc.design_ruling::
+// rendered_principals_are_never_raw); this is where the note is RENDERED, so no surface has to
+// compare a string to learn whether an email exists (gunbc.design_argument::
+// continuous_generalization: absence is preserved in the typing, not smuggled as a sentinel).
+fn event_principal_display_detail(d: EventPrincipalDisplay) -> String {
+  match d {
+    EventPrincipalNamed { name: _, detail: Present { value: e }, initials: _, avatar: _, picture: _ } => e
+    EventPrincipalNamed { name: _, detail: Absent, initials: _, avatar: _, picture: _ } => profile_detail_no_email_note
+    EventPrincipalUndisplayable { reason: r } => principal_undisplayable_note(reason: r)
+  }
+}
+
+// THE MARKER IS LOCATED: it renders where the name would render, in the same span, and the span
+// carries the marker class so the page styles it as the failure it is (rule
+// .principal-undisplayable in gunbc.roadmap.roadmap_style). One builder and one class spelling for
+// every named-principal slot, so "located" is never a per-site invention.
+fn event_principal_marker_class(class_name: String, d: EventPrincipalDisplay) -> String {
+  match d {
+    EventPrincipalNamed { name: _, detail: _, initials: _, avatar: _, picture: _ } => class_name
+    EventPrincipalUndisplayable { reason: _ } => join([class_name, " principal-undisplayable"], "")
+  }
+}
+
+fn issue_principal_name_span(class_name: String, display: EventPrincipalDisplay) -> Fragment {
+  el_class("span", event_principal_marker_class(class_name: class_name, d: display), [ txt(event_principal_display_name(d: display)) ])
 }
 
 // THE PROFILE-BOUND DISPLAY PROJECTION (owner ask 2026-09-28: the assignee surfaces show the
 // person's real identity — email/name and their Google photo — instead of the raw principal label
 // or a digit-derived initial). The profile store (gunbc.auth.profile_projection, bound at login
-// and read once per render entry) IS the A9 directory binding event_principal_display's fallback
-// deferred: a known principal renders the profile's name (email local part, then label, as the
-// name preference order), the email as the detail, initials from the display name, and
-// AvatarResolved when a picture was observed. THE NEVER-BLOCKS LAW HOLDS: a principal with no
-// profile in the roster — or a roster read that failed upstream and arrived empty — renders
-// EXACTLY the projection-less fallback, never a refusal.
+// and read once per render entry) IS the A9 directory binding: a known principal renders the
+// profile's name (email local part when no name was observed), the email as the detail, initials
+// from the display name, and AvatarResolved when a picture was observed. A principal with no
+// profile in the roster — or a roster read that failed upstream and arrived empty — is the
+// UNDISPLAYABLE ARM: the render still happens (the never-blocks law holds end to end), and what it
+// renders is the marker.
 fn event_principal_display_with_profile(p: EventPrincipal, profiles: List<PrincipalProfile>) -> EventPrincipalDisplay {
   match p {
     EventPrincipalAuthenticated { ref } =>
@@ -685,7 +731,7 @@ fn event_principal_display_with_profile(p: EventPrincipal, profiles: List<Princi
         event_principal_display(p: p)
       } else {
         match principal_profile_of(ref: ref, profiles: profiles) {
-          Absent => event_principal_display(p: p)
+          Absent => EventPrincipalUndisplayable { reason: PrincipalHasNoStoredProfile }
           Present { value: prof } => profile_display_projection(ref: ref, profile: prof)
         }
       }
@@ -694,15 +740,19 @@ fn event_principal_display_with_profile(p: EventPrincipal, profiles: List<Princi
 }
 
 // THE PROFILE-BOUND PROJECTION BODY: the display name decides the initials, the email rides the
-// detail, the stored picture resolves the standing.
+// detail, the stored picture resolves the standing. A profile that carries neither a name nor an
+// email cannot name its principal — that is the arm, with its own cause.
 fn profile_display_projection(ref: PrincipalRef, profile: PrincipalProfile) -> EventPrincipalDisplay {
-  let name = profile_display_name(ref: ref, profile: profile)
-  EventPrincipalDisplay {
-    name: name,
-    detail: profile_display_detail(ref: ref, profile: profile),
-    initials: avatar_initials_of(display_name: name),
-    avatar: profile_display_avatar(profile: profile),
-    picture: match profile.picture { Present { value: u } => uri_wire(uri: u) as String Absent => "" },
+  match profile_display_name(profile: profile) {
+    Absent => EventPrincipalUndisplayable { reason: PrincipalProfileCarriesNoName }
+    Present { value: n } =>
+      EventPrincipalNamed {
+        name: n,
+        detail: profile_display_detail(profile: profile),
+        initials: avatar_initials_of(display_name: n),
+        avatar: profile_display_avatar(profile: profile),
+        picture: match profile.picture { Present { value: u } => uri_wire(uri: u) as String Absent => "" },
+      }
   }
 }
 
@@ -722,22 +772,34 @@ fn principal_profile_of(ref: PrincipalRef, profiles: List<PrincipalProfile>) -> 
 }
 
 // THE NAME PREFERENCE ORDER: the profile's name, then the email's local part, then the principal
-// label — the label is the last resort, never the first choice.
-fn profile_display_name(ref: PrincipalRef, profile: PrincipalProfile) -> String {
+// name is preferred, the email local part (the profile's own projection, already trusted) is the
+// fallback, and NOTHING ELSE IS: a profile that carries neither cannot name its principal, and the
+// caller renders the undisplayable arm. It used to fall back to the wire label here too.
+// EVERY ARM CARRIES ITS OWN OPTIONAL: the join types from the arms, and the checker injects nothing
+// (gunbc.design_ruling::explicit_present_is_the_authoring_policy). The executed RED at head caught
+// the bare `n` here — per-module typecheck passed and only the closure resolve reported it, so this
+// spelling is the one the same resolve accepts elsewhere in this file (profile_display_detail).
+fn profile_display_name(profile: PrincipalProfile) -> String? {
   match profile.name {
-    Present { value: n } => n
+    Present { value: n } => Present { value: n }
     Absent => match profile.email {
-      Present { value: e } => principal_display_name_of(email: e as String)
-      Absent => principal_ref_label(p: ref)
+      Present { value: e } => Present { value: principal_display_name_of(email: e as String) }
+      Absent => none
     }
   }
 }
 
-// THE DETAIL LINE: the email when the profile observed one, else the label.
-fn profile_display_detail(ref: PrincipalRef, profile: PrincipalProfile) -> String {
+// THE DETAIL THE PROJECTION CARRIES: the email when the profile observed one, and Absent when it
+// did not. The absence stays a fact in the type — the note that says so is rendered only where a
+// line of text is built (event_principal_display_detail), and a surface that branches on whether
+// an email exists matches this, never compares note text
+// (gunbc.design_argument::continuous_generalization; review 98089).
+data profile_detail_no_email_note: String = "no stored email"
+
+fn profile_display_detail(profile: PrincipalProfile) -> String? {
   match profile.email {
-    Present { value: e } => e as String
-    Absent => principal_ref_label(p: ref)
+    Present { value: e } => Present { value: e as String }
+    Absent => none
   }
 }
 
@@ -750,13 +812,6 @@ fn profile_display_avatar(profile: PrincipalProfile) -> AvatarStanding {
   }
 }
 
-// THE PRINCIPAL'S OWN INITIAL when no profile names it: the subject's first character — a
-// deterministic placeholder, not an identity claim.
-fn principal_subject_initial(ref: PrincipalRef) -> String {
-  let sub = ref.subject as String
-  if string_length(s: sub) == 0 { "?" } else { substring(s: sub, start: 0, end: 1) }
-}
-
 fn principal_display_name_of(email: String) -> String {
   match split(s: email, delimiter: "@").first() {
     Present { value: local } => local
@@ -766,14 +821,16 @@ fn principal_display_name_of(email: String) -> String {
 
 // THE AVATAR CHIP: initials under every standing (never-blocks law); the workflow endpoint wears
 // the badge. A resolved human avatar renders the same initials chip until the /avatar realization
-// lands — the standing rides the row for the upgrade, never a block.
+// lands — the standing rides the row for the upgrade, never a block. An UNDISPLAYABLE principal
+// carries no standing and no initials: it wears the question-mark brand avatar, which is the
+// marker's non-text face, and its title says why.
 fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fragment {
   el_attrs("span", [
     attr(name: "class", value: join([
       "site-avatar",
-      if workflow { " site-avatar-workflow" } else { match display.avatar { AvatarResolved => "" AvatarAbsent => " site-avatar-default" AvatarUnread => " site-avatar-default" } },
+      if workflow { " site-avatar-workflow" } else { match display { EventPrincipalNamed { name: _, detail: _, initials: _, avatar: a, picture: _ } => match a { AvatarResolved => "" AvatarAbsent => " site-avatar-default" AvatarUnread => " site-avatar-default" }  EventPrincipalUndisplayable { reason: _ } => " site-avatar-default" } },
     ], "") ),
-    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
+    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: match display { EventPrincipalNamed { name: _, detail: _, initials: _, avatar: a, picture: _ } => a  EventPrincipalUndisplayable { reason: _ } => AvatarAbsent }) ),
     attr(name: "title", value: issue_avatar_title(display: display, workflow: workflow) ),
   ], issue_avatar_face(display: display, workflow: workflow))
 }
@@ -781,24 +838,32 @@ fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fra
 // THE CIRCLE'S FACE: absent/unread human pictures use the question-mark brand avatar;
 // resolved pictures keep their existing initials realization until the photo transport lands.
 // The Fabric workflow shows the gunb robot mark
-// (gunbc.design.brand_mark RobotMark), in the chip's own color.
+// (gunbc.design.brand_mark RobotMark), in the chip's own color. The undisplayable arm uses the
+// question-mark mark too — and the name-prefix sniff that used to detect "this name is a raw
+// label" is GONE with it, because a name can no longer be a label.
 fn issue_avatar_face(display: EventPrincipalDisplay, workflow: Bool) -> List<Fragment> {
-  if workflow { [group_avatar_svg(class_name: "site-avatar-default-mark", label: concat(display.name, " group"))] }
-  else if display.picture != "" {
-    [el_attrs("img", [attr(name: "src", value: display.picture), attr(name: "alt", value: display.name), attr(name: "referrerpolicy", value: "no-referrer")], [])]
-  } else if substring(s: display.name, start: 0, end: 10) == "principal:" {
-    [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: concat(display.name, " — unknown profile"))]
-  } else { [txt(display.initials)] }
+  match display {
+    EventPrincipalUndisplayable { reason: r } =>
+      [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: join([principal_undisplayable_marker, " — ", principal_undisplayable_note(reason: r)], ""))]
+    EventPrincipalNamed { name: n, initials: i, picture: pic, detail: _, avatar: _ } =>
+      if workflow { [group_avatar_svg(class_name: "site-avatar-default-mark", label: concat(n, " group"))] }
+      else if pic != "" {
+        [el_attrs("img", [attr(name: "src", value: pic), attr(name: "alt", value: n), attr(name: "referrerpolicy", value: "no-referrer")], [])]
+      } else { [txt(i)] }
+  }
 }
 
 // THE CIRCLE HOLDS ONLY THE INITIAL. It is a fixed 24px chip with overflow hidden, so prose placed
 // inside it is clipped ("workfl…"); the workflow kind is carried by the chip's class (its own
 // fill) and named in full in the hover title, never as text inside the circle.
 fn issue_avatar_title(display: EventPrincipalDisplay, workflow: Bool) -> String {
-  if workflow {
-    join([display.name, " — workflow · ", display.detail], "")
-  } else {
-    join([display.name, " — ", display.detail], "")
+  match display {
+    EventPrincipalNamed { name: n, detail: d, initials: _, avatar: _, picture: _ } =>
+      match d {
+        Present { value: e } => if workflow { join([n, " — workflow · ", e], "") } else { join([n, " — ", e], "") }
+        Absent => if workflow { join([n, " — workflow · ", profile_detail_no_email_note], "") } else { join([n, " — ", profile_detail_no_email_note], "") }
+      }
+    EventPrincipalUndisplayable { reason: r } => principal_undisplayable_note(reason: r)
   }
 }
 
@@ -1588,7 +1653,7 @@ fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgre
 fn issue_assignee_value(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> String {
   match issue_assignee_holder(view: view, attempts: attempts) {
     Absent => ""
-    Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).name
+    Present { value: holder } => event_principal_display_name(d: event_principal_display_with_profile(p: holder, profiles: view.profiles))
   }
 }
 
@@ -1664,7 +1729,7 @@ fn workspace_assignee_label(holder: EventPrincipal, profiles: List<PrincipalProf
     LegacyEmailPrincipal { email, authentication_unestablished: _ } => email as String
     EventPrincipalAuthenticated { ref: _ } =>
       if event_principal_is_fabric(p: holder) { fabric_display_alias as String }
-      else { event_principal_display_with_profile(p: holder, profiles: profiles).name }
+      else { event_principal_display_name(d: event_principal_display_with_profile(p: holder, profiles: profiles)) }
   }
 }
 
@@ -1688,7 +1753,7 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           Absent => [unassigned_avatar(), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
           Present { value: holder } => [
             issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder)),
-            el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
+            el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_detail(d: event_principal_display_with_profile(p: holder, profiles: view.profiles)))], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
           ]
         }) ]
     IssueColumnStatus => [el_attrs("span", [attr(name: "class", value: "issue-status site-status"), attr(name: "data-status-tone", value: status_tone(label: issue_status_label(view: view))), attr(name: "title", value: bar.signal)], [txt(issue_status_label(view: view))])]
@@ -1704,7 +1769,7 @@ fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBa
     IssueColumnTitle => view.headline
     IssueColumnAssignee => match issue_assignee_holder(view: view, attempts: []) {
       Absent => ""
-      Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).name
+      Present { value: holder } => event_principal_display_name(d: event_principal_display_with_profile(p: holder, profiles: view.profiles))
     }
     IssueColumnStatus => to_string(issue_status_sort_rank(view: view))
     IssueColumnLastModified => ""
@@ -1877,14 +1942,17 @@ fn issue_attempt_failure_nodes(events: List<FailureEvent>) -> List<Fragment> {
 // the event kind, and its payload — the durable facts a session stated on the issue (assignment
 // among them: a Claimed event IS the assignment record). Events whose recorded_at is empty (an
 // unprobed clock at write) sort oldest, honestly — absence is not a timestamp.
-fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile> = []) -> Fragment {
+fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> Fragment {
   let e = env.event
+  let display = event_principal_display_with_profile(p: e.author, profiles: profiles)
   el_attrs("div", [
     attr(name: "class", value: "issue-event-row" ),
     attr(name: "data-event-kind", value: roadmap_event_kind_word(k: e.kind) ),
   ], [
-    el_attrs("span", [attr(name: "class", value: "issue-event-author"), attr(name: "title", value: event_principal_label(p: e.author))], [txt(event_principal_display_with_profile(p: e.author, profiles: profiles).name)]),
-    el_class("span", "issue-event-text", [ txt(issue_event_text(env: env)) ]),
+    // THE AUTHOR LINE rides the display projection — it used to carry the raw label as its hover
+    // title, which is the same identifier the direction forbids, just one interaction away.
+    el_attrs("span", [attr(name: "class", value: event_principal_marker_class(class_name: "issue-event-author", d: display)), attr(name: "title", value: event_principal_display_detail(d: display))], [txt(event_principal_display_name(d: display))]),
+    el_class("span", "issue-event-text", [ txt(issue_event_text(env: env, profiles: profiles)) ]),
     el_class("span", "issue-event-at", [ txt(e.recorded_at) ]),
   ])
 }
@@ -1893,13 +1961,18 @@ fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfi
 // rendering in the page-rebuild slice). A Claimed row names its assignee: a self-claim reads as
 // claiming, a reassignment (assignee ≠ author) reads as assigned-to, so the history tells the two
 // apart without hiding who recorded the event — the author column already names them.
-fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
+fn issue_event_payload(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> String {
   match env.event.kind {
     Claimed { assignee, return_to: _ } =>
+      // The COMPARISON is wire work — two labels compared, not shown. The NAME in the sentence is
+      // display text and goes through the projection, which is where the label used to be pasted.
+      // NO DEFAULT ROSTER: an omitted roster and an empty one would be indistinguishable here, and
+      // the difference is whether a named principal shows their name or the marker
+      // (gunbc.design_argument::declared_intent) — so the caller states it.
       if event_principal_label(p: assignee) == event_principal_label(p: env.event.author) {
         "claimed the issue"
       } else {
-        join(["assigned the issue to ", event_principal_label(p: assignee)], "")
+        join(["assigned the issue to ", event_principal_display_name(d: event_principal_display_with_profile(p: assignee, profiles: profiles))], "")
       }
     Released => "released the issue"
     Progress { note } => join(["progress: ", note as String], "")
@@ -1934,8 +2007,8 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
   }
 }
 
-fn issue_event_text(env: RoadmapEventEnvelope) -> String {
-  issue_event_payload(env: env)
+fn issue_event_text(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> String {
+  issue_event_payload(env: env, profiles: profiles)
 }
 
 // The audit and last-modified projection share causal order, independent of clock skew.
@@ -2033,7 +2106,7 @@ fn issue_comment_row_node(node_id: String, comments: List<IssueComment>, c: Issu
 
 fn issue_comment_head_node(node_id: String, comments: List<IssueComment>, c: IssueComment, display: EventPrincipalDisplay) -> Fragment {
   el_class("div", "issue-comment-head", concat(
-    [ el_class("span", "issue-comment-author", [ txt(display.name) ]) ],
+    [ issue_principal_name_span(class_name: "issue-comment-author", display: display) ],
     concat(
       [ el_attrs("a", [
           attr(name: "class", value: "issue-comment-ref" ),
@@ -2042,7 +2115,7 @@ fn issue_comment_head_node(node_id: String, comments: List<IssueComment>, c: Iss
       concat(
         [ el_class("span", "issue-comment-at", [ txt(comment_time_text(c: c)) ]) ],
         concat(
-          [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ],
+          [ el_class("span", "issue-comment-detail", [ txt(event_principal_display_detail(d: display)) ]) ],
           [ el_class("span", "issue-comment-reply", [ txt(issue_comment_reply_text(comments: comments, c: c)) ]) ])))))
 }
 
@@ -2159,10 +2232,10 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
         issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: env.event.author)),
         el_class("div", "issue-comment-main", [
           el_class("div", "issue-comment-head", concat(
-            [ el_class("span", "issue-comment-author", [ txt(display.name) ]) ],
+            [ issue_principal_name_span(class_name: "issue-comment-author", display: display) ],
             concat(
               [ el_class("span", "issue-comment-at", [ txt(env.event.recorded_at) ]) ],
-              [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ]))),
+              [ el_class("span", "issue-comment-detail", [ txt(event_principal_display_detail(d: display)) ]) ]))),
           el_class("div", "issue-comment-body", [
             txt(issue_result_entry_sentence(outcome: outcome, return_to: issue_result_return_to_name(envs: envs, claim: claim, profiles: profiles))),
           ]),
@@ -2209,7 +2282,7 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
 // history this page was handed incomplete, and it says so rather than naming anyone.
 fn issue_result_return_to_name(envs: List<RoadmapEventEnvelope>, claim: RoadmapEventId, profiles: List<PrincipalProfile>) -> String {
   match roadmap_claim_return_to(envs: envs, claim: claim) {
-    Present { value: return_to } => event_principal_display_with_profile(p: return_to, profiles: profiles).name
+    Present { value: return_to } => event_principal_display_name(d: event_principal_display_with_profile(p: return_to, profiles: profiles))
     Absent => "the requester of a claim this history does not carry"
   }
 }
@@ -2548,7 +2621,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, hierarchy: IssueHierarchyView
 // THE HISTORY TAB: the raw event ledger, newest first — every durable event with its author,
 // kind, and payload. Execution evidence (attempts, rounds, the stage ledger) lives on the Work
 // tab exclusively; this tab is the audit trail.
-fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile> = []) -> List<Fragment> {
+fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile>) -> List<Fragment> {
   if count(events) == 0 { [el_class("p", "issue-panel-empty", [txt("No issue history yet.")])] } else {
     [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), env => issue_event_row_node(env: env, profiles: profiles))) ]
   }
@@ -2587,7 +2660,7 @@ fn issue_rail_rows(view: WorkRowView, hierarchy: IssueHierarchyView, attempts: L
 // by the same profile-bound display the avatar chips use ("Fabric", "Brian Searls") rather than
 // its canonical label.
 fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>) -> String {
-  roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
+  roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_name(d: event_principal_display_with_profile(p: p, profiles: profiles)) })
 }
 
 // A principal as the field list shows a person: the avatar circle, the address (the display's
@@ -2595,7 +2668,7 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
 fn issue_rail_person(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> FieldPerson {
   let display = event_principal_display_with_profile(p: holder, profiles: profiles)
   let workflow = event_principal_is_fabric(p: holder)
-  FieldPerson { face: issue_avatar_chip_node(display: display, workflow: workflow), identity: display.detail, full: Present { value: issue_avatar_title(display: display, workflow: workflow) } }
+  FieldPerson { face: issue_avatar_chip_node(display: display, workflow: workflow), identity: event_principal_display_detail(d: display), full: Present { value: issue_avatar_title(display: display, workflow: workflow) } }
 }
 
 // The current identity becomes the editor in place; closing restores the projected holder.
@@ -3428,7 +3501,7 @@ fn issue_mention_fragment(f: Fragment, profiles: List<PrincipalProfile>) -> Frag
           el_attrs("span", [attr(name: "class", value: "issue-mention"), attr(name: "tabindex", value: "0"), attr(name: "data-principal", value: principal_ref_label(p: principal))], concat(children, [
             el_class("span", "issue-profile-card", [
               issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)),
-              el("strong", [txt(display.name)]), el("span", [txt(display.detail)]),
+              el("strong", [txt(event_principal_display_name(d: display))]), el("span", [txt(event_principal_display_detail(d: display))]),
               el("small", [txt(if event_principal_is_fabric(p: p) { "Group · Fabric workflow" } else { "Person" })]),
             ]),
           ]))
@@ -3438,8 +3511,8 @@ fn issue_mention_fragment(f: Fragment, profiles: List<PrincipalProfile>) -> Frag
 fn issue_mention_option(p: PrincipalRef, profiles: List<PrincipalProfile>) -> Fragment {
   let principal = EventPrincipalAuthenticated { ref: p }
   let display = event_principal_display_with_profile(p: principal, profiles: profiles)
-  el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-choice-option"), attr(name: "data-mention-reference", value: principal_mention_markdown(principal: p, label: display.name)), attr(name: "role", value: "option"), attr(name: "aria-selected", value: "false")], [
-    issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: principal)), txt(join([display.name, " · ", display.detail], "")),
+  el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-choice-option"), attr(name: "data-mention-reference", value: principal_mention_markdown(principal: p, label: event_principal_display_name(d: display))), attr(name: "role", value: "option"), attr(name: "aria-selected", value: "false")], [
+    issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: principal)), txt(join([event_principal_display_name(d: display), " · ", event_principal_display_detail(d: display)], "")),
   ])
 }
 

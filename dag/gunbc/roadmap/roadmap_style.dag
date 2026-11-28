@@ -1120,6 +1120,15 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: TextOverflow, value: "ellipsis"),
       decl(prop: MinWidth, value: "0"),
     ] },
+    // THE UNDISPLAYABLE MARKER IS VISIBLE: the words that stand where a name should stand are set
+    // apart (dim, italic, dotted underline) so a missing identity reads as a failure at a glance
+    // and is never mistaken for a name. gunbc.design_ruling::rendered_principals_are_never_raw —
+    // the marker is the located error, so it is styled as one, not hidden behind the row.
+    StaticRule { selector: ClassSelector { name: "principal-undisplayable" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontStyle, value: "italic"),
+      decl(prop: TextDecoration, value: "underline dotted"),
+    ] },
 
     StaticRule { selector: ClassSelector { name: "issue-event-text" }, decls: [
       decl(prop: Color, value: "var(--issue-text)"),

@@ -152,6 +152,28 @@ fn principal_ref_parse_label(s: String) -> PrincipalRef? {
   }
 }
 
+// ── The display arm: a principal is named, or it is undisplayable ──────────────────────────────
+// OPERATOR DIRECTION 2026-11-15, recorded as gunbc.design_ruling::rendered_principals_are_never_raw:
+// a raw principal identifier on a RENDERED surface is an error in every case. The label above is the
+// WIRE spelling — what principal_ref_parse_label reads back, what the stores key on, what a mention
+// URI carries — and it stays exactly there. What a human-facing surface renders is decided here: the
+// surface either has a name for the principal, or the principal is UNDISPLAYABLE and the surface
+// shows the marker. There is no third arm, so no surface can reach a label by forgetting one; the
+// cannot-name case is a typed value rather than a silent fallback (gunbc.design_argument::fail_closed).
+type PrincipalUndisplayableReason = PrincipalHasNoStoredProfile | PrincipalProfileCarriesNoName
+
+// THE MARKER, one spelling for every surface: the words that go where the name would go. They name
+// the failure and carry no identifier.
+data principal_undisplayable_marker: String = "unrecognized principal"
+
+// WHY, stated once, for the tooltip a located marker carries. Two causes, one marker.
+fn principal_undisplayable_note(reason: PrincipalUndisplayableReason) -> String {
+  match reason {
+    PrincipalHasNoStoredProfile => "no stored profile for this principal"
+    PrincipalProfileCarriesNoName => "the stored profile carries no name and no email"
+  }
+}
+
 // ── The sealed human-principal mint ────────────────────────────────────────────────────────────
 // THE CONSTRUCTION WALL the directive names. The input is a VERDICT, not claims: an
 // OidcIdTokenVerdict is only produced by verify_oidc_id_token, whose first arm is the

@@ -84,6 +84,7 @@ import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason 
 import extdeps.uri { Uri, uri_wire }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
+  principal_undisplayable_marker,
 }
 import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
@@ -140,6 +141,7 @@ import gunbc.roadmap.roadmap_launch_admission {
 import gunbc.roadmap.roadmap_page { issue_detail_not_found_page,
   roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
+  event_principal_display_with_profile, EventPrincipalNamed, EventPrincipalUndisplayable,
 }
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
@@ -1454,11 +1456,13 @@ fn issue_form_has_field(body: String, name: String) -> Bool {
 // response renders what came back — admitted (the attempt renders on the Work tab), actuation
 // failure (502, the assignment stands), or the typed refusal: the issue STAYS with Fabric and the
 // body names the located waiting condition, never "assignment failed". THE CONFIRMATION NAMES THE
-// PERSON, NOT THE PRINCIPAL: the profile store is read ONCE and the assignee renders through its
-// display — "name (email)" when the store carries both, the email when only the email, the name
-// when only the name, else the principal label. THE LABEL IS THE IDENTITY, THE DISPLAY IS
-// PRESENTATION: principal_ref_label stays out of the visible text whenever a profile exists (the
-// label remains only as the no-profile fallback, where it is the only spelling known).
+// PERSON, NOT THE PRINCIPAL: the profile store is read ONCE and the assignee renders through the
+// ONE display projection of gunbc.roadmap.roadmap_page — "name (email)" when the store carries both,
+// the name alone when the profile carries no email, and the located undisplayable marker when no
+// profile names the principal at all. THE LABEL IS THE WIRE IDENTITY AND NEVER THE DISPLAY
+// (gunbc.design_ruling::rendered_principals_are_never_raw): this body used to fall back to
+// principal_ref_label for an unknown assignee, which put a raw principal identifier into a response
+// the operator reads.
 fn serve_assignment_launch_follow_through(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -1498,38 +1502,20 @@ fn serve_assignment_launch_follow_through_over(
   serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
 }
 
-// THE CONFIRMATION'S DISPLAY RESOLUTION over the read-once roster: the first profile matching the
-// assignee principal by principal_ref_eq contributes name and email; nothing known falls back to
-// the principal label.
+// THE CONFIRMATION'S DISPLAY RESOLUTION: the ONE display projection of gunbc.roadmap.roadmap_page
+// names the assignee — profile name, with the email in parentheses when the profile carries one —
+// and a principal the store cannot name renders the located marker. This function used to resolve
+// the name itself and fall back to principal_ref_label twice over: a SECOND display authority
+// beside the page's, and the second surface where a raw identifier reached a body the operator
+// reads (gunbc.design_ruling::rendered_principals_are_never_raw; gunbc.design_argument::single_authority).
 fn assignment_confirmation_display(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> String {
-  match assignment_confirmation_profile(assignee: assignee, profiles: profiles) {
-    Absent => principal_ref_label(p: assignee)
-    Present { value: p } =>
-      match p.name {
-        Present { value: n } => match p.email {
-          Present { value: e } => join([n, " (", e as String, ")"], "")
-          Absent => n
-        }
-        Absent => match p.email {
-          Present { value: e } => e as String
-          Absent => principal_ref_label(p: assignee)
-        }
+  match event_principal_display_with_profile(p: EventPrincipalAuthenticated { ref: assignee }, profiles: profiles) {
+    EventPrincipalNamed { name: n, detail: d, initials: _, avatar: _, picture: _ } =>
+      match d {
+        Present { value: e } => join([n, " (", e, ")"], "")
+        Absent => n
       }
-  }
-}
-
-// THE ROSTER WALK: the first profile whose principal equals the assignee wins. (The Present
-// binder rides the short spelling p: the binder spelling 'profile' is a named resolver failure
-// mode — gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup.)
-fn assignment_confirmation_profile(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> PrincipalProfile? {
-  match profiles.first() {
-    Absent => none
-    Present { value: p } =>
-      if principal_ref_eq(a: p.principal, b: assignee) {
-        Present { value: p }
-      } else {
-        assignment_confirmation_profile(assignee: assignee, profiles: profiles.skip(n: 1))
-      }
+    EventPrincipalUndisplayable { reason: _ } => principal_undisplayable_marker
   }
 }
 
