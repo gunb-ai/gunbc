@@ -1,0 +1,40 @@
+module gunbc.integration_concern.contract_stamp_string_return_carries_no_typed_refusal
+
+// One row of the integration-concern register. The roster derives the row from this file
+// (module gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, contract_stamp_string_return_carries_no_typed_refusal_review }
+
+data contract_stamp_string_return_carries_no_typed_refusal: IntegrationConcern = IntegrationConcern {
+  identity: "contract_stamp_string_return_carries_no_typed_refusal",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.witness.compiler_gate_contract_stamp", decl_name: "compiler_gate_contract_stamp_guard_script"),
+    requirement: "a run-step render in gunbc.witness.compiler_gate_contract_stamp that cannot render must not collapse its rejection into the __GUNBC_ORCH_EMIT_REFUSED__ token -- compiler_gate_contract_stamp_guard_script() and compiler_gate_contract_stamp_evidence_script() are String-typed and return compiler_gate_contract_stamp_emit_refused_poison / compiler_gate_contract_stamp_evidence_emit_refused_poison on a Rejected render, although an *_outcome() -> Outcome<String> variant already exists beside each. The ONLY observer keeping that token out of committed bytes is the retained !string_contains scan in test.claim.compiler_gate_contract_stamp_witness::the_generated_step_has_no_warning_arm_and_no_override_input_holds. Dissolves when both renderers carry a typed Outcome (consumers routed through the *_outcome variants), the two poison constants are deleted, and that witness scan is deleted with them -- so no contract-stamp refusal can be committed unobserved.",
+    standing: RequirementEstablished { by: contract_stamp_string_return_carries_no_typed_refusal_review },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.witness.compiler_gate_contract_stamp", decl_name: "compiler_gate_contract_stamp_guard_script"),
+    tail: [
+      decl_ref(module_path: "gunbc.witness.compiler_gate_contract_stamp", decl_name: "compiler_gate_contract_stamp_emit_refused_poison"),
+      decl_ref(module_path: "gunbc.witness.compiler_gate_contract_stamp", decl_name: "compiler_gate_contract_stamp_evidence_script"),
+      decl_ref(module_path: "gunbc.witness.compiler_gate_contract_stamp", decl_name: "compiler_gate_contract_stamp_evidence_emit_refused_poison"),
+    ],
+  },
+  question: "besides the one retained witness scan, does anything observe a poisoned render from compiler_gate_contract_stamp_guard_script() / compiler_gate_contract_stamp_evidence_script()? It does not -- the artifact boundary (gunbc.tier_o_artifact_emit) scans only the __GUNBC_INVOKE_EMIT_REFUSED__ family, and the orch cutover (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved) dissolved only v2.workflow.ci_workflow_run_emit, deliberately retaining this witness scan because THIS producer still mints the token. When these renderers return a typed Outcome and the scan is deleted together, this closes.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0495b2b19bf59d1135d075c587b630a7b1d08443",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.compiler_gate_contract_stamp_witness", decl_name: "the_generated_step_has_no_warning_arm_and_no_override_input_holds") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.witness.compiler_gate_contract_stamp", decl_name: "compiler_gate_contract_stamp_guard_script") },
+        ],
+      },
+      account: "Sighted while integrating gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved. That concern closed ONLY for v2.workflow.ci_workflow_run_emit; its witness scan the_generated_step_has_no_warning_arm_and_no_override_input_holds was deliberately RETAINED, not deleted with that producer's poison, precisely because THIS producer (compiler_gate_contract_stamp) still mints __GUNBC_ORCH_EMIT_REFUSED__. So that scan is this gap's sole observer: read it as a load-bearing guard, not a leftover, until these renderers return an Outcome. Recorded so the retained scan is not mistaken for a closed gap (guarantee_ladder: the control stays enrolled while a producer still needs it).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
