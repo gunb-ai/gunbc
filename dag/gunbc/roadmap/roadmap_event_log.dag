@@ -2727,7 +2727,7 @@ fn roadmap_leaf_in_flight_step(
     Released => roadmap_leaf_in_flight_closer(
       closing: event, rest: rest, envs: envs, held: held, closed: closed,
       pathless_claims: pathless_claims, absorbed_claims: absorbed_claims,
-      honoured: !terminal_now, acc: next,
+      honoured: false, acc: next,
     )
     HandedBack { reason: _ } => roadmap_leaf_in_flight_closer(
       closing: event, rest: rest, envs: envs, held: held, closed: closed,
