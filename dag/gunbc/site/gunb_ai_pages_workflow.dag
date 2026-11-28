@@ -181,14 +181,14 @@ fn gunb_ai_pages_bound_steps() -> List<GunbAiPagesBoundStep> {
 fn gunb_ai_pages_build_bound_steps() -> List<GunbAiPagesBoundStep> {
   [
     GunbAiPagesBoundStep { step: outcome_accepted(value: gunb_ai_pages_checkout_step()), role: capability_neutral, step_name: "Checkout" },
-    GunbAiPagesBoundStep { step: outcome_accepted(value: toolchain_home_isolation_step()), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    GunbAiPagesBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
     GunbAiPagesBoundStep {
       step: outcome_accepted(value: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
       step_name: "Install Rust toolchain",
     },
     GunbAiPagesBoundStep {
-      step: outcome_accepted(value: toolchain_pin_rustup_default_step()),
+      step: toolchain_pin_rustup_default_step(),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },

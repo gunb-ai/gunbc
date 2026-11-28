@@ -98,7 +98,13 @@ fn step_name(step: Step) -> String {
 // step list: the first step is the seed, and the checkout and the build come after it, so a run that dies
 // in the prelude still has a receipt for the always() upload to read.
 test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
-  let names = map(instrument_dispatch_steps(seed: "", guard: "", script: ""), s => step_name(step: s))
+  // A refusal of the prelude's orch steps yields no steps, so `first` reads "" and the seed-name claim
+  // fails red -- a prelude that cannot render cannot pass the receipt ordering claim by omission.
+  let steps = match instrument_dispatch_steps(seed: "", guard: "", script: "") {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => []
+  }
+  let names = map(steps, s => step_name(step: s))
   let first = fold(names, init: "", f: fn(acc, n) { if acc == "" { n } else { acc } })
   (first == instrument_dispatch_seed_step_name)
     && any(names, n => n == "Checkout")
@@ -140,7 +146,10 @@ fn step_if(step: Step) -> String {
 
 test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool {
   let t = generated_text()
-  let steps = instrument_dispatch_steps(seed: "", guard: "", script: "")
+  let steps = match instrument_dispatch_steps(seed: "", guard: "", script: "") {
+    Accepted { value: s, diagnostics: _ } => s
+    Rejected { diagnostics: _ } => []
+  }
   let names = map(steps, s => step_name(step: s))
   let guard = concat("Require the declared memory for ", render_label(l: known_red_derivation_label()))
   let bound = concat(concat("inputs.label == '", render_label(l: known_red_derivation_label())), "'")

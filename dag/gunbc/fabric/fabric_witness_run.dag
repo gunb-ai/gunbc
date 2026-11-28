@@ -37,6 +37,7 @@ import extdeps.exec.command { argv_words }
 import gunbc.action_use_admission { checkout_action, setup_rust_action }
 import extdeps.github.action_release { ActionRelease }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program }
 import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
@@ -45,6 +46,13 @@ import std.algebra { Cons, Empty, FreeSemigroup }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.github.github { Repository, github_https_clone_url }
 import gunbc.gunbc_cli_command { gunbc_test_command }
+
+// THE ORCH-EMITTED SCRIPTS (Isolate toolchain homes, Pin rustup default) carry their refusal typed off
+// v2.workflow.ci_workflow_run_emit's retyped pipeline. The fabric spec renders them into committed
+// workflow bytes, so a refusal is refused HERE as a located FabricCiOrchEmitRefused, never written as an
+// empty string that the spec's own non-empty gate would silently drop into a coordinate-missing refusal
+// -- which would hide the emitter's actual reason. No fabricated default stands where construction was
+// available (gunbc.design_argument::fail_closed; gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved).
 
 // THE EXACT BUILD-LANE WORK, NOT ANOTHER CI COMMAND.
 //
@@ -127,6 +135,11 @@ type FabricCiWorkRefusal
   = FabricCiMovingRefRefused { ref_name: NonEmptyStr }
   | FabricCiWorkingDirectoryRefused { path: NonEmptyStr }
   | FabricCiCoordinateMissing { coordinate: NonEmptyStr }
+  // An orch-emitted step script (Isolate toolchain homes, Pin rustup default, off
+  // v2.workflow.ci_workflow_run_emit's retyped pipeline) refused to render, so the checkout or toolchain
+  // coordinate has no body to carry. Refused typed here rather than written as an empty string that a
+  // downstream non-empty gate would silently drop (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved).
+  | FabricCiOrchEmitRefused { coordinate: NonEmptyStr }
 
 type FabricCiWorkBinding
   = FabricCiWorkBound {
@@ -342,13 +355,21 @@ fn bind_fabric_ci_work(
 // and run facts mirror the authorities the current Actions realization consumes; this value does
 // not make Actions execute through the fabric. FCI-3 owns that later authority cut.
 fn required_witnesses_build_work(source: FabricCiSource) -> FabricCiWorkBinding {
-  bind_fabric_ci_work(
-    principal: "gunbc",
-    spec: FabricCiExecutionSpec {
+  match ci_toolchain_home_isolation_script() {
+    Rejected { diagnostics: _ } =>
+      FabricCiWorkRefused { cause: FabricCiOrchEmitRefused { coordinate: "checkout-materialization" } }
+    Accepted { value: isolate_script, diagnostics: _ } =>
+      match ci_pin_rustup_default_script() {
+        Rejected { diagnostics: _ } =>
+          FabricCiWorkRefused { cause: FabricCiOrchEmitRefused { coordinate: "toolchain-provenance" } }
+        Accepted { value: pin_script, diagnostics: _ } =>
+          bind_fabric_ci_work(
+            principal: "gunbc",
+            spec: FabricCiExecutionSpec {
           subject: RequiredWitnessesBuild { command: build_lane_run_command() },
           source: source,
-          checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
-          toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
+          checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", isolate_script],
+          toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", pin_script],
           executable_provenance: [repo_self_build_all_bins_command(), claim_executor_program().invocation],
           environment: [
             FabricCiEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
@@ -364,8 +385,10 @@ fn required_witnesses_build_work(source: FabricCiSource) -> FabricCiWorkBinding 
           permitted_credential_refs: ["github.actions.checkout-token"],
           output_manifest: ["required-ci-phase-ledger", "required-build-lane-log"],
           terminal_result_manifest: ["required-ci-exit-status", "required-ci-terminal-summary"],
-    },
-  )
+            },
+          )
+      }
+  }
 }
 
 fn required_witnesses_build_frozen_identities(source: FabricCiSource) -> RequiredBuildFrozenIdentityProjection {

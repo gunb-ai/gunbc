@@ -496,6 +496,13 @@ data orch_emit_refusal_reaches_committed_bytes_unobserved_review: SightingEviden
   declaration: decl_ref(module_path: "test.claim.compiler_gate_contract_stamp_witness", decl_name: "the_generated_step_has_no_warning_arm_and_no_override_input_holds"),
 }
 
+// Sighting for contract_stamp_string_return_carries_no_typed_refusal: the retained !string_contains scan
+// in compiler_gate_contract_stamp_witness is the SOLE observer keeping that producer's __GUNBC_ORCH_EMIT_REFUSED__
+// poison out of committed bytes; it dissolves when those String-typed renderers return an Outcome and the scan is deleted.
+data contract_stamp_string_return_carries_no_typed_refusal_review: SightingEvidence = CitesDeclaration {
+  declaration: decl_ref(module_path: "test.claim.compiler_gate_contract_stamp_witness", decl_name: "the_generated_step_has_no_warning_arm_and_no_override_input_holds"),
+}
+
 data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = CitesDeclaration {
   declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script_for_target"),
 }

@@ -151,7 +151,12 @@ test fn w_no_projected_ledger_denies_a_lane_the_roster_requires() -> Bool {
 // RED now. WHAT RETIRES IT is carried on a typed carrier, not stated in prose here: the `gunbc.guarantee_stall`
 // record `gunbc.guarantee_stall.required_lane_materialized_workflow_stall` cross-references this row and names
 // the capability that dissolves it (gunbc.design_argument::source_annotations).
-data emitted_job_ids: List<String> = list_map(xs: compiler_gate_workflow.jobs, f: fn(j) { j.id })
+data emitted_job_ids: List<String> = match compiler_gate_workflow {
+  // Outcome<Workflow> after the run-step cutover. A refusal projects no job ids, so every rostered lane
+  // counts zero matches and the claim stays RED -- fail-closed, never green against an unrendered workflow.
+  Accepted { value: wf, diagnostics: _ } => list_map(xs: wf.jobs, f: fn(j) { j.id })
+  Rejected { diagnostics: _ } => []
+}
 
 test fn w_every_rostered_lane_appears_as_an_emitted_workflow_job() -> Bool {
   // Every job the roster declares required must exist among the jobs the emitted required workflow

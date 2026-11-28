@@ -4,7 +4,7 @@ import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, Absenc
 import std.types { Bool, Int, List, String }
 import std.algebra { list_append, list_map, length }
 import std.optional { Present }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, sequence_outcome, StageDiagnosticPolicy, ShortCircuit, diagnostics_reason_lexemes }
 import v2.std.node { Node }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
@@ -688,41 +688,51 @@ fn instrument_dispatch_upload_step() -> Step {
   }
 }
 
-fn instrument_dispatch_steps(seed: String, guard: String, script: String) -> List<Step> {
-  list_append(
-    left: list_append(left: [instrument_dispatch_seed_step(script: seed)], right: list_map(xs: instrument_dispatch_memory_demands(), f: fn(d) { instrument_dispatch_memory_guard_step(d: d, guard: guard) })),
-    right: list_append(
-      left: list_map(xs: compiler_gate_hosted_build_prelude_bound_steps(), f: fn(b) { b.step }),
-      right: [witness_toolchain_homes_isolated_guard_step(), instrument_dispatch_run_step(script: script), instrument_dispatch_upload_step()],
-    ),
+fn instrument_dispatch_steps(seed: String, guard: String, script: String) -> Outcome<List<Step>> {
+  bind_outcome(
+    o: compiler_gate_hosted_build_prelude_bound_steps(),
+    f: fn(prelude) {
+      outcome_accepted(value: list_append(
+      left: list_append(left: [instrument_dispatch_seed_step(script: seed)], right: list_map(xs: instrument_dispatch_memory_demands(), f: fn(d) { instrument_dispatch_memory_guard_step(d: d, guard: guard) })),
+      right: list_append(
+        left: list_map(xs: prelude, f: fn(b) { b.step }),
+        right: [witness_toolchain_homes_isolated_guard_step(), instrument_dispatch_run_step(script: script), instrument_dispatch_upload_step()],
+      ),
+      ))
+    }
   )
 }
 
-fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
-  Job {
-    id: instrument_dispatch_job_id,
-    name: none,
-    runner: instrument_dispatch_runner(),
-    environment: none,
-    steps: instrument_dispatch_steps(seed: seed, guard: guard, script: script),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    timeout_minutes: Present { value: instrument_dispatch_timeout_minutes },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present {
-      value: WorkflowPermissions {
-        contents: Present { value: PermRead },
-        pull_requests: none,
-        issues: none,
-        actions: none,
-        id_token: none,
-        pages: none,
+fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Outcome<Job> {
+  bind_outcome(
+    o: instrument_dispatch_steps(seed: seed, guard: guard, script: script),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
+      id: instrument_dispatch_job_id,
+      name: none,
+      runner: instrument_dispatch_runner(),
+      environment: none,
+      steps: steps,
+      needs: [],
+      env: none,
+      outputs: none,
+      if_condition: none,
+      timeout_minutes: Present { value: instrument_dispatch_timeout_minutes },
+      continue_on_error: none,
+      concurrency: none,
+      permissions: Present {
+        value: WorkflowPermissions {
+          contents: Present { value: PermRead },
+          pull_requests: none,
+          issues: none,
+          actions: none,
+          id_token: none,
+          pages: none,
+        }
       }
+    })
     }
-  }
+  )
 }
 
 // THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
@@ -746,25 +756,30 @@ fn instrument_dispatch_workflow_triggers() -> List<WorkflowTrigger> {
   ]
 }
 
-fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> Workflow {
-  Workflow {
-    name: instrument_dispatch_workflow_name,
-    run_name: Present { value: join(["instrument-dispatch ", instrument_dispatch_label_expression()], "") },
-    on: instrument_dispatch_workflow_triggers(),
-    concurrency: Present { value: instrument_dispatch_concurrency },
-    env: none,
-    permissions: Present {
-      value: WorkflowPermissions {
-        contents: Present { value: PermRead },
-        pull_requests: none,
-        issues: none,
-        actions: none,
-        id_token: none,
-        pages: none,
-      }
-    },
-    jobs: [instrument_dispatch_job(seed: seed, guard: guard, script: script)],
-  }
+fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> Outcome<Workflow> {
+  bind_outcome(
+    o: sequence_outcome(xs: [instrument_dispatch_job(seed: seed, guard: guard, script: script)], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+    f: fn(dispatch_jobs) {
+      outcome_accepted(value: Workflow {
+      name: instrument_dispatch_workflow_name,
+      run_name: Present { value: join(["instrument-dispatch ", instrument_dispatch_label_expression()], "") },
+      on: instrument_dispatch_workflow_triggers(),
+      concurrency: Present { value: instrument_dispatch_concurrency },
+      env: none,
+      permissions: Present {
+        value: WorkflowPermissions {
+          contents: Present { value: PermRead },
+          pull_requests: none,
+          issues: none,
+          actions: none,
+          id_token: none,
+          pages: none,
+        }
+      },
+      jobs: dispatch_jobs,
+    })
+    }
+  )
 }
 
 type InstrumentDispatchWorkflowGenerationOutcome
@@ -793,7 +808,12 @@ fn expected_instrument_dispatch_yml() -> InstrumentDispatchWorkflowGenerationOut
               Rejected { diagnostics: _ } =>
                 InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: v2.workflow.bash_emit refused the memory guard script, so no workflow is emitted" }
               Accepted { value: guard, diagnostics: _ } =>
-                expected_instrument_dispatch_yml_with(workflow: instrument_dispatch_workflow(seed: seed, guard: guard, script: script))
+                match instrument_dispatch_workflow(seed: seed, guard: guard, script: script) {
+                  Rejected { diagnostics: d } =>
+                    InstrumentDispatchWorkflowGenerationRefused { reason: join(["gunbc.instruments.instrument_dispatch_workflow: an orchestration step refused to render, so no workflow yaml was emitted. Diagnostic: ", diagnostics_reason_lexemes(diagnostics: d)], "") }
+                  Accepted { value: wf } =>
+                    expected_instrument_dispatch_yml_with(workflow: wf)
+                }
             }
         }
     }

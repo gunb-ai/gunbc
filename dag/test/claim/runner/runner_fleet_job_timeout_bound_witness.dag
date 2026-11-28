@@ -64,7 +64,13 @@ fn poll_seconds() -> Int {
 fn longest(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 
 test fn the_wait_bound_is_the_declared_timeout_fold_plus_the_poll_interval() -> Bool {
-  let boot = filter(compiler_gate_workflow.jobs, j => j.id == gunbc_required_context_name())
+  // compiler_gate_workflow is now an Outcome<Workflow> (its prelude carries the orch-emitted steps as
+  // Outcome<Step> off the retyped run-step emitter). Fail-closed: a refusal makes this bound claim go RED
+  // -- a workflow that cannot render cannot vouch for the drain bound.
+  match outcome_accepted_value(compiler_gate_workflow) {
+    Absent => false
+    Present { value: cg_workflow } => {
+  let boot = filter(cg_workflow.jobs, j => j.id == gunbc_required_context_name())
   // Both pack producers are now emitted through the retyped run-step invoke family (PR #16721), so their Job
   // values are Outcomes. Fail-closed: a refused emission makes this bound claim go RED -- a refusal must never
   // silently vouch for the drain bound.
@@ -83,10 +89,12 @@ test fn the_wait_bound_is_the_declared_timeout_fold_plus_the_poll_interval() -> 
     && all(
       boot,
       j => job_declared_timeout_minutes(j: j) == minute_count(m: gunbc_roster_gate().timeout)
-        && fleet_job_belongs_to_population(w: compiler_gate_workflow, j: j)
+        && fleet_job_belongs_to_population(w: cg_workflow, j: j)
         && bound_seconds() == longest(a: job_declared_timeout_minutes(j: j), b: scheduled) * 60 + poll_seconds()
     )
     && (second_count(s: fleet_targeted_wait_bound(policy_poll_interval: runner_host_cap_drain_policy.poll_interval)) as Int) == bound_seconds()
+    }
+  }
 }
 
 // 2. NO POPULATION MEMBER OUTLIVES THE BOUND — the invariant, over the real fold.
@@ -281,8 +289,12 @@ test fn the_function_built_omissions_discharge_on_their_trigger_constants() -> B
     && omission_autonomous_count_triggers(ts: instrument_dispatch_workflow_triggers()) == 0
     && length(microvm_shakedown_workflow_triggers()) > 0
     && omission_autonomous_count_triggers(ts: microvm_shakedown_workflow_triggers()) == 0
-    // the constructors genuinely read the constants:
-    && length(instrument_dispatch_workflow(seed: "a", guard: "b", script: "c").on) == length(instrument_dispatch_workflow_triggers())
+    // the constructors genuinely read the constants (instrument_dispatch_workflow is an Outcome<Workflow>
+    // after the run-step cutover; a refusal unwraps to no triggers and the equality fails red):
+    && (match outcome_accepted_value(instrument_dispatch_workflow(seed: "a", guard: "b", script: "c")) {
+         Present { value: w } => length(w.on)
+         Absent => -1
+       }) == length(instrument_dispatch_workflow_triggers())
     && length(microvm_shakedown_workflow(script: "true").on) == length(microvm_shakedown_workflow_triggers())
     // each constant is tied to the omission row that exempts it:
     && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: InstrumentDispatchYamlArtifact))

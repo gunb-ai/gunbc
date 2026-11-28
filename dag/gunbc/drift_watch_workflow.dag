@@ -127,14 +127,14 @@ data drift_watch_short_circuit: StageDiagnosticPolicy = StageDiagnosticPolicy { 
 fn drift_watch_bound_steps(row: ProjectionDrift) -> List<DriftWatchBoundStep> {
   [
     DriftWatchBoundStep { step: outcome_accepted(value: drift_watch_checkout_step()), role: capability_neutral, step_name: "Checkout the default branch" },
-    DriftWatchBoundStep { step: outcome_accepted(value: toolchain_home_isolation_step()), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    DriftWatchBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
     DriftWatchBoundStep {
       step: outcome_accepted(value: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
       step_name: "Install Rust toolchain",
     },
     DriftWatchBoundStep {
-      step: outcome_accepted(value: toolchain_pin_rustup_default_step()),
+      step: toolchain_pin_rustup_default_step(),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },

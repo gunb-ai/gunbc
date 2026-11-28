@@ -199,34 +199,40 @@ fn fleet_census_emissions() -> List<FleetCensusEmission> {
       match gunb_ai_pages_workflow() {
         Accepted { value: wf } => [Emitted { artifact: GunbAiPagesWorkflowYamlArtifact, workflow: wf }]
         Rejected { diagnostics: d } => [Refused { artifact: GunbAiPagesWorkflowYamlArtifact, reason: concat("the committed gunb.ai pages workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
+      },
+      // THE COMPILER-GATE WITNESS-FLOOR ROW. It is now an Outcome<Workflow>: its required and audit jobs
+      // carry the orch-emitted prelude steps as Outcome<Step> off v2.workflow.ci_workflow_run_emit's
+      // retyped pipeline, so a refusal reaches this census typed rather than as a marker in committed bytes.
+      // It folds into THIS ledger (not a separate structurally-present row) so the drop-from-rows and the
+      // loud-refusal arms read the same value and cannot drift (gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved).
+      match compiler_gate_workflow {
+        Accepted { value: wf } => [Emitted { artifact: WitnessFloorYamlArtifact, workflow: wf }]
+        Rejected { diagnostics: d } => [Refused { artifact: WitnessFloorYamlArtifact, reason: concat("the committed witness-floor compiler-gate workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
       }
     )
   )
 }
 
-// THE EMITTED CENSUS ROWS: the two structurally-present committed workflows (the witness-floor compiler-gate
-// constant, and the publisher handed over explicitly), plus the accepted arm of each emission producer, read
-// off the single fleet_census_emissions list above.
+// THE EMITTED CENSUS ROWS: the publisher handed over explicitly, plus the accepted arm of each emission
+// producer (including the witness-floor compiler-gate constant) read off the single fleet_census_emissions
+// list above. A refused emission contributes no row; fleet_workflow_census_refusals records it located.
 fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
   concat(
-    [FleetWorkflowCensusRow { artifact: WitnessFloorYamlArtifact, workflow: compiler_gate_workflow }],
-    concat(
-      // THE PUBLISHER ROW, HANDED OVER EXPLICITLY. This census enumerates this repository's own committed
-      // workflows, so it names gunbc's row rather than having the emitter read a global on its behalf; a
-      // publisher that is not declared is a structural absence (Optional), not an emission refusal.
-      match heal_publisher_census_workflow(profile: gunbc_repository_ci_profile()) {
-        Present { value: workflow } => [FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: workflow }]
-        Absent => []
-      },
-      list_flat_map(
-        xs: fleet_census_emissions(),
-        f: fn(e) {
-          match e {
-            Emitted { artifact: a, workflow: wf } => [FleetWorkflowCensusRow { artifact: a, workflow: wf }]
-            Refused { artifact: _, reason: _ } => []
-          }
+    // THE PUBLISHER ROW, HANDED OVER EXPLICITLY. This census enumerates this repository's own committed
+    // workflows, so it names gunbc's row rather than having the emitter read a global on its behalf; a
+    // publisher that is not declared is a structural absence (Optional), not an emission refusal.
+    match heal_publisher_census_workflow(profile: gunbc_repository_ci_profile()) {
+      Present { value: workflow } => [FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: workflow }]
+      Absent => []
+    },
+    list_flat_map(
+      xs: fleet_census_emissions(),
+      f: fn(e) {
+        match e {
+          Emitted { artifact: a, workflow: wf } => [FleetWorkflowCensusRow { artifact: a, workflow: wf }]
+          Refused { artifact: _, reason: _ } => []
         }
-      )
+      }
     )
   )
 }

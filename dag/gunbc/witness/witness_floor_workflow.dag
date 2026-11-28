@@ -125,7 +125,7 @@ import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_adjudicate_stmts,
   required_ci_measurement_build_outcome_var
 }
-import v2.std.diagnostic { Outcome }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted_value, sequence_outcome, StageDiagnosticPolicy, ShortCircuit, NonEmptyDiagnostics, diagnostics_reason_lexemes, bind_outcome, outcome_accepted }
 import std.types { Bool, List, String, Int, NonEmptyStr }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -1647,42 +1647,63 @@ fn heal_revalidation_preflight_bound_step() -> WitnessFloorBoundStep {
   }
 }
 
-fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
-  [
-    WitnessFloorBoundStep {
-      step: witness_toolchain_filesystem_start_probe_step(),
-      role: capability_neutral,
-      step_name: "Record runner filesystem at job start",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_checkout_step(),
-      role: capability_neutral,
-      step_name: "Checkout",
-    },
-    heal_revalidation_preflight_bound_step(),
-    WitnessFloorBoundStep {
-      step: toolchain_home_isolation_step(),
-      role: capability_neutral,
-      step_name: "Isolate toolchain homes",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [
-        CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
-      ]),
-      step_name: "Install Rust toolchain",
-    },
-    WitnessFloorBoundStep {
-      step: toolchain_pin_rustup_default_step(),
-      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
-      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_build_step(step_name: witness_floor_build_step_name, build_script: build_script),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: witness_floor_build_step_name,
-    },
-  ]
+// THE ORCH-EMITTED STEPS in prepared_bound_steps return Outcome<Step> and are threaded through
+// bind_outcome; no fabricated step and no separate renderability gate lives here. See
+// gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved.
+
+fn prepared_bound_steps(build_script: String) -> Outcome<List<WitnessFloorBoundStep>> {
+  // THE TWO ORCH-EMITTED STEPS carry their refusal typed (v2.workflow.ci_workflow_run_emit returns
+  // Outcome<Step> after the __GUNBC_ORCH_EMIT_REFUSED__ poison was deleted, per gunbc.integration_concern
+  // ::orch_emit_refusal_reaches_committed_bytes_unobserved). bind_outcome over both: any rejection means
+  // the whole prepared list cannot be built, which propagates up to witness_floor_workflow (an
+  // Outcome<Workflow>) and unwraps once at expected_witness_floor_yml into the workflow's own
+  // GenerationRefused with the orchestration diagnostics attached. No fabricated step, no gate standing
+  // where construction was available (DESIGN fail_closed).
+  bind_outcome(
+    o: toolchain_home_isolation_step(),
+    f: fn(isolate_step) {
+      bind_outcome(
+        o: toolchain_pin_rustup_default_step(),
+        f: fn(pin_step) {
+          outcome_accepted(value: [
+            WitnessFloorBoundStep {
+              step: witness_toolchain_filesystem_start_probe_step(),
+              role: capability_neutral,
+              step_name: "Record runner filesystem at job start",
+            },
+            WitnessFloorBoundStep {
+              step: witness_floor_checkout_step(),
+              role: capability_neutral,
+              step_name: "Checkout",
+            },
+            heal_revalidation_preflight_bound_step(),
+            WitnessFloorBoundStep {
+              step: isolate_step,
+              role: capability_neutral,
+              step_name: "Isolate toolchain homes",
+            },
+            WitnessFloorBoundStep {
+              step: witness_floor_toolchain_step(),
+              role: provides_only(capabilities: [
+                CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+              ]),
+              step_name: "Install Rust toolchain",
+            },
+            WitnessFloorBoundStep {
+              step: pin_step,
+              role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+              step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+            },
+            WitnessFloorBoundStep {
+              step: witness_floor_build_step(step_name: witness_floor_build_step_name, build_script: build_script),
+              role: consumes_only(capabilities: [CargoCapability]),
+              step_name: witness_floor_build_step_name,
+            },
+          ])
+        }
+      )
+    }
+  )
 }
 
 // THE FLOOR'S RUN STEP WAS DECLARED `capability_neutral` AND THAT DECLARATION WAS FALSE. It runs
@@ -1757,10 +1778,13 @@ fn required_ci_measurement_bound_steps() -> List<WitnessFloorBoundStep> {
   ]
 }
 
-fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
-  append(
-    prepared_bound_steps(build_script: witness_floor_build_script()),
-    items: concat([
+fn witness_floor_bound_steps() -> Outcome<List<WitnessFloorBoundStep>> {
+  bind_outcome(
+    o: prepared_bound_steps(build_script: witness_floor_build_script()),
+    f: fn(prepared) {
+      outcome_accepted(value: append(
+        prepared,
+        items: concat([
       WitnessFloorBoundStep {
         step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
@@ -1811,6 +1835,8 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step_name: "Record runner filesystem at job end",
       },
     ])))),
+      ))
+    }
   )
 }
 
@@ -1910,10 +1936,13 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 // invocation asking a question the first had answered. No TSV uploads: the three receipt files
 // are written by the FLOOR, so a build-lane job naming them would demand files this lane never
 // produces and `if-no-files-found: error` would redden it for a receipt never its to write.
-fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
-  append(
-    prepared_bound_steps(build_script: build_lane_build_script()),
-    items: concat([
+fn build_lane_bound_steps() -> Outcome<List<WitnessFloorBoundStep>> {
+  bind_outcome(
+    o: prepared_bound_steps(build_script: build_lane_build_script()),
+    f: fn(prepared) {
+      outcome_accepted(value: append(
+        prepared,
+        items: concat([
       WitnessFloorBoundStep {
         step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
@@ -1936,41 +1965,53 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         step_name: "Record runner filesystem at job end",
       },
     ])),
+      ))
+    }
   )
 }
 
-fn build_lane_steps() -> List<Step> {
-  list_map(xs: build_lane_bound_steps(), f: fn(b) { b.step })
+fn build_lane_steps() -> Outcome<List<Step>> {
+  bind_outcome(
+    o: build_lane_bound_steps(),
+    f: fn(bs) { outcome_accepted(value: list_map(xs: bs, f: fn(b) { b.step })) }
+  )
 }
 
-fn build_lane_step_annotations() -> List<CapabilityAnnotatedStep> {
+fn build_lane_step_annotations(bs: List<WitnessFloorBoundStep>) -> List<CapabilityAnnotatedStep> {
   list_map(
-    xs: build_lane_bound_steps(),
+    xs: bs,
     f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
   )
 }
 
 fn build_lane_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(steps: build_lane_step_annotations()),
+  match build_lane_bound_steps() {
+    Accepted { value: bs, diagnostics: _ } =>
+      capability_closure_is_closed(v: workflow_job_capability_closure(steps: build_lane_step_annotations(bs: bs)))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_floor_steps() -> Outcome<List<Step>> {
+  bind_outcome(
+    o: witness_floor_bound_steps(),
+    f: fn(bs) { outcome_accepted(value: list_map(xs: bs, f: fn(b) { b.step })) }
   )
 }
 
-fn witness_floor_steps() -> List<Step> {
-  list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
-}
-
-fn witness_floor_step_annotations() -> List<CapabilityAnnotatedStep> {
+fn witness_floor_step_annotations(bs: List<WitnessFloorBoundStep>) -> List<CapabilityAnnotatedStep> {
   list_map(
-    xs: witness_floor_bound_steps(),
+    xs: bs,
     f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
   )
 }
 
 fn witness_floor_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(steps: witness_floor_step_annotations()),
-  )
+  match witness_floor_bound_steps() {
+    Accepted { value: bs, diagnostics: _ } =>
+      capability_closure_is_closed(v: workflow_job_capability_closure(steps: witness_floor_step_annotations(bs: bs)))
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // THE BEHAVIORAL RECEIPT IS NOT IN THIS JOB AT ALL (operator ruling, 2026-08-21).
@@ -1987,22 +2028,27 @@ fn witness_floor_capability_closure_holds() -> Bool {
 
 fn witness_floor_lane_needs() -> List<String> { [] }
 
-fn witness_floor_job() -> Job {
-  Job {
-    id: floor_lane_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    environment: none,
-    steps: witness_floor_steps(),
-    needs: witness_floor_lane_needs(),
-    env: none,
-    outputs: floor_lane_job_outputs(),
-    if_condition: none,
-    timeout_minutes: minute_count(witness_floor_lane_timeout),
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
+fn witness_floor_job() -> Outcome<Job> {
+  bind_outcome(
+    o: witness_floor_steps(),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
+        id: floor_lane_job_id,
+        name: none,
+        runner: gunbc_ci_selected_runner_spec(),
+        environment: none,
+        steps: steps,
+        needs: witness_floor_lane_needs(),
+        env: none,
+        outputs: floor_lane_job_outputs(),
+        if_condition: none,
+        timeout_minutes: minute_count(witness_floor_lane_timeout),
+        continue_on_error: none,
+        concurrency: none,
+        permissions: none
+      })
+    }
+  )
 }
 
 // THE NATIVE LANE JOB IS DELETED (operator ruling, 2026-09-11). It was authorized 2026-09-09 as
@@ -2128,22 +2174,27 @@ fn rust_clippy_all_targets_step() -> Step {
 
 fn build_lane_needs() -> List<String> { [] }
 
-fn build_lane_job() -> Job {
-  Job {
-    id: build_lane_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    environment: none,
-    steps: build_lane_steps(),
-    needs: build_lane_needs(),
-    env: none,
-    outputs: floor_lane_job_outputs(),
-    if_condition: none,
-    timeout_minutes: 90,
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
+fn build_lane_job() -> Outcome<Job> {
+  bind_outcome(
+    o: build_lane_steps(),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
+        id: build_lane_job_id,
+        name: none,
+        runner: gunbc_ci_selected_runner_spec(),
+        environment: none,
+        steps: steps,
+        needs: build_lane_needs(),
+        env: none,
+        outputs: floor_lane_job_outputs(),
+        if_condition: none,
+        timeout_minutes: 90,
+        continue_on_error: none,
+        concurrency: none,
+        permissions: none
+      })
+    }
+  )
 }
 
 // THE ONE JOB THAT GATES, AND THE ONLY PLACE IN THIS FILE THAT AUTHORS SHELL TEXT.
@@ -2584,20 +2635,34 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
   ]
 }
 
-fn witness_floor_lane_job(lane: WitnessFloorLane) -> Job {
+fn witness_floor_lane_job(lane: WitnessFloorLane) -> Outcome<Job> {
   match lane {
     WitnessFloorBuildLane => build_lane_job()
     WitnessFloorFloorLane => witness_floor_job()
   }
 }
 
-fn witness_floor_lane_jobs() -> List<Job> {
-  list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
-    witness_floor_lane_job(lane: lane)
-  })
+fn witness_floor_lane_jobs() -> Outcome<List<Job>> {
+  sequence_outcome(
+    xs: list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
+      witness_floor_lane_job(lane: lane)
+    }),
+    policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+  )
 }
 
-data witness_floor_workflow: Workflow = {
+// THE WORKFLOW IS AN Outcome<Workflow>, unwrapped ONCE at expected_witness_floor_yml into the
+// workflow's own GenerationRefused with the orchestration diagnostics attached. The two orch-emitted
+// steps (toolchain-home isolation, pin rustup default) refuse typed through prepared_bound_steps'
+// bind_outcome (v2.workflow.ci_workflow_run_emit returns Outcome<Step> after the
+// __GUNBC_ORCH_EMIT_REFUSED__ poison was deleted; gunbc.integration_concern
+// ::orch_emit_refusal_reaches_committed_bytes_unobserved). Any consumer that reads the workflow as
+// data now sees the refusal at the same place the emitter does.
+fn witness_floor_workflow_of() -> Outcome<Workflow> {
+  bind_outcome(
+    o: witness_floor_lane_jobs(),
+    f: fn(lane_jobs) {
+      outcome_accepted(value: Workflow {
   name: witness_floor_workflow_name,
   run_name: none,
   on: witness_floor_triggers(),
@@ -2628,8 +2693,16 @@ data witness_floor_workflow: Workflow = {
       pages: none
     }
   },
-  jobs: list_append(left: witness_floor_lane_jobs(), right: [required_lanes_aggregate_job()])
+  jobs: list_append(left: lane_jobs, right: [required_lanes_aggregate_job()])
+})
+    }
+  )
 }
+
+// THE WORKFLOW IS AN Outcome<Workflow>... kept for continuity: data consumers use
+// witness_floor_workflow_of(); the name `witness_floor_workflow` is kept as an alias to preserve the
+// import surface at call sites (see below for its type).
+data witness_floor_workflow: Outcome<Workflow> = witness_floor_workflow_of()
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim. A
 // capability check only tests call is specification-without-execution: green forever while the
@@ -2737,20 +2810,34 @@ fn floor_attempt_production_wraps_are_renderable() -> Bool {
 }
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  match admit_workflow_action_uses(workflow: witness_floor_workflow) {
+  // THE ONE UNWRAP AT THE ARTIFACT BOUNDARY. witness_floor_workflow is an Outcome<Workflow> after the
+  // orch-emitted steps were retyped off the __GUNBC_ORCH_EMIT_REFUSED__ poison. A Rejected here refuses
+  // the whole workflow with the orchestration diagnostics named, rather than the pre-cutover path where
+  // a refusal reached committed bytes as a marker line (gunbc.integration_concern
+  // ::orch_emit_refusal_reaches_committed_bytes_unobserved).
+  match witness_floor_workflow {
+    Rejected { diagnostics: d } => WitnessFloorGenerationRefused {
+      reason: join(["REFUSED gunbc.witness.witness_floor_workflow: an orchestration step refused to render, so no workflow yaml was emitted. Diagnostic: ", diagnostics_reason_lexemes(diagnostics: d)], "")
+    }
+    Accepted { value: workflow, diagnostics: _ } => expected_witness_floor_yml_of(workflow: workflow)
+  }
+}
+
+fn expected_witness_floor_yml_of(workflow: Workflow) -> WitnessFloorGenerationOutcome {
+  match admit_workflow_action_uses(workflow: workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
       WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness.witness_floor_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
-      match admit_workflow_checkout_refs(workflow: witness_floor_workflow, declared: [ci_heal_checkout_ref]) {
+      match admit_workflow_checkout_refs(workflow: workflow, declared: [ci_heal_checkout_ref]) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       WitnessFloorGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness.witness_floor_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+      match admit_workflow_toolchain_homes(workflow: workflow) {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
           if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() && required_ci_contract_epoch_is_derived() {
-            match emit_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) {
+            match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
           EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
           YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.witness_floor_workflow", path: p, reason: r) }
         }

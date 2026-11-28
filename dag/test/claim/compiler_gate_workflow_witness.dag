@@ -76,9 +76,15 @@ test fn w_RED_the_pull_request_head_ref_is_not_the_checkout_ref() -> Bool {
 // fleet-converge.yml as steps that could never run. The count is a join of the two step lists, not a
 // name match; the controls keep it from passing over an empty side.
 fn floor_steps_that_assemble_the_judged_tree() -> Int {
-  fold_list(xs: compiler_gate_floor_steps_after_checkout(), empty: 0, cons: fn(acc, s) {
-    acc + fold_list(xs: compiler_gate_judged_tree_bound_steps(), empty: 0, cons: fn(n, b) { if b.step == s { n + 1 } else { n } })
-  })
+  match compiler_gate_floor_steps_after_checkout() {
+    // A refusal is a RED here, not a silent 0: the sentinel -1 makes the "carries no step" claim fail, so
+    // a workflow whose prelude cannot render cannot pass the floor's no-judged-tree claim by omission.
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: floor_steps, diagnostics: _ } =>
+      fold_list(xs: floor_steps, empty: 0, cons: fn(acc, s) {
+      acc + fold_list(xs: compiler_gate_judged_tree_bound_steps(), empty: 0, cons: fn(n, b) { if b.step == s { n + 1 } else { n } })
+    })
+  }
 }
 
 test fn the_qualification_floor_carries_no_step_that_assembles_the_judged_tree() -> Bool {
@@ -86,5 +92,9 @@ test fn the_qualification_floor_carries_no_step_that_assembles_the_judged_tree()
 }
 
 test fn the_judged_tree_and_the_qualification_floor_are_both_nonempty() -> Bool {
-  length(compiler_gate_judged_tree_bound_steps()) > 0 && length(compiler_gate_floor_steps_after_checkout()) > 0
+  match compiler_gate_floor_steps_after_checkout() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: floor_steps, diagnostics: _ } =>
+      length(compiler_gate_judged_tree_bound_steps()) > 0 && length(floor_steps) > 0
+  }
 }

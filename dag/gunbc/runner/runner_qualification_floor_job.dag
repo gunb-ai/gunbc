@@ -132,24 +132,29 @@ data qualification_floor_job_name: String = "qualification floor"
 
 fn qualification_floor_job(revision_input: DispatchInput, if_condition: String, timeout_minutes: Int) -> Outcome<Job> {
   bind_outcome(
-    o: sequence_outcome(
-      xs: concat([qualification_floor_revision_guard_step(revision_input: revision_input)], map(compiler_gate_floor_steps_after_checkout(), s => outcome_accepted(value: s))),
-      policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
-    f: fn(steps) { outcome_accepted(value: Job {
-    id: qualification_floor_job_id as String,
-    name: Present { value: qualification_floor_job_name },
-    runner: RunsOnExpression { expression: join(["${{ inputs.", qualification_attempt_dispatch_input.name, " }}"], "") },
-    environment: none,
-    steps: steps,
-    needs: [],
-    env: Present { value: compiler_gate_required_job_env() },
-    outputs: none,
-    if_condition: Present { value: if_condition },
-    timeout_minutes: Present { value: timeout_minutes },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none,
-  }) }
+    o: compiler_gate_floor_steps_after_checkout(),
+    f: fn(floor_steps) {
+      bind_outcome(
+        o: sequence_outcome(
+          xs: concat([qualification_floor_revision_guard_step(revision_input: revision_input)], map(floor_steps, s => outcome_accepted(value: s))),
+          policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
+        f: fn(steps) { outcome_accepted(value: Job {
+        id: qualification_floor_job_id as String,
+        name: Present { value: qualification_floor_job_name },
+        runner: RunsOnExpression { expression: join(["${{ inputs.", qualification_attempt_dispatch_input.name, " }}"], "") },
+        environment: none,
+        steps: steps,
+        needs: [],
+        env: Present { value: compiler_gate_required_job_env() },
+        outputs: none,
+        if_condition: Present { value: if_condition },
+        timeout_minutes: Present { value: timeout_minutes },
+        continue_on_error: none,
+        concurrency: none,
+        permissions: none,
+      }) }
+      )
+    }
   )
 }
 
