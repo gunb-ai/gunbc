@@ -891,11 +891,15 @@ fn credstore_copy_commands(stage: NonEmptyStr, source: NonEmptyStr, dest: NonEmp
   }
 }
 
-// THE BRACKET'S FOUR REMEDIES (gunbc.auth.private_secret_file PrivateSecretFileBracket). Entered means the root
-// install ran; `installed` is its result, carried because the effect may have happened.
+// THE BRACKET'S REMEDIES (gunbc.auth.private_secret_file PrivateSecretFileBracket). Entered means the root
+// install ran; `installed` is its result, carried because the effect may have happened. When the root install
+// was DISPATCHED but its reply came back unreadable, neither `installed` (it ran) nor `false` (it failed) is
+// true: the credential's arrival at the destination is UNKNOWN, so CredstoreCopyInstallUnanswered carries the
+// fault and whether the stage was left behind (#17119 item 2).
 type CredstoreCopyBracket
   = CredstoreCopyCompleted { installed: Bool }
   | CredstoreCopyCompletedResidueRemains { installed: Bool }
+  | CredstoreCopyInstallUnanswered { residue_remains: Bool, cause: NonEmptyStr }
   | CredstoreCopyNotEntered { cause: NonEmptyStr }
   | CredstoreCopyNotEnteredResidueRemains { cause: NonEmptyStr }
 

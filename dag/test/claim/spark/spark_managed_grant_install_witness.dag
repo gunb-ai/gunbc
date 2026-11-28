@@ -46,11 +46,20 @@ import gunbc.spark.grant_privileged_operation {
 import gunbc.remote_operation {
   remote_operation_argv,
   remote_operation_label,
+  remote_step_standing_wire,
+  remote_step_standing_of,
+  RemoteOperationExecution,
+  RemoteArgvExecution,
   RemoteStepStanding,
   RemoteStepUnattempted,
   RemoteStepCompleted,
   RemoteStepFailed,
+  RemoteStepOutcomeUnknown,
+  remote_step_failure_cause,
 }
+import gunbc.typed_argv_exec { TypedArgvExecOverran, TypedArgvExecRefused, TypedArgvExecWireInconsistent }
+import extdeps.ssh.session { OverrunWithoutDeadline }
+import std.measure { second }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
 import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
@@ -201,6 +210,7 @@ test fn an_unrun_cleanup_reports_itself_unattempted() -> Bool {
     RemoteStepUnattempted { identity: id } => id as String == "cleanup-fixture"
     RemoteStepCompleted { identity: _, execution: _ } => false
     RemoteStepFailed { identity: _, execution: _ } => false
+    RemoteStepOutcomeUnknown { identity: _, execution: _ } => false
   }
 }
 
@@ -628,4 +638,48 @@ test fn a_withheld_retired_dropin_removal_does_not_read_as_converged() -> Bool {
   spark_grant_install_run_succeeded(run: base)
     && !spark_grant_install_run_succeeded(run: withheld)
     && contains(spark_grant_install_run_text(run: withheld), "retired-shared-dropin REMOVAL-WITHHELD would lapse gunbc-docker-inspect-glm-native-tp4")
+}
+
+// THE DISPATCHED-UNKNOWN STEP IS ITS OWN STANDING (#17119 review 99490). The classifier
+// remote_step_standing_of decides it directly from the execution -- no Bool predicate recovers it. A
+// leg that was SENT but whose reply could not be read (deadline overrun / inconsistent wire) becomes
+// RemoteStepOutcomeUnknown: it HALTS the sequence (the sequence is not all-completed) and its wire reads
+// "unknown:" and its cause reads "dispatched, reply unreadable", never "failed"/"not applied" -- because a
+// sent leg whose effect is unknown must not be retried or reported as not having run. A genuine pre-dispatch
+// refusal is STILL RemoteStepFailed with wire "failed:". RED-BY-MUTATION: routing the Overran/WireInconsistent
+// arms of remote_step_standing_of back to RemoteStepFailed makes the OutcomeUnknown assertions fail -> false.
+test fn a_dispatched_unknown_step_is_its_own_standing_never_failed() -> Bool {
+  let id = "install-sudoers" as NonEmptyStr
+  let overrun = remote_step_standing_of(
+    identity: id,
+    execution: RemoteArgvExecution { outcome: TypedArgvExecOverran { deadline: second(count: 30) } },
+  )
+  let wire = remote_step_standing_of(
+    identity: id,
+    execution: RemoteArgvExecution { outcome: TypedArgvExecWireInconsistent { fault: OverrunWithoutDeadline } },
+  )
+  let refused = remote_step_standing_of(
+    identity: id,
+    execution: RemoteArgvExecution { outcome: TypedArgvExecRefused { reason: "transport declined" } },
+  )
+  match overrun {
+    RemoteStepOutcomeUnknown { identity: _, execution: _ } =>
+      string_contains(remote_step_standing_wire(standing: overrun), "unknown:")
+        && !string_contains(remote_step_standing_wire(standing: overrun), "failed:")
+        && match remote_step_failure_cause(standing: overrun) {
+             Present { value: why } => string_contains(why, "dispatched, reply unreadable")
+             Absent => false
+           }
+    _ => false
+  }
+    && match wire {
+      RemoteStepOutcomeUnknown { identity: _, execution: _ } =>
+        !string_contains(remote_step_standing_wire(standing: wire), "failed:")
+      _ => false
+    }
+    && match refused {
+      RemoteStepFailed { identity: _, execution: _ } =>
+        string_contains(remote_step_standing_wire(standing: refused), "failed:")
+      _ => false
+    }
 }

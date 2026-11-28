@@ -21,6 +21,7 @@ import gunbc.actions_run_binding { actions_variable_trimmed, actions_run_attempt
 import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused,
+  RunArgvTransportOutcome, RunArgvTransportUnanswered,
 }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
@@ -123,13 +124,29 @@ fn attempt_launch_over(transport: HostEffectTransport, user: NonEmptyStr, slot: 
           match run_argv_over_host_effect_transport(command: v, transport: transport) {
             RunArgvTransportObserved { observed: o } => o.stdout
             RunArgvTransportRefused { reason: _ } => ""
+            RunArgvTransportUnanswered { reason: _ } => ""
           }
       }
-      match run_argv_stdin_over_host_effect_transport(command: w.command, stdin_payload: credential.encoded as String, transport: transport) {
-        RunArgvTransportRefused { reason: r } => ListenerNotLaunched { cause: join(["the attempt unit's launch was refused before any leg ran: ", r], "") as NonEmptyStr }
-        RunArgvTransportObserved { observed: o } => attempt_listener_run_of(launcher: w, version_line: version_line, stderr: o.stderr)
-      }
+      attempt_listener_run_of_launch(
+        outcome: run_argv_stdin_over_host_effect_transport(command: w.command, stdin_payload: credential.encoded as String, transport: transport),
+        launcher: w,
+        version_line: version_line,
+      )
     }
+  }
+}
+
+// THE PURE DECISION of what a launch's transport outcome means for the listener, extracted from the
+// transport fn so the dispatched-unknown arm is a single, witnessable choice (the same one-pure-conversion
+// discipline as the fleet decode, and as gunbc.runner.runner_user_session linger_reading_of). A launch
+// REFUSED before any leg ran is ListenerNotLaunched; a launch that was DISPATCHED and whose reply came
+// back unreadable is NOT a not-launch -- the unit may have launched and run, so its end is simply
+// unobserved, never "refused before any leg ran".
+fn attempt_listener_run_of_launch(outcome: RunArgvTransportOutcome, launcher: SystemdSummaryPrintingWait, version_line: String) -> ListenerRun {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => ListenerNotLaunched { cause: join(["the attempt unit's launch was refused before any leg ran: ", r], "") as NonEmptyStr }
+    RunArgvTransportUnanswered { reason: r } => ListenerOutcomeUnobserved { cause: join(["the attempt unit's launch was dispatched but its reply could not be read, so its end was not observed: ", r], "") as NonEmptyStr }
+    RunArgvTransportObserved { observed: o } => attempt_listener_run_of(launcher: launcher, version_line: version_line, stderr: o.stderr)
   }
 }
 

@@ -12,7 +12,7 @@ import gunbc.typed_remote_file_write {
 import gunbc.typed_argv_exec { 
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 
 // WHAT A REALIZED EFFECT IS ALLOWED TO BE ON THE FAR SIDE.
@@ -76,7 +76,8 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
   match execution {
     RemoteArgvExecution { outcome: o } =>
       match o {
-      TypedArgvExecOverran { deadline: d } => false
+      TypedArgvExecOverran { deadline: _ } => false
+      TypedArgvExecWireInconsistent { fault: _ } => false
         TypedArgvExecRefused { reason: _ } => false
         TypedArgvExecConverged { result: r } => r.success
       }
@@ -95,12 +96,51 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
 type RemoteStepStanding
   = RemoteStepCompleted { identity: NonEmptyStr, execution: RemoteOperationExecution }
   | RemoteStepFailed { identity: NonEmptyStr, execution: RemoteOperationExecution }
+  // The step's leg WAS DISPATCHED and its reply came back unreadable (deadline overrun or an
+  // inconsistent wire shape): the effect is UNKNOWN -- the change may already have taken. This is NOT
+  // RemoteStepFailed (which says the step ran and failed), and it halts the sequence like Failed does,
+  // but consumers must not retry or report "not applied" for a change that may have already landed.
+  | RemoteStepOutcomeUnknown { identity: NonEmptyStr, execution: RemoteOperationExecution }
   | RemoteStepUnattempted { identity: NonEmptyStr }
+
+// THE ONE CLASSIFIER, EXHAUSTIVE OVER THE EXECUTION -- NOT A BOOL PREDICATE. It decides Completed /
+// Failed / OutcomeUnknown directly from the execution's typed arms, so the "effect unknown" case is a
+// standing in its own right and no consumer has to reconstruct it by testing a flag. A dispatched leg
+// whose reply could not be read (argv overrun or inconsistent wire) is OutcomeUnknown: it halts, like
+// Failed, but is never retried or reported "not applied". A pre-dispatch refusal or an answered
+// non-success is Failed; a clean answer is Completed.
+fn remote_step_standing_of(identity: NonEmptyStr, execution: RemoteOperationExecution) -> RemoteStepStanding {
+  match execution {
+    RemoteArgvExecution { outcome: o } =>
+      match o {
+        TypedArgvExecConverged { result: r } =>
+          if r.success {
+            RemoteStepCompleted { identity: identity, execution: execution }
+          } else {
+            RemoteStepFailed { identity: identity, execution: execution }
+          }
+        TypedArgvExecRefused { reason: _ } =>
+          RemoteStepFailed { identity: identity, execution: execution }
+        TypedArgvExecOverran { deadline: _ } =>
+          RemoteStepOutcomeUnknown { identity: identity, execution: execution }
+        TypedArgvExecWireInconsistent { fault: _ } =>
+          RemoteStepOutcomeUnknown { identity: identity, execution: execution }
+      }
+    RemoteFileExecution { outcome: o } =>
+      match o {
+        TypedRemoteFileConverged { converged: _ } =>
+          RemoteStepCompleted { identity: identity, execution: execution }
+        TypedRemoteFileConvergenceRefused { step: _, reason: _ } =>
+          RemoteStepFailed { identity: identity, execution: execution }
+      }
+  }
+}
 
 fn remote_step_standing_identity(standing: RemoteStepStanding) -> NonEmptyStr {
   match standing {
     RemoteStepCompleted { identity: id, execution: _ } => id
     RemoteStepFailed { identity: id, execution: _ } => id
+    RemoteStepOutcomeUnknown { identity: id, execution: _ } => id
     RemoteStepUnattempted { identity: id } => id
   }
 }
@@ -109,6 +149,10 @@ fn remote_step_standing_wire(standing: RemoteStepStanding) -> String {
   match standing {
     RemoteStepCompleted { identity: id, execution: _ } => join(["completed:", id as String], "")
     RemoteStepFailed { identity: id, execution: _ } => join(["failed:", id as String], "")
+    // A sent leg whose reply could not be read: its effect is unknown, so it is never labeled "failed"
+    // (which would invite a retry that could re-run a change that already took). The arm itself carries
+    // the dispatched-unknown fact -- no Bool predicate recovers it from a Failed standing.
+    RemoteStepOutcomeUnknown { identity: id, execution: _ } => join(["unknown:", id as String], "")
     RemoteStepUnattempted { identity: id } => join(["unattempted:", id as String], "")
   }
 }
@@ -120,11 +164,27 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
   match standing {
     RemoteStepCompleted { identity: _, execution: _ } => none
     RemoteStepUnattempted { identity: _ } => none
+    RemoteStepOutcomeUnknown { identity: _, execution: x } =>
+      // The effect is unknown: the leg was dispatched and its reply could not be read. The cause names
+      // the specific fault (deadline overrun / inconsistent wire shape) so the receipt never reads "failed".
+      match x {
+        RemoteArgvExecution { outcome: o } =>
+          match o {
+            TypedArgvExecOverran { deadline: d } =>
+              Present { value: concat("dispatched, reply unreadable: ", typed_argv_exec_overran_reason(leg_hint: "remote operation", deadline: d)) }
+            TypedArgvExecWireInconsistent { fault: f } =>
+              Present { value: concat("dispatched, reply unreadable: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "remote operation", fault: f)) }
+            TypedArgvExecRefused { reason: _ } => none
+            TypedArgvExecConverged { result: _ } => none
+          }
+        RemoteFileExecution { outcome: _ } => none
+      }
     RemoteStepFailed { identity: _, execution: x } =>
       match x {
         RemoteArgvExecution { outcome: o } =>
           match o {
           TypedArgvExecOverran { deadline: d } => Present { value: typed_argv_exec_overran_reason(leg_hint: "remote operation", deadline: d) }
+          TypedArgvExecWireInconsistent { fault: f } => Present { value: typed_argv_exec_wire_inconsistent_reason(leg_hint: "remote operation", fault: f) }
             TypedArgvExecRefused { reason: why } => Present { value: why }
             TypedArgvExecConverged { result: r } =>
               Present {

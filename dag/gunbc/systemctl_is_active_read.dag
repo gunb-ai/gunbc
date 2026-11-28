@@ -8,8 +8,10 @@ import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcomeUnanswered,
   host_operation_exec,
   host_operation_materialize_argv,
+  host_operation_unanswered_reason,
   SystemctlIsActive,
 }
 
@@ -36,6 +38,8 @@ fn systemctl_is_active_read(transport: HostEffectTransport, unit: NonEmptyStr) -
       unit_is_active_capture_from_result(state: out, active: ok)
     HostOperationRefused { operation: _, reason: why } =>
       UnitIsActiveCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      UnitIsActiveCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

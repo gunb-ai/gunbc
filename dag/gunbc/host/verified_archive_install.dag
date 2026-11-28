@@ -74,6 +74,9 @@ fn host_effect_commands_exit(commands: List<ArgvCommand>, transport: HostEffectT
       ExitSuccess =>
         match run_archive_argv(command: c, transport: transport) {
           RunArgvTransportRefused { reason: r } => exit_failure(reason: r)
+          // Dispatched, reply unreadable: the command may have run, so the sequence aborts (never reports
+          // success, never retries) and the reason names the real cause rather than "no leg ran".
+          RunArgvTransportUnanswered { cause: _, reason: r } => exit_failure(reason: r)
           RunArgvTransportObserved { observed: o } =>
             if o.success { ExitSuccess } else { exit_failure(reason: o.stderr) }
         }

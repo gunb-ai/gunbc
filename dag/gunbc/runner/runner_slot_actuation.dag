@@ -42,7 +42,7 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, SystemdUnmaskUnit, SystemdEnableUnit, SystemdStartUnit, executor_privileged_operation_argv,
 }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetLegKind,FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
 import gunbc.runner.runner_slot_retirement { control_group_property_means_cgroup_absent }
 import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
@@ -702,6 +702,7 @@ fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: No
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties)) {
   TypedArgvExecOverran { deadline: d } => SlotReadRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => SlotReadRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f) }
     TypedArgvExecRefused { reason: why } => SlotReadRefused { reason: why }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -788,6 +789,7 @@ fn read_slot_task_count_over(target: SshTarget, context: FleetSshExecutionContex
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])) {
   TypedArgvExecOverran { deadline: d } => SlotTasksUnread { cause: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => SlotTasksUnread { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f) }
     TypedArgvExecRefused { reason: why } => SlotTasksUnread { cause: why }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -802,6 +804,7 @@ fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, u
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ps_unit_comm_listing_argv()) {
   TypedArgvExecOverran { deadline: d } => SlotActivityUnobserved { cause: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) as NonEmptyStr }
+  TypedArgvExecWireInconsistent { fault: f } => SlotActivityUnobserved { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f) as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -824,6 +827,7 @@ fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, kin
     Absent =>
       match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: slot_actuation_elevated(command: step)) {
       TypedArgvExecOverran { deadline: d } => Present { value: join([join(step, " "), ": ", typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d)], "") }
+      TypedArgvExecWireInconsistent { fault: f } => Present { value: join([join(step, " "), ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f)], "") }
         TypedArgvExecRefused { reason: why } => Present { value: join([join(step, " "), ": ", why], "") }
         TypedArgvExecConverged { result: r } =>
           if r.success { none } else { Present { value: join([join(step, " "), " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
@@ -855,6 +859,7 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
                     // then in its auto-restart wait and the second read refuses with the unit's own words.
                     match typed_argv_exec_over_fleet_ssh(kind: kind, target: target, context: context, argv: slot_activation_settle_argv()) {
                     TypedArgvExecOverran { deadline: d } => SlotActuationRefused { unit: unit, step: "settle", reason: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
+                    TypedArgvExecWireInconsistent { fault: f } => SlotActuationRefused { unit: unit, step: "settle", reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f) }
                       TypedArgvExecRefused { reason: why } => SlotActuationRefused { unit: unit, step: "settle", reason: why }
                       TypedArgvExecConverged { result: _ } =>
                         match read_slot_over(target: target, context: context, unit: unit) {
@@ -1015,6 +1020,7 @@ fn read_slot_registration_over(target: SshTarget, context: FleetSshExecutionCont
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: slot_registration_file_command(instance: instance)) {
   TypedArgvExecOverran { deadline: d } => slot_registration_unreadable(instance: instance, cause: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d))
+  TypedArgvExecWireInconsistent { fault: f } => slot_registration_unreadable(instance: instance, cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f))
     TypedArgvExecRefused { reason: why } => slot_registration_unreadable(instance: instance, cause: why)
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -1079,6 +1085,7 @@ fn slot_main_pid_raw_over(target: SshTarget, context: FleetSshExecutionContext, 
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [IdProperty, MainPID])) {
   TypedArgvExecOverran { deadline: d } => concat("unread:", typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d))
+  TypedArgvExecWireInconsistent { fault: f } => concat("unread:", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner slot actuation", fault: f))
     TypedArgvExecRefused { reason: why } => concat("unread:", why)
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -1098,6 +1105,7 @@ fn slot_proc_text_over(target: SshTarget, context: FleetSshExecutionContext, pat
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: cat_command(path: path))) {
   TypedArgvExecOverran { deadline: d } => none
+  TypedArgvExecWireInconsistent { fault: f } => none
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
   }
@@ -1182,6 +1190,7 @@ fn slot_command_text_over(target: SshTarget, context: FleetSshExecutionContext, 
 {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: command)) {
   TypedArgvExecOverran { deadline: d } => none
+  TypedArgvExecWireInconsistent { fault: f } => none
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
   }

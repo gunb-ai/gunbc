@@ -235,6 +235,9 @@ test fn fleet_ssh_argv_goes_through_the_host_effect_dispatcher() -> Bool {
       match run_argv_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/verified-archive-install-dispatcher"), transport: t) {
         RunArgvTransportRefused { reason: r } =>
           !string_contains(s: r, pattern: "run_argv_over_host_effect_transport refuses the FleetSsh")
+        // dispatched, reply unreadable: same handling; cause names the real fault.
+        RunArgvTransportUnanswered { cause: _, reason: r } =>
+          !string_contains(s: r, pattern: "run_argv_over_host_effect_transport refuses the FleetSsh")
         RunArgvTransportObserved { observed: _ } => true
       }
   }
@@ -249,6 +252,9 @@ test fn fleet_ssh_stdin_refuses_a_non_portable_word_at_the_fleet_leg() -> Bool {
     Present { value: t } =>
       match run_argv_stdin_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/stdin fleet leg"), stdin_payload: "payload", transport: t) {
         RunArgvTransportRefused { reason: r } =>
+          string_contains(s: r, pattern: "remote words are not portable under the far-side shell re-parse")
+        // dispatched, reply unreadable: same handling; cause names the real fault.
+        RunArgvTransportUnanswered { cause: _, reason: r } =>
           string_contains(s: r, pattern: "remote words are not portable under the far-side shell re-parse")
         RunArgvTransportObserved { observed: _ } => false
       }

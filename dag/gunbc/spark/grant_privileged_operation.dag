@@ -35,8 +35,9 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  FleetPrincipalLegOutcome,
+  }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_grant_reconcile {
   spark_retired_shared_inspect_dropin_name, spark_retired_shared_inspect_dropin_path, spark_modeled_inspect_grants,
@@ -61,11 +62,12 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmissionRefused,
 }
 import gunbc.host.host_effect_realize { run_typed_argv_transport, HostEffectTransport, FleetSsh }
-import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, TypedArgvExecWireInconsistent, typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
   remote_step_sequence_failed,
+  remote_step_sequence_all_completed,
   remote_step_sequence_wire,
 }
 import gunbc.spark.managed_access_bootstrap {
@@ -369,10 +371,32 @@ type PrivilegedStepOutcome
   | CredentialRejected { lease: AuthorizationRequest<SparkBootstrapSubject> }
   | PrivilegedCommandFailed { command: AdmittedRootArgv, exit_code: Int, stderr: String }
   | PrivilegedCommandSucceeded { command: AdmittedRootArgv }
+  // The privileged step was DISPATCHED and its reply came back unreadable (overran, or an inconsistent
+  // wire shape): the command may have run on the host, so its effect is unknown.  The bootstrap
+  // credential WAS read and is kept -- this is NOT "never received" / "never attempted".  A later
+  // independent readback decides the standing; nothing here claims the sudoers did or did not install.
+  | PrivilegedCommandUnanswered { command: AdmittedRootArgv, cause: String }
 
 fn privileged_step_succeeded(outcome: PrivilegedStepOutcome) -> Bool {
   match outcome {
     PrivilegedCommandSucceeded { command: _ } => true
+    PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
+    CredentialRejected { lease: _ } => false
+    CredentialNotEnrolled { lease: _ } => false
+    CredentialNotMaterialized { lease: _, cause: _ } => false
+    // dispatched, effect unknown: it did not SUCCEED, so do not proceed -- but this is not a refusal
+    // and not an "did not happen"; the readback below decides the real standing.
+    PrivilegedCommandUnanswered { command: _, cause: _ } => false
+  }
+}
+
+// Whether the privileged step was dispatched but its reply came back unreadable, so its effect is
+// unknown.  A destructive step in this state must STILL run its independent readback (the effect may
+// have happened), unlike a genuine pre-dispatch refusal, which has nothing to read back.
+fn privileged_step_unanswered(outcome: PrivilegedStepOutcome) -> Bool {
+  match outcome {
+    PrivilegedCommandUnanswered { command: _, cause: _ } => true
+    PrivilegedCommandSucceeded { command: _ } => false
     PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
     CredentialRejected { lease: _ } => false
     CredentialNotEnrolled { lease: _ } => false
@@ -432,6 +456,8 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
       ], "")
     PrivilegedCommandSucceeded { command: cmd } =>
       join(["    privileged-step ok ", admitted_root_argv_label(command: cmd), "\n"], "")
+    PrivilegedCommandUnanswered { command: cmd, cause: c } =>
+      join(["    privileged-step DISPATCHED, reply unreadable ", admitted_root_argv_label(command: cmd), " effect unknown: ", c, "\n"], "")
   }
 }
 
@@ -596,6 +622,41 @@ fn privileged_step_lease(
   }
 }
 
+// THE EXEC OUTCOME AS A PURE DECISION. A privileged leg whose exec came back wire-inconsistent or
+// overran WAS dispatched -- the credential WAS read and kept, and the far-side command may have run --
+// so it lands in PrivilegedCommandUnanswered (effect unknown), NEVER CredentialNotMaterialized (which
+// reads as "this run never received the credential, the step was never attempted"). This is the whole
+// 4th-arm contract for the spark grant path, factored out so a witness drives it and the destructive
+// removal readback is gated on it. (#17119 manager item 4, follow-up of #16984.)
+fn privileged_step_outcome_of_exec(command: AdmittedRootArgv, lease: AuthorizationRequest<SparkBootstrapSubject>, exec: FleetPrincipalLegOutcome) -> PrivilegedStepOutcome {
+  match exec {
+    FleetPrincipalLegRefused { cause: why } =>
+      CredentialNotMaterialized { lease: lease, cause: why as String }
+    FleetPrincipalLegOverran { session: _, deadline: d } =>
+      PrivilegedCommandUnanswered {
+        command: command,
+        cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
+      }
+    FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+      PrivilegedCommandUnanswered {
+        command: command,
+        cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark grant privileged materialize", fault: f),
+      }
+    FleetPrincipalLegRan { session: _, result: result } =>
+      if result.success {
+        PrivilegedCommandSucceeded { command: command }
+      } else if sudo_rejected_the_credential(stderr: result.stderr) {
+        CredentialRejected { lease: lease }
+      } else {
+        PrivilegedCommandFailed {
+          command: command,
+          exit_code: result.exit_code,
+          stderr: result.stderr,
+        }
+      }
+  }
+}
+
 fn run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -624,34 +685,18 @@ fn run_privileged_step(
               SshTargetRefused { endpoint: e, refusal: why } =>
                 CredentialNotMaterialized { lease: effective_lease, cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
               SshTargetResolved { target: lease_target } =>
-              match exec_as_fleet_principal_with_stdin(
-                kind: ProvisioningLeg,
-                context: context,
-                target: lease_target,
-                words: words,
-                stdin_payload: join([secret, "\n"], ""),
-                credential: BootstrapCredentialInRunEnvironment,
-              ) {
-                FleetPrincipalLegRefused { cause: why } =>
-                  CredentialNotMaterialized { lease: effective_lease, cause: why as String }
-                  FleetPrincipalLegOverran { session: _, deadline: d } =>
-                    CredentialNotMaterialized {
-                      lease: effective_lease,
-                      cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
-                    }
-                FleetPrincipalLegRan { session: _, result: result } =>
-                  if result.success {
-                    PrivilegedCommandSucceeded { command: command }
-                  } else if sudo_rejected_the_credential(stderr: result.stderr) {
-                    CredentialRejected { lease: effective_lease }
-                  } else {
-                    PrivilegedCommandFailed {
-                      command: command,
-                      exit_code: result.exit_code,
-                      stderr: result.stderr,
-                    }
-                  }
-              }
+              privileged_step_outcome_of_exec(
+                command: command,
+                lease: effective_lease,
+                exec: exec_as_fleet_principal_with_stdin(
+                  kind: ProvisioningLeg,
+                  context: context,
+                  target: lease_target,
+                  words: words,
+                  stdin_payload: join([secret, "\n"], ""),
+                  credential: BootstrapCredentialInRunEnvironment,
+                ),
+              )
               }
           }
       }
@@ -1012,7 +1057,7 @@ fn spark_grant_install_execute(
             steps: [stage_grant_file_step(grant: g, stage: staged_step)],
             transport: transport,
           )
-          if remote_step_sequence_failed(standings: staged) {
+          if !remote_step_sequence_all_completed(standings: staged) {
             SparkGrantInstallStep {
               outcome: SparkGrantInstallExecuted {
                 host: host, grant: g, standings: staged, privileged: [],
@@ -1105,6 +1150,8 @@ fn spark_grant_install_from_privileged(
     CredentialRejected { lease: _ } => false
     PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
     PrivilegedCommandSucceeded { command: _ } => false
+    // dispatched, credential ready, effect unknown: not an awaiting-credential condition.
+    PrivilegedCommandUnanswered { command: _, cause: _ } => false
   }) {
     SparkGrantInstallAwaitingOperatorCredential { host: host, grant: grant, principal: principal }
   } else {
@@ -1149,7 +1196,7 @@ fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
     SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
     SparkGrantInstallExecuted { host: _, grant: _, standings: st, privileged: pr, readback: rb, cleanup: _ } =>
-      remote_step_sequence_failed(standings: st) == false
+      remote_step_sequence_all_completed(standings: st)
         && pr.length() > 0
         && fold(pr, init: true, f: fn(acc, o) { acc && privileged_step_succeeded(outcome: o) })
         && match rb {
@@ -1259,6 +1306,7 @@ fn spark_grant_probe_outcome(
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
       TypedArgvExecOverran { deadline: d } => GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark privileged grant", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => GrantProbeRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark privileged grant", fault: f) }
         TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
         TypedArgvExecConverged { result: r } =>
           if r.success {

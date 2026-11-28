@@ -38,6 +38,12 @@ import gunbc.runner.runner_service_slot_start {
   ServiceSlotUnitStart, ServiceSlotUnitActive, ServiceSlotUnitNotStarted, ServiceSlotUnitNotActive,
   ServiceSlotStartRun, ServiceSlotStartRefused, ServiceSlotStartRan, service_slot_start_held,
   service_slot_start_admitted, service_slot_revision_of_admission,
+  service_slot_unit_start_line, service_slot_unit_started, service_slot_unit_start_of_readback,
+  service_slot_start_unit_decision, ServiceSlotUnitStateUnread,
+}
+import gunbc.host.host_effect_realize {
+  RunArgvTransportObserved, RunArgvTransportRefused, RunArgvTransportUnanswered,
+  TransportUnansweredWireInconsistent, TransportUnansweredOverran, ShellExecObserved,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -79,7 +85,7 @@ test fn each_unit_runs_the_controller_from_the_baked_release_locus() -> Bool {
 test fn only_an_active_unit_is_a_started_slot() -> Bool {
   (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: Present { value: "ActiveState=active\n" }) { ServiceSlotUnitActive { unit: _ } => true _ => false })
     && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: Present { value: "ActiveState=failed\n" }) { ServiceSlotUnitNotActive { unit: _, state: st } => st == "failed" _ => false })
-    && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none) { ServiceSlotUnitNotActive { unit: _, state: st } => st == "unread" _ => false })
+    && (match service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none) { ServiceSlotUnitStateUnread { unit: _, start_cause: _, readback_cause: _ } => true _ => false })
     && (match service_slot_unit_start_of(unit: unit, started: false, start_detail: "systemd-run exited 1: x", show_stdout: none) { ServiceSlotUnitNotStarted { unit: _, cause: c } => string_contains(s: c, pattern: "exited 1") _ => false })
 }
 
@@ -272,4 +278,47 @@ test fn the_bare_route_refuses_the_start_and_admits_the_readback() -> Bool {
     && (match sh_words(text: "a 'b'") { Absent => true Present { value: _ } => false })
     && (match sh_words(text: "'a") { Absent => true Present { value: _ } => false })
     && sh_words(text: "'a b' 'it'\\''s'") == Present { value: ["a b", "it's"] }
+}
+
+// THE DISPATCHED-BUT-UNREADABLE START IS SETTLED BY THE MANAGER'S READBACK, NEVER AS "not-started" AND NEVER
+// AS "not-active" WHEN IT CANNOT SETTLE (#17119 item 3, follow-up of #16984). This drives the ACTUAL start
+// dispatch branch through service_slot_start_unit_decision (the same function service_slot_start_unit calls),
+// feeding it a dispatched-unknown START and a readback provider -- not a pre-supplied standing. When the
+// readback says active the unit is active/started; when the readback is itself Unanswered (deadline) or
+// Refused the state is UNESTABLISHED -> ServiceSlotUnitStateUnread carrying BOTH the start fault and the
+// readback fault, never counted as started; a genuinely answered non-active readback stays NotActive.
+// Red-by-mutation: restoring ServiceSlotUnitNotStarted in the Unanswered arm of service_slot_start_unit_decision
+// makes the active/unread/refused cases stop matching -> false.
+test fn a_dispatched_unanswered_start_runs_the_readback_and_is_never_not_started() -> Bool {
+  let active_readback = RunArgvTransportObserved { observed: ShellExecObserved { exit_code: 0, success: true, stdout: "ActiveState=active\nSubState=running\n", stderr: "" } }
+  let unanswered_start = RunArgvTransportUnanswered { cause: TransportUnansweredWireInconsistent, reason: "the start reply carried an inconsistent wire shape" }
+  let active = service_slot_start_unit_decision(unit: unit, start: unanswered_start, readback: fn() { active_readback })
+  let active_line = service_slot_unit_start_line(active)
+  let active_ok = (match active { ServiceSlotUnitActive { unit: _ } => true _ => false })
+    && service_slot_unit_started(active)
+    && string_contains(s: active_line, pattern: "active")
+    && !string_contains(s: active_line, pattern: "not-started")
+    && !string_contains(s: active_line, pattern: "not-active")
+  let unread_readback = RunArgvTransportUnanswered { cause: TransportUnansweredOverran, reason: "the readback reply was lost to its deadline" }
+  let unread = service_slot_start_unit_decision(unit: unit, start: unanswered_start, readback: fn() { unread_readback })
+  let unread_line = service_slot_unit_start_line(unread)
+  let unread_ok = (match unread { ServiceSlotUnitStateUnread { unit: _, start_cause: sc, readback_cause: rc } =>
+      string_contains(s: sc, pattern: "inconsistent wire shape")
+        && string_contains(s: rc, pattern: "lost")
+        && string_contains(s: rc, pattern: "deadline")
+    _ => false })
+    && !string_contains(s: unread_line, pattern: "not-started")
+    && !string_contains(s: unread_line, pattern: "not-active")
+    && !service_slot_unit_started(unread)
+  let refused_readback = RunArgvTransportRefused { reason: "the readback leg was refused by the admission wall" }
+  let refused = service_slot_start_unit_decision(unit: unit, start: unanswered_start, readback: fn() { refused_readback })
+  let refused_line = service_slot_unit_start_line(refused)
+  let refused_ok = (match refused { ServiceSlotUnitStateUnread { unit: _, start_cause: _, readback_cause: rc } => string_contains(s: rc, pattern: "refused") _ => false })
+    && !string_contains(s: refused_line, pattern: "not-started")
+    && !string_contains(s: refused_line, pattern: "not-active")
+  let activating_readback = RunArgvTransportObserved { observed: ShellExecObserved { exit_code: 0, success: true, stdout: "ActiveState=activating\n", stderr: "" } }
+  let activating = service_slot_start_unit_decision(unit: unit, start: unanswered_start, readback: fn() { activating_readback })
+  let activating_ok = (match activating { ServiceSlotUnitNotActive { unit: _, state: st } => st == "activating" _ => false })
+    && !service_slot_unit_started(activating)
+  active_ok && unread_ok && refused_ok && activating_ok
 }

@@ -1,0 +1,64 @@
+module gunbc.recurring_failure_mode.an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of every effectful consumer of a dispatched-but-unreadable transport leg settling that leg's effect on an INDEPENDENT readback over the same transport, rather than resting on do-not-proceed, so a sent command never leaves the host's standing merely unconfirmed." } },
+
+  receipts: [
+    "**an outcome that says 'the leg was sent and its reply could not be read' is folded to a do-not-proceed value by a consumer that already holds the means to settle the effect, so the uncertainty the carrier was built to preserve is silently dropped a second time.** gunbc.design_argument::fail_closed: a leg dispatched whose reply is unreadable keeps its uncertainty about effects (gunbc.design_argument::method_separate_order_compose: a timeout/lost reply keeps effect uncertainty whenever the transport cannot establish what happened). The carrier (gunbc.host.host_effect_realize RunArgvTransportUnanswered, and the sibling LegUnanswered / DeployedTreeLegWireInconsistent / TypedArgvExecWireInconsistent arms of the 4th-arm family) names the uncertainty with a typed cause. The class here is the SECOND fold: a consumer that correctly refuses to read the leg as not-run, yet then returns false / blocked / not-succeeded WITHOUT running the independent readback it already has, leaving the standing unconfirmed where it could have been settled. The FIRST fold (dispatched-unknown onto a never-dispatched Refused arm) is what the 4th-arm family retires at each consumer it reaches; folds outside that family's reach are counted on the inventory below, not claimed gone.",
+
+    "INVALID STATE: a transport leg dispatched and answered with an inconsistent wire shape (or a deadline overrun) reaches a consumer that owns a readback for that effect -- the service-slot ActiveState, the user-session linger reading, the listener's own end, the sudoers/install/digest readback -- and the consumer returns a do-not-proceed verdict as if no further evidence were available.",
+
+    "HARM: the run neither claims the effect happened nor learns whether it did. The operator is left with an effect that may have landed and a standing that never settles, and any later reconciliation re-pays the question at interest. It is NOT fail-open -- do-not-proceed never fabricates success -- so it hides as 'conservative' while quietly forgoing evidence the code already had.",
+
+    "DISTINGUISHING FACT: the consumer's Unanswered arm returns false/none/blocked, AND the same consumer (or one it composes) already issues a read command over the same transport for the very effect in question. The distinction from the sound default is whether that readback exists and was skipped.",
+
+    "RECEIPT (round-2 review 99008 on gunbc#17119, against head c293def): the 4th-arm family gave RunArgvTransportOutcome a dispatched-unknown arm and routed effectful consumers by name to readbacks (the service-slot start's systemctl ActiveState in gunbc.runner.runner_service_slot_start, the user-session linger reading in gunbc.runner.runner_user_session, the listener end in gunbc.runner.runner_qualification_attempt_run and gunbc.runner.runner_service_slot_controller, the sudoers removal readback in gunbc.spark.managed_grant_install, the spec-account post-write getent in gunbc.runner.runner_host_file_converge). The reviewer found further consumer arms, cloned from the refused/killed arms, that fold to false/none/blocked without running a readback. Most are reads or genuine do-not-proceeds and are sound; the EFFECTFUL ones among them are this class and are the open follow-up. FOLLOW-UP OWNER: bright-ibex-807. INVENTORY of consumers still carrying a dispatched-unknown transport outcome on a do-not-proceed verdict where an independent readback of the effect is available and is being skipped (file:fn; these are the effectful open ones -- read-only refuses are sound and are not listed):
+      runner/runner_gpu_container_toolchain.dag: gpu_container_provision_run_leg (GpuContainerProvisionUnanswered), cdi-generate leg (CdiGenerateFailed), capability read legs (CapabilityUnobservable), path read legs (GpuContainerPathUnobservable);
+      runner/runner_service_slot_controller.dag: ServiceSlotLocalRefused arm;
+      compute/remote_build_serving_converge.dag: converge_exec_step, converge_stage_from, converge_recover_stale_seat, serving_leg_seat_census, serving_leg_slice_cap (the stage/exec/elevation legs);
+      fleet/apt_third_party_repo_converge.dag: apt_repo_install_after_leg (the install walk legs);
+      fleet/host_credential_custody_converge.dag: apply_custody_dir, custody_retire_legacy_path, clear_staging, write_and_own, run_legs_until_refused (the mkdir/chmod/rm legs);
+      fleet/site_pxe_edge_converge.dag: run_site_pxe_edge;
+      fleet/site_pxe_edge_live_evidence.dag: site_pxe_edge_live_ensure_real_dir_on;
+      tailscale_join_converge.dag: tailscale_join_elevated_refusal (the three mutating join legs);
+      tailscale_machine_name_converge.dag: tailscale_machine_name_set_leg;
+      spark/managed_grant_install.dag: the install (non-sudoers) privileged legs;
+      spark/rendezvous_participation.dag: observe_declared_rank_host_reach;
+      live_deploy/deployed_tree_observation.dag: the DeployedTreeLegWireInconsistent consumers;
+      host/verified_archive_install.dag: the install leg whose Unanswered arm is exit_failure.
+      READS that withhold without a readback are the sound floor and are deliberately excluded.",
+
+    "WHAT THIS IS NOT. It is not unresolved_callee_conflated_with_dispatched_elsewhere (a wrong identity); it is not bool_projection_over_a_typed_carrier (a lossy read of an existing carrier; here the carrier is already typed). It is not the never-dispatched fold-to-RunArgvTransportRefused: that fold is what the 4th-arm family retires; where a consumer still folds dispatched-unknown onto a never-dispatched arm it is a gap in that family's reach and belongs on the inventory above, not asserted complete here. It is not a regression: the cloned arms kept the pre-existing overrun behaviour, which already did not read back.",
+
+    "RULE: where a consumer of a dispatched-but-unreadable leg holds an independent readback for that leg's effect, it runs the readback and settles on its reading; it may rest on do-not-proceed only when no such readback exists.",
+
+    "RUNG FOUND AT: below the ladder (the drop is silent -- a do-not-proceed verdict looks conservative and reads as correct, so no reviewer or exit flags it).",
+
+    "CEILING: structurally guaranteed when every effectful consumer of a dispatched-unknown leg settles on a readback (gunbc.design_argument::fail_closed); below that, do-not-proceed is the sound floor and this row tracks the consumers still above it.",
+
+    "SCOPED OUT OF #17119, TRACKED HERE (both WITHHOLD, never grant, so they are the sound floor and not a defect of this PR): (a) gunbc.runner.runner_user_session linger -- linger_ok stays false on an Unanswered linger read even when the independent fresh-login readback reports Linger=yes; the row is withheld rather than wrongly granted. (b) gunbc.runner.runner_user_session user-manager start -- the Unanswered start does not run the user-manager readback that the module already owns, so the standing stays unknown; withheld, not asserted started.",
+
+    "LOSSY-BOOLEAN SUBCASE (#17119 round-4, review 99629). A consumer whose fold returns a Bool has NO channel for the dispatched-unknown standing, so it returns false, which is 'success not established' -- the sound direction (it never claims the effect landed) and therefore the row's floor, not a fabricated grant. The defect is narrower than the family: an arm that DISCARDS cause/reason while its comment CLAIMS the typed reason was carried (gunbc.host.host_effect_realize live_deploy_apply_ensure_directory_on_host, credstore_copy_succeeded) makes a false statement about what it preserves. The comment was corrected to say the truth -- the Bool cannot carry the cause, so the caller must not read false as 'the operation did not happen' and re-issue a non-idempotent mutation. The full repair (three-valued outcome, or running the leg's own readback as the codex arm does) is deferred here rather than left implicit."
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "RunArgvTransportUnanswered"),
+    decl_ref(module_path: "gunbc.runner.runner_gpu_container_toolchain", decl_name: "gpu_container_provision_run_leg"),
+    decl_ref(module_path: "gunbc.runner.runner_user_session", decl_name: "runner_user_session_converge_ci_wet"),
+    decl_ref(module_path: "test.claim.fleet.fleet_password_session_leg_deadline_witness", decl_name: "a_wire_inconsistent_exec_is_carried_dispatched_unknown_through_the_real_producer_chain"),
+    decl_ref(module_path: "test.claim.host.export_host_reader_converge_witness", decl_name: "a_wire_inconsistent_reload_enters_reload_uncertain_with_recovery_readbacks"),
+    decl_ref(module_path: "test.claim.host.export_host_reader_converge_witness", decl_name: "a_wire_inconsistent_reload_never_claims_sshd_was_not_reloaded"),
+    decl_ref(module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "witness_retract_wire_inconsistent_removal_is_withheld_until_the_exact_entry_readback"),
+    decl_ref(module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "witness_retract_wire_inconsistent_removal_still_present_stays_unknown"),
+    decl_ref(module_path: "test.claim.spark.spark_grant_privileged_operation_witness", decl_name: "the_removal_settlement_distinguishes_unanswered_from_answered_exit0"),
+    decl_ref(module_path: "test.claim.runner.runner_service_slot_start_witness", decl_name: "a_dispatched_unanswered_start_runs_the_readback_and_is_never_not_started"),
+  ],
+}

@@ -10,6 +10,8 @@ import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcomeUnanswered,
+  host_operation_unanswered_reason,
   host_operation_exec,
   host_operation_materialize_argv,
   SystemctlShowProperty,
@@ -59,6 +61,8 @@ fn systemctl_show_property_read(
       systemctl_show_property_value_from_stdout(success: ok, stdout: out)
     HostOperationRefused { operation: _, reason: why } =>
       SystemdPropertyCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      SystemdPropertyCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 
@@ -78,6 +82,8 @@ fn systemctl_show_user_property_read(
       systemctl_show_property_value_from_stdout(success: ok, stdout: out)
     HostOperationRefused { operation: _, reason: why } =>
       SystemdPropertyCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      SystemdPropertyCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 
@@ -122,6 +128,8 @@ fn systemctl_show_load_state_read(
       systemctl_show_property_value_from_stdout(success: ok, stdout: out)
     HostOperationRefused { operation: _, reason: why } =>
       SystemdPropertyCaptureRefused { reason: why }
+    HostOperationOutcomeUnanswered { operation: op, cause: c } =>
+      SystemdPropertyCaptureRefused { reason: host_operation_unanswered_reason(operation: op, cause: c) }
   }
 }
 

@@ -26,7 +26,7 @@ import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_
 import product.host_identity { HostIdentity }
 import gunbc.actions_run_binding { actions_variable_trimmed, fleet_converge_subject_host_env_name }
 import gunbc.host.host_effect { HostEffectTransport }
-import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
+import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, run_argv_posix_quoted_over_host_effect_transport, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, RunArgvTransportUnanswered, run_argv_transport_unanswered_cause_phrase }
 import gunbc.host.anchored_host_transport { AnchoredBindingBound, anchored_host_binding_refusal_reason }
 import gunbc.runner.runner_initialization { runner_host_pinned_binding }
 import extdeps.shell.credentials { env_credential }
@@ -107,12 +107,20 @@ type ServiceSlotUnitStart
   = ServiceSlotUnitActive { unit: NonEmptyStr }
   | ServiceSlotUnitNotStarted { unit: NonEmptyStr, cause: String }
   | ServiceSlotUnitNotActive { unit: NonEmptyStr, state: String }
+  // The start was dispatched but the manager's ActiveState could not be read back (the readback was refused,
+  // dispatched-unreadable, failed, or carried no ActiveState). The active state is UNESTABLISHED -- neither
+  // active nor "not-active" -- and BOTH the start fault and the readback fault are carried (#17119 item 3).
+  | ServiceSlotUnitStateUnread { unit: NonEmptyStr, start_cause: String, readback_cause: String }
 
 fn service_slot_unit_start_line(s: ServiceSlotUnitStart) -> String {
   match s {
     ServiceSlotUnitActive { unit: u } => join(["service-slot-start unit=", u as String, " active"], "")
     ServiceSlotUnitNotStarted { unit: u, cause: c } => join(["service-slot-start unit=", u as String, " not-started: ", c], "")
     ServiceSlotUnitNotActive { unit: u, state: st } => join(["service-slot-start unit=", u as String, " not-active state=", st], "")
+    // Never "not-active" and never "not-started": the start was dispatched and the manager's answer could not
+    // be read, so the active state could not be established. Both faults are shown (#17119 item 3).
+    ServiceSlotUnitStateUnread { unit: u, start_cause: sc, readback_cause: rc } =>
+      join(["service-slot-start unit=", u as String, " active-state-unread: the active state could not be established; start dispatched (", sc, "); readback: ", rc], "")
   }
 }
 
@@ -121,6 +129,41 @@ fn service_slot_unit_started(s: ServiceSlotUnitStart) -> Bool {
     ServiceSlotUnitActive { unit: _ } => true
     ServiceSlotUnitNotStarted { unit: _, cause: _ } => false
     ServiceSlotUnitNotActive { unit: _, state: _ } => false
+    // Withheld, never granted: the active state is unestablished, so the slot is not held.
+    ServiceSlotUnitStateUnread { unit: _, start_cause: _, readback_cause: _ } => false
+  }
+}
+
+// THE AGGREGATE EXIT REASON (#17119 item 3a). A held failure must NOT claim "not every slot is active"
+// when some slot's active state could not be READ at all: that states a definite non-active for a unit
+// whose state is UNKNOWN. "not every slot is active" is true only when EVERY failing slot was OBSERVED
+// non-active. With any unread slot the reason says the state could not be established, and counts the
+// observed non-active separately when both are present. A never-dispatched (not-started) slot is not
+// counted as unread: it was observed not-started, which "not every slot is active" states truthfully.
+fn service_slot_start_failure_reason(run: ServiceSlotStartRun) -> String {
+  let units = match run {
+    ServiceSlotStartRan { host: _, boot: _, revision: _, units: us } => us
+    ServiceSlotStartRefused { cause: _ } => []
+  }
+  let unread = count(filter(units, u =>
+    match u { ServiceSlotUnitStateUnread { unit: _, start_cause: _, readback_cause: _ } => true _ => false }))
+  let not_active = count(filter(units, u =>
+    match u { ServiceSlotUnitNotActive { unit: _, state: _ } => true _ => false }))
+  if unread == 0 {
+    "not every slot is active"
+  } else if not_active == 0 {
+    join(["the active state of ", int_to_decimal_string(value: unread), " slot(s) could not be established"], "")
+  } else {
+    join(
+      [
+        "the active state of ",
+        int_to_decimal_string(value: unread),
+        " slot(s) could not be established and ",
+        int_to_decimal_string(value: not_active),
+        " are not active",
+      ],
+      "",
+    )
   }
 }
 
@@ -132,17 +175,75 @@ fn service_slot_unit_start_of(unit: NonEmptyStr, started: Bool, start_detail: St
     ServiceSlotUnitNotStarted { unit: unit, cause: start_detail }
   } else {
     match show_stdout {
-      Absent => ServiceSlotUnitNotActive { unit: unit, state: "unread" }
+      Absent => ServiceSlotUnitStateUnread { unit: unit, start_cause: start_detail, readback_cause: "the ActiveState readback returned no output" }
       Present { value: out } =>
         match systemctl_show_property_value(text: out, key: "ActiveState") {
-          Absent => ServiceSlotUnitNotActive { unit: unit, state: "unread" }
+          Absent => ServiceSlotUnitStateUnread { unit: unit, start_cause: start_detail, readback_cause: join(["the ActiveState readback carried no ActiveState property: ", out], "") }
           Present { value: raw } =>
             match parse_systemd_unit_active_state(raw: trim(s: raw)) {
               Present { value: Active } => ServiceSlotUnitActive { unit: unit }
-              _ => ServiceSlotUnitNotActive { unit: unit, state: trim(s: raw) }
+              // An ActiveState= value that is not one of the manager's states is UNUSABLE, not a
+              // settled "not active": the reader cannot tell an inactive unit from a corrupt reply, so
+              // the active state is UNESTABLISHED (it was not read in a form the reader trusts).
+              Absent => ServiceSlotUnitStateUnread {
+                unit: unit,
+                start_cause: start_detail,
+                readback_cause: join(["the ActiveState value was not a state the reader understands: ", raw], ""),
+              }
+              Present { value: _ } => ServiceSlotUnitNotActive { unit: unit, state: trim(s: raw) }
             }
         }
     }
+  }
+}
+
+// THE START READBACK AS A PURE DECISION. Both settled start paths -- a dispatched-but-unreadable
+// start (the 4th arm) and a successful start -- settle the unit the SAME way: read the manager's
+// own ActiveState over the same transport and fold the answer. This is that fold, factored out so
+// the two call sites cannot drift (single_authority) and so a witness can drive a dispatched-unknown
+// start straight through the decision that runs the readback. A readback that was itself refused or
+// came back unreadable leaves the state "unread" (NOT a not-started claim): the start WAS dispatched,
+// so the unit may have started and only the manager's answer can settle it.
+fn service_slot_unit_start_of_readback(unit: NonEmptyStr, start_cause: String, readback: RunArgvTransportOutcome) -> ServiceSlotUnitStart {
+  match readback {
+    // The readback never ran: the active state cannot be established. Not "not-started" (the start WAS
+    // dispatched) and not "not-active" (we never read it) -- StateUnread, carrying both faults.
+    RunArgvTransportRefused { reason: r } =>
+      ServiceSlotUnitStateUnread { unit: unit, start_cause: start_cause, readback_cause: join(["the ActiveState readback was refused: ", r], "") }
+    // The readback was dispatched but its reply is unreadable: same standing, and the carried cause says
+    // whether the reply was lost to a deadline or to an inconsistent wire shape.
+    RunArgvTransportUnanswered { cause: c, reason: r } =>
+      ServiceSlotUnitStateUnread { unit: unit, start_cause: start_cause, readback_cause: join(["the ActiveState readback was dispatched but ", run_argv_transport_unanswered_cause_phrase(cause: c, reason: r)], "") }
+    RunArgvTransportObserved { observed: shown } =>
+      if shown.success {
+        service_slot_unit_start_of(unit: unit, started: true, start_detail: start_cause, show_stdout: Present { value: shown.stdout })
+      } else {
+        // The readback ran but failed -- the manager gave no usable answer, so the state is unestablished.
+        ServiceSlotUnitStateUnread { unit: unit, start_cause: start_cause, readback_cause: join(["the ActiveState readback exited ", int_to_decimal_string(value: shown.exit_code), ": ", shown.stderr], "") }
+      }
+  }
+}
+
+// THE START-UNIT DECISION, PURE. Given the outcome of the start dispatch and a provider for the manager's
+// ActiveState readback, decide the unit. A start that was DISPATCHED but whose reply is unreadable is settled
+// by the readback, NEVER as ServiceSlotUnitNotStarted -- "not-started" would report a sent start as never sent
+// (#17119 item 3). Factored out so a witness drives the exact branch production takes (single_authority), and
+// the readback is only consulted on the paths that read it.
+fn service_slot_start_unit_decision(
+  unit: NonEmptyStr,
+  start: RunArgvTransportOutcome,
+  readback: fn() -> RunArgvTransportOutcome,
+) -> ServiceSlotUnitStart {
+  match start {
+    RunArgvTransportRefused { reason: r } => ServiceSlotUnitNotStarted { unit: unit, cause: r }
+    RunArgvTransportUnanswered { cause: c, reason: r } =>
+      service_slot_unit_start_of_readback(unit: unit, start_cause: run_argv_transport_unanswered_cause_phrase(cause: c, reason: r), readback: readback())
+    RunArgvTransportObserved { observed: o } =>
+      if !o.success {
+        ServiceSlotUnitNotStarted { unit: unit, cause: join(["systemd-run exited ", int_to_decimal_string(value: o.exit_code), ": ", o.stderr], "") }
+      } else {
+        service_slot_unit_start_of_readback(unit: unit, start_cause: "", readback: readback())
+      }
   }
 }
 
@@ -159,19 +260,11 @@ fn service_slot_start_unit(unit: NonEmptyStr, revision: CommitSha, transport: Ho
   match service_slot_unit_start_command(unit: unit, revision: revision) {
     SystemdRunCommandRefused { cause: c } => ServiceSlotUnitNotStarted { unit: unit, cause: systemd_run_option_words_refused_cause_detail(cause: c) }
     SystemdRunCommandReady { command: command } =>
-      match run_argv_posix_quoted_over_host_effect_transport(command: command, transport: transport) {
-        RunArgvTransportRefused { reason: r } => ServiceSlotUnitNotStarted { unit: unit, cause: r }
-        RunArgvTransportObserved { observed: o } =>
-          if !o.success {
-            service_slot_unit_start_of(unit: unit, started: false, start_detail: join(["systemd-run exited ", int_to_decimal_string(value: o.exit_code), ": ", o.stderr], ""), show_stdout: none)
-          } else {
-            match run_argv_over_host_effect_transport(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]), transport: transport) {
-              RunArgvTransportRefused { reason: _ } => service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: none)
-              RunArgvTransportObserved { observed: shown } =>
-                service_slot_unit_start_of(unit: unit, started: true, start_detail: "", show_stdout: if shown.success { Present { value: shown.stdout } } else { none })
-            }
-          }
-      }
+      service_slot_start_unit_decision(
+        unit: unit,
+        start: run_argv_posix_quoted_over_host_effect_transport(command: command, transport: transport),
+        readback: fn() { run_argv_over_host_effect_transport(command: systemctl_show_properties_command(unit: unit, properties: [ActiveState]), transport: transport) },
+      )
   }
 }
 
@@ -295,7 +388,7 @@ fn service_slot_start_wet() -> ProcessExit
         } else if service_slot_start_held(run: run) {
           ExitSuccess
         } else {
-          exit_failure(reason: concat("service-slot start: not every slot is active; see the receipt:\n", join(lines, "\n")))
+          exit_failure(reason: concat("service-slot start: ", service_slot_start_failure_reason(run: run), "; see the receipt:\n", join(lines, "\n")))
         }
       }
     }

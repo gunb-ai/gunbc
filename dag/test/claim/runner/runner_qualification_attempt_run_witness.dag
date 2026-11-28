@@ -16,8 +16,9 @@ import gunbc.host.anchored_host_transport { anchored_host_transport_live_per_boo
 import gunbc.runner.runner_host_unit_slot { host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerOwnLifetime }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved, ListenerNotLaunched }
 import gunbc.runner.runner_qualification_attempt_run {
-  attempt_listener_run_of, qualification_attempt_label, qualification_attempt_verdict, AttemptQualified, AttemptNotQualified,
+  attempt_listener_run_of, attempt_listener_run_of_launch, qualification_attempt_label, qualification_attempt_verdict, AttemptQualified, AttemptNotQualified,
 }
+import gunbc.host.host_effect_realize { RunArgvTransportUnanswered, TransportUnansweredWireInconsistent }
 import gunbc.runner.runner_qualification_attempt_pass {
   AttemptPassed, AttemptPinRefused, AttemptDispatchRefused, AttemptRan, AttemptNothingRegistered,
 }
@@ -143,5 +144,31 @@ test fn a_refused_pin_is_not_qualified_even_with_nothing_to_remove() -> Bool {
   match qualification_attempt_verdict(pass: AttemptPinRefused { attempt: "q-1" as NonEmptyStr, refusal: PinBranchCreateAmbiguous { detail: "lost" as NonEmptyStr }, unpin: none }) {
     AttemptNotQualified { cause: c } => (c as String) == "the qualification ref pin was refused"
     AttemptQualified => false
+  }
+}
+
+// THE DISPATCHED-UNKNOWN ATTEMPT LAUNCH (4th-arm family, follow-up of #16984). A launch whose reply came
+// back unreadable was DISPATCHED -- the unit may have launched and run -- so it is ListenerOutcomeUnobserved,
+// never ListenerNotLaunched ("refused before any leg ran"), and the verdict must never say "did not launch".
+// RED (mutation): routing the RunArgvTransportUnanswered arm of attempt_listener_run_of_launch back to
+// ListenerNotLaunched makes this return false; it returns true at head.
+test fn a_dispatched_attempt_launch_is_listener_unobserved_never_not_launched() -> Bool {
+  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
+    HostUnitListenerUnbuilt { cause: _ } => false
+    HostUnitListenerReady { wait: w } =>
+      match attempt_listener_run_of_launch(
+        outcome: RunArgvTransportUnanswered { cause: TransportUnansweredWireInconsistent, reason: "echoed a wall deadline but overran=false" },
+        launcher: w,
+        version_line: grounded_version,
+      ) {
+        ListenerOutcomeUnobserved { cause: c } =>
+          string_contains(s: c as String, pattern: "dispatched")
+            && string_contains(s: c as String, pattern: "end was not observed")
+            && !string_contains(s: c as String, pattern: "did not launch")
+            && !string_contains(s: c as String, pattern: "refused before any leg ran")
+        ListenerNotLaunched { cause: _ } => false
+        ListenerExited { exit_code: _ } => false
+        ListenerEndedUnclean { result: _ } => false
+      }
   }
 }

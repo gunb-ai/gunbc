@@ -862,6 +862,11 @@ test fn witness_ssh_shell_transport_refuses_a_shell_reinterpreted_word_before_an
       string_contains(s: why, pattern: "outside portable allowlist")
         && string_contains(s: why, pattern: "before any ssh leg")
         && string_contains(s: why, pattern: "a;b")
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } =>
+      string_contains(s: why, pattern: "outside portable allowlist")
+        && string_contains(s: why, pattern: "before any ssh leg")
+        && string_contains(s: why, pattern: "a;b")
     RunArgvTransportObserved { observed: _ } => false
   }
 }
@@ -876,6 +881,11 @@ test fn witness_ssh_shell_stdin_transport_refuses_a_shell_reinterpreted_word_bef
     transport: SshShell { ssh_host: "compile-pool-transport-wall-witness.invalid" as NonEmptyStr },
   ) {
     RunArgvTransportRefused { reason: why } =>
+      string_contains(s: why, pattern: "outside portable allowlist")
+        && string_contains(s: why, pattern: "before any ssh leg")
+        && string_contains(s: why, pattern: "a b")
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: why } =>
       string_contains(s: why, pattern: "outside portable allowlist")
         && string_contains(s: why, pattern: "before any ssh leg")
         && string_contains(s: why, pattern: "a b")

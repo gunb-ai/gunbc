@@ -11,9 +11,9 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
-import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_path_wire, spark_reach_endpoint }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy,
@@ -133,6 +133,11 @@ fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReac
               PrivilegedSessionNotRun {
                 cause: join(["the privileged leg overran its ceiling; its effect on the host is UNKNOWN, not "
                   "established as not-run: ", typed_argv_exec_overran_reason(leg_hint: "spark host privileged apply", deadline: d)], "")
+              }
+            FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+              PrivilegedSessionNotRun {
+                cause: join(["the privileged leg was dispatched but its reply was inconsistent; its effect on the host is UNKNOWN: ",
+                  typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark host privileged apply", fault: f)], "")
               }
             FleetPrincipalLegRan { session: _, result: r } => PrivilegedSessionRan { result: r }
           }

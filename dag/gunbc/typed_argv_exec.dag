@@ -10,7 +10,9 @@ import extdeps.ssh.session {
   ssh_session_exec_result_from_service,
   ssh_session_exec_portable_words,
   ssh_session_exec_portable_words_with_stdin,
+  ssh_session_exec_wire_refusal_text,
   SshSessionExecResult,
+  SshSessionWireFault,
 }
 import extdeps.ssh.session
 import extdeps.ssh.openssh_remote_command { openssh_server_version_argv }
@@ -46,6 +48,7 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
   FleetPrincipalLegOverran,
+  FleetPrincipalLegWireInconsistent,
 }
 
 // Realization edge for remote command dispatch over SSH: one argv shape per op, taken from the
@@ -73,6 +76,7 @@ type TypedArgvExecOutcome =
   | TypedArgvExecConverged { result: SshSessionExecResult }
   | TypedArgvExecOverran { deadline: Second }
   | TypedArgvExecRefused { reason: String }
+  | TypedArgvExecWireInconsistent { fault: SshSessionWireFault }
 
 fn typed_argv_portable_argv_char_allowed(cp: Int) -> Bool {
   (cp >= 65 && cp <= 90)
@@ -218,6 +222,21 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
 // leg against an account that holds no key. gunbc.fleet.fleet_bootstrap_principal_session decides.
 // THE SAME TYPED LEG ON A CONNECTION OF ITS OWN (gunbc.fleet.fleet_bootstrap_principal_session
 // exec_as_fleet_principal_on_fresh_connection): for a readback that must authenticate as a new login.
+// THE ONE PURE CONVERSION from a fleet principal leg outcome (minted by fleet_principal_leg_of_exec, which is
+// the single producer of FleetPrincipalLegWireInconsistent AFTER the sink was called) to the typed-argv sum.
+// Every bridge site below calls this, so a leg that WAS dispatched but whose reply arrived in an inconsistent
+// wire shape reaches TypedArgvExecWireInconsistent in exactly one place -- it can never be collapsed back into
+// TypedArgvExecRefused, which host_leg_of_typed_argv reads as never-sent. The producer witness drives a real
+// decode through fleet_principal_leg_of_exec into THIS bridge and on to the reload receipt. (#17119 item 7.)
+fn typed_argv_exec_outcome_of_fleet_principal_leg(leg: FleetPrincipalLegOutcome) -> TypedArgvExecOutcome {
+  match leg {
+    FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+    FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
+    FleetPrincipalLegWireInconsistent { fault: f } => TypedArgvExecWireInconsistent { fault: f }
+    FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+  }
+}
+
 fn typed_argv_exec_over_fleet_ssh_fresh_connection(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -232,11 +251,9 @@ fn typed_argv_exec_over_fleet_ssh_fresh_connection(
       ),
     }
     Present { value: words } =>
-      match exec_as_fleet_principal_on_fresh_connection(context: context, target: target, words: words, kind: kind) {
-        FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
-        FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
-        FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
-      }
+      typed_argv_exec_outcome_of_fleet_principal_leg(
+        leg: exec_as_fleet_principal_on_fresh_connection(context: context, target: target, words: words, kind: kind),
+      )
   }
 }
 
@@ -254,15 +271,13 @@ fn typed_argv_exec_over_fleet_ssh(
       ),
     }
     Present { value: words } =>
-      match exec_as_fleet_principal(
-        context: context, target: target, words: words,
-        credential: BootstrapCredentialInRunEnvironment,
-        kind: kind,
-      ) {
-        FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
-        FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
-        FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
-      }
+      typed_argv_exec_outcome_of_fleet_principal_leg(
+        leg: exec_as_fleet_principal(
+          context: context, target: target, words: words,
+          credential: BootstrapCredentialInRunEnvironment,
+          kind: kind,
+        ),
+      )
   }
 }
 
@@ -284,15 +299,13 @@ fn typed_argv_exec_over_fleet_ssh_with_stdin(
       ),
     }
     Present { value: words } =>
-      match exec_as_fleet_principal_with_stdin(
-        context: context, target: target, words: words, stdin_payload: stdin_payload,
-        credential: BootstrapCredentialInRunEnvironment,
-        kind: kind,
-      ) {
-        FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
-        FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
-        FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
-      }
+      typed_argv_exec_outcome_of_fleet_principal_leg(
+        leg: exec_as_fleet_principal_with_stdin(
+          context: context, target: target, words: words, stdin_payload: stdin_payload,
+          credential: BootstrapCredentialInRunEnvironment,
+          kind: kind,
+        ),
+      )
   }
 }
 
@@ -302,6 +315,7 @@ fn read_fleet_login_shell(target: SshTarget, context: FleetSshExecutionContext) 
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["getent", "passwd", target.principal as String], kind: ProbeLeg) {
     TypedArgvExecRefused { reason: why } => LoginShellUnreadable { principal: target.principal, reason: why }
     TypedArgvExecOverran { deadline: _ } => LoginShellUnreadable { principal: target.principal, reason: "the login-shell read overran its wall-clock deadline" }
+    TypedArgvExecWireInconsistent { fault: f } => LoginShellUnreadable { principal: target.principal, reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "the login-shell read", fault: f) }
     TypedArgvExecConverged { result: r } => login_shell_standing(target: target, success: r.success, output: r.stdout)
   }
 }
@@ -314,6 +328,7 @@ fn read_posix_remote_route(target: SshTarget, context: FleetSshExecutionContext,
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: openssh_server_version_argv(binary: fleet_openssh_server_binary), kind: ProbeLeg) {
     TypedArgvExecRefused { reason: why } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: why)
     TypedArgvExecOverran { deadline: _ } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: "the server-version read overran its wall-clock deadline")
+    TypedArgvExecWireInconsistent { fault: f } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: typed_argv_exec_wire_inconsistent_reason(leg_hint: "the server-version read", fault: f))
     TypedArgvExecConverged { result: r } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: r.success, server_output: r.stderr)
   }
 }
@@ -342,14 +357,12 @@ fn typed_argv_exec_over_fleet_ssh_posix(
               reason: concat("a remote word is empty or carries NUL, which no argv carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
             }
             Present { value: leg } =>
-              match exec_fleet_remote_leg(
-                context: context, leg: leg,
-                credential: BootstrapCredentialInRunEnvironment,
-              ) {
-                FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
-                FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
-                FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
-              }
+              typed_argv_exec_outcome_of_fleet_principal_leg(
+                leg: exec_fleet_remote_leg(
+                  context: context, leg: leg,
+                  credential: BootstrapCredentialInRunEnvironment,
+                ),
+              )
           }
       }
   }
@@ -363,5 +376,15 @@ fn typed_argv_exec_overran_reason(leg_hint: String, deadline: Second) -> String 
       "s wall-clock deadline; the process group was killed before the host answered",
     ),
     " -- an overrun is neither a refusal nor a completion",
+  )
+}
+
+// Shared helper: builds the cause string for any consumer that maps WireInconsistent to its own failure arm.
+// The command WAS dispatched and the reply was unreadable, so the effect is unknown -- the same epistemic
+// status as an overrun, but the cause is the wire fault, not a deadline.
+fn typed_argv_exec_wire_inconsistent_reason(leg_hint: String, fault: SshSessionWireFault) -> String {
+  concat(
+    concat(leg_hint, " leg was dispatched but its reply carried an inconsistent wire shape"),
+    concat(": ", ssh_session_exec_wire_refusal_text(fault: fault)),
   )
 }

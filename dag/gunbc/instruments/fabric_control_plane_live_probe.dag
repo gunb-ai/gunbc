@@ -158,7 +158,7 @@ import gunbc.systemctl_show_read {
 import extdeps.systemd { ControlGroup }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 import gunbc.host.host_operation_exec {
-  HostOperation, HostOperationOutcome, HostOperationObserved, HostOperationRefused,
+  HostOperation, HostOperationOutcome, HostOperationObserved, HostOperationRefused, HostOperationOutcomeUnanswered,
   CgroupListChildren, CgroupReadInterfaceFile, CgroupPathIsDirectory,
   host_operation_exec_local,
 }
@@ -1996,6 +1996,9 @@ fn fci1_host_operation_value(operation: HostOperation) -> String? {
     HostOperationObserved { stdout: out, success: true, stderr: _ } => Present { value: trim(s: out) }
     HostOperationObserved { stdout: _, success: false, stderr: _ } => Absent
     HostOperationRefused { operation: _, reason: _ } => Absent
+    // The local leg never dispatches over a wire, so this arm is unreachable here; withholding
+    // (Absent) keeps it exhaustive and fail-closed without claiming the value.
+    HostOperationOutcomeUnanswered { operation: _, cause: _ } => Absent
   }
 }
 

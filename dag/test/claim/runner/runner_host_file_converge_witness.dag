@@ -37,6 +37,7 @@ import gunbc.runner.runner_slot_retirement {
   retirement_unit,
   retirement_is_complete,
   retirement_is_unobserved,
+  RetirementUnobserved,
   CgroupEventsBatch,
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
@@ -190,6 +191,7 @@ import gunbc.runner.runner_host_file_converge {
   SlotUnitUnread,
   SlotRetiredAsDeclared,
   SlotRetirementIncomplete,
+  SlotRetirementUnobserved,
   classify_runner_slot_unit_against_retirement,
   RunnerSlotUnitResult,
   RunnerSlotPopulation,
@@ -250,6 +252,19 @@ import gunbc.runner.runner_host_file_converge {
   superseded_dropin_removed,
   runner_host_superseded_dropin_paths,
   runner_host_control_shadow_paths,
+}
+import gunbc.runner.runner_host_file_converge {
+  deploy_slot_account_standing_after_dispatched_create,
+  runner_spec_account_standing_after_dispatched_create,
+  runner_spec_account_standing_after_answered_create, runner_spec_account_step,
+  RunnerSpecAccountStep, RunnerSpecAccountSettled, RunnerSpecAccountUnread, RunnerSpecAccountReadAbsent,
+  DeploySlotAccountReadPresent, DeploySlotAccountReadUnreadable,
+  RunnerSpecAccountReadPresent, RunnerSpecAccountReadUnreadable,
+  RunnerSpecAccountUnanswered,
+  RunnerSpecAccountStanding,
+  runner_spec_account_line,
+  runner_host_file_run_text,
+  deploy_slot_account_line, deploy_slot_account_is_held,
 }
 import extdeps.systemd.unit_file { systemd_drop_in_applies_after }
 import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path, gpu_docker_labels_dropin_path }
@@ -959,6 +974,7 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
     SlotRetiredAsDeclared => "retired"
     SlotRetirementIncomplete { cause: _ } => "retirement-incomplete"
+    SlotRetirementUnobserved { cause: _ } => "retirement-unobserved"
     SlotUnitUnread => "unread"
   }
 }
@@ -2425,4 +2441,137 @@ test fn a_written_fragment_owes_the_reload_and_nothing_else_does() -> Bool {
     && !manager_reload_owed_for_results(results: fixture_result(outcome: HostFileNotAppliedObserveOnly), also_changed: false)
     && manager_reload_owed_for_results(results: [], also_changed: true)
     && !manager_reload_owed_for_results(results: [], also_changed: false)
+}
+
+// A DISPATCHED useradd WHOSE REPLY COULD NOT BE READ SETTLES BY THE INDEPENDENT POST-WRITE GETENT,
+// NEVER AS AccountMissing (#17119 manager item 5, follow-up of #16984). useradd was SENT, so the
+// account may exist; the only honest settle is getent. Both converge paths (deploy-slot and spec-account)
+// settle a dispatched create through one pure fold, driven here to its typed receipt and exit: a readback
+// that CONFIRMS presence settles present/created (held/settled true); a readback that cannot settle leaves
+// the effect UNKNOWN (held/settled false) and the receipt is never MISSING / still-absent / refused -- it
+// WAS sent. Red-by-mutation: fold DeploySlotAccountReadUnreadable and RunnerSpecAccountReadUnreadable back
+// into DeploySlotAccountMissing / RunnerSpecAccountMissing and this returns false.
+fn a_dispatched_account_create_settles_by_getent_never_missing() -> Bool {
+  let ds_present = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadPresent { uid: 999, passwd_line: "jobuser:x:999:999::/home/jobuser:" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let ds_present_line = deploy_slot_account_line(ds_present)
+  let ds_present_ok = deploy_slot_account_is_held(ds_present)
+    && string_contains(s: ds_present_line, pattern: "created")
+    && !string_contains(s: ds_present_line, pattern: "MISSING")
+    && !string_contains(s: ds_present_line, pattern: "UNKNOWN")
+  let ds_unknown = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadUnreadable { cause: "the getent reply carried an inconsistent wire shape" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let ds_unknown_line = deploy_slot_account_line(ds_unknown)
+  let ds_unknown_ok = !deploy_slot_account_is_held(ds_unknown)
+    && string_contains(s: ds_unknown_line, pattern: "UNKNOWN")
+    && !string_contains(s: ds_unknown_line, pattern: "MISSING")
+    && !string_contains(s: ds_unknown_line, pattern: "never")
+    && !string_contains(s: ds_unknown_line, pattern: "still absent")
+    && !string_contains(s: ds_unknown_line, pattern: "refused")
+  let sp_login = "gunbc-runner" as NonEmptyStr
+  let sp_present = runner_spec_account_standing_after_dispatched_create(login: sp_login, readback: RunnerSpecAccountReadPresent { uid: 998 }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let sp_present_ok = runner_spec_account_settled(sp_present)
+    && (match sp_present { RunnerSpecAccountCreated { login: l, uid: _ } => (l as String) == "gunbc-runner" _ => false })
+  let sp_unknown = runner_spec_account_standing_after_dispatched_create(login: sp_login, readback: RunnerSpecAccountReadUnreadable { cause: "the getent reply carried an inconsistent wire shape" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let sp_unknown_ok = !runner_spec_account_settled(sp_unknown)
+    && (match sp_unknown { RunnerSpecAccountUnanswered { login: l, cause: c } => (l as String) == "gunbc-runner" && string_contains(s: (c as String), pattern: "dispatched") && !string_contains(s: (c as String), pattern: "still absent") _ => false })
+  ds_present_ok && ds_unknown_ok && ds_unknown_never_never_sent_check() && sp_present_ok && sp_unknown_ok
+}
+
+// the deploy-slot unknown receipt never reads a sent leg as never-sent
+fn ds_unknown_never_never_sent_check() -> Bool {
+  let ds_unknown = deploy_slot_account_standing_after_dispatched_create(readback: DeploySlotAccountReadUnreadable { cause: "the getent reply carried an inconsistent wire shape" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire fault)")
+  let line = deploy_slot_account_line(ds_unknown)
+  !string_contains(s: line, pattern: "never")
+    && !string_contains(s: line, pattern: "still absent")
+    && !string_contains(s: line, pattern: "refused")
+}
+
+// #17119 item 5: an UNREADABLE INITIAL spec getent is UNREAD (existence not established), NOT Missing, and is
+// never counted as settled. Red-by-mutation: revert the initial Unreadable arm to RunnerSpecAccountMissing and
+// the Unread match fails -> false.
+test fn the_spec_initial_unreadable_getent_is_unread_not_missing() -> Bool {
+  match runner_spec_account_step(login: "gunbc-runner" as NonEmptyStr, read: RunnerSpecAccountReadUnreadable { cause: "the getent leg overran its deadline" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable) {
+    RunnerSpecAccountSettled { standing: RunnerSpecAccountUnread { cause: c } } =>
+      string_contains(s: c as String, pattern: "deadline")
+        && !runner_spec_account_settled(a: RunnerSpecAccountUnread { login: "gunbc-runner" as NonEmptyStr, cause: c })
+    _ => false
+  }
+}
+
+// #17119 item 5: after an ANSWERED useradd the post-write getent SETLES: a present readback settles Created
+// (settled); an unreadable readback leaves the effect UNKNOWN (Unanswered), never Missing. Red-by-mutation:
+// revert the answered-create Unreadable arm to RunnerSpecAccountMissing -> the Unanswered match fails -> false.
+test fn the_spec_answered_create_readback_settles_or_stays_unknown() -> Bool {
+  let present = runner_spec_account_standing_after_answered_create(login: "gunbc-runner" as NonEmptyStr, readback: RunnerSpecAccountReadPresent { uid: 998 }, exit_code: 0, stderr: "")
+  let present_ok = match present { RunnerSpecAccountCreated { uid: u } => u == 998 && runner_spec_account_settled(a: present) _ => false }
+  let unknown = runner_spec_account_standing_after_answered_create(login: "gunbc-runner" as NonEmptyStr, readback: RunnerSpecAccountReadUnreadable { cause: "readback reply inconsistent" as NonEmptyStr }, exit_code: 0, stderr: "")
+  let unknown_ok = match unknown { RunnerSpecAccountUnanswered { cause: c } => string_contains(s: c as String, pattern: "answered") && string_contains(s: c as String, pattern: "readback reply inconsistent") && !runner_spec_account_settled(a: unknown) _ => false }
+  present_ok && unknown_ok
+}
+
+// #17119 item 5: a dispatched spec create whose readback could not read the account keeps the dispatch cause
+// (deadline vs wire) alongside the readback cause and stays Unanswered. Red-by-mutation: drop dispatch_cause
+// and "wire" disappears -> false.
+test fn the_spec_dispatched_create_unreadable_readback_keeps_the_dispatch_cause() -> Bool {
+  let st = runner_spec_account_standing_after_dispatched_create(login: "gunbc-runner" as NonEmptyStr, readback: RunnerSpecAccountReadUnreadable { cause: "readback reply inconsistent" as NonEmptyStr }, dispatch_cause: "useradd reply was inconsistent (wire)")
+  match st {
+    RunnerSpecAccountUnanswered { cause: c } =>
+      string_contains(s: c as String, pattern: "wire")
+        && string_contains(s: c as String, pattern: "readback reply inconsistent")
+        && !runner_spec_account_settled(a: st)
+    _ => false
+  }
+}
+
+// item 6 (round-4 sweep): the batched cgroup.events read for a MASKED retiree is a dispatched
+// leg. When that reply is unread (a RetirementUnobserved standing from the unread batch), the unit
+// is SlotRetirementUnobserved, NOT SlotRetirementIncomplete. The completeness gate must REJECT a
+// population carrying an unread retirement: a gate may not be satisfied by an unread result.
+test fn an_unanswered_masked_retiree_cgroup_batch_is_not_read_completely() -> Bool {
+  let unread_batch = classify_runner_slot_unit_against_retirement(
+    retirements: [RetirementUnobserved { unit: "actions-runner@srv1-01.service", cause: "the batched cgroup.events reply was unreadable" }],
+    reading: reading(load: "masked", reload: "no", kill: "control-group", exit: "main"),
+    expect: fixture_expect())
+  let population = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: unread_batch, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }] }
+  standing_wire_of(st: unread_batch) == "retirement-unobserved"
+    && !runner_slot_population_read_completely(population: population)
+}
+
+// item 5 (round-4 sweep): runner_host_file_run_text now renders run.spec_accounts. A DISPATCHED-UNKNOWN
+// (Unanswered) spec account must render its dispatched/effect-unknown standing and cause, in BOTH apply
+// and observe, and must never be rendered as MISSING/absent/not-created. Drives the production
+// renderer runner_spec_account_line through runner_host_file_run_text.
+fn spec_account_run_text(mode: FleetHostFileConvergeMode, standing: RunnerSpecAccountStanding) -> String {
+  match witness_subject() {
+    Absent => ""
+    Present { value: s } => runner_host_file_run_text(run: RunnerHostFileRun {
+      subject: s,
+      mode: mode,
+      privilege: AdministratorPrivilegeAvailable,
+      results: [],
+      withheld: [],
+      pre_actuation_reload: ManagerReloaded,
+      actuation_admission: ActuationAdmitted,
+      actuations: [],
+      residue: ResidueAlreadyAbsent,
+      reload: ManagerReloadNotOwed,
+      slots: population_of(standings: [SlotTeardownEffective]),
+      cap_phase: runner_host_cap_phase_not_owed,
+      deploy_account: HostHasNoDeploySlot,
+      spec_accounts: [standing],
+      slot_trees: [],
+      superseded: [],
+      deploy_readings: [],
+    })
+  }
+}
+
+test fn the_run_text_renders_a_dispatched_unknown_spec_account_not_as_absence() -> Bool {
+  let unanswered = RunnerSpecAccountUnanswered { login: "ghrunner", cause: "the account-creation leg was dispatched; the getent readback could not read the account, so its existence is unknown: getent unreadable" }
+  let apply_text = spec_account_run_text(mode: FleetHostFilesApply, standing: unanswered)
+  let observe_text = spec_account_run_text(mode: FleetHostFilesObserveOnly, standing: unanswered)
+  string_contains(s: apply_text, pattern: "ghrunner DISPATCHED-EFFECT-UNKNOWN")
+    && string_contains(s: apply_text, pattern: "the account-creation leg was dispatched")
+    && !string_contains(s: apply_text, pattern: "ghrunner MISSING")
+    && string_contains(s: observe_text, pattern: "ghrunner DISPATCHED-EFFECT-UNKNOWN")
+    && !string_contains(s: observe_text, pattern: "ghrunner MISSING")
 }

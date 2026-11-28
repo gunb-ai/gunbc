@@ -15,9 +15,10 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  }
 import extdeps.exec.command { shell_quote }
+import gunbc.typed_argv_exec { typed_argv_exec_wire_inconsistent_reason }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
@@ -110,6 +111,9 @@ type SparkLegUnreachability
   // side ended it on purpose. The effect's state is still unknown -- the kill can land mid-command --
   // so the consumer rule is the same as the unobserved arm's: read the host back before retrying.
   | LegOverran { endpoint: String, deadline: Second }
+  // THE LEG WAS DISPATCHED BUT ITS REPLY CARRIED AN INCONSISTENT WIRE SHAPE. The command was sent
+  // and its effect is UNKNOWN, same epistemic status as LegOverran: read the host back.
+  | LegWireInconsistent { endpoint: String, cause: String }
 
 fn spark_leg_unreachability_text(u: SparkLegUnreachability) -> String {
   match u {
@@ -119,6 +123,12 @@ fn spark_leg_unreachability_text(u: SparkLegUnreachability) -> String {
         "the ssh leg to ", e, " was killed at its own wall-clock ceiling of ", int_to_decimal_string(value: second_count(s: d)),
         "s: the session was alive and the remote MAY HAVE BEGUN OR PARTLY COMPLETED; the ceiling is the",
         " fix for a leg that hangs forever, NOT evidence about the host. Settle the effect by reading",
+        " the host back -- never by retrying a non-idempotent leg blind.",
+      ], "")
+    LegWireInconsistent { endpoint: e, cause: c } =>
+      join([
+        "the ssh leg to ", e, " was dispatched but its reply carried an inconsistent wire shape: ", c,
+        "; the command MAY HAVE RUN; the effect is UNKNOWN. Settle the effect by reading",
         " the host back -- never by retrying a non-idempotent leg blind.",
       ], "")
     LegBeginUnobserved { endpoint: e, stderr: err } =>
@@ -180,6 +190,8 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
             FleetPrincipalLegRefused { cause: why } => spark_remote_unreachable(u: LegNotAttempted { cause: why as String })
             FleetPrincipalLegOverran { session: _, deadline: d } =>
               spark_remote_unreachable(u: LegOverran { endpoint: endpoint as String, deadline: d })
+            FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+              spark_remote_unreachable(u: LegWireInconsistent { endpoint: endpoint as String, cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark remote leg", fault: f) })
             FleetPrincipalLegRan { session: _, result: r } =>
               spark_remote_run_of_session(endpoint: endpoint as String, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
           }
@@ -1021,6 +1033,9 @@ fn spark_argv_run_of_unreachable(cause: String, reach: SparkLegUnreachability) -
     LegNotAttempted { cause: _ } => ArgvLegDidNotRun { cause: cause }
     LegBeginUnobserved { endpoint: _, stderr: _ } => ArgvLegMayHaveRun { cause: cause }
     LegOverran { endpoint: _, deadline: _ } => ArgvLegMayHaveRun { cause: cause }
+    // The leg WAS dispatched and its reply arrived inconsistent, so the container may or may not have
+    // run -- a release read, not a "sent nothing" claim. Same as the overrun: it may have run.
+    LegWireInconsistent { endpoint: _, cause: _ } => ArgvLegMayHaveRun { cause: cause }
   }
 }
 

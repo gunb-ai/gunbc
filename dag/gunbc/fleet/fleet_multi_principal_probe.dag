@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim, Cons, Empty }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.typed_argv_exec {  typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
@@ -219,6 +219,8 @@ fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> S
       }
       TypedArgvExecOverran { deadline: d } =>
         join(["reach host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
+    TypedArgvExecWireInconsistent { fault: f } =>
+      join(["reach host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_wire_inconsistent_reason(leg_hint: "multi principal probe", fault: f), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -235,6 +237,8 @@ fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> St
       }
       TypedArgvExecOverran { deadline: d } =>
         join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
+    TypedArgvExecWireInconsistent { fault: f } =>
+      join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_wire_inconsistent_reason(leg_hint: "multi principal probe", fault: f), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -295,7 +299,8 @@ fn agent_backed_probe_success(host: String, principal: String, argv: List<String
   let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
   match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: argv) {
     TypedArgvExecConverged { result: r } => r.success
-    TypedArgvExecOverran { deadline: d } => false
+    TypedArgvExecOverran { deadline: _ } => false
+    TypedArgvExecWireInconsistent { fault: _ } => false
     TypedArgvExecRefused { reason: _ } => false
   }
 }

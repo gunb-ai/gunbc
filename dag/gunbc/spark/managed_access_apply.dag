@@ -19,9 +19,9 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   BootstrapCredentialNotHeld,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
-import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.auth.private_secret_file {
   with_private_secret_file,
   PrivateSecretFileCompleted,
@@ -234,6 +234,9 @@ fn privileged_leg(
         FleetPrincipalLegRefused { cause: why } => ApplyRefused { cause: why as String }
         FleetPrincipalLegOverran { session: _, deadline: d } =>
           ApplyRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark managed access apply", deadline: d) }
+
+        FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+          ApplyRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark managed access apply", fault: f) }
         FleetPrincipalLegRan { session: _, result: r } =>
           if r.success {
             ApplyConverged { detail: trim(s: r.stdout) }
@@ -282,6 +285,9 @@ fn managed_principal_leg(
         FleetPrincipalLegRefused { cause: why } => ApplyRefused { cause: why as String }
         FleetPrincipalLegOverran { session: _, deadline: d } =>
           ApplyRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark managed access apply", deadline: d) }
+
+        FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+          ApplyRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark managed access apply", fault: f) }
         FleetPrincipalLegRan { session: _, result: r } =>
           if r.success {
             ApplyConverged { detail: trim(s: r.stdout) }

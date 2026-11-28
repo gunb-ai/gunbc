@@ -133,7 +133,7 @@ import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.typed_argv_exec { 
   TypedArgvExecConverged,
   TypedArgvExecRefused,
-  typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Optional, Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
@@ -287,6 +287,10 @@ type TailscaleMachineNamePlanRefusal
   | OsNameLegRefused { detail: String }
   | OsNameLegFailed { exit_code: Int, detail: String }
   | OsNameUnusable { detail: String }
+  // The read leg WAS dispatched but its reply arrived unreadable (overran / inconsistent wire shape): the
+  // leg ran, so it is NOT "not attempted" -- it is a leg that ran and could not be read (#17119 item 10).
+  | StatusLegUnread { detail: String }
+  | OsNameLegUnread { detail: String }
 
 // ONE OBSERVATION, TWO NAMES. The device answers its name in two places, and a rename window moves them
 // together: `Self.HostName` is what the tailnet calls it, `hostname -s` is what the operating system calls
@@ -408,12 +412,16 @@ fn tailscale_machine_name_plan_refusal_wire(cause: TailscaleMachineNamePlanRefus
       )
     StatusLegRefused { detail: detail } =>
       join(["refused: the status read leg was not attempted: ", detail], "")
+    StatusLegUnread { detail: detail } =>
+      join(["refused: the status read leg was dispatched but its reply could not be read: ", detail], "")
     StatusLegFailed { exit_code: exit_code, detail: detail } =>
       join(["refused: `tailscale status --json` exited ", to_string(exit_code), ": ", detail], "")
     StatusDocumentRefused { cause: cause } =>
       join(["refused: the status document is unreadable: ", tailscale_machine_name_refusal_wire(cause: cause)], "")
     OsNameLegRefused { detail: detail } =>
       join(["refused: the OS hostname read leg was not attempted: ", detail], "")
+    OsNameLegUnread { detail: detail } =>
+      join(["refused: the OS hostname read leg was dispatched but its reply could not be read: ", detail], "")
     OsNameLegFailed { exit_code: exit_code, detail: detail } =>
       join(["refused: `hostname -s` exited ", to_string(exit_code), ": ", detail], "")
     OsNameUnusable { detail: detail } =>
@@ -577,7 +585,9 @@ fn tailscale_machine_name_device_names_leg(
     argv: argv_words(command: tailscale_status_json_command())
   ) {
   TypedArgvExecOverran { deadline: d } =>
-    NamesUnreadable { cause: StatusLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
+    NamesUnreadable { cause: StatusLegUnread { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      NamesUnreadable { cause: StatusLegUnread { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale machine name", fault: f) } }
     TypedArgvExecRefused { reason: reason } =>
       NamesUnreadable { cause: StatusLegRefused { detail: reason } }
     TypedArgvExecConverged { result: status_result } =>
@@ -592,7 +602,9 @@ fn tailscale_machine_name_device_names_leg(
           argv: argv_words(command: hostname_short_read_command())
         ) {
         TypedArgvExecOverran { deadline: d } =>
-          NamesUnreadable { cause: OsNameLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
+          NamesUnreadable { cause: OsNameLegUnread { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            NamesUnreadable { cause: OsNameLegUnread { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale machine name", fault: f) } }
           TypedArgvExecRefused { reason: reason } =>
             NamesUnreadable { cause: OsNameLegRefused { detail: reason } }
           TypedArgvExecConverged { result: os_result } =>
@@ -622,6 +634,9 @@ type TailscaleMachineNameSetReading
   = SetAccepted { stderr: String }
   | SetLegRefused { detail: String }
   | SetLegFailed { exit_code: Int, detail: String }
+  // The set leg WAS dispatched but its reply arrived unreadable: whether the hostname took is UNKNOWN --
+  // the leg ran, so it is not "the set leg was not attempted" (#17119 item 10).
+  | SetLegUnread { detail: String }
 
 fn tailscale_machine_name_set_leg(
   target: SshTarget,
@@ -633,7 +648,8 @@ fn tailscale_machine_name_set_leg(
     context: context,
     argv: sudo_elevate_argv(command: argv_words(command: tailscale_set_hostname_command(name: name)))
   ) {
-  TypedArgvExecOverran { deadline: d } => SetLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) }
+  TypedArgvExecOverran { deadline: d } => SetLegUnread { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => SetLegUnread { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale machine name", fault: f) }
     TypedArgvExecRefused { reason: reason } => SetLegRefused { detail: reason }
     TypedArgvExecConverged { result: result } =>
       if !result.success {
@@ -652,6 +668,9 @@ fn tailscale_machine_name_set_leg(
 type TailscaleMachineNameRunRefusal
   = RunPlanRefused { cause: TailscaleMachineNamePlanRefusal }
   | SetRefused { detail: String }
+  // The set leg was dispatched but its reply was unreadable: the hostname may have changed, so the effect
+  // is UNKNOWN -- withheld as do-not-proceed, but NOT "the set leg was not attempted" (#17119 item 10).
+  | SetUnanswered { detail: String }
   | SetFailed { exit_code: Int, detail: String }
   | ReadBackContradicts {
       requested: DnsLabel,
@@ -697,6 +716,8 @@ fn tailscale_machine_name_run_refusal_wire(cause: TailscaleMachineNameRunRefusal
       tailscale_machine_name_plan_refusal_wire(cause: cause)
     SetRefused { detail: detail } =>
       join(["refused: the set leg was not attempted: ", detail], "")
+    SetUnanswered { detail: detail } =>
+      join(["refused: the set leg was dispatched but its reply could not be read, so whether the hostname took is unknown: ", detail], "")
     SetFailed { exit_code: exit_code, detail: detail } =>
       join(["refused: `tailscale set --hostname` exited ", to_string(exit_code), ": ", detail], "")
     ReadBackContradicts {
@@ -863,6 +884,8 @@ fn converge_tailscale_machine_name(
         match tailscale_machine_name_set_leg(target: target, context: context, name: to_name) {
           SetLegRefused { detail: detail } =>
             RunRefused { host: host, cause: SetRefused { detail: detail } }
+          SetLegUnread { detail: detail } =>
+            RunRefused { host: host, cause: SetUnanswered { detail: detail } }
           SetLegFailed { exit_code: exit_code, detail: detail } =>
             RunRefused { host: host, cause: SetFailed { exit_code: exit_code, detail: detail } }
           SetAccepted { stderr: stderr } =>

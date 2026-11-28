@@ -170,7 +170,7 @@ fn bmc_authenticated_call(
     PrivateSecretFileCompleted { value: reply } => BmcCallAnswered { reply: reply }
     PrivateSecretFileCompletedResidueRemains { value: reply } =>
       BmcCallRefused {
-        reason: join([stage as String, ": the BMC call ", bmc_answer_word(reply: reply), " but the per-run netrc could not be removed, so credential material may remain on disk and requires cleanup before retry"], ""),
+        reason: join([stage as String, ": the BMC call ", bmc_answer_word(reply: reply), " but the per-run netrc cleanup was not confirmed (file and/or directory), so credential material may remain on disk and requires cleanup before retry"], ""),
       }
     PrivateSecretFileNotEntered { cause: c } =>
       BmcCallRefused { reason: join([stage as String, ": the per-run netrc could not be placed, so the BMC was not called: ", c as String], "") }

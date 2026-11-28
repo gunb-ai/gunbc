@@ -8,14 +8,14 @@ import extdeps.sudo.visudo { visudo_check_arguments }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
-  FleetPrincipalLegOverran,
-}
+  FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
+  }
 import gunbc.fleet.fleet_known_hosts_anchor {
   ProvisioningLeg,
   FleetSshExecutionContext,
@@ -625,6 +625,13 @@ fn typed_remote_file_write_over_fleet_ssh(
                 TypedRemoteFileWriteOutcomeRefused {
                   reason: typed_argv_exec_overran_reason(leg_hint: "typed remote file write", deadline: d) as String
                 }
+            // THE LEG WAS DISPATCHED AND ITS REPLY ARRIVED IN AN INCONSISTENT WIRE SHAPE. As with the
+            // ceiling, the write's content is NOT established absent and not established present -- the
+            // remedy is a re-read, never a retry and never "not written".
+            FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+              TypedRemoteFileWriteOutcomeRefused {
+                reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "typed remote file write", fault: f) as String
+              }
             FleetPrincipalLegRan { session: _, result: result } =>
               typed_remote_file_write_outcome_after_ssh_exec(write: write, result: result)
           }
@@ -644,6 +651,11 @@ type TypedRemoteFileStepLeg
   = TypedRemoteFileStepRan { result: SshSessionExecResult }
   | TypedRemoteFileStepArgvRefused
   | TypedRemoteFileStepLegRefused { cause: NonEmptyStr }
+  // The step was DISPATCHED and its reply came back unreadable (overran, or an inconsistent wire shape): the
+  // step may have run on the host, so its effect is unknown. This is NOT TypedRemoteFileStepLegRefused (a
+  // pre-dispatch refusal, nothing sent). Consumers must decide it explicitly; the converge's independent
+  // re-read compare is what settles it where one follows. (#17119 item 6.)
+  | TypedRemoteFileStepLegUnanswered { cause: NonEmptyStr }
 
 fn typed_remote_file_step(
   target: SshTarget,
@@ -660,7 +672,9 @@ fn typed_remote_file_step(
       ) {
         FleetPrincipalLegRefused { cause: why } => TypedRemoteFileStepLegRefused { cause: why }
         FleetPrincipalLegOverran { session: _, deadline: d } =>
-          TypedRemoteFileStepLegRefused { cause: typed_argv_exec_overran_reason(leg_hint: "typed remote file step", deadline: d) }
+          TypedRemoteFileStepLegUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "typed remote file step", deadline: d) }
+        FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+          TypedRemoteFileStepLegUnanswered { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "typed remote file step", fault: f) }
         FleetPrincipalLegRan { session: _, result: r } => TypedRemoteFileStepRan { result: r }
       }
   }
@@ -700,6 +714,12 @@ fn typed_remote_file_step_outcome(
     }
     TypedRemoteFileStepLegRefused { cause: why } => Present {
       value: TypedRemoteFileConvergenceRefused { step: step, reason: why as String },
+    }
+    TypedRemoteFileStepLegUnanswered { cause: why } => Present {
+      value: TypedRemoteFileConvergenceRefused {
+        step: step,
+        reason: join(["remote step was dispatched but its reply could not be read; its effect on the host is unknown: ", why as String], ""),
+      },
     }
     TypedRemoteFileStepRan { result: r } =>
       if r.success { none } else {
@@ -840,6 +860,11 @@ fn converge_typed_remote_file_locked(
               }
             TypedRemoteFileStepLegRefused { cause: why } =>
               TypedRemoteFileConvergenceRefused { step: "compare", reason: why as String }
+            TypedRemoteFileStepLegUnanswered { cause: why } =>
+              TypedRemoteFileConvergenceRefused {
+                step: "compare",
+                reason: join(["the re-read compare was dispatched but its reply could not be read; whether the destination matches is unknown: ", why as String], ""),
+              }
             TypedRemoteFileStepRan { result: back } =>
               remote_file_converged_from_report(
                 target: target,

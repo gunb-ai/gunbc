@@ -49,6 +49,7 @@ import gunbc.fleet.host_credential_custody_converge {
   ElevatedLeg,
   ElevatedLegRan,
   ElevatedLegRefused,
+  ElevatedLegUnanswered,
   run_elevated_leg,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOverran, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
@@ -74,6 +75,7 @@ fn read_one_host_word(
     TypedArgvExecRefused { reason: _ } => Absent
     // An overrun answered nothing: Absent, the same as a refusal -- never a word guessed from the host.
     TypedArgvExecOverran { deadline: _ } => Absent
+    TypedArgvExecWireInconsistent { fault: _ } => Absent
     TypedArgvExecConverged { result: r } =>
       if !r.success || !string_non_empty(value: trim(s: r.stdout)) {
         Absent
@@ -108,6 +110,8 @@ fn apt_repo_elevated_refusal(leg: ElevatedLeg, label: String) -> String? {
       }
     ElevatedLegRefused { reason: reason } =>
       Present { value: concat(concat(label, " not run: "), reason) }
+    ElevatedLegUnanswered { reason: reason } =>
+      Present { value: join([label, " was dispatched but its reply could not be read; its effect is unknown: ", reason], "") }
   }
 }
 
@@ -176,6 +180,14 @@ fn apt_repo_install_after_leg(
         colons: state.colons,
         refusal: Present {
           value: concat("third-party apt repository install refused for ", label, ": ", apt_repo_install_leg_kind_name(kind: kind), " (", reason, ")"),
+        },
+      }
+    ElevatedLegUnanswered { reason: reason } =>
+      AptRepoInstallState {
+        dir: state.dir,
+        colons: state.colons,
+        refusal: Present {
+          value: concat("third-party apt repository install leg was dispatched but its reply could not be read; its effect is unknown for ", label, ": ", apt_repo_install_leg_kind_name(kind: kind), " (", reason, ")"),
         },
       }
     ElevatedLegRan { exit_code: exit_code, stdout: stdout, stderr: _ } =>

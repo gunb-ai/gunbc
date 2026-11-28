@@ -1,4 +1,6 @@
 module test.claim.compute.remote_build_serving_converge_witness
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
+import std.measure { second }
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
@@ -3149,10 +3151,25 @@ fn run_remote_build_serving_converge_witness() -> ProcessExit {
     check_or_name(name: "a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap", held: a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap()),
     check_or_name(name: "every_converge_write_principal_is_grounded_on_every_candidate_host", held: every_converge_write_principal_is_grounded_on_every_candidate_host()),
     check_or_name(name: "the_census_unknown_reason_names_the_census_not_the_transport", held: the_census_unknown_reason_names_the_census_not_the_transport()),
+    check_or_name(name: "the_overrun_cause_never_claims_refusal_or_non_dispatch", held: the_overrun_cause_never_claims_refusal_or_non_dispatch()),
   ], "")
   if red == "" {
     ExitSuccess {}
   } else {
     ExitFailure { code: 1, reason: concat("remote_build_serving_converge_witness claims red: ", red) }
   }
+}
+
+// THE DISPATCHED-OVERRUN CAUSE NEVER CLAIMS REFUSAL OR NON-DISPATCH (#17119). The shared overrun reason
+// is embedded verbatim by every read consumer's Overran arm (the reworded 'leg dispatched, reply unreadable:'
+// prefixes concatenate it). If it ever claimed refusal or non-sending, every consumer inheriting it would
+// fabricate a pre-dispatch refusal for a leg that ran. RED-BY-MUTATION: adding "refused"/"not run"/
+// "never sent"/"not attempted" to typed_argv_exec_overran_reason makes this false.
+test fn the_overrun_cause_never_claims_refusal_or_non_dispatch() -> Bool {
+  let cause = typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: second(count: 30))
+  !string_contains(s: cause, pattern: "refused")
+    && !string_contains(s: cause, pattern: "not run")
+    && !string_contains(s: cause, pattern: "never sent")
+    && !string_contains(s: cause, pattern: "not attempted")
+    && !string_contains(s: cause, pattern: "not dispatched")
 }

@@ -52,6 +52,7 @@ import gunbc.host.host_operation_exec {
   CgroupReadEvents,
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcomeUnanswered,
   HostOperationOutcome,
   host_operation_materialize_argv,
 }
@@ -709,6 +710,12 @@ fn read_refused() -> HostOperationOutcome {
   HostOperationRefused { operation: "CgroupReadEvents", reason: "transport refused" }
 }
 
+// A cgroup read whose leg WAS SENT but whose reply came back unreadable (deadline overrun or an
+// inconsistent wire shape): the directory's presence and the subtree population are unknown.
+fn read_unanswered() -> HostOperationOutcome {
+  HostOperationOutcomeUnanswered { operation: "CgroupReadEvents", cause: "inconsistent wire reply" }
+}
+
 fn masked_inactive_standing(occupancy_read: HostOperationOutcome) -> RunnerRetirementStanding {
   runner_retirement_standing(
     o: retirement_observation_from_readings(
@@ -731,6 +738,40 @@ test fn an_empty_parent_with_a_populated_child_is_populated() -> Bool {
     CgroupAbsent => false
     CgroupObservedEmpty => false
     CgroupUnobserved { cause: _ } => false
+  }
+}
+
+// THE DISPATCHED-UNKNOWN GUARD (#17119 review 99437). A cgroup directory test that WAS SENT but whose
+// reply came back unreadable is DOUBT, never `CgroupAbsent`. A false "absent" would discharge retirement
+// for a slot whose cgroup state is unknown -- releasing capacity over a cgroup that may still hold a live
+// process, exactly the effect-unknown leg this PR refuses to rename. Red-by-mutation: routing the
+// HostOperationOutcomeUnanswered arm of cgroup_occupancy_from_reads to CgroupAbsent (or to a populated/
+// empty answer) returns false here.
+test fn a_dispatched_unanswered_directory_test_is_doubt_never_absence() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: read_unanswered(), events_read: events(text: "populated 1\n")) {
+    CgroupUnobserved { cause: c } =>
+      string_contains(s: c, pattern: "dispatched")
+        && string_contains(s: c, pattern: "unknown")
+        && !string_contains(s: c, pattern: "refused")
+        && !string_contains(s: c, pattern: "not run")
+    CgroupAbsent => false
+    CgroupObservedPopulated => false
+    CgroupObservedEmpty => false
+  }
+}
+
+// The same guard on the events read: with the directory answered present but the events reply unreadable,
+// subtree population is unknown -- doubt, not empty (which would discharge retirement).
+test fn a_dispatched_unanswered_events_read_is_doubt_never_absence() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: read_unanswered()) {
+    CgroupUnobserved { cause: c } =>
+      string_contains(s: c, pattern: "dispatched")
+        && string_contains(s: c, pattern: "unknown")
+        && !string_contains(s: c, pattern: "refused")
+        && !string_contains(s: c, pattern: "not run")
+    CgroupAbsent => false
+    CgroupObservedPopulated => false
+    CgroupObservedEmpty => false
   }
 }
 

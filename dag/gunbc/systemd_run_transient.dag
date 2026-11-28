@@ -12,8 +12,7 @@ import gunbc.typed_argv_exec {
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
-
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 data systemd_run_transient_path: String = "dag/extdeps/systemd/systemd_run.dag"
 data systemd_run_transient_service: String = "systemd.SystemdRun"
 data systemd_run_transient_operation: String = "RunTransient"
@@ -71,6 +70,7 @@ fn systemd_run_transient_outcome_from_exec(outcome: TypedArgvExecOutcome) -> Sys
     TypedArgvExecConverged { result: r } =>
       systemd_run_transient_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)
       TypedArgvExecOverran { deadline: d } => SystemdRunTransientRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => SystemdRunTransientRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "systemd transient run", fault: f) }
     TypedArgvExecRefused { reason: why } => SystemdRunTransientRefused { reason: why }
   }
 }
@@ -156,6 +156,8 @@ fn systemd_run_transient_wait_outcome_from_exec(
       )
       TypedArgvExecOverran { deadline: d } =>
         SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "systemd transient run", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       SystemdRunTransientWaitTransportRefused { reason: why }
   }

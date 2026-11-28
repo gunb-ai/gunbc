@@ -14,7 +14,7 @@ import gunbc.typed_argv_exec {
   typed_argv_probe_over_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_reach_endpoint {
   fleet_probe_target_for,
   fleet_probe_ready_ssh_target,
@@ -160,6 +160,7 @@ fn collect_host_receipt(host: String) -> CollectedHostReceipt {
         ReceiptAbsent { host: host, cause: trim(s: r.stderr) }
       }
       TypedArgvExecOverran { deadline: d } => ReceiptAbsent { host: host, cause: typed_argv_exec_overran_reason(leg_hint: "fleet receipt collector", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => ReceiptAbsent { host: host, cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "fleet receipt collector", fault: f) }
     TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
   }
   }

@@ -46,6 +46,8 @@ fn observed_stdout_of(outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportObserved { observed: o } => o.stdout
     RunArgvTransportRefused { reason: _ } => ""
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => ""
   }
 }
 
@@ -53,6 +55,8 @@ fn observed_exit_zero(outcome: RunArgvTransportOutcome) -> Bool {
   match outcome {
     RunArgvTransportObserved { observed: o } => o.exit_code == 0
     RunArgvTransportRefused { reason: _ } => false
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => false
   }
 }
 

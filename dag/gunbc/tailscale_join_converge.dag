@@ -162,6 +162,7 @@ import gunbc.fleet.host_credential_custody_converge {
   ElevatedLeg,
   ElevatedLegRan,
   ElevatedLegRefused,
+  ElevatedLegUnanswered,
   custody_action_wire,
   custody_host,
   custody_placement_refusal_wire,
@@ -186,7 +187,7 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_usable_on,
   tailscale_fleet_node_tag,
 }
-import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmission,
@@ -256,6 +257,7 @@ fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
 fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleStatusReading {
   match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: tailscale_status_json_command())) {
   TypedArgvExecOverran { deadline: d } => StatusUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join status", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => StatusUnreadable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale join status", fault: f) }
     TypedArgvExecRefused { reason: reason } => StatusUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code == tailscale_command_not_found_exit {
@@ -310,6 +312,8 @@ fn tailscale_join_package_verdict_of(outcome: TypedArgvExecOutcome) -> DpkgInsta
     // takes, carrying the ceiling, and the join waits for a read that actually happened.
     TypedArgvExecOverran { deadline: d } =>
       DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "tailscale join package", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      DpkgQueryUndecidable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale join package", fault: f) }
     TypedArgvExecRefused { reason: reason } => DpkgQueryUndecidable { reason: reason }
     TypedArgvExecConverged { result: r } =>
       dpkg_query_status_verdict_of(
@@ -633,6 +637,8 @@ fn tailscale_join_elevated_refusal(leg: ElevatedLeg, label: String) -> String? {
       }
     ElevatedLegRefused { reason: reason } =>
       Present { value: concat(concat(label, " not run: "), reason) }
+    ElevatedLegUnanswered { reason: reason } =>
+      Present { value: join([label, " was dispatched but its reply could not be read; its effect is unknown: ", reason], "") }
   }
 }
 
@@ -688,6 +694,7 @@ fn tailscale_join_observe_name_resolution(
     argv: argv_words(command: getent_hosts_command(name: name)),
   ) {
   TypedArgvExecOverran { deadline: d } => NameUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
+  TypedArgvExecWireInconsistent { fault: f } => NameUnreadable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale join", fault: f) }
     TypedArgvExecRefused { reason: reason } => NameUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       tailscale_join_name_resolved_verdict(
@@ -743,6 +750,7 @@ fn tailscale_join_observe_answer(
         argv: argv_words(command: command),
       ) {
       TypedArgvExecOverran { deadline: d } => JoinAnswerUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
+      TypedArgvExecWireInconsistent { fault: f } => JoinAnswerUnreadable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale join", fault: f) }
         TypedArgvExecRefused { reason: reason } => JoinAnswerUnreadable { cause: reason }
         TypedArgvExecConverged { result: r } =>
           match tailscale_ping_verdict(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {

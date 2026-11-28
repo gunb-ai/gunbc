@@ -81,6 +81,8 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   match ran {
     RunArgvTransportRefused { reason: _ } => false
+    // dispatched, reply unreadable: same handling; cause names the real fault.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => false
     RunArgvTransportObserved { observed: o } =>
       dir.success
         && seeded

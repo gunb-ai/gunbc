@@ -25,7 +25,7 @@ import extdeps.tools.ls { ls_long_numeric_entries_command }
 import std.env_binding { EnvSet }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.host.host_effect_realize { run_typed_argv_transport }
-import gunbc.typed_argv_exec {  TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.live_deploy.spec {
   DeploymentSpec, deployment_systemd_unit_path, deployment_plan_listen_port,
   deployment_directory_demands,
@@ -41,7 +41,7 @@ import extdeps.access.posix { file_mode_octal }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, owned_directory_path, owned_directory_demand_at,
   owned_directory_observe, owned_directory_decide,
-  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverExited,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverTransportUnanswered, ObserverExited,
 }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.auth.tracker_web_oauth_client {
@@ -156,6 +156,8 @@ fn remote_leg(transport: HostEffectTransport, argv: List<String>, leg: String) -
       else { LegOut { stdout: r.stdout } }
       TypedArgvExecOverran { deadline: d } =>
         LegRefused { cause: join([leg, ": ", typed_argv_exec_overran_reason(leg_hint: leg, deadline: d)], "") }
+      TypedArgvExecWireInconsistent { fault: f } =>
+        LegRefused { cause: join([leg, ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: leg, fault: f)], "") }
   }
 }
 
@@ -279,6 +281,7 @@ fn host_entry_lookup_reading(path: String) -> FilesystemEntryLookup {
 fn peer_entry_lookup_reading(transport: HostEffectTransport, path: String, privilege: ListingPrivilege) -> FilesystemEntryLookup {
   match run_typed_argv_transport(argv: entry_lookup_leg_argv(path: path, privilege: privilege), transport: transport) {
   TypedArgvExecOverran { deadline: d } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", typed_argv_exec_overran_reason(leg_hint: "member observe", deadline: d)], "") }
+  TypedArgvExecWireInconsistent { fault: f } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe", fault: f)], "") }
     TypedArgvExecRefused { reason: reason } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", reason], "") }
     TypedArgvExecConverged { result: result } => filesystem_entry_lookup_reading_of_exit(path: path, exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr)
   }
@@ -863,6 +866,8 @@ fn subtree_readback_leg(arm: ObservationArm, instance: HostDashboardInstance, ch
         TypedArgvExecConverged { result: r } => SubtreeReadOut { receipt: r.stdout }
         TypedArgvExecOverran { deadline: d } =>
           SubtreeReadUnobservable { cause: typed_argv_exec_overran_reason(leg_hint: "member observe subtree read", deadline: d) }
+        TypedArgvExecWireInconsistent { fault: f } =>
+          SubtreeReadUnobservable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe subtree read", fault: f) }
       }
   }
 }
@@ -974,6 +979,8 @@ fn posture_config_leg(arm: ObservationArm, repo: FilePath, key: NonEmptyStr) -> 
           else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(r.exit_code)], "") } }
           TypedArgvExecOverran { deadline: d } =>
             PostureConfigUnobservable { cause: join([read_failure_cause, ": ", typed_argv_exec_overran_reason(leg_hint: "member observe posture read", deadline: d)], "") }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            PostureConfigUnobservable { cause: join([read_failure_cause, ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe posture read", fault: f)], "") }
       }
   }
 }
@@ -1066,7 +1073,9 @@ fn privileged_directory_read(arm: ObservationArm, op: ExecutorPrivilegedOperatio
           if r.exit_code == 0 { ObserverReadOut { stdout: r.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
           TypedArgvExecOverran { deadline: d } =>
-            ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "member observe executor read", deadline: d) } }
+            ObserverReadFailed { origin: ObserverTransportUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "member observe executor read", deadline: d) } }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            ObserverReadFailed { origin: ObserverTransportUnanswered { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe executor read", fault: f) } }
       }
   }
 }

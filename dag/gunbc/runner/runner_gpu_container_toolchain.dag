@@ -261,6 +261,9 @@ fn gpu_container_arm_text(a: GpuContainerArm) -> String {
 fn gpu_container_arm_from(outcome: RunArgvTransportOutcome, what: String, marker: String) -> GpuContainerArm {
   match outcome {
     RunArgvTransportRefused { reason: r } => GpuContainerArmUnobserved { reason: concat(what, " leg refused: ", r) }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => GpuContainerArmUnobserved { reason: concat(what, " leg was dispatched but its reply could not be read: ", r) }
     RunArgvTransportObserved { observed: o } =>
       if o.success == false {
         GpuContainerArmMissing { detail: concat(what, " exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)) }
@@ -304,6 +307,9 @@ type GpuContainerToolchainReadback {
 fn job_user_uid_arm(user: NonEmptyStr, transport: HostEffectTransport) -> RunnerJobUserUidReading {
   match run_argv_over_host_effect_transport(command: getent_passwd_command(key: user), transport: transport) {
     RunArgvTransportRefused { reason: r } => JobUserUidUnobserved { cause: r as NonEmptyStr }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => JobUserUidUnobserved { cause: r as NonEmptyStr }
     RunArgvTransportObserved { observed: o } =>
       runner_job_user_uid_reading(job_user: user, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
   }
@@ -427,6 +433,9 @@ fn job_user_daemon_arm(user: NonEmptyStr, uid: Int, home: String, transport: Hos
     transport: transport,
   ) {
     RunArgvTransportRefused { reason: r } => GpuContainerArmUnobserved { reason: r }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => GpuContainerArmUnobserved { reason: r }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code != 0 {
         GpuContainerArmMissing {
@@ -638,6 +647,10 @@ fn runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: Bool, transpor
   } else {
     match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv_words(command: nvidia_ctk_cdi_generate_command())), transport: transport) {
       RunArgvTransportRefused { reason: r } => CdiGenerateFailed { cause: r }
+      // Dispatched, reply unreadable: the cdi-generate leg WAS sent and may have written a spec file, so its
+      // on-disk effect is unknown. Reported as failed (the spec cannot be trusted as generated) with the typed
+      // reason naming the real fault; it is never retried blindly, and never described as "not run".
+      RunArgvTransportUnanswered { cause: _, reason: r } => CdiGenerateFailed { cause: r }
       RunArgvTransportObserved { observed: o } =>
         if o.success {
           CdiGenerateRan { output: first_line(text: o.stdout) }
@@ -772,6 +785,9 @@ fn gpu_docker_labels_outcome_holds(o: GpuDockerLabelsOutcome, ready: Bool) -> Bo
 fn gpu_docker_labels_transport_failure_text(step: String, outcome: RunArgvTransportOutcome) -> String {
   match outcome {
     RunArgvTransportRefused { reason: r } => concat(step, " refused: ", r)
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => concat(step, " was dispatched but its reply could not be read: ", r)
     RunArgvTransportObserved { observed: o } =>
       concat(step, " exited ", to_string(o.exit_code), ": ", trim(s: o.stderr))
   }
@@ -1384,6 +1400,11 @@ data gpu_container_provision_active_word: String = "active"
 type GpuContainerProvisionStep
   = GpuContainerProvisioned { step: String }
   | GpuContainerProvisionRefused { step: String, cause: String }
+  // DISPATCHED, reply unreadable (overran or an inconsistent wire shape): the elevated leg WAS sent and its
+  // effect on the host is unknown. Distinct from Refused (which means never dispatched, or ran-and-was-refused
+  // with an exit code) so the dispatch fact is not lost from the arm -- the discriminator is the arm, not the
+  // cause string. A dispatched-unknown elevated step blocks the grant and is never retried blindly.
+  | GpuContainerProvisionUnanswered { step: String, cause: String }
   | GpuContainerProvisionSkipped { step: String, reason: String }
 
 // ONE ELEVATED COMMAND, in the same two-field shape the custody leg uses, so a step is data. THE LEG
@@ -1451,6 +1472,9 @@ fn gpu_container_provision_start_leg(uid: Int, job_user: NonEmptyStr) -> GpuCont
 fn gpu_container_provision_diagnostic_text(argv: List<String>, transport: HostEffectTransport) -> String {
   match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv), transport: transport) {
     RunArgvTransportRefused { reason: r } => join(["[", join(argv, " "), ": transport refused: ", r as String, "]"], "")
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => join(["[", join(argv, " "), ": was dispatched but its reply could not be read via transport: ", r as String, "]"], "")
     RunArgvTransportObserved { observed: o } =>
       join(["\n--- ", join(argv, " "), " (exit=", to_string(o.exit_code), ")\n", trim(s: o.stdout), trim(s: o.stderr)], "")
   }
@@ -1459,6 +1483,9 @@ fn gpu_container_provision_diagnostic_text(argv: List<String>, transport: HostEf
 fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: HostEffectTransport) -> GpuContainerProvisionStep {
   match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: leg.argv), transport: transport) {
     RunArgvTransportRefused { reason: r } => GpuContainerProvisionRefused { step: leg.step, cause: r as String }
+    // Dispatched, reply unreadable: the elevated leg WAS sent and its effect is unknown. A distinct arm (not
+    // Refused) so the dispatch fact survives -- the consumers block on it and never call it "not run".
+    RunArgvTransportUnanswered { cause: _, reason: r } => GpuContainerProvisionUnanswered { step: leg.step, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code == 0 {
         GpuContainerProvisioned { step: leg.step }
@@ -1499,6 +1526,10 @@ fn gpu_container_provision_run_legs(legs: List<GpuContainerProvisionLeg>, transp
 fn gpu_container_provision_has_refusal(steps: List<GpuContainerProvisionStep>) -> Bool {
   steps.any(s => match s {
     GpuContainerProvisionRefused { step: _, cause: _ } => true
+    // An unanswered elevated step blocks the grant just as a refusal does: its effect on the host is unknown,
+    // so the label must not be granted. (It is NOT retried blindly -- the recurring row forbids re-issuing a
+    // non-idempotent elevated step without a readback.)
+    GpuContainerProvisionUnanswered { step: _, cause: _ } => true
     GpuContainerProvisioned { step: _ } => false
     GpuContainerProvisionSkipped { step: _, reason: _ } => false
   })
@@ -1554,11 +1585,15 @@ fn gpu_container_subordinate_range_verification_proven(
   let successes = filter(steps, s => match s {
     GpuContainerProvisioned { step: st } => st == step_name
     GpuContainerProvisionRefused { step: _, cause: _ } => false
+    GpuContainerProvisionUnanswered { step: _, cause: _ } => false
     GpuContainerProvisionSkipped { step: _, reason: _ } => false
   })
   let counter_records = filter(steps, s => match s {
     GpuContainerProvisioned { step: _ } => false
     GpuContainerProvisionRefused { step: st, cause: _ } => st == step_name
+    // An unanswered verify step is NOT proof: its on-host effect is unknown, so it counts as a counter-record
+    // and the subordinate-range label is withheld rather than granted on an unread reply.
+    GpuContainerProvisionUnanswered { step: st, cause: _ } => st == step_name
     GpuContainerProvisionSkipped { step: st, reason: _ } => st == step_name
   })
   length(successes) > 0 && length(counter_records) == 0
@@ -1687,6 +1722,9 @@ fn host_capability_row_observe(
   let probe = run_argv_over_host_effect_transport(command: host_capability_row_presence_command(row: row), transport: transport)
   match probe {
     RunArgvTransportRefused { reason: r } => CapabilityUnobservable { label: label, cause: r as String }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => CapabilityUnobservable { label: label, cause: r as String }
     RunArgvTransportObserved { observed: po } =>
       match host_capability_dropin_presence(
         exit_code: po.exit_code,
@@ -1697,6 +1735,9 @@ fn host_capability_row_observe(
           let read = run_argv_over_host_effect_transport(command: host_capability_row_read_command(row: row), transport: transport)
           match read {
             RunArgvTransportRefused { reason: r } => CapabilityUnobservable { label: label, cause: r as String }
+            // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+            // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+            RunArgvTransportUnanswered { cause: _, reason: r } => CapabilityUnobservable { label: label, cause: r as String }
             RunArgvTransportObserved { observed: o } =>
               host_capability_witness_of_reads(
                 label: label,
@@ -1789,6 +1830,7 @@ fn gpu_container_provision_plan_check_count(actions: List<GpuContainerProvisionA
 fn gpu_container_provision_first_refusal(steps: List<GpuContainerProvisionStep>) -> String? {
   match filter(steps, s => match s {
     GpuContainerProvisionRefused { step: _, cause: _ } => true
+    GpuContainerProvisionUnanswered { step: _, cause: _ } => true
     GpuContainerProvisioned { step: _ } => false
     GpuContainerProvisionSkipped { step: _, reason: _ } => false
   }).first() {
@@ -1796,6 +1838,7 @@ fn gpu_container_provision_first_refusal(steps: List<GpuContainerProvisionStep>)
     Present { value: s } =>
       match s {
         GpuContainerProvisionRefused { step: st, cause: c } => Present { value: join([st, ": ", c], "") }
+        GpuContainerProvisionUnanswered { step: st, cause: c } => Present { value: join([st, ": ", c], "") }
         _ => Absent
       }
   }
@@ -1805,6 +1848,8 @@ fn gpu_container_provision_step_text(steps: List<GpuContainerProvisionStep>) -> 
   join(map(steps, s => match s {
     GpuContainerProvisioned { step: st } => join(["+", st], "")
     GpuContainerProvisionRefused { step: st, cause: c } => join(["-", st, " (", c, ")"], "")
+    // A dispatched-but-unreadable elevated step renders with its own marker, never the refused "-" glyph.
+    GpuContainerProvisionUnanswered { step: st, cause: c } => join(["?", st, " (", c, ")"], "")
     GpuContainerProvisionSkipped { step: st, reason: r } => join(["~", st, " (", r, ")"], "")
   }), " ")
 }
@@ -1883,6 +1928,9 @@ fn gpu_container_provision_observe_path(path: String, transport: HostEffectTrans
     command: sudo_elevate_command(command: gpu_container_provision_locale_pinned_ls(path: path)),
     transport: transport) {
     RunArgvTransportRefused { reason: r } => GpuContainerPathUnobservable { path: path, cause: r as String }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } => GpuContainerPathUnobservable { path: path, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       // PRESENT if it listed. ABSENT only if ls said so in as many words. Everything else is
       // UNOBSERVABLE, and the third arm is the reason this is worth three arms: ls(1) exits 2 for
@@ -2224,6 +2272,10 @@ fn gpu_container_provision_namespace_link_read(
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
       GpuContainerProvisionNamespaceLinkUnreadable { path: path, cause: r as String }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
+      GpuContainerProvisionNamespaceLinkUnreadable { path: path, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code != 0 {
         GpuContainerProvisionNamespaceLinkUnreadable {
@@ -2263,6 +2315,10 @@ fn gpu_container_provision_namespace_batch(
     command: sudo_elevate_command(command: gpu_container_provision_namespace_batch_argv(paths: paths)),
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
+      GpuContainerProvisionNamespaceBatchUnreadable { cause: r as String }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
       GpuContainerProvisionNamespaceBatchUnreadable { cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       gpu_container_provision_namespace_batch_reading(
@@ -2339,6 +2395,10 @@ fn gpu_container_provision_pid_map(
         transport: transport) {
         RunArgvTransportRefused { reason: r } =>
           Present { value: join([account as String, " pid ", to_string(pid), ": ", r as String], "") }
+        // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+        // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+        RunArgvTransportUnanswered { cause: _, reason: r } =>
+          Present { value: join([account as String, " pid ", to_string(pid), ": ", r as String], "") }
         RunArgvTransportObserved { observed: o } =>
           if o.exit_code != 0 && string_contains(s: o.stderr, pattern: "No such file") {
             none
@@ -2391,6 +2451,10 @@ fn gpu_container_provision_displaced_maps(
       command: sudo_elevate_command(command: pgrep_user_argv(user: account)),
       transport: transport) {
       RunArgvTransportRefused { reason: r } =>
+        Present { value: join(["cannot scan processes of ", account as String, ": ", r as String], "") }
+      // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+      // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+      RunArgvTransportUnanswered { cause: _, reason: r } =>
         Present { value: join(["cannot scan processes of ", account as String, ": ", r as String], "") }
       RunArgvTransportObserved { observed: o } =>
         match pgrep_scan_outcome(exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr) {
@@ -2620,6 +2684,10 @@ fn gpu_container_provision_file_reading(path: String, transport: HostEffectTrans
     command: sudo_elevate_command(command: argv_words(command: od_hex_file_command(path: path))),
     transport: transport) {
     RunArgvTransportRefused { reason: r } =>
+      SubordinateFileUnreadable { path: path, cause: r as String }
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: r } =>
       SubordinateFileUnreadable { path: path, cause: r as String }
     RunArgvTransportObserved { observed: o } =>
       parse_subordinate_file_exact(path: path, exit_code: o.exit_code, od_stdout: o.stdout, stderr: o.stderr)
@@ -2918,6 +2986,9 @@ fn gpu_container_provision_run_action(
     ProvisionVerify { step: s, check: k } =>
       match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: gpu_container_provision_check_argv(check: k)), transport: transport) {
         RunArgvTransportRefused { reason: r } => [GpuContainerProvisionRefused { step: s, cause: r }]
+        // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+        // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+        RunArgvTransportUnanswered { cause: _, reason: r } => [GpuContainerProvisionUnanswered { step: s, cause: r }]
         RunArgvTransportObserved { observed: o } =>
           match gpu_container_provision_check_verdict(check: k, job_user: job_user, stdout: o.stdout) {
             Present { value: why } => [GpuContainerProvisionRefused { step: s, cause: why }]
@@ -3420,6 +3491,9 @@ type GpuContainerPrincipalIdentity {
 fn gpu_container_provision_principal(user: NonEmptyStr, transport: HostEffectTransport) -> GpuContainerPrincipalIdentity? {
   match run_argv_over_host_effect_transport(command: getent_passwd_command(key: user), transport: transport) {
     RunArgvTransportRefused { reason: _ } => Absent
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => Absent
     RunArgvTransportObserved { observed: o } =>
       match runner_job_user_uid_reading(job_user: user, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr) {
         JobUserUidUnobserved { cause: _ } => Absent
@@ -3447,6 +3521,9 @@ fn gpu_container_provision_principal(user: NonEmptyStr, transport: HostEffectTra
 fn gpu_container_displacee_home_lookup(account: NonEmptyStr, transport: HostEffectTransport) -> String? {
   match run_argv_over_host_effect_transport(command: getent_passwd_command(key: account), transport: transport) {
     RunArgvTransportRefused { reason: _ } => Absent
+    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
+    // not-observed with the typed reason, which already names the specific fault; the arm records dispatch.
+    RunArgvTransportUnanswered { cause: _, reason: _ } => Absent
     RunArgvTransportObserved { observed: o } =>
       if o.exit_code == 0 {
         let h = job_user_home_from_passwd(passwd_line: o.stdout)

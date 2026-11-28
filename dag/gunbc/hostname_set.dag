@@ -16,13 +16,17 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
-
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 type HostnameSetCasOutcome
   = HostnameSetCasApplied
   | HostnameSetCasReadRefused { reason: String }
   | HostnameSetCasBaseMismatch { observed: String, base: DnsLabel }
   | HostnameSetCasApplyFailed { stderr: String }
+  // The hostname-set leg WAS DISPATCHED and its reply came back unreadable (deadline overrun or an
+  // inconsistent wire shape): the hostname may already have changed, so this is NOT an apply-failure
+  // (which says the change did not take) and NOT a "leg NOT attempted" (which says nothing was sent).
+  // The effect is unknown; consumers must not retry blindly or report "not applied".
+  | HostnameSetCasOutcomeUnknown { cause: String }
 
 // THE PRIVILEGED ARGV, DERIVED. The `sudo -n` wrapper and the ABSOLUTE hostnamectl path are the
 // elevation/authority shape a sudoers NOPASSWD rule matches -- they stay here, on the SSH
@@ -82,8 +86,15 @@ fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCa
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success { HostnameSetCasApplied } else { HostnameSetCasApplyFailed { stderr: r.stderr } }
-      TypedArgvExecOverran { deadline: d } =>
-        HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d)) }
+    // The hostname leg WAS dispatched and ran past its deadline, so whether the hostname took is not
+    // known. It maps to HostnameSetCasOutcomeUnknown -- NOT ApplyFailed (which says the change did not
+    // take) and NOT "leg NOT attempted" (which says nothing was sent). A sent leg's effect is unknown.
+    TypedArgvExecOverran { deadline: d } =>
+      HostnameSetCasOutcomeUnknown { cause: typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d) }
+    // The hostname leg WAS dispatched and its reply arrived inconsistent, so whether the hostname
+    // took is not known. Same rule: dispatched-unknown, never an apply-failure.
+    TypedArgvExecWireInconsistent { fault: f } =>
+      HostnameSetCasOutcomeUnknown { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "hostname set", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", why) }
   }
@@ -120,7 +131,8 @@ fn hostname_set_ssh(
           } else {
             HostnameSetCasApplyFailed { stderr: r.stderr }
           }
-          TypedArgvExecOverran { deadline: d } => HostnameSetCasApplyFailed { stderr: typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d) }
+        TypedArgvExecOverran { deadline: d } => HostnameSetCasOutcomeUnknown { cause: typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d) }
+        TypedArgvExecWireInconsistent { fault: f } => HostnameSetCasOutcomeUnknown { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "hostname set", fault: f) }
         TypedArgvExecRefused { reason: why } => HostnameSetCasApplyFailed { stderr: why }
       }
   }

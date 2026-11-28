@@ -38,7 +38,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantProbeRefused,
 }
 import gunbc.host.host_effect_realize { run_typed_argv_transport }
-import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason, TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
 import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref_for,
@@ -50,7 +50,6 @@ import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
 
   run_privileged_step,
-  privileged_step_succeeded,
   privileged_step_outcome_wire,
   PrivilegedStepOutcome,
   CredentialNotEnrolled,
@@ -58,6 +57,7 @@ import gunbc.spark.grant_privileged_operation {
   CredentialRejected,
   PrivilegedCommandFailed,
   PrivilegedCommandSucceeded,
+  PrivilegedCommandUnanswered,
   AdmittedRootArgv,
   admitted_root_argv_label,
   admitted_root_argv_words,
@@ -99,7 +99,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host.host_effect_realize { HostEffectTransport, FleetSsh }
-import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
+import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, RemoteStepOutcomeUnknown, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
   remote_step_sequence_failed,
@@ -123,6 +123,7 @@ data spark_grant_install_receipt_path: String = "target/spark-grant-install-rece
 type SparkRetiredDropinStanding
   = RetiredDropinAbsent
   | RetiredDropinRemovalWithheldOnRun { cause: NonEmptyStr }
+  | RetiredDropinRemovalUnsettled { cause: NonEmptyStr }
   | RetiredDropinRemoved
   | RetiredDropinRemovalFailed { cause: NonEmptyStr }
 
@@ -144,9 +145,55 @@ fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: Host
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
       TypedArgvExecOverran { deadline: d } => InspectDropinShapeUnobserved { cause: typed_argv_exec_overran_reason(leg_hint: "spark managed grant install", deadline: d) as NonEmptyStr }
+      TypedArgvExecWireInconsistent { fault: f } => InspectDropinShapeUnobserved { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "spark managed grant install", fault: f) as NonEmptyStr }
         TypedArgvExecRefused { reason: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
         TypedArgvExecConverged { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
       }
+  }
+}
+
+// THE REMOVAL-SETTLEMENT DECISION, PURE. Given the privileged removal's outcome and whether the fresh
+// readback confirms the shared file gone with every inspect grant held, decide the standing. An ANSWERED
+// exit 0 whose readback does not confirm keeps the "rm exited 0 but..." failure; an UNANSWERED removal whose
+// readback does not confirm is dispatched-with-unknown-effect -- NOT "rm exited 0" (the exit was never
+// observed) -- withheld, and keeps the wire fault from the outcome (#17119 item 4). Extracted so a witness
+// drives the exact branch production takes (single_authority).
+fn spark_retired_dropin_removal_settlement(removed: PrivilegedStepOutcome, readback_confirms: Bool) -> SparkRetiredDropinStanding {
+  match removed {
+    // ANSWERED exit 0: the readback is the authority. Confirmed -> removed; not confirmed -> the
+    // "rm exited 0 but..." failure (we have an answered success to contradict).
+    PrivilegedCommandSucceeded { command: _ } =>
+      if readback_confirms {
+        RetiredDropinRemoved
+      } else {
+        RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
+      }
+    // DISPATCHED, REPLY UNREADABLE: the exit was never observed, so it is NOT "rm exited 0". The effect
+    // is unknown and the readback did not settle it -- its own UNSETTLED standing, keeping the wire fault.
+    PrivilegedCommandUnanswered { command: _, cause: _ } =>
+      if readback_confirms {
+        RetiredDropinRemoved
+      } else {
+        RetiredDropinRemovalUnsettled {
+          cause: join(
+            [
+              "the removal was dispatched but its reply could not be read and the readback does not confirm the shared file gone with every inspect grant held under its own file, so the effect is unknown: ",
+              privileged_step_outcome_wire(outcome: removed),
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+    // answered failure or pre-dispatch refusal: the removal either ran and failed, or never ran. The
+    // wire text is the located diagnostic; readback cannot rescue it.
+    PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+    CredentialRejected { lease: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+    CredentialNotEnrolled { lease: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
+    CredentialNotMaterialized { lease: _, cause: _ } =>
+      RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
   }
 }
 
@@ -179,16 +226,11 @@ fn spark_retired_dropin_converge(
             context: context, admission: admission, administrator: administrator,
             attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
           )
-          if !privileged_step_succeeded(outcome: removed) {
-            RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
-          } else if spark_retired_dropin_removal_confirmed(
+          let readback_confirms = spark_retired_dropin_removal_confirmed(
             outcome: spark_grant_probe_outcome(context: context, host: host),
             shape: spark_inspect_dropin_shape_read(context: context, host: host),
-          ) {
-            RetiredDropinRemoved
-          } else {
-            RetiredDropinRemovalFailed { cause: "rm exited 0 but the readback does not show the shared file gone with every inspect grant still held under its own file" as NonEmptyStr }
-          }
+          )
+          spark_retired_dropin_removal_settlement(removed: removed, readback_confirms: readback_confirms)
         }
       }
   }
@@ -237,6 +279,7 @@ fn spark_retired_dropin_standing_wire(standing: SparkRetiredDropinStanding) -> S
   match standing {
     RetiredDropinAbsent => "retired-shared-dropin absent\n"
     RetiredDropinRemovalWithheldOnRun { cause: c } => join(["retired-shared-dropin REMOVAL-WITHHELD ", c as String, "\n"], "")
+    RetiredDropinRemovalUnsettled { cause: c } => join(["retired-shared-dropin REMOVAL-UNSETTLED ", c as String, "\n"], "")
     RetiredDropinRemoved => "retired-shared-dropin REMOVED (readback: file gone, every inspect grant held under its own file)\n"
     RetiredDropinRemovalFailed { cause: c } => join(["retired-shared-dropin REMOVAL-FAILED ", c as String, "\n"], "")
   }
@@ -247,6 +290,7 @@ fn spark_retired_dropin_converged(standing: SparkRetiredDropinStanding) -> Bool 
     RetiredDropinAbsent => true
     RetiredDropinRemoved => true
     RetiredDropinRemovalWithheldOnRun { cause: _ } => false
+    RetiredDropinRemovalUnsettled { cause: _ } => false
     RetiredDropinRemovalFailed { cause: _ } => false
   }
 }
@@ -327,6 +371,9 @@ fn spark_grant_install_cleanup_completed(outcome: SparkGrantInstallOutcome) -> B
       match c {
         RemoteStepCompleted { identity: _, execution: _ } => true
         RemoteStepFailed { identity: _, execution: _ } => false
+        // The cleanup rm was dispatched but its reply could not be read: whether the staging file was
+        // removed is unknown, so cleanup is NOT confirmed-complete (withhold; never claim it completed).
+        RemoteStepOutcomeUnknown { identity: _, execution: _ } => false
         RemoteStepUnattempted { identity: _ } => false
       }
   }

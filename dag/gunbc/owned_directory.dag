@@ -263,6 +263,11 @@ fn owned_directory_reading_of_stat_line(line: String) -> Optional<OwnedDirectory
 type ObserverFailure
   = ObserverNotSpawned { cause: String }
   | ObserverTransportRefused { cause: String }
+  // The observer read was DISPATCHED (over the wire) and its reply came back unreadable (deadline
+  // overrun or inconsistent wire shape): the presence/effect could not be established. This is NOT a
+  // pre-dispatch transport refusal -- the leg was sent. It still yields INACCESSIBLE (a failed read
+  // establishes nothing), so no policy installs on it, but it must not be rendered as "refused".
+  | ObserverTransportUnanswered { cause: String }
   | ObserverExited { exit_code: Int, stderr: String }
 
 type ObserverRead
@@ -273,6 +278,7 @@ fn observer_failure_text(f: ObserverFailure) -> String {
   match f {
     ObserverNotSpawned { cause } => join(["the observer could not be spawned: ", cause], "")
     ObserverTransportRefused { cause } => join(["the transport refused the read: ", cause], "")
+    ObserverTransportUnanswered { cause } => join(["the read was dispatched but its reply could not be read; whether it took effect is unknown: ", cause], "")
     ObserverExited { exit_code, stderr } => join(["the observer exited ", to_string(value: exit_code), ": ", trim(s: stderr)], "")
   }
 }

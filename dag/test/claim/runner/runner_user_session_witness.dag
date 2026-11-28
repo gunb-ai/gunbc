@@ -15,7 +15,11 @@ import gunbc.runner.runner_user_session {
   UserSessionHostAdmission, UserSessionHostAdmitted, UserSessionHostRefused, user_session_host_admission,
   user_session_enable_linger_command, user_session_readback_command,
   user_session_receipt_then,
+  linger_reading_of,
+  observed_or_cause,
 }
+import gunbc.runner.runner_user_session_receipt { runner_user_session_receipt_linger_line }
+import gunbc.host.host_effect_realize { RunArgvTransportOutcome, RunArgvTransportUnanswered, TransportUnansweredWireInconsistent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -115,4 +119,20 @@ test fn a_refused_path_writes_its_receipt_and_refuses() -> Bool {
   let written = Filesystem.Read(path: runner_user_session_converge_receipt_path)
   let refused = match exit { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true }
   refused && written.success && string_contains(s: written.content, pattern: "refused: the fleet SSH context: witness")
+}
+
+// THE DISPATCHED-UNKNOWN LINGER LEG (4th-arm family, follow-up of #16984). A loginctl enable-linger leg
+// whose reply came back unreadable was SENT, so its effect is unknown: the receipt must never claim it was
+// "refused before the leg ran", and must record it as dispatched-but-unreadable. RED (mutation): routing the
+// RunArgvTransportUnanswered arms of linger_reading_of / observed_or_cause back through the RunArgvTransportRefused
+// text makes this return false; it returns true at head.
+test fn a_dispatched_unreadable_linger_leg_is_never_read_as_refused_before_the_leg_ran() -> Bool {
+  let u = RunArgvTransportUnanswered { cause: TransportUnansweredWireInconsistent, reason: "echoed a wall deadline but overran=false" }
+  let line = runner_user_session_receipt_linger_line(reading: linger_reading_of(outcome: u))
+  let cause_line = observed_or_cause(step: "enable-linger", outcome: u)
+  !string_contains(s: line, pattern: "refused before the leg ran")
+    && !string_contains(s: line, pattern: "the transport refused:")
+    && string_contains(s: line, pattern: "dispatched")
+    && !string_contains(s: cause_line, pattern: "before the leg ran")
+    && string_contains(s: cause_line, pattern: "dispatched")
 }
