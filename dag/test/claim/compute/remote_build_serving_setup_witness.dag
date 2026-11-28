@@ -1458,6 +1458,7 @@ test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: refused_s(item: "serve_binary.sha256", cause: "sha256sum failed") },
         checkout_revision: Present { value: pin_rev_leg() },
+        checkout_door: Absent,
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
         serve_binary_mode: Present { value: binary_mode_ok(d: d) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1494,6 +1495,7 @@ test fn unread_subject_presence_leaves_the_value_leg_unread() -> Bool {
         // the observe ran NO read under the unread subject; even a matching value could not rescue it.
         serve_binary_sha256: Absent,
         checkout_revision: Present { value: pin_rev_leg() },
+        checkout_door: Absent,
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
         serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1531,6 +1533,7 @@ test fn present_subject_with_never_read_value_is_indeterminate() -> Bool {
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Absent,
         checkout_revision: Present { value: pin_rev_leg() },
+        checkout_door: Absent,
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
         serve_binary_mode: Present { value: binary_mode_ok(d: d) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
