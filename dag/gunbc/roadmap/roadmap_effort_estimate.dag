@@ -279,7 +279,7 @@ fn band_scheduled_days(b: SizeBand) -> Int {
 // would price the biggest item in the roadmap at the table's own ceiling, which is the contradiction this
 // whole carrier exists to refuse).
 fn days_to_size(t: EstimateTable, days: Int) -> Optional<EstimateSize> {
-  match filter(t.bands, b => days >= b.low && days <= b.high) {
+  match filter(t.bands, b => days >= b.low && days < b.high) {
     Empty => optional_absent()
     Cons { head: b, tail: _ } => optional_present(value: b.size)
   }
