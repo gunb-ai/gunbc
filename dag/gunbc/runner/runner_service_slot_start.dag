@@ -149,7 +149,15 @@ fn service_slot_unit_start_of(unit: NonEmptyStr, started: Bool, start_detail: St
           Present { value: raw } =>
             match parse_systemd_unit_active_state(raw: trim(s: raw)) {
               Present { value: Active } => ServiceSlotUnitActive { unit: unit }
-              _ => ServiceSlotUnitNotActive { unit: unit, state: trim(s: raw) }
+              // An ActiveState= value that is not one of the manager's states is UNUSABLE, not a
+              // settled "not active": the reader cannot tell an inactive unit from a corrupt reply, so
+              // the active state is UNESTABLISHED (it was not read in a form the reader trusts).
+              Absent => ServiceSlotUnitStateUnread {
+                unit: unit,
+                start_cause: start_detail,
+                readback_cause: join(["the ActiveState value was not a state the reader understands: ", raw], ""),
+              }
+              Present { value: _ } => ServiceSlotUnitNotActive { unit: unit, state: trim(s: raw) }
             }
         }
     }

@@ -8,8 +8,10 @@ import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
+  HostOperationOutcomeUnanswered,
   host_operation_exec,
   host_operation_materialize_argv,
+  host_operation_unanswered_reason,
   SystemctlStatus,
 }
 

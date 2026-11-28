@@ -2484,7 +2484,7 @@ fn runner_spec_account_standing_after_dispatched_create(login: NonEmptyStr, read
   match readback {
     RunnerSpecAccountReadPresent { uid: u } => RunnerSpecAccountCreated { login: login, uid: u }
     RunnerSpecAccountReadAbsent => RunnerSpecAccountMissing { login: login, cause: join([dispatch_cause, "; the independent getent readback shows the account still absent"], "") as NonEmptyStr }
-    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: login, cause: join([dispatch_cause, "; the independent getent readback could not read the account, so its existence is unknown: ", c], "") as NonEmptyStr }
+    RunnerSpecAccountReadUnreadable { cause: c } => RunnerSpecAccountUnanswered { login: login, cause: join(["the account-creation leg was dispatched; ", dispatch_cause, "; the independent getent readback could not read the account, so its existence is unknown: ", c], "") as NonEmptyStr }
   }
 }
 
