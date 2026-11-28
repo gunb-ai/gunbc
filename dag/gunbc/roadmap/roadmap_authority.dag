@@ -6665,15 +6665,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "runner-throughput-witness-imports-absent-members",
       owner: "language-integrity",
       carriers: carrier(path: "dag/test/claim/runner/runner_throughput_qualification_witness.dag"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Repair a witness that imports two names its source does not declare",
         boundary: "One witness imports two members from a module that declares neither of them. The declarations phase reports both as absent.",
         displaced_cost: "The module declares a differently-named member whose spelling contains one of the requested names as a substring, so a casual search appears to confirm the import and does not. The finding is real and sits on the main line, where it was only visible because another change happened to surface the phase's output.",
         first_slice: "Decide whether the witness wants the member that does exist under its real name, or whether the source should export what the witness asks for.",
-        red_control: "The declarations phase reports no absent member for this file, and a deliberately reintroduced bad import is reported again.",
+        red_control: "PROBE (the plant is a committed, fetchable break, not a tree observed red on main). red_at 48906a752ddedf045b54a8bc9d2b29ded7b03f3d, whose first parent is red_base bef04740bb51142a8d591f93c9e432cba5c712ea; green_at bef04740bb51142a8d591f93c9e432cba5c712ea; probe_ref red-control/runner-throughput-witness-imports-absent-members. The plant is one added member on one line: at line 3 of dag/test/claim/runner/runner_throughput_qualification_witness.dag, `import std.logic { Bool }` becomes `import std.logic { Bool, Royalnewtphantommember }` (1 file, 1 insertion, 1 deletion). It makes v1_src_dag_parse report `IMPORT-MEMBER-ABSENT dag/test/claim/runner/runner_throughput_qualification_witness.dag:3:26: `test.claim.runner.runner_throughput_qualification_witness` imports `Royalnewtphantommember` from `std.logic`, which declares no such name`; the phantom name appears zero times without the plant and once with it (stderr 421 to 422 lines), so that finding at :3:26 is the only delta. Green half: the full sweep at red_base produced 524 findings and none names this witness. The witness blob differs between the two trees, so the closing commit did change the file, but no tree was ever observed red for it; that is why this is a probe and not an observation on main. Once gunbc#16914 lands, the pair is to be recorded as RedProbe data; no typed record of it exists in this tree today and this text is the only record.",
         out_of_scope: "Not a rework of the witness's subject, and not the separate question of whether a failed phase should fail the run.",
         handback: "Return the corrected import and a phase run that reports it clean."
-      )),
+      ), on: "2026-11-23", note: "Red control rewritten to the probe form (royal-newt-240, neat-badger-614): the plant is committed at red-control/runner-throughput-witness-imports-absent-members.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
