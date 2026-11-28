@@ -14724,7 +14724,13 @@ impl CensusKeyScope {
             note(key, format!("rep:{rep}"));
         }
         for (key, cycle) in census.alias_cycles.iter() {
-            note(key, format!("cycle:{}", cycle.join(",")));
+            note(
+                key,
+                format!(
+                    "cycle:{}",
+                    cycle.iter().cloned().collect::<Vec<_>>().join(",")
+                ),
+            );
         }
         for (key, exposure) in census.type_head_exposures.iter() {
             note(key, format!("head:{exposure:?}"));
