@@ -1809,17 +1809,17 @@ fn filesystem_effect_debt_contract_identity_strings() -> List<String> {
 // witness exercises the helper directly where an entry occurs exactly twice (the case the old shape
 // got wrong: it returned n-2 there) and where nothing duplicates (the case it must not change).
 fn distinct_string_count(xs: List<String>) -> Int {
-  length(xs: list_reverse(xs: fold_list(
+  length(xs: fold_list(
     xs: xs,
     empty: [],
     cons: fn(seen, identity) {
       if any(xs: seen, predicate: fn(other) { other == identity }) {
-        seen
+        list_append(left: seen, right: [])
       } else {
-        Cons { head: identity, tail: seen }
+        list_append(left: seen, right: [identity])
       }
     }
-  )))
+  ))
 }
 
 fn filesystem_effect_debt_contract_distinct_count() -> Int {
