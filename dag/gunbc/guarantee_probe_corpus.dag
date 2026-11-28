@@ -652,6 +652,12 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
     },
     GuaranteeProbeRow {
+      probe: call_mislabel_red_probe,
+      class: call_label_surplus_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: call_surplus_red_probe,
       class: call_label_surplus_class,
       path: v1_compile_rust_path_id,
