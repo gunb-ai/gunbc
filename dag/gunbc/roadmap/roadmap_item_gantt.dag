@@ -570,7 +570,7 @@ fn row_work_days(facts: GanttFacts, p: PricedNode) -> Optional<Int> {
       Derived { work_days: w, contributed: _, from_pieces: _ } => if w > 0 { optional_present(value: w) } else { optional_absent() }
       AuthoredSize { size: _, scheduled_days: _, made: _, basis: _ } => optional_absent()
       AuthoredDuration { working_days: _, made: _, basis: _ } => optional_absent()
-      Unsized { why: _ } => optional_absent()
+      Unsized { why: _ } => optional_present(value: 1)
     }
   }
 }
