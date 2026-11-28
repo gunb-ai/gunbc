@@ -3149,6 +3149,9 @@ fn run_remote_build_serving_converge_witness() -> ProcessExit {
     check_or_name(name: "a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap", held: a_fresh_account_with_a_refused_toolchain_listing_still_plans_the_bootstrap()),
     check_or_name(name: "every_converge_write_principal_is_grounded_on_every_candidate_host", held: every_converge_write_principal_is_grounded_on_every_candidate_host()),
     check_or_name(name: "the_census_unknown_reason_names_the_census_not_the_transport", held: the_census_unknown_reason_names_the_census_not_the_transport()),
+    check_or_name(name: "the_elevated_listing_answers_membership_and_escalates_failures_to_the_parent", held: the_elevated_listing_answers_membership_and_escalates_failures_to_the_parent()),
+    check_or_name(name: "a_failed_subject_lookup_settles_only_against_the_completed_grandparent_listing", held: a_failed_subject_lookup_settles_only_against_the_completed_grandparent_listing()),
+    check_or_name(name: "an_elevated_property_probe_establishes_only_on_exit_zero", held: an_elevated_property_probe_establishes_only_on_exit_zero()),
   ], "")
   if red == "" {
     ExitSuccess {}
