@@ -40,6 +40,7 @@ module v2.workflow.floor_preparation_scope_tool
 //     pretend it is free.
 
 import std.types { Bool, Int, List, Present, Absent, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { length, list_push }
 import extdeps.shell
 import extdeps.shell.exec
@@ -193,6 +194,11 @@ fn floor_preparation_scope_tool_required_env_missing() -> String {
     if floor_preparation_env_value(name: name) == "" { list_push(xs: acc, item: name) } else { acc })
   if length(xs: missing) > 0 { join(missing, ",") } else { "" }
 }
+
+// TYPED SCAFFOLD STANDING (lane ruling royal-newt-240, 2026-11-28, option B; merged precedent,
+// same lane: floor_discovery_source_authority::floor_discovery_surface_text_scan_dissolve_on --
+// a raw-text re-derivation of parser-owned facts admitted WITH a typed trigger, no operator ruling).
+data floor_preparation_scope_grep_transport_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the git ls-files/git grep edge transport (index, module-decls, import and read-literal greps, reverse BFS over them) -- a model-side SECOND DERIVATION of the compiler-owned .dag import closure, tolerable ONLY as an INSTRUMENT: no required route may narrow on it (the consumer route plans the whole population). DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads and the map is replaced by that publication as the edge source; the decision core -- edge kinds, universal markers, forced entries, fail-closed sweep -- is built to survive that transport replacement substantially unchanged and be consumed by it. TRACKING: tracking row owned by the planning lane, id pending; review 99570.")
 
 // ----------------------------------------------------------------------------------------------
 // THE TREE -> ROWS TRANSPORT. Direct edges are "source|kind|target". One git grep per edge kind

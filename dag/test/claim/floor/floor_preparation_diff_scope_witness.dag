@@ -1,5 +1,6 @@
 module test.claim.floor.floor_preparation_diff_scope_witness
 
+import std.dissolution { DissolutionCondition, BoundDissolution, UnboundDissolution }
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length }
 import v2.workflow.floor_preparation_split {
@@ -20,6 +21,9 @@ import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_population_entries,
   floor_preparation_runner_plan_from_line,
   floor_preparation_runner_plan_over,
+  floor_preparation_plan_over_dissolution_trigger,
+  floor_preparation_shell_bound_dissolution_trigger,
+  floor_preparation_runner_plan_over,
   FloorPreparationRunnerPlan,
   Sweep,
   Scoped,
@@ -28,6 +32,8 @@ import v2.workflow.floor_preparation_capture_runner {
 import v2.workflow.floor_preparation_diff_scope {
   FloorPreparationScopeUniversalRow,
   floor_preparation_scope_diff_files,
+  floor_preparation_scope_edge_rows,
+  floor_preparation_narrowing_decision_dissolution_trigger,
   floor_preparation_scope_edge_rows,
   floor_preparation_scope_edge_rows_variant,
   floor_preparation_scope_entries_for,
@@ -645,6 +651,45 @@ test fn floor_preparation_the_consumer_route_sweeps_whole_until_compiler_facts_e
     && text_contains(tool_text, "INSTRUMENT")
 }
 
+
+// 15d-15g. ONE CLAIM PER TYPED TRIGGER (lane ruling royal-newt-240 option B, condition 2): the
+// scaffold standing is MODEL DATA, and each trigger's description must name the CAPABILITY --
+// royal's verbatim sentence, which the planning lane's tracking row will carry verbatim in both
+// directions -- plus the honest tracking clause ("id pending" until the row is on main). A
+// budget-worded or deleted trigger turns the matching claim red; no claim TEXT is the carrier of
+// a trigger -- the data is read, not restated.
+
+fn eagle_trigger_description(condition: DissolutionCondition) -> String {
+  match condition {
+    UnboundDissolution { description: d } => d as String
+    BoundDissolution { trigger: _ } => ""
+  }
+}
+
+test fn floor_preparation_the_plan_over_trigger_names_the_capability() -> Bool {
+  let d = eagle_trigger_description(condition: floor_preparation_plan_over_dissolution_trigger)
+  text_contains(haystack: d, needle: "DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads")
+    && text_contains(haystack: d, needle: "tracking row owned by the planning lane, id pending")
+}
+
+test fn floor_preparation_the_narrowing_decision_trigger_names_the_capability() -> Bool {
+  let d = eagle_trigger_description(condition: floor_preparation_narrowing_decision_dissolution_trigger)
+  text_contains(haystack: d, needle: "DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads")
+    && text_contains(haystack: d, needle: "tracking row owned by the planning lane, id pending")
+}
+
+test fn floor_preparation_the_grep_transport_trigger_names_the_capability() -> Bool {
+  let d = eagle_trigger_description(condition: floor_preparation_scope_grep_transport_dissolution_trigger)
+  text_contains(haystack: d, needle: "DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads")
+    && text_contains(haystack: d, needle: "SECOND DERIVATION")
+    && text_contains(haystack: d, needle: "INSTRUMENT")
+}
+
+test fn floor_preparation_the_shell_bound_trigger_names_the_bash_emit_capability() -> Bool {
+  let d = eagle_trigger_description(condition: floor_preparation_shell_bound_dissolution_trigger)
+  text_contains(haystack: d, needle: "DISSOLVES WHEN that typed bounded-process effect exists")
+    && text_contains(haystack: d, needle: "host_effect_apply")
+}
 // ----------------------------------------------------------------------------------------------
 // 16. AN UNVERIFIED MAP CANNOT NARROW (review 98532). Kills: the grep-and-guess edge map narrowing
 // a run's preparation while the compiler cross-check has seen ZERO rows -- the map's only warrant is

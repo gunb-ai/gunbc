@@ -46,6 +46,7 @@ module v2.workflow.floor_preparation_capture_runner
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
 import std.measure { Millisecond, millisecond, millisecond_count, ByteSize, byte_size, byte_size_count, Second, second, second_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.shell
 import extdeps.shell.exec
@@ -121,7 +122,6 @@ import v2.workflow.floor_preparation_diff_scope {
 //
 // The leg driver is this fixed text (its sha256 is the pinned supply value above; recreate with
 // cat > "$FLOOR_LEG_DRIVER" exactly, chmod +x, and the supply gate re-derives the sha at run time):
-//
 //   #!/usr/bin/sh
 //   # eagle-leg-driver-v4 (crisp-eagle-244, run11+). v4 adds what run10 proved was missing: when
 //   # TRACKED_DIRTY is nonzero the boot line NAMES the dirty tracked paths (comma-joined, cut from
@@ -169,7 +169,6 @@ import v2.workflow.floor_preparation_diff_scope {
 //     echo "[leg-argv] $*"
 //   } >> "$LOG" 2>&1
 //   exec >>"$LOG" 2>&1 "$@"
-//
 // The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
 // against the same release.
 //
@@ -191,6 +190,17 @@ import v2.workflow.floor_preparation_diff_scope {
 // the compiler itself emits per-entry closure facts the edge map can be checked against -- a
 // grep-derived map can under-cover, and under-coverage skips an entry the diff really reaches.
 // Until then capture_run plans the WHOLE population and says so on its receipts.
+// TYPED SCAFFOLD STANDING (lane ruling royal-newt-240, 2026-11-28, option B; reviews 99562 +
+// 99570; guarantee_ladder: a frontier trigger names the CAPABILITY restored, never a budget).
+// (a) THE NARROWING FRONTIER: plan_over is unwired on the consumer route until the compiler
+// itself can check a candidate narrowing -- see floor_preparation_runner_plan_whole.
+data floor_preparation_plan_over_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: required-route consumption of floor_preparation_runner_plan_over via SCOPE_DECISION_LINE. DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads, and every candidate narrowing is checked against that publication BEFORE a required run may skip preparation -- an unchecked grep-map narrowing can under-cover and skip an entry the diff reaches (review 99562). Until then the consumer route plans the whole population. TRACKING: tracking row owned by the planning lane, id pending; retirement pair gunbc.rung_drop witness_floor_off_the_required_gate.")
+
+// (b) THE SHELL-REPLACEMENT MARKER the reviewer advisory asked for (ctrl hand-shell policy;
+// bash_emit.dag:189 precedent): typed argv through shell.Exec.RunArgv replaced hand-written
+// shell scaffolds; the foreign-executor pieces that REMAIN are named, not silent.
+data floor_preparation_shell_bound_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the timeout(1)+pinned-driver leg legs of floor_preparation_spawn_slot_captured -- bounded foreign-executor processes carrying the wall bound and the leg log until a typed bounded-process effect lands on host_effect_apply (same frontier as bash_emit's dissolve-on). DISSOLVES WHEN that typed bounded-process effect exists AND the release route binds a child to the slot cgroup in-model. Until then the driver's PINNED sha256 is the supply authority and a bound death is transport, never a verdict.")
+
 fn floor_preparation_env_value(name: String) -> String {
   let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
   match floor_preparation_lines(text: ran.stdout).first() {

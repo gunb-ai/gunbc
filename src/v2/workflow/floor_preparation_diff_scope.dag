@@ -1,6 +1,7 @@
 module v2.workflow.floor_preparation_diff_scope
 
 import std.types { Bool, Int, List, Present, Absent, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { length }
 
 // SCOPING THE REQUIRED FLOOR'S PREPARATION TO A DIFF'S CLOSURE, AS A DECISION SOMEONE ELSE CAN CHECK.
@@ -30,6 +31,9 @@ import std.algebra { length }
 // diff; the tool's line on the landing revision is the measurement, posted as the run link rather than
 // typed into a comment.
 //
+// TYPED SCAFFOLD STANDING (lane ruling royal-newt-240, 2026-11-28, option B; guarantee_ladder).
+data floor_preparation_narrowing_decision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: required-route consumption of this module's narrowing decision. NAMED LATER CHANGE: the second step of gunbc.roadmap ci-cost-floor-preparation-cut -- the required witnesses floor back on the merge path -- consumes floor_preparation_runner_plan_over through SCOPE_DECISION_LINE. DISSOLVES WHEN the compiler publishes, on a named route, the set of files an entry's resolve reads and every candidate narrowing is checked against that publication before a required run may skip preparation -- an unchecked grep-map narrowing under-covers (review 99562; the map's superset shape is aspiration, not warrant). TRACKING: tracking row owned by the planning lane, id pending; retirement pair gunbc.rung_drop witness_floor_off_the_required_gate.")
+
 // SAFETY: NARROWING MUST NEVER SKIP A MODULE THE RUN READS. Scoping is sound only if the map is a SUPERSET
 // of the edges an entry really follows, so the map records three edge kinds -- `import`, `module-decl`,
 // `read-literal` -- and the tool over-approximates all three, including path literals inside string
