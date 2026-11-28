@@ -1,0 +1,87 @@
+module test.claim.algebra_receiver_retention_carrier_witness
+
+// CARRIER WITNESS for gunbc.recurring_failure_mode receiver_retention_legs_never_reddened_by_a_measured_control.
+// The four legs below moved here (verdict names preserved verbatim) from test.claim.algebra_receiver_forwarding_witness,
+// test.claim.algebra_receiver_application_witness and test.claim.algebra_receiver_self_witness, which measured
+// 2026-11-27 (row receipt 2) to leave every one of them HELD under both RedProbe breaks: they are coverage without
+// control standing, so their home is this row's carrier, not a guarantee witness. The guarantee witnesses for this
+// family keep the discriminating pair only: algebra_receiver_alias_witness (three refusal fixtures, each with its own
+// cause), algebra_receiver_alias_agreement_witness (bogus refused, nominal accepted) and algebra_expansion_evidence_witness
+// (evidence diagnostic fires on the expansion receiver, stays silent on the nominal one). Each leg below carries the
+// row's bounded flip trigger and goes red with the wall; none may be deleted silently.
+
+import std.types { Bool, String }
+import std.algebra { FreeMonoid, Empty, Cons, fold_list }
+
+type ApplicationRow {
+  label: String
+}
+
+type ApplicationRows = RowsPresent { rows: FreeMonoid<ApplicationRow> } | RowsAbsent
+
+type ApplicationBox<T> = ApplicationBoxed { value: T } | ApplicationUnboxed
+
+// The field's resolved type carries FreeMonoid's nominal argument outside its expanded
+// FreeMonoid body. Binding the field must not substitute that body's Empty member
+// for ApplicationRow when instantiating the any callback.
+fn declared_application_rows() -> ApplicationRows {
+  RowsPresent { rows: [ApplicationRow { label: "kept" }] }
+}
+
+fn declared_box_rows() -> ApplicationBox<ApplicationRows> {
+  ApplicationBoxed { value: declared_application_rows() }
+}
+
+// Carrier leg, population member of gunbc.recurring_failure_mode
+// receiver_retention_legs_never_reddened_by_a_measured_control. Mechanism named for the
+// row's per-leg break: nested coproduct pattern expansion at lookup (ApplicationBoxed { value:
+// RowsPresent { rows } } must expand so the inner rows binding instantiates the any callback's
+// receiver). Both measured breaks left this leg HELD (row receipt 2): zero control standing, no
+// refusal weight. It flips with the wall -- when the fold/lookup side refuses this receiver shape
+// the leg goes red with it, gains control standing, and returns to a guarantee witness per the
+// row's trigger. The refusal side lives in test.claim.algebra_receiver_alias_agreement_witness,
+// not here.
+test fn nested_generic_pattern_still_expands_for_lookup() -> Bool {
+  let subject = declared_box_rows()
+  match subject {
+    ApplicationBoxed { value: RowsPresent { rows } } => rows |> any(row => row.label == "kept")
+    _ => false
+  }
+}
+
+// Carrier leg, population member of the same row. Mechanism for its named break: whole-value
+// binding retention -- the value bound by `bound` must retain the application for the later inner
+// match. Zero control standing (row receipt 2), flips with the wall, deletion is not permitted;
+// refusal weight stays in test.claim.algebra_receiver_alias_agreement_witness.
+test fn whole_value_pattern_retains_application_for_later_destructuring() -> Bool {
+  let subject = declared_box_rows()
+  match subject {
+    bound => match bound {
+      ApplicationBoxed { value: RowsPresent { rows } } => rows |> any(row => row.label == "kept")
+      _ => false
+    }
+  }
+}
+
+// Carrier leg, population member of the same row. Mechanism for its named break: nominal
+// type-argument retention at a collection field -- the FreeMonoid element type must survive the
+// field binding rather than be replaced by the expanded body's Empty member when the any callback
+// instantiates. Zero control standing (row receipt 2), flips with the wall, not deletable.
+test fn matched_collection_retains_receiver_type_argument() -> Bool {
+  let subject = declared_application_rows()
+  match subject {
+    RowsPresent { rows } => rows |> any(row => row.label == "kept")
+    RowsAbsent => false
+  }
+}
+
+// Carrier leg, population member of the same row. Mechanism for its named break: ReceiverSelf
+// resolution against a fold-produced collection -- reverse() needs ReceiverSelf, not an element
+// argument, and other profile methods must not contribute their evidence requirements to the
+// lookup. Zero control standing (row receipt 2), flips with the wall, not deletable.
+test fn folded_structural_collection_can_reverse() -> Bool {
+  let reversed = fold_list(xs: [1, 2, 3], empty: Empty, cons: fn(acc, value) {
+    Cons { head: value, tail: acc }
+  })
+  reversed.reverse() == [1, 2, 3]
+}
