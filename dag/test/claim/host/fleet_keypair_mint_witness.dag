@@ -2,7 +2,8 @@ module test.claim.host.fleet_keypair_mint_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, Secret, String }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.host_command_binding { HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched }
 import gunbc.host.fleet_keypair_mint {
   FleetKeypairMintSubject, boot_medium_reader_keypair_mint_subject, mtcollins1_host_keypair_mint_subject,
@@ -33,7 +34,7 @@ import gunbc.host.mtcollins1_ssh_host_key_mint {
   mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
   mtcollins1_host_key_pin_commit_rule, mtcollins1_host_key_mint_ruling,
 }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
 import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_target }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -485,7 +486,12 @@ fn mint_step_run_of(st: Step) -> String {
   }
 }
 
-fn mint_job_steps() -> List<Step> { fleet_converge_fleet_keypair_mint_job().steps }
+fn mint_job_steps() -> List<Step> {
+  match outcome_accepted_value(fleet_converge_fleet_keypair_mint_job()) {
+    Present { value: j } => j.steps
+    Absent => []
+  }
+}
 
 fn step_with_id(id: String) -> Step? { filter(mint_job_steps(), st => mint_step_id_of(st: st) == id).first() }
 
@@ -496,11 +502,18 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
     && !any(fleet_converge_dispatch_inputs, i => i.name == "keypair_subject")
     // Every row is walked: its mint step and its receipt upload are in the job, under the row-derived ids.
     && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: fleet_converge_fleet_keypair_mint_step_id(subject: s)) {
-         Present { value: st } => mint_step_run_of(st: st).contains(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: s)))
-           && !mint_step_run_of(st: st).contains(fleet_keypair_mint_other_entry(subject: s))
-           && mint_step_if_of(st: st) == fleet_converge_fleet_keypair_mint_step_if
-           && mint_step_if_of(st: st).contains("fleet_keypair_mint")
-           && !mint_step_if_of(st: st).contains("keypair_subject")
+         Present { value: st } => match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_fleet_keypair_mint_target(subject: s))) {
+           Absent => false
+           Present { value: own_entry } => match fleet_keypair_mint_other_entry(subject: s) {
+             Absent => false
+             Present { value: other_entry } =>
+               mint_step_run_of(st: st).contains(own_entry)
+                 && !mint_step_run_of(st: st).contains(other_entry)
+                 && mint_step_if_of(st: st) == fleet_converge_fleet_keypair_mint_step_if
+                 && mint_step_if_of(st: st).contains("fleet_keypair_mint")
+                 && !mint_step_if_of(st: st).contains("keypair_subject")
+           }
+         }
          Absent => false
        })
     && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: concat(fleet_converge_fleet_keypair_mint_step_id(subject: s), "_receipt_upload")) {
@@ -518,8 +531,11 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
 
 // THE OTHER ROW'S DERIVED ENTRY PATH, read from the roster rather than spelled, so the cross-wiring check
 // above cannot silently stop checking anything when a third key is added.
-fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> String {
-  match filter(fleet_keypair_mint_subject_rows(), s => (s.mint_target.declaration.module_path as String) != (subject.mint_target.declaration.module_path as String)).first() { Present { value: other } => gunbc_run_step_target_entry_or_poison(target: gunbc_ci_fleet_keypair_mint_target(subject: other))  Absent => "" }
+fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> Optional<String> {
+  match filter(fleet_keypair_mint_subject_rows(), s => (s.mint_target.declaration.module_path as String) != (subject.mint_target.declaration.module_path as String)).first() {
+    Present { value: other } => outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_fleet_keypair_mint_target(subject: other)))
+    Absent => Absent
+  }
 }
 
 // ── THE COMMITTED BUILD STEP IS THE BUILDER'S OWN EMISSION, NOT A HAND-CARRIED LOOK ───────────────────────

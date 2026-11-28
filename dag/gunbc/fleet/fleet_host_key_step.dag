@@ -19,6 +19,7 @@ import gunbc.fleet.fleet_host_key_enrollment {
   fleet_host_key_scan_receipt_path,
 }
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 // THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
 // (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
@@ -30,12 +31,11 @@ fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> Gunbc
   subject.mint_target
 }
 
-fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> String {
+fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> Outcome<String> {
   let target = gunbc_ci_fleet_keypair_mint_target(subject: subject)
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -61,20 +61,18 @@ data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = gunbc_run_step_
 // (fleet_host_key_scan_receipt_path): the writer (fleet_host_key_scan_wet), this invoke and
 // the workflow's upload step all name that one const, so they cannot drift apart.
 
-fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
+fn gunbc_ci_fleet_host_key_scan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_scan_target,
-    claim_run: false,
     receipt_rel: fleet_host_key_scan_receipt_path
   )
 }
 
-fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
+fn gunbc_ci_fleet_host_key_enroll_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_enroll_target,
-    claim_run: false,
     receipt_rel: "target/fleet-host-key-enroll-receipt.txt"
   )
 }

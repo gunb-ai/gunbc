@@ -1,0 +1,240 @@
+module test.claim.serving.host_state_pass_2026_11_24_witness
+
+// WITNESS FOR THE 2026-11-24 / 25 HOST PASS AS RECORDED. The pass left a set of rows that say: this file is on this
+// host, here is the digest it printed, here is what the model renders instead, and here is why they disagree. Those
+// rows are only worth having if they cannot silently rot into assertions, so this file runs the folds over them
+// rather than restating them. Three things get checked, in order: that the digests we recorded really do differ from
+// the digests our renderers emit (a recorded divergence that was actually a match is a lie of the same kind as a
+// silent hand edit); that every live thing the pass found has an account, an owner, or both; and that nothing which
+// owes bytes to the model has been allowed to have a render declared against it anyway.
+//
+// What is NOT checked here, because it cannot be checked from the repo: that the digests are the ones the hosts
+// printed. Each row carries its instrument and its read time for that, and the standing those readings have -- a
+// single operator-authorized pass over ssh, single readings, not averages -- is carried on the rows themselves,
+// which is what gunbc.design_argument::epistemic_humility asks of a transcribed figure.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.content_hash { sha256_hex_of_text }
+import std.algebra { string_contains }
+
+import gunbc.serving.router_dev_policy {
+  RouterInstalledFileObservation,
+  RouterFileComparison,
+  ByteIdenticalToRender,
+  DeclaredDivergenceFromRender,
+  DigestIdentifiesTheFileOnly,
+  RouterFileRenderAuthority,
+  RenderedBy,
+  NotRenderedAnywhere,
+  RouterLiveRow,
+  RouterLiveRowStanding,
+  RowMatchesRender,
+  RowDivergesFromRender,
+  RowNoRenderProduces,
+  srv1_router_nginx_conf_observation,
+  srv1_router_upstreams_json_observation,
+  srv1_router_boot_unit_observation,
+  router_nginx_render_sha256,
+  router_first_party_rows_render_sha256,
+  router_nginx_divergence_is_declared_and_real,
+  srv1_router_live_rows_2026_11_25,
+  srv1_router_rows_the_render_produces_that_are_not_live_2026_11_25,
+  srv1_router_rows_removed_at_the_2026_11_24_pass,
+  srv1_router_nginx_hand_edits_2026_11_24_25,
+  every_live_row_is_accounted_for,
+  live_rows_no_render_produces,
+  every_diverging_live_row_agrees_with_the_projection,
+}
+import gunbc.serving.serving_host_memory {
+  ServingHostConfigObservation,
+  ServingHostConfigStanding,
+  FieldsAgreeWithTheModelRow,
+  DeclaredDivergenceFromTheModelRow,
+  BytesUnreadAgainstTheModelRow,
+  serving_host_config_observations_of_the_2026_11_24_pass,
+  every_serving_host_config_observation_is_accounted_for,
+  serving_host_config_observations_with_unread_bytes,
+}
+import gunbc.serving.srv1_serving_replica_layout {
+  Srv1InstalledArtifactDivergence,
+  srv1_boot_path_divergences_of_the_2026_11_24_pass,
+  srv1_replica_events_of_the_2026_11_24_25_pass,
+  srv1_disk_cleanups_of_2026_11_25,
+  every_srv1_boot_path_divergence_names_its_closure,
+  srv1_installed_boot_path_artifacts_2026_11_09,
+  srv1_installed_boot_path_artifacts_2026_11_24,
+}
+
+fn live_row_is(name: NonEmptyStr) -> Bool {
+  srv1_router_live_rows_2026_11_25.any(r => (r.name as String) == (name as String))
+}
+
+fn rendered_row_is_not_live(name: NonEmptyStr) -> Bool {
+  srv1_router_rows_the_render_produces_that_are_not_live_2026_11_25.any(n => (n as String) == (name as String))
+}
+
+// ── the router ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+// THE RECORDED DIVERGENCE IS A REAL ONE. The digest the host printed for nginx.conf must not equal the digest of
+// what router_dev_config emits, and the row must call itself a divergence. If someone later edits the render to
+// match the host, this claim goes false and forces the row to be re-read -- which is the moment the row stops being
+// a divergence and becomes a receipt, and that transition has to be somebody's deliberate act.
+test fn the_router_nginx_divergence_is_declared_and_actually_a_divergence() -> Bool {
+  router_nginx_divergence_is_declared_and_real()
+}
+
+// The upstream rows cannot be compared file to file -- the live file carries the joined keys, which are secrets --
+// so the honest comparison is field by field, and this checks there IS a render to compare against and that it is
+// not coincidentally the live file's own digest.
+test fn the_upstream_rows_have_a_render_to_diverge_from_and_it_is_not_the_live_file() -> Bool {
+  let rendered_rows = router_first_party_rows_render_sha256()
+  let rendered_nginx = router_nginx_render_sha256()
+  !string_contains(s: rendered_rows, pattern: "refused")
+    && !string_contains(s: rendered_nginx, pattern: "refused")
+    && (rendered_rows != srv1_router_upstreams_json_observation.sha256_computed_on_host as String)
+    && (rendered_nginx != srv1_router_nginx_conf_observation.sha256_computed_on_host as String)
+}
+
+// EVERY LIVE ROW HAS AN ACCOUNT. The eight rows on the host today: each either matches the render, diverges field
+// by field with a reason, or is produced by no render at all with a named owner. This is the exhaustive form of
+// "none stays silent", and it is the fold that goes false the first time somebody adds an upstream by hand.
+test fn every_live_upstream_row_is_accounted_for() -> Bool {
+  every_live_row_is_accounted_for() && srv1_router_live_rows_2026_11_25.length() == 8
+}
+
+// A row no render produces is the most dangerous kind of live fact, so those are counted and each must say who
+// added it: h11-03, h11-83, ken and the rented instance came from operator decisions during the pass, and no
+// roster in this repo would have produced them.
+test fn the_rows_no_render_produces_each_name_an_owner() -> Bool {
+  let unrendered = live_rows_no_render_produces()
+  unrendered.length() == 4
+    && unrendered.all(r => match r.standing {
+      RowNoRenderProduces { why: w, owner: o } => (w as String) != "" && (o as String) != ""
+      _ => false
+    })
+    && unrendered.all(r => live_row_is(name: r.name))
+}
+
+// A row that diverges must diverge in the fields it says it does, checked against the render this module produces
+// and not against a transcription of it. This is the claim that catches a stale row when the capacity anchor moves.
+test fn every_diverging_live_row_agrees_with_what_the_render_produces() -> Bool {
+  every_diverging_live_row_agrees_with_the_projection()
+}
+
+// The render produces four h11 rows that are not live, and the pass removed one row. Those two accounts must stay
+// disjoint and neither may name a row that is live: "not live" and "removed" are different claims about the file,
+// and a row cannot be both.
+test fn the_render_produces_rows_that_are_not_live_and_removals_are_a_separate_account() -> Bool {
+  srv1_router_rows_the_render_produces_that_are_not_live_2026_11_25.length() == 4
+    && srv1_router_rows_removed_at_the_2026_11_24_pass.length() == 1
+    && srv1_router_rows_removed_at_the_2026_11_24_pass.all(r =>
+      !live_row_is(name: r.name) && !rendered_row_is_not_live(name: r.name))
+}
+
+// Each hand edit to the Lua carries the backup it left beside the live file: the edit's own receipt, and the only
+// way to see what the render said before the operator overrode it.
+test fn every_hand_edit_to_the_router_has_a_backup() -> Bool {
+  srv1_router_nginx_hand_edits_2026_11_24_25.length() == 5
+    && srv1_router_nginx_hand_edits_2026_11_24_25.all(e => (e.backup as String) != "")
+}
+
+// THE BOOT UNIT IS RECORDED, NOT RENDERED. Nothing renders it, so its comparison must be digest-only and its
+// authority must say so, rather than pointing at a symbol that does not produce it.
+test fn the_router_boot_unit_is_recorded_by_digest_with_the_gap_named() -> Bool {
+  match srv1_router_boot_unit_observation.rendered_by {
+    NotRenderedAnywhere { since: s } =>
+      (s as String) != ""
+        && match srv1_router_boot_unit_observation.comparison {
+          DigestIdentifiesTheFileOnly { why: w } => (w as String) != ""
+          _ => false
+        }
+    RenderedBy { declaration: _, how_bytes_reach_the_host: _ } => false
+  }
+}
+
+// ── srv1's boot path ───────────────────────────────────────────────────────────────────────────────────────────
+
+// The launcher and the argument files are recorded as diverging from what srv1_replica_launcher_lines and
+// srv1_render_replica_engine_args emit -- and this checks they really do, against those renderers' own digests.
+// When warm-badger-640's re-render lands these inequalities flip and the rows must be converted to receipts or
+// deleted; they cannot quietly survive a render that now matches.
+// The two files the replicas start from were installed against a render, and the 2026-11-09 receipt records
+// the digest BOTH sides carried then; the pass read a different digest off each file and filed divergence
+// rows naming the re-render that would close them (#17089, warm-badger-640). That PR merged: the 2026-11-24
+// receipt list now carries these files with render_sha256 equal to installed_sha256_computed_on_host, and
+// gunbc.serving.srv1_replica_rendered_boot_path_witness::install_row_digest_matches EXECUTES the renderers
+// and compares -- that is the authority over render==host, and this claim does not copy it (re-rendering
+// here exhausts the evaluator's call depth, and a second copy would be a second authority over one
+// equality). What this claim still holds, after the closure: the divergence list is EMPTY -- the rows were
+// converted, not left to rot beside a render that now matches; the fold still demands an owner and an
+// instrument of every divergence row to come; each file's 2026-11-24 digest is the exact figure the host
+// pass read (sha256sum over ssh, 2026-11-24T22:03-22:05Z); and each moved away from its own 2026-11-09
+// digest -- the movement happened and is dated, not silently re-based.
+test fn the_srv1_boot_path_moves_are_closed_by_the_render_receipts() -> Bool {
+  length(srv1_boot_path_divergences_of_the_2026_11_24_pass) == 0
+    && every_srv1_boot_path_divergence_names_its_closure()
+    && any(srv1_installed_boot_path_artifacts_2026_11_24, a =>
+      a.host_path as String == "/usr/local/sbin/lil-replica-launch"
+        && (a.render_sha256 as String) == "1ad7de0857a4e06168aa603fd5b8d92f1a2ebc6395c84aa64900d5b968dc12ea"
+        && any(srv1_installed_boot_path_artifacts_2026_11_09, b =>
+          b.host_path as String == a.host_path as String
+            && (b.installed_sha256_computed_on_host as String) != (a.installed_sha256_computed_on_host as String)))
+    && any(srv1_installed_boot_path_artifacts_2026_11_24, a =>
+      a.host_path as String == "/usr/local/etc/lil-replica/replica-0.args"
+        && (a.render_sha256 as String) == "76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca"
+        && any(srv1_installed_boot_path_artifacts_2026_11_09, b =>
+          b.host_path as String == a.host_path as String
+            && (b.installed_sha256_computed_on_host as String) != (a.installed_sha256_computed_on_host as String)))
+}
+
+// The GPU1 replica's LMCache disk tier was deleted on the operator's decision, and the disk cleanups of
+// 2026-11-25 removed the GPU1 KV path again. Nothing in the model can see a deleted tier -- its size is an
+// assumption in the layout's L2 figure, not a reading -- so these rows are the only record that what the serving
+// profile reasons about was emptied, twice.
+test fn the_gpu1_tier_deletion_and_the_disk_cleanups_are_recorded() -> Bool {
+  srv1_replica_events_of_the_2026_11_24_25_pass.length() == 2
+    && srv1_disk_cleanups_of_2026_11_25.length() == 2
+    && srv1_disk_cleanups_of_2026_11_25.all(c =>
+      (c.approved_by as String) != "" && c.removed.length() > 0 && (c.free_after as String) != "")
+    && srv1_replica_events_of_the_2026_11_24_25_pass.any(e =>
+      string_contains(s: e.consequence as String, pattern: "kv-gpu1"))
+}
+
+// ── the serving hosts' configuration files ─────────────────────────────────────────────────────────────────────
+
+// Every configuration file the pass found on srv3, srv4 and h11 names the model row it departs from, the fields
+// that depart, the reason, and who owes the change.
+test fn the_serving_host_config_observations_are_all_accounted_for() -> Bool {
+  every_serving_host_config_observation_is_accounted_for()
+    && serving_host_config_observations_of_the_2026_11_24_pass.length() == 4
+}
+
+// The three files whose bytes nobody read must be exactly the three that are unread, and each must carry a read
+// obligation that names a hash to clear and who owes it -- the render lane stays a declared frontier, never a
+// guess dressed as a match.
+test fn the_files_with_unread_bytes_name_a_consumer_and_a_hash_to_clear() -> Bool {
+  let unread = serving_host_config_observations_with_unread_bytes()
+  unread.length() == 3
+    && unread.all(o => match o.standing {
+      BytesUnreadAgainstTheModelRow { model_row: m, diverging_fields: _, why: w, owed_by: b, read_obligation: r } =>
+        (m as String) != ""
+          && (w as String) != ""
+          && (b as String) != ""
+          && string_contains(s: r as String, pattern: "hash")
+          && string_contains(s: r as String, pattern: o.sha256_computed_on_host as String)
+      _ => false
+    })
+}
+
+// srv3's engine config is the file a sibling PR is waiting on, so its obligation must name that renderer by
+// symbol -- not merely say someone should read it.
+test fn the_srv3_engine_config_obligation_names_the_renderer_that_waits_on_it() -> Bool {
+  serving_host_config_observations_of_the_2026_11_24_pass.any(o =>
+    string_contains(s: o.config_path as String, pattern: "cfg.json")
+      && match o.standing {
+        BytesUnreadAgainstTheModelRow { model_row: _, diverging_fields: _, why: _, owed_by: _, read_obligation: r } =>
+          string_contains(s: r as String, pattern: "engine_slots_written_beside_the_admission_that_bounds_them")
+        _ => false
+      })
+}

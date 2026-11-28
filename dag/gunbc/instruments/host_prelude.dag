@@ -7,14 +7,18 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.cli_services
-import gunbc.cli_invoke { source_root_transport_argv }
+import gunbc.cli_invoke { source_root_transport_argv, invocation_words_bare }
+import gunbc.gunbc_cli_command {
+  TestBatchMode, HermeticBatch, WetBatch, RecordBatch, gunbc_test_batch_invocation_words
+}
+import gunbc.instruments.claim_operand { ClaimOperand, ClaimOperandUnnameable, claim_identity_operand }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.ci.ci_release_bins { release_bin_is_enrolled }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, release_bin_is_enrolled }
 import std.logic { Bool }
 // THE ONE AUTHORITY FOR THE HERMETIC/WET/RECORD AXIS. The route a claim batch is asked on is not a
-// boolean local to this builder: `std.execution_mode` owns that axis, and the harness's own parser
-// (`claim_batch.rs`, the `--wet` / `--hermetic` / `--record` arms) reads the same three-valued thing.
-import std.execution_mode { ExecutionMode, Hermetic, Record, Wet }
+// boolean local to this builder: the batch-mode sum in `gunbc.gunbc_cli_command` owns that axis, and
+// the harness's own `test` verb parser reads the same three-valued thing.
+import std.optional { Optional, Present, Absent, optional_present }
 
 data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/gunbc/instruments transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Inspect.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14). This module no longer has a shell path at all: toolchain_provision_shell_exec was its last one, and it is deleted. Its three callers in gunbc.instruments.emit_host_transport now run shell.Exec.Run directly, because they need the script's STDOUT -- the byte count and probe marker they compare in-substrate -- and a helper returning only Bool is exactly the collapse those call sites exist to undo."
 
@@ -219,10 +223,14 @@ type ClaimRun {
 }
 
 fn gunbc_claims_readiness() -> WitnessBinReadiness {
+  // STEP 5 cutover: the single v1 claim entrypoint is `gunbc test`, so the readiness gate probes the SAME
+  // binary the pooled spawn executes (`gunbc_release_bin_name`), not the retired `claim_batch`. Before this
+  // the gate probed `claim_batch` while `run_gunbc_claims_ready` spawned `gunbc` -- spawn and probe disagreed;
+  // one entrypoint means one binary on both sides. This also gates the floor lane's `run_gunbc_claims`.
   let root = git.Inspect.Toplevel()
   witness_bin_ensure_built_typed(
     root: root.path,
-    bin: witness_bin(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
+    bin: witness_bin(var_name: "GUNBC", bin_name: gunbc_release_bin_name)
   )
 }
 
@@ -231,77 +239,132 @@ fn gunbc_claims_readiness() -> WitnessBinReadiness {
 // per-claim fold spawned one cold `gunbc run --claim-run` process per row, serial, each re-deriving
 // the module index and closure resolve from scratch — the batch walls were the SUM of those
 // children (~26/run, ~23 of 48 floor minutes), invisible to resolves_total by process boundary. The
-// realization is now ONE `claim_batch` child per call carrying every row (claim_batch's own
-// pre-existing pooled grammar: repeated --entry groups with --function rows, one shared
-// MultiEntryIndex per process — srv1 counterfactual receipts: single cold child 47.2s; 12 claims
+// realization was, until the step 5 cutover, ONE `claim_batch` child per call carrying every row (that
+// binary's pooled grammar: repeated --entry groups with --function rows, one shared MultiEntryIndex per
+// process — srv1 counterfactual receipts: single cold child 47.2s; 12 claims
 // pooled 93.4s vs 480s serial). The vehicle is deliberately a SEPARATE process, never in-executor
 // evaluation: the executor is the 16GiB-pinned process of the 2026-07-23 crawl, and adding claim
 // closures to its retention trades the time disease for the memory one; the child dies and frees.
-// Verdict semantics preserved by claim_batch's own loop: every row runs (no short-circuit), each
-// failure is NAMED per-function (PASS f / FAIL f lines), exit nonzero iff any failed — the same
+// Verdict semantics preserved by the route's own loop (`evaluated_claim_verdict`,
+// src/v1/stage0/src/target_invocation_host.rs): every row runs (no short-circuit), each failure is
+// NAMED per-claim, exit nonzero iff any failed — the same
 // conjunction the per-process fold computed, with strictly more reporting. Residue — one pool build
 // per call — dissolves on the cross-process content-keyed typed-module store
 // (docs/plans/compile-wall-endgame.md W3).
 
-fn claim_batch_claim_args(acc: List<String>, last_entry: String, c: ClaimRun) -> List<String> {
-  if c.entry == last_entry {
-    concat(acc, ["--function", c.function])
-  } else {
-    concat(acc, ["--entry", c.entry, "--function", c.function])
-  }
-}
 
-fn claim_batch_claims_argv(source_roots: List<String>, claims: List<ClaimRun>) -> List<String> {
-  claim_batch_claims_argv_route(source_roots: source_roots, claims: claims, mode: Wet)
-}
+// THE SAME REQUEST ON THE ONE ROUTE: `gunbc test` with one operand per claim, one mode, one corpus, ONE
+// process. This is the invocation that replaces `claim_batch ... --claim-run` for the pooled prelude, and it is
+// spelled by `gunbc.gunbc_cli_command` `gunbc_test_batch_invocation_words` rather than here -- this module's
+// business is WHICH claims and on which route, never how the verb's flags are written (a call site that spelled
+// its own `--wet` is how two entrypoints came to mean two things by the same roster).
+//
+// THE MEMORY BOUNDARY MOVES RATHER THAN DISAPPEARING. `claim_batch` ran the pooled set in one process of its
+// own; the verb re-execs itself into the user work slice when it owes one (`target_invocation_host`
+// `reexec_into_user_work_slice_if_owed`, then `apply_memory_cgroup_bind`), so the pooled batch keeps a child
+// process with the envelope, and one process still: the operands are a list, not a loop over `gunbc test`.
+//
+// WHY AN OPERAND IS DERIVED FROM THE CLAIM RATHER THAN TYPED. `ClaimRun` is the roster's row: a module FILE and
+// a function. The route names claims by LABEL, and a label typed at a call site can name a target that does not
+// exist and still look like a conforming call -- so the derivation is one function, it is total, and a row whose
+// entry is not a claim module is REFUSED loudly rather than rendered into a plausible-looking label.
+type TestClaimsArgv
+  = TestClaimsArgvBuilt { argv: List<String> }
+  | TestClaimsArgvRefused { entry: String, function: String, reason: String }
 
-// THE ARGV WITH ITS ROUTE CHOSEN BY THE CALLER. `claim_batch_claims_argv` has always appended `--wet`,
-// which is correct for its own pooled call and for every caller that means "run the wet lane", but it
-// hard-codes one roster's route onto every consumer. The known-red instrument must ask a wet-schedule
-// subject on the wet route and a `floor_expected_red` roster-only subject on the HERMETIC route (the
-// roster's own governing route), because a subject run on a route its expectation does not govern answers
-// a question nobody asked. The route is a value the CALLER owns, so it is a parameter here, not a
-// constant folded into the builder -- and it is `std.execution_mode`'s `ExecutionMode`, not a boolean of
-// this module's own: the harness's own parser (`claim_batch.rs`) reads exactly this three-valued axis, so
-// a two-valued spelling here would be a second name for one concept (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) and would silently
-// collapse `Record`. Each variant maps to the flag the harness already gives it; Hermetic is the harness
-// default, so it adds no flag rather than inventing one.
-fn claim_batch_claims_argv_route(
+// THE POOLED REQUEST, ADMITTED BEFORE IT IS RUN. Every operand is derived first and the FIRST unnameable row
+// refuses the whole batch: a batch that silently dropped a claim would report the pooled observation as complete
+// while measuring less than the roster asked for, which is the failure this instrument exists to catch in other
+// people's harnesses. Overlaps are the route's to resolve (it selects from the discovered corpus, so a claim two
+// operands denote is enrolled once); this builder does not de-duplicate, because a roster that repeats a row is
+// reporting its own shape and the fold's duplicate detector is the authority on what that means.
+fn gunbc_test_claims_argv(
   source_roots: List<String>,
   claims: List<ClaimRun>,
-  mode: ExecutionMode
-) -> List<String> {
-  let grouped = fold(
+  mode: TestBatchMode
+) -> TestClaimsArgv {
+  let admitted = fold(
     claims,
-    init: ClaimBatchArgvAcc { args: [], last_entry: "" },
+    init: TestClaimsOperandAcc { operands: [], refused: Absent },
     f: fn(st, c) {
-      ClaimBatchArgvAcc {
-        args: claim_batch_claim_args(acc: st.args, last_entry: st.last_entry, c: c),
-        last_entry: c.entry
+      // THE FIRST UNNAMEABLE ROW IS KEPT AND THE REST ARE NOT EXAMINED FOR A VERDICT, though their operands
+      // still accumulate: what the caller must see is the row that made the batch unrunnable, and `Absent`
+      // rather than an empty string is what distinguishes "nothing was refused" from "something was refused
+      // whose text happened to be empty" -- a refusal carried as a string would collapse the two.
+      match st.refused {
+        Present { value: row } => TestClaimsOperandAcc { operands: st.operands, refused: optional_present(value: row) }
+        Absent => match claim_identity_operand(entry: c.entry, function: c.function) {
+          ClaimOperand { label: label } =>
+            TestClaimsOperandAcc { operands: concat(st.operands, [label]), refused: Absent }
+          ClaimOperandUnnameable { entry: entry, function: function, reason: reason } =>
+            TestClaimsOperandAcc {
+              operands: st.operands,
+              refused: optional_present(value: TestClaimsArgvRefusalParts {
+                entry: entry, function: function, reason: reason
+              }),
+            }
+        }
       }
     }
   )
-  let route_flags = match mode {
-    Hermetic => ["--claim-run"]
-    Wet => ["--claim-run", "--wet"]
-    Record => ["--claim-run", "--record"]
+  match admitted.refused {
+    Present { value: parts } => TestClaimsArgvRefused {
+      entry: parts.entry, function: parts.function, reason: parts.reason
+    }
+    Absent => TestClaimsArgvBuilt {
+      argv: invocation_words_bare(
+        words: gunbc_test_batch_invocation_words(
+          operands: admitted.operands, mode: mode, source_roots: source_roots
+        )
+      )
+    }
   }
-  concat(concat(source_root_transport_argv(roots: source_roots), grouped.args), route_flags)
 }
 
-type ClaimBatchArgvAcc {
-  args: List<String>
-  last_entry: String
+// THE FOLD'S STATE. The refusal is an `Optional` over the operand list, not a list of refusals and not a string:
+// a list needs an index to read (optional in this language, so the read would need its own refusal arm) and a
+// string would let a row containing the separator look like a clean batch.
+// WHAT THE FOLD REMEMBERS ABOUT A REFUSAL. The row's three facts are copied into their own record rather than
+// carried as `ClaimOperandUnnameable`, because that sum has a second arm this fold can never store, and matching
+// it again at the end would require an arm for a case whose only meaning is "the fold put the wrong thing in the
+// slot" -- a branch that can only ever report a bug in the function that contains it. Matching the `Optional`
+// alone is exhaustive, and the invariant is in the type instead of in a comment.
+type TestClaimsArgvRefusalParts {
+  entry: String
+  function: String
+  reason: String
 }
 
+type TestClaimsOperandAcc {
+  operands: List<String>
+  refused: Optional<TestClaimsArgvRefusalParts>
+}
+
+// THE POOLED PRELUDE CLAIM REQUEST, ON THE ONE ROUTE. One `gunbc test` process, one operand per roster
+// row, WET: the mode the pooled lane has always run (`claim_batch_claims_argv` folded `--wet` in as a
+// constant; here it is the value the call site names, so the lane's route is readable without opening the
+// builder). Every former `claim_batch_claims_argv` caller was migrated here in the step 5 cutover, so
+// the legacy builder and the `--claim-run` route it built are deleted with the binary in step 6. The executable is the roster's `gunbc_release_bin_name`, not a second literal
+// for the same artifact: the pack's listing, the promotion check and this spawn must not be three
+// spellings that happen to agree (`gunbc.ci.ci_release_bins` `gunbc_release_bin_name`).
+//
+// A REFUSED ROW FAILS THE PRELUDE, IT DOES NOT SILENTLY VANISH. Before this call site could name an
+// operand, `claim_batch` took the roster's FILE and FUNCTION and ran whatever it found there; here a row
+// that is not a module of the claim universe refuses with the row and a reason, and the gate gets `false`
+// -- the same verdict a failing child gives, arriving without paying for a child that would only exit 2.
 fn run_gunbc_claims_ready(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
   let root = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: witness_bin_release_path(root: root.path, bin_name: "claim_batch"),
-    args: claim_batch_claims_argv(source_roots: source_roots, claims: claims)
-  )
-  result.success
+  match gunbc_test_claims_argv(source_roots: source_roots, claims: claims, mode: WetBatch) {
+    TestClaimsArgvRefused { entry: _, function: _, reason: _ } => false
+    TestClaimsArgvBuilt { argv: argv } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: witness_bin_release_path(root: root.path, bin_name: gunbc_release_bin_name),
+        args: argv
+      )
+      result.success
+    }
+  }
 }
 
 fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {

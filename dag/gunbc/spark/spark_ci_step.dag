@@ -14,6 +14,7 @@ import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member 
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster, spark_administrator_password_secret_ref_at_version }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import v2.std.orchestration { Do, PipelineStep }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
@@ -198,12 +199,11 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
 // The bootstrap shares the grant-install prelude: same fleet-key agent from the job, same per-target
 // administrator credential materialized to the same file, so the two cannot drift on how a Spark
 // is reached or authenticated.
-fn gunbc_ci_spark_bootstrap_invoke() -> String {
+fn gunbc_ci_spark_bootstrap_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_bootstrap_target,
-    claim_run: false,
     receipt_rel: spark_apply_receipt_path
   )
 }
@@ -212,31 +212,28 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
   spark_serving_retired_refuse_script
 }
 
-fn gunbc_ci_spark_grants_observe_invoke() -> String {
+fn gunbc_ci_spark_grants_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_grants_observe_target,
-    claim_run: false,
     receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
   )
 }
 
-fn gunbc_ci_spark_wireless_link_converge_invoke() -> String {
+fn gunbc_ci_spark_wireless_link_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_wireless_link_converge_target,
-    claim_run: false,
     receipt_rel: "target/spark-wireless-link-converge-receipt.txt"
   )
 }
 
-fn gunbc_ci_spark_grant_install_invoke() -> String {
+fn gunbc_ci_spark_grant_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_grant_install_target,
-    claim_run: false,
     receipt_rel: "target/spark-grant-install-receipt.txt"
   )
 }

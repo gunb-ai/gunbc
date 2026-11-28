@@ -3,6 +3,7 @@ module test.claim.host.boot_medium_reader_key_mint_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, Secret, String }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import extdeps.ssh.keys { SshPublicKey, Ed25519, ssh_public_key_line }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_ed25519_type }
 import extdeps.exec.command { argv_words }
@@ -179,7 +180,13 @@ fn step_ids(j: Job) -> List<String> {
 // the_mint_of_a_fleet_ssh_keypair_is_account_creation.
 test fn the_mint_runs_only_in_its_github_hosted_job() -> Bool {
   let mint_step_id = fleet_converge_fleet_keypair_mint_step_id(subject: boot_medium_reader_keypair_mint_subject)
-  (match fleet_converge_fleet_keypair_mint_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
-    && step_ids(j: fleet_converge_fleet_keypair_mint_job()).contains(mint_step_id)
-    && all(filter(fleet_converge_jobs(), j => j.id != (fleet_converge_fleet_keypair_mint_job_id as String)), j => !step_ids(j: j).contains(mint_step_id))
+  match outcome_accepted_value(fleet_converge_fleet_keypair_mint_job()) {
+    Absent => false
+    Present { value: mint_job } => match outcome_accepted_values(fleet_converge_jobs()) {
+      Absent => false
+      Present { value: jobs } => (match mint_job.runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
+      && step_ids(j: mint_job).contains(mint_step_id)
+      && all(filter(jobs, j => j.id != (fleet_converge_fleet_keypair_mint_job_id as String)), j => !step_ids(j: j).contains(mint_step_id))
+    }
+  }
 }

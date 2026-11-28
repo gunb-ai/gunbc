@@ -1,7 +1,7 @@
 module gunbc.plans.fleet_hardware_fact_consumption
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Absent, Present }
+import std.optional { Absent, Present, optional_is_absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
@@ -21,8 +21,27 @@ import gunbc.fleet.gpu_power_cap_boot_state {
   srv1_power_cap_boot_units, srv1_cap_application_claims, srv1_gunbc_cap_unit_presence, unit_lines_can_fail,
   gunbc_cap_unit_is_installed, boot_cap_actually_reduces_the_device_default, board_rests_on_its_own_default,
   cap_application_claim_starts_from_the_device_default,
+  // The 2026-11-24 hand-applied caps, imported because the two srv3/srv4 rows below COMPUTE their evidence column
+  // from them: the roster, what each cap says it reaches, and the read each unread digest carries.
+  hand_applied_cap_mechanisms, hand_applied_cap_mechanisms_on, cap_unit_digest_discharge_read,
+  declared_path_host_hash_read, EveryCardOnTheHost, OneCardByUuid,
+  // The render/transcription folds and the row whose bytes were never quoted: imported because the evidence
+  // column below runs them, so a digest presented as read without bytes or a render behind it reddens the cell.
+  srv4_cap_unit_render_is_the_host_file, ken_t10_script_transcription_is_the_host_file,
+  cap_mechanisms_with_unread_lines,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+// The CPU frequency ceiling the operator applied on the same day, for the same reason: the table below asks the
+// cap module what each host's ceiling is and what read it owes, and renders the answer.
+import gunbc.fleet.cpu_freq_cap_boot_state {
+  cpu_freq_cap_mechanisms, cpu_freq_cap_mechanisms_on, cpu_freq_cap_standing_discharge_read,
+  cpu_freq_ceiling_standing_read, ceiling_backed_by_a_reading,
+  CeilingStands, CeilingSuperseded, CeilingStandingUnsaid,
+}
+// The confounded 2026-11-24 wattage pair, asked here whether either half has crept into a priced figure.
+import gunbc.fleet.fleet_host_power { confounded_host_power_readings, host_figure_is_still_inferred }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_e2d4b7, operator_host_srv1, operator_host_srv3, operator_host_srv4,
+}
 import gunbc.fleet.fleet_physical_inventory { gpu_board_01, gpu_board_04 }
 
 // FLEET HARDWARE FACTS, CONSUMED (operator, 2026-11-07). The operator's intent, in their words: changing
@@ -48,6 +67,9 @@ type MigrationReadings
   = ReadingsNotOwed
   | Srv1InterconnectReadings
   | Srv1PowerCapReadings
+  // The caps the operator applied by hand on srv3, srv4 and ken on 2026-11-24: the GPU cap mechanisms and
+  // their digests, the CPU ceiling and its standing, and the wattage pair that moved with the load.
+  | HandAppliedPowerCapReadings
 
 // The four completion states, kept separate per row: the fact is modeled; the decision is adopted; the host
 // matches (an independent readback); the setting survives the relevant lifecycle (reboot, device
@@ -188,13 +210,13 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
   },
   ConsumerMigrationRow {
     consumer: "energy and cost",
-    readings: ReadingsNotOwed,
+    readings: HandAppliedPowerCapReadings,
     owner: decl_ref(module_path: "gunbc.fleet.fleet_work_energy_cost", decl_name: "work_energy_cost"),
-    inputs: "an applicable observed power reading, its measurement scope, workload attribution",
-    superseded: "gunbc.fleet.fleet_host_power srv1_power (94 W, 2026-09-05) selected by host name for a materially changed assembly",
-    waits_on: [],
-    closes_on: "a reading carries the assembly it applies to and a changed assembly refuses the old reading; a configured cap is never used as a measured draw",
-    standing: MigrationStartedHere { what: "(this change): each HostPowerProfile now carries the configuration it applies to (its applies_to, naming the single-authority installed units), and work_energy_cost joins it against gunbc.fleet.fleet_host_assembly host_installed_components -- which joins the assembly authority's own containment edges with gunbc.fleet.fleet_physical_inventory installed_gpu_board_containments. srv1's 94 W of 2026-09-05 (taken on psu_srv1, no accelerator) is REFUSED against srv1's rebuilt assembly with a ReadingAppliesToSupersededAssembly cause naming the measurement needed. srv2 and srv3 keep pricing: their declared configurations agree with their current assemblies (srv3's added liquid cooler is power-immaterial). srv4 also REFUSES: its 94 W is inferred from srv1's accelerator-free build while srv4's own build carries the accelerator boards gunbc.fleet.fleet_physical_inventory installed_gpu_board_containments places in it (gpu_board_05, gpu_board_06), so its applies_to names that accelerator-free basis and the join does not cover its current assembly -- an inferred figure never describes accelerators it was not taken against. The by-host-name pricing bypass is removed and no configured power ceiling is ever substituted for a measured draw." },
+    inputs: "an applicable observed power reading, its measurement scope, workload attribution, and the host's power STATE -- the GPU cap it runs under and the CPU frequency ceiling its cores are held at",
+    superseded: "gunbc.fleet.fleet_host_power srv1_power (94 W, 2026-09-05) selected by host name for a materially changed assembly, and a draw figure priced as if it described a host whose clock nobody can name",
+    waits_on: ["a measured host draw taken against each host's declared assembly: srv1 and srv4 keep REFUSING the 94 W accelerator-free basis (gunbc.fleet.fleet_work_energy_cost), and srv3 and srv4 now price under a ceiling that STANDS (gunbc.fleet.cpu_freq_cap_boot_state CeilingStands, the operator's 2026-11-24 22:03-22:05 UTC ssh pass), so the measurement -- not the clock, not the cap digests, which this row used to wait on -- is what is left open"],
+    closes_on: "a reading carries the assembly it applies to and a changed assembly refuses the old reading; a configured cap is never used as a measured draw; and a derived cost either states its figure is attributable to the host's power state or carries the gap and the one read that would close it",
+    standing: MigrationStartedHere { what: "(this change): each HostPowerProfile now carries the configuration it applies to (its applies_to, naming the single-authority installed units), and work_energy_cost joins it against gunbc.fleet.fleet_host_assembly host_installed_components -- which joins the assembly authority's own containment edges with gunbc.fleet.fleet_physical_inventory installed_gpu_board_containments. srv1's 94 W of 2026-09-05 (taken on psu_srv1, no accelerator) is REFUSED against srv1's rebuilt assembly with a ReadingAppliesToSupersededAssembly cause naming the measurement needed. srv2 and srv3 keep pricing: their declared configurations agree with their current assemblies (srv3's added liquid cooler is power-immaterial). srv4 also REFUSES: its 94 W is inferred from srv1's accelerator-free build while srv4's own build carries the accelerator boards gunbc.fleet.fleet_physical_inventory installed_gpu_board_containments places in it (gpu_board_05, gpu_board_06), so its applies_to names that accelerator-free basis and the join does not cover its current assembly -- an inferred figure never describes accelerators it was not taken against. The by-host-name pricing bypass is removed and no configured power ceiling is ever substituted for a measured draw. SECOND HALF (2026-11-24 caps): every derived cost now carries power_state_attribution, read from gunbc.fleet.cpu_freq_cap_boot_state and gunbc.fleet.fleet_host_power rather than restated. srv3 and srv4 price on the carried srv1 figure while showing TWO gaps -- their CPU ceiling is not read holding today, so the cost names the unit, the applied figure, the part's rated clock and the read that would make it attributable; and their cap-day wattage pair moved with the load, so the cost names the basis host and the confound. srv1 and srv2 answer AttributableToHostPowerState. Pricing continues: what changed is that the figure no longer claims to describe the machine it runs on. THIRD HALF (2026-11-25, the operator's 2026-11-24 22:03-22:05 UTC final-state pass): the srv3 and srv4 ceiling gaps are CLOSED -- both ceilings stand, 128 cpufreq policies on each host seen at 2,000,000 kHz by the pass's own ssh instrument (gunbc.fleet.cpu_freq_cap_boot_state CeilingStands, read-back arm EveryPolicySeenAtCeilingByOutsideRead) -- and the confounded wattage pair is re-quoted under the cap at 29-31 W (srv3) and 39-42 W (srv4), instrument hwmon apm_xgene, with the load and clock change named in the sensor sentence rather than left behind. The cost now carries ONE gap on those hosts, the measured draw against the declared assembly, which srv1 and srv4 keep refusing." },
   },
   ConsumerMigrationRow {
     consumer: "owned-hardware population and dispositions",
@@ -205,6 +227,34 @@ data fleet_hardware_consumer_migrations: List<ConsumerMigrationRow> = [
     waits_on: ["operator: addresses or access for srv3, srv13..srv16, mtcollins1, mtjade1, the host-* machines and the Sparks"],
     closes_on: "every consumer's population is derived from physical units with an explicit disposition per unit",
     standing: MigrationUnstarted,
+  },
+  // THE FRONTIER THIS CHANGE DECLARES AND DOES NOT CROSS. The 2026-11-24 caps were applied by hand; the
+  // operator's final-state pass of 22:03-22:05 UTC then quoted what it could -- every digest in full, and the
+  // bytes of the CPU cap unit, its script, srv4's GPU cap unit and ken's T10 cap script, which this model now
+  // EMITS and compares digest against digest (gunbc.fleet.cpu_freq_cap_boot_state
+  // cpu_freq_cap_unit_render_matches_every_host_read, gunbc.fleet.gpu_power_cap_boot_state
+  // srv4_cap_unit_render_is_the_host_file) rather than restating. What that pass left unread stays declared
+  // unread (gunbc.design_argument::fail_closed -- an invented byte is worse than an empty cell): srv3's drop-in
+  // bytes, whose final digest came without its file because the file moved under the day, and ken's cap UNIT
+  // bytes, the script behind it having been transcribed (cap_mechanisms_with_unread_lines). The read that would
+  // close this is a fleet-converge OBSERVE leg. It is not writable today: mode
+  // runner_host_file_observe visits only files the model declares
+  // (gunbc.runner.runner_host_file_converge runner_host_file_desired_population_from_uid_reading) and reports
+  // standing against declared content, never a hash of an arbitrary path, and none of these paths is in any
+  // declared population -- which is why the digests are markings rather than values, and why no host was touched
+  // to obtain them.
+  ConsumerMigrationRow {
+    consumer: "CPU clock realization, and the cap files' own hashes",
+    readings: HandAppliedPowerCapReadings,
+    owner: decl_ref(module_path: "gunbc.fleet.cpu_freq_cap_boot_state", decl_name: "cpu_freq_cap_mechanisms"),
+    inputs: "cpu-freq-cap.service and /usr/local/sbin/cpu-freq-cap.sh as bytes (rendered, digest-checked), the hosts' current scaling limits (read holding on all four hosts), the srv4 GPU cap unit and ken's T10 cap script (rendered and transcribed), and the two cap files whose bytes the final-state pass hashed without quoting",
+    superseded: "the cap files kept current by hand on each host with no observation leg to say what they hold, and the applied 2.0 GHz read as if it were the clock the hosts are under now -- both halves of which the 2026-11-24 final-state pass retired: the emitted bytes hash to what the hosts hashed, and the standing is read rather than asserted",
+    waits_on: [
+      "the bytes behind the two digests the final-state pass hashed but did not quote: srv3's /etc/systemd/system/strata-pool.service.d/power-cap.conf (final digest read; the file moved under the day, so the quoted bytes belong to a superseded version) and ken's t10-power-cap.service unit, whose SCRIPT is transcribed -- TRIGGER: any decision that turns on those files' contents, such as converging them, reversing the caps, or letting srv3's evening clock lock stand or go",
+      "the amdgpu OverDrive kernel parameter h11's R9700 needs before any clock ceiling there is expressible (gunbc.integration_concern::amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs) -- TRIGGER: a decision to cap that card, which needs a reboot window the operator has not granted",
+    ],
+    closes_on: "every cap file the fleet runs is either rendered by the model to the host's own digest or carries a read digest with its unreadness named, and every ceiling either stands under a read or carries a stated figure with its authorship",
+    standing: MigrationStartedHere { what: "(2026-11-25, the operator's 2026-11-24 22:03-22:05 UTC final-state pass): the CPU ceilings were the last unsaid figures and are now read -- all four hosts stand at 2.0 GHz, 128 policies each seen at 2,000,000 kHz by the pass's ssh instrument, and the cap unit and script the four hosts run are EMITTED by gunbc.fleet.cpu_freq_cap_boot_state through extdeps.systemd.unit_file and hash to the hosts' digests; srv4's GPU cap unit and ken's T10 cap script likewise render and transcribe to theirs (gunbc.fleet.gpu_power_cap_boot_state). What stays open is named rather than papered: srv3's drop-in digest is read but its bytes never were, and ken's unit bytes were never hashed." },
   },
 ]
 
@@ -219,7 +269,73 @@ fn migration_evidence_text(r: ConsumerMigrationRow) -> String {
     ReadingsNotOwed => "no first-hand reading is owed by this row yet"
     Srv1InterconnectReadings => srv1_interconnect_evidence()
     Srv1PowerCapReadings => srv1_power_cap_evidence()
+    HandAppliedPowerCapReadings => hand_applied_power_cap_evidence()
   }
+}
+
+// THE HAND-APPLIED CAPS, ASKED OF THE MODULES THAT HOLD THEM. Same rule as the srv1 columns above (review
+// 92338): a phrase here is the output of a join, so rendering the plan EXECUTES the record. What each phrase
+// refuses to let the table say: a cap mechanism that vanished, a cap that quietly stopped claiming the whole
+// host, a hash quoted with its middle elided being presented as read, a CPU ceiling whose standing was asserted
+// without the read it owes, and a wattage pair that left the load confound behind and reached a priced figure.
+fn cap_mechanisms_recorded_phrase() -> String {
+  let on_srv3 = hand_applied_cap_mechanisms_on(host: operator_host_srv3)
+  let on_srv4 = hand_applied_cap_mechanisms_on(host: operator_host_srv4)
+  let on_ken = hand_applied_cap_mechanisms_on(host: operator_host_e2d4b7)
+  if hand_applied_cap_mechanisms.length() == 3 && on_srv3.length() == 1 && on_srv4.length() == 1 && on_ken.length() == 1 { "all three hand-applied GPU caps on their hosts" } else { "A HAND-APPLIED GPU CAP IS OFF ITS HOST" }
+}
+
+fn cap_reaches_every_card_phrase() -> String {
+  if hand_applied_cap_mechanisms.all(m => match m.reaches {
+    EveryCardOnTheHost => true
+    OneCardByUuid { gpu_uuid: _ } => false
+  }) { "each cap reaches every card on its host" } else { "A CAP CLAIMS ONLY ONE CARD, WHICH THE 2026-11-24 READ DID NOT SHOW" }
+}
+
+// Each digest is in one of the honest states: a whole value the model can stand behind -- which here means the
+// render or transcription fold actually RAN (the model's emitted bytes equal what the host hashed), or srv3's, a
+// whole value with no bytes yet, which cap_mechanisms_with_unread_lines keeps visible rather than absorbed -- or
+// a head-and-tail marking carrying the one hash read it owes. A digest promoted without bytes or a fold behind
+// it, or a fold that drifted from the host, reddens the cell here rather than leaving it silently green.
+fn cap_digests_verifiable_phrase() -> String {
+  let each_honest = hand_applied_cap_mechanisms.all(m => match cap_unit_digest_discharge_read(d: m.content_digest) {
+    Present { value: owed } => (owed as String) == (declared_path_host_hash_read as String)
+    Absent => true
+  })
+  if each_honest && srv4_cap_unit_render_is_the_host_file() && ken_t10_script_transcription_is_the_host_file()
+    && cap_mechanisms_with_unread_lines().length() == 1 {
+      "every cap file digest is read and rendered, or a marking carrying the hash read it owes"
+    } else { "A CAP FILE DIGEST CLAIMS MORE THAN ITS BYTES SUPPORT" }
+}
+
+// THE SAME RULE THE OTHER PHRASES RUN, applied to the ceiling's standing: a ceiling that stands must have been
+// READ holding (its read-back arm sits on the row), and a ceiling whose standing is not settled must carry the
+// read that would settle it. Today every host answers the first way; the second arm is what the row would look
+// like if a report ever conflicted again -- and a row claiming CeilingStands with no read behind it, or an
+// unsaid standing without its obligation, reddens the cell.
+fn cpu_ceiling_standing_phrase() -> String {
+  let each_answers_with_its_read = cpu_freq_cap_mechanisms.all(m =>
+    match m.standing {
+      CeilingStands { applied_on: _ } =>
+        ceiling_backed_by_a_reading(m: m) && optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: m))
+      CeilingSuperseded { applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _ } => true
+      CeilingStandingUnsaid { applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _ } =>
+        match cpu_freq_cap_standing_discharge_read(m: m) {
+          Present { value: owed } => (owed as String) == (cpu_freq_ceiling_standing_read as String)
+          Absent => false
+        }
+    })
+  if cpu_freq_cap_mechanisms.length() == 4 && each_answers_with_its_read {
+    "all four CPU ceilings stand under a read; none answers without the read it owes"
+  } else { "A CPU CEILING ANSWERS WITHOUT THE READ IT OWES, OR A HOST LOST ITS ROW" }
+}
+
+fn confounded_wattage_phrase() -> String {
+  if confounded_host_power_readings.length() == 2 && confounded_host_power_readings.all(r => host_figure_is_still_inferred(host: r.host)) { "the cap-day wattages stay out of the priced figures, both hosts still inferred" } else { "A CONFOUNDED WATTAGE HAS REACHED A PRICED FIGURE" }
+}
+
+fn hand_applied_power_cap_evidence() -> String {
+  join([cap_mechanisms_recorded_phrase(), "; ", cap_reaches_every_card_phrase(), "; ", cap_digests_verifiable_phrase(), "; ", cpu_ceiling_standing_phrase(), "; ", confounded_wattage_phrase()])
 }
 
 // Each phrase is its own fn so each can be asked, and failed, on its own -- and so the table's cell is a

@@ -25,7 +25,6 @@ import gunbc.runner.runner_slot_actuation {
   SlotReadRefused,
   read_slot_over,
   read_slot_worker_over,
-  drain_and_mask_runner_slot_over,
   activate_runner_slot_over,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
@@ -51,7 +50,9 @@ import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecCon
 // A BUSY SLOT IS NEVER RESTARTED. Idleness is read from the slot's own process listing before anything
 // is changed (read_slot_worker_over); a slot with a live Runner.Worker keeps the old shape, the refusal
 // is typed and names the slot, and the other slots still converge. Only an idle slot is drained
-// (drain_and_mask_runner_slot_over) and then activated (activate_runner_slot_over) -- the same two
+// (gunbc.runner.runner_host_file_converge runner_host_drain_leg_actuate, which grants the only admission
+// gunbc.runner.runner_slot_actuation constructs -- NeverMaskARunningUnit, so the stop precedes the mask)
+// and then activated (activate_runner_slot_over) -- the same two
 // effects gunbc.runner.runner_host_file_converge sequences for the width, with no second actuator.
 
 type SlotCapLive {
@@ -490,7 +491,7 @@ type SlotCapRead
   = SlotCapReadOk { live: SlotCapLive }
   | SlotCapReadRefused { reason: String }
 
-// THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's RemoteAnswer shape):
+// THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's typed never-dispatched-or-answered shape):
 // what the exec EFFECT answers -- refused (never attempted), or a result. Splitting exec from judgement
 // is what makes the REAL route controllable: read_slot_cap_live_over and the scripted controls both
 // pass their exec answers through slot_cap_read_of_answers -- ONE decision core -- so a scripted

@@ -12,13 +12,14 @@ import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target 
 }
 import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_with_prelude_for_target,
 }
 
 // SAME PRELUDE AS THE ORG-ACTIONS STEP: the roster read needs the same org-scoped installation token,
 // minted in-run and held only in this step's environment.
-fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
+fn gunbc_ci_org_runner_roster_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
@@ -26,7 +27,6 @@ fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
       module: "gunbc.fleet.organization_runner_roster_read",
       function: "organization_runner_roster_observe_wet",
     ),
-    claim_run: false,
     receipt_rel: none
   )
 }

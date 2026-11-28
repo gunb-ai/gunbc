@@ -19,6 +19,7 @@ import gunbc.ci.ci_run_step_target {
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_live_id }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.auth.github_app_credential_step {
   gunbc_ci_org_roster_read_app_token_prelude
 }
@@ -35,8 +36,13 @@ data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = gunb
 // prod-role serve entry once, with the release pair the run itself built, and publishes the verdict
 // beside the plan receipt; the swap transaction consumes it by identity instead of paying the cold
 // resolve again (prod gap 1, failure b).
+// THE PLAN JOB'S SERVE-ENTRY VERDICT PRODUCER lives in its own module
+// (gunbc.live_deploy.plan_serve_entry_verdict): it reads the SAME CI apply selection the deploy job
+// answers with, so it needs gunbc.live_deploy.apply, which already imports the verdict product
+// (gunbc.live_deploy.pre_swap_admission) -- a producer inside either of those two would be a cycle or
+// would make the apply route the author of a plan artifact.
 data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = gunbc_run_step_target(
-  module: "gunbc.live_deploy.pre_swap_admission",
+  module: "gunbc.live_deploy.plan_serve_entry_verdict",
   function: "record_plan_serve_entry_compile_verdict",
 )
 
@@ -84,20 +90,18 @@ data gunbc_ci_microvm_controller_install_admission_target: GunbcRunStepTarget = 
 // release BEFORE any mutation and refuses when it cannot name the release it would install, so a
 // deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
 // — gunbc#8676 deleted the invocation, never the operation.
-fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
+fn gunbc_ci_live_deploy_apply_srv1_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_live_deploy_apply_srv1_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_live_deploy_transaction_invoke() -> String {
+fn gunbc_ci_live_deploy_transaction_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_live_deploy_transaction_target,
-    claim_run: false,
     receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
   )
 }
@@ -112,11 +116,10 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
 // AFTER the wet fold has already mutated the instance. The assert/upload steps locate the real per-instance
 // receipt through the resolve step, so this step passes receipt_rel: none, like every output-only invoke.
 // Pinned by test.claim.gunbc_invoke_witness gunbc_ci_desired_instance_deploy_invoke_has_no_receipt_cat_holds.
-fn gunbc_ci_desired_instance_deploy_invoke() -> String {
+fn gunbc_ci_desired_instance_deploy_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_desired_instance_deploy_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -130,11 +133,10 @@ data gunbc_ci_desired_instance_receipt_identity_target: GunbcRunStepTarget = gun
   function: "live_deploy_ci_instance_receipt_identity_from_ci",
 )
 
-fn gunbc_ci_desired_instance_receipt_identity_invoke() -> String {
+fn gunbc_ci_desired_instance_receipt_identity_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_desired_instance_receipt_identity_target,
-    claim_run: false,
     // receipt_rel: none -- live_deploy_ci_instance_receipt_identity_from_ci writes ONLY $GITHUB_OUTPUT, it never
     // creates a receipt file. A Some(receipt_rel) here makes the projection append a
     // `cat "$ROOT/<receipt>"` for a file that is never written, which fails the step with
@@ -145,11 +147,10 @@ fn gunbc_ci_desired_instance_receipt_identity_invoke() -> String {
   )
 }
 
-fn gunbc_ci_microvm_controller_install_invoke() -> String {
+fn gunbc_ci_microvm_controller_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_controller_install_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -159,30 +160,27 @@ fn gunbc_ci_microvm_controller_install_invoke() -> String {
 // down-scoped at the mint to organization_self_hosted_runners read: the job reads the groups and can
 // change none of them. The mint reads the app key with the job's workload-identity token, which the
 // step's environment carries. The step holds no fleet key: it runs before the step that loads one.
-fn gunbc_ci_microvm_controller_install_admission_invoke() -> String {
+fn gunbc_ci_microvm_controller_install_admission_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_controller_install_admission_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
+fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_assert_dashboard_deploy_receipts_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> String {
+fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_record_plan_serve_entry_verdict_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

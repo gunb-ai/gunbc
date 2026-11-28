@@ -15,6 +15,7 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_for_target }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.auth.approval_ci_step { gunbc_ci_submission_key_invoke }
+import v2.std.diagnostic { Outcome, bind_outcome }
 
 data gunbc_ci_branch_run_grant_request_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.auth.branch_run_grant",
@@ -62,24 +63,22 @@ data gunbc_ci_gcp_iam_bootstrap_delta_apply_target: GunbcRunStepTarget = gunbc_r
 // THE GRANT REQUEST FILES ONE APPROVAL, so it signs with the submission MAC key exactly as the IAM
 // converge's request does: the same prelude, which reads only the step's WIF_ACCESS_TOKEN. Without it
 // approval_file_stored_request refuses on an unset key path (grant run 43582572641, 2026-11-14).
-fn gunbc_ci_branch_run_grant_request_invoke() -> String {
+fn gunbc_ci_branch_run_grant_request_invoke() -> Outcome<String> {
   gunbc_ci_submission_key_invoke(stem: "branch-run-grant", target: gunbc_ci_branch_run_grant_request_target)
 }
 
-fn gunbc_ci_branch_run_grant_apply_invoke() -> String {
+fn gunbc_ci_branch_run_grant_apply_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_branch_run_grant_await_invoke() -> String {
+fn gunbc_ci_branch_run_grant_await_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_await_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -95,7 +94,7 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
 
-fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
+fn gunbc_ci_gcp_iam_converge_request_invoke() -> Outcome<String> {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-converge", target: gunbc_ci_gcp_iam_converge_request_target)
 }
 
@@ -105,35 +104,32 @@ fn gunbc_ci_gcp_iam_converge_request_invoke() -> String {
 // the WIF_ACCESS_TOKEN variable the job's wif_auth step exports (bound on the step, like its
 // siblings), carried only as a Secret argument to the one readonly ListVersions call, never argv.
 // The shared opening belongs to steps that sign submissions; this step signs nothing.
-fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> String {
+fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_srv15_bmc_secret_versions_read_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> String {
+fn gunbc_ci_gcp_iam_bootstrap_delta_request_invoke() -> Outcome<String> {
   gunbc_ci_submission_key_invoke(stem: "gcp-iam-bootstrap-delta", target: gunbc_ci_gcp_iam_bootstrap_delta_request_target)
 }
 
 // THE APPLY STEP READS NO SECRET: both tokens arrive by the workflow's auth-step variables, and the
 // recorded approval is read over the approval client's loopback status route.
-fn gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke() -> String {
+fn gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_gcp_iam_bootstrap_delta_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
 
-fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
+fn gunbc_ci_gcp_iam_converge_apply_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_gcp_iam_converge_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

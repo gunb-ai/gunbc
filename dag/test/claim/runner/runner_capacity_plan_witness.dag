@@ -10,6 +10,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv3,
   operator_host_srv4,
   operator_host_e2d4b7,
+  operator_host_srv14,
 }
 import gunbc.runner.runner_capacity_plan {
   admit_runner_capacity_width,
@@ -22,13 +23,34 @@ import gunbc.runner.runner_capacity_plan {
   committed_width_after_reservation,
   remote_build_pool_slot_reservation,
 }
-import std.measure { measure_fit_count_floor, byte_size }
+import std.measure { measure_fit_count_floor, byte_size, byte_size_count }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import gunbc.compute.host_capacity {
+  ComputeBuildPool,
+  host_capacity_build_seat,
+  ruled_pool_seat_of,
+  build_pool_ruled_seat_count_for_host,
+  host_capacity_pool_slots_for_home,
+  user_work_slice_memory_max_for_host,
+  capacity_seat_for_reservation,
+  user_work_pool_slots,
+  user_work_slice_memory_max_of,
+  UserWorkPoolSlotsDerived,
+  compute_pool_slots,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_ledger_home, compute_build_memory_ceiling_default }
 import gunbc.runner.runner_slot_desired {
   build_pool_carve_is_due,
   host_carries_own_ledger,
   gunbc_runner_slot_memory_max,
   host_build_pool_reservation,
+  build_pool_reservation_of_ruling,
+  host_build_pool_is_ruled,
+  host_build_pool_reservation_from_ci_width,
+  ruled_build_pool_reservations,
 }
+import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24 }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_serving_hosts }
 import gunbc.runner.runner_capacity_plan {
   parse_positive_width,
@@ -47,6 +69,7 @@ import gunbc.runner.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   fabric_execution_slot_identities,
   srv1_revision_job_slot,
+  host_ci_width_is_ruled_zero,
 }
 import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
@@ -215,15 +238,188 @@ test fn the_build_pool_reservation_is_subtracted_where_width_is_admitted() -> Bo
 // gunbc.runner.runner_slot_desired::host_build_pool_reservation (on the roster, and carrying no dashboard
 // instance of its own), and the capacity plan converts that carve into slots. Asserted over every ENROLLED host,
 // so the day a host joins the roster the plan and the memory envelope move together and nobody has to remember an
-// entry. Two halves: the plan holds back a slot exactly when the carve is due, and it never holds back more than
-// one -- the ruling's grain is one slot, and a reservation function that grew would be caught here.
+// entry. Two halves: the plan holds back a slot exactly when the carve is due AND the host's pool is not RULED
+// (a ruled pool was never CI's to give -- runner_slot_desired::ruled_build_pool_reservations, and its own
+// witness below pins that it holds zero slots back), and it never holds back more than one -- the ruling's grain
+// is one slot, and a reservation function that grew would be caught here.
 test fn the_plan_holds_back_exactly_the_carve_the_fleet_already_grants() -> Bool {
   all(fleet_enrollments, e =>
     (remote_build_pool_slot_reservation(host: e.host) > 0)
-      == build_pool_carve_is_due(
+      == (build_pool_carve_is_due(
         rostered: remote_build_host_is_serving(host: e.host),
-        carries_own_ledger: host_carries_own_ledger(host: e.host)))
+        carries_own_ledger: host_carries_own_ledger(host: e.host))
+      && !host_build_pool_is_ruled(host: e.host)))
     && all(fleet_enrollments, e => remote_build_pool_slot_reservation(host: e.host) <= 1)
+}
+
+// A RULED-ZERO HOST'S POOL COMES FROM THE RULING, NOT FROM A CARVED SLOT. Butch (srv14) holds exactly the
+// reservation the operator's ruling of 2026-11-24 released -- "yes you can retire the 192gib serving
+// reservation", its interpretation putting the freed 2 x 96 GiB charge into the remote-build pool and NOT into
+// CI -- and the row CITES that ruling rather than restating a number of our own. The pure composition is tested
+// in both directions so the ruled arm cannot silently collapse into the carve: a ruled amount answers even when
+// the carve is due (red if the ruled arm is dropped: it would answer 25 GiB, the phantom slot, not 192 GiB), and
+// with no ruling the carve still answers with exactly one slot (red if the carve is dropped). The host is read
+// from the ruled table itself, so a renamed or duplicated row goes red here, not quietly.
+test fn a_ruled_zero_host_pool_comes_from_the_ruling_not_a_carved_slot() -> Bool {
+  // THE TABLE NOW CARRIES TWO RULED HOSTS, each row naming ITS OWN ruling and pool: srv14's 192 GiB
+  // retired from serving (2026-11-24) and ken's 22 GiB one-seat ceiling pool (2026-11-26, the fleet
+  // ceiling symbol read, not copied). A row that cites the wrong ruling or restates the wrong size
+  // fails here, host by host.
+  all(ruled_build_pool_reservations, r =>
+    ((r.host as String) == "srv14"
+      && (r.ruling.module_path as String) == "gunbc.design_ruling"
+      && (r.ruling.decl_name as String) == "srv14_serving_memory_charge_retirement_operator_approved_2026_11_24"
+      && byte_size_count(b: r.reservation) == 206158430208)
+    || ((r.host as String) == "host-e2d4b7"
+      && (r.ruling.module_path as String) == "gunbc.design_ruling"
+      && (r.ruling.decl_name as String) == "ken_build_pool_one_seat_default_approved_2026_11_26"
+      && byte_size_count(b: r.reservation) == byte_size_count(b: compute_build_memory_ceiling_default)))
+    && ruled_build_pool_reservations.length() == 2
+    && filter(ruled_build_pool_reservations, r => (r.host as String) == "srv14").length() == 1
+    && filter(ruled_build_pool_reservations, r => (r.host as String) == "host-e2d4b7").length() == 1
+    && byte_size_count(
+      b: build_pool_reservation_of_ruling(
+        ruled: Present { value: byte_size(206158430208) },
+        carve_due: true,
+      )) == 206158430208
+    && byte_size_count(
+      b: build_pool_reservation_of_ruling(ruled: Absent, carve_due: true))
+      == byte_size_count(b: gunbc_runner_slot_memory_max)
+    && byte_size_count(
+      b: build_pool_reservation_of_ruling(ruled: Absent, carve_due: false)) == 0
+}
+
+// THE RED CONTROL OF serving-build-pool-for-zero-ci-host: NO RESERVATION REFUSED FOR WANT OF A CARVED RUNNER
+// SLOT ON A HOST THAT HAS NO RUNNERS BY RULING. Butch's CI width is the ruled zero (its committed width is the
+// admitted RunnerWidthDerived { slots: 0 }) and its pool is ruled 192 GiB. If that ruled memory were converted
+// through the slot arithmetic it would hold back seven slots from a committed population of zero, and the width
+// admission would answer ReservationExceedsCommittedWidth -- a refusal naming a carved runner slot the host
+// never had. Asserted both ways: the from-CI conversion is zero for the ruled host (red if the ruled arm leaks
+// into the plan's units), and the composition over butch's real committed width and real held slots is a CLEARED
+// ceiling at zero, never a refusal.
+test fn a_ruled_pool_never_demands_a_carved_slot_from_a_zero_ci_host() -> Bool {
+  host_build_pool_is_ruled(host: operator_host_srv14)
+    && host_ci_width_is_ruled_zero(host: operator_host_srv14)
+    && remote_build_pool_slot_reservation(host: operator_host_srv14) == 0
+    && byte_size_count(b: host_build_pool_reservation_from_ci_width(host: operator_host_srv14)) == 0
+    && match committed_width_after_reservation(
+      committed_slots: committed_width_of(host: operator_host_srv14),
+      reserved_slots: remote_build_pool_slot_reservation(host: operator_host_srv14),
+    ) {
+      CeilingCleared { committed_slots: c, reserved_slots: r, spendable_ceiling: s } =>
+        c == 0 && r == 0 && s == 0
+      ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } => false
+    }
+}
+
+// THE RULED TABLE CANNOT DRIFT FROM THE RULINGS IT PROJECTS. Every host with a ruled build pool must ALSO be
+// ruled out of CI width (ruled_zero_ci_widths) -- a ruled pool on a host still spending CI width would
+// double-promise the same bytes, once to CI and once to the pool -- and must carry no ledger of its own, whose
+// serving reservation already reaches the envelope through gunbc.serving.serving_reservation::host_memory_reserved.
+// These invariants live HERE rather than in runner_slot_desired because that module cannot import
+// gunbc.runner.runner_slot_allocation without closing an import cycle; this is where both sides are visible.
+test fn every_ruled_build_pool_host_is_ruled_out_of_ci_and_carries_no_ledger() -> Bool {
+  ruled_build_pool_reservations.length() > 0
+    && all(ruled_build_pool_reservations, r =>
+      host_ci_width_is_ruled_zero(host: r.host)
+        && !host_carries_own_ledger(host: r.host))
+}
+
+// KEN (host-e2d4b7) UNDER THE ONE-SEAT RULING: THE POOL IS 22 GiB, NOT 44, AND THE SEAT FOLLOWS
+// THE RULING'S SEAT COUNT, NOT THE FLEET DIVISOR. gunbc.design_ruling::
+// ken_build_pool_one_seat_default_approved_2026_11_26 (approved BY DEFAULT on operator escalation
+// msg_5ffaed22-4d67-49a3-ace8-5fa55008c5a2 -- the row says so; it is not an operator verbatim) rules ken
+// out of CI with a build pool of one seat of the fleet per-build ceiling, 23622320128 B, beside the live
+// ken-strata engine. The seat-count half is the defect this row closes: divided by the fleet default
+// (compute_pool_slots = 2) the pool would be two 11 GiB seats, EACH UNDER THE MEASURED 18.2 GiB BUILD
+// PEAK, so every build on ken would OOM or be refused. Here the ruled division fits the peak in one seat
+// and the fleet division does not -- asserted as bytes, not prose. ROSTERING KEN NEVER REFUSES AT THE
+// CARVE: the carve would be due (ken carries no ledger of his own), the ruled amount outranks it, the
+// plan holds zero slots back, and the ruled-zero committed width clears at zero. While ken is off the
+// roster the row answers only in the table: every host-facing fn still answers the old facts (reservation
+// zero, seat conversion absent), so the ruling does not re-price a host the roster has not admitted --
+// the unrostered figure the surveying lane read (the 44 GiB unreserved user-work slice) stands until step 6.
+test fn ken_ruled_pool_is_one_ceiling_seat_and_the_carve_never_refuses_it() -> Bool {
+  let pool = compute_build_memory_ceiling_default
+  match first_where(ruled_build_pool_reservations, r => (r.host as String) == "host-e2d4b7") {
+    Present { value: r } =>
+      (r.ruling.module_path as String) == "gunbc.design_ruling"
+        && (r.ruling.decl_name as String) == "ken_build_pool_one_seat_default_approved_2026_11_26"
+        && byte_size_count(b: r.reservation) == byte_size_count(b: pool)
+        && byte_size_count(b: r.reservation) != byte_size_count(b: pool) * 2
+        && match r.seats { Present { value: n } => n == 1 Absent => false }
+    Absent => false
+  }
+    && all(ruled_build_pool_reservations, r =>
+      match r.seats { Present { value: n } => n > 0 Absent => true })
+    && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 1)) == byte_size_count(b: pool)
+    && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 2)) < byte_size_count(b: pool)
+    // A zero-seat row is a DEAD POOL, not an invented seat (review 98975 / fail_closed): the seat
+    // converts to 0 bytes and reserves nothing; it is never silently widened to one seat.
+    && byte_size_count(b: ruled_pool_seat_of(reservation: pool, seats: 0)) == 0
+    && build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
+    && byte_size_count(
+      b: build_pool_reservation_of_ruling(
+        ruled: Present { value: pool },
+        carve_due: true,
+      )) == byte_size_count(b: pool)
+    && host_ci_width_is_ruled_zero(host: operator_host_e2d4b7)
+    && remote_build_pool_slot_reservation(host: operator_host_e2d4b7) == 0
+    // THE NEVER-REFUSED AT THE CARVE IS ASSERTED PURELY. ken's OWN committed width does not reach
+    // the ruled-zero arm yet: the width fold refuses BEFORE it (gunbc.runner.runner_slot_allocation
+    // committed_width_with_serving places the ruled arm after the session-denominator gate, by that
+    // row's own design), because ken's session reservation has never been read -- no row in
+    // gunbc.session_reservation_policy sizes host-e2d4b7, so his width states that cause. That is
+    // fail-closed, not a carve failure, and it is the SAME denominator gate srv14 had to pass before
+    // its ruled zero could answer; establishing ken's session reservation is a named next rung of his
+    // admission (same step-6 layer as the roster), not something this PR fabricates.
+    && match committed_width_after_reservation(committed_slots: 0, reserved_slots: 0) {
+        CeilingCleared { committed_slots: c, reserved_slots: r, spendable_ceiling: s } =>
+          c == 0 && r == 0 && s == 0
+        ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } => false
+      }
+    && !remote_build_host_is_serving(host: operator_host_e2d4b7)
+    && host_build_pool_reservation(host: operator_host_e2d4b7) == byte_size(0)
+    && match build_pool_ruled_seat_count_for_host(host: operator_host_e2d4b7) {
+        Present { value: _ } => false
+        Absent => true
+      }
+}
+
+// THE RULINGS ARE STAGED, NOT YET ADMITTED. The remote-build serving roster is srv3 and srv4
+// (gunbc.compute.remote_build_hosts::remote_build_serving_hosts), so NO ruled host is rostered today:
+// both ruled rows price NOTHING live -- reservation zero (the pool arm needs the roster), the seat
+// conversion Absent, the slice the standing user-work pool. The rostered shapes are priced PURELY
+// here -- the fleet division for butch's 192 GiB, the fleet multiplier for an unruly home -- so the
+// change that admits either host (butch: step 6 of his lane; ken: his step 6) flips LIVE facts
+// through code that is already witnessed, never code that first runs on admission day. Review 98990
+// asked whether butch's slice changes too: it cannot today, and when it lands the ruled arm gives
+// the slice the ruled pool, the same relationship the carve arm has always had between slice and
+// carve -- one ceiling authority per host posture (gunbc.design_argument::single_authority).
+test fn the_ruled_rows_are_staged_until_the_roster_admits_them() -> Bool {
+  !remote_build_host_is_serving(host: operator_host_srv14)
+    && byte_size_count(b: host_build_pool_reservation(host: operator_host_srv14)) == 0
+    && match build_pool_ruled_seat_count_for_host(host: operator_host_srv14) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    && byte_size_count(b: host_capacity_build_seat(host: operator_host_srv14))
+      == byte_size_count(b: compute_build_memory_ceiling_default)
+    && match user_work_pool_slots() {
+        UserWorkPoolSlotsDerived { slots: s } =>
+          byte_size_count(b: user_work_slice_memory_max_for_host(host: operator_host_srv14))
+            == byte_size_count(b: user_work_slice_memory_max_of(slots: s))
+      }
+    && host_ci_width_is_ruled_zero(host: operator_host_srv14)
+    && byte_size_count(b: capacity_seat_for_reservation(reservation: byte_size(206158430208)))
+      == 103079215104
+    && host_capacity_pool_slots_for_home(
+         home: host_capacity_ledger_home(
+           host: "host-e2d4b7" as NonEmptyStr,
+           build_seat: compute_build_memory_ceiling_default,
+         ),
+         pool: ComputeBuildPool,
+       ) == compute_pool_slots
 }
 
 // THE UNROSTERED UNIT HOLDS BACK NOTHING, AND NEEDS NO ROW TO SAY SO. ken is enrolled for CI participation and

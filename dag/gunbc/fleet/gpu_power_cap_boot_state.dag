@@ -25,6 +25,29 @@ module gunbc.fleet.gpu_power_cap_boot_state
 //     readback into a `CapRealization` of its own; that join is gone, because a module that was not the
 //     converge could only ever have produced an answer the converge disagreed with.
 //
+// WHERE THE BOOT SIDE GATES, AND WHERE IT DOES NOT REACH. A cap carried by a declared boot unit -- the srv1 and
+// ken units -- is gated at the boot-unit census the converge runs (`gpu_cap_boot_unit_refusal`): a unit holding
+// a cap line with no priced candidate is REFUSED BY NAME, which fails the converge run, which keeps the units
+// that Require it -- the serving side -- from starting. What the model does NOT do is render unit files: it
+// mints none, so there is no render step to fail, and the installed unit's own `nvidia-smi -pl` line is host
+// state that Part A records. Deriving the unit file itself from the priced candidate is the failure-mode row's
+// next-rung trigger, not a guarantee this module may claim. The surge-strip members declare no boot units at
+// all, so their caps arrive only through the converge, which is gated for every host; a unit that does not
+// exist cannot be gated, and `PresenceUnread` is not "no unit" -- an unmodeled boot channel is a modeling
+// obligation on this home, not a covered path it can claim.
+
+// WHAT THIS MODULE HOLDS BESIDE SRV1'S TRANSCRIBED UNIT (2026-11-24, closed up at the final-state pass). srv3,
+// srv4 and ken carry caps the operator applied by hand, and those readings have a different shape: a path, a
+// rule, a wattage, a persistence claim and a digest -- no systemctl state, and no transcription except where the
+// operator's final-state ssh pass of 2026-11-24 22:03-22:05 UTC quoted one. They are held as
+// `hand_applied_cap_mechanisms`, sibling rows to `srv1_power_cap_boot_units`. That pass returned whole sha256s
+// for all three mechanisms and the full bytes of two of their files, which this module now EMITS rather than
+// restates: srv4's unit through extdeps.systemd.unit_file (srv4_gpu_power_cap_unit) and ken's cap script as a
+// transcribed line list (ken_t10_power_cap_script_lines), each folded against the host's digest. What stays
+// unread stays named: srv3's drop-in bytes (digest read, the file moved under the day) and ken's cap-unit bytes. Both reach every card on their host, which is why they answer a consumer asking "what cap does
+// this host put on its cards?" through `host_wide_gpu_cap_watts`, while srv1's one-card unit answers no such question.
+
+//
 // DISPOSITION OF #16047 (landed 2026-11-08 as d79a9db7addb, after this PR was opened). This module consumes it
 // rather than duplicating it: the apply-and-read-back path and the generated `gunbc-srv1-gpu-power-cap.service`
 // are theirs, and what is kept here is the part their model does not describe -- the unit actually installed on
@@ -35,15 +58,27 @@ module gunbc.fleet.gpu_power_cap_boot_state
 // recording that fact.
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Absent, Present }
-import std.measure { Watt, watt, watt_count }
+import std.optional { Absent, Optional, Present, optional_is_absent }
+import std.measure { Hertz, Watt, hertz, watt, watt_count }
+import std.content_hash { sha256_hex_of_text }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_e2d4b7, operator_host_srv1, operator_host_srv3, operator_host_srv4,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, After, Requires, ServiceType, OneshotMode, RemainAfterExit,
+  ExecStart, Installable, WantedBy, serialize_systemd_unit_file,
+}
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
   current_gpu_device_observations, current_gpu_device_observations_of,
   gpu_device_observation_board, gpu_device_observation_default,
+}
+import gunbc.serving.gpu_power_cap_pricing { CapCandidate, PowerAsk }
+import gunbc.fleet.gpu_cap_priced_actuation {
+  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, price_the_request,
+  ClockLineUnpricedRefused,
 }
 
 // A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
@@ -94,6 +129,119 @@ type CapApplicationClaim {
   to_watts: Watt
   said_by: NonEmptyStr
   read_on: NonEmptyStr
+}
+
+// ── THE UNIT'S OWN CAP LINES, PRICED ──────────────────────────────────────────────────────────────
+//
+// WHY THE BOOT MECHANISM IS GATED AT ALL. This module states no realization -- an installed unit and its own
+// journal line say somebody ASKED for a cap at boot, and nothing more. That is exactly what makes it dangerous
+// next to a pricing gate: a unit is a script that writes its watt value again at every boot, so a unit holding
+// a cap nobody priced would reinstate the unpriced value the next time the machine came up and the converge's
+// refusal would be theatre. So each cap line of a unit is put through the same gate as an admission, with the
+// watts and the UUID the unit itself carries.
+//
+// THE CEILING GAP, STATED RATHER THAN PAPERED OVER. The units this module holds write `-pl` only; no modeled
+// unit writes an SM clock ceiling with `-lgc`. A request built from one of these lines therefore carries
+// `ceiling: Absent`, which the gate reads as "the card is left to boost", matching a candidate whose clock is
+// `Unlocked`. When a unit that locks a clock is installed, `BootCapCommand` must grow the ceiling as a field
+// and this function must pass it -- the same realization obligation named on gunbc.serving.gpu_power_cap_pricing
+// for the ceiling and for `scaling_max_freq`, and it is named there once rather than being invented differently here.
+
+type BootCapActuation {
+  command: BootCapCommand
+  board: PhysicalAssetIdentity?
+  admission: ActuationAdmission
+}
+
+fn boot_command_actuation(
+  unit: PowerCapBootUnit,
+  command: BootCapCommand,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> BootCapActuation {
+  BootCapActuation {
+    command: command,
+    board: board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid),
+    // THE SAME LOOKUP THE CONVERGE USES, NOT A COPY OF IT. The unit hands over the request its cap line
+    // actually is and the rows; which candidate prices that operating point is decided once, in
+    // gunbc.fleet.gpu_cap_priced_actuation -- a private filter here would be a second rule about what counts
+    // as this operating point, and the boot path and the converge path would drift apart (#gunbc.design_argument::single_authority).
+    // The verbatim line is asked first whether it pins the clock: it is the only record of what the unit
+    // writes, and pricing an -lgc line as if it left the clock unlocked would fabricate the fact the header
+    // exists to protect (#gunbc.design_argument::fail_closed).
+    admission: if string_contains(s: command.line.as_written as String, pattern: "-lgc") {
+      ClockLineUnpricedRefused {
+        request: boot_command_request(unit: unit, command: command),
+        line: command.line.as_written,
+      }
+    } else {
+      price_the_request(
+        request: boot_command_request(unit: unit, command: command),
+        candidates: candidates,
+        ask: ask,
+      )
+    },
+  }
+}
+
+// The request a cap line IS: watts, and -- because the caller has already established the verbatim line
+// writes no clock lock -- an actuation that leaves the SM clock to find itself. That last field is derived
+// from the verbatim line, not asserted beside it; a unit that does pin the clock never reaches this function.
+fn boot_command_request(unit: PowerCapBootUnit, command: BootCapCommand) -> ActuationRequest {
+  ActuationRequest {
+    host: unit.host,
+    board: board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid),
+    gpu_uuid: command.addressed_gpu_uuid,
+    cap: command.target_watts,
+    ceiling: Absent,
+  }
+}
+
+fn boot_unit_cap_actuations(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> List<BootCapActuation> {
+  map(unit.cap_commands, c => boot_command_actuation(unit: unit, command: c, candidates: candidates, ask: ask))
+}
+
+// The unit's cap lines that the gate would refuse, in order. An empty list is the only answer that lets the
+// converge treat the unit as harmless.
+fn boot_unit_unpriced_commands(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> List<BootCapActuation> {
+  filter(boot_unit_cap_actuations(unit: unit, candidates: candidates, ask: ask), a => !actuation_admits(a: a.admission))
+}
+
+fn boot_unit_admits_every_command(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> Bool {
+  boot_unit_unpriced_commands(unit: unit, candidates: candidates, ask: ask).length() == 0
+}
+
+// The converge's question: would this unit put an unpriced value back on the card at the next boot? Present
+// carries the line's own address and the gate's reason, so the refusal is actionable.
+fn boot_unit_restores_unpriced_cap(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> NonEmptyStr? {
+  let unpriced = boot_unit_unpriced_commands(unit: unit, candidates: candidates, ask: ask)
+  match unpriced.first() {
+    Absent => Absent
+    Present { value: a } => Present {
+      value: join([
+        "its cap line for ", a.command.addressed_gpu_uuid as String, " at ",
+        to_string(watt_count(w: a.command.target_watts)), " W is refused by the pricing gate: ",
+        actuation_refusal_text(a: a.admission),
+        "; the unit would write it at the next boot (", unit.unit_path as String, ")",
+      ], "") as NonEmptyStr,
+    }
+  }
 }
 
 fn cap_boot_unit_for(host: HostIdentity) -> PowerCapBootUnit? {
@@ -263,6 +411,294 @@ data srv1_cap_application_claims: List<CapApplicationClaim> = [
   },
 ]
 
+// WHAT THE OPERATOR APPLIED BY HAND, AND HOW MUCH OF IT WAS READ (2026-11-24). srv3, srv4 and ken carry GPU
+// power caps gunbc never installed: the operator edited a unit on srv4, added a drop-in on srv3, and left ken's
+// install-time script-and-unit pair in place; they reported what they applied, and the final-state pass read
+// what stands. That report is a DIFFERENT reading from the srv1
+// unit above. The srv1 row came from `sudo cat`, `sha256sum` and `systemctl` on the host, so every field of
+// PowerCapBootUnit is the file's own text. The hand-applied rows carry the fields their readings produced and no
+// others: no `systemctl is-enabled` or `is-active` state was ever taken against them, and srv3's file still has
+// no quoted line -- which is why they stand as siblings to srv1_power_cap_boot_units in their own type rather
+// than as PowerCapBootUnit rows, where Description=, ordering and ExecStart= verbatim would have to be invented.
+// Where the final-state pass DID quote bytes -- srv4's unit, ken's script -- the row says so (`lines_read: true`)
+// and the bytes come from this module, folded against the host's digest, not from prose.
+//
+// THE DIGEST IS WHERE THE READINGS DIFFER MOST, and it is why the digest has a type of its own. When the
+// operator's 2026-11-24 report first arrived it quoted each file's sha256 with the middle elided, and no read
+// this repository models could produce the whole value: the one fleet-converge mode that walks a host's files,
+// `runner_host_file_observe`, visits only the files the model DECLARES
+// (gunbc.runner.runner_host_file_converge runner_host_file_desired_population_from_uid_reading) and reports each
+// one's standing against model-declared content (observe_fleet_host_file_content) -- it never hashes an arbitrary
+// path, and none of these files sits in any declared population. The operator's own final-state pass then
+// supplied what the model's instruments could not: whole digests for all three mechanisms (CapUnitDigestRead on
+// every row today) and the bytes of two files, which the folds below compare against those digests. The
+// marked-only arm survives for the shape of the gap, not for a row: it is what a digest looks like before the
+// hash read lands, and it carries that read on itself (`declared_path_host_hash_read`, spelled once below), so a
+// future unread file is recorded honestly without this module waiting for a new type. srv3's row keeps the
+// frontier visible the other way: a whole digest whose BYTES nobody quoted
+// (`cap_mechanisms_with_unread_lines`), which no render fold may absorb.
+
+// How the mechanism sits on the host: a unit of its own, or a line the operator added to a unit gunbc runs.
+type CapMechanismPlacement
+  = CapUnitOfItsOwn { unit_path: NonEmptyStr }
+  | CapDropInOnUnit {
+      drop_in_path: NonEmptyStr
+      // The unit the drop-in belongs to. srv3's cap line runs before that unit starts, which is why the operator
+      // put it there rather than in a unit of its own.
+      modifies_unit: NonEmptyStr
+      runs_before_the_units_own_start: Bool
+    }
+
+// Whether the report says a copy of the pre-change file sits beside the mechanism. "Not said" is its own arm: an
+// unreported backup is not a read absence, and the reversal cost of the change turns on which of the three it is.
+type ReportedPresence
+  = ReportedPresent { detail: NonEmptyStr }
+  | ReportedAbsent
+  | ReportedUnsaid { why: NonEmptyStr }
+
+// How much of a file's content hash the reading took: the whole value, or only the head and tail someone quoted.
+//
+// THE OPEN READ LIVES IN THE VALUE, NOT BESIDE IT. A marking carries what would turn it into a value, because
+// "this hash is unread" and "this is the read that would close it" are one fact about one file: keeping them in
+// two places means a check to keep the places agreeing, and a check that restates a constraint the model already
+// carries is a second representation of it (gunbc.design_argument::fail_closed). So there is no unread-digest
+// roster in this module, and the out-of-sync state -- a whole digest typed while a frontier row still names it --
+// cannot be written at all.
+type CapUnitContentDigest
+  = CapUnitDigestRead { sha256: NonEmptyStr }
+  | CapUnitDigestMarkedOnly {
+      head: NonEmptyStr
+      tail: NonEmptyStr
+      // What would turn this marking into a read value. Not a to-do note in a comment: the marking is the
+      // unreadness, so the obligation to read travels on it.
+      what_would_discharge_it: NonEmptyStr
+    }
+
+// THE ONE DISCHARGE READ, spelled here and named by every marking rather than reworded row by row. It is written
+// out once because every cap-unit file in this model is unread for the SAME reason: the observe modes this
+// repository models cannot hash a path outside the declared runner population.
+data declared_path_host_hash_read: NonEmptyStr = "a fleet-converge observe leg that runs sha256sum at a DECLARED path on the subject host and returns the value. Mode runner_host_file_observe visits only the files the model declares (gunbc.runner.runner_host_file_converge runner_host_file_desired_population_from_uid_reading) and reports standing against declared content, never a hash of an arbitrary path, and none of these cap-unit files is in any declared population. Typing more characters into a row is NOT the discharge: an invented digest is worse than an unread one." as NonEmptyStr
+
+// Which cards the mechanism reaches. A cap line without a `-i` selector reaches every card the host enumerates,
+// which is what the 2026-11-24 reading showed on both hosts: every card there reported the same limit. srv1's
+// transcribed unit is the one-card form and stays in srv1_power_cap_boot_units.
+type CapCardReach
+  = EveryCardOnTheHost
+  | OneCardByUuid { gpu_uuid: NonEmptyStr }
+
+// THE SM CLOCK CEILING, if the mechanism carries one. It is a field and not a suffix on cap_marking because the
+// 2026-11-24 evening added exactly this kind of line to two of the three mechanisms: `nvidia-smi -lgc LOW,HIGH`,
+// applied with the watt cap so a capped card boosts to a known ceiling instead of boosting and then throttling
+// under load. The choice is an operator decision bought with a locked-clock sweep under live serving traffic
+// (clocksweep.sh on srv4, kensweep.sh on ken: 150 s per level, reading nvidia-smi power.draw, clocks.sm,
+// utilization and clocks_throttle_reasons once a second, decode from the engine's progress lines or /metrics
+// totals); the figures behind `chosen_from` are single window averages of that sweep, not an envelope, and the
+// sweep's own note says the per-window decode rate was too noisy to decide on -- so it is carried with that
+// standing (gunbc.design_argument::epistemic_humility; the standing type is
+// extdeps.external_authority::CitedFigureStanding's subject). `SmClockUnlocked` is a fact too: srv1's workstation
+// card held 2.2-2.8 GHz without collapsing and h11's R9700 cannot be locked at all until the kernel carries the
+// amdgpu OverDrive bit (gunbc.integration_concern::amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs),
+// so a lock is recorded only where one was actually applied.
+type SmClockCeiling
+  = SmClockLocked {
+      low: Hertz
+      high: Hertz
+      // What the lock bought, in the sweep's own figures, with the instrument named -- a choice written down
+      // without its measurement is a preference wearing a number.
+      chosen_from: NonEmptyStr
+      decided_on: NonEmptyStr
+    }
+  | SmClockUnlocked { why: NonEmptyStr }
+
+// A cap the operator applied by hand whose EFFECTING lines live in a script a unit runs, rather than in the unit
+// itself. ken's T10 mechanism is this shape: the unit's own bytes have never been read, and the rule -- cap each
+// card at the minimum THAT CARD reports, fail unless EXPECT=3 are seen, lock each SM clock to 300,$CLOCK_MAX --
+// lives in /usr/local/sbin/t10-power-cap.sh. The lines are carried so the digest claim can be checked against
+// what this model emits, and their absence would be the honest state for a file nobody opened.
+type HandAppliedScript {
+  path: NonEmptyStr
+  content_digest: CapUnitContentDigest
+  lines: List<NonEmptyStr>
+  // Who ran it and how it was read: t10-power-cap.service executes it; the sha256sum and the lines are the
+  // operator's 2026-11-24 22:03-22:05 UTC ssh pass.
+  instrument: NonEmptyStr
+}
+
+// A cap mechanism the operator applied by hand, as their own read of the host reported it. The fields are the
+// ones the report names; what it did not transcribe is absent from this type rather than filled in with an empty
+// list, which would be a total enumeration this reading never made.
+type HandAppliedCapMechanism {
+  host: HostIdentity
+  placement: CapMechanismPlacement
+  content_digest: CapUnitContentDigest
+  // The flag and value as the operator gave them. Not the unit's line verbatim: the line was never read, so no
+  // `as_written` claim is made about its path, its prefix or its selector -- EXCEPT where `lines_read` says the
+  // file was transcribed, which upgrades the claim for that row and only that row.
+  cap_marking: NonEmptyStr
+  target_watts: Watt
+  reaches: CapCardReach
+  // Reboot-persistence as the operator stated it. This is NOT a `systemctl is-enabled` read: nothing here says
+  // what systemd reports about the unit, only that the operator made the change survive a boot.
+  persists_across_boot: Bool
+  backup_copy_beside: ReportedPresence
+  // Whether the mechanism's own lines have been read. true means the file behind `content_digest` has been
+  // quoted byte for byte and the digest folds in this module can compare what the hosts hashed against what the
+  // model emits; false is srv3's state -- its digest was READ at the final pass, but the bytes never were, and
+  // `cap_mechanisms_with_unread_lines` keeps that from reading as verified.
+  lines_read: Bool
+  sm_clock: SmClockCeiling
+  // Present when the effecting lines are in a script behind the unit, rather than in the unit file itself.
+  runs_script: Optional<HandAppliedScript>
+  read_on: NonEmptyStr
+}
+
+data srv4_hand_applied_gpu_cap: HandAppliedCapMechanism = HandAppliedCapMechanism {
+  host: operator_host_srv4,
+  placement: CapUnitOfItsOwn { unit_path: "/etc/systemd/system/gpu-power-cap.service" as NonEmptyStr },
+  // The operator's evening pass quoted the unit's exact bytes, and the model now emits them through
+  // extdeps.systemd.unit_file -- srv4_gpu_power_cap_unit below digests to this value, so this row and the host
+  // hold one file with one producer, checked by srv4_cap_unit_render_is_the_host_file rather than by assertion.
+  content_digest: CapUnitDigestRead {
+    sha256: "2c8966d65ee15a83d13c25d1c6898321e53b98db4443c6a5c985379950b23e2a" as NonEmptyStr,
+  },
+  cap_marking: "-pl 30" as NonEmptyStr,
+  target_watts: watt(count: 30),
+  reaches: EveryCardOnTheHost,
+  persists_across_boot: true,
+  backup_copy_beside: ReportedPresent {
+    detail: "the operator reports a backup of the pre-cap unit sitting beside it; the backup's file name was not read" as NonEmptyStr,
+  },
+  lines_read: true,
+  sm_clock: SmClockLocked {
+    low: hertz(count: 210000000),
+    high: hertz(count: 1500000000),
+    chosen_from: "clocksweep.sh under live serving traffic, 150 s per level (nvidia-smi power.draw, clocks.sm, utilization, clocks_throttle_reasons at 1 Hz; decode from the engine's per-second progress lines): unlocked 29.1 W at 869 MHz average and 96% of the time power-capped; locked to 1500 MHz, 27.0 W at 906 MHz and 87%; the sweep's chosen level. The per-window decode medians (26.1 tok/s locked against 28.0 unlocked) were too noisy to decide on -- the sweep's own note -- so those numbers are recorded, not used, and every figure here is a single window average, not an envelope.",
+    decided_on: "2026-11-24 ~22:45 UTC",
+  },
+  runs_script: Absent,
+  read_on: "applied by the operator by hand on 2026-11-24 (their words: gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24); re-read at the operator's final-state ssh pass of 2026-11-24 22:03-22:05 UTC, which brought back the unit's exact bytes and its sha256sum" as NonEmptyStr,
+}
+
+// srv3's cap is a drop-in on the serving engine's own unit, so it rides the engine's start rather than a unit
+// of its own. The cards' limit arriving at 30 W was what the operator saw afterwards; whether systemd reports
+// the drop-in's unit enabled is not read here.
+data srv3_hand_applied_gpu_cap: HandAppliedCapMechanism = HandAppliedCapMechanism {
+  host: operator_host_srv3,
+  placement: CapDropInOnUnit {
+    drop_in_path: "/etc/systemd/system/strata-pool.service.d/power-cap.conf" as NonEmptyStr,
+    modifies_unit: "strata-pool.service" as NonEmptyStr,
+    runs_before_the_units_own_start: true,
+  },
+  // The digest is the operator's final-state read; the BYTES are not, and this is the one mechanism in the fleet
+  // where that is the state: the 22:03-22:05 pass hashed the file and quoted a same-day predecessor's contents,
+  // while the file standing at the end of the day moved on from that. No rendering is attempted -- inventing the
+  // lines to match a digest would be the one act worse than the silence -- and
+  // `cap_mechanisms_with_unread_lines` names this row so no fold reads its digest as a checked file. The
+  // superseded versions are deliberately not rendered either: a row describing bytes the host no longer holds
+  // would be a second authority over a replaced state (gunbc.design_argument::single_authority).
+  content_digest: CapUnitDigestRead {
+    sha256: "253ba1cb38070757ea89b64e8fe8d3c07939f617057ee5ea2b313254cb187636" as NonEmptyStr,
+  },
+  cap_marking: "-pl 40" as NonEmptyStr,
+  target_watts: watt(count: 40),
+  reaches: EveryCardOnTheHost,
+  persists_across_boot: true,
+  backup_copy_beside: ReportedUnsaid {
+    why: "the 2026-11-24 report names no backup beside the drop-in, and its absence was not checked" as NonEmptyStr,
+  },
+  lines_read: false,
+  sm_clock: SmClockUnlocked {
+    why: "the day moved under this file: 30 W (~09:34), 40 W (~19:24), 30 W (~22:02), and a same-evening version carrying a 210-1500 MHz lock like srv4's; the final-state read is 40 W with NO clock lock, so the lock the evening applied is not what stands. The nvidia-smi power.limit readings of ~06:10 UTC on 2026-11-25 saw 40 W on both cards, agreeing. Whether the lock returns is the operator's; the readings behind srv4's chosen level were taken on srv4's cards, not these." as NonEmptyStr,
+  },
+  runs_script: Absent,
+  read_on: "applied by the operator by hand on 2026-11-24 (their words: gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24); final digest and final wattage from the operator's final-state ssh pass of 2026-11-24 22:03-22:05 UTC, confirmed by the nvidia-smi power.limit re-read of the 2026-11-25 ~06:10 UTC pass" as NonEmptyStr,
+}
+
+// KEN'S T10 MECHANISM, added 2026-11-24/25 from the operator's final-state pass. The shape is the reason it is a
+// new row rather than an update to the two above: the cap rule is not in a unit file at all, it is in
+// /usr/local/sbin/t10-power-cap.sh, which t10-power-cap.service runs -- and the script caps each card at the
+// minimum THAT CARD reports (`power.min_limit`, which these three T10s report as 100 W), fails unless it sees
+// EXPECT=3 cards, and locks each SM clock to 300,$CLOCK_MAX. The host is host-e2d4b7, the Supermicro H11SSL unit
+// 3 the hostname registry (gunbc.hostname_allocation::fleet_machine_registry) approved under the name "ken" on
+// 2026-11-16; the brief's shorthand "h11" for a T10 fact means THIS host, not host-6ce85c, whose Radeon AI PRO
+// R9700 is a different machine on a different board. The unit's own bytes have never been read, and that is the
+// open ask gunbc.integration_concern::h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express exists to
+// close -- including its 2026-11-24 sighting of the clock ceiling this row records.
+data ken_t10_hand_applied_gpu_cap: HandAppliedCapMechanism = HandAppliedCapMechanism {
+  host: operator_host_e2d4b7,
+  placement: CapUnitOfItsOwn { unit_path: "/etc/systemd/system/t10-power-cap.service" as NonEmptyStr },
+  // The digest on this row is the SCRIPT's -- the file the pass hashed and quoted; the unit's bytes carry no
+  // digest at all, and the concern row above owns that frontier rather than this field pretending.
+  content_digest: CapUnitDigestRead {
+    sha256: "a3ce006ba5f283b47c99a0419ed14d9725dc14befb6d62984cc16d6fcf825a0a" as NonEmptyStr,
+  },
+  cap_marking: "-pl $min (each card's own power.min_limit; these three T10s report 100 W), per enumerated index" as NonEmptyStr,
+  target_watts: watt(count: 100),
+  reaches: EveryCardOnTheHost,
+  persists_across_boot: true,
+  backup_copy_beside: ReportedUnsaid {
+    why: "the pass named no backup beside the script or its unit, and their absence was not checked" as NonEmptyStr,
+  },
+  lines_read: true,
+  sm_clock: SmClockLocked {
+    low: hertz(count: 300000000),
+    high: hertz(count: 1000000000),
+    chosen_from: "kensweep.sh under live serving traffic, 150 s per level: unlocked, the cards swung 510-1575 MHz pinned at the cap at 92-96 W; locked at 1000 MHz the two cooler cards held ~990 MHz power-capped only 1% of the time at 68-80 W, while GPU1 (81:00.0, 82 C) stayed power-bound at every level (~790 MHz at 83 W, 83-88 W even at 600-800 MHz -- leakage) and set the pace for the 3-way split. Single readings under live load, not averages; the window decode rate was too noisy to decide on, the sweep's own note.",
+    decided_on: "2026-11-24 ~22:45 UTC",
+  },
+  runs_script: Present {
+    value: HandAppliedScript {
+      path: "/usr/local/sbin/t10-power-cap.sh" as NonEmptyStr,
+      content_digest: CapUnitDigestRead {
+        sha256: "a3ce006ba5f283b47c99a0419ed14d9725dc14befb6d62984cc16d6fcf825a0a" as NonEmptyStr,
+      },
+      lines: ken_t10_power_cap_script_lines,
+      instrument: "t10-power-cap.service executes it; sha256sum over ssh and the quoted lines are the operator's 2026-11-24 22:03-22:05 UTC pass" as NonEmptyStr,
+    },
+  },
+  read_on: "the script was applied earlier and re-read at the operator's final-state ssh pass of 2026-11-24 22:03-22:05 UTC; the unit is left in place even though the T10 ENGINE service h11-strata-t10.service was stopped and disabled ~09:30 UTC 2026-11-24 -- is-enabled and is-active were not re-run against the cap unit, so persists_across_boot carries the install-time word, not a fresh systemctl read" as NonEmptyStr,
+}
+
+data hand_applied_cap_mechanisms: List<HandAppliedCapMechanism> = [
+  srv4_hand_applied_gpu_cap, srv3_hand_applied_gpu_cap, ken_t10_hand_applied_gpu_cap,
+]
+
+// THE OPEN READ A DIGEST CARRIES, when it carries one. Absent means the whole value has been read. This is the
+// module's whole frontier: it is read off the digest rather than kept beside it, so a digest cannot be promoted
+// by typing while some other row still calls it unread -- there is no other row.
+fn cap_unit_digest_discharge_read(d: CapUnitContentDigest) -> NonEmptyStr? {
+  match d {
+    CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it } => Present { value: what_would_discharge_it }
+    CapUnitDigestRead { sha256: _ } => Absent
+  }
+}
+
+// Which card the mechanism's cap line addresses, where it addresses one. Absent is not "unread" and not
+// "uncapped": it is the line the operator reported, `nvidia-smi -pl 30` with no `-i` selector, which reaches
+// every card the host enumerates.
+fn cap_card_selector(m: HandAppliedCapMechanism) -> NonEmptyStr? {
+  match m.reaches {
+    EveryCardOnTheHost => Absent
+    OneCardByUuid { gpu_uuid } => Present { value: gpu_uuid }
+  }
+}
+
+fn hand_applied_cap_mechanisms_on(host: HostIdentity) -> List<HandAppliedCapMechanism> {
+  filter(hand_applied_cap_mechanisms, m => host_identity_eq(a: m.host, b: host))
+}
+
+// THE CAP A HOST SETS ON EVERY CARD IT CARRIES, where a hand-applied mechanism has been read doing exactly
+// that. Absent means no such mechanism has been read on that host -- NOT that the host's cards run uncapped:
+// srv1's cap is a one-card unit and lives in srv1_power_cap_boot_units, and h11 has no cap mechanism read at
+// all. A consumer that needs the difference asks the two rosters separately.
+fn host_wide_gpu_cap_watts(host: HostIdentity) -> Watt? {
+  match filter(hand_applied_cap_mechanisms, m =>
+    host_identity_eq(a: m.host, b: host)
+      && optional_is_absent(opt: cap_card_selector(m: m))).first() {
+    Absent => Absent
+    Present { value: m } => Present { value: m.target_watts }
+  }
+}
 
 // THE DEFAULT LIMIT IS WHAT MAKES "CAPPED" MEAN ANYTHING, so these joins compare against it rather than
 // leaving the comparison in prose. Each can fail: a unit that caps a card at or above its own default is not
@@ -372,4 +808,127 @@ fn device_row_is_on_host_at_pci(o: GpuDeviceObservation, host: HostIdentity, pci
       host_identity_eq(a: h, b: host) && string_contains(s: pci as String, pattern: p as String)
     GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The bytes the 2026-11-24 22:03-22:05 UTC final-state pass quoted, rendered BY THIS MODEL rather than
+// transcribed beside it, for the two mechanisms whose file it gave in full. srv3's is deliberately absent: its
+// final digest came without bytes, and `cap_mechanisms_with_unread_lines` keeps that row out of these folds.
+// The unit grammar is extdeps.systemd.unit_file -- the same authority the CPU-frequency cap rows render
+// through (gunbc.fleet.cpu_freq_cap_boot_state::cpu_freq_cap_unit) -- so one serialization answers for every
+// systemd file this fleet records; nothing here opens a second spelling of a unit.
+// ---------------------------------------------------------------------------------------------
+
+data srv4_gpu_power_cap_unit: SystemdUnitFile = ServiceUnitFile {
+  unit: [
+    Description {
+      text: "Cap the RTX 2000 Ada GPUs at 30 W (operator 2026-10-26 noise/heat at 40 W; lowered to 30 W 2026-11-24 for power after surge-strip trips; matches srv3); SM clock locked to 210-1500 MHz 2026-11-24 so it does not boost then throttle at 30 W (measured: avg 906 vs 869 MHz unlocked at 27.0 vs 29.1 W). Hand edit, recorded for gunbc.plans.gpu_card_host_program." as NonEmptyStr,
+    },
+    After { target: "nvidia-persistenced.service" as NonEmptyStr },
+    Requires { target: "nvidia-persistenced.service" as NonEmptyStr },
+  ],
+  service: [
+    ServiceType { mode: OneshotMode },
+    RemainAfterExit { active: true },
+    ExecStart { command: "/usr/bin/nvidia-smi -pl 30" as NonEmptyStr },
+    ExecStart { command: "/usr/bin/nvidia-smi -lgc 210,1500" as NonEmptyStr },
+  ],
+  install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+}
+
+fn srv4_gpu_power_cap_unit_bytes() -> String {
+  serialize_systemd_unit_file(file: srv4_gpu_power_cap_unit)
+}
+
+fn srv4_gpu_power_cap_unit_sha256() -> String {
+  sha256_hex_of_text(text: srv4_gpu_power_cap_unit_bytes())
+}
+
+// ken's cap script, transcribed exactly -- the operator's pass quoted every line. A line dropped, a space lost,
+// a quote mistyped moves the digest and reds ken_t10_script_transcription_is_the_host_file.
+data ken_t10_power_cap_script_lines: List<NonEmptyStr> = [
+  "#!/bin/sh" as NonEmptyStr,
+  "# Cap every NVIDIA GPU at its own minimum power limit (operator 2026-11-15: \"lower their power as low as possible\"), read back, fail if not applied." as NonEmptyStr,
+  "# ken carries three Tesla T10s since 2026-11-17 (SLOT4 01:00.0, SLOT6 81:00.0, SLOT2 c1:00.0); fewer than EXPECT fails the unit." as NonEmptyStr,
+  "set -eu" as NonEmptyStr,
+  "EXPECT=3" as NonEmptyStr,
+  "# SM clock ceiling (2026-11-24): at 100 W the T10s boost to 1575 then throttle to ~500; locked at 1000 the cool cards hold ~990 MHz" as NonEmptyStr,
+  "# at 68-80 W instead of 92-96 W, and the hot one is power-bound either way." as NonEmptyStr,
+  "CLOCK_MAX=1000" as NonEmptyStr,
+  "nvidia-smi -pm 1 >/dev/null" as NonEmptyStr,
+  "n=0" as NonEmptyStr,
+  "for i in $(nvidia-smi --query-gpu=index --format=csv,noheader); do" as NonEmptyStr,
+  "  min=$(nvidia-smi -i $i --query-gpu=power.min_limit --format=csv,noheader,nounits | cut -d. -f1)" as NonEmptyStr,
+  "  nvidia-smi -i $i -pl $min >/dev/null" as NonEmptyStr,
+  "  got=$(nvidia-smi -i $i --query-gpu=power.limit --format=csv,noheader,nounits | cut -d. -f1)" as NonEmptyStr,
+  "  echo \"gpu $i ($(nvidia-smi -i $i --query-gpu=pci.bus_id --format=csv,noheader)): limit $got W (min $min W)\"" as NonEmptyStr,
+  "  [ \"$got\" = \"$min\" ] || { echo \"gpu $i readback $got != $min\" >&2; exit 1; }" as NonEmptyStr,
+  "  nvidia-smi -i $i -lgc 300,$CLOCK_MAX >/dev/null" as NonEmptyStr,
+  "  echo \"gpu $i: SM clock locked to 300-$CLOCK_MAX MHz\"" as NonEmptyStr,
+  "  n=$((n+1))" as NonEmptyStr,
+  "done" as NonEmptyStr,
+  "[ $n -eq $EXPECT ] || { echo \"expected $EXPECT GPUs, saw $n\" >&2; exit 1; }" as NonEmptyStr,
+]
+
+fn ken_t10_power_cap_script_bytes() -> String {
+  join(map(ken_t10_power_cap_script_lines, l => l as String), "\n") + "\n"
+}
+
+fn ken_t10_power_cap_script_sha256() -> String {
+  sha256_hex_of_text(text: ken_t10_power_cap_script_bytes())
+}
+
+// Which mechanisms' digests are READ (full sha256) rather than marked-only, and so can enter a render fold.
+fn hand_applied_digest_read(m: HandAppliedCapMechanism) -> String? {
+  match m.content_digest {
+    CapUnitDigestRead { sha256 } => Present { value: sha256 as String }
+    CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => Absent
+  }
+}
+
+// The row whose file has never been quoted: srv3's drop-in today. A fold that compares emitted bytes against
+// host digests must exclude it -- its digest is a fact about a file the model does not describe, not a render
+// target. Naming it here is what keeps `lines_read: false` from being decoration on the type.
+fn cap_mechanisms_with_unread_lines() -> List<HandAppliedCapMechanism> {
+  filter(hand_applied_cap_mechanisms, m => !m.lines_read)
+}
+
+// THE RENDER IS THE HOST'S FILE. srv4's unit digest is the digest this grammar emits, byte for byte: an edit to
+// a directive here, or drift between the row and what the host hashed, goes red.
+fn srv4_cap_unit_render_is_the_host_file() -> Bool {
+  match hand_applied_digest_read(m: srv4_hand_applied_gpu_cap) {
+    Absent => false
+    Present { value: read } => read == srv4_gpu_power_cap_unit_sha256()
+  }
+}
+
+// THE TRANSCRIPTION IS THE HOST'S FILE, to the same standard -- the script the unit runs, not the unit itself,
+// whose bytes remain the frontier gunbc.integration_concern::h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express
+// exists to close.
+fn ken_t10_script_transcription_is_the_host_file() -> Bool {
+  match ken_t10_hand_applied_gpu_cap.runs_script {
+    Absent => false
+    Present { value: s } =>
+      match s.content_digest {
+        CapUnitDigestRead { sha256 } => sha256 as String == ken_t10_power_cap_script_sha256()
+        CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+      }
+  }
+}
+
+// The unread-lines row is exactly the one whose digest no render fold can reach: if srv3 ever gets its bytes,
+// this goes red and the frontier closes in the open, without any fold quietly absorbing the new file.
+fn the_unread_lines_row_is_the_unreachable_digest() -> Bool {
+  let unread = cap_mechanisms_with_unread_lines()
+  unread.all(m =>
+    match hand_applied_digest_read(m: m) {
+      // srv3's digest IS read -- that is the point: a full sha with nothing to render against.
+      Present { value: _ } => true
+      Absent => false
+    })
+    && unread.length() == 1
+    && match unread.first() {
+      Present { value: m } => host_identity_eq(a: m.host, b: operator_host_srv3)
+      Absent => false
+    }
 }

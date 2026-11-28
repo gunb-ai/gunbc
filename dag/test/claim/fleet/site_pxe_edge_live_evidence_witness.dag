@@ -11,8 +11,21 @@ import gunbc.fleet.site_pxe_edge_live_evidence {
   LiveExtractionRead,
   LiveExtractionUnread,
 }
-import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on, site_pxe_edge_live_realpath_contained }
+import gunbc.host_command_binding { LocalCommandHost, LegUnanswered, LegNotDispatched }
+import gunbc.fleet.site_pxe_edge_live_evidence {
+  site_pxe_edge_live_served_file_on,
+  site_pxe_edge_live_realpath_contained,
+  site_pxe_edge_live_containment_verdict,
+  SitePxeEdgeLiveContainment,
+  Contained,
+  NotContained,
+  ContainmentUnverifiable,
+  site_pxe_edge_live_classify_published_digest,
+  SitePxeEdgeLivePublishedMatch,
+  PublishedDigestMatch,
+  PublishedDigestMismatch,
+  PublishedDigestUnverified,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -127,4 +140,52 @@ test fn realpath_output_must_be_one_absolute_line_for_root_and_file() -> Bool {
     && !site_pxe_edge_live_realpath_contained(root: two_root, file: file)
     && !site_pxe_edge_live_realpath_contained(root: empty_root, file: file)
     && !site_pxe_edge_live_realpath_contained(root: root, file: sibling)
+}
+
+// RED: a realpath leg that was dispatched but got no answer (or was never dispatched) makes containment
+// UNVERIFIABLE, never a "does not resolve" claim. Red on pre-fix production, which reported NotContained
+// ("does not resolve under the TFTP root") for a realpath nobody could observe. Positive controls: both legs
+// answered and contained -> Contained; both answered but escaping -> NotContained (the real mismatch stands).
+test fn an_unanswered_realpath_read_is_unverifiable_not_a_does_not_resolve_claim() -> Bool {
+  let ok = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp\n")
+  let under = answered(exit_code: 0, stdout: "/srv/gunbc-site-pxe-edge/tftp/casper/vmlinuz\n")
+  let lost = LegUnanswered { cause: "the process group was killed before the host answered" }
+  let never = LegNotDispatched { reason: "the exec was refused" }
+  let file_lost = match site_pxe_edge_live_containment_verdict(root: ok, file: lost) {
+    ContainmentUnverifiable { reason: r } => contains(r, "dispatched but got no answer") && contains(r, "killed before the host answered")
+    _ => false
+  }
+  let root_never = match site_pxe_edge_live_containment_verdict(root: never, file: under) {
+    ContainmentUnverifiable { reason: r } => contains(r, "never dispatched")
+    _ => false
+  }
+  let contained = match site_pxe_edge_live_containment_verdict(root: ok, file: under) {
+    Contained => true
+    _ => false
+  }
+  let escaping = match site_pxe_edge_live_containment_verdict(root: ok, file: answered(exit_code: 0, stdout: "/etc/shadow\n")) {
+    NotContained => true
+    _ => false
+  }
+  file_lost && root_never && contained && escaping
+}
+
+// RED: a served reading that was never measured (dispatched-no-answer / never-dispatched / failed sha256sum)
+// classifies as PublishedDigestUnverified carrying the cause, never PublishedDigestMismatch. Red on pre-fix
+// production, which read an unread digest as "is not that digest". Positive controls: a measured digest equal
+// to expected -> Match; a different measured digest -> Mismatch.
+test fn an_unanswered_digest_read_is_unverified_not_a_mismatch() -> Bool {
+  let unread = match site_pxe_edge_live_classify_published_digest(reading: ServedBootFileUnread { reason: "the readback was dispatched but got no answer: deadline" }, expected: hash_of(hex: hex_one)) {
+    PublishedDigestUnverified { reason: r } => contains(r, "dispatched but got no answer")
+    _ => false
+  }
+  let matched = match site_pxe_edge_live_classify_published_digest(reading: ServedBootFileMeasured { path: asked_abs as String, digest: hash_of(hex: hex_one) }, expected: hash_of(hex: hex_one)) {
+    PublishedDigestMatch => true
+    _ => false
+  }
+  let mismatched = match site_pxe_edge_live_classify_published_digest(reading: ServedBootFileMeasured { path: asked_abs as String, digest: hash_of(hex: hex_two) }, expected: hash_of(hex: hex_one)) {
+    PublishedDigestMismatch => true
+    _ => false
+  }
+  unread && matched && mismatched
 }

@@ -492,8 +492,18 @@ data pxe_2c_base_revision: CommitSha = "58852e892425e4c5de1f3bb3d73a0352d26e27be
 
 // P2a (gunbc#16467): the review sighting for emitter_string_return_carries_no_typed_refusal,
 // whose row file lives under dag/gunbc/integration_concern/.
+data orch_emit_refusal_reaches_committed_bytes_unobserved_review: SightingEvidence = CitesDeclaration {
+  declaration: decl_ref(module_path: "test.claim.compiler_gate_contract_stamp_witness", decl_name: "the_generated_step_has_no_warning_arm_and_no_override_input_holds"),
+}
+
 data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = CitesDeclaration {
   declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script_for_target"),
+}
+
+// The step-emitter word-wall coverage gap (review 97776). Its row file lives under
+// dag/gunbc/integration_concern/; this is the review sighting the row's RequirementEstablished cites.
+data step_emitter_word_wall_coverage_gap_review: SightingEvidence = CitesDeclaration {
+  declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
 }
 
 // The main revision the edge gate was found refusing a branch dispatch against: the session branch head
@@ -599,6 +609,11 @@ data h11ssl_unit3_gpu_pci_ids_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read2.txt, section '### sysfs nvidia devices' -- the sysfs vendor/device read retried with PCI-domain-prefixed paths: 0000:01:00.0, 0000:81:00.0 and 0000:c1:00.0 each read vendor=0x10de device=0x1e37 class=0x030200. That closes the vendor:device half of the question below; the failures in the earlier unprefixed attempt are carried in gpu_identity_query.txt.",
   sha256: Sha256Digest { hex: "de7ec943c9482ce189f9ffcd9ee23bb3e2381fe33b6fb0597b18fc76d70f1d7c" as Sha256DigestHex },
 }
+// The main revision the 2026-11-24/25 serving-session host record was read against: the head of main this
+// change branched from, which is where every figure in the rows it added was transcribed. A sighting revision,
+// not a branch revision -- a branch sha in the register resolves on nobody's checkout but its author's.
+data fleet_host_state_pass_2026_11_24_revision: CommitSha = "25f66b6a844dad438b1a3dcbaabf3619fb85026d"
+
 data h11ssl_unit3_gpu_power_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/unit_read3.txt -- t10-power-cap.sh (the driver power-limit loop with EXPECT=3) followed by nvidia-smi -q -d POWER: min 100.00 W, max 150.00 W, default 150.00 W, current 100.00 W on each of the three functions",
   sha256: Sha256Digest { hex: "44c06f80bec69397b88d85ae578beab388b2a1d92dd66d691120044db271c92b" as Sha256DigestHex },
@@ -779,6 +794,15 @@ data install_target_disk_binds_a_disk_beside_the_seed_selector_authorities: Dist
   rest: [],
 }
 
+// instrument_backed_absence_claims_have_three_authorities: the three authorities the SuspectedFork row cites.
+data instrument_backed_absence_claims_have_three_authorities_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrument_does_not_own", decl_name: "green_reported_over_a_population_the_instrument_does_not_own"),
+  second: decl_ref(module_path: "gunbc.recurring_failure_mode.a_census_is_cited_wider_than_the_closure_its_instrument_compiles", decl_name: "a_census_is_cited_wider_than_the_closure_its_instrument_compiles"),
+  rest: [
+    decl_ref(module_path: "gunbc.recurring_failure_mode.doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it", decl_name: "doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it"),
+  ],
+}
+
 // keyed_module_reads_walk_the_whole_pool: the two authorities the SuspectedFork row cites.
 data integration_concern_third_party_apt_repo_leaves_unified_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "DockerCeAptRepo"),
@@ -871,6 +895,17 @@ data srv14_slot_admission_answered_by_envelope_and_verdict_authorities: Distinct
   first: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "runner_memory_envelope_of"),
   second: decl_ref(module_path: "gunbc.fleet.fleet_host_budget", decl_name: "host_allocation_verdict"),
   rest: [decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "live_verdict_with_session_charge")],
+}
+// srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders: the two authorities the
+// SuspectedFork row cites. Both answer "what does the srv1 proxy run"; the live files in the operator's
+// ~/router are recorded (digest, instrument, read time) by the observation rows named second and rest.
+data srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
+  second: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_nginx_conf_observation"),
+  rest: [
+    decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party"),
+    decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_live_rows_2026_11_25"),
+  ],
 }
 data three_spark_lan_endpoint_rows_answer_their_addresses_twice_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_group_b_sale_2026_10_10"),

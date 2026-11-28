@@ -1,6 +1,7 @@
 module test.claim.workflow_dispatch_input_witness
 
 import gunbc.host.host_fleet_run_step { gunbc_ci_host_reset_dispatch_admission_target }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.fleet.org_actions_inspection_ci_step { gunbc_ci_org_actions_inspect_invoke }
 import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_fleet_converge_apply_invoke }
 import gunbc.auth.auth_ci_step { gunbc_ci_srv15_bmc_secret_versions_read_invoke }
@@ -40,7 +41,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
-  fleet_converge_workflow, expected_fleet_converge_yml,
+  expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_dispatch_inputs, fleet_converge_dispatchable_modes, fleet_converge_spark_target_options,
 }
@@ -58,7 +59,7 @@ import extdeps.languages.yaml.types {
 import extdeps.languages.yaml.types { yaml_string }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_provider_resource, gcp_iam_converge_environment }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
   match v {
@@ -422,15 +423,19 @@ test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool
 // the two demands share this frame as their least common ancestor, so the first value is carried.
 test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
   let yml = expected_fleet_converge_yml_content()
-  string_contains(
-    s: yml,
-    pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
-  )
-    && !string_contains(
+  match outcome_accepted_value(gunbc_ci_fleet_converge_apply_invoke()) {
+    Absent => false
+    Present { value: s } =>
+      string_contains(
       s: yml,
-      pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
+      pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
     )
-    && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
+      && !string_contains(
+        s: yml,
+        pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
+      )
+      && string_contains(s: s, pattern: "$\{EXPECTED_HASH:-\}")
+  }
 }
 
 // The org-actions mode mints its credential in-run from the App key: the step names the App's
@@ -439,11 +444,14 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
 // The bootstrap mode is the runner-side shape of the workstation apply: same prelude as the grant
 // install (fleet key agent, per-target administrator credential file), one target per run.
 test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_its_entry() -> Bool {
-  let invoke = gunbc_ci_spark_bootstrap_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
-    && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
-    && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
-    && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
+  match outcome_accepted_value(gunbc_ci_spark_bootstrap_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
+        && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
+        && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
+        && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
+  }
 }
 
 // Serving apply is retired (hardware sold): the step refuses rather than invoking a deleted entry.
@@ -477,9 +485,12 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // deletion, which is gunbc.design_argument::fail_closed's construction over validation -- guarding a door that no
 // longer exists is the weaker half of the pair, not an addition to it.
 test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
-  let invoke = gunbc_ci_approval_broker_dark_install_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet")
-    && !string_contains(s: invoke, pattern: "apply_dispatch")
+  match outcome_accepted_value(gunbc_ci_approval_broker_dark_install_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet")
+        && !string_contains(s: invoke, pattern: "apply_dispatch")
+  }
 }
 
 // AND THE JOB SELECTS ON THE MODE THAT THE MENU OFFERS. A roster row whose job guards on a
@@ -493,14 +504,17 @@ test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
-  let invoke = gunbc_ci_org_actions_inspect_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_inspection.dag --function org_actions_inspect_wet")
-    && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
-    && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
-    && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
-    && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
-    && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
-    && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
+  match outcome_accepted_value(gunbc_ci_org_actions_inspect_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_inspection.dag --function org_actions_inspect_wet")
+        && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
+        && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
+        && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
+        && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
+        && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
+        && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
+  }
 }
 
 
@@ -568,18 +582,24 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // claims because they are three producers; joined in one, the claim built the whole job list and the
 // whole host-reset-return job to read one step and one field.
 test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs() -> Bool {
-  match fleet_converge_reset_observer_dispatch_admission_step() {
-    RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
-      (match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false })
-        && (match c {
-              Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
-              Absent => false
-            })
-        && string_contains(s: r, pattern: gunbc_run_step_target_entry_or_poison(target: gunbc_ci_host_reset_dispatch_admission_target))
-        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
-        && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
-        && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  match outcome_accepted_value(fleet_converge_reset_observer_dispatch_admission_step()) {
+    Absent => false
+    Present { value: step } => match step {
+      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+        (match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false })
+          && (match c {
+                Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
+                Absent => false
+              })
+          && (match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_host_reset_dispatch_admission_target)) {
+                Present { value: entry_path } => string_contains(s: r, pattern: entry_path)
+                Absent => false
+              })
+          && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.declaration.decl_name as String)
+          && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
+          && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
   }
 }
 
@@ -591,16 +611,22 @@ test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_in
 // demanding the list constructs every sibling release-bins step. Control: dropping the admission
 // step from the own list turns this red.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
-  any(fleet_converge_build_job_own_steps(), st => st == fleet_converge_reset_observer_dispatch_admission_step())
+  match outcome_accepted_value(fleet_converge_reset_observer_dispatch_admission_step()) {
+    Absent => false
+    Present { value: want } => any(fleet_converge_build_job_own_steps(), st => st == want)
+  }
 }
 
 // THE JOB'S SIDE OF THE SAME GATE, from the real job producer: the host-reset-return job is gated by
 // fleet_converge_host_reset_return_step_if, the gate the dispatch admission step carries. Control:
 // gating the job by any other condition, or ungating it, turns this red.
 test fn the_host_reset_return_job_is_gated_by_the_admissions_gate() -> Bool {
-  match fleet_converge_host_reset_return_job().if_condition {
-    Present { value: jg } => jg == fleet_converge_host_reset_return_step_if
+  match outcome_accepted_value(fleet_converge_host_reset_return_job()) {
     Absent => false
+    Present { value: j } => match j.if_condition {
+      Present { value: jg } => jg == fleet_converge_host_reset_return_step_if
+      Absent => false
+    }
   }
 }
 
@@ -708,9 +734,9 @@ test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
   string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.mode == 'dashboard_deploy'")
     && string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.host == 'srv1'")
     && !string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.ref")
-    && (match fleet_converge_dashboard_deploy_job().environment { Present { value: v } => v == env  Absent => false })
-    && (match fleet_converge_approval_broker_dark_install_job().environment { Present { value: v } => v == env  Absent => false })
-    && (match fleet_converge_microvm_controller_install_job().environment { Present { value: v } => v == env  Absent => false })
+    && (match outcome_accepted_value(fleet_converge_dashboard_deploy_job()) { Absent => false  Present { value: jj } => match jj.environment { Present { value: v } => v == env  Absent => false } })
+    && (match outcome_accepted_value(fleet_converge_approval_broker_dark_install_job()) { Absent => false  Present { value: jj } => match jj.environment { Present { value: v } => v == env  Absent => false } })
+    && (match outcome_accepted_value(fleet_converge_microvm_controller_install_job()) { Absent => false  Present { value: jj } => match jj.environment { Present { value: v } => v == env  Absent => false } })
 }
 
 // DASHBOARD DEPLOYMENT IS EXPLICITLY OUTSIDE THE SCOPE PROJECTION, and this witness exists so that
@@ -779,6 +805,16 @@ fn step_id_text(step: Step) -> String {
   }
 }
 
+// The microvm_network_observe step producer is retyped to Outcome<Step>; other step_id_text callers pass a
+// bound Step, so keep step_id_text Step-typed and unwrap the producer here. A refusal yields "" so the
+// equality over it fails closed rather than matching a fabricated blank id.
+fn step_id_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => step_id_text(step: step)
+    Absent => ""
+  }
+}
+
 fn step_run_text(step: Step) -> String {
   match step {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
@@ -787,13 +823,16 @@ fn step_run_text(step: Step) -> String {
 }
 
 fn microvm_network_step_env_text() -> String {
-  match fleet_converge_microvm_network_observe_step() {
-    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match e {
-        Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
-        Absent => ""
-      }
-    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  match outcome_accepted_value(fleet_converge_microvm_network_observe_step()) {
+    Absent => ""
+    Present { value: step } => match step {
+      RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match e {
+          Present { value: pairs } => join(map(pairs, pair => join([pair.key, "=", yaml_scalar_text(v: pair.value)], "")), "\n")
+          Absent => ""
+        }
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+    }
   }
 }
 
@@ -809,7 +848,7 @@ fn microvm_network_step_env_text() -> String {
 test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool {
   let env = microvm_network_step_env_text()
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
-    && step_id_text(step: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
+    && step_id_of(step_o: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
 }
 
 // THE OBSERVE NOW CLAIMS THE FLEET KEY, BECAUSE IT NOW HAS A CONSUMER FOR IT. The side-chat hold on
@@ -842,7 +881,10 @@ test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation(
 // renders its own invocation in full, so the cost is the producer count and splitting by subject is the
 // only thing that moves it. Each claim now also fails under the name of the prelude that regressed.
 test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -> Bool {
-  string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  match outcome_accepted_value(gunbc_ci_approval_keyring_converge_invoke()) {
+    Absent => false
+    Present { value: s } => string_contains(s: s, pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  }
 }
 
 // The boot prelude is bash_build nodes rendered by v2.workflow.bash_emit bash_emit_stmts, which quotes
@@ -850,11 +892,17 @@ test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -
 // argv pair the committed fleet-converge.yml boot step carries -- not as the space-joined spelling
 // the hand-composed preludes above print. A prelude that drops or rebinds the bound still goes red.
 test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool {
-  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["'--max-time' '", to_string(second_count(s: gunbc_ci_sm_max_time)), "'"], ""))
+  match outcome_accepted_value(gunbc_ci_mtcollins1_boot_invoke()) {
+    Absent => false
+    Present { value: s } => string_contains(s: s, pattern: join(["'--max-time' '", to_string(second_count(s: gunbc_ci_sm_max_time)), "'"], ""))
+  }
 }
 
 test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool {
-  string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  match outcome_accepted_value(gunbc_ci_mtcollins1_fan_observe_invoke()) {
+    Absent => false
+    Present { value: s } => string_contains(s: s, pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  }
 }
 
 // The keyring converge shares srv1's executor key: it is not a narrower subject.
@@ -865,27 +913,28 @@ test fn the_keyring_converge_stays_with_the_executor_key() -> Bool {
 // The plan choice must reach the commissioning-only entry with both admission bindings,
 // and participate in the shared plan artifact upload rather than silently losing its receipt.
 test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
-  let step = fleet_converge_workspace_commissioning_plan_step()
-  let env = step_env_text(step: step)
-  let scope_matches = match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {
-    Present { value: WorkspaceSlotCommissioningOnly } => true
-    _ => false
+  match outcome_accepted_value(fleet_converge_workspace_commissioning_plan_step()) {
+    Absent => false
+    Present { value: step } =>
+      (match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {
+        Present { value: WorkspaceSlotCommissioningOnly } => true
+        _ => false
+      })
+        && step_id_text(step: step) == "workspace_commissioning_plan"
+        && string_contains(s: step_run_text(step: step), pattern: "--function fleet_converge_workspace_commissioning_plan_wet")
+        && string_contains(s: step_env_text(step: step), pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
+        && string_contains(s: step_env_text(step: step), pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
+        && string_contains(s: fleet_converge_any_plan_step_if, pattern: "workspace_commissioning_plan")
+        && match step {
+          RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: Present { value: bound } } =>
+            bound == gunbc.fleet.fleet_workflow_steps.gunbc_ci_fleet_converge_plan_step_timeout_minutes
+          _ => false
+        }
+        && match fleet_converge_mode_fleet_ssh_key_demand(mode: WorkspaceCommissioningPlan) {
+          FleetSshKeyConsumed => true
+          FleetSshKeyNotConsumed => false
+        }
   }
-  scope_matches
-    && step_id_text(step: step) == "workspace_commissioning_plan"
-    && string_contains(s: step_run_text(step: step), pattern: "--function fleet_converge_workspace_commissioning_plan_wet")
-    && string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
-    && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
-    && string_contains(s: fleet_converge_any_plan_step_if, pattern: "workspace_commissioning_plan")
-    && match step {
-      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: Present { value: bound } } =>
-        bound == gunbc.fleet.fleet_workflow_steps.gunbc_ci_fleet_converge_plan_step_timeout_minutes
-      _ => false
-    }
-    && match fleet_converge_mode_fleet_ssh_key_demand(mode: WorkspaceCommissioningPlan) {
-      FleetSshKeyConsumed => true
-      FleetSshKeyNotConsumed => false
-    }
 }
 
 // A GUEST-IMAGE BUILD WRITES ONLY INTO ITS OWN RUN (runner workspace, own artifact), so it takes a group keyed
@@ -912,15 +961,18 @@ test fn a_guest_image_build_is_keyed_to_its_own_run_not_the_executor_host() -> B
 // never publish the artifact the accessor pin cites; (3) the wet itself must be what runs. The runner.temp
 // spelling is the one the runner actually substitutes -- the same file uses it 32 other times.
 test fn the_srv15_versions_read_step_is_the_model_projection() -> Bool {
-  let invoke = gunbc_ci_srv15_bmc_secret_versions_read_invoke()
   let yml = expected_fleet_converge_yml_content()
-  string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_receipt.dag")
-    && string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_read_wet")
-    && !string_contains(s: invoke, pattern: "gcp-iam-converge-auth-header")
-    && !string_contains(s: invoke, pattern: "approval-submission-mac-key")
-    && !string_contains(s: invoke, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE")
-    && string_contains(s: yml, pattern: "path: $\{\{ runner.temp \}\}/srv15-bmc-secret-versions-receipt.json")
-    && !string_contains(s: yml, pattern: "path: $\{\{ env.RUNNER_TEMP \}\}/srv15-bmc-secret-versions-receipt.json")
+  match outcome_accepted_value(gunbc_ci_srv15_bmc_secret_versions_read_invoke()) {
+    Absent => false
+    Present { value: invoke } =>
+      string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_receipt.dag")
+        && string_contains(s: invoke, pattern: "srv15_bmc_secret_versions_read_wet")
+        && !string_contains(s: invoke, pattern: "gcp-iam-converge-auth-header")
+        && !string_contains(s: invoke, pattern: "approval-submission-mac-key")
+        && !string_contains(s: invoke, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE")
+        && string_contains(s: yml, pattern: "path: $\{\{ runner.temp \}\}/srv15-bmc-secret-versions-receipt.json")
+        && !string_contains(s: yml, pattern: "path: $\{\{ env.RUNNER_TEMP \}\}/srv15-bmc-secret-versions-receipt.json")
+  }
 }
 
 // THE READ STEP'S TOKEN IS ITS OWN DECLARED DEPENDENCY, always iam-observe (manager ruling, after
@@ -933,26 +985,30 @@ test fn the_srv15_versions_read_step_is_the_model_projection() -> Bool {
 // it runs exactly when the read runs; and its ONLY consumer is the read's WIF_ACCESS_TOKEN binding.
 test fn the_srv15_read_mint_is_iam_observe_under_the_reads_own_condition() -> Bool {
   let mint = fleet_converge_srv15_read_wif_auth_step()
-  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
-  match mint {
-    UsesStep { name: _, id: mid, uses: _, with: Present { value: ws }, env: _, if_condition: mic, continue_on_error: _, timeout_minutes: _ } =>
-      mid == Present { value: fleet_converge_srv15_versions_read_wif_step_id as String }
-        && any(ws, w => w.key == "service_account" && w.value == yaml_string(s: iam_observe_service_account as String))
-        && any(ws, w => w.key == "workload_identity_provider" && w.value == yaml_string(s: gcp_iam_observe_wif_provider_resource()))
-        && any(ws, w => w.key == "token_format" && w.value == yaml_string(s: "access_token"))
-        && mic == read.if_condition
-    _ => false
+  match outcome_accepted_value(fleet_converge_srv15_bmc_secret_versions_read_step()) {
+    Absent => false
+    Present { value: read } => match mint {
+      UsesStep { name: _, id: mid, uses: _, with: Present { value: ws }, env: _, if_condition: mic, continue_on_error: _, timeout_minutes: _ } =>
+        mid == Present { value: fleet_converge_srv15_versions_read_wif_step_id as String }
+          && any(ws, w => w.key == "service_account" && w.value == yaml_string(s: iam_observe_service_account as String))
+          && any(ws, w => w.key == "workload_identity_provider" && w.value == yaml_string(s: gcp_iam_observe_wif_provider_resource()))
+          && any(ws, w => w.key == "token_format" && w.value == yaml_string(s: "access_token"))
+          && mic == read.if_condition
+      _ => false
+    }
   }
 }
 
 test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
-  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
   let yml = expected_fleet_converge_yml_content()
-  match read {
-    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: es }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      count(filter(es, e => e.key == "WIF_ACCESS_TOKEN")) == 1
-        && any(es, e => e.key == "WIF_ACCESS_TOKEN" && e.value == yaml_string(s: "${{ steps." + (fleet_converge_srv15_versions_read_wif_step_id as String) + ".outputs.access_token }}"))
-    _ => false
+  match outcome_accepted_value(fleet_converge_srv15_bmc_secret_versions_read_step()) {
+    Absent => false
+    Present { value: read } => match read {
+      RunStep { name: _, id: _, run: _, shell: _, env: Present { value: es }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        count(filter(es, e => e.key == "WIF_ACCESS_TOKEN")) == 1
+          && any(es, e => e.key == "WIF_ACCESS_TOKEN" && e.value == yaml_string(s: "${{ steps." + (fleet_converge_srv15_versions_read_wif_step_id as String) + ".outputs.access_token }}"))
+      _ => false
+    }
   }
     && string_contains(s: yml, pattern: "steps.wif_auth_srv15_read.outputs.access_token")
     // review 96099 / review 96142: "sole consumer" must be checked, not just named. The generated
@@ -979,23 +1035,32 @@ test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
 // universe lives in. A mutation re-adding an approval gate, or moving the steps back into the
 // converge job, must flip this claim.
 test fn the_srv15_read_runs_without_any_approval_gate() -> Bool {
-  let request = fleet_converge_gcp_iam_bootstrap_request_job()
-  let converge = fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)
-  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
-  let ids = join(map(request.steps, s => step_id_text(step: s)), ",")
-  string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + (fleet_converge_srv15_versions_read_step_id as String) + ",," + "gcp_iam_bootstrap_request")
-  && !any(xs: converge.steps, where: st => step_id_text(step: st) == (fleet_converge_srv15_versions_read_step_id as String))
-  && match request.if_condition {
-       Present { value: jif } => string_contains(s: jif, pattern: "gcp_iam_converge") && !string_contains(s: jif, pattern: "approved")
-       Absent => false
-     }
-  && match read {
-       RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: ric }, continue_on_error: _, timeout_minutes: _ } =>
-         string_contains(s: ric, pattern: "gcp_iam_converge") && !string_contains(s: ric, pattern: "approved")
-       _ => false
-     }
-  && match request.environment {
-       Present { value: e } => e == (gcp_iam_converge_environment as String)
-       Absent => false
-     }
+  match outcome_accepted_value(fleet_converge_gcp_iam_bootstrap_request_job()) {
+    Absent => false
+    Present { value: request } =>
+      match outcome_accepted_value(fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)) {
+        Absent => false
+        Present { value: converge } =>
+          match outcome_accepted_value(fleet_converge_srv15_bmc_secret_versions_read_step()) {
+            Absent => false
+            Present { value: read } =>
+              let ids = join(map(request.steps, s => step_id_text(step: s)), ",")
+              string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + (fleet_converge_srv15_versions_read_step_id as String) + ",," + "gcp_iam_bootstrap_request")
+              && !any(xs: converge.steps, where: st => step_id_text(step: st) == (fleet_converge_srv15_versions_read_step_id as String))
+              && match request.if_condition {
+                   Present { value: jif } => string_contains(s: jif, pattern: "gcp_iam_converge") && !string_contains(s: jif, pattern: "approved")
+                   Absent => false
+                 }
+              && match read {
+                   RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: ric }, continue_on_error: _, timeout_minutes: _ } =>
+                     string_contains(s: ric, pattern: "gcp_iam_converge") && !string_contains(s: ric, pattern: "approved")
+                   _ => false
+                 }
+              && match request.environment {
+                   Present { value: e } => e == (gcp_iam_converge_environment as String)
+                   Absent => false
+                 }
+          }
+      }
+  }
 }

@@ -1,6 +1,7 @@
 module test.claim.live_deploy.pre_swap_admission_serve_compile_inhabitance_witness
 
 import std.types { Bool, String, List, FilePath }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.instruments.host_prelude { witness_bin_release_path }
@@ -14,7 +15,12 @@ import gunbc.live_deploy.pre_swap_admission {
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
+  CompileChildVerdictDocumentRead,
+  CompileChildServeCommandSpawn,
+  swap_serve_entry_compile_child_under,
+  serve_entry_verdict_path,
 }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import std.optional { Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
@@ -213,5 +219,71 @@ test fn the_served_command_builder_produces_a_bind_refusal_the_classifier_admits
       ServeEntryCompileAdmitted => true
       _ => false
     }
+  }
+}
+
+// ── WHICH ARM RAN, PROVEN BY THE CHILD THAT RAN (option B, item 7g) ─────────────────────────
+// The wet step's serve-entry compile takes ONE of two arms, and the arms' children are different
+// KINDS of thing: the cold arm spawns the served command (the ~22-minute class compile, paid by the
+// operator-local route with no plan job), the verdict arm reads the plan's verdict document and
+// spawns nothing. A witness that compared a hand-written label could agree with either arm; this one
+// runs the cold arm's real child and requires the model's own discriminator to name a spawn for that
+// arm and a document read for the other, over the SAME lab row -- the row that took the cold arm
+// inside a CI transaction and met the 60-minute bound in deploy2 run 45749803682.
+test fn the_cold_arms_child_is_a_real_spawn_and_the_verdict_arms_is_a_document_read() -> Bool {
+  let lab = srv1_lab_desired_deployment()
+  let lab_entry = selected_deployment_spec(row: lab).service.serve_entry as String
+  let cold_child = swap_serve_entry_compile_child_under(pointer: "", deployment: lab)
+  let verdict_child = swap_serve_entry_compile_child_under(pointer: "45722153952", deployment: lab)
+  // THE COLD ARM'S CHILD: a spawn of THIS row's own serve entry, addressed to THIS row.
+  let cold_is_the_rows_own_spawn = match cold_child {
+    CompileChildServeCommandSpawn { entry, subject_host, instance_id } =>
+      entry == lab_entry
+        && subject_host == (lab.target.host.identity as String)
+        && string_contains(s: entry, pattern: ".dag")
+    CompileChildVerdictDocumentRead { path: _, subject_host: _, instance_id: _ } => false
+  }
+  // THE VERDICT ARM'S CHILD: the document read at the plan artifact's own path -- NOT a spawn.
+  let verdict_is_the_document_read = match verdict_child {
+    CompileChildVerdictDocumentRead { path, subject_host, instance_id } =>
+      path == serve_entry_verdict_path()
+        && subject_host == (lab.target.host.identity as String)
+        && path != lab_entry
+    CompileChildServeCommandSpawn { entry: _, subject_host: _, instance_id: _ } => false
+  }
+  // AND THE SPAWN THE COLD ARM RUNS IS A CHILD THAT REALLY RUNS: the same builders, the same
+  // classifier, a real process to a clean bind refusal. Without this leg the two arms could both be
+  // names for nothing.
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let socket_path = serve_entry_probe_socket_path(tmp_dir: tmp.path as String)
+    let run = gunbc.WitnessBin.Run(
+      workdir: checkout_root(),
+      bin_path: checkout_gunbc(),
+      args: serve_entry_run_args(
+        roots: deployment_serve_source_roots,
+        entry: bind_probe_fixture_entry,
+        binding_function: bind_probe_fixture_binding_function,
+        handler: bind_probe_fixture_handler,
+        listener: serve_entry_bind_probe_listener(socket_path: socket_path),
+        release_revision: bind_probe_fixture_release_revision,
+        cpu_limit_ms: Present { value: 1000 },
+        wall_limit_ms: Present { value: 1000 },
+      ),
+      expect: OutcomeIsData,
+    )
+    let _ = shell.Remove.RecursiveForce(path: tmp.path)
+    let spawn_ran_and_was_admitted = match serve_command_verdict_of(
+      exit_success: run.success,
+      exit_code: run.exit_code,
+      stderr: run.stderr,
+      socket_path: socket_path,
+    ) {
+      ServeEntryCompileAdmitted => true
+      _ => false
+    }
+    cold_is_the_rows_own_spawn && verdict_is_the_document_read && spawn_ran_and_was_admitted
   }
 }

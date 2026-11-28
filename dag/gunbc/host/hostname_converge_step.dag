@@ -7,6 +7,7 @@ import gunbc.ci.ci_run_step_target {
   GunbcRunStepTarget,
 }
 import gunbc.host.host_hostname_converge { hostname_converge_receipt_path }
+import v2.std.diagnostic { Outcome }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
 }
@@ -43,11 +44,10 @@ data gunbc_ci_hostname_converge_readopt_target: GunbcRunStepTarget = gunbc_run_s
 
 // Every step of the mode runs its entry the same way and writes the mode's one receipt, so the step's
 // shell is one function of its target rather than one copy per step.
-fn gunbc_ci_hostname_converge_invoke(target: GunbcRunStepTarget) -> String {
+fn gunbc_ci_hostname_converge_invoke(target: GunbcRunStepTarget) -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: target,
-    claim_run: false,
     receipt_rel: hostname_converge_receipt_path as String
   )
 }

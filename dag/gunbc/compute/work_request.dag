@@ -152,12 +152,43 @@ fn cargo_profile_wire(p: CargoProfile) -> String {
 // record with its own output id (std.materialization_provider compute_work_binary_output), so which
 // part is which binary is a variant, never a name recovered from a string; and a bin name that is not
 // one of these has no constructor, so it cannot reach a command line or a key.
-type GunbcBinary = GunbcDriver | ClaimBatchRunner
+//
+// The claim-execution cutover (gunbc.plans.claim_execution_consolidation) deleted the `claim_batch`
+// binary: claims execute through the `gunbc test` route, which the compiler driver itself carries,
+// so the closed set is the driver alone.
+//
+// THE EMPTY PAYLOAD `{}` IS NOT OPTIONAL. A `type T = Foo` with a bare RHS and no `|`/payload is an
+// ALIAS (v1.compiler cli_run module_self_declared_names: "a coproduct alternates (`|`) or carries a
+// record payload (`{`); an alias does neither", and its corpus census found ZERO single-alternative
+// coproducts spelled bare). When #16872 narrowed this set from `GunbcDriver | ClaimBatchRunner` to the
+// driver alone, dropping the `|` silently turned it into an alias with no constructor behind it, so a
+// `match` on it reduced to nothing at RUNTIME (PatternMatchFailure) while still typechecking. The empty
+// record payload keeps it a real one-constructor coproduct, which is the shape the interpreter reduces
+// and the shape every other single-member closed set on main uses (cf. extdeps version types).
+type GunbcBinary = GunbcDriver {}
+
+// The single constructor as a member the families above can import. The `{}` builds the empty-payload
+// constructor value; the match arms below key on the bare constructor name `GunbcDriver`.
+data GunbcDriver: GunbcBinary = GunbcDriver {}
 
 fn gunbc_binary_name(b: GunbcBinary) -> NonEmptyStr {
   match b {
     GunbcDriver => "gunbc" as NonEmptyStr
-    ClaimBatchRunner => "claim_batch" as NonEmptyStr
+  }
+}
+
+// THE CARGO PACKAGE THAT BUILDS EACH BINARY — the ONE authority for `-p <package>`, read by every site
+// that asks cargo to build a gunbc binary (the worker's build route in gunbc.compute.work_provider_local,
+// and the serving converge's native BuildServeBinary). It lives beside gunbc_binary_name because a binary
+// and the package that owns it are one fact about the same closed set: the `-p`/`--bin` pair a build
+// carries must agree, and two literals that must agree is exactly what drifted when the native build
+// named package "gunbc" (a package that does not exist) while the worker named "v1-compiler", so cargo
+// answered `package ID specification gunbc did not match any packages` (exit 101) on ken's serve build.
+// The package is a property of the binary, keyed on the SAME closed set, so a future binary may live in
+// another package without any call site restating a name.
+fn gunbc_cargo_package(b: GunbcBinary) -> NonEmptyStr {
+  match b {
+    GunbcDriver => "v1-compiler" as NonEmptyStr
   }
 }
 
@@ -214,9 +245,10 @@ fn work_operation_canonical(op: WorkOperation) -> String {
   }
 }
 
-// The binaries the default build produces: the compiler driver and the claim runner, which the
-// compile and claims operations of the SAME subject consume.
-data work_default_bins: List<GunbcBinary> = [GunbcDriver, ClaimBatchRunner]
+// The binaries the default build produces: the compiler driver, which the compile and the claims
+// operations of the SAME subject consume (claims via its `gunbc test` route --
+// gunbc.plans.claim_execution_consolidation).
+data work_default_bins: List<GunbcBinary> = [GunbcDriver]
 
 fn work_default_build() -> WorkOperation {
   BuildGunbcBinaries { profile: CargoRelease, bins: work_default_bins }
@@ -369,6 +401,12 @@ type WorkInfrastructureRefusal
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
+  // A CLAIM REQUEST WHOSE SUBJECT THE ONE ROUTE CANNOT NAME. `gunbc test` admits an operand by
+  // `claim_identity_operand`; a work request whose module path or function name does not denote a claim of
+  // the claim universe is not a run with a smaller subject, it is a request that never denoted a claim at
+  // all. The refusal is reported HERE, where the request is, with the row and the reason -- the alternative
+  // was to let the child decide, which turned "we did not run what the key said" into an exit code.
+  | ClaimRequestSubjectUnnameable { entry: String, function: String, reason: String }
   | ToolchainMismatchRefused { field: String, declared: String, observed: String }
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
@@ -445,6 +483,10 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    ClaimRequestSubjectUnnameable { entry, function, reason } => join(
+      ["claim operand is not a claim of the claim universe: entry ", entry, ", function ", function, ": ", reason],
+      ""
+    )
     ToolchainMismatchRefused { field, declared, observed } => join(["the observed toolchain does not meet the declared requirement (", field, "): declared ", declared, ", observed ", observed], "")
     UnitEndingUnclassifiable { exit_code, cause } =>
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")

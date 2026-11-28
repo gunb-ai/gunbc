@@ -24,6 +24,7 @@ import gunbc.runner.runner_host_withdraw {
 }
 import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path, gunbc_ci_remote_build_serving_apply_receipt_path }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
   gunbc_run_step_script_with_prelude_for_target,
@@ -75,49 +76,44 @@ data gunbc_ci_mtcollins1_runner_image_publish_target: GunbcRunStepTarget = gunbc
   module: "gunbc.runner.runner_host_medium_publish",
   function: "mtcollins1_runner_image_publish_wet",
 )
-fn gunbc_ci_runner_host_file_observe_invoke() -> String {
+fn gunbc_ci_runner_host_file_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_host_file_observe_target,
-    claim_run: false,
     receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
-fn gunbc_ci_remote_build_serving_observe_invoke() -> String {
+fn gunbc_ci_remote_build_serving_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_remote_build_serving_observe_target,
-    claim_run: false,
     receipt_rel: gunbc_ci_remote_build_serving_observe_receipt_path
   )
 }
 // PR 5(b) converge invoke. No org-roster prelude: the serving roster is the static
 // remote_build_serving_hosts row, not the live org roster, so the plan
 // needs no minted installation token. The apply re-observes and requires settled before success.
-fn gunbc_ci_remote_build_serving_converge_invoke() -> String {
+fn gunbc_ci_remote_build_serving_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_remote_build_serving_converge_target,
-    claim_run: false,
     receipt_rel: gunbc_ci_remote_build_serving_apply_receipt_path
   )
 }
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
 // org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
-fn gunbc_ci_runner_host_file_converge_invoke() -> String {
+fn gunbc_ci_runner_host_file_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_host_file_converge_target,
-    claim_run: false,
     receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
-fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+fn gunbc_ci_runner_host_cap_release_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_host_cap_release_target,
-    claim_run: false,
     receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
   )
 }
@@ -127,66 +123,59 @@ fn gunbc_ci_runner_host_cap_release_invoke() -> String {
 // THE WITHDRAW AND RESTORE INVOKE SCRIPTS. No org-roster prelude: the bracket's drain reads the roster
 // only for units it must PROVE admitted, and the withdraw's drain walks the same reading -- it is
 // carried by the step's own gunbc run, exactly as the cap release runs without the roster token.
-fn gunbc_ci_runner_host_withdraw_invoke() -> String {
+fn gunbc_ci_runner_host_withdraw_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_run_step_target(
       module: "gunbc.runner.runner_host_withdraw",
       function: "runner_host_withdraw_ci_wet",
     ),
-    claim_run: false,
     receipt_rel: gunbc_ci_runner_host_withdraw_receipt_path
   )
 }
-fn gunbc_ci_runner_host_restore_invoke() -> String {
+fn gunbc_ci_runner_host_restore_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_run_step_target(
       module: "gunbc.runner.runner_host_withdraw",
       function: "runner_host_restore_ci_wet",
     ),
-    claim_run: false,
     receipt_rel: gunbc_ci_runner_host_restore_receipt_path
   )
 }
-fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
+fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_browser_toolchain_converge_target,
-    claim_run: false,
     receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
   )
 }
-fn gunbc_ci_runner_user_session_converge_invoke() -> String {
+fn gunbc_ci_runner_user_session_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_user_session_converge_target,
-    claim_run: false,
     receipt_rel: "target/runner-user-session-converge-receipt.txt"
   )
 }
-fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> String {
+fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_gpu_container_toolchain_converge_target,
-    claim_run: false,
     receipt_rel: "target/runner-gpu-container-toolchain-converge-receipt.txt"
   )
 }
-fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
+fn gunbc_ci_runner_password_session_tool_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_password_session_tool_converge_target,
-    claim_run: false,
     receipt_rel: "target/runner-password-session-tool-converge-receipt.txt"
   )
 }
 // The runner image publish is the census publish's sibling: fleet SSH to srv2, no controller, no prelude.
-fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> String {
+fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_runner_image_publish_target,
-    claim_run: false,
     receipt_rel: mtcollins1_runner_image_receipt_path
   )
 }
