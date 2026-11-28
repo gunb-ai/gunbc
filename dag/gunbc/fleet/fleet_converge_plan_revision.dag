@@ -8,11 +8,26 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
-import extdeps.github.actions_environment { github_output_variable_name }
+import extdeps.github.actions_environment { github_output_variable_name, github_sha_variable_name }
 import extdeps.github.workflow_runs
 import extdeps.github.actions_artifacts
 import extdeps.transports.rest { RestAnswered, RestRefused, RestResult }
 import gunbc.repository { gunbc_repository }
+import gunbc.fleet.fleet_converge_descending_main_admit {
+  admit_descending_main,
+  DescendingMainAdmission,
+  DescendingMainAdmitted,
+  DescendingMainNotDescendant,
+  DescendingMainTouchesClosure,
+  DescendingMainClosureAbsent,
+  DescendingMainClosureEmpty,
+  DescendingMainEntryMismatch,
+  DescendingMainPoolRootsMismatch,
+}
+import gunbc.fleet.fleet_plan_apply_ci_step {
+  fleet_converge_plan_cli_entry,
+  fleet_converge_plan_cli_pool_roots,
+}
 import gunbc.actions_run_binding {
   actions_variable_trimmed,
   observe_actions_run_binding,
@@ -203,6 +218,176 @@ fn verify_checkout_at_plan_revision() -> ProcessExit {
       CheckoutHeadAdmitted { revision: _ } => ExitSuccess
       refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: refused)], ""))
     }
+  }
+}
+
+// THE THIRD CONSUMER: the descending-main admission, WIRED INTO THE CHECKOUT-VERIFY STEP of
+// fleet-converge.yml (model: gunbc.fleet.fleet_plan_apply_ci_step
+// gunbc_ci_fleet_converge_checkout_verify_target.function). WHY THIS IS THE POINT IT LIVES AT: this
+// job holds BOTH revisions — the dispatch tip M, which is GITHUB_SHA (the run binding's
+// run_revision: the sha the operator dispatched at), and the plan revision P (the receipt's
+// run.run_revision, which is also the ref actions/checkout was given). The exact verifier above
+// stays in charge of the tree that EXECUTES: the checkout HEAD must be EXACTLY P, so the execution
+// revision carried into the apply is the plan's revision, never the later tip. What the descending
+// admission decides is narrower and prior: whether a DISPATCH that named M may reuse the plan made
+// at P at all — only when M descends from P (git merge-base proves it) and the diff P..M touches
+// nothing in the closure the plan recorded and whose bytes its identity covers
+// (fleet-converge-plan-receipt/v2). Every other case refuses with the words it refuses with today.
+// THE ONE OBSERVE-AND-DECIDE ROUTE FOR DESCENDING-MAIN PLAN REUSE. Every effectful read the
+// decision needs — the merge base that proves descent, the name-only diff that proves the diff
+// misses the closure, and the entry/pool-root attribution — happens HERE, once, and is decided by
+// the pure admit_descending_main. A call site renders the verdict; it does not read git, map
+// variants, or word a refusal of its own (gunbc.design_argument::root_generalization: the trigger
+// is the second local implementation of one rule; gunbc.design_argument::minimize_redundancy: a
+// concept is modeled once and every use derived from it).
+//
+// WHY TWO CALL SITES OF ONE ROUTE, AND WHY NEITHER IS REDUNDANT. The checkout-verify step of
+// fleet-converge.yml and the apply leg's expected-revision cross-check ask the SAME question at two
+// different authorities of the same dispatch: the step asks it of the JOB, before any actuator is
+// built, over the revisions the job itself holds (GITHUB_SHA as the dispatch tip M, the plan
+// receipt's own run revision as P); the apply asks it of the PROCESS about to run, from its own run
+// binding, immediately before it binds its execution revision. The step can be skipped by a caller
+// that runs the apply binary directly; the apply cannot be skipped by a workflow that forgot the
+// step. Each is the only check on the other's route, so both call this one function rather than
+// carrying copies that could drift.
+fn decide_descending_main_reuse(
+  dispatch_tip: String,
+  plan_revision: String,
+  plan_receipt: FleetConvergePlanReceipt,
+) -> DescendingMainVerdict {
+  let mb = git.Inspect.MergeBase(
+    repository_path: ".",
+    left: plan_revision as GitRef,
+    right: dispatch_tip as GitRef,
+  )
+  if !mb.success {
+    DescendingMainUnobservable { failure: MergeBaseUnreadable { exit_code: mb.exit_code, stderr: mb.stderr } }
+  } else {
+    let diff = git.Core.DiffNameOnlyMerge(
+      base: plan_revision as GitRef,
+      head: dispatch_tip as GitRef,
+    )
+    if !diff.success {
+      DescendingMainUnobservable { failure: DiffUnreadable }
+    } else {
+      match fleet_converge_plan_cli_entry {
+        Absent => DescendingMainUnobservable { failure: EntryUnderived }
+        Present { value: expected_entry } => match admit_descending_main(
+          checkout: dispatch_tip,
+          plan_revision: plan_revision,
+          merge_base: mb.sha,
+          changed_paths: diff.paths,
+          source_closure: plan_receipt.source_closure,
+          expected_entry_path: expected_entry,
+          expected_pool_roots: fleet_converge_plan_cli_pool_roots,
+        ) {
+          DescendingMainAdmitted { checkout: c, plan_revision: p } =>
+            DescendingMainReusable { checkout: c, plan_revision: p }
+          admission => DescendingMainAdmissionRefused { admission: admission }
+        }
+      }
+    }
+  }
+}
+
+// WHAT THE ROUTE OBSERVED, kept typed: a failed read is its own cause and never collapses into an
+// admission arm, so a git failure can only ever refuse (gunbc.design_argument::fail_closed).
+type DescendingMainObservationFailure
+  = DispatchTipAbsent
+  | ReceiptUnreadable { reason: String }
+  | MergeBaseUnreadable { exit_code: Int, stderr: String }
+  | DiffUnreadable
+  | EntryUnderived
+
+type DescendingMainVerdict
+  = DescendingMainReusable { checkout: String, plan_revision: String }
+  | DescendingMainAdmissionRefused { admission: DescendingMainAdmission }
+  | DescendingMainUnobservable { failure: DescendingMainObservationFailure }
+
+// THE ONE VOCABULARY for that verdict. Each call site prepends its own authority tag
+// ("fleet_converge_plan_revision:", the apply leg's historic sentence) and renders everything else
+// from here, so the cause of a refusal is worded once for both routes.
+fn descending_main_verdict_text(v: DescendingMainVerdict) -> String {
+  match v {
+    DescendingMainReusable { checkout: c, plan_revision: p } =>
+      join(["main tip ", c, " may reuse the plan made at ", p, "; the execution revision stays the plan revision"], "")
+    DescendingMainUnobservable { failure: f } => match f {
+      DispatchTipAbsent =>
+        "GITHUB_SHA is absent or not a 40-digit lower-hex revision, so the descending case cannot be proven and refuses (fail_closed)"
+      ReceiptUnreadable { reason: r } =>
+        join(["the plan receipt is unreadable: ", r], "")
+      MergeBaseUnreadable { exit_code: code, stderr: err } =>
+        join(["git merge-base failed (rc=", int_to_decimal_string(value: code), "): ", err, "; refusing (fail_closed, never widen on a failed read)"], "")
+      DiffUnreadable =>
+        "git diff --name-only failed; refusing (fail_closed, never widen on a silent default)"
+      EntryUnderived =>
+        "the plan CLI entry module has no storage path under the registered layout roots; refusing (fail_closed, never fabricate an attribution)"
+    }
+    DescendingMainAdmissionRefused { admission: a } => match a {
+      DescendingMainNotDescendant { checkout: c, plan_revision: p, merge_base: m } =>
+        join(["main tip ", c, " is not a descendant of plan revision ", p, " (merge-base=", m, ")"], "")
+      DescendingMainTouchesClosure { checkout: c, plan_revision: p, offending_path: op } =>
+        join(["diff ", p, "..", c, " touches the plan source closure at ", op], "")
+      DescendingMainClosureAbsent { plan_revision: p } =>
+        join(["plan receipt at ", p, " carries no source closure; descending-main apply is not admitted for this plan"], "")
+      DescendingMainClosureEmpty { plan_revision: p } =>
+        join(["plan receipt at ", p, " records an empty source closure; a real import closure is never empty, so the descending-main apply is not admitted"], "")
+      DescendingMainEntryMismatch { expected: e, recorded: r } =>
+        join(["plan receipt source closure attributed to '", r, "' but expected '", e, "'"], "")
+      DescendingMainPoolRootsMismatch { expected: e, recorded: r } =>
+        join(["plan receipt source closure recorded with pool roots '", r, "' but expected '", e, "'"], "")
+      DescendingMainAdmitted { checkout: c, plan_revision: p } =>
+        join(["main tip ", c, " may reuse the plan made at ", p], "")
+    }
+  }
+}
+
+fn verify_descending_main_at_plan_revision() -> ProcessExit {
+  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } =>
+      exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: PlanRunUnreadable { cause: r })], ""))
+    FleetConvergePlanReceiptDecoded { receipt: receipt } => {
+      let plan_rev = receipt.run.run_revision
+      // THE TREE THAT RUNS IS THE PLAN'S — the unchanged exact readback, unchanged refusal words.
+      match admit_checkout_at(expected: plan_rev) {
+        CheckoutHeadUnreadable { cause: c } =>
+          exit_failure(reason: join(["fleet_converge_plan_revision: checkout HEAD unreadable: ", c], ""))
+        CheckoutHeadAdmitted { revision: _ } => match dispatch_tip_revision() {
+          Absent => exit_failure(reason: join(["fleet_converge_plan_revision: ", descending_main_verdict_text(v: DescendingMainUnobservable { failure: DispatchTipAbsent })], ""))
+          Present { value: dispatch_tip } =>
+            if dispatch_tip == plan_rev {
+              // The dispatch named the plan's own revision: today's behavior, admitted.
+              ExitSuccess
+            } else {
+              match decide_descending_main_reuse(
+                dispatch_tip: dispatch_tip,
+                plan_revision: plan_rev,
+                plan_receipt: receipt,
+              ) {
+                DescendingMainReusable { checkout: _, plan_revision: _ } => ExitSuccess
+                refused =>
+                  exit_failure(reason: join(["fleet_converge_plan_revision: ", descending_main_verdict_text(v: refused)], ""))
+              }
+            }
+        }
+        not_the_plan_tree =>
+          exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: not_the_plan_tree)], ""))
+      }
+    }
+  }
+}
+
+// THE DISPATCH TIP THIS JOB WAS NAMED AT. GITHUB_SHA is the dispatched commit; validated as a
+// revision, and Absent when it is missing or malformed so the caller refuses rather than assuming
+// it equals the plan revision.
+fn dispatch_tip_revision() -> Optional<String> {
+  let raw = actions_variable_trimmed(name: github_sha_variable_name as NonEmptyStr)
+  if raw == "" {
+    Absent
+  } else if release_revision_text_valid(text: raw) {
+    Present { value: raw }
+  } else {
+    Absent
   }
 }
 

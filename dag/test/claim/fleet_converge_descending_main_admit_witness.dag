@@ -1,0 +1,822 @@
+module test.claim.fleet_converge_descending_main_admit_witness
+
+// WITNESS FOR THE DESCENDING-MAIN APPLY ADMISSION (row fleet-converge-descending-main-admit).
+//
+// CONSUMER ROUTE (what production actually calls, so no claim here stands on a function nothing
+// uses). ONE effectful observe-and-decide function owns the reads and the decision:
+// gunbc.fleet.fleet_converge_plan_revision.decide_descending_main_reuse, which calls
+// admit_descending_main with the receipt's recorded source closure
+// (gunbc.fleet.fleet_converge_receipt.FleetConvergePlanSourceClosure — paths, entry and pool roots
+// as one fact, whose bytes the v2 receipt identity covers) and the entry/pool roots derived through
+// gunbc_run_step_target_entry_path over the plan CI target. TWO call sites render its verdict and
+// nothing else: (1) verify_descending_main_at_plan_revision, the function the regenerated
+// fleet-converge.yml checkout-verify step runs at its three sites (model:
+// gunbc.fleet.fleet_plan_apply_ci_step.gunbc_ci_fleet_converge_checkout_verify_target), which also
+// keeps the unchanged exact readback that pins the EXECUTION revision to the plan revision; and
+// (2) gunbc.fleet.fleet_converge_plan_cli.admit_apply_revision_at_plan_wet, the expected-revision
+// cross-check inside fleet_converge_apply_wet, whose refusal text (apply_revision_refusal_text) is
+// the sink for the verdict's cause. The producer side is fleet_converge_plan_cli's receipt
+// construction, which records import_closure_live over that same derived entry.
+//
+// WHAT THE CLAIMS COVER, per gunbc.design_argument::witness_one_interface: the decision at its one
+// interface (observed merge base + changed paths + recorded triple in, typed admission out), the
+// receipt wire at its one interface (bytes out, receipt back in), and the producer's own computation
+// live (import_closure_live over the derived entry). Negative arms are named claims, not prose.
+
+import std.types { Bool, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.optional { Optional, Present, Absent }
+import std.algebra { contains, string_contains }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { string_eq }
+import v2.lens.module_graph { import_closure_live }
+import extdeps.languages.json.emit {
+  serialize_json,
+  json_object,
+  json_kv,
+  json_array,
+  json_int,
+  json_string,
+}
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied }
+import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanReceipt,
+  FleetConvergePlanSourceClosure,
+  FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceiptUnreadable,
+  fleet_converge_plan_receipt_json,
+  fleet_converge_plan_receipt_decode,
+  read_fleet_converge_plan_receipt_at,
+  fleet_converge_plan_receipt_identity_hex,
+  fleet_converge_plan_receipt_schema,
+  fleet_converge_plan_receipt_schema_v2,
+  decode_plan_receipt_closure,
+  PlanReceiptClosureRefused,
+  receipt_string_array_member,
+  receipt_string_member,
+  ReceiptStringArrayMember,
+  StringArrayMemberAbsent,
+  StringArrayMemberPresent,
+  StringArrayMemberRefused,
+  ReceiptStringMember,
+  StringMemberAbsent,
+  StringMemberPresent,
+  StringMemberRefused,
+}
+import gunbc.fleet.fleet_converge_descending_main_admit {
+  admit_descending_main,
+  first_touched_closure_path,
+  DescendingMainAdmission,
+  DescendingMainAdmitted,
+  DescendingMainNotDescendant,
+  DescendingMainTouchesClosure,
+  DescendingMainClosureAbsent,
+  DescendingMainClosureEmpty,
+  DescendingMainEntryMismatch,
+  DescendingMainPoolRootsMismatch,
+}
+import gunbc.fleet.fleet_converge_plan_revision {
+  descending_main_verdict_text,
+  decide_descending_main_reuse,
+  DescendingMainVerdict,
+  DescendingMainUnobservable,
+  MergeBaseUnreadable,
+  EntryUnderived,
+  DispatchTipAbsent,
+  DescendingMainAdmissionRefused,
+  DescendingMainReusable,
+}
+import gunbc.fleet.fleet_plan_apply_ci_step {
+  fleet_converge_plan_cli_entry,
+  fleet_converge_plan_cli_pool_roots,
+}
+import gunbc.fleet.fleet_converge_plan_cli { apply_revision_refusal_text }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// --- fixtures ---------------------------------------------------------------
+
+data plan_p: String = "1111111111111111111111111111111111111111"
+data main_m: String = "2222222222222222222222222222222222222222"
+data unrelated_merge_base: String = "3333333333333333333333333333333333333333"
+
+// The closure as the plan CLI records it: the import closure of the plan CLI entry. The claims use
+// a fixture closure of the same SHAPE; the live claim below runs import_closure_live itself.
+data plan_closure_fixture: List<String> = [
+  "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  "dag/gunbc/fleet/fleet_converge_receipt.dag",
+  "dag/gunbc/fleet/fleet_plan_apply_ci_step.dag",
+]
+
+data safe_changed_paths: List<String> = ["docs/readme.md", "src/v1/stage0/src/main.rs", ".github/workflows/witnesses.yml"]
+
+// THE DERIVED PAIR, read through the same Optional the consumers read. The derivation claims below
+// fail (rather than pass) if the Optional is Absent, so no claim leans on a fabricated default.
+data derived_entry: String = match fleet_converge_plan_cli_entry {
+  Present { value: v } => v
+  Absent => ""
+}
+
+data derived_roots: List<String> = fleet_converge_plan_cli_pool_roots
+
+fn admitted(a: DescendingMainAdmission) -> Bool {
+  match a {
+    DescendingMainAdmitted { checkout: c, plan_revision: p } => c == main_m && p == plan_p
+    other => false
+  }
+}
+
+fn admit_with(
+  checkout: String,
+  plan_revision: String,
+  merge_base: String,
+  changed_paths: List<String>,
+  recorded_closure: Optional<FleetConvergePlanSourceClosure>,
+) -> DescendingMainAdmission {
+  admit_descending_main(
+    checkout: checkout,
+    plan_revision: plan_revision,
+    merge_base: merge_base,
+    changed_paths: changed_paths,
+    source_closure: recorded_closure,
+    expected_entry_path: derived_entry,
+    expected_pool_roots: derived_roots,
+  )
+}
+
+// The recorded triple in its recorded shape, reused by the claims that are not about absence.
+// The recorded fact in its recorded shape: paths, entry and pool roots travel together, so a claim
+// either supplies the whole record or passes Absent (never-recorded).
+fn recorded(paths: List<String>, entry: String, roots: List<String>) -> Optional<FleetConvergePlanSourceClosure> {
+  Present { value: FleetConvergePlanSourceClosure { paths: paths, entry_path: entry, pool_roots: roots } }
+}
+
+data rec_ok: Optional<FleetConvergePlanSourceClosure> = recorded(
+  paths: plan_closure_fixture,
+  entry: derived_entry,
+  roots: derived_roots,
+)
+
+// --- THE ADMITTED CASE (the one that fails red on main) ---------------------
+
+// M descends from P and the diff P..M touches nothing in the recorded closure: admitted, and the
+// admitted pair names the dispatch tip and the plan revision.
+test fn descending_main_admitted_when_diff_misses_closure() -> Bool {
+  admitted(admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: rec_ok,
+  ))
+}
+
+test fn same_revision_admits_immediately() -> Bool {
+  match admit_with(
+    checkout: plan_p,
+    plan_revision: plan_p,
+    merge_base: unrelated_merge_base,
+    changed_paths: [derived_entry],
+    recorded_closure: rec_ok,
+  ) {
+    DescendingMainAdmitted { checkout: x, plan_revision: y } => x == plan_p && y == plan_p
+    other => false
+  }
+}
+
+// --- negative (i): M is not a descendant of P -------------------------------
+test fn not_descendant_refuses() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: unrelated_merge_base,
+    changed_paths: safe_changed_paths,
+    recorded_closure: rec_ok,
+  ) {
+    DescendingMainNotDescendant { checkout: cc, plan_revision: pp, merge_base: m } =>
+      cc == main_m && pp == plan_p && m == unrelated_merge_base
+    other => false
+  }
+}
+
+// --- negative (ii): M descends but the diff touches the closure -------------
+test fn touches_closure_refuses() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: ["docs/readme.md", "dag/gunbc/fleet/fleet_converge_receipt.dag", "src/x.rs"],
+    recorded_closure: rec_ok,
+  ) {
+    DescendingMainTouchesClosure { offending_path: op } => op == "dag/gunbc/fleet/fleet_converge_receipt.dag"
+    other => false
+  }
+}
+
+// --- negative (iii): malformed or missing pointer/refusal inputs ------------
+// Never recorded (a v1 receipt): the pre-existing refusal, unchanged.
+test fn closure_never_recorded_refuses() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: Absent,
+  ) {
+    DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
+    other => false
+  }
+}
+
+// Recorded-but-empty is a DIFFERENT case from never-recorded, and it refuses on its own arm.
+test fn recorded_empty_closure_refuses_on_its_own_arm() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: recorded(paths: [], entry: derived_entry, roots: derived_roots),
+  ) {
+    DescendingMainClosureEmpty { plan_revision: p } => p == plan_p
+    other => false
+  }
+}
+
+// THE HALF-RECORDED STATE CANNOT BE WRITTEN DOWN. It is not a decision arm any more — the record
+// carries paths, entry and pool roots together — so the check moves to where a half-recorded closure
+// can still arrive from: the wire. A document with source_closure but no attribution is refused by
+// the decoder, which is what makes the record's shape trustworthy.
+test fn a_half_recorded_closure_wire_is_refused_by_the_decoder() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "dag/a.dag")])),
+    json_kv(key: "source_closure_pool_roots", value: json_array(elements: [json_string(s: "dag")])),
+  ])
+  match decode_plan_receipt_closure(doc: doc, schema: fleet_converge_plan_receipt_schema_v2) {
+    PlanReceiptClosureRefused { reason: r } => string_contains(s: r, pattern: "source_closure_entry_path")
+    other => false
+  }
+}
+
+// An empty closure argument refuses with the closure-absent arm (the pre-existing refusal).
+test fn empty_closure_refuses() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: Absent,
+  ) {
+    DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
+    other => false
+  }
+}
+
+// A closure attributed to a foreign entry cannot admit.
+test fn foreign_entry_attribution_refuses() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: recorded(paths: plan_closure_fixture, entry: "dag/gunbc/some_other_cli.dag", roots: derived_roots),
+  ) {
+    DescendingMainEntryMismatch { expected: e, recorded: r } =>
+      e == derived_entry && r == "dag/gunbc/some_other_cli.dag"
+    other => false
+  }
+}
+
+// A pool-roots mismatch keeps its OWN variant (it is not an entry mismatch).
+test fn pool_roots_mismatch_refuses_with_own_variant() -> Bool {
+  match admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: recorded(paths: plan_closure_fixture, entry: derived_entry, roots: ["dag", "wrong-pool"]),
+  ) {
+    DescendingMainPoolRootsMismatch { expected: e, recorded: r } =>
+      r == "dag,wrong-pool" && contains(xs: derived_roots, item: "dag", eq: string_eq) && e != r
+    other => false
+  }
+}
+
+// --- the intersection test --------------------------------------------------
+
+// first_touched_closure_path returns Present for an intersecting path, Absent otherwise.
+test fn first_touched_present_for_intersection_absent_otherwise() -> Bool {
+  match first_touched_closure_path(
+    paths: ["docs/readme.md", "dag/gunbc/fleet/fleet_converge_receipt.dag"],
+    closure: plan_closure_fixture,
+  ) {
+    Present { value: v } =>
+      v == "dag/gunbc/fleet/fleet_converge_receipt.dag"
+        && is_absent(first_touched_closure_path(
+          paths: safe_changed_paths,
+          closure: plan_closure_fixture,
+        ))
+    Absent => false
+  }
+}
+
+fn is_absent(o: Optional<String>) -> Bool {
+  match o {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// --- the typed member readers (no sentinels) --------------------------------
+
+// A non-string element in the recorded closure is a typed refusal, not a silently smaller list.
+test fn a_non_string_closure_member_is_a_typed_refusal() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "dag/a.dag"), json_int(n: 7)])),
+  ])
+  match receipt_string_array_member(doc: doc, key: "source_closure") {
+    StringArrayMemberRefused { reason: r } => string_contains(s: r, pattern: "number")
+    other => false
+  }
+}
+
+// A closure member that is not an array at all is a typed refusal naming what it is.
+test fn a_non_array_closure_member_is_a_typed_refusal() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "source_closure", value: json_string(s: "hand-typed")),
+  ])
+  match receipt_string_array_member(doc: doc, key: "source_closure") {
+    StringArrayMemberRefused { reason: r } => string_contains(s: r, pattern: "not a JSON array")
+    other => false
+  }
+}
+
+// A genuinely absent member is Absent — never an empty list fabricated from absence.
+test fn an_absent_member_reads_as_absent_not_empty() -> Bool {
+  let doc = json_object(members: [json_kv(key: "unrelated", value: json_string(s: "x"))])
+  match receipt_string_array_member(doc: doc, key: "source_closure") {
+    StringArrayMemberAbsent => match receipt_string_member(doc: doc, key: "source_closure_entry_path") {
+      StringMemberAbsent => true
+      other => false
+    }
+    other => false
+  }
+}
+
+// A well-formed member reads as its values, in order.
+test fn a_well_formed_member_reads_whole() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "dag/a.dag"), json_string(s: "dag/b.dag")])),
+  ])
+  match receipt_string_array_member(doc: doc, key: "source_closure") {
+    StringArrayMemberPresent { values: v } => v == ["dag/a.dag", "dag/b.dag"]
+    other => false
+  }
+}
+
+// NO SENTINEL COLLISION: a real closure path whose text happens to be the word the old decoder used
+// as its malformed marker is read as a path, not refused.
+test fn a_path_named_like_the_old_sentinel_is_a_real_path() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "MALFORMED"), json_string(s: "dag/a.dag")])),
+  ])
+  match receipt_string_array_member(doc: doc, key: "source_closure") {
+    StringArrayMemberPresent { values: v } => v == ["MALFORMED", "dag/a.dag"]
+    other => false
+  }
+}
+
+// --- the producer-to-consumer wire ------------------------------------------
+
+fn wire_fixture_receipt(closure: Optional<FleetConvergePlanSourceClosure>) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: ActionsRunBinding {
+      repository: "gunb-ai/gunbc",
+      workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+      run_id: "1001",
+      run_revision: plan_p,
+      execution_revision: plan_p,
+    },
+    observed_host: "srv1",
+    scope_wire: "srv1",
+    member_set_fingerprint_hex: "mfp",
+    plan_artifact_hash: "pah",
+    observed_baseline_hex: "obh",
+    prior_generation: 1,
+    planned_generation: 2,
+    lease_key: "lk",
+    lease_resource_fingerprint: "lrf",
+    lease_owner_fingerprint: "lof",
+    lease_generation: 3,
+    apply_terminal: FullyApplied,
+    source_closure: closure,
+  }
+}
+
+// A v2 receipt's triple survives its own bytes and then admits: the producer's record, the wire,
+// the decoder and the decision, in one executed line.
+test fn the_recorded_closure_survives_the_receipt_wire_and_admits() -> Bool {
+  let raw = serialize_json(
+    v: fleet_converge_plan_receipt_json(
+      r: wire_fixture_receipt(closure: rec_ok)
+    )
+  )
+  match fleet_converge_plan_receipt_decode(raw: raw) {
+    FleetConvergePlanReceiptDecoded { receipt: r } =>
+      r.source_closure == rec_ok
+        && admitted(admit_with(
+          checkout: main_m,
+          plan_revision: plan_p,
+          merge_base: plan_p,
+          changed_paths: safe_changed_paths,
+          recorded_closure: r.source_closure,
+        ))
+    FleetConvergePlanReceiptUnreadable { reason: _ } => false
+  }
+}
+
+// OLD RECEIPTS UNCHANGED: a v1 receipt (no closure members at all) still decodes, under the v1 tag,
+// with honest Absents, and the descending case refuses with the pre-existing refusal.
+test fn an_old_v1_receipt_still_decodes_and_refuses_descending_apply() -> Bool {
+  let raw = serialize_json(v: fleet_converge_plan_receipt_json(r: wire_fixture_receipt(closure: Absent)))
+  match fleet_converge_plan_receipt_decode(raw: raw) {
+    FleetConvergePlanReceiptDecoded { receipt: r } =>
+      string_contains(s: raw, pattern: fleet_converge_plan_receipt_schema)
+        && r.source_closure == Absent
+        && match admit_with(
+          checkout: main_m,
+          plan_revision: plan_p,
+          merge_base: plan_p,
+          changed_paths: safe_changed_paths,
+          recorded_closure: r.source_closure,
+        ) {
+          DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
+          other => false
+        }
+    FleetConvergePlanReceiptUnreadable { reason: _ } => false
+  }
+}
+
+// TAMPERED CLOSURE REFUSED BY THE IDENTITY: take a well-formed v2 receipt's identity and edit the
+// recorded closure — a single unrelated path that would make any diff look disjoint. The identity
+// the receipt carries was computed over the TRUE closure, so the decode refuses: this is the case
+// the admission would otherwise have waved through.
+test fn a_tampered_source_closure_breaks_the_identity_and_refuses() -> Bool {
+  let true_receipt = wire_fixture_receipt(closure: rec_ok)
+  let claimed_identity = fleet_converge_plan_receipt_identity_hex(r: true_receipt)
+  let tampered = json_object(members: [
+    json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema_v2)),
+    json_kv(key: "run", value: json_object(members: [
+      json_kv(key: "repository", value: json_string(s: "gunb-ai/gunbc")),
+      json_kv(key: "workflow_ref", value: json_string(s: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main")),
+      json_kv(key: "run_id", value: json_string(s: "1001")),
+      json_kv(key: "run_revision", value: json_string(s: plan_p)),
+      json_kv(key: "execution_revision", value: json_string(s: plan_p)),
+    ])),
+    json_kv(key: "observed_host", value: json_string(s: "srv1")),
+    json_kv(key: "scope_wire", value: json_string(s: "srv1")),
+    json_kv(key: "member_set_fingerprint_hex", value: json_string(s: "mfp")),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: "pah")),
+    json_kv(key: "observed_baseline_hex", value: json_string(s: "obh")),
+    json_kv(key: "prior_generation", value: json_string(s: "1")),
+    json_kv(key: "planned_generation", value: json_string(s: "2")),
+    json_kv(key: "lease_key", value: json_string(s: "lk")),
+    json_kv(key: "lease_resource_fingerprint", value: json_string(s: "lrf")),
+    json_kv(key: "lease_owner_fingerprint", value: json_string(s: "lof")),
+    json_kv(key: "lease_generation", value: json_string(s: "3")),
+    json_kv(key: "apply_terminal", value: json_string(s: "fully_applied")),
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "docs/unrelated.md")])),
+    json_kv(key: "source_closure_entry_path", value: json_string(s: derived_entry)),
+    json_kv(key: "source_closure_pool_roots", value: json_array(elements: [json_string(s: "dag"), json_string(s: "src/v2")])),
+    json_kv(key: "receipt_identity", value: json_string(s: claimed_identity)),
+  ])
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: tampered)) {
+    FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    FleetConvergePlanReceiptDecoded { receipt: _ } => false
+  }
+}
+
+// SCHEMA/PRESENCE CROSS-CHECK: a receipt tagged v1 that carries closure members is refused outright
+// — the tag is what pins which bytes the identity covers, so a swapped tag cannot smuggle a closure
+// into the v1 identity rule.
+test fn a_v1_receipt_carrying_closure_members_is_refused() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema)),
+    json_kv(key: "run", value: json_object(members: [
+      json_kv(key: "repository", value: json_string(s: "gunb-ai/gunbc")),
+      json_kv(key: "workflow_ref", value: json_string(s: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main")),
+      json_kv(key: "run_id", value: json_string(s: "1001")),
+      json_kv(key: "run_revision", value: json_string(s: plan_p)),
+      json_kv(key: "execution_revision", value: json_string(s: plan_p)),
+    ])),
+    json_kv(key: "observed_host", value: json_string(s: "srv1")),
+    json_kv(key: "scope_wire", value: json_string(s: "srv1")),
+    json_kv(key: "member_set_fingerprint_hex", value: json_string(s: "mfp")),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: "pah")),
+    json_kv(key: "observed_baseline_hex", value: json_string(s: "obh")),
+    json_kv(key: "prior_generation", value: json_string(s: "1")),
+    json_kv(key: "planned_generation", value: json_string(s: "2")),
+    json_kv(key: "lease_key", value: json_string(s: "lk")),
+    json_kv(key: "lease_resource_fingerprint", value: json_string(s: "lrf")),
+    json_kv(key: "lease_owner_fingerprint", value: json_string(s: "lof")),
+    json_kv(key: "lease_generation", value: json_string(s: "3")),
+    json_kv(key: "apply_terminal", value: json_string(s: "fully_applied")),
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "dag/a.dag")])),
+    json_kv(key: "source_closure_entry_path", value: json_string(s: "dag/gunbc/fleet/fleet_converge_plan_cli.dag")),
+    json_kv(key: "source_closure_pool_roots", value: json_array(elements: [json_string(s: "dag"), json_string(s: "src/v2")])),
+    json_kv(key: "receipt_identity", value: json_string(s: "whatever-it-claims")),
+  ])
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: doc)) {
+    FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "but carries source_closure members")
+    FleetConvergePlanReceiptDecoded { receipt: _ } => false
+  }
+}
+
+// THE PRODUCER'S COMPUTATION, LIVE: the derived entry resolves to a real module whose live import
+// closure reaches the modules the plan CLI actually imports — the closure is model data, not a list
+// anyone typed. This is the same call the plan CLI makes when it mints the receipt.
+test fn the_derived_entry_import_closure_is_live_and_covers_the_plan_cli_chain() -> Bool {
+  let closure = import_closure_live(
+    entry_path: derived_entry,
+    pool_roots: fleet_converge_plan_cli_pool_roots,
+  )
+  contains(xs: closure, item: derived_entry, eq: string_eq)
+    && contains(xs: closure, item: "dag/gunbc/fleet/fleet_converge_receipt.dag", eq: string_eq)
+    && contains(xs: closure, item: "dag/gunbc/fleet/fleet_converge_plan_revision.dag", eq: string_eq)
+    && contains(xs: closure, item: "dag/gunbc/fleet/fleet_plan_apply_ci_step.dag", eq: string_eq)
+}
+
+// THE DERIVATION ITSELF: the entry the whole route reads is the plan CLI's source file, reached
+// through the layout authority — and it is Present, not Absent.
+test fn entry_path_derivation_resolves_to_the_plan_cli_source_file() -> Bool {
+  match fleet_converge_plan_cli_entry {
+    Present { value: v } => v == "dag/gunbc/fleet/fleet_converge_plan_cli.dag"
+      && derived_roots == ["dag", "src/v2"]
+    Absent => false
+  }
+}
+
+// DETERMINISM: the same run twice agrees (a claim that only passes by luck of ordering is worthless).
+test fn determinism_repeat_admitted() -> Bool {
+  let a = admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: rec_ok,
+  )
+  let b = admit_with(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    recorded_closure: rec_ok,
+  )
+  admitted(a) && admitted(b)
+}
+
+// --- THE REFUSAL RENDERING, the reason's consumer -------------------------------------------
+// The descending arm builds a typed cause for every way reuse can fail (merge-base read failure
+// with its exit code, the offending path touching the closure, an unreadable receipt, a mismatched
+// attribution…). fleet_converge_apply_wet renders it through apply_revision_refusal_text — THE one
+// rendering — so the cause reaches the operator's exit text instead of being discarded with
+// `reason: _` (gunbc.design_argument::fail_closed: every degradation is named where an operator
+// reads it). The historic sentence is preserved as an exact prefix: an operator or log grep that
+// matched the pre-change refusal still matches.
+
+data refusal_cause_fixture: String = "diff touches the plan source closure at dag/gunbc/fleet/fleet_converge_receipt.dag"
+
+data refusal_text_with_cause: String = apply_revision_refusal_text(
+  expected: main_m,
+  observed: plan_p,
+  descending_cause: Present { value: refusal_cause_fixture },
+)
+
+data refusal_text_without_cause: String = apply_revision_refusal_text(
+  expected: main_m,
+  observed: plan_p,
+  descending_cause: Absent,
+)
+
+test fn refusal_text_keeps_the_historic_sentence_verbatim() -> Bool {
+  string_contains(s: refusal_text_with_cause, pattern: "fleet_converge_apply: RunRevisionRefused — expected ")
+    && string_contains(s: refusal_text_with_cause, pattern: main_m)
+    && string_contains(s: refusal_text_with_cause, pattern: plan_p)
+    && string_contains(s: refusal_text_with_cause, pattern: "; refusing before the locked actuator")
+}
+
+// The cause is not merely present, it is the tail of the message — a caller cannot print the head
+// and lose the tail without printing the whole string.
+test fn refusal_text_carries_the_typed_cause_of_this_refusal() -> Bool {
+  let head = "fleet_converge_apply: RunRevisionRefused — expected "
+  string_contains(s: refusal_text_with_cause, pattern: head)
+    && string_contains(s: refusal_text_with_cause, pattern: "descending plan reuse not proven — ")
+    && string_contains(s: refusal_text_with_cause, pattern: refusal_cause_fixture)
+}
+
+// The arm without a cause renders exactly the historic words — no invented suffix.
+test fn refusal_text_without_a_cause_is_the_historic_sentence_alone() -> Bool {
+  refusal_text_without_cause == "fleet_converge_apply: RunRevisionRefused — expected 2222222222222222222222222222222222222222 but this run checked out 1111111111111111111111111111111111111111; refusing before the locked actuator"
+}
+
+// --- THE ONE VOCABULARY both call sites render ----------------------------------------------
+// The checkout-verify step and the apply leg no longer word refusals of their own: they render
+// fleet_converge_plan_revision.descending_main_verdict_text. These claims pin that vocabulary at its
+// one interface (a typed verdict in, the operator's sentence out), including the arms that a failed
+// read produces — which must refuse, and must say WHICH read failed.
+
+test fn verdict_text_names_the_offending_path_of_a_closure_touch() -> Bool {
+  string_contains(
+    s: descending_main_verdict_text(v: DescendingMainAdmissionRefused {
+      admission: DescendingMainTouchesClosure {
+        checkout: main_m,
+        plan_revision: plan_p,
+        offending_path: "dag/gunbc/fleet/fleet_converge_receipt.dag",
+      },
+    }),
+    pattern: "dag/gunbc/fleet/fleet_converge_receipt.dag",
+  )
+}
+
+test fn verdict_text_names_the_exit_code_of_a_failed_merge_base_read() -> Bool {
+  let t = descending_main_verdict_text(v: DescendingMainUnobservable { failure: MergeBaseUnreadable { exit_code: 128, stderr: "not a git repository" } })
+  string_contains(s: t, pattern: "rc=128") && string_contains(s: t, pattern: "not a git repository")
+}
+
+test fn verdict_text_refuses_a_missing_attribution_source_without_fabricating_one() -> Bool {
+  string_contains(
+    s: descending_main_verdict_text(v: DescendingMainUnobservable { failure: EntryUnderived }),
+    pattern: "never fabricate an attribution",
+  )
+}
+
+test fn verdict_text_reports_the_reusable_case_by_both_revisions() -> Bool {
+  let t = descending_main_verdict_text(v: DescendingMainReusable { checkout: main_m, plan_revision: plan_p })
+  string_contains(s: t, pattern: main_m) && string_contains(s: t, pattern: plan_p)
+}
+
+// --- ROUTE DRIVER (the hands of the executed evidence; NOT claims, NOT production) --------------
+//
+// WHAT THESE ARE AND WHY THEY ARE HERE. The row's red_control and the manager's deferred dispatch
+// leg both need the ONE route driven from a shell over REAL git state and REAL receipt bytes, the
+// same way fleet-converge.yml drives its entry points (`gunbc run --entry <file> --function <fn>
+// --arg k=v`). A `test fn` is pure, so it cannot read git or the filesystem; these two wet
+// functions are the thin wet shells around the two production entry points the workflow itself
+// calls — decide_descending_main_reuse (through the plan receipt's own bytes) and the mint of a
+// REAL v2 receipt with the DERIVED closure. They add no decision of their own: every verdict they
+// print is descending_main_verdict_text, THE one vocabulary, and their exit codes are the caller's
+// gate (rc 0 admit / rc 1 refuse). Named consumers: this module's header (CONSUMER ROUTE), the
+// row fleet-converge-descending-main-admit's red_control, and the PR's executed-evidence comment.
+
+fn route_fixture_receipt(
+  plan_revision: String,
+  closure: Optional<FleetConvergePlanSourceClosure>,
+) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: ActionsRunBinding {
+      repository: "gunb-ai/gunbc",
+      workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+      run_id: "1001",
+      run_revision: plan_revision,
+      // THE EXECUTION REVISION IS THE PLAN'S, never the later tip — the same pin the exact
+      // readback enforces in the checkout-verify step.
+      execution_revision: plan_revision,
+    },
+    observed_host: "srv1",
+    scope_wire: "srv1",
+    member_set_fingerprint_hex: "mfp",
+    plan_artifact_hash: "pah",
+    observed_baseline_hex: "obh",
+    prior_generation: 1,
+    planned_generation: 2,
+    lease_key: "lk",
+    lease_resource_fingerprint: "lrf",
+    lease_owner_fingerprint: "lof",
+    lease_generation: 3,
+    apply_terminal: FullyApplied,
+    source_closure: closure,
+  }
+}
+
+// MINT A REAL v2 PLAN RECEIPT FOR A ROUTE CASE: the closure is the plan's OWN modeled content —
+// import_closure_live over the derived entry and the derived pool roots — never a hand-typed list,
+// and the entry/roots come from the ONE name-to-path authority (fleet_converge_plan_cli_entry /
+// fleet_converge_plan_cli_pool_roots). An underived attribution refuses rather than minting.
+fn mint_route_receipt_wet(out_path: String, plan_revision: String) -> ProcessExit {
+  match fleet_converge_plan_cli_entry {
+    Absent => exit_failure(
+      reason: "mint_route_receipt_wet: EntryUnderived — refusing to mint a receipt without a source closure (fail_closed, never fabricate)",
+    )
+    Present { value: entry_path } => {
+      let closure = Present {
+        value: FleetConvergePlanSourceClosure {
+          paths: import_closure_live(
+            entry_path: entry_path,
+            pool_roots: fleet_converge_plan_cli_pool_roots,
+          ),
+          entry_path: entry_path,
+          pool_roots: fleet_converge_plan_cli_pool_roots,
+        },
+      }
+      let w = Filesystem.Write(
+        path: out_path,
+        content: serialize_json(
+          v: fleet_converge_plan_receipt_json(r: route_fixture_receipt(plan_revision: plan_revision, closure: closure))
+        ),
+      )
+      if w.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["mint_route_receipt_wet: write refused at ", out_path, ": ", w.error], ""))
+      }
+    }
+  }
+}
+
+// RUN THE ONE ROUTE OVER REAL GIT STATE, THROUGH THE RECEIPT'S OWN BYTES. Reads the receipt at
+// out_path with the production decoder (so a malformed or old receipt is refused by the decoder,
+// not by a test's assumption), then calls decide_descending_main_reuse — the same function the
+// regenerated checkout-verify step runs — and renders its verdict with THE one vocabulary. rc 0
+// only for the reusable verdict; every refusal, including an empty dispatch tip (the malformed /
+// absent pointer case), exits 1 with the verdict text as its reason.
+fn route_decide_wet(
+  receipt_path: String,
+  plan_revision: String,
+  dispatch_tip: String,
+) -> ProcessExit {
+  if dispatch_tip == "" {
+    exit_failure(
+      reason: join(
+        ["route_decide_wet: ", descending_main_verdict_text(v: DescendingMainUnobservable { failure: DispatchTipAbsent })],
+        "",
+      ),
+    )
+  } else {
+    match read_fleet_converge_plan_receipt_at(path: receipt_path) {
+      FleetConvergePlanReceiptUnreadable { reason: r } =>
+        exit_failure(reason: join(["route_decide_wet: ", r], ""))
+      FleetConvergePlanReceiptDecoded { receipt: receipt } => {
+        let verdict = decide_descending_main_reuse(
+          dispatch_tip: dispatch_tip,
+          plan_revision: plan_revision,
+          plan_receipt: receipt,
+        )
+        let text = join(["route_decide_wet: ", descending_main_verdict_text(v: verdict)], "")
+        match verdict {
+          DescendingMainReusable { checkout: _, plan_revision: _ } => ExitSuccess
+          other => exit_failure(reason: text)
+        }
+      }
+    }
+  }
+}
+
+// THE DEFERRAL CASE THE APPLY LEG SEES: same route, but reached the way fleet_converge_apply_wet
+// reaches it — through the plan CLI's expected-revision cross-check — so the evidence can show the
+// unchanged historic sentence alongside the typed cause from apply_revision_refusal_text. rc 0 only
+// when the apply leg would run the PLAN's revision.
+fn route_apply_leg_wet(
+  receipt_path: String,
+  expected_revision: String,
+  dispatch_tip: String,
+) -> ProcessExit {
+  match read_fleet_converge_plan_receipt_at(path: receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } =>
+      exit_failure(reason: join(["route_apply_leg_wet: ", r], ""))
+    FleetConvergePlanReceiptDecoded { receipt: receipt } => {
+      let plan_rev = receipt.run.run_revision
+      if plan_rev != expected_revision {
+        exit_failure(reason: "route_apply_leg_wet: the expected-revision input does not name the plan revision; refused by name")
+      } else if dispatch_tip == "" {
+        exit_failure(
+          reason: join(
+            ["route_apply_leg_wet: ", apply_revision_refusal_text(expected: expected_revision, observed: "", descending_cause: Present { value: descending_main_verdict_text(v: DescendingMainUnobservable { failure: DispatchTipAbsent }) })],
+            "",
+          ),
+        )
+      } else {
+        match decide_descending_main_reuse(
+          dispatch_tip: dispatch_tip,
+          plan_revision: plan_rev,
+          plan_receipt: receipt,
+        ) {
+          DescendingMainReusable { checkout: _, plan_revision: _ } => ExitSuccess
+          other => exit_failure(
+            reason: join(
+              [
+                "route_apply_leg_wet: ",
+                apply_revision_refusal_text(
+                  expected: expected_revision,
+                  observed: dispatch_tip,
+                  descending_cause: Present { value: descending_main_verdict_text(v: other) },
+                ),
+              ],
+              "",
+            ),
+          )
+        }
+      }
+    }
+  }
+}

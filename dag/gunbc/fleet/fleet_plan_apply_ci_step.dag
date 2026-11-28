@@ -18,7 +18,9 @@ import v2.workflow.gunbc_invoke_step_emit {
 import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
+  gunbc_run_step_target_entry_path,
 }
+import std.optional { Optional, Present, Absent }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
 import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
@@ -27,6 +29,21 @@ data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = gunbc_run_step_ta
   module: "gunbc.fleet.fleet_converge_plan_cli",
   function: "fleet_converge_plan_wet",
 )
+
+// THE PLAN CLI'S SOURCE-CLOSURE ENTRY, DERIVED from the plan target's module identity through the
+// ONE authority that renders a module name as a source file: gunbc_run_step_target_entry_path over
+// gunbc.source_layout.layout_module_storage_path (pure over the registered layout rows, no
+// filesystem read, no hand-typed path — gunbc.design_argument::single_authority). The plan's source
+// closure is the transitive import set of that entry module, and both the producer (the plan CLI,
+// which records it in the receipt) and the consumer (the checkout-verify step, which re-verifies the
+// attribution) read the entry and pool roots from HERE. Absent means the module belongs to no
+// registered storage root: every consumer must refuse, never fabricate. The pool roots ARE the
+// witness layer roots — the same authority that says which source pools the build reads.
+data fleet_converge_plan_cli_entry: Optional<String> = gunbc_run_step_target_entry_path(
+  target: gunbc_ci_fleet_converge_plan_target
+)
+
+data fleet_converge_plan_cli_pool_roots: List<String> = witness_layer_roots
 
 data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.fleet_converge_plan_cli",
@@ -55,7 +72,7 @@ data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = gunbc_ru
 
 data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.fleet_converge_plan_revision",
-  function: "verify_checkout_at_plan_revision",
+  function: "verify_descending_main_at_plan_revision",
 )
 
 // THE RUN POINTER ADMISSIONS (gunbc.fleet.fleet_converge_plan_revision). Each admits what a

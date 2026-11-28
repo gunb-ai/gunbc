@@ -13,6 +13,7 @@ import gunbc.actions_run_binding {
   run_binding_names_workflow_file,
 }
 import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanSourceClosure,
   FleetConvergeApplyReceipt,
   FleetConvergeApplyReceiptDecoded,
   FleetConvergeApplyReceiptUnreadable,
@@ -34,6 +35,7 @@ import gunbc.fleet.fleet_converge_receipt {
 }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
 import std.types { Bool, String }
 import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied, OwedReportContradiction }
 
@@ -67,6 +69,7 @@ fn fixture_plan_receipt() -> FleetConvergePlanReceipt {
     lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 5,
     apply_terminal: FullyApplied,
+    source_closure: Present { value: FleetConvergePlanSourceClosure { paths: [ "dag/gunbc/fleet/fleet_converge_plan_cli.dag", "dag/gunbc/fleet/fleet_converge_receipt.dag", ], entry_path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", pool_roots: ["dag", "src/v2"] } },
   }
 }
 
