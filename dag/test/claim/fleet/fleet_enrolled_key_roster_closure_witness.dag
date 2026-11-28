@@ -117,6 +117,59 @@ fn enrolled_key_roster() -> List<EnrolledKeyRosterHost> {
   map(hosts, fn(h) { enrolled_key_roster_host(host: h, rosters: roster_labels_naming(host: h)) })
 }
 
+// THE CONTROLLED FIXTURE, supplied by this witness rather than read from the fleet. Review 99576 is right
+// that a count taken off the live population is a change detector: seven hosts today becomes eight the day a
+// serving host is added, and the closure fold is no less correct for it. So the exact cardinalities are
+// asserted HERE, over a roster this file writes, where the literals describe the fixture rather than the
+// fleet; the live population is checked at identity grain instead -- one disposition per host named, an arm
+// that agrees with the registry per host, and the hand-match drop equal to the refused set.
+// srv14 carries anchor rows in the registry today; 6ce85c carries none. Both facts are read from the one
+// authority inside the claims, never copied into a literal here: the fixture fixes the ROSTER, the registry
+// decides the arm.
+fn fixture_roster() -> List<EnrolledKeyRosterHost> {
+  [
+    enrolled_key_roster_host(host: operator_host_srv14, rosters: [build_candidate_label]),
+    enrolled_key_roster_host(host: operator_host_6ce85c, rosters: [serving_router_label, serving_memory_label]),
+  ]
+}
+
+fn fixture_enrolled_count() -> Int {
+  if length(filter(fleet_host_key_enrollments, fn(k) { host_identity_eq(a: k.host, b: operator_host_srv14) })) > 0 { 1 } else { 0 }
+}
+
+fn fixture_refused_count() -> Int {
+  if length(filter(fleet_host_key_enrollments, fn(k) { host_identity_eq(a: k.host, b: operator_host_6ce85c) })) == 0 { 1 } else { 0 }
+}
+
+// The refused hosts of a closure, at IDENTITY grain -- the join a count equality would fake.
+fn refused_hosts(closure: List<HostKeyAnchorDisposition>) -> List<HostIdentity> {
+  filter(
+    map(closure, fn(d) { host_of_anchor_disposition(d: d) }),
+    fn(h) {
+      any(closure, fn(d) {
+        match d {
+          AnchorRefused { host: rh, cause: _ } => host_identity_eq(a: rh, b: h)
+          _ => false
+        }
+      })
+    },
+  )
+}
+
+fn enrolled_hosts(closure: List<HostKeyAnchorDisposition>) -> List<HostIdentity> {
+  filter(
+    map(closure, fn(d) { host_of_anchor_disposition(d: d) }),
+    fn(h) {
+      any(closure, fn(d) {
+        match d {
+          AnchorEnrolled { host: eh, anchor: _, enrolled_endpoints: _ } => host_identity_eq(a: eh, b: h)
+          _ => false
+        }
+      })
+    },
+  )
+}
+
 fn disposition_count(closure: List<HostKeyAnchorDisposition>, enrolled: Bool) -> Int {
   length(filter(closure, fn(d) {
     match d {
@@ -133,28 +186,29 @@ fn disposition_count(closure: List<HostKeyAnchorDisposition>, enrolled: Bool) ->
 test fn the_closure_gives_every_roster_host_a_disposition() -> Bool {
   let roster = enrolled_key_roster()
   let closure = host_key_anchor_roster_closure(roster: roster)
-  length(roster) == 7
-    && length(closure) == length(roster)
+  // IDENTITY GRAIN, live population: one disposition per roster host named, nobody silent, and the two
+  // halves are the registry's own split -- an enrolled arm exactly where the enrollment authority holds rows
+  // for that host, a refused arm exactly where it holds none. No cardinality of the fleet is compared to a
+  // literal here, because that literal would be today's tree wearing a constant's clothes.
+  length(closure) == length(roster)
+    && length(roster) > 0
     && all(roster, fn(e) {
       length(filter(closure, fn(d) { host_identity_eq(a: host_of_anchor_disposition(d), b: e.host) })) == 1
     })
-    && disposition_count(closure: closure, enrolled: true) == 6
-    && disposition_count(closure: closure, enrolled: false) == 1
-    && all(
-      [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7, operator_host_srv14],
-      fn(h) { any(closure, fn(d) {
-        match d {
-          AnchorEnrolled { host: enrolled_host, anchor: _, enrolled_endpoints: _ } => host_identity_eq(a: enrolled_host, b: h)
-          AnchorRefused { host: _, cause: _ } => false
-        }
-      }) },
-    )
-    && any(closure, fn(d) {
+    && all(closure, fn(d) {
       match d {
-        AnchorRefused { host: refused_host, cause: NoEnrolledRowAndNoScan { rosters: _ } } => host_identity_eq(a: refused_host, b: operator_host_6ce85c)
-        _ => false
+        AnchorEnrolled { host: h, anchor: _, enrolled_endpoints: n } => n == length(enrolled_anchor_rows_for(host: h)) && n > 0
+        AnchorRefused { host: h, cause: _ } => length(enrolled_anchor_rows_for(host: h)) == 0
       }
     })
+    // Completeness is an identity join: the enrolled set plus the refused set is the roster set, in both
+    // directions, and neither half is empty.
+    && all(roster, fn(e) {
+      any(enrolled_hosts(closure: closure), fn(h) { host_identity_eq(a: h, b: e.host) })
+        || any(refused_hosts(closure: closure), fn(h) { host_identity_eq(a: h, b: e.host) })
+    })
+    && length(enrolled_hosts(closure: closure)) > 0
+    && length(refused_hosts(closure: closure)) > 0
     // Every disposition renders a wire that names its host: a refusal that cannot say who it is about is the
     // unlocatable diagnostic fail_closed refuses.
     && all(closure, fn(d) {
@@ -167,6 +221,12 @@ test fn the_closure_gives_every_roster_host_a_disposition() -> Bool {
             string_contains(s: wire, pattern: h as String) && string_contains(s: wire, pattern: "cause=")
         }
     })
+    // THE EXACT CARDINALITIES, over the controlled fixture this witness supplies: two entries, one enrolled
+    // because the registry holds rows for it, one refused because it holds none. The expected numbers are
+    // recomputed from the registry's own presence, so the fixture states a rule and not today's census.
+    && length(host_key_anchor_roster_closure(roster: fixture_roster())) == 2
+    && disposition_count(closure: host_key_anchor_roster_closure(roster: fixture_roster()), enrolled: true) == fixture_enrolled_count()
+    && disposition_count(closure: host_key_anchor_roster_closure(roster: fixture_roster()), enrolled: false) == fixture_refused_count()
 }
 
 // 2. A HOST WITH NO ANCHOR ROW REFUSES, and the refusal names the cause this carrier can support: no row, no
@@ -223,11 +283,27 @@ test fn RED_a_roster_host_with_no_row_and_no_refusal_reason_keeps_the_roster_ope
   let open_over_the_fold = roster_hosts_with_neither_anchor_nor_refusal(roster: roster, dispositions: closure)
   let open_under_a_hand_match = roster_hosts_with_neither_anchor_nor_refusal(roster: roster, dispositions: enrolled_only)
   length(open_over_the_fold) == 0
-    && length(open_under_a_hand_match) == 1
-    && any(open_under_a_hand_match, fn(h) { host_identity_eq(a: h, b: operator_host_6ce85c) })
-    // Non-vacuity: the control is a strict subset of a seven-host population, not an empty list handed to a
-    // fold that reports nothing because it read nothing.
-    && length(enrolled_only) == 6
+    // Non-vacuity at identity grain: the hosts a hand match drops are EXACTLY the refused half of the
+    // closure, in both directions, and that set is not empty. No cardinality of the live population is
+    // compared to a literal -- the equality that matters is between two sets, not against today's census.
+    && length(open_under_a_hand_match) > 0
+    && all(open_under_a_hand_match, fn(h) {
+      any(refused_hosts(closure: closure), fn(r) { host_identity_eq(a: r, b: h) })
+    })
+    && all(refused_hosts(closure: closure), fn(h) {
+      any(open_under_a_hand_match, fn(o) { host_identity_eq(a: o, b: h) })
+    })
+    // The fixture carries the count: a two-entry roster, one refused, drops exactly one host when the
+    // refusal arms are filtered away.
+    && length(roster_hosts_with_neither_anchor_nor_refusal(
+        roster: fixture_roster(),
+        dispositions: filter(host_key_anchor_roster_closure(roster: fixture_roster()), fn(d) {
+          match d {
+            AnchorEnrolled { host: _, anchor: _, enrolled_endpoints: _ } => true
+            AnchorRefused { host: _, cause: _ } => false
+          }
+        }),
+      )) == fixture_refused_count()
 }
 
 // 4. THE READ-BACK REFUSES A MISMATCH AND NAMES BOTH FINGERPRINTS -- enrolled anchor, presented key, both
@@ -336,15 +412,19 @@ test fn the_closure_reads_the_anchor_from_the_enrollment_authority_only() -> Boo
       AnchorRefused { host: _, cause: _ } => length(registry_rows) == 0
     }
   })
-    // Non-vacuity: the enrolled half of that quantifier is six hosts deep, and one of them is pinned at TWO
-    // endpoints (srv1's LAN row and its tailnet row), which is exactly the case a projection gets wrong.
+    // Non-vacuity at identity grain: the enrolled half is not empty, and at least one host is pinned at more
+    // than one endpoint (srv1 carries its LAN row and its tailnet row), which is exactly the case a
+    // projection gets wrong. The count is read from the registry's own rows for that host, not copied from
+    // the current tree into a literal.
+    && length(enrolled_hosts(closure: closure)) > 0
     && any(closure, fn(d) {
       match d {
-        AnchorEnrolled { host: h, anchor: _, enrolled_endpoints: n } => n == 2 && host_identity_eq(a: h, b: operator_host_srv1)
+        AnchorEnrolled { host: h, anchor: _, enrolled_endpoints: n } => n == length(enrolled_anchor_rows_for(host: h)) && n > 1
         AnchorRefused { host: _, cause: _ } => false
       }
     })
-    && disposition_count(closure: closure, enrolled: true) == 6
+    // The fixture carries the cardinality, grounded in a roster this witness supplies.
+    && disposition_count(closure: host_key_anchor_roster_closure(roster: fixture_roster()), enrolled: true) == fixture_enrolled_count()
 }
 
 // 7. THE READ-BACK IS KEYED ON THE HOST IDENTITY, NOT ON A SPELLING OF ONE. The registry keys butch's anchor
