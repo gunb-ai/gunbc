@@ -106,7 +106,7 @@ type LocalTidyFmtOutcome
 
 data local_tidy_fmt_exit_partition_note: String = "Grounded in the observed contract of cargo fmt --all --check, pinned by execution 2026-07-30: 0 = clean, 1 = rustfmt reported diffs (the only exit that is a finding about the work), 127 = the shell could not locate cargo, 126 = located but not executable (wrong architecture, lost permission bit), 101 = cargo ran but has no fmt subcommand (rustfmt component absent mid-install). Every status other than 0 and 1 therefore says the check did not produce a verdict, so the partition is exactly clean / drift / could-not-run. The residue arm is fail-closed by refusal, never by widening: an unrecognized status still stops the line with a non-zero exit, and only the MESSAGE changes, so no unverified push is admitted."
 
-data local_tidy_fmt_pre_push_drift_recipe: String = "rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)"
+data local_tidy_fmt_pre_push_drift_recipe: String = "rustfmt drift — HOLD this push and report it to your lane manager. Do not push past this refusal and do not reformat files this branch does not own."
 
 data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust — run: cargo fmt --all && git add -u, then re-commit."
 

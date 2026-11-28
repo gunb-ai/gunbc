@@ -26,7 +26,7 @@ echo "[pre-push] cargo fmt --all --check"
 fmt_rc=0
 cargo fmt --all --check || fmt_rc=$?
 if [[ "$fmt_rc" == "1" ]]; then
-  echo "[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)" >&2
+  echo "[pre-push] rustfmt drift — HOLD this push and report it to your lane manager. Do not push past this refusal and do not reformat files this branch does not own." >&2
   exit 1
 fi
 if [[ "$fmt_rc" != "0" ]]; then
