@@ -30,6 +30,7 @@ import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name
 import gunbc.plans.github_actions_retirement { github_actions_retirement_plan }
 import gunbc.plans.gunbhub_source_of_truth { gunbhub_source_of_truth_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
+import gunbc.plans.contained_development_execution_g0 { contained_development_execution_g0_plan }
 import gunbc.plans.fabric_market { fabric_market_plan }
 import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause_grain_plan }
 import gunbc.plans.gunb_ai_served_from_gunbc { gunb_ai_served_from_gunbc_plan }
@@ -88,6 +89,7 @@ data all_plans: List<Plan> = [
   desired_state_follows_the_machine_plan, fabric_market_plan,
   derived_types_keep_their_name_plan,
   github_actions_retirement_plan,
+  contained_development_execution_g0_plan,
   gunbhub_source_of_truth_plan,
   required_lane_claim_clause_grain_plan,
   gunb_ai_served_from_gunbc_plan,

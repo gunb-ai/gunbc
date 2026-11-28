@@ -1,0 +1,89 @@
+module gunbc.roadmap.g0_contained_dev_execution_proof
+
+// THE .dag INTENT OF THE G0 TWO-SIDED HERMETIC ISOLATION PROOF. The semantics of the
+// unreachability probe are modeled here as a .dag consumer, and this module claims only what
+// each channel proves (review 98584 FINDING 3; review 98783 TRIM):
+//   - IN REPO: the claim witness dag/test/claim/roadmap/g0_criteria_witness.dag feeds CONSTRUCTED
+//     return-code tokens through the single token->G0Observation derivation helpers into the model rule
+//     g0_two_sided_isolation_holds and discriminates red on the broken-mask and own-op-denied
+//     token sets. G0-compliant: constructed records only; nothing in this repo executes the probe.
+//   - LANE EVIDENCE ONLY: the REAL-observation pair (enforced deny + unmasked reach) is
+//     evidence-transcribed in the PR #16989 evidence comment (the bwrap probe sha256
+//     d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca, srv1 boot c095c0cd,
+//     heavy-slot run logs pasted there). It is UNPROVEN-IN-REPO
+//     (gunbc.design_argument::epistemic_humility) and never by itself a basis for a G0 lift.
+//     No in-repo runner is authorized or recorded. THE NAMED FRONTIER CONSUMER is the in-repo
+//     systemd capability from roadmap node #5828 (the bash-emit capability, v2.workflow.bash_emit
+//     / bash_emit_stmts): when it lands, its consumer runs the two-sided probe in-repo via the
+//     emitted command and feeds g0_probe_observed -> g0_two_sided_isolation_holds. Until then the
+//     token witness (dag/test/claim/roadmap/g0_criteria_witness.dag) is the only in-repo executor
+//     and the bwrap probe record is TranscribedUncited evidence - never a lift basis.
+// SINGLE ISOLATION AUTHORITY (gunbc.design_argument::single_authority; reviews 98327, 98584,
+// 98783): each raw return code becomes an isolation fact exactly ONCE through the single
+// derivation helpers below, and the model rule g0_two_sided_isolation_holds applied to those
+// derived observations is THE isolation decision -- no other declaration re-decides it.
+
+import std.types { Bool, String }
+
+// THE DECISION RULE (the .dag consumer). Given the three-valued observations a probe
+// records about a worker placed behind a hermetic boundary -- its own operation is
+// permitted (own_op_permitted), the representative PROTECTED credential fixture is
+// reachable (protected_reachable), and the SIBLING-ATTEMPT fixture is reachable
+// (sibling_reachable) -- isolation HOLDS exactly when the worker's own operation is
+// permitted (Reached) AND neither the protected nor the sibling fixture is reachable
+// (both Refused). A real consumer that returns false when the boundary is absent (the
+// unmasked observation), not a grep. THREE-VALUED (review 98801 FINDING 1,
+// gunbc.design_argument::fail_closed): the parse result is G0Observation, not Bool --
+// an unparseable token is Unobserved, and the rule does NOT hold whenever ANY
+// observation is Unobserved. A missing or truncated probe token can fabricate neither
+// permission (own-op) nor safety (protected/sibling reachability); runtime uncertainty
+// is a typed refusal, never a fabricated plausible value. The decision is a plain Bool
+// so the consuming test can assert green and red directly; it is not encoded as an exit
+// code (there is no in-repo shell route, and none is authorized).
+fn g0_two_sided_isolation_holds(own_op_permitted: G0Observation, protected_reachable: G0Observation, sibling_reachable: G0Observation) -> Bool {
+  own_op_permitted == Reached && protected_reachable == Refused && sibling_reachable == Refused
+}
+
+// A probe return code as a three-valued observation. On the own-op channel "Reached"
+// means the permitted operation RAN (rc 0); on a probe channel it means the fixture was
+// REACHABLE (rc 0 -- the boundary leaked), "Refused" means the probe was denied (nonzero
+// rc), and "Unobserved" means no trustworthy value existed at all (unparseable token:
+// missing, timeout text, truncated log).
+type G0Observation = Reached | Refused | Unobserved
+
+fn g0_probe_observed(tok: String) -> G0Observation {
+  match parse_int(s: tok) {
+    Present { value: n } => if n == 0 { Reached } else { Refused }
+    Absent => Unobserved
+  }
+}
+
+// SINGLE DERIVATION OF THE ISOLATION FACTS (review 98584 FINDING 1; three-valued per
+// review 98801 FINDING 1). These are the ONLY places a raw probe return code becomes an
+// isolation fact: own-op permission from own_rc, protected reachability from the two
+// protected rcs, sibling reachability from the sibling rc. The model rule
+// g0_two_sided_isolation_holds applied to these derived observations is THE isolation
+// decision -- nothing else re-decides isolation from raw rc comparisons
+// (gunbc.design_argument::single_authority). Each channel distinguishes "denied" from
+// "never observed": a channel is Reached if any of its probes reached, Unobserved if no
+// token parsed and none reached, and Refused only when every token parsed and every
+// probe was denied.
+fn g0_own_op_permitted(own_rc: String) -> G0Observation {
+  g0_probe_observed(own_rc)
+}
+
+fn g0_protected_reachable(protected_read_rc: String, protected_exec_rc: String) -> G0Observation {
+  let read_obs = g0_probe_observed(protected_read_rc)
+  let exec_obs = g0_probe_observed(protected_exec_rc)
+  if read_obs == Reached || exec_obs == Reached {
+    Reached
+  } else if read_obs == Unobserved || exec_obs == Unobserved {
+    Unobserved
+  } else {
+    Refused
+  }
+}
+
+fn g0_sibling_reachable(sibling_rc: String) -> G0Observation {
+  g0_probe_observed(sibling_rc)
+}
