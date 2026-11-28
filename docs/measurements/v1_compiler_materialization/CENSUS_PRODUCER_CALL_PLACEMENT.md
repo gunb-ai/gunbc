@@ -3,27 +3,48 @@
 Compiler reuse series, third change (`second worker reuses one real v1 front-end result through the
 existing store`). This is the finding row: it records what was measured, and the measurement says
 that on the only route driven here which asks the candidate question at an arm this PR may serve, an
-answer served from the store would cost several times more than an answer computed. Standing:
+answer served from the store would cost **more than an answer computed** — 14.2× and 2.14× more, on
+the key alone, before the payload moves at all. Standing:
 `gunbc.v1.v1_maintenance_standing`, lane `consumers-on-canonical-dependencies` of
 `gunbc.plans.demand_engine_program`.
 
 Conditions named, because a measurement without its commit and its image describes nothing:
 
-- source commit: `ebc880f930e458c2fb998e1eb1ce71dc3bc1a4a6` (main, with #17126 merged as
-  `16dfccbdf902`), plus only the four gated trace lines described below
-- image: `/opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc` into a private target dir;
-  `sha256` of the binary `fc37c6eb8680c5821cdce2656deaaef92a29c8b3c2874dbd8fe671e4cb1a43c5`,
-  re-hashed after the runs (the shared target dir can relink under a running process); the trace
-  build was rebuilt once more afterwards and behaved identically
+- probes 1–7: source commit `ebc880f930e458c2fb998e1eb1ce71dc3bc1a4a6` (main, with #17126 merged as
+  `16dfccbdf902`) plus this lane's instruments only, built by
+  `/opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc` into a private target dir. That
+  source was rebuilt more than once across the probe series and the run logs carry a re-hashed digest
+  for only one of those images, so those probes name their source, their instrument set and their
+  image prefix rather than a digest re-hashed before and after; the per-image list below says exactly
+  which image fed which reading, and a reader re-taking them rebuilds that source with the instruments
+  below and compares against the counts here.
 - host: one machine, one session slice; the two invocations of a pair ran **one at a time**
 - nothing was planted at `/tmp/fleet-converge-plan/`
 
-The probe 8 rows (below) name their own build, because they were taken later and at a different
-commit, and a row that does not name its commit describes an unknown front end:
+Each image below names the source it was built from, the instruments it carried, which probes it ran
+and what it printed — a row that does not name its commit and its image describes an unknown front
+end:
 
-- the per-site counts came from source `155d4f445ba` (its `src/` tree is `ebc880f930e`'s plus one
-  unrelated `src/v2/workflow/local_repo_wet_terminal.dag` deletion) with the four gated trace lines;
-  binary `sha256 49bcf7658146cfcdca304195d493daf242d77c74702e51233e9f516b2c84856b`
+- what each image printed, per probe — no row borrows its reading from another image's binary, and
+  `a9085c43…` and `fc37c6eb…` are two builds of one source with different instruments, not one
+  image remembered two ways:
+  - `fc37c6eb8680c5821cdce2656deaaef92a29c8b3c2874dbd8fe671e4cb1a43c5` — the instrumented observer
+    build at `ebc880f930e`, whose front door emits an `outcome: "asked"` line before any key or store
+    decision, re-hashed after the runs and unchanged — ran **probes 1 through 7** and printed
+    **zero** such lines: on those routes the function was never entered. That image carried no
+    per-site trace lines, so it is evidence about the front door and the exit codes only.
+  - `a9085c43…` — the same source plus the four per-site trace lines, recorded in the run notes by
+    this short prefix only — re-ran the probe 2 and probe 3 shapes to separate "not entered" from
+    "instrument dead". Each printed one `census-enter` and one `site=infer_graph_typecheck` line
+    (`modules=589` on probe 2, `modules=2` on probe 3) with `site=cli_run_reconcile` and
+    `site=infer_global_bare_wrapper` silent in the same process: a live trace beside a zero, which is
+    what lets that zero be read as "not entered" rather than "trace lost".
+  - `49bcf765…` — source `155d4f445ba` (its `src/` tree is `ebc880f930e`'s plus one unrelated
+    `src/v2/workflow/local_repo_wet_terminal.dag` deletion) with the four gated trace lines; binary
+    `sha256 49bcf7658146cfcdca304195d493daf242d77c74702e51233e9f516b2c84856b`, hashed at build time
+    and again before the run, identical — ran probe 8, and is the only image that ever printed at the
+    wrapped arm: two `census-enter` lines and two `site=cli_run_reconcile` lines (`modules=15`,
+    `modules=78`), zero at the other two sites. The probe 8 `2 / 2` row rests on this image alone.
 - the cost numbers came from `eb84380429e` (with `origin/main` `bfb3b50b057` merged in, which contains
   #17191 `cb0ad214441`) with one gated measurement block inside `reconcile_with_typed_cache`; binary
   `sha256 24b7f70531de7a3e0f348c6d4d7b399e2351f4802db7a6be20c0bd32233925e4`, hashed before the run and
@@ -125,17 +146,23 @@ gunbc test <claim>
   → v1_compiler.target_invocation_host::run_claim_selection
       (src/v1/stage0/src/target_invocation_host.rs:2499; the call at :2528)
   → v1_compiler.cli_run::run_claim_route                (src/v1/stage0/src/cli_run.rs:20858)
-      ├─ resolve_workspace_entry                        (cli_run.rs:20564; the call at :20575)
-      │    → entry_resolve::resolve_entry_with_index    (cli_run/entry_resolve.rs:1820)
-      │    → resolve_entry_with_parse_cache             (…:2016)
-      │    → resolve_entry_with_parse_cache_typed       (…:2029)
-      │    → resolved_graph_from_sources_with_index_typed (…:2154)
-      │    → reconcile_with_typed_cache                 (cli_run.rs:14666)
-      │    → build_symbol_index_for_reconcile … census #1  (modules=15)
-      └─ resolve_entry_with_index_typed                 (cli_run.rs:20972)
-           → resolve_entry_with_parse_cache_typed → … same chain
-           → build_symbol_index_for_reconcile … census #2  (modules=78)
+      ├─ resolve_workspace_entry            (cli_run.rs:20564; called at :20930, the call at :20575)
+      │    → v1_compiler_entry_resolve::resolve_entry_graph_shared  (cli_run/entry_resolve.rs:1493)
+      │    → resolve_entry_with_index                              (…:1820; the call at :1513)
+      │    → resolve_entry_with_parse_cache                        (…:2016; the call at :1830)
+      │    → resolve_entry_with_parse_cache_typed  (…:2029; the call at :2026, then `…_inner` :2046)
+      │    → resolved_graph_from_sources_with_index  (…:2138; the call at :2062)
+      │    → resolved_graph_from_sources_with_index_typed (…:2154; the call at :2151)
+      │    → reconcile_with_typed_cache     (cli_run.rs:14660; the call at entry_resolve.rs:2278)
+      │    → build_symbol_index_for_reconcile (cli_run.rs:14647) … census #1  (modules=15)
+      └─ resolve_entry_with_index_typed     (cli_run.rs:20972; defined entry_resolve.rs:1890)
+           → resolve_entry_with_parse_cache_typed (the call at :1902) → … the same tail
+           → build_symbol_index_for_reconcile (cli_run.rs:14653) … census #2  (modules=78)
 ```
+
+The first arm reaches the census through `resolve_entry_graph_shared`, the second through
+`resolve_entry_with_index_typed`; both land in the same reconcile arm, which is why one process pays
+the census twice and why the row cannot be read as one call.
 
 That chain is read from the source; it was also **observed**. A third measurement build — source
 `eb84380429e` plus one gated `eprintln!` before the `resolve_workspace_entry` call
@@ -165,8 +192,15 @@ cost is below the recompute cost, so the same instrument timed, around each cens
 itself, `v1_compiler.closure_identity::symbol_census_key` over the same inputs (the merged #17191
 authority, fed `(repository-relative file path, module path, source bytes)` for the 10,660-file
 process-shared pool plus the closure roster), and a `serde_json` `to_vec` + `from_slice` round-trip of
-the resulting `SymbolIndex` — a lower bound on the serve path's encode/decode, since the real path
-also pays the store read and the digest check.
+the resulting `SymbolIndex`.
+
+**The stop decision rests on the key alone, and the round-trip is context rather than a bound.** A
+warm consumer does not pay an encode: the bytes it reads were encoded by whoever published them. What
+a consumer must pay on every hit is the key (it is the address; there is no read before it), the store
+read, the digest check and one decode. So the ratio that decides is key-over-census; the `serde_json`
+figures are recorded because the payload's size is a real property of this answer — 63 MB of JSON for
+78 modules, which is what a carrier would have to move — and because the decode half of a round-trip
+is part of hit latency, but neither figure is claimed to be a lower bound on it.
 
 | call | closure | census | key | serde round-trip | payload JSON | restored == produced |
 |---|---|---|---|---|---|---|
@@ -177,16 +211,22 @@ The table is the timed invocation: the whole claim route in **332.4 s** wall, ex
 (`✓ typecheck gunbc.site.gunb_ai_css done in 14 seconds`;
 `1 claim(s): 1 held, 0 did not hold, 0 unobserved`), on the image whose `sha256` is named above
 (`24b7f70531de…`), re-hashed after the run and unchanged. One earlier invocation on a first build of
-the same source (`81e66d1cd418…`) is the replicate, and it agrees to within about two percent on
-every figure — census 57.599 ms and 382.931 ms, key 828.275 ms and 822.219 ms, serde 127.469 ms and
-977.599 ms, `restored == produced` on both calls.
+the same source (`81e66d1cd418…`) is the replicate: census 57.599 ms and 382.931 ms, key 828.275 ms
+and 822.219 ms, `restored == produced` on both calls. The two figures that decide the finding
+reproduce — census and key agree between the images within **1.1%** (census 0.15% and 0.11%, key 1.07%
+and 0.20%). The JSON timings are looser, differing by **3.1%** and **4.2%**, which is another reason
+they are context here and not the deciding ratio.
 
 The reading:
 
-- **Key plus encode/decode already costs 4.6× the recompute** on the 78-module call
-  (1,759 ms against 383 ms) and 16.3× on the 15-module call (943 ms against 57.7 ms). Add the
-  pool build a consumer without a retained pool vector must do (603 ms and 610 ms) and it is
-  6.2× and 26.8×. This is the opposite direction from the 2× bar: the census is the *cheap* side.
+- **The key alone costs more than the census it would replace**: 819.519 ms against 57.686 ms, a
+  **14.2× ratio** on the 15-module call, and 820.601 ms against 383.369 ms, a **2.14× ratio** on the
+  78-module call. Nothing on the hit path can be cheaper than this, because the key is the address.
+  That is the decision, and it is the wrong side of the 2× bar on both calls.
+- Context, not the bound: the `serde_json` round-trip measured 123.7 ms and 938.6 ms, and the
+  module-pool build a consumer without a retained pool vector must first perform to feed the key at
+  all measured 603 ms and 610 ms. Taken as the shape of a full request-response cycle those sit on
+  top of the ratio above; taken as the producer's publish cost they are not the consumer's hit cost.
 - The key's cost is **pool-bound, not closure-bound** — 819.5 ms and 820.6 ms for closures of 15 and
   78 modules, because #17191's preimage binds every discovered module's full source bytes (10,660
   files under `--source-root dag --source-root src/v2`) plus the compiler-identity term. That
@@ -220,7 +260,7 @@ as probe 2 (`closure_*` rows all 0, `resolve_entry_graph_inclusive` ≈ 107–11
 
 The lane wrapped `v1_compiler.cli_run::build_symbol_index_for_reconcile`
 (`src/v1/stage0/src/cli_run.rs:14647`). It is reached only from `reconcile_with_typed_cache`
-(`src/v1/stage0/src/cli_run.rs:14660`, the call at `:14666`), whose only call site in the crate sits
+(`src/v1/stage0/src/cli_run.rs:14660`, the call at `:14717`), whose only call site in the crate sits
 inside `resolved_graph_from_sources_with_index_typed`
 (`src/v1/stage0/src/cli_run/entry_resolve.rs:2278`). So everything that asks the census at that arm
 arrives through one of eight entry-resolve authorities, which delegate to one another like this:
@@ -290,26 +330,40 @@ The 27 `#[cfg(test)]` sites are not listed row by row: `cli_run.rs` 16 (`:5918`,
 `target_invocation_host.rs` 2 (`:4882`, `:6110`), `v1_interpreter.rs` 1 (`:28419`). They compile into
 the test binary only, so no `gunbc` invocation can reach them.
 
-Two things fall out of the corrected table that the 17-row version hid. First, the claim route's two
-arms enter through `resolve_workspace_entry` and `resolve_entry_with_index_typed`, neither of which
-the old scan could have seen; that is why probe 8 reached an arm the document had just said nothing
-reaches. Second, of the 30 arms, **21 have a production call site**, **1 is reachable only from
+Three things fall out of the corrected table that the 17-row version hid. First, the claim route's
+two arms are not symmetric with respect to the old scan. `resolve_workspace_entry`
+(`cli_run.rs:20575`) delegates to `resolve_entry_graph_shared` — one of the two names the old scan
+*did* look at, so this arm was in its scope and simply never made it into the list that was written
+down; the verdict "no route entered any of them" was reached without asking what calls each arm's
+enclosing function. Probe 8's `modules=15` census arrives through exactly that arm. The genuinely invisible arm is the other one: `run_claim_route` calls
+`resolve_entry_with_index_typed` (`cli_run.rs:20972`), a name outside the two the old scan looked at,
+and that is where probe 8's `modules=78` census arrives. Second, of the 30 arms, **21 have a production call site**, **1 is reachable only from
 `#[cfg(test)]` code** (`floor_diff_baseline_readout`), and **8 have no Rust call site at all** — they
 are reached, if at all, through the seed's name-keyed dispatch or not at all. A route that never
-enters one of the 21 cannot pay this census, which is the whole of probes 1–4.
+enters one of the 21 cannot pay this census, which is the whole of probes 1–4. Third, the claim route
+contributes **one** chain, not two independent entries, and `target_invocation_host.rs:2528` is
+counted once: `target_invocation_host.rs:3918` calls `run_claim_selection`, whose call at `:2528` is
+itself one of the 30 arms (its authority is `run_claim_route`), and `run_claim_route`'s own arm at
+`cli_run.rs:20972` (its authority is `resolve_entry_with_index_typed`) is the second. The `:2528`
+position appears in two rows because it is simultaneously an arm and the recorded caller of the arm
+below it; the call-site count behind the 30 is 30 distinct positions, and the two claim-route rows are
+two of them.
 
 The all-cache-hits shortcut is not the explanation: `typed_module_cache` is written only by
 `index_insert_typed` (`src/v1/stage0/src/cli_run.rs:12495`) from the dispatch loop that runs *after*
-the census, so a first reconcile of a closure always misses and always asks. And the instrument is
-not dead: the same binary that printed zero census entries on probes 1–4 printed two of them on
-probe 8, so a zero means the function was not entered, not that the trace was lost. (The front-door
-`outcome: "asked"` event the reuse lane's serve instrument emits belongs to the serving code this
-finding record does not carry; see the PR body.)
+the census, so a first reconcile of a closure always misses and always asks. And the zeroes are
+readable, per image as named above: on the trace-bearing build, probes 2 and 3 printed one census
+entry each at `typecheck_scoped` (`modules=589`, `modules=2`) while the wrapped-arm and `.global_bare`
+lines stayed silent in those same processes — the trace was live and the function was simply not
+entered — and the image that printed two entries at the wrapped arm is a different build
+(`49bcf765…`, probe 8). (The front-door `outcome: "asked"` event the reuse lane's serve instrument emits belongs
+to the serving code this finding record does not carry; see the PR body.)
 
 The probes, each armed with `GUNBC_FRONT_END_RESULT_SERVING=1`, a fresh store and worker id, driven
-one at a time. Probes 1–7 were taken on the trace build named at the top; probe 8's per-site counts
-came from the per-site-counts build and its timings and wall figure from the cost build, each named
-with its own `sha256` above:
+one at a time. Each column is fed by one named image: the `exit` and `[front-end-result]` columns for
+probes 1–7 come from `fc37c6eb…`; the four per-site columns for probes 2 and 3 come from `a9085c43…`,
+which re-ran those two shapes; probe 8's per-site columns come from `49bcf765…` and its timings and
+wall figure from `24b7f705…`. Every one is named with its own `sha256` above:
 
 | # | invocation | exit | events | evidence? |
 |---|---|---|---|---|
@@ -351,11 +405,12 @@ Nothing here changes either.
 
 The candidate question is real, its producer call is real, and on the one route driven here that asks
 it at the arm this lane could serve — `gunbc test <claim>`, twice per process, 57.7 ms and 383.4 ms —
-**answering it from the store would cost more than computing it**: the merged key alone is 819.5 ms
-and 820.6 ms (it binds the full bytes of all 10,660 pool modules, so its cost is pool-bound and not
-closure-bound), a lower-bound `serde_json` round-trip of the payload adds 123.7 ms and 938.6 ms, and
-that is 4.6× the recompute on the large call and 16.3× on the small one before the store read or the
-digest check is even counted. On `gunbc run` and `gunbc compile` the census is paid once per process,
+**answering it from the store would cost more than computing it**: the merged key alone, which every
+hit must compute before it can even address the store, is 819.5 ms and 820.6 ms, **14.2× and 2.14× the
+census it would replace** (it binds the full bytes of all 10,660 pool modules, so its cost is
+pool-bound and not closure-bound); the `serde_json` round-trip measured a further 123.7 ms and
+938.6 ms, and a consumer without a retained pool vector must first spend 603 ms and 610 ms building
+the pool the key reads. On `gunbc run` and `gunbc compile` the census is paid once per process,
 and it is paid somewhere else entirely — inside the seed's graph typecheck
 (`v1_compiler_infer::typecheck_scoped`, the emitted mirror of `src/v1/04_infer.dag:23044`) — a
 load-bearing seed stage this lane may not serve from, and the 10.18 s #17126 attributed to the census
