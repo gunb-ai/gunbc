@@ -1738,16 +1738,30 @@ fn filesystem_effect_debt_membership(site: FilesystemEffectSite) -> Bool {
 // Every site in the contract is located by the census's DIRECT reaches (the completeness direction of
 // the join): a contracted debt the census failed to see means the census never exercised its named
 // population, which is worse than a red census -- it is a blind one.
+// THE COMPLETENESS HALF IS UNIVERSAL, NOT EXISTENTIAL. Executed witness
+// filesystem_contract_join_refuses_unreached_member at head 271ec99e437 (srv1 batch, 09:35Z build) came
+// back DID-NOT-HOLD and named this: the outer combinator was an `any`, so a census locating ONE contracted
+// site counted as located-for-all, and the blind-census arm this function exists to refuse went green.
+// The comment above the join always demanded "EVERY site in the contract is located"; the code now says
+// that, as a fold over the contract with a Bool accumulator -- the same shape the join's membership half
+// folds, so the two halves of the join are read the same way (no new concept: minimize_redundancy).
 fn filesystem_effect_debt_contract_located(reaches: List<FilesystemEffectReach>) -> Bool {
-  any(xs: filesystem_effect_direct_reach_debt_contract, predicate: fn(contracted) {
-    any(xs: reaches, predicate: fn(reach) {
-      match reach {
-        ReachedFreePrimitiveDirectly { site: site, cause: _ } =>
-          filesystem_effect_site_eq(left: site, right: contracted)
-        ReachedThroughHandler { site: _ } => false
+  fold_list(
+    xs: filesystem_effect_direct_reach_debt_contract,
+    empty: true,
+    cons: fn(acc, contracted) {
+      match acc {
+        false => false
+        true => any(xs: reaches, predicate: fn(reach) {
+          match reach {
+            ReachedFreePrimitiveDirectly { site: site, cause: _ } =>
+              filesystem_effect_site_eq(left: site, right: contracted)
+            ReachedThroughHandler { site: _ } => false
+          }
+        })
       }
-    })
-  })
+    }
+  )
 }
 
 // THE IDENTITY JOIN: direct reaches are within the contract AND the contract is within the direct
