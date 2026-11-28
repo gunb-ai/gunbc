@@ -10,6 +10,7 @@ import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_
 import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import std.algebra { Cons, Empty, fold_list, length, list_append, list_reverse, string_concat_join }
+import std.list { distinct_by_key }
 import std.integer { int_to_decimal_string }
 import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_lexeme, symbol_intern_lexeme }
@@ -1798,28 +1799,23 @@ fn filesystem_effect_debt_contract_identity_strings() -> List<String> {
   ))
 }
 
-// DISTINCT identity count over the contract (review 98769 finding 2). The previous shape called the
-// identity-string builder once per element INSIDE the fold on top of the outer call -- cubic over a
-// builder that is itself quadratic via list_append -- and counted entries occurring exactly once, so
-// a duplicated pair reported n-2, not the number of distinct identities its own comment describes.
-// Now: the list is built ONCE and folded into an already-seen list; the count is the length of the
-// seen set, so four entries spelling three identities print 3, and a true duplicate is visible.
-// The seen-set fold, GENERAL (eager-koi consequence rule: a fix that changes what a control MEANS
-// owes its own observation): the contract count below is this helper on the contract list, and the
-// witness exercises the helper directly where an entry occurs exactly twice (the case the old shape
-// got wrong: it returned n-2 there) and where nothing duplicates (the case it must not change).
+// DISTINCT identity count over the contract (review 98769 finding 2, review 99588). The original shape
+// called the identity-string builder once per element INSIDE the fold on top of the outer call -- cubic
+// over a builder that is itself quadratic via list_append -- and counted entries occurring exactly
+// once, so a duplicated pair reported n-2, not the number of distinct identities its own comment
+// describes. Review 99588: a hand-rolled seen-list fold (linear any + list_append per element, copying
+// even on the duplicate arm) re-invents std.list::distinct_by_key, which dedups over the keyed Map in
+// one fold -- gunbc.design_argument::minimize_redundancy ("net concepts must not grow by
+// re-invention") and gunbc.design_argument::how_to_work (a proven quadratic fold is always fixed).
+// This is now that concept applied to the identity: the count is the length of
+// std.list::distinct_by_key with the identity key. String boundary: the kernel String IS
+// FreeMonoid<Char> (dag/std/coercion.dag, std.string_type note), which is exactly
+// v2.std.text::String, so the identity key needs no bridge -- stated per
+// gunbc.design_argument::conformance, no unstated divergence.
+// The witness exercises this helper directly where an entry occurs exactly twice (the case the old
+// shape got wrong: it returned n-2 there) and where nothing duplicates (the case it must not change).
 fn distinct_string_count(xs: List<String>) -> Int {
-  length(xs: fold_list(
-    xs: xs,
-    empty: [],
-    cons: fn(seen, identity) {
-      if any(xs: seen, predicate: fn(other) { other == identity }) {
-        list_append(left: seen, right: [])
-      } else {
-        list_append(left: seen, right: [identity])
-      }
-    }
-  ))
+  length(xs: distinct_by_key(xs: xs, key: fn(s) { s }))
 }
 
 fn filesystem_effect_debt_contract_distinct_count() -> Int {
