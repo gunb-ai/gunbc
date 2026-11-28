@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_authority_fixture_witness
 
 import std.content_hash { content_hash_eq_structural }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { String }
 import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes,
@@ -64,6 +65,8 @@ import test.claim.roadmap.roadmap_authority {
   scenario_history,
   scenario_withheld,
 }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE FIXTURE'S ROWS, selected from the committed roster by their directory. Selecting by directory rather than
 // by naming five constructors here keeps this module from holding its own list of what the fixture contains; the
