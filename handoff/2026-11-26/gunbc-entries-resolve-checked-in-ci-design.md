@@ -543,3 +543,93 @@ instrument and step modules sit under namespaces that already have rows.
 process, 612 s. The two enrolment claims in `test.claim.compiler_gate_emit_build_lane_witness`
 (the required job's own bound-step list carries the step; the committed YAML carries its name, id, entry and
 condition) are re-run against the regenerated file and reported with the PR.
+
+## §15 — the required lane red on its own step, the mirror tied, and what the step really costs
+
+Review 99511 (claude, REQUEST_CHANGES at `3b6ade9f`) raised two things, and CI settled a third that nobody
+had spotted.
+
+**(1) The mirrored label rule was an undeclared second authority.** `cs_label_ok` wrote the engine's
+`call_arg_label_matches_param` rule out again — `x` against `x`, `_x` or `_` — and the header called that
+"mirrored and cited". Citing is not using: under `gunbc.design_argument::single_authority` a second place that
+independently decides one meaning is a fork, and the violation the argument names is an *undeclared* one. The
+review offered two remedies; the shared-declaration one was rejected on cost and shape — the decision runs in
+Rust on every call the interpreter makes and at the compile seam, so a shared `.dag` declaration would put a
+read of the model on the seed's hot path for a three-arm rule the seed must never get wrong. The declared-
+divergence-and-tie remedy was taken instead:
+
+- the module header now states the divergence, its reason (asking the engine means resolving: 898 files /
+  143,992 ms / 3,435,568 KiB per leg; reading the matcher wholesale is the 5 m 18 s whole-tree pass), and what
+  is *not* mirrored (the resolver, the closure, entry reach, where a name lives);
+- four claims in `test.claim.declared_entry_call_shape_witness` read `src/v1/stage0/src/v1_compiler_infer.rs`
+  and assert the mirror's arms are the engine's arms. `the_engine_matcher_regions_are_bounded_and_readable`
+  requires each of the three declarations to occur exactly once, so a rename reddens the region claim instead
+  of quietly widening what the other three read. The three arm claims then count, in the bounded regions:
+  `Rc::new(vec![])` for bare `_`; the prefix guard `&& (v1_rt::substring(&param_name, 0, 1) == "_".to_string()))`
+  with both aliases (`param_name.clone(),` and the stripped `substring(&param_name, 1, …)`); and the fallback
+  `Rc::new(vec![param_name.clone()])` with `to_lowercase` / `to_uppercase` / `starts_with` absent. The mirror is
+  *asked*, not restated, through one public face `declared_entry_call_shape_label_ok` — a witness that
+  re-implemented the rule would be a third place deciding it, two of them in test code.
+
+Two of the four failed on their first draft and the failures were the point: `w_count(hay: matcher, needle:
+"true") == 1` was wrong (the loop assigns `__found = true`, so the region holds two), and a whole-file `contains`
+on `Rc::new(vec![` is worthless in a file that contains it 807 times — every needle is region-scoped and counted,
+not matched loosely.
+
+**(2) The budget finding, settled by the row rather than by argument.** `gunbc.design_ruling::ci_job_budgets_closed_to_growth`
+governs "any raise of a time budget above its previously approved value: a CI or fleet workflow job or step
+timeout, the authority row it derives from … or an individual workload booking", and item (3) adds
+relabelling/splitting/aggregating *to exceed the approved total*. This change touches no literal in
+`dag/gunbc/ci/repository_ci_profile.dag`; `v2-bootstrap` keeps the 90 minutes that
+`gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_raised_2026_11_25` ruled. What must be disclosed with
+that is the neighbour row `heal_and_v2_bootstrap_ci_timeouts_raise_is_temporary_2026_11_25`: the 90 is a
+temporary deviation that returns to 60 when `heal-bootstrap-seed-reuse` lands. The job already exceeds 60 today,
+so the step does not create that problem, but the restoration's arithmetic should carry this step's cost.
+
+**(3) The defect CI found in my own step.** The first CI run went red on the step itself:
+
+```
+##[error]scope of 1932 .dag files / 905722 lines is above the budget of 250000 lines: this is not this run's diff
+```
+
+for a PR that changes 13 `.dag` files. `git diff --name-only <event base>...HEAD` is not "what this PR changed"
+on a `pull_request` run: the checkout is GitHub's merge ref, and `github.event.pull_request.base.sha` is the base
+branch's tip at event time, which can have moved — so `A...B` resolves the merge base to something old and main's
+own commits arrive as this PR's work. The line ceiling is the only thing that stood between that and a confident
+wrong verdict. Reproduced locally in a `--depth=1` clone; and the repro exposed a second defect, my own: the step
+fetched the base with `--depth=1`, which grafts the fetched commit as a parentless root, after which the merge
+base is uncomputable and the step died with `fatal: …: no merge base`, exit 128 — no annotation, no named cause.
+
+The step now takes three facts from the event (`base.sha || merge_group.base_sha`, `event_name`, and the PR's own
+`head.sha`), asks `git merge-base` before the diff and refuses with the cause named when there is none, repairs a
+shallow checkout with `--unshallow` or refuses, never passes `--depth`, and keeps deleted paths out of the scope
+(`--diff-filter=d`). Both arms were executed:
+
+| arm | input | observed |
+|---|---|---|
+| shallow clone, before the fix | `--depth=1` clone, event base absent | `fatal: eeda48c4…HEAD: no merge base`, **rc 128**, no annotation |
+| shallow clone, after the fix, unshallow unavailable | same, origin unable to complete the history | `::error …share no merge base, so the diff has no honest starting point: refusing rather than judging a scope invented from a shallow or unrelated history`, **rc 1** |
+| shallow clone, after the fix, repair succeeds | `--depth=1` clone of the same branch | `scope: 80 .dag files, 55430 lines (… diffed from the merge base eeda48c4… of the event base eeda48c4…)`, rc 0 |
+
+**What the step costs, measured on the runner rather than on a laptop.** From the required-lane log of the red
+demonstration (run 46086100822, job 140795909109): prologue (event-base `cat-file`, diff, the `git grep`
+narrowing, `wc`/`xargs`) **5 s**; instrument over an 84-file / 57,782-line scope **3 m 26 s**; so ~**3.5 min**
+per PR with `.dag` changes, **0 s** when the diff carries none. My local 105 s at 78 files / 53,779 lines was a
+lighter machine, not a cheaper step, and the earlier ~105 s figure quoted upward was wrong — the corrected
+number went to the manager before the operator was asked anything. The new scope logic costs the lane nothing
+measurable: `git rev-parse --is-shallow-repository` 4 ms, `cat-file` + `merge-base` + the diff 17 ms. The fetch
+arms do not run on this job at all (`fetch-depth: 0`); when they do, `git fetch --unshallow` measured 1 m 44 s
+against github.com (`.git` 52 MB → 414 MB) and ~3 min against a local origin.
+
+**Acceptance, executed on the required lane.** `v2-bootstrap` on the red head `06cdeda` (gunb-ai/gunbc#17212)
+failed at this step with
+
+```
+declared-entry call shape: 13 changed + 12 reverse-imported files (of the index candidates), 0 named imports
+skipped unattributed; 1 label refusals, 0 missing entry files, 5 controls skipped;
+dag/gunbc/site/gunb_ai_pages_workflow.dag: gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit
+passes claim_run  declared: source_roots, target, receipt_rel
+```
+
+and the PR was closed unmerged. The instrument's own lane at this head: **28 claims — 28 held, 0 did not hold,
+0 unobserved** (12 m), engine built at head under the freshness gate.
