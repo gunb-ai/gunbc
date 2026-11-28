@@ -1,8 +1,11 @@
 module test.claim.orch_emit_refusal_witness
 
-// EXECUTED EVIDENCE that v2.workflow.ci_workflow_run_emit's retyped pipeline refuses typed, and the
-// deleted __GUNBC_ORCH_EMIT_REFUSED__ poison (ci_workflow_run_emit_refused_poison) can no longer
-// reach committed bytes. gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved
+// EXECUTED EVIDENCE that v2.workflow.ci_workflow_run_emit's retyped pipeline refuses typed, so THAT
+// producer's deleted constant (ci_workflow_run_emit_refused_poison) can no longer reach committed bytes.
+// The __GUNBC_ORCH_EMIT_REFUSED__ token STRING is a shared sentinel still minted by sibling run-step
+// emitters (compiler_gate_contract_stamp, bmc_token_federation, live_deploy) under their own gates -- this
+// concern dissolves only the ci_workflow_run_emit producer, NOT the token, and the compiler_gate_contract_stamp
+// witness keeps its token-absence scan for exactly that reason. gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved
 // recorded that this producer collapsed a rejection into an in-band marker string; the only witness
 // checking the token absent asserted it on ONE script (the compiler-gate contract-stamp witness), so
 // any other committed workflow's refusal reached committed bytes silently. The retyped chain carries
