@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_prerequisite_container_witness
 
 import std.types { NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_authority { roadmap_authority }
 import gunbc.roadmap.roadmap_estimate_derivation {
   prerequisite_edges_into_own_containers,
@@ -17,6 +18,8 @@ import test.claim.roadmap.roadmap_authority {
   red_ticket,
   tnid,
 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A fixture row: a self-contained RoadmapNode. `project` is the MemberOf container slug (empty => root, parent none).
 fn own_container_fixture(id: String, project: String) -> RoadmapNode {
