@@ -12,22 +12,22 @@ module test.claim.fleet.fleet_desired_state_follows_the_machine_witness
 // that CONSUMES this seam is a different, unstaffed row (fleet-truth-rosters-consume-the-read); these claims
 // stop at the seam on purpose.
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String }
 import std.nat { Nat }
 import std.list { distinct_by_key }
 import std.algebra { string_contains }
 import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthObserved,
-  HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
-  TruthSize, TruthCount, TruthMarking, TruthUnbounded,
+  HostTruthVerdict, HostTruthComparison, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
+  TruthSize, TruthCount, TruthMarking, TruthUnbounded, TruthDuplicateExpectation,
   TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
   TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
-  host_truth_axis_rule, host_truth_divergence_locator, fleet_truth_admits_host,
+  host_truth_axis_rule, host_truth_axes_match, host_truth_divergence_locator, fleet_truth_admits_host,
 }
 import gunbc.fleet.fleet_desired_state_claim {
   ModelAxisClaim, EnumeratedHardware, EnabledUnits, HostKey, LeafCap, SwapBacking,
-  model_claim_axis, desired_state_follows_the_machine,
+  model_claim_axis, enabled_unit_marking, desired_state_follows_the_machine,
 }
 
 // SUPPLIED-VALUE HELPERS at this claim's boundary.
@@ -64,6 +64,26 @@ fn names_axis(result: HostTruthVerdict, axis: HostTruthAxis) -> Bool {
   }
 }
 
+// THE COLLAPSE IS REFUSED, NOT ADJUDICATED. This asserts the verdict is the REFUSAL arm (so no divergence
+// was manufactured) AND that the refusal is the read module's own duplicate-declaration arm for the axis
+// that collided, carrying the count of claims that collided. Matching the typed arm is the point: a seam
+// that refused in prose, or that picked one of the two claims and compared it, fails here.
+fn duplicate_arm_names_axis(comparison: HostTruthComparison, axis: HostTruthAxis, declarations: Int) -> Bool {
+  match comparison {
+    TruthDuplicateExpectation { host: _, axis: a, declaration_count: n } =>
+      host_truth_axes_match(left: a, right: axis) && n == declarations
+    other => false
+  }
+}
+
+fn refuses_duplicate_axis(result: HostTruthVerdict, axis: HostTruthAxis, declarations: Int) -> Bool {
+  match result {
+    HostTruthRefused { host: _, refusals: cs } =>
+      cs.any(c => duplicate_arm_names_axis(comparison: c, axis: axis, declarations: declarations))
+    other => false
+  }
+}
+
 // THE FIVE CLAIMS ARE FIVE DISTINCT AXES, each carrying its own non-empty rule. A claim whose axis had
 // collapsed onto another cannot pass this, which is what keeps the five remedies distinguishable.
 test fn the_model_holds_five_distinct_axes() -> Bool {
@@ -94,12 +114,26 @@ test fn RED_enumerated_hardware_no_longer_enumerating_diverges_and_names_its_arm
 // RED AXIS 2 -- AN ENABLED UNIT OVER HARDWARE THAT DOES NOT ENUMERATE. dan (reported as h11): the
 // expert-lock unit declares its hardware enumerating; the machine answers the hardware is absent.
 test fn RED_enabled_unit_over_absent_hardware_diverges_and_names_its_arm() -> Bool {
-  let result = desired_state_follows_the_machine(
+  let claim = EnabledUnits { unit: "strata-expert-lock", hardware_enumerates: true, declared_by: "the unit file under systemd" }
+  // THE READ SIDE'S MARKING IS BUILT BY THE MODEL'S OWN MARKING AUTHORITY, not by a sentence invented at
+  // the call site. What drifts in this witness is the Bool the machine answers -- hardware present vs gone --
+  // not the wording of two prose versions nobody agreed on; a marking the test wrote by hand would pass or
+  // fail on spelling, which is the failure this row exists to prevent.
+  let drifted = desired_state_follows_the_machine(
     host: "dan" as NonEmptyStr,
-    claims: [EnabledUnits { unit: "strata-expert-lock", hardware_enumerates: true, declared_by: "the unit file under systemd" }],
-    reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: "strata-expert-lock enabled with its hardware absent"))],
+    claims: [claim],
+    reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: enabled_unit_marking(unit: "strata-expert-lock", hardware_enumerates: false)))],
   )
-  admits(result: result) == false && names_axis(result: result, axis: TruthEnabledUnitHasItsHardware)
+  // The SAME claim over the marking the machine gives when the hardware IS there agrees, which is what makes
+  // the drift above the Bool rather than a string the test happened to write.
+  let agreeing = desired_state_follows_the_machine(
+    host: "dan" as NonEmptyStr,
+    claims: [claim],
+    reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: enabled_unit_marking(unit: "strata-expert-lock", hardware_enumerates: true)))],
+  )
+  admits(result: drifted) == false
+    && names_axis(result: drifted, axis: TruthEnabledUnitHasItsHardware)
+    && admits(result: agreeing) == true
 }
 
 // RED AXIS 3 -- A PRESENTED KEY THAT IS NOT THE ENROLLED ANCHOR. butch .238 held another machine's host
@@ -174,4 +208,28 @@ test fn RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees() -> Bool {
   admits(result: result) == false
     && names_axis(result: result, axis: TruthCapBindsDeclaredWorkingSet)
     && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates) == false
+}
+
+// RED -- TWO CLAIMS ON ONE AXIS REFUSE; THE FOLD NEVER PICKS ONE. A host really can hold four NVIDIA cards
+// AND two NICs, but the read answers the hardware axis ONCE per host, and neither a count nor a size carries
+// the qualifier that tells the two claims apart. Left to the fold, each claim is compared against the single
+// read: one Agrees, one Diverges, and Diverges outranks Refused -- so the verdict reports a drift the machine
+// never showed, chosen by whichever claim came first. That is a fabricated finding, which is not a safe
+// direction to fail (gunbc.design_argument::declared_intent: a choice between materially different meanings
+// must come from a declared authority; gunbc.design_argument::fail_closed). The seam refuses instead, naming
+// the axis and the count. Unlocking the pair -- pairing by host, axis AND qualifier -- is a standing change to
+// gunbc.fleet.fleet_host_truth_read (row fleet-truth-per-host-read), owed through the lane manager, not
+// invented here against another row's bytes.
+test fn RED_two_claims_on_one_axis_refuse_rather_than_let_the_fold_pick_one() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv1" as NonEmptyStr,
+    claims: [
+      EnumeratedHardware { device_class: "nvidia", count: 4, declared_by: "the serving layout's pool row" },
+      EnumeratedHardware { device_class: "nic", count: 2, declared_by: "the build roster's nic row" },
+    ],
+    reads: [obs(host: "srv1" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4))],
+  )
+  admits(result: result) == false
+    && refuses_duplicate_axis(result: result, axis: TruthDeclaredHardwareEnumerates, declarations: 2)
+    && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
 }

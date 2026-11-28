@@ -1,15 +1,16 @@
 module gunbc.fleet.fleet_desired_state_claim
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
+import std.list { distinct_by_key }
 import std.measure { ByteSize }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthExpectation, HostTruthDeclared,
-  HostTruthVerdict,
+  HostTruthVerdict, HostTruthRefused, TruthDuplicateExpectation,
   TruthSize, TruthCount, TruthMarking, TruthUnbounded,
   TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
   TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
-  fleet_host_truth_verdict_for_host,
+  host_truth_axes_match, host_truth_axis_rule, fleet_host_truth_verdict_for_host,
 }
 
 // THE MODEL SIDE OF fleet-truth-follows-the-machine: what the repository CLAIMS about a host,
@@ -57,8 +58,18 @@ fn model_claim_axis(claim: ModelAxisClaim) -> HostTruthAxis {
   }
 }
 
+// THE MARKING FORM HAS ONE AUTHORITY: this function. The identity and enabled-unit axes relate MARKINGS
+// (a fingerprint is a marking; a unit's state is a marking), so what the model must not do is write an
+// English sentence here and let the read side write its own -- two places independently deciding a string
+// is a fork, and a wording difference would then read as a drift that never happened
+// (gunbc.design_argument::single_authority). So the marking is a canonical projection of the typed parts
+// the claim holds: the unit AND the Bool it carries, both visible in the token, neither lost in phrasing.
+// The read-side producer owed by row fleet-truth-per-host-read imports THIS function rather than restating
+// it; that no producer exists yet is the frontier named in gunbc.fleet.fleet_host_truth_observe, where the
+// enabled-unit read is a typed refusal today.
 fn enabled_unit_marking(unit: String, hardware_enumerates: Bool) -> String {
-  if hardware_enumerates { unit + " enabled with its hardware enumerating" } else { unit + " enabled with its hardware absent" }
+  let state = if hardware_enumerates { "enumerating" } else { "absent" }
+  "unit=" + unit + ";hardware_enumerates=" + state
 }
 
 // THE VALUE THE MODEL CLAIMS, in the shape the read's axis relates (a count, a size, a marking).
@@ -112,7 +123,51 @@ fn model_claim_expectation(host: NonEmptyStr, claim: ModelAxisClaim) -> HostTrut
 // HostTruthAxis (each comparison carries it), or reads them aloud with host_truth_divergence_locator.
 // CONSUMED BY a named later change: row fleet-truth-rosters-consume-the-read calls this to gate the
 // remote-build and serving rosters -- the declared frontier, its trigger being that row's dispatch.
-fn desired_state_follows_the_machine(host: NonEmptyStr, claims: List<ModelAxisClaim>, reads: List<HostTruthRead>) -> HostTruthVerdict {
-  let expectations = claims.map(claim => model_claim_expectation(host: host, claim: claim))
-  fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations)
+// HOW MANY CLAIMS COVER ONE AXIS FOR THIS HOST. The read pairs a declaration to a read by (host, axis),
+// because that is the grain the read answers at: one value per host per axis. A claim carries a qualifier
+// the value cannot always hold -- device_class on a count, role on a size, slot on a backing -- so two
+// claims landing on the same axis become two expectations the fold CANNOT tell apart. It would then
+// compare EACH of them against the one read on that axis and, because Diverges outranks Refused, report a
+// divergence the machine never showed: the fold silently choosing between two authorities the model never
+// ranked. That is the report's tier 4 wearing the model's own clothes
+// (gunbc.design_argument::declared_intent -- a choice between materially different meanings must come from
+// a declared authority; gunbc.design_argument::fail_closed -- guessing here is a fabricated finding, and a
+// fabricated divergence is not a safe direction to err). So the qualifier is never silently dropped: it
+// either rides the marking (the unit axes, where the marking IS the fact) or a claim set that collides on
+// one axis is refused before a single comparison is attempted, in the read module's own words for it.
+fn model_claim_count_on_axis(claims: List<ModelAxisClaim>, axis: HostTruthAxis) -> Int {
+  claims.filter(claim => host_truth_axes_match(left: model_claim_axis(claim: claim), right: axis)).length()
 }
+
+fn model_claim_axes_declared_more_than_once(claims: List<ModelAxisClaim>) -> List<HostTruthAxis> {
+  let axes = claims.map(claim => model_claim_axis(claim: claim))
+  let colliding = axes.filter(axis => model_claim_count_on_axis(claims: claims, axis: axis) > 1)
+  distinct_by_key(xs: colliding, key: fn(axis) { host_truth_axis_rule(axis: axis) })
+}
+
+fn desired_state_follows_the_machine(host: NonEmptyStr, claims: List<ModelAxisClaim>, reads: List<HostTruthRead>) -> HostTruthVerdict {
+  let colliding = model_claim_axes_declared_more_than_once(claims: claims)
+  if colliding.length() > 0 {
+    // Refused, not adjudicated, and named per axis with the count: the model has two claims for one fact
+    // this axis answers once. The arm below is the read module's OWN word for that state, not a new one
+    // (gunbc.design_argument::minimize_redundancy).
+    HostTruthRefused {
+      host: host,
+      refusals: colliding.map(axis => TruthDuplicateExpectation {
+        host: host,
+        axis: axis,
+        declaration_count: model_claim_count_on_axis(claims: claims, axis: axis),
+      }),
+    }
+  } else {
+    let expectations = claims.map(claim => model_claim_expectation(host: host, claim: claim))
+    fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations)
+  }
+}
+
+// THE OWED CHANGE, NAMED RATHER THAN WORKED AROUND: refusing a colliding claim set is correct but not the
+// end of it. A host really can enumerate four GPUs AND two NICs, and today the model cannot SAY that,
+// because the read pairs by (host, axis) and the expectation carries no qualifier. Unlocking it is a change
+// to gunbc.fleet.fleet_host_truth_read (pairing on host, axis AND the qualifier) -- another row's bytes
+// (row fleet-truth-per-host-read), so it goes to the lane manager as a standing change, and this row
+// refuses in the meantime rather than inventing a key the read cannot answer.
