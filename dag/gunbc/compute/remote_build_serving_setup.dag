@@ -1859,11 +1859,11 @@ fn serving_observed_from_reads(
       "checkout.revision",
       serving_gate_and(checkout_g, serving_account_presence_gate(account_name: account_name, passwd: passwd)),
       checkout_revision,
-    )
+    ),
     // The door-carrier read rides the SAME two gates as the revision, but NOT the subject-value
     // wrapper: a skipped read stays skipped (Absent -> the census gate DEFERS, asking nothing), a
     // proven no-door checkout is established-false (defer, naming the checkout write that brings it).
-    checkout_door: checkout_door,,
+    checkout_door: checkout_door,
     authorized_keys_mode: serving_subject_value_leg("authorized_keys.mode", serving_authorized_keys_presence_gate(ak_g), authorized_keys_mode),
     serve_binary_mode: serving_subject_value_leg("serve.binary.mode", serve_binary_g, serve_binary_mode),
     serve_identity: serve_identity,
