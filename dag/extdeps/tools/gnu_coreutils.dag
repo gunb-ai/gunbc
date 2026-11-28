@@ -73,6 +73,43 @@ fn ls_almost_all_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program(), arguments: ["-1", "-A", "--", path])
 }
 
+// THE NAMES OF THE DIRECT CHILDREN OF A DIRECTORY, EACH TERMINATED BY NUL AND NOTHING ELSE:
+// `ls -A --zero` -- ls(1) `-A, --almost-all` (dot entries included, the implied `.` and `..`
+// omitted) and `--zero` (end each name with NUL instead of a newline; this row admits GNU
+// coreutils 9.0 as the minimum -- older versions may not know the option, and that refusal exits
+// non-zero, which its consumers read as unobservable, never as empty; `-A` is written explicitly
+// rather than relying on any implied default). THE BOUNDARY-PRESERVING listing: NUL
+// cannot occur inside a name -- the kernel admits every byte but `/` and NUL in a name
+// (path_resolution(7)) -- so an entry may hold spaces, tabs, or newlines and a reader that trims
+// nothing sees a whitespace-only name as a name and a newline-bearing name as ONE entry. WHY THIS
+// ROW AND NOT `find DIR -mindepth 1 -maxdepth 1 -printf '%f\0'`: find stats the entries it walks
+// to decide what it has, so a readable-but-not-searchable directory (mode 0444; read enumerates,
+// search resolves, path_resolution(7)) makes find exit non-zero with an error even though its
+// names are listable -- measured on this host: on a 0444 directory, find answers "Permission
+// denied" with exit 1 where `ls -A --zero` prints the NUL-terminated names and exits 0. ls answers
+// from readdir(3) and, where the filesystem reports entry types (d_type: ext4, tmpfs), it does
+// not stat children at all. The caveat is two-sided and both consumers fail closed on it: a
+// listing that exits NON-ZERO -- an older coreutils refusing `--zero`, a filesystem without
+// d_type under a parent that cannot be stat-ed, an unreadable or missing directory -- is read by
+// its consumers as THIS LISTING DID NOT ANSWER, never as empty and never as "the name is not
+// there" (ls(1) EXIT STATUS: 2 for serious trouble, including an invalid option or an absent
+// operand). CONSUMERS: witness_tree_parent_listing_state (membership by exact equality against
+// the NUL-terminated entries) and witness_directory_listing_is_provably_empty (zero entries FROM
+// A LISTING THAT RAN) in test.claim.roadmap.witness_supplied_instance. DIRECTORY SEMANTICS ON THE
+// OPERAND: ls(1) lists FILE OPERANDS THEMSELVES -- `ls -A --zero -- <regular-file>` exits 0 and prints
+// the operand's own name (measured on the battery host, coreutils 9.7), which a child-listing reader
+// would take for a clean listing that does not name the child, i.e. for ABSENCE beneath a file. So the
+// row asks the question it names -- children OF A DIRECTORY -- by appending exactly one trailing
+// separator: with a trailing separator the FILE/'/' form refuses "Not a directory" at exit 2
+// (measured; path_resolution(7) requires the slash-suffixed component to be a directory), while
+// directories answer unchanged -- the 0444 listable-not-searchable parent still lists at exit 0
+// (measured), and a trailing separator on an absolute operand is a second separator on the last
+// component, which collapses to the same directory. An operand that is a dangling symbolic link or is
+// missing exits 2 as before: a listing that did not answer, never an answer of absence.
+fn ls_child_names_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-A", "--zero", "--", join([path, "/"], "")])
+}
+
 // mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
 // X's replaced), mode 0700, and prints its path; it refuses rather than reuse an existing name
 // (coreutils manual, "mktemp invocation"). That exclusive creation is what makes the directory one
@@ -366,6 +403,34 @@ fn realpath_program() -> ProgramIdentity = uncataloged_program(invocation: "real
 // shell.Path.Canonical (extdeps.shell), which is an effect on the local host; this is its ArgvCommand form for a CommandHost, which a remote host needs.
 fn realpath_canonical_command(path: String) -> ArgvCommand {
   argv_command(program: realpath_program(), arguments: ["-e", "--", path])
+}
+
+// realpath -m CANONICALIZES A PATH THAT NEED NOT EXIST: realpath(1), "-m, --canonicalize-missing: no component
+// of the path need exist" — symlinks that do exist are resolved, "." and ".." are collapsed, and a missing
+// trailing component is accepted rather than refused. This is the form a guard running BEFORE a create needs:
+// the -e row above refuses on a missing component, which is exactly the state of the path being judged when the
+// question is "may anything be created here".
+fn realpath_canonicalize_missing_command(path: String) -> ArgvCommand {
+  argv_command(program: realpath_program(), arguments: ["-m", "--", path])
+}
+
+// realpath -m -z CANONICALIZES A NEED-NOT-EXIST PATH AND TERMINATES THE ANSWER WITH NUL, so the
+// bytes survive the transport. WHY A SECOND ROW BESIDE -m: the host's shell.Exec.RunArgv stdout
+// drain applies Rust `str::trim_end()` to the captured bytes BEFORE any `.dag` helper sees them
+// (src/v1/stage0/src/bounded_shell_host_drain.rs `StreamCaptureObservation::retained_utf8_lossy_trimmed` -- a follow-up owned by the store-migration lane, not yet filed), and
+// `trim_end` strips trailing Unicode WHITESPACE -- so a newline-terminated capture silently
+// loses a trailing space, although path_resolution(7) admits every byte but `/` and NUL in a
+// name. NUL is not whitespace, so `realpath -m -z` prints the resolved text exactly and ends it
+// with one NUL. VERSIONED: `-z, --zero end each output line with NUL, not newline` is
+// realpath(1) (GNU coreutils; --zero present since coreutils 8.25, host certified at 9.7).
+// An unrecognized-option refusal (older coreutils) exits nonzero, which the capture helper
+// reads as UNOBSERVABLE and refuses -- the same rule as the `--zero` row of
+// `ls_child_names_command` above, and never as an empty or absent answer.
+// CONSUMER: `witness_resolved_path` in test.claim.roadmap.witness_supplied_instance, whose
+// capture requires exactly one trailing NUL (`witness_decode_one_nul_terminated`) and treats any
+// other output shape -- no terminator, doubled terminator, embedded NUL -- as unobservable.
+fn realpath_canonicalize_missing_zero_command(path: String) -> ArgvCommand {
+  argv_command(program: realpath_program(), arguments: ["-m", "-z", "--", path])
 }
 
 fn readlink_command(path: String) -> ArgvCommand {
