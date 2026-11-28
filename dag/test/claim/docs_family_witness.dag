@@ -5,7 +5,7 @@ import std.algebra { bag_eq }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol, symbol_eq }
-import v2.std.node_reflection { coproduct_nullary_inhabitants }
+import v2.std.node_reflection { coproduct_arm_keys }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   DocsArtifact,
@@ -39,11 +39,11 @@ fn same_projection(a: DocsProjection, b: DocsProjection) -> Bool {
   symbol_eq(a: docs_projection_discriminant(p: a), b: docs_projection_discriminant(p: b))
 }
 
-fn roster_is_the_sum(roster: List<DocsProjection>, inhabitants: List<DocsProjection>) -> Bool {
-  count(inhabitants) > 0
+fn roster_is_the_sum(roster: List<DocsProjection>, arms: List<Symbol>) -> Bool {
+  count(arms) > 0
     && bag_eq(
       xs: map(roster, p => docs_projection_discriminant(p: p)),
-      ys: map(inhabitants, p => docs_projection_discriminant(p: p)),
+      ys: arms,
       eq: symbol_eq
     )
 }
@@ -60,20 +60,20 @@ fn family_and_location_agree(is_docs: Bool, directory: String) -> Bool {
 }
 
 test fn witness_docs_projections_holds_every_docs_variant_once() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: ^DocsProjection, discriminant_of: docs_projection_discriminant) {
-    Accepted { value: inhabitants, diagnostics: _ } => roster_is_the_sum(roster: docs_projections, inhabitants: inhabitants)
+  match coproduct_arm_keys(pool_roots: ["dag"], type_name: ^DocsProjection) {
+    Accepted { value: arms, diagnostics: _ } => roster_is_the_sum(roster: docs_projections, arms: arms)
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn witness_a_roster_missing_or_repeating_a_docs_variant_is_refused() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: ^DocsProjection, discriminant_of: docs_projection_discriminant) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
+  match coproduct_arm_keys(pool_roots: ["dag"], type_name: ^DocsProjection) {
+    Accepted { value: arms, diagnostics: _ } =>
       !roster_is_the_sum(
         roster: filter(docs_projections, p => !same_projection(a: p, b: ContributorOnboardingProjection)),
-        inhabitants: inhabitants
+        arms: arms
       )
-        && !roster_is_the_sum(roster: concat(docs_projections, [ContributorOnboardingProjection]), inhabitants: inhabitants)
+        && !roster_is_the_sum(roster: concat(docs_projections, [ContributorOnboardingProjection]), arms: arms)
     Rejected { diagnostics: _ } => false
   }
 }
