@@ -576,7 +576,7 @@ fn estimate_contradictions(nodes: List<RoadmapNode>, entries: List<EstimateEntry
 fn contradiction_for_node(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, ancestor: RoadmapNode, row: RoadmapEstimateRow) -> Optional<EstimateContradiction> {
   match estimate_form_days(t: estimate_table, v: row.value) {
     Absent => optional_absent()
-    Present { value: ancestor_days } => match first_estimated_descendant(nodes: nodes, entries: entries, node: ancestor.node) {
+    Present { value: ancestor_days } => match first_estimated_descendant(nodes: nodes, entries: [] as List<EstimateEntry>, node: ancestor.node) {
       Absent => optional_absent()
       Present { value: side } => optional_present(value: EstimateContradiction {
         ancestor: ancestor.node,
