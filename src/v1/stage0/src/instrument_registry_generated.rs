@@ -334,6 +334,146 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-element-at-list-position".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "element_at_list_position_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-refusal-names-parameter".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "refusal_names_parameter_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-list-still-admitted".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "list_still_admitted_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-element-at-element-position".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "element_at_element_position_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-three-arms-observable".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "three_arms_observable_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-arms-differ-by-target-row".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "arms_differ_by_target_row_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-all-legs".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "wall_all_legs_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-fold-cannot-absorb-a-two".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "fold_cannot_absorb_a_two_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-deep-unbound-element".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "deep_unbound_element_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-deep-resolved-element".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "deep_resolved_element_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "free-monoid-carrier-text-at-string-run-refused".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/text_at_free_monoid_run_carrier_witness.dag",
+                function: "text_at_string_run_refused_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "free-monoid-carrier-two-runs-admitted".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/text_at_free_monoid_run_carrier_witness.dag",
+                function: "two_runs_admitted_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "free-monoid-carrier-list-push-admitted".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/text_at_free_monoid_run_carrier_witness.dag",
+                function: "list_push_admitted_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "free-monoid-carrier-all-legs".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/text_at_free_monoid_run_carrier_witness.dag",
+                function: "carrier_all_legs_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "native-allocation-observation".to_string(),
             },
             TargetProducer::NativeClaimProgram {

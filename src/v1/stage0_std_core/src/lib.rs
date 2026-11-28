@@ -117,6 +117,9 @@ pub mod std_graph;
 #[path = "../../stage0/src/std_unicode_scalar.rs"]
 pub mod std_unicode_scalar;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_unicode_char_class.rs"]
+pub mod std_unicode_char_class;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_uri.rs"]
 pub mod extdeps_uri;
 #[rustfmt::skip]

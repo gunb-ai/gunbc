@@ -6,12 +6,14 @@ use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
 pub use crate::std_algebra::{
     collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_head,
-    list_push, list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys,
+    list_map, list_push, list_snoc_item, list_sort_by_key, map_insert, map_lookup,
+    map_support_keys,
 };
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, Map, SourceSpan};
+pub use crate::std_unicode_char_class::unicode_char_code_point;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -115,7 +117,12 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
 }
 
 pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
-    advance_line_prefix_indent_only(previous, crate::std_coercion::unicode_scalar_unfold(lexeme))
+    advance_line_prefix_indent_only(
+        previous,
+        crate::std_algebra::list_map(crate::std_coercion::unicode_scalar_unfold(lexeme), |c| {
+            crate::std_unicode_char_class::unicode_char_code_point(c)
+        }),
+    )
 }
 
 pub fn placement_from_line_prefix(indent_only: bool) -> AnnotationPlacement {

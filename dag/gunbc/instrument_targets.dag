@@ -1160,6 +1160,240 @@ fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
 // binding and forgot the label, and gunbc.target_binding build_target_binding_index refused the whole
 // registry each time. A label is now a target exactly when a binding names it, so that omission has
 // no constructor; a label bound twice still refuses, in the index's own duplicate check.
+// THE LIST_APPEND ELEMENT-ARGUMENT WALL AND ITS FREE-MONOID CARRIER, ENROLLED AS ADDRESSES.
+//
+// WHY ROWS AT ALL (review 99292 on gunb-ai/gunbc#16894): these two instrument modules carried their
+// legs as functions nothing imported and no address ran, which is dangling by
+// gunbc.design_argument::consumption -- "a module nothing imports" is a listed tell -- and the
+// guarantee ladder requires the discriminating RED and its positive controls to STAY ENROLLED. Each
+// leg of the node's red control therefore has its own row, so the exit a reader gets at
+// `gunbc test <label>` is that leg's own answer rather than a fold over nine questions, and each
+// module has one fold row over its whole leg population so no leg can exist unaddressed. The legs
+// say what they assert; these rows only name the producer.
+//
+// THE PRODUCER IS `CliWireProgramProducer` AND NOT A NEW ARM, because the leg functions already
+// answer a CliWireResponse (their wire functions state the rule at
+// #gunbc.instruments.list_append_element_argument_wall::wall_all_legs_wire), and
+// src/v1/stage0/src/target_invocation_host.rs::run_cli_wire_program is the ONE generic realization
+// for that shape: it resolves the entry from the row's declaration through gunbc.source_layout (no
+// authored path string to drift -- the gunbc#8377 class, closed by the reference check on the
+// constructing row), evaluates the function wet over the witness layer roots, prints the wire bytes,
+// and maps the leg's ProcessExit through the classifier in cli_run. That mapping is why the legs are
+// three-state: 0 held, 1 an observation that disagreed, 2 the census door never answered -- a
+// could-not-run reaching a reader as rc 1 would be read as a wall that did not fire.
+//
+// RUN BY NAME, NOT A MERGE GATE (gunbc.design_ruling emit_build_subjects_are_the_two_compiler_products),
+// in the manner of #fleet_convergence_verdict_route_binding in this file.
+
+// THE WALL: src/v1/04_infer.dag refuses a text actual at an applied `FreeMonoid<T>` position whose
+// element is settled and not Char. Six legs, one fold.
+
+fn list_append_wall_element_at_list_position_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-element-at-list-position" } }
+}
+
+fn list_append_wall_element_at_list_position_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_element_at_list_position_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "element_at_list_position_wire")
+    }
+  }
+}
+
+// The refusal must NAME the parameter `right` and carry the inhabitance reason token.
+fn list_append_wall_refusal_names_parameter_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-refusal-names-parameter" } }
+}
+
+fn list_append_wall_refusal_names_parameter_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_refusal_names_parameter_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "refusal_names_parameter_wire")
+    }
+  }
+}
+
+// POSITIVE CONTROL: a list at the same position is still admitted.
+fn list_append_wall_list_still_admitted_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-list-still-admitted" } }
+}
+
+fn list_append_wall_list_still_admitted_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_list_still_admitted_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "list_still_admitted_wire")
+    }
+  }
+}
+
+// POSITIVE CONTROL: an element at a position declared as the element is still admitted.
+fn list_append_wall_element_at_element_position_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-element-at-element-position" } }
+}
+
+fn list_append_wall_element_at_element_position_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_element_at_element_position_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "element_at_element_position_wire")
+    }
+  }
+}
+
+// THE DOOR'S CONTROL: all three census arms observable, so no leg can pass on an absence.
+fn list_append_wall_three_arms_observable_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-three-arms-observable" } }
+}
+
+fn list_append_wall_three_arms_observable_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_three_arms_observable_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "three_arms_observable_wire")
+    }
+  }
+}
+
+// THE DIFFERENTIAL: the two arms' BLOCKING rows differ by exactly the target row.
+fn list_append_wall_arms_differ_by_target_row_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-arms-differ-by-target-row" } }
+}
+
+fn list_append_wall_arms_differ_by_target_row_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_arms_differ_by_target_row_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "arms_differ_by_target_row_wire")
+    }
+  }
+}
+
+// THE WHOLE WALL IN ONE ADDRESS: every leg's row printed with its own verdict and code, the run's
+// exit the worst of them.
+fn list_append_wall_all_legs_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-all-legs" } }
+}
+
+fn list_append_wall_all_legs_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_all_legs_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "wall_all_legs_wire")
+    }
+  }
+}
+
+// THE FOLD'S OWN CONTROL, and the only leg in this module whose expectation does not depend on the
+// wall: one member that HELD folded with one member the renderer refused, so the run MUST exit 2 -- on
+// the tree with the wall and on the tree without it. It exists because `census_worst_exit` is a maximum
+// over member codes, and every other member of `#wall_all_legs_wire` is an answer: no fold that only
+// holds can show that a 2 survives it. rc 1 here means a census that could not run is being reported as
+// a wall that did not fire. `gunbc test //gunbc/instruments:list-append-wall-fold-cannot-absorb-a-two`.
+fn list_append_wall_fold_cannot_absorb_a_two_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-fold-cannot-absorb-a-two" } }
+}
+
+fn list_append_wall_fold_cannot_absorb_a_two_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_fold_cannot_absorb_a_two_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "fold_cannot_absorb_a_two_wire")
+    }
+  }
+}
+
+// THE DEPTH RED: the same wall over a fixture whose element demand carries an unsolved type variable
+// BELOW the ceiling this row's commit removed (sixteen). rc 1 where the walk still stops there, rc 0
+// where it walks the shape. `gunbc test //gunbc/instruments:list-append-wall-deep-unbound-element`.
+fn list_append_wall_deep_unbound_element_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-deep-unbound-element" } }
+}
+
+fn list_append_wall_deep_unbound_element_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_deep_unbound_element_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "deep_unbound_element_wire")
+    }
+  }
+}
+
+// THE DEPTH CONTROL: the same twenty-four-deep shape with a SETTLED core, admitted with no row of the
+// target class -- deep is not refused, and the uncapped recursion returns (rc 0, no stack overflow).
+// `gunbc test //gunbc/instruments:list-append-wall-deep-resolved-element`.
+fn list_append_wall_deep_resolved_element_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "list-append-wall-deep-resolved-element" } }
+}
+
+fn list_append_wall_deep_resolved_element_binding() -> TargetBinding {
+  TargetBinding {
+    target: list_append_wall_deep_resolved_element_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.list_append_element_argument_wall", function: "deep_resolved_element_wire")
+    }
+  }
+}
+
+// THE CARRIER: the same rule at the declared (non-generic) `run` carrier, seventeen legs.
+
+fn free_monoid_carrier_text_at_string_run_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "free-monoid-carrier-text-at-string-run-refused" } }
+}
+
+fn free_monoid_carrier_text_at_string_run_binding() -> TargetBinding {
+  TargetBinding {
+    target: free_monoid_carrier_text_at_string_run_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.text_at_free_monoid_run_carrier_witness", function: "text_at_string_run_refused_wire")
+    }
+  }
+}
+
+// POSITIVE CONTROL: the same call over two runs is not refused.
+fn free_monoid_carrier_two_runs_admitted_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "free-monoid-carrier-two-runs-admitted" } }
+}
+
+fn free_monoid_carrier_two_runs_admitted_binding() -> TargetBinding {
+  TargetBinding {
+    target: free_monoid_carrier_two_runs_admitted_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.text_at_free_monoid_run_carrier_witness", function: "two_runs_admitted_wire")
+    }
+  }
+}
+
+// POSITIVE CONTROL: `list_push` still takes an element where an element is required.
+fn free_monoid_carrier_list_push_admitted_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "free-monoid-carrier-list-push-admitted" } }
+}
+
+fn free_monoid_carrier_list_push_admitted_binding() -> TargetBinding {
+  TargetBinding {
+    target: free_monoid_carrier_list_push_admitted_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.text_at_free_monoid_run_carrier_witness", function: "list_push_admitted_wire")
+    }
+  }
+}
+
+// THE WHOLE CARRIER -- all seventeen legs -- in one address.
+fn free_monoid_carrier_all_legs_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "free-monoid-carrier-all-legs" } }
+}
+
+fn free_monoid_carrier_all_legs_binding() -> TargetBinding {
+  TargetBinding {
+    target: free_monoid_carrier_all_legs_label()
+    producer: CliWireProgramProducer {
+      target: gunbc_run_step_target(module: "gunbc.instruments.text_at_free_monoid_run_carrier_witness", function: "carrier_all_legs_wire")
+    }
+  }
+}
+
 fn instrument_targets() -> List<Label> {
   list_map(xs: instrument_bindings(), f: fn(b) { b.target })
 }
@@ -1179,7 +1413,10 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(),
+    list_append_wall_element_at_list_position_binding(), list_append_wall_refusal_names_parameter_binding(), list_append_wall_list_still_admitted_binding(), list_append_wall_element_at_element_position_binding(), list_append_wall_three_arms_observable_binding(), list_append_wall_arms_differ_by_target_row_binding(), list_append_wall_all_legs_binding(), list_append_wall_fold_cannot_absorb_a_two_binding(), list_append_wall_deep_unbound_element_binding(), list_append_wall_deep_resolved_element_binding(),
+    free_monoid_carrier_text_at_string_run_binding(), free_monoid_carrier_two_runs_admitted_binding(), free_monoid_carrier_list_push_admitted_binding(), free_monoid_carrier_all_legs_binding(),
+    native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 
