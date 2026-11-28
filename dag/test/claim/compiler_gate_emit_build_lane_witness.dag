@@ -1,12 +1,13 @@
 module test.claim.compiler_gate_emit_build_lane_witness
 
 import std.types { Bool, Int, List, String }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
+import v2.std.diagnostic { outcome_accepted_value }
 import gunbc.shell_command_text { shell_command_text_refusal_marker }
-import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
+import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions, Job }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job, compiler_gate_fleet_job_condition, compiler_gate_emit_build_bound_steps, compiler_gate_emit_build_capability_closure_holds, compiler_gate_emit_build_notice_step, compiler_gate_emit_build_notice_lines, compiler_gate_emit_build_step, compiler_gate_v1_unit_test_compile_step, compiler_gate_v1_unit_test_step_id, compiler_gate_v1_unit_test_step_name, compiler_gate_parse_verdict_audit_job, parse_verdict_audit_job_id, compiler_gate_parse_verdict_audit_bound_steps, compiler_gate_parse_verdict_audit_notice_step, compiler_gate_parse_verdict_audit_notice_lines }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job, compiler_gate_fleet_job_condition, compiler_gate_emit_build_bound_steps, compiler_gate_emit_build_capability_closure_holds, compiler_gate_emit_build_notice_step, compiler_gate_emit_build_notice_lines, compiler_gate_emit_build_step, compiler_gate_v1_unit_test_compile_step, compiler_gate_v1_unit_test_step_id, compiler_gate_v1_unit_test_step_name, compiler_gate_parse_verdict_audit_job, parse_verdict_audit_job_id, compiler_gate_parse_verdict_audit_bound_steps, compiler_gate_parse_verdict_audit_notice_step, compiler_gate_parse_verdict_audit_notice_lines, CompilerGateBoundStep }
 import gunbc.parse_verdict_publish { materialization_audit_publish_if, parse_verdict_publish_walk_step_guarded, parse_verdict_publish_save_step_guarded, parse_verdict_publish_step_name, parse_verdict_save_step_name, parse_verdict_publish_cache_key, parse_verdict_publish_command, parse_verdict_compiler_output, parse_verdict_generation_one_basename }
 import gunbc.parse_verdict_schema { parse_verdict_request_family }
 import gunbc.required_ci_contract_epoch { required_ci_context_name, required_ci_emitted_subject_obligations }
@@ -40,6 +41,70 @@ import gunbc.parse_verdict_restore { parse_verdict_locate_step_name }
 // THE INHABITANCE HALF IS THE LIVE WORKFLOW ITSELF (gunbc.design_argument::witness_one_interface, the pairing obligation):
 // every claim below reads `compiler_gate_workflow` or `compiler_gate_required_job` on the real
 // value, so a change to the emitted workflow reddens this file.
+
+// THE RUN-STEP CUTOVER made these producers Outcome-carrying (compiler_gate_workflow is an
+// Outcome<Workflow>, the required/audit jobs are Outcome<Job>, and the bound-step lists are
+// Outcome<List<CompilerGateBoundStep>> off v2.workflow.ci_workflow_run_emit's retyped pipeline --
+// gunbc.integration_concern::orch_emit_refusal_reaches_committed_bytes_unobserved). Each consumer below
+// unwraps fail-closed: a refusal yields an empty projection that reddens every structural claim, so no
+// claim can pass over a workflow whose orchestration prelude could not render. There is no fabricated
+// step standing in for a refusal -- the empty list is the RED, and the located refusal is reported typed
+// at the artifact boundary by compiler_gate_render.
+fn cg_workflow_jobs() -> List<Job> {
+  match outcome_accepted_value(compiler_gate_workflow) {
+    Present { value: wf } => wf.jobs
+    Absent => []
+  }
+}
+
+fn cg_required_job_steps() -> List<Step> {
+  match outcome_accepted_value(compiler_gate_required_job()) {
+    Present { value: j } => j.steps
+    Absent => []
+  }
+}
+
+fn cg_required_job_if_condition() -> Optional<String> {
+  match outcome_accepted_value(compiler_gate_required_job()) {
+    Present { value: j } => j.if_condition
+    Absent => Absent
+  }
+}
+
+fn cg_required_job_permissions() -> Optional<WorkflowPermissions> {
+  match outcome_accepted_value(compiler_gate_required_job()) {
+    Present { value: j } => j.permissions
+    Absent => Absent
+  }
+}
+
+fn cg_audit_job_steps() -> List<Step> {
+  match outcome_accepted_value(compiler_gate_parse_verdict_audit_job()) {
+    Present { value: j } => j.steps
+    Absent => []
+  }
+}
+
+fn cg_audit_job_if_condition() -> Optional<String> {
+  match outcome_accepted_value(compiler_gate_parse_verdict_audit_job()) {
+    Present { value: j } => j.if_condition
+    Absent => Absent
+  }
+}
+
+fn cg_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
+  match outcome_accepted_value(compiler_gate_emit_build_bound_steps()) {
+    Present { value: bs } => bs
+    Absent => []
+  }
+}
+
+fn cg_parse_verdict_audit_bound_steps() -> List<CompilerGateBoundStep> {
+  match outcome_accepted_value(compiler_gate_parse_verdict_audit_bound_steps()) {
+    Present { value: bs } => bs
+    Absent => []
+  }
+}
 
 fn step_run_text(step: Step) -> String {
   match step {
@@ -78,7 +143,7 @@ fn step_env_has(step: Step, key: String, value: String) -> Bool {
 // is what keeps "exactly the required job" an honest claim instead of a stale one -- an unrostered
 // second job is still a refusal.
 test fn the_workflow_runs_exactly_the_required_job_and_the_audit() -> Bool {
-  let ids = compiler_gate_workflow.jobs |> map(j => j.id)
+  let ids = cg_workflow_jobs() |> map(j => j.id)
   gunbc_required_context_name() == (required_ci_context_name as String)
     && length(xs: filter(xs: ids, predicate: fn(i) { i == gunbc_required_context_name() })) == 1
     && length(xs: filter(xs: ids, predicate: fn(i) { i == parse_verdict_audit_job_id })) == 1
@@ -91,7 +156,7 @@ test fn the_workflow_runs_exactly_the_required_job_and_the_audit() -> Bool {
 data withdrawn_lane_job_ids: List<String> = ["rust-unit-tests", "seed", "floor", "generated", "emit-build"]
 
 test fn w_RED_the_withdrawn_lanes_are_not_jobs() -> Bool {
-  let ids = compiler_gate_workflow.jobs |> map(j => j.id)
+  let ids = cg_workflow_jobs() |> map(j => j.id)
   all(withdrawn_lane_job_ids, w => any(ids, id => id == w) == false)
 }
 
@@ -99,7 +164,7 @@ test fn w_RED_the_withdrawn_lanes_are_not_jobs() -> Bool {
 // required check (unobserved, never excused). The guard is the one authority
 // (compiler_gate_fleet_job_condition) rather than a second spelling of it.
 test fn the_required_job_is_fleet_guarded() -> Bool {
-  match compiler_gate_required_job().if_condition {
+  match cg_required_job_if_condition() {
     Present { value: c } =>
       c == compiler_gate_fleet_job_condition() && string_contains(s: c, pattern: "github.repository")
     Absent => false
@@ -134,7 +199,7 @@ test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
 // no row declares would report on a compilation nobody rostered. Both directions are read by step
 // NAME, which gunbc.emitted_subject_build_gate derives from the row's label.
 test fn the_job_binds_one_step_per_subject() -> Bool {
-  let names = compiler_gate_emit_build_bound_steps() |> map(b => b.step_name)
+  let names = cg_emit_build_bound_steps() |> map(b => b.step_name)
   let subject_names = emitted_subject_build_rows() |> map(r => emitted_subject_build_step_name(row: r))
   all(subject_names, s => length(xs: filter(xs: names, predicate: fn(n) { n == s })) == 1)
     && length(xs: filter(xs: names, predicate: fn(n) { string_contains(s: n, pattern: "emit and build ") }))
@@ -245,12 +310,12 @@ test fn the_notice_names_the_envelope_and_refuses_a_bigger_retry() -> Bool {
 data native_product_store_step_markers: List<String> = ["GUNBC_NATIVE_CACHE_ROOT", "native-product-read", "native-product-write", "native_product_save_wet"]
 
 test fn w_RED_the_job_binds_no_native_product_store() -> Bool {
-  let steps = compiler_gate_required_job().steps
+  let steps = cg_required_job_steps()
   let no_store_text = all(steps, s =>
     all(native_product_store_step_markers, m =>
       (string_contains(s: step_run_text(step: s), pattern: m) == false)
         && (string_contains(s: step_name_text(step: s), pattern: m) == false)))
-  let no_id_token = match compiler_gate_required_job().permissions {
+  let no_id_token = match cg_required_job_permissions() {
     Present { value: p } => match p.id_token { Absent => true  Present { value: _ } => false }
     Absent => true
   }
@@ -377,7 +442,7 @@ test fn the_notice_step_runs_only_on_failure() -> Bool {
 // interpret rather than scrolled away above it. Asserted by POSITION rather than by count.
 test fn the_notice_is_the_last_step_in_the_job() -> Bool {
   fold(
-    compiler_gate_emit_build_bound_steps(),
+    cg_emit_build_bound_steps(),
     init: "",
     f: (acc, b) => b.step_name
   ) == "Why this lane is red, and what would be a real finding"
@@ -489,7 +554,7 @@ fn publisher_order_holds(steps: List<Step>) -> Bool {
 // this claim reds if either step regrows beside the required lane -- by name, because a step that
 // merely resembles the walk (same command, no guard) is not the check.
 test fn w_RED_the_required_job_binds_no_parse_verdict_publisher() -> Bool {
-  let names = compiler_gate_required_job().steps |> map(step_name_text)
+  let names = cg_required_job_steps() |> map(step_name_text)
   (length(xs: filter(xs: names, predicate: fn(n) { n == parse_verdict_publish_step_name })) == 0)
     && (length(xs: filter(xs: names, predicate: fn(n) { n == parse_verdict_save_step_name() })) == 0)
 }
@@ -498,7 +563,7 @@ test fn w_RED_the_required_job_binds_no_parse_verdict_publisher() -> Bool {
 // save, save-is-cache-save-only, both under the schedule guard -- the same shape the required tail
 // carried, read from the job that carries it now.
 test fn the_audit_job_binds_the_parse_verdict_publisher() -> Bool {
-  publisher_order_holds(steps: compiler_gate_parse_verdict_audit_job().steps)
+  publisher_order_holds(steps: cg_audit_job_steps())
 }
 
 // THE AUDIT PUBLISHES ONLY FROM THE CLOCK, AND ONLY ON MAIN. `schedule` plus `refs/heads/main`, and
@@ -517,11 +582,11 @@ test fn the_audit_publish_pair_is_schedule_guarded() -> Bool {
 // revalidation dispatch must not burn an audit hour), and the required job excludes the schedule, so
 // a pull request cannot reach the publisher by either gate and the clock cannot re-run the gate.
 test fn only_the_clock_runs_the_audit_and_the_clock_never_runs_the_gate() -> Bool {
-  (match compiler_gate_parse_verdict_audit_job().if_condition {
+  (match cg_audit_job_if_condition() {
     Present { value: c } => c == "github.event_name == 'schedule'"
     Absent => false
   })
-    && (match compiler_gate_required_job().if_condition {
+    && (match cg_required_job_if_condition() {
       Present { value: c } => string_contains(s: c, pattern: "github.event_name != 'schedule'")
       Absent => false
     })
@@ -551,8 +616,8 @@ test fn the_audit_notice_is_true_of_the_audit() -> Bool {
           })
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     })
-    && (fold(compiler_gate_parse_verdict_audit_bound_steps(), init: "", f: (acc, b) => b.step_name) == "Why this scheduled audit is red, and what a red here means")
-    && (names_include(names: map(xs: compiler_gate_parse_verdict_audit_bound_steps(), f: b => b.step_name), needle: "Why this lane is red, and what would be a real finding") == false)
+    && (fold(cg_parse_verdict_audit_bound_steps(), init: "", f: (acc, b) => b.step_name) == "Why this scheduled audit is red, and what a red here means")
+    && (names_include(names: map(xs: cg_parse_verdict_audit_bound_steps(), f: b => b.step_name), needle: "Why this lane is red, and what would be a real finding") == false)
 }
 
 test fn the_walk_argv_has_no_lookup_shell() -> Bool {
@@ -644,7 +709,7 @@ test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marke
 // there. And the model can be right while the shipped file is stale, since heal regenerates this
 // workflow and judges nothing on a pull request, so the committed YAML is read as its own subject.
 test fn the_v1_unit_test_harness_is_compiled_on_the_required_job() -> Bool {
-  let names = map(xs: compiler_gate_emit_build_bound_steps(), f: b => b.step_name)
+  let names = map(xs: cg_emit_build_bound_steps(), f: b => b.step_name)
   let subject_names = map(xs: emitted_subject_build_rows(), f: r => emitted_subject_build_step_name(row: r))
   let run_text = step_run_text(step: compiler_gate_v1_unit_test_compile_step())
   let order_code = names |> fold(init: 0, f: (s, n) => s + step_order_weight(s: s, n: n, subject: subject_names))
@@ -722,11 +787,11 @@ fn v1_unit_test_step_operates_unconditionally(step: Step) -> Bool {
 // (include_str! of tools/ and dag/ fixtures) that no fast-lane input records (side-chat review of 0d2b831).
 
 fn job_step_named(name: String) -> Step {
-  compiler_gate_emit_build_bound_steps() |> fold(init: compiler_gate_emit_build_notice_step(), f: (acc, b) => if b.step_name == name { b.step } else { acc })
+  cg_emit_build_bound_steps() |> fold(init: compiler_gate_emit_build_notice_step(), f: (acc, b) => if b.step_name == name { b.step } else { acc })
 }
 
 fn job_step_position(name: String) -> Int {
-  compiler_gate_emit_build_bound_steps() |> fold(init: 0 - 1, f: (acc, b) => if acc < 0 && b.step_name == name { 0 - acc - 1 } else { if acc < 0 { acc - 1 } else { acc } })
+  cg_emit_build_bound_steps() |> fold(init: 0 - 1, f: (acc, b) => if acc < 0 && b.step_name == name { 0 - acc - 1 } else { if acc < 0 { acc - 1 } else { acc } })
 }
 
 // THE CLOSURE-DEPENDENT STEPS RUN UNLESS THE FAST LANE REUSED; THE REST RUN ON EVERY RUN. Read from the job's
@@ -745,7 +810,7 @@ test fn the_closure_dependent_steps_run_unless_the_fast_lane_reused() -> Bool {
     "Why this lane is red, and what would be a real finding"
   ]
   all(guarded, n => step_if_condition(step: job_step_named(name: n)) == fast_lane_full_run_if())
-    && all(always, n => names_include(names: map(xs: compiler_gate_emit_build_bound_steps(), f: b => b.step_name), needle: n)
+    && all(always, n => names_include(names: map(xs: cg_emit_build_bound_steps(), f: b => b.step_name), needle: n)
       && (string_contains(s: step_if_condition(step: job_step_named(name: n)), pattern: "fast_lane") == false))
     && step_if_condition(step: job_step_named(name: fast_lane_layout_check_step_name)) == fast_lane_reused_if()
     && step_if_condition(step: job_step_named(name: fast_lane_reference_check_step_name)) == fast_lane_reused_if()
@@ -759,7 +824,7 @@ test fn the_fast_lane_decides_behind_the_stamp_guard_and_before_the_toolchain() 
   let decide = job_step_position(name: fast_lane_decision_step_name)
   let isolate = job_step_position(name: "Isolate toolchain homes")
   (evidence >= 0) && (evidence < locate) && (locate < decide) && (decide < isolate)
-    && (length(xs: filter(xs: compiler_gate_emit_build_bound_steps(), predicate: fn(b) { b.step_name == parse_verdict_locate_step_name })) == 1)
+    && (length(xs: filter(xs: cg_emit_build_bound_steps(), predicate: fn(b) { b.step_name == parse_verdict_locate_step_name })) == 1)
 }
 
 // THE MUTATED COPY: the same step, made a passenger -- fleet-conditioned and non-blocking. This is the
