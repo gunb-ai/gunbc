@@ -1669,6 +1669,9 @@ fn census_reading_for_checkout(leg: RecoverCatalogLegReading, checkout_revision:
       true => false
       false => true
     }
+    // A REFUSED revision read proves nothing about trailing; "behind" is never assumed, so the
+    // census answer keeps its own meaning (fail_closed) — same fail-closed choice as Absent.
+    Present { value: ObservationRefused { cause: _ } } => false
     Absent => false
   }
   match leg {
