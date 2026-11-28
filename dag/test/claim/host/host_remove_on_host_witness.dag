@@ -41,7 +41,6 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportRefused,
   RunArgvTransportUnanswered,
   TransportUnansweredWireInconsistent,
-  RemovedByReadback,
   deploy_retract_remove_failure,
   ShellExecObserved,
 }
@@ -735,13 +734,16 @@ test fn a_relative_path_is_never_established_absent_by_the_walk() -> Bool {
   )
 }
 
-// #17119 item 1: a DISPATCHED removal whose reply came back wire-inconsistent, whose INDEPENDENT
-// post-removal read confirms every target path gone, SETTLES to RemovedByReadback -- NOT RemovedConfirmed
-// (which would fabricate an exit the reply never gave) and NOT a "refused before any dispatch" refusal.
-// The live_deploy retract verdict then treats the removal as done (Absent failure). This drives the real
+// #17119 item 1 (ruling C): a DISPATCHED removal whose reply came back wire-inconsistent. Its independent
+// post-removal read is a `test` whose walk reports the path absent (HostRemovePathAbsent). A `test` exit 1
+// conflates absent with unstattable, so a walk-based absence is NOT trusted to establish absence until the
+// exact-entry parent-listing reader lands. The removal is therefore WITHHELD -- NotConverged "dispatched,
+// effect unknown ... withheld ... cannot establish absence", carrying the wire fault -- and the live_deploy
+// retract verdict faults (Present failure), it does NOT treat the removal as done. This drives the real
 // production decision host_remove_verdict -> host_remove_unanswered_verdict through to
-// deploy_retract_remove_failure.
-test fn witness_retract_wire_inconsistent_removal_settles_by_readback() -> Bool {
+// deploy_retract_remove_failure. Red-by-mutation: restoring the pre-fix Converged RemovedByReadback (the
+// untrusted settle this round removes) makes this false.
+test fn witness_retract_wire_inconsistent_removal_is_withheld_until_the_exact_entry_readback() -> Bool {
   let target = RemoveForceRecursive {
     path: "/var/lib/gunbc/deploy-stages/retract-settle" as NonEmptyStr,
   }
@@ -754,15 +756,17 @@ test fn witness_retract_wire_inconsistent_removal_settles_by_readback() -> Bool 
     },
     post_state: [HostRemovePathAbsent],
   )
-  let settled = match verdict {
-    Converged { evidence: RemovedByReadback { paths: ps }, applied: _ } =>
-      string_contains(s: join(ps, ","), pattern: "/var/lib/gunbc/deploy-stages/retract-settle")
+  let withheld = match verdict {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "dispatched")
+        && string_contains(s: r, pattern: "withheld")
+        && string_contains(s: r, pattern: "cannot establish absence")
+        && !string_contains(s: r, pattern: "before any dispatch")
     Converged { evidence: _, applied: _ } => false
-    NotConverged { reason: _, applied: _ } => false
   }
   match deploy_retract_remove_failure(verdict: verdict) {
-    Absent => settled
-    Present { value: _ } => false
+    Present { value: _ } => withheld
+    Absent => false
   }
 }
 

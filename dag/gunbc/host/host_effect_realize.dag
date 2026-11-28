@@ -1571,6 +1571,14 @@ type CodexRuntimeStepResult
   // (a pre-dispatch refusal -- nothing was sent). It must never be rendered as "refused"/"not run".
   | CodexRuntimeStepUnanswered { cause: String }
 
+// WHETHER THE --version READBACK GAVE ANYTHING TO COMPARE. An EMPTY/blank combined output does not
+// answer the version question at all, so a failed identity test over it is UNREADABLE, not a mismatch:
+// CodexRuntimeIdentityMismatch claims the version is definitively wrong, which an empty reply does not
+// establish. Only a NON-empty reply that fails the identity test is a real mismatch. (#17119 item 8.)
+fn codex_runtime_version_output_answered(output: String) -> Bool {
+  trim(s: output) != ""
+}
+
 // The fail-closed reason for a typed-argv leg that overran its per-leg wall deadline. The host was
 // asked and never answered before the ceiling, so it is neither a refusal (nothing was asked) nor a
 // completion. The deadline VALUE is named so the overrun is not silently indistinguishable from a
@@ -1746,22 +1754,38 @@ fn provision_codex_runtime_reconcile(
           // the question independently; only when IT cannot settle do we stay unknown.
           CodexRuntimeStepUnanswered { cause: c } =>
             match codex_runtime_observe_step(transport: transport, executable: executable) {
-              CodexRuntimeStepRan { observed: settled } =>
+              CodexRuntimeStepRan { observed: settled } => {
+                let settled_output = concat(settled.stdout, concat(" ", settled.stderr))
                 if settled.success && codex_runtime_version_identity_satisfied(combined_output: settled.stdout) {
                   toolchain_ensure_reconcile(observed: settled, intent: intent, effect_label: "ProvisionCodexRuntime")
+                } else if !codex_runtime_version_output_answered(output: settled_output) {
+                  // The readback --version produced nothing usable to compare, so the materialize effect is
+                  // still UNKNOWN, not a definite mismatch: keep the materialization-unknown fault. (#17119 item 8.)
+                  provision_codex_runtime_refuse(
+                    host: host,
+                    observed: CodexRuntimeTransportUnanswered {
+                      cause: concat(c, "; the settling --version readback produced no usable output to compare"),
+                    },
+                    intent: intent,
+                  )
                 } else {
                   provision_codex_runtime_refuse(
                     host: host,
                     observed: CodexRuntimeIdentityMismatch {
-                      observed_output: concat(settled.stdout, concat(" ", settled.stderr)),
+                      observed_output: settled_output,
                     },
                     intent: intent,
                   )
                 }
+              }
               CodexRuntimeStepRefused { reason: why } =>
+                // The readback was refused; the materialize leg was still dispatched-unknown, so KEEP that
+                // fault -- a refused readback does not turn "effect unknown" into a clean transport refusal. (#17119 item 8.)
                 provision_codex_runtime_refuse(
                   host: host,
-                  observed: CodexRuntimeTransportRefused { reason: why },
+                  observed: CodexRuntimeTransportUnanswered {
+                    cause: concat(c, concat("; readback refused: ", why)),
+                  },
                   intent: intent,
                 )
               CodexRuntimeStepUnanswered { cause: rc } =>
@@ -1794,7 +1818,8 @@ fn provision_codex_runtime_reconcile(
                     observed: CodexRuntimeTransportUnanswered { cause: c },
                     intent: intent,
                   )
-                CodexRuntimeStepRan { observed: read_back_result } =>
+                CodexRuntimeStepRan { observed: read_back_result } => {
+                  let read_back_output = concat(read_back_result.stdout, concat(" ", read_back_result.stderr))
                   if read_back_result.success
                     && codex_runtime_version_identity_satisfied(combined_output: read_back_result.stdout)
                   {
@@ -1803,15 +1828,26 @@ fn provision_codex_runtime_reconcile(
                       intent: intent,
                       effect_label: "ProvisionCodexRuntime",
                     )
+                  } else if !codex_runtime_version_output_answered(output: read_back_output) {
+                    // The install answered success but the confirming --version gave nothing usable to
+                    // compare, so identity is UNKNOWN, not a definite mismatch. (#17119 item 8.)
+                    provision_codex_runtime_refuse(
+                      host: host,
+                      observed: CodexRuntimeTransportUnanswered {
+                        cause: "the install answered success but the confirming --version readback produced no usable output to compare",
+                      },
+                      intent: intent,
+                    )
                   } else {
                     provision_codex_runtime_refuse(
                       host: host,
                       observed: CodexRuntimeIdentityMismatch {
-                        observed_output: concat(read_back_result.stdout, concat(" ", read_back_result.stderr)),
+                        observed_output: read_back_output,
                       },
                       intent: intent,
                     )
                   }
+                }
               }
             }
         }
@@ -6475,9 +6511,15 @@ fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, tran
       transport: transport,
     ) {
       RunArgvTransportRefused { reason: _ } => false
-      // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
-      // not-observed with the typed reason, which already carries the specific fault (deadline / wire shape);
-      // the arm itself records that the leg was dispatched, not refused.
+      // Dispatched, reply unreadable: the leg WAS sent, so its effect is UNKNOWN. This read is a Bool and
+      // cannot carry that standing -- it returns false, meaning "success not established" (the fail-closed
+      // direction: it never claims the effect landed), but the caller therefore cannot tell a lost reply
+      // from an observed failure, so it MUST NOT read false as "the operation did not happen" and re-issue
+      // a non-idempotent mutation. Carrying the typed cause (three-valued outcome, or running the readback
+      // as the codex arm does) is a named follow-up: recurring_failure_mode
+      // an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists (owner bright-ibex-807). The earlier comment
+      // on this arm claimed the typed reason was carried; with `reason: _` discarded into a Bool it was
+      // not -- corrected here. (#17119 round-4, review 99629.)
       RunArgvTransportUnanswered { cause: _, reason: _ } => false
       RunArgvTransportObserved { observed: o } => o.success
     },
@@ -6563,9 +6605,15 @@ fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: Strin
 fn credstore_copy_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
   match outcome {
     RunArgvTransportRefused { reason: _ } => false
-    // Dispatched, reply unreadable: the leg WAS sent and its effect is unknown. This read reports it
-    // not-observed with the typed reason, which already carries the specific fault (deadline / wire shape);
-    // the arm itself records that the leg was dispatched, not refused.
+    // Dispatched, reply unreadable: the leg WAS sent, so its effect is UNKNOWN. This read is a Bool and
+    // cannot carry that standing -- it returns false, meaning "success not established" (the fail-closed
+    // direction: it never claims the effect landed), but the caller therefore cannot tell a lost reply
+    // from an observed failure, so it MUST NOT read false as "the operation did not happen" and re-issue
+    // a non-idempotent mutation. Carrying the typed cause (three-valued outcome, or running the readback
+    // as the codex arm does) is a named follow-up: recurring_failure_mode
+    // an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_readback_exists (owner bright-ibex-807). The earlier comment
+    // on this arm claimed the typed reason was carried; with `reason: _` discarded into a Bool it was
+    // not -- corrected here. (#17119 round-4, review 99629.)
     RunArgvTransportUnanswered { cause: _, reason: _ } => false
     RunArgvTransportObserved { observed: o } => o.exit_code == 0
   }

@@ -44,7 +44,9 @@ data an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_re
 
     "CEILING: structurally guaranteed when every effectful consumer of a dispatched-unknown leg settles on a readback (gunbc.design_argument::fail_closed); below that, do-not-proceed is the sound floor and this row tracks the consumers still above it.",
 
-    "SCOPED OUT OF #17119, TRACKED HERE (both WITHHOLD, never grant, so they are the sound floor and not a defect of this PR): (a) gunbc.runner.runner_user_session linger -- linger_ok stays false on an Unanswered linger read even when the independent fresh-login readback reports Linger=yes; the row is withheld rather than wrongly granted. (b) gunbc.runner.runner_user_session user-manager start -- the Unanswered start does not run the user-manager readback that the module already owns, so the standing stays unknown; withheld, not asserted started."
+    "SCOPED OUT OF #17119, TRACKED HERE (both WITHHOLD, never grant, so they are the sound floor and not a defect of this PR): (a) gunbc.runner.runner_user_session linger -- linger_ok stays false on an Unanswered linger read even when the independent fresh-login readback reports Linger=yes; the row is withheld rather than wrongly granted. (b) gunbc.runner.runner_user_session user-manager start -- the Unanswered start does not run the user-manager readback that the module already owns, so the standing stays unknown; withheld, not asserted started.",
+
+    "LOSSY-BOOLEAN SUBCASE (#17119 round-4, review 99629). A consumer whose fold returns a Bool has NO channel for the dispatched-unknown standing, so it returns false, which is 'success not established' -- the sound direction (it never claims the effect landed) and therefore the row's floor, not a fabricated grant. The defect is narrower than the family: an arm that DISCARDS cause/reason while its comment CLAIMS the typed reason was carried (gunbc.host.host_effect_realize live_deploy_apply_ensure_directory_on_host, credstore_copy_succeeded) makes a false statement about what it preserves. The comment was corrected to say the truth -- the Bool cannot carry the cause, so the caller must not read false as 'the operation did not happen' and re-issue a non-idempotent mutation. The full repair (three-valued outcome, or running the leg's own readback as the codex arm does) is deferred here rather than left implicit."
   ],
 
   evidence: [
@@ -54,7 +56,7 @@ data an_outcome_carried_as_dispatched_unknown_rests_on_do_not_proceed_where_a_re
     decl_ref(module_path: "test.claim.fleet.fleet_password_session_leg_deadline_witness", decl_name: "a_wire_inconsistent_exec_is_carried_dispatched_unknown_through_the_real_producer_chain"),
     decl_ref(module_path: "test.claim.host.export_host_reader_converge_witness", decl_name: "a_wire_inconsistent_reload_enters_reload_uncertain_with_recovery_readbacks"),
     decl_ref(module_path: "test.claim.host.export_host_reader_converge_witness", decl_name: "a_wire_inconsistent_reload_never_claims_sshd_was_not_reloaded"),
-    decl_ref(module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "witness_retract_wire_inconsistent_removal_settles_by_readback"),
+    decl_ref(module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "witness_retract_wire_inconsistent_removal_is_withheld_until_the_exact_entry_readback"),
     decl_ref(module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "witness_retract_wire_inconsistent_removal_still_present_stays_unknown"),
     decl_ref(module_path: "test.claim.spark.spark_grant_privileged_operation_witness", decl_name: "the_removal_settlement_distinguishes_unanswered_from_answered_exit0"),
     decl_ref(module_path: "test.claim.runner.runner_service_slot_start_witness", decl_name: "a_dispatched_unanswered_start_runs_the_readback_and_is_never_not_started"),
