@@ -1,0 +1,27 @@
+module gunbc.dispatch_attempt_key
+
+// THE SEGMENT CARRIER FOR THE DISPATCH ATTEMPT KEY (review 97196). DispatchAttempt.attempt_key is a bare
+// String across ~2400 corpus uses (retyping it is a separate dispatched follow-up), so every route that JOINS
+// it into a file name must first pass it through the one checked entrance declared here -- the same
+// std.types.path_segment_is_safe law the credential reference uses, held once, beside this brand. A value of
+// this type can only be made by dispatch_attempt_key_segment: a forged cast is a compile-time
+// SoleConstructorViolation, and a hostile key ('../x', 'a/b', an absolute path) answers Absent, so the take
+// REFUSES and no custody bytes are named or written. Precedent: gunbc.merge_admission_subject.WalkAttemptId
+// (brand + checked entrance), sealed under gunbc.design_argument::single_authority.
+
+import std.types { String, Bool, PathSegment, path_segment_is_safe }
+import std.optional { Present, Absent }
+
+type DispatchAttemptKeySegment sole_constructor { segment: PathSegment }
+
+fn dispatch_attempt_key_segment(raw: String) -> DispatchAttemptKeySegment? {
+  if path_segment_is_safe(raw: raw) {
+    Present { value: DispatchAttemptKeySegment { segment: raw as PathSegment } }
+  } else {
+    none
+  }
+}
+
+fn dispatch_attempt_key_segment_value(carrier: DispatchAttemptKeySegment) -> PathSegment {
+  carrier.segment
+}

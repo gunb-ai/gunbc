@@ -6,18 +6,29 @@ import std.optional { Present, Absent }
 import gunbc.compute.attempt_lifecycle { AttemptReserved }
 import gunbc.dispatch_credential_snapshot { ClaudeFromSnapshot, CursorFromSnapshot }
 import gunbc.dispatch_credential_acquisition {
-  CredentialAcquisitionRecord, credential_acquisition_reference, credential_record_decode, credential_record_json,
+  CredentialAcquisitionRecord, credential_acquisition_reference_text, credential_record_decode, credential_record_json,
+  CredentialAttemptReference, credential_attempt_reference,
   AttemptClaude, AttemptCursor, AttemptExecutor, CursorRuntimeRootRegistered, CursorRuntimeRootUnregistered,
   credential_attempt_executor_for,
 }
 
 fn cursor_reference() -> String {
-  credential_acquisition_reference(identity: "id1", executor: CursorFromSnapshot) as String
+  credential_acquisition_reference_text(identity: "id1", executor: CursorFromSnapshot) as String
+}
+
+fn fx_carrier(raw: String) -> CredentialAttemptReference {
+  match credential_attempt_reference(raw: raw) {
+    Present { value: reference } => reference
+    Absent => match credential_attempt_reference(raw: "fx-safe-fallback") {
+      Present { value: reference } => reference
+      Absent => fx_carrier(raw: "fx-safe-fallback")
+    }
+  }
 }
 
 fn record(executor: AttemptExecutor, reference: String) -> CredentialAcquisitionRecord {
   CredentialAcquisitionRecord {
-    identity: "id1", node_id: "n", reference: reference, executor: executor, snapshot_path: "/s",
+    identity: "id1", node_id: "n", reference: fx_carrier(raw: reference), executor: executor, snapshot_path: "/s",
     belt_unit: "u.service", control_group: "/g", opened_at: 10, launch_deadline: 40, state: AttemptReserved,
   }
 }
