@@ -30,6 +30,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv10,
   operator_host_srv11,
   operator_host_srv12,
+  operator_host_ba61f9,
 }
 import gunbc.host_names.gen_z { host_name_first_parts, gen_z_last_parts }
 
@@ -251,8 +252,9 @@ data fleet_machine_srv4: HostnameAllocation = HostnameAllocation {
 // "keith"; the two are adjacent in the corpus and the difference is the one a hand-picked ticket hides).
 // Bound as a handle (like fleet_machine_srv1..srv4) so gunbc.fleet.fleet_host_key_enrollment can name ken's
 // tailnet host-key row address via fleet_tailnet_name(machine: fleet_machine_ken) without restating the labels.
-// It is still the LAST element of fleet_machine_registry (which references this handle), so
-// prior_rows_excluding sees every other allocation as taken -- the order its own claim re-derives it against.
+// It was the LAST element of fleet_machine_registry when drawn; john (2026-11-26) now follows it, and the ticket
+// still reproduces: the recorded-draw claim re-draws each row against the rows BEFORE it, and the claims that
+// re-draw against every other row see "john", which is none of ken's three forms.
 // The machine's other facts, and what still lacks a read, are on
 // gunbc.fleet.fleet_host_identity::operator_host_e2d4b7 and in
 // gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.
@@ -386,10 +388,25 @@ data fleet_machine_registry: List<HostnameAllocation> = [
     },
     next_name: Absent,
   },
-  // ken (SUPERMICRO H11SSL UNIT 3, hand-installed board at BMC 192.168.1.249) is the LAST element of the
-  // registry. Its binding and the ticket-replay rationale live on data fleet_machine_ken above; keeping it
-  // LAST means prior_rows_excluding sees every other allocation as taken -- the order its own claim re-derives it against.
+  // ken (SUPERMICRO H11SSL UNIT 3, hand-installed board at BMC 192.168.1.249). Its binding and the ticket-replay
+  // rationale live on data fleet_machine_ken above.
   fleet_machine_ken,
+  // john (SUPERMICRO H11SSL UNIT 4, hand-installed board at BMC 192.168.1.251, 2026-11-26). The operator asked for a
+  // draw; draw_human_name over ticket 862506853147 indexes john / john-vibes / john-seth-vibes, and FirstOnly john is
+  // the first untaken against every row above, so that is the name -- not a spelling picked to fit. APPENDED LAST,
+  // because the recorded-draw claim (test.claim.hostname_allocation_witness
+  // witness_every_recorded_draw_is_what_the_allocator_yields) re-draws each row against the rows before it, so a
+  // row drawn against the whole registry belongs at its end. Not bound as a handle: nothing names this row except
+  // the registry. The machine's facts are on gunbc.fleet.fleet_host_identity::operator_host_ba61f9 and in
+  // gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt.
+  HostnameAllocation {
+    fleet_slot: operator_host_ba61f9,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "john" as DnsLabel },
+      draw: HumanNameDraw { entropy: 862506853147 },
+    },
+    next_name: Absent,
+  },
 ]
 
 // THE MACHINES, DERIVED FROM THE REGISTRY. A spelling resolves to a machine only by joining this

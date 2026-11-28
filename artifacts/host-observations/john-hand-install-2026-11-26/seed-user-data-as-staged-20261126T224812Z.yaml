@@ -1,0 +1,33 @@
+#cloud-config
+# hand-staged 20261126T224812Z (session 128748d2): one-shot key-only autoinstall of H11SSL unit 'john' (BMC 192.168.1.251).
+# Mirrors gunbc.fleet.site_pxe_edge_converge site_pxe_edge_key_only_autoinstall as rendered by gunbc.os_install_emit;
+# the disk pin is serial+model from the identification boot's own read (nvme0 serial=20152C807439).
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  user-data:
+    users:
+      - name: ubuntu
+        lock_passwd: true
+        ssh_authorized_keys:
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIQp4ylHo8mQNGwvSg7ftW1LSXNFEPuwVjsDKvdqJnkj
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN
+        shell: /bin/bash
+        sudo: ALL=(ALL) NOPASSWD:ALL
+  ssh:
+    install-server: true
+    authorized-keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIQp4ylHo8mQNGwvSg7ftW1LSXNFEPuwVjsDKvdqJnkj
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN
+    allow-pw: false
+  interactive-sections: []
+  storage:
+    layout:
+      name: direct
+      match:
+        serial: 20152C807439
+        model: WDC PC SN730 SDBQNTY-512G-1001

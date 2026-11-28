@@ -1,0 +1,53 @@
+module gunbc.recurring_failure_mode.autoinstall_serial_match_rendered_bare_against_udev_id_serial
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data autoinstall_serial_match_rendered_bare_against_udev_id_serial: RecurringFailureMode = RecurringFailureMode {
+  // THE INSTALL ROUTE PINS A DISK WITH A VALUE THE INSTALLER NEVER COMPARES AGAINST. The model takes the device's
+  // own serial number (what lsblk's SERIAL column and NVMe's Identify SN print) and renders it as
+  // storage.layout.match.serial; Subiquity compares that key against udev's ID_SERIAL, which for an NVMe disk is the
+  // model, the serial and the namespace id joined by underscores. A bare serial carries no glob metacharacter -- the
+  // token repertoire forbids them -- so the comparison is an equality, and it is false for every NVMe disk.
+
+  identity: "autoinstall_serial_match_rendered_bare_against_udev_id_serial" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "an autoinstall disk pin whose serial match the installer's own matcher accepts for exactly the reported disk: extdeps.os.ubuntu_autoinstall AutoinstallDiskPin carries the udev ID_SERIAL property as its own carrier (distinct from the device SN that lsblk SERIAL and NVMe Identify report), produced only by a reader of udev properties, so gunbc.os_install_emit autoinstall_match_entries can no longer be handed an SN to render as `serial` -- OR the pin is deleted with the pre-install reading when roadmap node install-target-designated-or-unformatted moves destination selection inside the attempt, in which case the in-attempt selector must read the installer's own udev view and this row closes on that selector's witness instead. SUFFICIENT FOR retiring the probe only when test.claim.machine_intake.supermicro_h11ssl_unit4_hand_install_witness the_rendered_bare_serial_cannot_match_the_installers_id_serial flips to a regression control asserting the rendered value matches the recorded ID_SERIAL under the installer's fnmatchcase semantics, for unit 4's recorded NVMe reading.",
+    },
+  },
+
+  receipts: [
+    "**an install-target match value rendered from a different field than the one the upstream matcher reads** (INVALID STATE: the rendered storage.layout.match.serial is the device's SN while Subiquity compares it, with fnmatch.fnmatchcase, against udev ID_SERIAL. HARM: the modeled network install can never select an NVMe disk -- every pinned install on this fleet's NVMe targets, bobo's (srv15, WD Green SN350) included, refuses at the installer with 'Failed to find matching device'. It fails CLOSED -- nothing is written -- which is why the rung found at is mitigatable rather than below the ladder; but the route it guards can never succeed, and no witness noticed, because every witness compares the rendered value with the reading it was rendered from.)",
+
+    "**RECEIPT, H11SSL unit 4 (john), 2026-11-26 hand install (artifacts/host-observations/john-hand-install-2026-11-26/john-hand-steps.log, sha256 in gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt).** The seed was first staged with the bare serial 20152C807439, exactly what the renderer emits; before booting, the session changed it to '*20152C807439', and install attempt 1 refused: \"Failed to find matching device for {'model': 'WDC PC SN730 SDBQNTY-512G-1001', 'serial': '*20152C807439'}\". udevadm in the installer shell read ID_SERIAL=WDC_PC_SN730_SDBQNTY-512G-1001_20152C807439_1, ID_SERIAL_SHORT=20152C807439, ID_MODEL=WDC PC SN730 SDBQNTY-512G-1001. Attempt 2 served '*20152C807439*' and installed. The bare form was never booted, so its refusal is DEDUCED from the matcher's source below rather than observed: no metacharacter makes fnmatchcase an equality, and the two strings differ.",
+
+    "**UPSTREAM, READ AT SOURCE 2026-11-26 (gunbc.design_argument::epistemic_humility: cited, not inferred).** canonical/subiquity main, subiquity/models/storage.py at commit 2d269e1136be: match_serial is `fnmatch.fnmatchcase(_udev_val(disk, \"ID_SERIAL\"), match[\"serial\"])` and match_model the same over ID_MODEL; the supported keys are serial, model, vendor, path, id_path, devpath, ssd, size and install-media -- there is NO key over ID_SERIAL_SHORT. systemd main at 6016a8af8329, rules.d/60-persistent-storage.rules.in: for NVMe, ID_SERIAL_SHORT is the controller's serial attribute and ID_SERIAL is \"$env\{ID_MODEL}_$env\{ID_SERIAL_SHORT}_$env\{ID_NSID}\" under string_escape=replace (older systemd omitted the _NSID suffix, so the exact string is version-dependent). The extdeps.storage.device_identification header quotes the reference's own wording, 'Matches the device's serial number (ID_SERIAL)', and equates the two -- the equation is where the model went wrong.",
+
+    "**SCOPE, typed by how each part is known.** NVMe: observed on unit 4, and by the udev rule above every NVMe disk is affected. SATA/SAS through ata_id or scsi_id: an INFERENCE that ID_SERIAL is likewise model_serial-shaped, not read here; the read that settles it is udevadm on one SATA disk of this fleet. virtio (vd*): the rule sets ID_SERIAL to the bare serial attribute, so a VM-backed test of the renderer would pass -- which is exactly the population that would make this class look fixed.",
+
+    "**DISTINGUISHING FACTS.** Not a disk-identity admission defect (gunbc.provisioning.install_target_disk admits the right SN; the token is correct as an SN). Not the glob refusal (device_identification correctly refuses metacharacters in a token meant to name one disk -- and that refusal is WHY the bare value is an equality test). The defect is one hop later: which udev property the rendered key is compared with. The same shape recurs wherever a modeled value is rendered into an upstream matcher's key while the matcher reads a different, composed property under the same name.",
+
+    "**RECOGNITION RULE:** a renderer that writes a field named after an upstream match key from a value of a similarly-named but different source field, with no witness that applies the upstream matcher to the upstream-composed property. The tell: every witness of the renderer compares the output with its own input.",
+
+    "**RUNG FOUND AT: mitigatable -- the installer refused before any storage write. CEILING: structurally guaranteed, once the pin's serial is a udev ID_SERIAL carrier no SN can be passed as. RESIDUE OUTSIDE THE MODELED GUARANTEE: whether the capture's udev composes ID_SERIAL as the installer's will (systemd version, namespace suffix) is an external fact, observed at the install boundary; the in-attempt selector of roadmap node install-target-designated-or-unformatted, reading the installer's own view, is what removes that residue. NEXT-RUNG TRIGGER: the trigger_capability above. NOT FIXED IN THE CHANGE THAT FILES THIS ROW: a glob around the SN ('*SN*') would install, as attempt 2 did, but it is a substring selector -- the class key device_identification exists to refuse -- so choosing between a glob rule and an ID_SERIAL carrier is a design decision for the install-target node, not a one-line renderer edit.",
+
+    "**CONSUMPTION:** this per-class record joins the derived gunbc.recurring_failure_mode roster. Its discriminating probe is test.claim.machine_intake.supermicro_h11ssl_unit4_hand_install_witness the_rendered_bare_serial_cannot_match_the_installers_id_serial, which admits unit 4's recorded disk reading through gunbc.provisioning.install_target_disk admit_install_target_disk and renders it through gunbc.os_install_emit autoinstall_match_entries, then compares the rendered serial with the recorded ID_SERIAL; it is green while the defect stands and is the claim the trigger flips.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_match_entries"),
+    decl_ref(module_path: "extdeps.os.ubuntu_autoinstall", decl_name: "AutoinstallDiskPin"),
+    decl_ref(module_path: "extdeps.storage.device_identification", decl_name: "DeviceIdentificationToken"),
+    decl_ref(module_path: "gunbc.provisioning.install_target_disk", decl_name: "admit_install_target_disk"),
+    decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt", decl_name: "supermicro_h11ssl_unit4_hand_install"),
+  ],
+}

@@ -121,6 +121,23 @@ data operator_host_6ce85c: HostIdentity = "host-6ce85c"
 //     operator's, physical), and that bears on the boot-path standing rather than being filed as trivia.
 data operator_host_e2d4b7: HostIdentity = "host-e2d4b7"
 
+// SUPERMICRO H11SSL UNIT 4 (2026-11-26). The fourth H11SSL board in the fleet; its OS was installed BY HAND from
+// srv4's PXE edge on 2026-11-26 because the modeled install route refuses every new unit today (the operator chose
+// "hand install, recorded"), and the receipt of that install is
+// gunbc.machine_intake.supermicro_h11ssl_unit4_hand_install_receipt. Its NAME lives in the allocation authority,
+// not here: "john" was drawn by gunbc.hostname_allocation draw_human_name at the operator's request and is
+// recorded with its ticket in gunbc.hostname_allocation::fleet_machine_registry. OPAQUE per the rule above: the
+// handle is a fresh six-hex draw taken 2026-11-26 from /dev/urandom, confirmed free against every host-* spelling
+// in the corpus, and it encodes nothing.
+//   NAMING IS NOT ENROLLMENT, as for every row here: this row adds the machine to the registry-derived roster and
+//     to nothing else -- no fleet_enrollment row, no endpoint, no runner, serving or GPU row is written for it.
+//     The only roster obligation the registry carries per member is a board standing, and it is identity-stated
+//     on the 6ce85c precedent in gunbc.fleet.machine_board.
+//   Board Supermicro H11SSL family, BIOS 2.0a, BMC firmware 1.52 at 192.168.1.251 (BMC MAC
+//     gunbc.machine_intake.supermicro_h11ssl_unit_identity::supermicro_h11ssl_unit4_bmc_mac); none read off the
+//     board by a committed capture -- each figure and the read that would confirm it is in the receipt module.
+data operator_host_ba61f9: HostIdentity = "host-ba61f9"
+
 // THE ROSTER IS NOT LISTED HERE. operator_hosts and operator_host_named are derived from the fleet machine
 // registry (gunbc.hostname_allocation fleet_machine_registry), so a machine is a member exactly when it has a
 // registry row (gunbc.plans.fleet_machine_authority 2.1). This module keeps only the stable handles.
