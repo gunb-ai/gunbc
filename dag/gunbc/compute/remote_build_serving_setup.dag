@@ -14,7 +14,7 @@ module gunbc.compute.remote_build_serving_setup
 //
 // EVERY FIELD IS READ FROM AN EXISTING AUTHORITY, never restated as a literal:
 //   account  -> gunbc.fleet.fleet_posix_accounts (uid/gid/shell/home/supplementary)
-//   paths    -> gunbc.compute.remote_build::remote_build_serving_instance
+//   paths    -> gunbc.compute.remote_build_serving_identity::remote_build_serving_instance
 //   ledger   -> gunbc.compute.host_capacity::host_capacity_home_directories_admitted (PR 4's module;
 //              the ADMITTED spelling — see remote_build_serving_desired and finding A2 of the
 //              side-chat review of 2026-11-16: a candidate host's serving posture is the POST-admission one)
