@@ -1,0 +1,217 @@
+module gunbc.instruments.emit_accumulator_subjects
+
+import std.types { Bool, Int, List }
+import std.realization_measurement { AllocationCounter }
+import gunbc.allocation_observation_render { AllocationCase }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryRow, BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case, plain_row }
+import gunbc.emit_state_threading_specimen { spec_build }
+
+// THE ACCUMULATOR SUBJECTS of the building-block battery (roadmap row
+// `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority, id emission-building-block-realization): a
+// Loop with a record accumulator, a field read, a record rebuild with one field changed, and a local and
+// an escaping closure. This module holds the SUBJECT BODIES and the metered pairs only -- no report, no
+// pipeline entry -- so the family's green entry and its red entry measure the same bodies through the
+// same bracket.
+//
+// This is the family the row's own displaced_cost names: "a reader cannot say what a record rebuild or a
+// fold step costs in emitted Rust without reading generated code". The fold step and the rebuild are both
+// here, each with the arm that does the unnecessary work beside the arm that does not.
+//
+// THIS MODULE HOLDS THE THREE EXECUTING BLOCKS of the family: the Loop with a record accumulator, the
+// field read, and the record rebuild with one field changed, each with the arm that does the unnecessary
+// work beside the arm that does not. THE TWO CLOSURE BLOCKS ARE NOT HERE ANY MORE: the local closure and
+// the escaping closure, their violating variants, the three corpus forces that were attempted on them and
+// the corpus survey that chose those spellings all live in gunbc.instruments.emit_closure_subjects, as their
+// own two instrument targets. They were split out because, sharing one emitted file with the arms below,
+// they voided this family: five arms that cannot be built at the emitter today were being reported beside
+// three the row must measure green. Why they cannot be built is carried by
+// dag/gunbc/guarantee_stall/let_bound_closure_parameters_are_emitted_without_their_declared_types_stall.dag -- a plan-only
+// GuaranteeStall row (moved off the rung_drop path under the lane ruling; carried by gunb-ai/gunbc review 17220 at head
+// f7d7429362d79f3463e88c8076c874675bbfca7f, OPEN and absent from origin/main at the time of writing; cited by symbol
+// as module gunbc.guarantee_stall.let_bound_closure_parameters_are_emitted_without_their_declared_types_stall, data
+// let_bound_closure_parameters_are_emitted_without_their_declared_types_stall: GuaranteeStall (current: Mitigatable,
+// ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, population: the five closure arms,
+// next_rung_trigger.capability: v1.compiler.emit_rust::emit_typed_let resolving each let-bound closure parameter's
+// declared formal type), authored
+// separately, still in flight when this was written, and not restated here. This file keeps the part of the
+// survey that concerns the arms below.
+//
+// THE FOLD AND REBUILD ARMS EMIT TYPED AND BUILD. In the same retained probe root the record-accumulator
+// fold arrived with fully annotated parameters -- `|acc: Rc<AccRecord>, x: i64|` in the generated source --
+// and the corpus agrees that this is the ordinary spelling: over dag/, src/v2/ and src/v1/, 8766 lines
+// contain a `fold(` call, 4129 spell the step as an inline lambda (`f: (`), 1134 spell a fold's init as a
+// record literal (`init: <Ctor> {`), 347 have a record constructor in a step body within two lines of an
+// inline lambda, and 30 pass a named step function. The nearest neighbour to the fold below is
+// `gunbc.product.fabric.flex_market::FlexMedianScan`. A reader who wants the cost of a fold step or a
+// rebuild in emitted Rust should read the rows this entry prints, not the generated file.
+
+data acc_cardinality: Int = 32
+
+// THE RECORD ACCUMULATOR: one field changes per step, the context and the tag are carried unchanged.
+// The context is a list rather than a string so the reading is about the payload, not about text layout.
+type AccRecord {
+  pos: Int
+  total: Int
+  context: List<Int>
+  tag: Int
+}
+
+type AccRow {
+  label: Int
+  width: Int
+  context: List<Int>
+}
+
+fn acc_init(context: List<Int>) -> AccRecord {
+  AccRecord { pos: 0, total: 0, context: context, tag: 7 }
+}
+
+// THE LOOP WITH A RECORD ACCUMULATOR, contract arm: one accumulator threaded through the walk; `context`
+// and `tag` are carried by reference to the enclosing value, so a step's cost is bounded by the field that
+// changes. Same fold shape as the accepted specimen's `spec_walk_tokens` in gunbc.emit_state_threading_specimen.
+fn acc_fold_step(seed: AccRecord, xs: List<Int>) -> Int {
+  let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
+    AccRecord { pos: acc.pos + 1, total: acc.total + x, context: acc.context, tag: acc.tag }
+  })
+  end.total + end.pos
+}
+
+// THE LOOP, violating arm: a fresh accumulator is materialized every step from a
+// fresh pass over the whole context, so the accumulator is allocated per step instead of moved per step.
+// Same fold, same xs, same returned scalar; the only difference is that the carried value is rebuilt from
+// the context each step.
+fn acc_fold_allocates_per_step(seed: AccRecord, xs: List<Int>) -> Int {
+  let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
+    let remade = fold(acc.context, init: acc_init(context: acc.context), f: (inner, c) => AccRecord { pos: inner.pos, total: inner.total + c, context: inner.context, tag: inner.tag })
+    AccRecord { pos: acc.pos + 1, total: remade.total + x, context: acc.context, tag: acc.tag }
+  })
+  end.total + end.pos
+}
+
+// THE FIELD READ, contract arm: the enclosing row stays live and only a field is taken.
+fn acc_field_read(row: AccRow) -> Int {
+  row.width
+}
+
+// THE FIELD READ, violating arm: the whole enclosing record is rebuilt in order
+// to read one field, so the unchanged context is copied through the read.
+fn acc_field_read_rebuilds(row: AccRow) -> Int {
+  let rebuilt = AccRow { label: row.label, width: row.width, context: row.context }
+  rebuilt.width
+}
+
+// THE RECORD REBUILD, contract arm: one field changes, the context is carried.
+fn acc_rebuild_one_field(row: AccRow) -> Int {
+  let changed = AccRow { label: row.label, width: row.width + 1, context: row.context }
+  changed.width
+}
+
+// THE RECORD REBUILD, violating arm: the field that does not change is pushed
+// through an extra fold over the context before the rebuild, copying the unchanged context. The extra pass
+// is the whole difference from the contract arm: same fields, same returned width, but the unchanged
+// context is walked to make a value that is then multiplied by zero, so the work is real and the answer
+// is not.
+fn acc_rebuild_copies_context(row: AccRow) -> Int {
+  let carried = fold(row.context, init: 0, f: (acc, c) => acc + c)
+  let changed = AccRow { label: row.label, width: row.width + 1 + (carried * 0), context: row.context }
+  changed.width
+}
+
+fn acc_row_of(n: Int) -> AccRow {
+  AccRow { label: n, width: n * 2, context: spec_build(n: n) }
+}
+
+type AccSubject =
+    AccMeterEmpty
+  | AccMeterKnownAllocation
+  | AccFoldStep
+  | AccFoldAllocatesPerStep
+  | AccFieldRead
+  | AccFieldReadRebuilds
+  | AccRebuildOneField
+
+// ONE PATH FOR EVERY ARM: same seed, same rows, same returned scalar; a violating arm differs from its
+// contract arm only in the work it does inside the same body.
+fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
+  let rows = spec_build(n: acc_cardinality)
+  let context = spec_build(n: acc_cardinality)
+  let seed = acc_init(context: context)
+  let row = acc_row_of(n: 8)
+  match subject {
+    AccMeterEmpty => []
+    AccMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
+    AccFoldStep => list_push([], acc_fold_step(seed: seed, xs: rows))
+    AccFoldAllocatesPerStep => list_push([], acc_fold_allocates_per_step(seed: seed, xs: rows))
+    AccFieldRead => list_push([], acc_field_read(row: row))
+    AccFieldReadRebuilds => list_push([], acc_field_read_rebuilds(row: row))
+    AccRebuildOneField => list_push([], acc_rebuild_one_field(row: row))
+    AccRebuildCopiesContext => list_push([], acc_rebuild_copies_context(row: row))
+  }
+}
+
+// THE PAIR TAKEN UNDER THE METER, in the shared bracket.
+fn acc_window(subject: AccSubject, src: List<Int>) -> BatteryWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let kept = run_acc_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    battery_window(kept: kept, ops_before: ops_before, ops_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after)
+  } else {
+    battery_window_unavailable(kept: run_acc_subject(subject: subject, src: src))
+  }
+}
+
+// THE GREEN MEASUREMENTS: availability, the meter's own two readings, the calibration pair, and one
+// reading plus one discriminating pair per block. No red-control row appears here. The known arm of the
+// calibration pair builds from the specimen input, never a closed term: a literal with no input to
+// allocate from measures nothing, which is the specimen being free rather than the meter being blind.
+fn acc_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let empty = acc_window(subject: AccMeterEmpty, src: src)
+  let empty_again = acc_window(subject: AccMeterEmpty, src: src)
+  let known = acc_window(subject: AccMeterKnownAllocation, src: src)
+  let fold_step = acc_window(subject: AccFoldStep, src: src)
+  let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src)
+  let field_read = acc_window(subject: AccFieldRead, src: src)
+  let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src)
+  let rebuild = acc_window(subject: AccRebuildOneField, src: src)
+  let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
+  concat(concat(concat([plain_row(c: availability_case(prefix: "accumulator"))],
+      [subject_case(prefix: "accumulator", block_id: "meter_empty", own: empty), subject_case(prefix: "accumulator", block_id: "meter_known_allocation", own: known)]),
+      calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known)),
+    concat(concat(
+      [subject_case(prefix: "accumulator", block_id: "loop_record_accumulator", own: fold_step), violation_case(prefix: "accumulator", block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step)],
+      [subject_case(prefix: "accumulator", block_id: "field_read", own: field_read), violation_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read)]),
+      [subject_case(prefix: "accumulator", block_id: "record_rebuild_one_field", own: rebuild), violation_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)]))
+}
+
+// THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way.
+fn acc_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let fold_step = acc_window(subject: AccFoldStep, src: src)
+  let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src)
+  let field_read = acc_window(subject: AccFieldRead, src: src)
+  let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src)
+  let rebuild = acc_window(subject: AccRebuildOneField, src: src)
+  let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
+  [
+    violation_contract_holds_case(prefix: "accumulator", block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step),
+    violation_contract_holds_case(prefix: "accumulator", block_id: "field_read", viol: field_rebuilt, contract_arm: field_read),
+    violation_contract_holds_case(prefix: "accumulator", block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)
+  ]
+}
+
+// THE ACCEPTED POSITIVES THE RED ENTRY CARRIES. `gunbc.design_argument::guarantee_ladder` asks a reported
+// rung to rest on a red refused on the real acceptance path PLUS an accepted positive control, and the red
+// entry had only the red rows: an exit 1 there could have meant a caught violation or a sampler that stopped
+// reading. So the red entry meters its own empty floor and its own known copying arm, on windows of its own
+// (a shared window would make the two entries one measurement, and neither could then contradict the other).
+fn acc_control_rows() -> List<BatteryRow> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let empty = acc_window(subject: AccMeterEmpty, src: src)
+  let empty_again = acc_window(subject: AccMeterEmpty, src: src)
+  let known = acc_window(subject: AccMeterKnownAllocation, src: src)
+  concat([plain_row(c: availability_case(prefix: "accumulator"))], calibration_rows(prefix: "accumulator", empty: empty, empty_again: empty_again, known: known))
+}

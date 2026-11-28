@@ -1,0 +1,53 @@
+module gunbc.instruments.emit_carrier_observation
+
+import std.types { NonEmptyStr }
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_carrier_subjects { car_measurement_rows }
+
+// THE GREEN ENTRY of the carrier family: sequence build, element read and sequential traversal under
+// PersistentSequenceCarrier, and index build, lookup and traversal under PersistentMapCarrier, each with
+// its retained-snapshot block. Every row here is expected to hold, so its exit code means something; the
+// red controls are their own target, `emit_carrier_violation_label` in gunbc.instrument_targets, because an
+// entry carrying rows designed to fail can only exit non-zero and an exit that cannot vary measures
+// nothing.
+//
+// Bodies, windows and the family's finding row:
+// `car_measurement_rows` in gunbc.instruments.emit_carrier_subjects. Row shapes, calibration, audit and
+// report grammar: `battery_report` in gunbc.instruments.allocation_battery. The finding is the carrier's own
+// disagreement -- the vocabulary calls the persistent carriers realized while the meter reads a wholesale
+// copy -- and it is a row, not a comment, so a leg that comes back the other way is noticed.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+// THE v2 OUTCOME OF THIS FAMILY, stated rather than omitted, and carried as a value rather than a
+// sentence. The blocker is the door's own structure: the only registered v2 instrument builds the v2 CLI
+// and asks it to emit one fixed control module, so there is no production route that runs the v2 emitter
+// over an arbitrary subject at all. A future gate that walks the door over this family's subject replaces
+// this arm with the refusal it actually observes, and only that arm qualifies the claim.
+//
+// This is a door walk, not a subject attempt: the reserve leg proves the door refuses, and nothing here
+// should be read as the v2 emitter having been asked about these specimens. The seed CLI offers no
+// --compiler or --emitter flag; the refusal constructors and where they are produced are named in a
+// comment above `NativeRouteRefusal` in gunbc.instruments.allocation_battery.
+fn v2_evidence() -> ExecutionEvidence {
+  PendingExecution {
+    claim: "emit_carrier_observation/v2" as NonEmptyStr,
+    blocker: NoProductionRouteEmitsAnArbitrarySubject { door_entry: "src/v2/cli/compile_cli.dag" as NonEmptyStr, fixed_subject: "gunbc.native_cli_door_probe" as NonEmptyStr }
+  }
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let measured = car_measurement_rows()
+  let audit = audit_rows(prefix: "carrier", family: Carriers)
+  let qualified = [
+    roster_membership_row(prefix: "carrier", family: Carriers),
+    discrimination_row(prefix: "carrier", family: Carriers),
+    execution_row(prefix: "carrier", axis: "v2", block_id: "family", e: v2_evidence()),
+    execution_mechanism_refuses_unproven_claims(prefix: "carrier")
+  ]
+  battery_report(concat(measured, concat(map(audit, c => plain_row(c: c)), concat(map(qualified, c => plain_row(c: c)), [plain_row(c: dead_meter_classification_row(prefix: "carrier"))]))))
+}

@@ -1,0 +1,32 @@
+module gunbc.instruments.emit_closure_violation
+
+import std.types { NonEmptyStr }
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.instruments.allocation_battery { battery_report, execution_mechanism_refuses_unproven_claims, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_closure_subjects { closure_red_rows, closure_control_rows }
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+// THE RED ENTRY of the closure family: the violating judgements only, in their own target, for the same
+// reason the other three families keep theirs separate. An entry that carries rows designed to fail can only
+// exit non-zero, so an exit that cannot vary measures nothing; here the green entry holds the contracts and
+// this one holds the violations, and it is the PAIR -- not either alone -- that is the instrument. The rows
+// come from the family's own subject module, the same windows the green entry discriminates on, taken under
+// the same bracket.
+//
+// WHAT THIS ENTRY DOES NOT CLAIM. Its arms do not compile at the seed emitter today, so it has never
+// printed a PASS line and its red has never been observed: a contract whose specimen did not execute reads
+// unqualified, and the family roster reports local_closure and escaping_closure executed=no with the reason
+// named. The measurement of why is carried by
+// dag/gunbc/guarantee_stall/let_bound_closure_parameters_are_emitted_without_their_declared_types_stall.dag -- a plan-only GuaranteeStall row (moved off the rung_drop path under the lane ruling; carried by gunb-ai/gunbc review 17220 at head f7d7429362d79f3463e88c8076c874675bbfca7f, OPEN and absent from origin/main at the time of writing; cited by symbol as module gunbc.guarantee_stall.let_bound_closure_parameters_are_emitted_without_their_declared_types_stall, data let_bound_closure_parameters_are_emitted_without_their_declared_types_stall: GuaranteeStall (current: Mitigatable, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, population: the five closure arms, next_rung_trigger.capability: v1.compiler.emit_rust::emit_typed_let resolving each let-bound closure parameter's declared formal type)), authored separately, still in
+// flight when this was written, so citing it is not a claim by this PR that the drop is merged. The per-arm probe
+// (acq_probe_arms.sh) prints one status line per arm so the refusal is attributed to arms rather than to a
+// batch, and when the carrier's restoration trigger fires this entry is the thing that has to go green
+// before those two blocks may be counted.
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let red = closure_red_rows()
+  let controls = closure_control_rows()
+  battery_report(concat(red, concat(map(controls, c => plain_row(c: c)), [plain_row(c: execution_mechanism_refuses_unproven_claims(prefix: "accumulator")), plain_row(c: dead_meter_classification_row(prefix: "accumulator"))])))
+}

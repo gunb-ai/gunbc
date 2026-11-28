@@ -500,6 +500,117 @@ fn native_allocation_observation_entry() -> String {
   "dag/gunbc/instruments/native_allocation_observation.dag"
 }
 
+// THE BUILDING-BLOCK BATTERY, value-shape group (roadmap row emission-building-block-realization,
+// deliverable two). Its own entry, its own contract module, and one target per family so a reviewer
+// can stop at the first one.
+// THE RED CONTROL OF THE VALUE SHAPE FAMILY, its own target rather than a flag on the green
+// entry. An entry that carries rows designed to fail can only exit non-zero, so an exit code that cannot
+// vary measures nothing: the green entry holds only rows expected to pass, this one holds only the
+// violating judgements, and the pair -- not either alone -- is the instrument. The rows come from the
+// family's own subject module, the same windows the green entry discriminates on.
+fn emit_value_shape_violation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-value-shape-violation" } }
+}
+
+fn emit_value_shape_violation_entry() -> String {
+  "dag/gunbc/instruments/emit_value_shape_violation.dag"
+}
+
+// THE RED CONTROL OF THE CONTROL FLOW FAMILY, its own target rather than a flag on the green
+// entry. An entry that carries rows designed to fail can only exit non-zero, so an exit code that cannot
+// vary measures nothing: the green entry holds only rows expected to pass, this one holds only the
+// violating judgements, and the pair -- not either alone -- is the instrument. The rows come from the
+// family's own subject module, the same windows the green entry discriminates on.
+fn emit_control_flow_violation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-control-flow-violation" } }
+}
+
+fn emit_control_flow_violation_entry() -> String {
+  "dag/gunbc/instruments/emit_control_flow_violation.dag"
+}
+
+// THE RED CONTROL OF THE ACCUMULATOR FAMILY, its own target rather than a flag on the green
+// entry. An entry that carries rows designed to fail can only exit non-zero, so an exit code that cannot
+// vary measures nothing: the green entry holds only rows expected to pass, this one holds only the
+// violating judgements, and the pair -- not either alone -- is the instrument. The rows come from the
+// family's own subject module, the same windows the green entry discriminates on.
+fn emit_accumulator_violation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-accumulator-violation" } }
+}
+
+fn emit_accumulator_violation_entry() -> String {
+  "dag/gunbc/instruments/emit_accumulator_violation.dag"
+}
+
+// THE RED CONTROL OF THE CARRIER FAMILY, its own target rather than a flag on the green
+// entry. An entry that carries rows designed to fail can only exit non-zero, so an exit code that cannot
+// vary measures nothing: the green entry holds only rows expected to pass, this one holds only the
+// violating judgements, and the pair -- not either alone -- is the instrument. The rows come from the
+// family's own subject module, the same windows the green entry discriminates on.
+fn emit_carrier_violation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-carrier-violation" } }
+}
+
+fn emit_carrier_violation_entry() -> String {
+  "dag/gunbc/instruments/emit_carrier_violation.dag"
+}
+
+fn emit_value_shape_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-value-shape-observation" } }
+}
+
+fn emit_value_shape_observation_entry() -> String {
+  "dag/gunbc/instruments/emit_value_shape_observation.dag"
+}
+fn emit_control_flow_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-control-flow-observation" } }
+}
+
+fn emit_control_flow_observation_entry() -> String {
+  "dag/gunbc/instruments/emit_control_flow_observation.dag"
+}
+
+fn emit_accumulator_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-accumulator-observation" } }
+}
+
+fn emit_accumulator_observation_entry() -> String {
+  "dag/gunbc/instruments/emit_accumulator_observation.dag"
+}
+
+// THE CLOSURE FAMILY, its own two targets rather than arms inside the accumulator family's emitted file.
+// WHY THEY ARE SEPARATE TARGETS AND WHY THEY ARE EXPECTED TO REFUSE: the five let-bound closure arms do not
+// compile at the seed emitter today, and while they shared one emitted file with the fold-step, field-read
+// and record-rebuild arms they VOIDED that family -- three arms the row must measure green were reported
+// beside five that cannot be built, which is a check pointing the wrong way. Separated, each family's exit
+// can vary on its own evidence. The mechanism, the counts and the emitted lines are recorded in the RungDrop
+// carrier row, not here; the family roster names these five as not executable today, and the per-arm probe
+// prints one status line per arm so the refusal is attributed to arms rather than to a batch.
+fn emit_closure_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-closure-observation" } }
+}
+
+fn emit_closure_observation_entry() -> String {
+  "dag/gunbc/instruments/emit_closure_observation.dag"
+}
+
+fn emit_closure_violation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-closure-violation" } }
+}
+
+fn emit_closure_violation_entry() -> String {
+  "dag/gunbc/instruments/emit_closure_violation.dag"
+}
+
+fn emit_carrier_observation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emit-carrier-observation" } }
+}
+
+fn emit_carrier_observation_entry() -> String {
+  "dag/gunbc/instruments/emit_carrier_observation.dag"
+}
+
+
 fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
@@ -930,6 +1041,46 @@ fn native_allocation_observation_binding() -> TargetBinding {
   TargetBinding { target: native_allocation_observation_label() producer: NativeClaimProgramProducer { entry: native_allocation_observation_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+fn emit_value_shape_violation_binding() -> TargetBinding {
+  TargetBinding { target: emit_value_shape_violation_label() producer: NativeClaimProgramProducer { entry: emit_value_shape_violation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_control_flow_violation_binding() -> TargetBinding {
+  TargetBinding { target: emit_control_flow_violation_label() producer: NativeClaimProgramProducer { entry: emit_control_flow_violation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_accumulator_violation_binding() -> TargetBinding {
+  TargetBinding { target: emit_accumulator_violation_label() producer: NativeClaimProgramProducer { entry: emit_accumulator_violation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_carrier_violation_binding() -> TargetBinding {
+  TargetBinding { target: emit_carrier_violation_label() producer: NativeClaimProgramProducer { entry: emit_carrier_violation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_value_shape_observation_binding() -> TargetBinding {
+  TargetBinding { target: emit_value_shape_observation_label() producer: NativeClaimProgramProducer { entry: emit_value_shape_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_control_flow_observation_binding() -> TargetBinding {
+  TargetBinding { target: emit_control_flow_observation_label() producer: NativeClaimProgramProducer { entry: emit_control_flow_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_accumulator_observation_binding() -> TargetBinding {
+  TargetBinding { target: emit_accumulator_observation_label() producer: NativeClaimProgramProducer { entry: emit_accumulator_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_closure_observation_binding() -> TargetBinding {
+  TargetBinding { target: emit_closure_observation_label() producer: NativeClaimProgramProducer { entry: emit_closure_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_closure_violation_binding() -> TargetBinding {
+  TargetBinding { target: emit_closure_violation_label() producer: NativeClaimProgramProducer { entry: emit_closure_violation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn emit_carrier_observation_binding() -> TargetBinding {
+  TargetBinding { target: emit_carrier_observation_label() producer: NativeClaimProgramProducer { entry: emit_carrier_observation_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
 
 fn native_emission_controls_binding() -> TargetBinding {
   TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
@@ -1179,7 +1330,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), emit_value_shape_observation_binding(), emit_value_shape_violation_binding(), emit_control_flow_observation_binding(), emit_control_flow_violation_binding(), emit_accumulator_observation_binding(), emit_accumulator_violation_binding(), emit_carrier_observation_binding(), emit_carrier_violation_binding(), emit_closure_observation_binding(), emit_closure_violation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 

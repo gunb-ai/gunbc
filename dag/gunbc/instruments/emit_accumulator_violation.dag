@@ -1,0 +1,25 @@
+module gunbc.instruments.emit_accumulator_violation
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.instruments.allocation_battery { battery_report, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_accumulator_subjects { acc_red_rows, acc_control_rows }
+
+// THE RED ENTRY of the accumulator family: the same subject bodies, through the same meter, judged the
+// opposite way -- each violating arm asked whether it sits WITHIN its contract arm, which is false by
+// construction. All five blocks appear, so every accumulator contract has been shown red. Which violating
+// form an arm exhibits is stated once, on that row's typed `violation_form` in
+// gunbc.emit_building_block_contracts; a reader who wants it per block reads it there, not here.
+//
+// Its own target, `emit_accumulator_violation_label` in gunbc.instrument_targets with
+// `emit_accumulator_violation_binding` in gunbc.instrument_targets, so the pair can exit differently. If this
+// entry ever exits 0 the meter has stopped discriminating and the family's green rows are
+// readings of a broken instrument; if it exits 2 the meter read nothing at all, which is not a judgement at
+// all and is the answer `gunbc.design_ruling::instrument_is_a_row_not_a_flag` demands for a dead observation --
+// without that third arm one exit 1 would cover both a caught violation and a dead meter.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  battery_report(concat(acc_red_rows(), concat(acc_control_rows(), [plain_row(c: dead_meter_classification_row(prefix: "accumulator"))])))
+}

@@ -1,0 +1,165 @@
+module gunbc.allocation_observation_render
+
+// SINGLE HOME for reading an AllocationObservation and printing one claim line about it. Scope:
+// turning an observation into an answer (is_observed, span_operations, span_bytes, span_is_zero,
+// span_at_least, operations_above, operations_within, spans_agree, bytes_above) and into report
+// text (count_text, span_text, case_line over type AllocationCase). It decides no contract and
+// claims nothing; a battery claims, this module only reads and prints.
+//
+// PROVENANCE, as single_authority requires of a deliberate authority: the ten decls before the
+// rule below are moved VERBATIM out of gunbc.instruments.native_allocation_observation at its
+// revision 891198514b8ad3161e6acfdc2a3261d4c044510d (each body compared byte-for-byte before the
+// move, and the instrument now imports them back). The five after the rule were added by the
+// roadmap row `declared_roadmap_nodes` in gunbc.roadmap.roadmap_authority, id
+// emission-building-block-realization, to put the byte axis beside the operation axis so a
+// calibration row can compare two windows without hard-coding what an empty window costs. Operations
+// are a count and stay a Nat; bytes are a quantity and stay a ByteSize, compared through std.measure's
+// own measure_le, because a value that crosses a module boundary as a bare byte count makes the
+// consumer the authority over a unit std.measure already owns.
+//
+// IT DECLARES NO COMPILER PIPELINE ENTRY, and that is why it exists as its own module. An
+// instrument declares data compiler_pipeline_entry, and importing a module that also declares one
+// puts two entries in one closure, which the emitter refuses with compile_error! (the refusal is
+// emitted by compiler_pipeline_entry_decls in src/v1/stage0/src/v1_compiler_emit_rust.rs). An
+// entry-free home is the only shape in which these helpers can be one authority instead of one
+// copy per consumer.
+
+import std.types { Bool, Int, List, String }
+import std.optional { Optional, Present, Absent }
+import std.realization_measurement { AllocationObservation, AllocationObserved, AllocationOperationsRanBackwards, AllocationBytesRequestedRanBackwards, AllocationProviderNotSelected }
+import std.measure { ByteSize, byte_size_count, measure_le }
+import std.nat { Nat, nat_to_decimal_string }
+
+type AllocationCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn span_operations(o: AllocationObservation) -> Nat? {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: _ } => Present { value: n }
+    AllocationOperationsRanBackwards => none
+    AllocationBytesRequestedRanBackwards => none
+    AllocationProviderNotSelected => none
+  }
+}
+
+fn is_observed(o: AllocationObservation) -> Bool {
+  match span_operations(o: o) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn span_is_zero(o: AllocationObservation) -> Bool {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => n == 0 && byte_size_count(b: b) == 0
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
+  }
+}
+
+// A BYTE QUANTITY ENTERS AS A ByteSize, like every other byte quantity this module reads or returns:
+// std.measure owns what bytes mean, so the comparison below is `measure_le`, not a count comparison
+// this module could get wrong. The instrument this block was moved out of passed a bare Nat here and
+// decided the unit at the comparison site; review 98757 stopped that, and the parameter type is where
+// the decision now lives rather than in the caller's literal.
+fn span_at_least(o: AllocationObservation, operations: Nat, bytes: ByteSize) -> Bool {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => n >= operations && measure_le(a: bytes, b: b)
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
+  }
+}
+
+fn operations_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: x } => match span_operations(o: b) {
+      Present { value: y } => x > y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn operations_within(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: x } => match span_operations(o: b) {
+      Present { value: y } => x <= y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn count_text(label: String, n: Int) -> String {
+  concat(label, "=", to_string(value: n))
+}
+
+fn span_text(label: String, o: AllocationObservation) -> String {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => concat(concat(label, "_ops=", nat_to_decimal_string(value: n)), " ", concat(label, "_bytes=", nat_to_decimal_string(value: byte_size_count(b: b))))
+    AllocationOperationsRanBackwards => concat(label, "=unobservable(operations: counter ran backwards)")
+    AllocationBytesRequestedRanBackwards => concat(label, "=unobservable(bytes_requested: counter ran backwards)")
+    AllocationProviderNotSelected => concat(label, "=unobservable(allocation: counting allocator not selected)")
+  }
+}
+
+fn case_line(c: AllocationCase) -> String {
+  concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
+}
+
+// ADDED BY THIS ROW, not moved: the byte-axis readers a calibration row needs so the floor
+// is a measurement rather than a remembered number. An earlier draft read the byte axis as a bare
+// Nat at this boundary; a review stopped it, and these three now carry the carrier.
+
+// A BYTE QUANTITY LEAVES AS A ByteSize. std.measure owns what bytes mean; handing back the bare
+// count would give every consumer an unmodeled number and move authority over a unit this module
+// does not own onto the comparison site.
+fn span_bytes(o: AllocationObservation) -> ByteSize? {
+  match o {
+    AllocationObserved { operations: _, bytes_requested: b } => Present { value: b }
+    AllocationOperationsRanBackwards => none
+    AllocationBytesRequestedRanBackwards => none
+    AllocationProviderNotSelected => none
+  }
+}
+
+fn spans_agree(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: ax } => match span_operations(o: b) {
+      Present { value: bx } => match span_bytes(o: a) {
+        Present { value: ay } => match span_bytes(o: b) {
+          Present { value: by } => ax == bx && byte_size_agree(a: ay, b: by)
+          Absent => false
+        }
+        Absent => false
+      }
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn bytes_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_bytes(o: a) {
+    Present { value: ay } => match span_bytes(o: b) {
+      Present { value: by } => byte_size_above(a: ay, b: by)
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// THE MEASURE'S OWN COMPARISONS, so the byte axis is read the way std.measure reads it: strictly
+// above is not-within, and agreement is each within the other.
+fn byte_size_above(a: ByteSize, b: ByteSize) -> Bool {
+  !measure_le(a: a, b: b)
+}
+
+fn byte_size_agree(a: ByteSize, b: ByteSize) -> Bool {
+  measure_le(a: a, b: b) && measure_le(a: b, b: a)
+}

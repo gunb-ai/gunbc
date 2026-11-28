@@ -1,0 +1,59 @@
+module gunbc.instruments.emit_value_shape_observation
+
+import std.types { NonEmptyStr }
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_copy_qualification { PatternRequiresConsumingContract, PatternRequiresBorrowingContract, ScalarBasisRequiresCopyScalarCarrier, SizedBasisRequiresSizedCarrier }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, ValueShapes }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, refusal_not_hit_row, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_value_shape_subjects { bb_measurement_rows }
+
+// THE GREEN ENTRY of the value-shape family: a Value in its three named shapes and the generic instance
+// over a scalar and over a nontrivial payload. Every row here is expected to hold, so its exit code means
+// something; the red controls are their own target,
+// `emit_value_shape_violation_label` in gunbc.instrument_targets, because an entry carrying rows designed to
+// fail can only exit non-zero and an exit that cannot vary measures nothing.
+//
+// Bodies and windows: `bb_measurement_rows` in gunbc.instruments.emit_value_shape_subjects. Row shapes,
+// calibration, audit and report grammar: `battery_report` in gunbc.instruments.allocation_battery. The
+// population judgements are the carrier's own, reached through
+// `contract_verdict` in gunbc.emit_building_block_contracts -- this battery never judges applicability
+// itself, and the discrimination row below is what refuses if it ever stops asking.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+// THE v2 OUTCOME OF THIS FAMILY, stated rather than omitted, and carried as a value rather than a
+// sentence. The blocker is the door's own structure: the only registered v2 instrument builds the v2 CLI
+// and asks it to emit one fixed control module, so there is no production route that runs the v2 emitter
+// over an arbitrary subject at all. A future gate that walks the door over this family's subject replaces
+// this arm with the refusal it actually observes, and only that arm qualifies the claim.
+//
+// This is a door walk, not a subject attempt: the reserve leg proves the door refuses, and nothing here
+// should be read as the v2 emitter having been asked about these specimens. The seed CLI offers no
+// --compiler or --emitter flag; the refusal constructors and where they are produced are named in a
+// comment above `NativeRouteRefusal` in gunbc.instruments.allocation_battery.
+fn v2_evidence() -> ExecutionEvidence {
+  PendingExecution {
+    claim: "emit_value_shape_observation/v2" as NonEmptyStr,
+    blocker: NoProductionRouteEmitsAnArbitrarySubject { door_entry: "src/v2/cli/compile_cli.dag" as NonEmptyStr, fixed_subject: "gunbc.native_cli_door_probe" as NonEmptyStr }
+  }
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let measured = bb_measurement_rows()
+  let audit = audit_rows(prefix: "value_shape", family: ValueShapes)
+  let refusals = [
+    refusal_not_hit_row(prefix: "value_shape", name: "pattern_requires_consuming_contract", refusal: PatternRequiresConsumingContract),
+    refusal_not_hit_row(prefix: "value_shape", name: "pattern_requires_borrowing_contract", refusal: PatternRequiresBorrowingContract),
+    refusal_not_hit_row(prefix: "value_shape", name: "scalar_basis_requires_copy_scalar_carrier", refusal: ScalarBasisRequiresCopyScalarCarrier),
+    refusal_not_hit_row(prefix: "value_shape", name: "sized_basis_requires_sized_carrier", refusal: SizedBasisRequiresSizedCarrier)
+  ]
+  let qualified = [
+    roster_membership_row(prefix: "value_shape", family: ValueShapes),
+    discrimination_row(prefix: "value_shape", family: ValueShapes),
+    execution_row(prefix: "value_shape", axis: "v2", block_id: "family", e: v2_evidence()),
+    execution_mechanism_refuses_unproven_claims(prefix: "value_shape")
+  ]
+  battery_report(concat(measured, concat(map(audit, c => plain_row(c: c)), concat(map(qualified, c => plain_row(c: c)), concat(map(refusals, c => plain_row(c: c)), [plain_row(c: dead_meter_classification_row(prefix: "value_shape"))])))))
+}

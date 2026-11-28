@@ -1,0 +1,51 @@
+module gunbc.instruments.emit_accumulator_observation
+
+import std.types { NonEmptyStr }
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Accumulator }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_accumulator_subjects { acc_measurement_rows }
+
+// THE GREEN ENTRY of the accumulator family: a Loop with a record accumulator, a field read, a record
+// rebuild with one field changed, and a local and an escaping closure. Every row here is expected to
+// hold, so its exit code means something; the red controls are their own target,
+// `emit_accumulator_violation_label` in gunbc.instrument_targets, because an entry carrying rows designed to
+// fail can only exit non-zero, and an exit that cannot vary measures nothing.
+//
+// Bodies and windows: `acc_measurement_rows` in gunbc.instruments.emit_accumulator_subjects. Row shapes,
+// calibration, audit and report grammar: `battery_report` in gunbc.instruments.allocation_battery, which
+// all four families compose and which declares no pipeline entry so both entries of a family can import
+// it. OPERATIONS AND BYTES ONLY: the meter states no traversal count and no per-phase lifetime.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+// THE v2 OUTCOME OF THIS FAMILY, stated rather than omitted, and carried as a value rather than a
+// sentence. The blocker is the door's own structure: the only registered v2 instrument builds the v2 CLI
+// and asks it to emit one fixed control module, so there is no production route that runs the v2 emitter
+// over an arbitrary subject at all. A future gate that walks the door over this family's subject replaces
+// this arm with the refusal it actually observes, and only that arm qualifies the claim.
+//
+// This is a door walk, not a subject attempt: the reserve leg proves the door refuses, and nothing here
+// should be read as the v2 emitter having been asked about these specimens. The seed CLI offers no
+// --compiler or --emitter flag; the refusal constructors and where they are produced are named in a
+// comment above `NativeRouteRefusal` in gunbc.instruments.allocation_battery.
+fn v2_evidence() -> ExecutionEvidence {
+  PendingExecution {
+    claim: "emit_accumulator_observation/v2" as NonEmptyStr,
+    blocker: NoProductionRouteEmitsAnArbitrarySubject { door_entry: "src/v2/cli/compile_cli.dag" as NonEmptyStr, fixed_subject: "gunbc.native_cli_door_probe" as NonEmptyStr }
+  }
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let measured = acc_measurement_rows()
+  let audit = audit_rows(prefix: "accumulator", family: Accumulator)
+  let qualified = [
+    roster_membership_row(prefix: "accumulator", family: Accumulator),
+    discrimination_row(prefix: "accumulator", family: Accumulator),
+    execution_row(prefix: "accumulator", axis: "v2", block_id: "family", e: v2_evidence()),
+    execution_mechanism_refuses_unproven_claims(prefix: "accumulator")
+  ]
+  battery_report(concat(measured, concat(map(audit, c => plain_row(c: c)), concat(map(qualified, c => plain_row(c: c)), [plain_row(c: dead_meter_classification_row(prefix: "accumulator"))]))))
+}

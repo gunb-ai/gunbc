@@ -343,6 +343,96 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-value-shape-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_value_shape_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-value-shape-violation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_value_shape_violation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-control-flow-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_control_flow_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-control-flow-violation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_control_flow_violation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-accumulator-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_accumulator_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-accumulator-violation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_accumulator_violation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-carrier-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_carrier_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-carrier-violation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_carrier_violation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-closure-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_closure_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-closure-violation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_closure_violation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "value-position-block-nests".to_string(),
             },
             TargetProducer::NativeClaimProgram {

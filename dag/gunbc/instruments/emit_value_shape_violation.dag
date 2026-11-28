@@ -1,0 +1,28 @@
+module gunbc.instruments.emit_value_shape_violation
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.instruments.allocation_battery { battery_report, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_value_shape_subjects { bb_red_rows, bb_control_rows }
+
+// THE RED ENTRY of the value-shape family: the same subject bodies, through the same meter, judged the
+// opposite way -- each violating arm asked whether it sits WITHIN its contract arm, false by construction.
+// Those rows are the point of the entry, and they do not stand alone in it: the family's accepted positives
+// (availability, the empty floor read twice, and a known copying arm above it) and the planted dead-meter
+// row ride along, so an exit 1 cannot be a sampler that stopped reading -- that answers 2. The red rows
+// name the violating forms: an owning retain added
+// to a scalar read, a record rebuilt to read one field, a variant payload copied to match, and a generic
+// payload materialized or copied at the boundary.
+//
+// Its own target, `emit_value_shape_violation_label` in gunbc.instrument_targets with
+// `emit_value_shape_violation_binding` in gunbc.instrument_targets, so the pair can exit differently. If this
+// entry ever exits 0 the meter has stopped discriminating and the family's green rows are
+// readings of a broken instrument; if it exits 2 the meter read nothing at all, which is not a judgement at
+// all and is the answer `gunbc.design_ruling::instrument_is_a_row_not_a_flag` demands for a dead observation --
+// without that third arm one exit 1 would cover both a caught violation and a dead meter.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  battery_report(concat(bb_red_rows(), concat(bb_control_rows(), [plain_row(c: dead_meter_classification_row(prefix: "value_shape"))])))
+}

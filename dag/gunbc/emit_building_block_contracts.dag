@@ -1,0 +1,537 @@
+module gunbc.emit_building_block_contracts
+
+import std.types { Bool, Int, List, String }
+import std.optional { Optional, Present, Absent }
+import gunbc.emit_copy_qualification {
+  EmitCopyQualificationCaseId,
+  CaseApplicability,
+  CaseApplicable,
+  CaseNotApplicable,
+  case_applicability,
+  case_slug,
+  StructuralInapplicability,
+  structural_inapplicability_slug,
+  CarrierUnrealizedInProductionEmission,
+  ScalarBasisRequiresCopyScalarCarrier,
+  PatternRequiresLoopShape,
+  PatternRequiresStraightLineShape,
+  PatternRequiresRecordCarrier,
+  PatternRequiresConsumingContract,
+  applicable_case_rows,
+  row_is_applicable,
+  OwnershipPattern,
+  ConsumedOnce,
+  BorrowedReadOnly,
+  ByValueThenReused,
+  BranchExclusive,
+  ReuseAcrossJoin,
+  AliasThenMutate,
+  MoveIntoClosure,
+  BorrowIntoClosure,
+  LoopCarriedAccumulator,
+  FieldExtractThenReuseEnclosing,
+  CarrierRealization,
+  CopyScalarControl,
+  OwnedStringCarrier,
+  DeepCloningSequenceCarrier,
+  SharedRecordCarrier,
+  NestedCheapDeepRecordCarrier,
+  PersistentSequenceCarrier,
+  PersistentMapCarrier,
+  ControlShape,
+  StraightLine,
+  IfSplit,
+  MatchBinding,
+  LoopRecursion,
+  ConsumerContract,
+  ConsumesByValue,
+  BorrowsByRef,
+  InputSizeBasis,
+  ScalarUnitBasis,
+  SizedCardinalityBasis
+}
+
+// THE BUILDING-BBLOCK CONTRACT ROSTER for roadmap row emission-building-block-realization.
+//
+// ONE AUTHORITY FOR THE VOCABULARY, ZERO NEW AXES. Every contract below is a tuple of the five axes the
+// carrier already owns (gunbc.emit_copy_qualification OwnershipPattern, CarrierRealization, ControlShape,
+// ConsumerContract, InputSizeBasis) and NOTHING ELSE. No alias, escape, retention, traversal-count or
+// lifetime field is invented here, because the carrier has none; where a contract needs to say something
+// about those, it says it in the `observation` prose and the log marks it as prose, never as a judged
+// member (roadmap row emission-building-block-realization, handback; gunbc.design_argument::conformance).
+//
+// THE ROSTER IS THE DENOMINATOR. Earlier readings of the row's boundary quoted a block count that could
+// not be reconstructed from the boundary text. No figure is quoted here: every count a battery reports is
+// derived from `fn building_block_contracts` at run time (the family row counts its own rows, the audit
+// counts the blocks it claims), so any figure in a receipt is reproducible from this file rather than
+// remembered.
+//
+// WHAT JUDGES A ROW IS THE CARRIER, NOT THIS FILE. `fn contract_verdict` calls the carrier's own
+// `fn case_applicability`, which chains `fn carrier_realized`, `fn basis_admits_carrier`,
+// `fn pattern_admits_shape`, `fn pattern_admits_carrier` and `fn pattern_admits_contract`. A contract
+// whose specimen never executed reads unqualified (the row's red_control), so applicability alone is never
+// a qualification: these lines establish only that a row is expressible and refused when it is not.
+//
+// WHY THE PROBES EXIST. A guard nobody has seen fire is a guess. `fn mispaired_probes` names tuples that
+// MUST be refused, one per rule family, and `fn probe_guard_holds` makes the emitted binary fail if any of
+// them is accepted — so the refusal path is executed evidence, not asserted coverage.
+
+type BuildingBlockFamily
+  = ValueShapes
+  | ControlFlow
+  | Accumulator
+  | Carriers
+
+fn family_slug(f: BuildingBlockFamily) -> String {
+  match f {
+    ValueShapes => "value_shapes"
+    ControlFlow => "control_flow"
+    Accumulator => "accumulator"
+    Carriers => "carriers"
+  }
+}
+
+type BuildingBlockContract {
+  block: String
+  family: BuildingBlockFamily
+  case_id: EmitCopyQualificationCaseId
+  violation_form: ViolatingForm
+}
+
+// THE VIOLATING FORM IS A FIELD OF THE CONTRACT, NOT A SECOND TABLE. The row's red_control names exactly
+// three violating forms, so they are a sum, and the form that violates a block is set where the block is
+// declared: a block without a form cannot be written at all, which is what fail_closed asks for ("stronger
+// than catching a wrong state is making it unwritable"). An earlier revision kept a parallel id->form
+// table beside the roster and a drift detector for it; review 98213 named both defects -- the table is a
+// second place that independently decides the form (single_authority), and a detector catches what the
+// schema should make unwritable. The two free-text fields this record used to carry went the same way:
+// commentary held in a field is dead data and `//` is the quarantine boundary (source_annotations), so
+// what a block observes lives in the structured fields above and what it violates in the typed field here,
+// with the prose in comments beside the row that earned it.
+//
+// The slug is for PRINTING and for counting how often a form is used; it is not a second authority because
+// it is derived from the field and nothing decides anything with it. Counting uses string equality because
+// sum-member equality on this runtime carries a documented false-adjudication class
+// (recurring_failure_mode/optional_equality_answers_by_representation) and slug equality is what the carrier
+// itself does for refusals (`structural_inapplicability_slug` in gunbc.emit_copy_qualification).
+type ViolatingForm =
+    OwningRetainAddedToObservation
+  | PerStepAllocation
+  | CopyOfUnchangedContext
+
+fn violating_form_slug(f: ViolatingForm) -> String {
+  match f {
+    OwningRetainAddedToObservation => "owning_retain_added_to_observation"
+    PerStepAllocation => "per_step_allocation"
+    CopyOfUnchangedContext => "copy_of_unchanged_context"
+  }
+}
+
+// How many roster blocks are violated by this form. A battery's audit refuses if any of the three forms
+// the row names has zero blocks, so a named form nobody implements cannot pass.
+fn violating_form_exercised(slug: String) -> Int {
+  count(building_block_contracts() |> filter(b => violating_form_slug(f: b.violation_form) == slug))
+}
+
+// THE AXIS A VIOLATING ARM IS JUDGED ON IS DERIVED HERE, from the roster field, and nowhere else. An
+// owning retain is invisible on the operations-and-bytes axis: the executed measurement at head
+// 1541d8af043722fc389f75cadc47f9a738e10a38 read violating_ops=38 equal to contract_arm_ops=38 and
+// violating_bytes=2648 equal to contract_arm_bytes=2648, while violating_kept=2 against contract_arm_kept=1.
+// The row's own boundary says owning retains, payload copies and collection copy-on-write are distinct
+// observations, so a retain judged on operations is measured on an axis it cannot move -- and judging it
+// on operations AND bytes AND handles, as this function's first version did, judges it on nothing: an OR
+// of all three answers the same whatever the declared form says. So the judgement is EXCLUSIVE: a
+// retaining block is held only by the handles it keeps, and a copying or per-step block only by the
+// operations and bytes it adds.
+//
+// The decision is made by MATCHING the typed field, never by comparing a printed rendering of it: the
+// slug is derived from the field for printing and counting (see the note above on sum-member equality),
+// and no string decides anything on this path. A battery asks this module which axis a block is judged
+// on and prints the answer it was given; it does not choose one.
+fn form_is_owning_retain(f: ViolatingForm) -> Bool {
+  match f {
+    OwningRetainAddedToObservation => true
+    PerStepAllocation => false
+    CopyOfUnchangedContext => false
+  }
+}
+
+fn retaining_rows_on_block(block_id: String) -> Int {
+  count(filter(building_block_contracts(), b => b.block == block_id && form_is_owning_retain(f: b.violation_form)))
+}
+
+// Printed, never decided with: the form behind the axis, so a log line carries its own provenance. A
+// block missing from the roster prints no_roster_row rather than silently inheriting an axis.
+fn violation_form_slug_of_block(block_id: String) -> String {
+  fold(map(filter(building_block_contracts(), b => b.block == block_id), b => violating_form_slug(f: b.violation_form)), init: "no_roster_row", f: (acc, slug) => if acc == "no_roster_row" { slug } else { acc })
+}
+
+// A tuple that must be refused, with the refusal the carrier must name.
+type MispairedProbe {
+  probe: String
+  case_id: EmitCopyQualificationCaseId
+  expected_refusal: StructuralInapplicability
+}
+
+// ── HOW TO READ A VERDICT WITHOUT RE-READING THE HARNESS ────────────────────────────────────
+// Four families each ship TWO labels, so eight in all: emit_<family>_observation (expects rc 0) and
+// emit_<family>_violation (expects rc 1), where <family> is value_shape, control_flow, accumulator or
+// carrier. A third exit exists and is not a judgement: rc 2 means the meter read nothing at all. Every row
+// below is built by gunbc.instruments.allocation_battery from the typed violation_form on the roster rows
+// underneath this note, so the axis a row measures is FIXED HERE BY THE FIELD and by nothing else; what
+// this note gives you is the identity of every row an entry can print, which single row carries each
+// entry's claim, and the test that separates a real not_held from an instrument artefact. Row identities
+// are concat(prefix, "_", block_id, suffix) with the suffixes:
+//
+//   _reading_taken                              the PASS arm's own reading
+//   _violating_variant_above_contract_arm       the violating arm is visible
+//   _violating_variant_within_contract_arm      the violating arm is NOT visible
+// Each of those three identities is BUILT, not declared, so it is named by its builder and not located by
+// a line: #gunbc.instruments.allocation_battery::subject_case makes the reading row,
+// #gunbc.instruments.allocation_battery::violation_case makes the discriminating row, and
+// #gunbc.instruments.allocation_battery::violation_contract_holds_case makes the red row, which holds only
+// when the violation is NOT visible on the axis its own form names. A `file:line` pointer was written here
+// in the first draft and is exactly the second, positional naming scheme that any edit above it silently
+// invalidates, so it is gone #gunbc.design_argument::single_authority.
+//   _observation_calibrates_a_measured_floor_with_a_difference, _meter_discriminates_a_copying_arm_above_empty
+//                                               the meter's floor and its ability to see a copy
+//   _availability_provider_registered_by_the_selecting_main   the counter is wired
+//   _family_roster_is_nonempty, _every_contract_is_carrier_applicable,
+//   _the_three_named_violating_forms_are_exercised, _guard_fires_on_every_deliberate_mis_pairing,
+//   _roster_membership_printed_for_every_contract, _contract_refusal_not_hit_by_the_population_<name>
+//
+// WHICH AXIS A ROW MEASURES. A BatteryWindow carries three quantities: kept (the handles the caller still
+// holds when the window closes, reported as kept_len), and the operations and bytes the counter moved
+// across the window. The judgement is EXCLUSIVE (see form_is_owning_retain above), so for a given block
+// exactly one of these is the axis:
+//
+//   violation_form = OwningRetainAddedToObservation   judged on kept alone
+//   violation_form = PerStepAllocation                 judged on operations and bytes alone
+//   violation_form = CopyOfUnchangedContext            judged on operations and bytes alone
+//
+// To know which one a block is on, read the last argument of that block's block(...) call below -- do not
+// trust any transcription of it, including one that used to sit in this comment. The printed line carries
+// its own answer as discriminator= form= detected_on=, and that printing is produced from the field, never
+// the other way round.
+//
+// THE SINGLE DISCRIMINATING ROW PER LABEL, which is the row whose verdict is the entry's claim:
+//
+//   emit_<family>_observation   ->   <prefix>_<block>_violating_variant_above_contract_arm, for every block
+//       of the family. The whole entry exits 0 only when each of these is held on its own axis, alongside
+//       the readings, the calibration pair and the audits. This is the row that says the instrument can see
+//       the violation the contract names.
+//   emit_<family>_violation     ->   <prefix>_<block>_violating_variant_within_contract_arm, for every block
+//       the family puts through its red entry: value_shape has value_scalar, value_record,
+//       value_nonrecursive_variant, generic_over_scalar, generic_over_payload; control_flow has transform,
+//       branch, bind, match_borrowed_shared_sum and match_owned_temporary; accumulator has
+//       loop_record_accumulator, field_read, record_rebuild_one_field, local_closure, escaping_closure;
+//       carrier has sequence_build, sequential_traversal, element_read,
+//       persistent_sequence_carrier_snapshot, index_build, index_lookup, index_traversal,
+//       persistent_map_carrier_snapshot. Those twenty-three rows are expected NOT held, and the entry exits
+//       0 only if the meter has stopped discriminating.
+//
+// IS A not_held REAL, OR THE INSTRUMENT? Three signatures, read off the same line, no harness needed:
+//
+//   1. detected_on=none while the family's calibration rows are held. The violating arm added nothing on any
+//      axis: the arm is a second copy of the contract arm and its extra work never executed. That is an arm
+//      defect, and it is the shape this row was created to refuse -- two arms were rewritten for exactly
+//      this reason, quoting violating_ops=38 equal to contract_arm_ops=38 with violating_kept=2 against
+//      contract_arm_kept=1.
+//   2. detected_on= names an axis that is NOT the block's discriminator. The violation is real but it is not
+//      the violation the contract speaks of -- an allocation witnessing a retain. Reported as a finding about
+//      the instrument, never recorded as a red.
+//   3. detected_on= contains the discriminator and the row is still not held. The measured quantity on the
+//      judged axis did not clear the contract arm. That is a real not_held and the contract needs the
+//      numbers to say so.
+//
+// If the family's calibration rows are not held, or the availability row fails, nothing in that entry is
+// evidence either way: a sampler that stopped reading answers rc 2, which is why that exit exists
+// (gunbc.design_ruling::instrument_is_a_row_not_a_flag).
+//
+// ── The roster ───────────────────────────────────────────────────────────────────────────────
+// `observation` is what the PASS arm does; `violation` is the violating variant that goes through the
+// same path and must go red (the row's red_control, verbatim: an owning retain added to the observation,
+// a per-step allocation of the accumulator, a copy of the unchanged context).
+
+fn block(b: String, f: BuildingBlockFamily, p: OwnershipPattern, c: CarrierRealization, s: ControlShape,
+         k: ConsumerContract, bs: InputSizeBasis, form: ViolatingForm) -> BuildingBlockContract {
+  BuildingBlockContract {
+    block: b,
+    family: f,
+    case_id: EmitCopyQualificationCaseId {
+      ownership_pattern: p,
+      carrier_realization: c,
+      control_shape: s,
+      consumer_contract: k,
+      input_size_basis: bs
+    },
+    violation_form: form
+  }
+}
+
+fn building_block_contracts() -> List<BuildingBlockContract> {
+  [
+    // ── T1 value shapes ─────────────────────────────────────────────────────────────────────
+        // observation: read a scalar across one window
+    // violation: materialize an owned carrier to read the scalar
+    block("value_scalar", ValueShapes, ConsumedOnce, CopyScalarControl, StraightLine, ConsumesByValue, ScalarUnitBasis, OwningRetainAddedToObservation),
+        // observation: read one field while the enclosing record stays live
+    // violation: rebuild the whole record to read one field
+    block("value_record", ValueShapes, FieldExtractThenReuseEnclosing, NestedCheapDeepRecordCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: build a nonrecursive variant and consume it once
+    // violation: retain the variant after consuming it
+    block("value_nonrecursive_variant", ValueShapes, ConsumedOnce, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: one generic instance over a scalar, read across one window
+    // violation: materialize a carrier per instantiation instead of passing the scalar
+    block("generic_over_scalar", ValueShapes, ConsumedOnce, CopyScalarControl, StraightLine, ConsumesByValue, ScalarUnitBasis, PerStepAllocation),
+        // observation: pass a nontrivial payload through one instance and reuse it
+    // violation: let the instance boundary clone the payload
+    block("generic_over_payload", ValueShapes, ByValueThenReused, NestedCheapDeepRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
+
+    // ── T2 control flow ─────────────────────────────────────────────────────────────────────
+        // observation: one transform step over the declared cardinality
+    // violation: allocate a fresh intermediate per step
+    block("transform", ControlFlow, ConsumedOnce, OwnedStringCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: take one arm of an if split
+    // violation: copy the unchanged context into both arms
+    block("branch", ControlFlow, BranchExclusive, CopyScalarControl, IfSplit, BorrowsByRef, ScalarUnitBasis, CopyOfUnchangedContext),
+        // observation: bind a value and use it once
+    // violation: materialize at the binding site rather than at the use
+    block("bind", ControlFlow, BorrowedReadOnly, CopyScalarControl, StraightLine, BorrowsByRef, ScalarUnitBasis, PerStepAllocation),
+        // observation: match an owned temporary and consume it in the arm
+    // violation: retain the temporary after the match
+    block("match_owned_temporary", ControlFlow, BranchExclusive, OwnedStringCarrier, MatchBinding, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
+        // observation: match through a shared borrow of a sum the match does not consume
+    // violation: clone the shared sum in order to match it
+    block("match_borrowed_shared_sum", ControlFlow, ReuseAcrossJoin, SharedRecordCarrier, MatchBinding, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
+
+    // ── T3 accumulator and closures ─────────────────────────────────────────────────────────
+        // observation: carry one record accumulator, changing one field per step
+    // violation: allocate a new accumulator per step
+    block("loop_record_accumulator", Accumulator, LoopCarriedAccumulator, NestedCheapDeepRecordCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: read a field through the share
+    // violation: clone the enclosing record at the read
+    block("field_read", Accumulator, FieldExtractThenReuseEnclosing, SharedRecordCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: produce an updated record sharing the untouched fields
+    // violation: rebuild by copying every field
+    block("record_rebuild_one_field", Accumulator, AliasThenMutate, NestedCheapDeepRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: call a non-escaping closure over a scalar
+    block("local_closure", Accumulator, BorrowIntoClosure, CopyScalarControl, StraightLine, BorrowsByRef, ScalarUnitBasis, PerStepAllocation),
+        // observation: move a captured context out and call it later
+    block("escaping_closure", Accumulator, MoveIntoClosure, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
+
+    // ── T4 carriers, run against the stand-ins that exist ───────────────────────────────────
+    // The two persistent members are run as what the production emitter can actually build for them:
+    // `carrier_type_text` in gunbc.emit_copy_qualification_fixture_gen realizes PersistentSequenceCarrier as
+    // List<Int> and PersistentMapCarrier as Map<String, Int>. The expectation this leg is written to test
+    // is the carrier model's own, read from the declarations rather than quoted from a report:
+    // `carrier_realized` in gunbc.emit_copy_qualification calls these two realized while
+    // `carrier_is_record` in gunbc.emit_copy_qualification says neither is a record, and the stand-ins share on
+    // clone through a reference count and copy on update. A specimen that goes red here is the row
+    // succeeding, not a failing worker.
+        // observation: build a sequence once at the declared cardinality
+    // violation: rebuild the sequence per element rather than once
+    block("sequence_build", Carriers, ConsumedOnce, PersistentSequenceCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: read one element by index
+    block("element_read", Carriers, BorrowedReadOnly, PersistentSequenceCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: traverse once, threading a counter accumulator
+    // violation: allocate a new accumulator per step
+    block("sequential_traversal", Carriers, LoopCarriedAccumulator, PersistentSequenceCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: construct uniquely, keep a snapshot, read both
+    // violation: retain an owning copy of the snapshot
+    block("persistent_sequence_carrier_snapshot", Carriers, ReuseAcrossJoin, PersistentSequenceCarrier, IfSplit, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
+        // observation: build an index once at the declared cardinality
+    // violation: rebuild the index per key rather than once
+    block("index_build", Carriers, ConsumedOnce, PersistentMapCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: look one key up
+    block("index_lookup", Carriers, BorrowedReadOnly, PersistentMapCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: traverse the index once, threading a counter accumulator
+    // violation: allocate a new accumulator per step
+    block("index_traversal", Carriers, LoopCarriedAccumulator, PersistentMapCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: construct uniquely, keep a snapshot, read both
+    // violation: retain an owning copy of the snapshot
+    block("persistent_map_carrier_snapshot", Carriers, ReuseAcrossJoin, PersistentMapCarrier, IfSplit, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext)
+  ]
+}
+
+fn contracts_of_family(f: BuildingBlockFamily) -> List<BuildingBlockContract> {
+  building_block_contracts() |> filter(b => family_slug(f: b.family) == family_slug(f: f))
+}
+
+// The carrier judges the row. This file never reports an applicability it did not obtain from the carrier.
+// The boolean form of the same judgement, for a claim that must not compare strings. `fn contract_verdict`
+// renders a row for a LOG; a held/unheld decision that compares its output to a literal written in another
+// module is a second authority over what applicability means, and one battery did exactly that and was red
+// for it. The carrier decides; this only names the two outcomes.
+fn contract_is_applicable(c: EmitCopyQualificationCaseId) -> Bool {
+  match case_applicability(id: c) {
+    CaseApplicable => true
+    CaseNotApplicable { reason: _ } => false
+  }
+}
+
+fn contract_verdict(c: EmitCopyQualificationCaseId) -> String {
+  match case_applicability(id: c) {
+    CaseApplicable => "applicable"
+    CaseNotApplicable { reason: r } => structural_inapplicability_slug(r: r)
+  }
+}
+
+// Cross-check against the carrier's own judged roster: a row the carrier calls applicable must appear,
+// by the carrier's own spelling, in `fn applicable_case_rows`.
+fn case_in_applicable_roster(c: EmitCopyQualificationCaseId) -> Bool {
+  applicable_case_rows() |> any(r => row_is_applicable(r: r) && case_slug(id: r.id) == case_slug(id: c))
+}
+
+fn contract_line(b: BuildingBlockContract) -> String {
+  let head = concat(concat(concat("contract ", b.block), " family=", family_slug(f: b.family)),
+    concat(concat(" case=", case_slug(id: b.case_id)), concat(" verdict=", contract_verdict(c: b.case_id))))
+  concat(head, concat(" violation_form=", violating_form_slug(f: b.violation_form)))
+}
+
+fn roster_membership_line(b: BuildingBlockContract) -> String {
+  concat(concat("roster ", b.block),
+    concat(" in_applicable_roster=", if case_in_applicable_roster(c: b.case_id) { "true" } else { "false" }))
+}
+
+fn roster_membership_lines(f: BuildingBlockFamily) -> List<String> {
+  contracts_of_family(f: f) |> map(b => roster_membership_line(b: b))
+}
+
+// ── The probes: refusals that MUST happen ────────────────────────────────────────────────────
+// One per rule family in the carrier's `fn case_applicability` chain, plus the two the row's own blocks
+// depend on: the Match-under-a-straight-line-pattern refusal (which is why a Match cannot be contracted
+// under ConsumedOnce or BorrowedReadOnly) and the loop-shape refusal (which is why a traversal has to
+// carry an accumulator to be contracted at all).
+fn mispaired_probes() -> List<MispairedProbe> {
+  [
+    MispairedProbe {
+      probe: "probe_consuming_pattern_with_borrowing_contract",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: ConsumedOnce,
+        carrier_realization: CopyScalarControl,
+        control_shape: StraightLine,
+        consumer_contract: BorrowsByRef,
+        input_size_basis: ScalarUnitBasis
+      },
+      expected_refusal: PatternRequiresConsumingContract
+    },
+    MispairedProbe {
+      probe: "probe_field_extract_on_non_record_carrier",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: FieldExtractThenReuseEnclosing,
+        carrier_realization: OwnedStringCarrier,
+        control_shape: StraightLine,
+        consumer_contract: BorrowsByRef,
+        input_size_basis: SizedCardinalityBasis
+      },
+      expected_refusal: PatternRequiresRecordCarrier
+    },
+    MispairedProbe {
+      probe: "probe_accumulator_without_loop_shape",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: LoopCarriedAccumulator,
+        carrier_realization: NestedCheapDeepRecordCarrier,
+        control_shape: StraightLine,
+        consumer_contract: ConsumesByValue,
+        input_size_basis: SizedCardinalityBasis
+      },
+      expected_refusal: PatternRequiresLoopShape
+    },
+    MispairedProbe {
+      probe: "probe_match_under_a_straight_line_pattern",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: ConsumedOnce,
+        carrier_realization: OwnedStringCarrier,
+        control_shape: MatchBinding,
+        consumer_contract: ConsumesByValue,
+        input_size_basis: SizedCardinalityBasis
+      },
+      expected_refusal: PatternRequiresStraightLineShape
+    },
+    MispairedProbe {
+      probe: "probe_borrowed_read_only_with_loop_shape",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: BorrowedReadOnly,
+        carrier_realization: PersistentSequenceCarrier,
+        control_shape: LoopRecursion,
+        consumer_contract: BorrowsByRef,
+        input_size_basis: SizedCardinalityBasis
+      },
+      expected_refusal: PatternRequiresStraightLineShape
+    },
+    MispairedProbe {
+      probe: "probe_scalar_basis_on_a_sized_carrier",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: BranchExclusive,
+        carrier_realization: SharedRecordCarrier,
+        control_shape: MatchBinding,
+        consumer_contract: BorrowsByRef,
+        input_size_basis: ScalarUnitBasis
+      },
+      expected_refusal: ScalarBasisRequiresCopyScalarCarrier
+    },
+    MispairedProbe {
+      probe: "probe_the_one_unrealized_carrier",
+      case_id: EmitCopyQualificationCaseId {
+        ownership_pattern: ConsumedOnce,
+        carrier_realization: DeepCloningSequenceCarrier,
+        control_shape: StraightLine,
+        consumer_contract: ConsumesByValue,
+        input_size_basis: SizedCardinalityBasis
+      },
+      expected_refusal: CarrierUnrealizedInProductionEmission
+    }
+  ]
+}
+
+// A probe holds when the carrier refuses it with exactly the named reason.
+fn probe_guard_holds(p: MispairedProbe) -> Bool {
+  match contract_refusal(c: p.case_id) {
+    Present { value: r } => structural_inapplicability_slug(r: r) ==
+      structural_inapplicability_slug(r: p.expected_refusal)
+    Absent => false
+  }
+}
+
+// The carrier's refusal, as the carrier's own sum, never as a string this file wrote. Comparing a
+// rendered verdict against a literal written here would make this file a second authority over what a
+// refusal means; a battery was red for exactly that. Both sides of the probe's test now go through the
+// carrier's own `fn structural_inapplicability_slug`, and an accepted probe has no refusal at all, so
+// it fails rather than matching by accident.
+fn contract_refusal(c: EmitCopyQualificationCaseId) -> Optional<StructuralInapplicability> {
+  match case_applicability(id: c) {
+    CaseApplicable => Absent
+    CaseNotApplicable { reason: r } => Present { value: r }
+  }
+}
+
+fn probe_lines() -> List<String> {
+  mispaired_probes() |> map(p => concat(concat(concat(concat("probe ", p.probe), " case=",
+    case_slug(id: p.case_id)),
+    concat(" expected=", structural_inapplicability_slug(r: p.expected_refusal))),
+    concat(" verdict=", contract_verdict(c: p.case_id))))
+}
+
+// A JUDGEMENT MUST BE SEEN TO REFUSE, not only to accept: a boolean read from a carrier that accepted
+// everything would print the same log as this one. `fn contract_is_applicable` replaced a comparison of its
+// own rendering against a literal written in a battery, and a fix to a judgement is only evidence when the
+// same leg goes red on a planted wrong applicability. Both halves below are that leg, and they read the
+// carrier's `fn case_applicability` through the sum: no string is compared, so the carrier can change how it
+// spells an outcome without changing what these say, and a row it refuses cannot pass as applicable.
+//
+// The planted wrong applicabilities are the deliberate mis-pairings in `fn mispaired_probes`, one per judging
+// rule. `fn applicability_refused_rows` counts family rows the carrier refuses -- a roster that outgrows what
+// the carrier will admit goes red here. `fn applicability_accepted_probes` counts planted tuples the carrier
+// accepts -- a judgement that had stopped consulting the carrier accepts them and goes red here.
+fn applicability_refused_rows(f: BuildingBlockFamily) -> Int {
+  count(filter(contracts_of_family(f: f), c => !contract_is_applicable(c: c.case_id)))
+}
+
+fn applicability_accepted_probes() -> Int {
+  count(filter(mispaired_probes(), p => contract_is_applicable(c: p.case_id)))
+}
+
+fn applicability_discriminates(f: BuildingBlockFamily) -> Bool {
+  applicability_refused_rows(f: f) == 0 && applicability_accepted_probes() == 0
+}

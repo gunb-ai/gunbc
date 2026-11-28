@@ -1,0 +1,49 @@
+module gunbc.instruments.emit_closure_observation
+
+import std.types { NonEmptyStr }
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Accumulator }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence, PendingExecution, NoProductionRouteEmitsAnArbitrarySubject, plain_row, dead_meter_classification_row }
+import gunbc.instruments.emit_closure_subjects { closure_measurement_rows, closure_red_rows, closure_control_rows }
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+// THE GREEN ENTRY of the closure family: a local closure and an escaping closure, each with its violating
+// variant beside it, every row here expected to hold so that its exit code means something. The red controls
+// are their own target, `emit_closure_violation_label` in gunbc.instrument_targets, because an entry carrying
+// rows designed to fail can only exit non-zero and an exit that cannot vary measures nothing.
+//
+// WHAT THIS ENTRY DOES NOT CLAIM. Its arms do not compile at the seed emitter today, so it has never printed
+// a PASS line: a contract whose specimen did not execute reads unqualified, and the family roster reports
+// local_closure and escaping_closure executed=no with the reason attached. The reason is carried by
+// dag/gunbc/guarantee_stall/let_bound_closure_parameters_are_emitted_without_their_declared_types_stall.dag -- a plan-only GuaranteeStall row (moved off the rung_drop path under the lane ruling; carried by gunb-ai/gunbc review 17220 at head f7d7429362d79f3463e88c8076c874675bbfca7f, OPEN and absent from origin/main at the time of writing; cited by symbol as module gunbc.guarantee_stall.let_bound_closure_parameters_are_emitted_without_their_declared_types_stall, data let_bound_closure_parameters_are_emitted_without_their_declared_types_stall: GuaranteeStall (current: Mitigatable, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, population: the five closure arms, next_rung_trigger.capability: v1.compiler.emit_rust::emit_typed_let resolving each let-bound closure parameter's declared formal type)), authored separately, still in flight when this
+// was written, so citing it is not a claim by this PR that the drop is merged -- and it is deliberately not
+// restated here: a delivery PR carries
+// specimens and contracts, and the emitter-side gap belongs to its own row and its own review. The per-arm
+// probe (acq_probe_arms.sh) prints one status line per arm with its error sites, so when this entry refuses
+// the refusal is attributed to arms rather than to a batch, and a single number never stands in for five
+// different claims.
+//
+// The v2 outcome for this family is stated rather than omitted, and carried as a value: the only registered
+// v2 instrument builds the v2 CLI and asks it to emit one fixed control module, so there is no production
+// route that runs the v2 emitter over an arbitrary subject at all. This is a door walk, not a subject
+// attempt, and nothing here should be read as the v2 emitter having been asked about these specimens.
+fn v2_evidence() -> ExecutionEvidence {
+  PendingExecution {
+    claim: "emit_closure_observation/v2" as NonEmptyStr,
+    blocker: NoProductionRouteEmitsAnArbitrarySubject { door_entry: "src/v2/cli/compile_cli.dag" as NonEmptyStr, fixed_subject: "gunbc.native_cli_door_probe" as NonEmptyStr }
+  }
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let measured = closure_measurement_rows()
+  let red = closure_red_rows()
+  let controls = closure_control_rows()
+  let qualified = [
+    execution_row(prefix: "accumulator", axis: "v2", block_id: "family", e: v2_evidence()),
+    execution_mechanism_refuses_unproven_claims(prefix: "accumulator")
+  ]
+  battery_report(concat(measured, concat(red, concat(map(controls, c => plain_row(c: c)), concat(map(qualified, c => plain_row(c: c)), [plain_row(c: dead_meter_classification_row(prefix: "accumulator"))])))))
+}
