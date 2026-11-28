@@ -1,0 +1,191 @@
+module gunbc.live_deploy.serving_child_observations
+
+import std.types { List, Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.nat { Nat, nat_compare }
+import std.algebra { Less, Equal, Greater }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, Kibibyte, kibibyte, kibibyte_to_byte_size,
+  measure_add, measure_sub, measure_fit_count_floor, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+}
+import std.list { first_where }
+import std.algebra { FreeSemigroup }
+import gunbc.fleet.fleet_host_identity { HostIdentity }
+
+// ── THE SERVING CHILD, THE DOOR, AND THE SLICE-FIT INEQUALITY ─────────────────────────────────
+// ONE DECLARED ANSWER TO "WHAT DOES ONE SERVED REQUEST OCCUPY IN THE CAPPED SLICE", read by every
+// party that sizes or admits against a user-work slice. It lives HERE, beside the child bound it
+// sums, because it must be importable from BOTH sides of the fleet's capacity arithmetic:
+// gunbc.live_deploy.slice_bounds imports gunbc.runner.runner_slot_desired, so nothing in
+// runner_slot_desired (and nothing resolving seats inside host_build_pool_reservation) can import
+// slice_bounds back -- this module is a true leaf (std + fleet_host_identity only) and both sides
+// can reach it. Per gunbc.design_argument::single_authority the sum lives once, here.
+//
+// WHY IT EXISTS. The srv3 OOM class of 2026-11-26 (manager's live read: gunbc-user-work.slice
+// memory.max 25 GiB, memory.events oom_kill 40; the serving child died silently inside the wrapped
+// scope while the ledger's seats alone accounted for the whole ceiling) had one root with two
+// faces: the ledger charged a seat its granted unit ceiling while the slice ALSO carried,
+// uncharged, the serving child that hosts that unit and the door waiting on it. Slots x unit
+// ceiling was the whole of the model's sizing; the kernel enforced the missing terms.
+//
+// DECLARED EXECUTING CONSUMERS (gunbc.design_argument::consumption -- named, with triggers; the
+// program's census-consumer frontier is the precedent). (1) gunbc.compute.host_capacity's ruled
+// pool resolver (host_build_pool_reservation's seat count) reads user_work_request_footprint_of +
+// user_work_slice_fits in gunb-ai/gunbc#17181 (quiet-pike-440, open at this writing; its seat
+// rows land no literals). (2) The serving door's PRE-HAND-OFF admission reads the same names
+// before booting the child -- the follow-on PR in this lane, triggered by the capacity ruling's
+// merge. Until both land, this module changes no behavior; the claims below are the arithmetic
+// the consumers must agree with, and the red controls (srv3 refuses one, srv1 one-not-two, butch
+// six-not-seven, ken exactly-one) are the change detectors if a bound or a headroom moves.
+//
+// WHAT IS PER REQUEST AND WHAT IS PER HOST -- decided by the model's own actuator shape, not
+// preference (manager ruling 2026-11-27, "settle it by fact"): the serving door's hand-off is a
+// SYNCHRONOUS effect -- the door process blocks in gunbc.WitnessBin.Run until the child exits -- so
+// the door is resident once PER CONCURRENT REQUEST and belongs INSIDE the footprint. The probe is
+// client-side (off-host entirely) and the census runs once per host on the converge schedule, so
+// the census is the FIXED per-slice headroom below. Each name says which it is.
+
+// THE SERVING DOOR, PER REQUEST (0.38 GiB, the engine's own [pre-entry] process_cpu max_rss_kib
+// 391248 on the front-door runs -- the same instrument that reads the child). Rounds up from the
+// measured 391248 KiB = 400586752 bytes.
+data user_work_serving_door_residency: ByteSize = byte_size(409432059)
+
+// THE PER-SLICE FIXED HEADROOM: the census door, one bounded `gunbc run` per host on the converge
+// schedule (same instrument class, 0.38 GiB measured), declared at 0.4 GiB rounded UP. The probe
+// is excluded -- it runs on the CLIENT, not in this slice (the manager's ruling: probe and census
+// are per host; the probe leaves the host entirely).
+data user_work_serving_census_headroom: ByteSize = byte_size(429496730)
+
+// THE FOOTPRINT OF ONE SERVED REQUEST: the unit's ceiling, beside its resident child (the bound
+// below) and beside the door waiting on it (resident for exactly as long as the request, per the
+// model's synchronous hand-off). Sum, not max: none of the three runs inside another's cgroup.
+fn user_work_request_footprint_of(unit_memory_max: ByteSize, child_residency: ByteSize) -> ByteSize {
+  measure_add(a: measure_add(a: unit_memory_max, b: child_residency), b: user_work_serving_door_residency)
+}
+
+// CAN THIS SLICE HOLD `slots` concurrent footprints beside its fixed headroom? Below-floor and
+// headroom-exceeds-ceiling both answer false: a bound that cannot be read to hold the work does not
+// admit it (gunbc.design_argument::fail_closed), and an unlimited slice never reads as unlimited
+// here -- this arithmetic admits only against a finite declared ceiling.
+fn user_work_slice_fits(slots: Nat, footprint: ByteSize, slice_max: ByteSize) -> Bool {
+  match measure_sub(a: slice_max, b: user_work_serving_census_headroom) {
+    MeasureSubtrahendExceedsMinuend => slots == 0
+    MeasureDifference { value: available } => match nat_compare(a: measure_fit_count_floor(capacity: available, each: footprint), b: slots) {
+      Greater => true
+      Equal => true
+      Less => false
+    }
+  }
+}
+
+// ── THE SERVING CHILD'S RESIDENT BOUND ────────────────────────────────────────────────────────
+// The child stays resident for the whole build: it boots the engine, pays the entry's own closure
+// resolve, and its unit then runs the build. Its footprint is NOT the unit's MemoryMax and is NOT
+// charged to the capacity ledger -- it is the uncharged resident that rides beside the charged seat.
+//
+// WHAT THIS ROW IS AND WHAT IT IS NOT (review 99177, gunbc.design_argument::epistemic_humility).
+// The bound is an ADMISSION FLOOR and its standing is typed, not narrated. It is NOT a
+// transcription of the 2026 "3.46 GB serve peak" -- that figure measured the roadmap deployment's
+// serve process, a different subject, and gunbc.live_deploy.slice_bounds' own history records it
+// going stale (growing from 3.46 GB to ~18 GB, OOM-killed at 8.1 GB on 2026-09-18). A bound below
+// reality approves too many slots: the srv3 class behind a declared authority, which is the
+// fail-open direction this module exists to close. The figures below are the engine's OWN
+// instrumented prints -- the [pre-entry] process_cpu max_rss_kib line the engine emits per run --
+// from serving-route dispatches.
+
+// THE STANDING OF A RESIDENCY FIGURE: measured readings carry the named instrument and at least
+// one receipt -- non-emptiness is CONSTRUCTED (FreeSemigroup, the non-empty carrier named by
+// gunbc.design_ruling::nonemptiness_is_constructed_or_proved), never re-checked at read time;
+// a bet says so in its type. A reader consuming a bet as fact is the defect the type prevents.
+type ServingChildBoundStanding
+  = EngineInstrument { instrument: NonEmptyStr, receipts: FreeSemigroup<NonEmptyStr> }
+  | Bet { basis: NonEmptyStr }
+
+// THE ADMISSION FLOOR FOR THE SERVING CHILD: 6.0 GiB, declared at or above the worst instrumented
+// serving-route engine resolve with the second reading recorded as provenance.
+type ServingChildBound {
+  bytes: ByteSize
+  standing: ServingChildBoundStanding
+}
+
+data serving_child_engine_bound: ServingChildBound = ServingChildBound {
+  bytes: byte_size(6442450944),
+  standing: EngineInstrument {
+    instrument: "engine [pre-entry] process_cpu max_rss_kib print",
+    receipts: FreeSemigroup {
+      head: "45773631715 (max_rss_kib 6090188)",
+      tail: ["45774944663 (max_rss_kib 3663224)"],
+    },
+  },
+}
+
+// THE WORST INSTRUMENTED SERVING-ROUTE READING, in the unit the instrument prints in -- std.measure's
+// Kibibyte, never a unit-named bare Int (review 99193; std.measure owns the conversion, so the
+// KiB-to-bytes crossing happens through the typed constructor, not a hand-written * 1024).
+data serving_child_worst_instrumented: Kibibyte = kibibyte(6090188)
+
+// THE BOUND NEVER SITS BELOW THE WORST INSTRUMENTED READING (review 99177's fix as a change
+// detector: an edit that drops the bound under 6090188 KiB turns red instead of silently admitting
+// the srv3 class again). The crossing is the typed one: kibibyte_to_byte_size.
+fn serving_child_bound_covers_the_worst_instrumented_reading() -> Bool {
+  byte_size_count(b: serving_child_engine_bound.bytes) >= byte_size_count(b: kibibyte_to_byte_size(k: serving_child_worst_instrumented))
+}
+
+// THE BOUND'S STANDING IS AN INSTRUMENT, NOT A PLAN QUOTE -- the stale-subject class of review
+// 99177 cannot return through this row unnoticed. Non-emptiness of the receipts and the
+// instrument's presence are CONSTRUCTED by the type (review 99201), so this predicate says one
+// thing only: the standing is the instrument arm, not a bet.
+fn serving_child_bound_stands_on_the_engine_print() -> Bool {
+  match serving_child_engine_bound.standing {
+    EngineInstrument { instrument: _, receipts: _ } => byte_size_count(b: serving_child_engine_bound.bytes) > 0
+    Bet { basis: _ } => false
+  }
+}
+
+// ONE HOST'S OWN RESIDENT READ. The row is evidence, not policy: it joins only when a receipt
+// measured that host, and it speaks for exactly one host.
+type ServingChildHostOverride {
+  host: HostIdentity
+  bytes: ByteSize
+}
+
+// THE HOST ROWS ESTABLISHED SO FAR. srv14 (butch) joins when a receipt measures its serving
+// child -- a MemAvailable read is not a child RSS read, so none is recorded yet (quiet-pike-440,
+// 2026-11-27); until then butch is governed by the engine bound, which is the conservative
+// default, not an absence.
+data serving_child_host_overrides: List<ServingChildHostOverride> = []
+
+// THE LOOKUP OVER AN EXPLICIT ROW TABLE -- pure, so a claim can hand it rows of its own.
+fn serving_child_residency_for(raised: List<ServingChildHostOverride>, host: HostIdentity) -> ByteSize {
+  match first_where(raised, o => o.host == host) {
+    Present { value: o } => match byte_size_count(b: o.bytes) >= byte_size_count(b: serving_child_engine_bound.bytes) {
+      true => o.bytes
+      false => serving_child_engine_bound.bytes
+    }
+    Absent => serving_child_engine_bound.bytes
+  }
+}
+
+// THE RESIDENCY BOUND FOR A HOST: its own row when established and at least the engine bound, the
+// engine bound otherwise. Total by construction -- no host is left without a floor, and no host
+// row can shrink the floor under the engine's own instrument (fail-closed: a host read cannot
+// fabricate headroom the engine has already been caught taking).
+fn serving_child_residency(host: HostIdentity) -> ByteSize {
+  serving_child_residency_for(raised: serving_child_host_overrides, host: host)
+}
+
+// THE ENGINE BOUND IS POSITIVE -- a zero bound would erase the uncharged resident from every sum.
+fn serving_child_engine_bound_is_positive() -> Bool {
+  byte_size_count(b: serving_child_engine_bound.bytes) > 0
+}
+
+// NO HOST ROW SITS UNDER THE ENGINE BOUND. A host read may exceed it, never undercut it.
+fn no_serving_child_host_override_undercuts_the_engine() -> Bool {
+  first_where(serving_child_host_overrides, o => byte_size_count(b: o.bytes) < byte_size_count(b: serving_child_engine_bound.bytes)) == Absent
+}
+
+// THE UNIT NAME OF THE SLICE EVERY FIGURE IN THIS MODULE IS ABOUT. It belongs beside the bounds it
+// prices: the door's pre-hand-off admission, the door's child-exit diagnostic, the envelope's peer
+// read and the slice-bounds ceiling all name the SAME slice, and a string literal copied into each
+// is a meaning fork waiting for one of them to drift (gunbc.design_argument::single_authority).
+data serving_child_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"

@@ -1,0 +1,240 @@
+{
+  "dev": {
+    "prediction": {
+      "universe": 10583,
+      "repo_head": "a58ba3e3d4ae4725915cadbcf6275bc84a25152f",
+      "selection": "Lowest five SHA256 of UTF8 tracked .dag path within dag/ and src/v2/ excluding the named guard entry; append the guard entry. Each source read from the historical checkout.",
+      "selected": [
+        {
+          "path_sha256": "00008b68141d99cc46179a49514d6ba343f53b606c6e1271b1bd33e4d9ae395a",
+          "path": "dag/test/claim/self_host_semantic_conformance_subjects_witness.dag"
+        },
+        {
+          "path_sha256": "00036534fcbfc331b84184af65f25f2ae057c02d3641d11f415c2610bdaa3eec",
+          "path": "dag/gunbc/host/host_compile_pool_provision.dag"
+        },
+        {
+          "path_sha256": "000e2cc0ba6ca864fb9b09f814fc7987e2591710b61447b7908e7ec4416fbe00",
+          "path": "src/v2/test/claim/self_host/witness_bulk_routing.dag"
+        },
+        {
+          "path_sha256": "000e3748d481e6ac5c81accd13d4ad05a2088da4615815734c0f133756050a67",
+          "path": "dag/test/claim/host/host_hygiene_reaper.dag"
+        },
+        {
+          "path_sha256": "0011b2f00d2abac0872d26ef16804119ee431deaa28380c3b5522a71e639e328",
+          "path": "dag/test/claim/documentary_refs_witness.dag"
+        },
+        {
+          "path_sha256": "09842298a8118a610caf584088f56e671d4565e5fddfcc69a461d6f49f4ca690",
+          "path": "dag/gunbc/fleet/fleet_converge_plan_revision.dag"
+        }
+      ],
+      "preregistered": {
+        "result": "all repeated complete NewlineIndex values (path, offsets, character codes) agree with the original direct producer answer; all encoded sizes and SHA256 digests agree",
+        "relative_cost": "For at least four of these six this development-profile shadow encoding+hash costs more than constructing the result, as measured by pooled per-file medians. This is a deliberately falsifiable cost prediction, not a target for performance.",
+        "design": "Three fresh OS harness processes per selected file, initial call reported separately then 31 in-process repeats. Exclude filesystem read and caller string preparation, allocation deallocation after each sample, full-answer equivalence checks, process startup, and store lookup from producer and hash timing."
+      }
+    },
+    "summary": {
+      "per_file": [
+        {
+          "path": "dag/test/claim/self_host_semantic_conformance_subjects_witness.dag",
+          "input_bytes": 3421,
+          "answer_bytes": 27970,
+          "answer_sha256": "cc65eaf84782bafe05a1f8339b984bb7066e83e095ba94c8a55fbc85e55f147d",
+          "producer_first_median_ns": 738138,
+          "hash_first_median_ns": 687338,
+          "producer_warm_median_ns": 741236,
+          "hash_warm_median_ns": 699335,
+          "hash_slower": false
+        },
+        {
+          "path": "dag/gunbc/host/host_compile_pool_provision.dag",
+          "input_bytes": 2740,
+          "answer_bytes": 22430,
+          "answer_sha256": "a2482f829c87e041e1770d4503aa268543db1066da6be96609f6f05c20376aef",
+          "producer_first_median_ns": 922990,
+          "hash_first_median_ns": 727966,
+          "producer_warm_median_ns": 802484,
+          "hash_warm_median_ns": 741200,
+          "hash_slower": false
+        },
+        {
+          "path": "src/v2/test/claim/self_host/witness_bulk_routing.dag",
+          "input_bytes": 1668,
+          "answer_bytes": 13948,
+          "answer_sha256": "3785ab8b8327bf82279339affa111eabdffaed29da1a289d04e9ab6b062066d8",
+          "producer_first_median_ns": 556163,
+          "hash_first_median_ns": 651315,
+          "producer_warm_median_ns": 487745,
+          "hash_warm_median_ns": 447454,
+          "hash_slower": false
+        },
+        {
+          "path": "dag/test/claim/host/host_hygiene_reaper.dag",
+          "input_bytes": 8543,
+          "answer_bytes": 70195,
+          "answer_sha256": "8f9db37568f4cc8865bb272a89b15478c4e0e07b56703e3afc592cde95a2071f",
+          "producer_first_median_ns": 1840966,
+          "hash_first_median_ns": 1624248,
+          "producer_warm_median_ns": 1854930,
+          "hash_warm_median_ns": 1805282,
+          "hash_slower": false
+        },
+        {
+          "path": "dag/test/claim/documentary_refs_witness.dag",
+          "input_bytes": 16052,
+          "answer_bytes": 129219,
+          "answer_sha256": "758d1e3a6660db39b4f2708dfec4899d6d0598398b8e0224e4b60f9614a1ceec",
+          "producer_first_median_ns": 3448699,
+          "hash_first_median_ns": 3135915,
+          "producer_warm_median_ns": 3724627,
+          "hash_warm_median_ns": 3399815,
+          "hash_slower": false
+        },
+        {
+          "path": "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+          "input_bytes": 25833,
+          "answer_bytes": 210128,
+          "answer_sha256": "1019f6f9ca6a8c3f74f8fe50708dd564a8edb7c3fae412674397108e9cf5f16b",
+          "producer_first_median_ns": 6442372,
+          "hash_first_median_ns": 5345462,
+          "producer_warm_median_ns": 6059881,
+          "hash_warm_median_ns": 5412706,
+          "hash_slower": false
+        }
+      ],
+      "hash_slower_in": 0,
+      "all_repeat_results_equal": true,
+      "producer_calls": 576,
+      "repetitions": "3 OS processes/file; each measures one first call then 31 repeat calls. Warm medians of 93 per file. Wall nanoseconds. Compiled stage0 dev with its configured opt-level=2. SHA crate built by same dev profile. Timed producer includes actual function internals. No filesystem read, caller preparation, retained answer dropping, database lookup, fetching, or decoding in the timed interval."
+    }
+  },
+  "release": {
+    "prediction": {
+      "repo_head": "a58ba3e3d4ae4725915cadbcf6275bc84a25152f",
+      "selected": [
+        {
+          "path_sha256": "00008b68141d99cc46179a49514d6ba343f53b606c6e1271b1bd33e4d9ae395a",
+          "path": "dag/test/claim/self_host_semantic_conformance_subjects_witness.dag"
+        },
+        {
+          "path_sha256": "00036534fcbfc331b84184af65f25f2ae057c02d3641d11f415c2610bdaa3eec",
+          "path": "dag/gunbc/host/host_compile_pool_provision.dag"
+        },
+        {
+          "path_sha256": "000e2cc0ba6ca864fb9b09f814fc7987e2591710b61447b7908e7ec4416fbe00",
+          "path": "src/v2/test/claim/self_host/witness_bulk_routing.dag"
+        },
+        {
+          "path_sha256": "000e3748d481e6ac5c81accd13d4ad05a2088da4615815734c0f133756050a67",
+          "path": "dag/test/claim/host/host_hygiene_reaper.dag"
+        },
+        {
+          "path_sha256": "0011b2f00d2abac0872d26ef16804119ee431deaa28380c3b5522a71e639e328",
+          "path": "dag/test/claim/documentary_refs_witness.dag"
+        },
+        {
+          "path_sha256": "09842298a8118a610caf584088f56e671d4565e5fddfcc69a461d6f49f4ca690",
+          "path": "dag/gunbc/fleet/fleet_converge_plan_revision.dag"
+        }
+      ],
+      "historical_development_cost_summary_sha256": "88dfab929d8580135fb26bfabf54c3c65276f89115196b2ae39239ca743c3871",
+      "historical_sample_selection_sha256": "2b902cd2f190335487d30063707060adea7c268f580e9746c5dee3a4fb9c468f",
+      "scope": "Same six files, same input corpus, identical measure.rs body and encoding logic, three fresh processes per file with one first and 31 repeated measurements each; link the actual Cargo release-built compiler and dependencies. First-call observations separate, 93 warm runs/file pooled by median.",
+      "predicted": {
+        "cost": "Based on prior observed development result (hash cheaper on all six), expect complete canonical encoding and SHA-256 to remain strictly cheaper than production of the full answer on at least four of the same six files with actual optimized release dependencies.",
+        "semantics": "Fresh in-process NewlineIndex values structurally equal per case; digests of complete answers equal across processes AND match preceding development-profile measurements for all six."
+      },
+      "on_contradiction": "retain raw data, nonzero runner exit and report, with no threshold revision"
+    },
+    "summary": {
+      "per_file": [
+        {
+          "path": "dag/test/claim/self_host_semantic_conformance_subjects_witness.dag",
+          "input_bytes": 3421,
+          "answer_bytes": 27970,
+          "answer_sha256": "cc65eaf84782bafe05a1f8339b984bb7066e83e095ba94c8a55fbc85e55f147d",
+          "producer_first_median_ns": 232807,
+          "hash_first_median_ns": 51122,
+          "producer_warm_median_ns": 115758,
+          "hash_warm_median_ns": 30311,
+          "hash_slower": false,
+          "development_warm_hash_over_producer": 0.9434714449918784,
+          "release_warm_hash_over_producer": 0.26184799322724994
+        },
+        {
+          "path": "dag/gunbc/host/host_compile_pool_provision.dag",
+          "input_bytes": 2740,
+          "answer_bytes": 22430,
+          "answer_sha256": "a2482f829c87e041e1770d4503aa268543db1066da6be96609f6f05c20376aef",
+          "producer_first_median_ns": 140378,
+          "hash_first_median_ns": 77172,
+          "producer_warm_median_ns": 90367,
+          "hash_warm_median_ns": 24122,
+          "hash_slower": false,
+          "development_warm_hash_over_producer": 0.9236321222603815,
+          "release_warm_hash_over_producer": 0.26693372580698704
+        },
+        {
+          "path": "src/v2/test/claim/self_host/witness_bulk_routing.dag",
+          "input_bytes": 1668,
+          "answer_bytes": 13948,
+          "answer_sha256": "3785ab8b8327bf82279339affa111eabdffaed29da1a289d04e9ab6b062066d8",
+          "producer_first_median_ns": 107544,
+          "hash_first_median_ns": 42371,
+          "producer_warm_median_ns": 76083,
+          "hash_warm_median_ns": 15376,
+          "hash_slower": false,
+          "development_warm_hash_over_producer": 0.9173933100288061,
+          "release_warm_hash_over_producer": 0.2020950803727508
+        },
+        {
+          "path": "dag/test/claim/host/host_hygiene_reaper.dag",
+          "input_bytes": 8543,
+          "answer_bytes": 70195,
+          "answer_sha256": "8f9db37568f4cc8865bb272a89b15478c4e0e07b56703e3afc592cde95a2071f",
+          "producer_first_median_ns": 515992,
+          "hash_first_median_ns": 122964,
+          "producer_warm_median_ns": 326792,
+          "hash_warm_median_ns": 79294,
+          "hash_slower": false,
+          "development_warm_hash_over_producer": 0.9732345694985794,
+          "release_warm_hash_over_producer": 0.24264363876716688
+        },
+        {
+          "path": "dag/test/claim/documentary_refs_witness.dag",
+          "input_bytes": 16052,
+          "answer_bytes": 129219,
+          "answer_sha256": "758d1e3a6660db39b4f2708dfec4899d6d0598398b8e0224e4b60f9614a1ceec",
+          "producer_first_median_ns": 1633222,
+          "hash_first_median_ns": 289259,
+          "producer_warm_median_ns": 686808,
+          "hash_warm_median_ns": 165669,
+          "hash_slower": false,
+          "development_warm_hash_over_producer": 0.9127934152869536,
+          "release_warm_hash_over_producer": 0.2412158856623685
+        },
+        {
+          "path": "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+          "input_bytes": 25833,
+          "answer_bytes": 210128,
+          "answer_sha256": "1019f6f9ca6a8c3f74f8fe50708dd564a8edb7c3fae412674397108e9cf5f16b",
+          "producer_first_median_ns": 2368091,
+          "hash_first_median_ns": 379028,
+          "producer_warm_median_ns": 1469326,
+          "hash_warm_median_ns": 356509,
+          "hash_slower": false,
+          "development_warm_hash_over_producer": 0.8932033483825838,
+          "release_warm_hash_over_producer": 0.24263437793927284
+        }
+      ],
+      "hash_cheaper_in": 6,
+      "cross_profile_complete_digests_equal": true,
+      "all_repeat_results_equal": true,
+      "producer_calls": 576,
+      "repetitions": "3 OS processes/file; each measures one first call then 31 repeat calls. Warm medians of 93 per file. Wall nanoseconds. Linked the actual Cargo stage0 RELEASE compiler and third-party dependencies; timings collected in a separately linked opt-level=3 measurement harness. Timed producer includes actual function internals. No filesystem read, caller preparation, retained answer dropping, database lookup, fetching, or decoding in the timed interval."
+    }
+  }
+}

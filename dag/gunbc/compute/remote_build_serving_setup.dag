@@ -35,7 +35,7 @@ import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_entry_named }
 import product.host_identity { HostIdentity }
 // B2: the serve_binary_dir owner is READ from the instance root's owning authority (the service
 // principal that owns /opt/gunbc), never restated as a literal here.
-import gunbc.roadmap.roadmap_dashboard_instance { linux_service_directory_owner }
+import gunbc.roadmap.roadmap_dashboard_instance { capacity_ledger_directory_owner }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user,
   fleet_posix_remote_build_home,
@@ -43,7 +43,12 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_compute_ledger_group_gid,
   fleet_posix_remote_build_supplementary_groups,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
+import gunbc.compute.remote_build_serving_identity {
+  remote_build_serving_instance,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildCandidate,
+}
 // The candidate row moved to the module that owns host membership for the serving route, so the live
 // dispatch gate and the provisioned-candidate row are read side by side and host_capacity can answer the
 // ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
@@ -373,6 +378,18 @@ fn serving_account_presence_gate(account_name: String, passwd: ObservationAttemp
       Absent => ObservationEstablished { observed: false }
     }
   }
+}
+
+// Is rustup PROVEN ABSENT -- the account's cargo-bin rustup read as not executable by a COMPLETED
+// test (Established false), the signature of a fresh serving account that has never had rustup? On
+// such an account `rustup toolchain list` cannot run and exits 127, so the toolchain leg reads
+// Refused. That 127 is the EXPECTED consequence of a proven-absent rustup, and bootstrapping rustup
+// then the pinned channel is the converge's work (EnsureRustup -> EnsureToolchain) -- so the toolchain
+// leg reports DRIFT there, never an unreadable fact. When rustup is merely unreadable (elevation
+// refused) or present but the listing errored, the toolchain stays unknown: a read nobody completed
+// never becomes a planned install (fail_closed). (remote_build_serving_fresh_account_has_no_toolchain_bootstrap)
+fn serving_rustup_proven_absent(rustup: ObservationAttempt<Bool, ServingLegFailure>) -> Bool {
+  match rustup { ObservationEstablished { observed: false } => true  _ => false }
 }
 
 // The authorized_keys-presence gate off the content leg: the reader mints the established empty
@@ -875,10 +892,17 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     account_ssh_dir: concat(home, "/.ssh"),
     account_ssh_dir_mode: account_ssh_dir_mode,
     serve_binary_dir: concat(instance.instance_root as String, "/bin"),
-    // The bin directory carries the SAME owner the instance root's carrier declares (the service
-    // principal that owns /opt/gunbc), read from the owning authority, not restated.
-    serve_binary_dir_owner_user: linux_service_directory_owner().user as String,
-    serve_binary_dir_owner_group: linux_service_directory_owner().group as String,
+    // The bin directory carries the SAME per-host service principal the capacity-ledger home carries,
+    // read from the ONE host-scoped authority #17112 introduced. A host with a real dashboard instance
+    // resolves to that instance's directory owner (srv1, byte-identical to the old universal rule); a
+    // host in the legacy-owner frontier resolves to the operator login (srv3/srv4, whose on-disk dirs are
+    // already operator-owned and must stay byte-identical); and a host with NEITHER (ken, butch — fresh
+    // serving hosts with no dashboard instance and no operator login) resolves to the remote-build
+    // account, the only principal that exists there. The old linux_service_directory_owner() was global:
+    // it named the operator login on EVERY host, so the serve-binary dir install died with
+    // `install: invalid user 'briansrls'` on a host where that account was never created.
+    serve_binary_dir_owner_user: capacity_ledger_directory_owner(host: host as NonEmptyStr).user as String,
+    serve_binary_dir_owner_group: capacity_ledger_directory_owner(host: host as NonEmptyStr).group as String,
     serve_binary_dir_mode: serve_binary_dir_mode,
     // NOT spelled from instance_root: it is the capacity authority's own compute root for this very
     // instance, the same NonEmptyStr the serve route's provider reads. One authority, one path.
@@ -1379,7 +1403,7 @@ fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: S
           match o.serve_binary { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "seed.serve_binary", cause: c.cause }] },
           match o.checkout { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "checkout", cause: c.cause }] },
         ),
-        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "toolchain", cause: c.cause }] },
+        match o.toolchain { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => if serving_rustup_proven_absent(o.rustup) { [] } else { [ServingUnknown { item: "toolchain", cause: c.cause }] } },
       )
       let deviations = concat(
         concat(
@@ -1404,7 +1428,7 @@ fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: S
               serving_present_deviations(item: "seed.serve_binary", present: o.serve_binary),
               concat(
                 serving_present_deviations(item: "checkout", present: o.checkout),
-                serving_present_deviations(item: "toolchain", present: o.toolchain),
+                if serving_rustup_proven_absent(o.rustup) { match o.toolchain { ObservationEstablished { observed: true } => [] _ => [PresentAbsent { item: "toolchain" }] } } else { serving_present_deviations(item: "toolchain", present: o.toolchain) },
               ),
             ),
           ),

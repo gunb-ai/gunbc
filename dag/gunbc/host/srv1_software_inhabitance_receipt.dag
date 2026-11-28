@@ -203,6 +203,24 @@ data srv1_software_inhabitance_receipt: Srv1SoftwareInhabitanceReading = Srv1Sof
   os_codename: "noble",
   kernel_release_label: "6.8.0-138-generic",
   apparmor_userns: 1,
+  // A VERSION STRING DOES NOT IDENTIFY AN INSTRUMENT, and this one is load-bearing for a claim
+  // (test/claim/host/host_software_surface_witness.dag asserts this stdout text), so it is recorded
+  // unchanged. Two kill(1) binaries on ONE kernel (boot_id c095c0cd) print this same "procps-ng 4.0.4"
+  // and answer OPPOSITELY for the bare negative-pid group form: one exited 1 while the group died of
+  // that very signal, the other exited 0 with empty stderr having signalled nobody -- the target parsed
+  // to 3, a group that does not exist. Both measurements, each naming its kill(1) by sha256 rather than
+  // by this string, are carried by the transports in the extdeps.posix.signal module and by
+  // the boot_probe_judge_confirmation function of the gunbc.runner.runner_microvm_boot_probe module.
+  // The instrument identification this repository consumes is sha256 + size + --version printed INSIDE a
+  // slot by an acquisition, and BOTH prints exist. SRV1 HOST, printed inside heavy-slot 3/12 acquired
+  // 2026-11-26T15:18:26Z in acq-build-c4cb1b2.log: /usr/bin/kill, size 67744, sha256
+  // 073d3e537f9659193d91b546d3dd58e077e2aef4b0dc5bb5b65220137a50a243, --version "kill from procps-ng
+  // 4.0.4". SESSION CONTAINER on that same kernel, printed 2026-11-26T13:48:50Z by control script
+  // sha256 prefix cffcf3698940cee0: /usr/bin/kill, size 67824, sha256
+  // 390f101aa531bed0639f8637f4a1350453347b36f6a15e148f5300db8788c5d1, --version "kill from procps-ng
+  // 4.0.4" -- the SAME string from two different builds. That is the whole reason the identity lives in
+  // the prints above and not below: this field records what the host tool PRINTED, and a version string
+  // shared by two instruments that answer oppositely cannot name either of them.
   procps_version_stdout: "kill from procps-ng 4.0.4",
   procps_version_label: "4.0.4",
   kill_shell_builtin_listed: true,

@@ -135,9 +135,11 @@ fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
 }
 
 // THE CLOCK GAP, IF THIS HOST HAS ONE. A mechanism whose standing is `CeilingStands` is a clock read holding on
-// that host, and a figure taken under it is attributable; every other standing -- superseded, or the unsaid
-// standing srv3 and srv4 carry -- leaves the host's clock unanswered, and no draw figure describes a machine whose
-// clock nobody can name. The gap is built from the cap module's own row through its accessors, never from a copy
+// that host, and a figure taken under it is attributable; every other standing -- superseded, or unsaid -- leaves
+// the host's clock unanswered, and no draw figure describes a machine whose clock nobody can name. As of the
+// operator's final-state pass of 22:03-22:05 UTC all four recorded ceilings are CeilingStands, so this gap is
+// currently built by no host; the machinery stays live because the arm it refuses is still reachable -- a ceiling
+// whose standing falls back into contest, or a newly recorded host nobody has read, lands here. The gap is built from the cap module's own row through its accessors, never from a copy
 // of its fields, so promoting a standing cannot leave a stale sentence here.
 fn cpu_ceiling_gap_for(m: CpuFreqCapMechanism, host: NonEmptyStr) -> DrawAttributionGap {
   let rated = altra_max_m12830_catalog.nominal_sustained_per_thread_hz

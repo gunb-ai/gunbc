@@ -18527,20 +18527,31 @@ fn configure_shell_process_group_for_wall_kill(
     }
 }
 
-fn kill_shell_process_group(pid: u32) {
+/// Kill the child itself, then its process group (set when a wall deadline is armed) so
+/// cargo→rustc descendants die with the parent; the direct pid kill covers the no-setpgid path.
+/// This IS `process_group::signal_process_group` with SIGKILL -- the leader-and-group pair and the
+/// refusal of a pid outside 2..=i32::MAX have one authority there, so a pid of 0, 1 or one whose
+/// `as i32` would wrap to -1 is refused with no signal sent, never widened into "every process".
+fn kill_shell_process_group(pid: u32) -> Result<(), crate::process_group::UnsignalablePid> {
     #[cfg(unix)]
     {
-        // SAFETY: kill the child itself, then its process group (set when a wall
-        // deadline is armed) so cargo→rustc descendants die with the parent.
-        // The direct pid kill covers the no-setpgid path (tests / non-unix fallbacks).
-        unsafe {
-            let _ = libc::kill(pid as i32, libc::SIGKILL);
-            let _ = libc::kill(-(pid as i32), libc::SIGKILL);
-        }
+        crate::process_group::signal_process_group(pid, libc::SIGKILL)
     }
     #[cfg(not(unix))]
     {
         let _ = pid;
+        Ok(())
+    }
+}
+
+/// A group kill that was REFUSED is not a killed group: the child is still ours and running, so the
+/// leg cannot report an overrun as if its group had died. Typed and located, never a widened signal.
+fn shell_group_kill_refused(
+    argv0: &str,
+    refusal: crate::process_group::UnsignalablePid,
+) -> InterpError {
+    InterpError::TypeError {
+        msg: format!("wall-deadline kill of '{argv0}' refused: {refusal}"),
     }
 }
 
@@ -18590,7 +18601,12 @@ fn wait_child_honoring_wall_deadline(
     loop {
         // OUTER bound: still a refusal, never a per-leg overrun.
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
-            kill_shell_process_group(pid);
+            if let Err(refusal) = kill_shell_process_group(pid) {
+                // No signal was sent, so the drain cannot be expected to end: detach it and
+                // refuse with the located cause rather than waiting on a child nobody killed.
+                drop(worker);
+                return Err(shell_group_kill_refused(argv0, refusal));
+            }
             // The settlement is BOUNDED, under the same contract as the per-leg trip below. A
             // descendant that escaped the group with `setsid` can hold a stream open, so the
             // drain worker may never return; the unconditional `worker.join()` that followed the
@@ -18606,7 +18622,11 @@ fn wait_child_honoring_wall_deadline(
         // PER-LEG bound: its trip is a value. Kill the group, drain, report overran.
         if let Some(leg) = leg_deadline {
             if leg_start.elapsed() >= leg {
-                kill_shell_process_group(pid);
+                if let Err(refusal) = kill_shell_process_group(pid) {
+                    // An overrun is a value only when the group was killed; this one was not.
+                    drop(worker);
+                    return Err(shell_group_kill_refused(argv0, refusal));
+                }
                 // The drain worker returns once the killed child's pipes close.
                 let captured = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
                     Ok(Ok(output)) => {
@@ -29413,7 +29433,7 @@ mod wall_deadline_kill_tests {
             pid as i32,
             "armed: the child must lead its own group"
         );
-        kill_shell_process_group(pid);
+        kill_shell_process_group(pid).expect("a spawned child's pid is signalable");
         let _ = child.wait();
 
         let unarmed = wet_ctx();
@@ -29494,7 +29514,7 @@ mod wall_deadline_kill_tests {
             pid as i32,
             "a per-leg ceiling alone must arm the group so the per-leg kill is total"
         );
-        kill_shell_process_group(pid);
+        kill_shell_process_group(pid).expect("a spawned child's pid is signalable");
         let _ = child.wait();
     }
 

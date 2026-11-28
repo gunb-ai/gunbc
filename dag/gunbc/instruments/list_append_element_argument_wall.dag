@@ -1,0 +1,529 @@
+module gunbc.instruments.list_append_element_argument_wall
+
+import std.types { String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.process { ProcessExit, ExitSuccess }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_blocking_rows_of_class,
+  census_blocking_rows_of_class_at_subject,
+  censuses_differ_by_exactly_the_target_key,
+  compile_dag_diagnostic_census
+}
+import gunbc.compile_census_probe { census_exit, census_verdict, census_verdict_all, census_ran, census_premise , census_leg_wire, census_legs_wire }
+import gunbc.cli_wire { CliWireResponse, CliWireUnprintable }
+
+// THE WALL THIS CLAIM CARRIES. `std.algebra.list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>)`
+// is an APPLIED generic at both positions, and before the repair an element could be handed to a
+// position whose declared formal is `FreeMonoid<T>` while `T` was still an unsolved variable. The call
+// then compiled and returned a plausible list, so the author's `list_push` / `list_append` mix-up was
+// found only by a reviewer or by a wrong answer downstream (the node's displaced_cost). The repair is
+// the seam-local predicate `element_demand_direct_call_argument_formal_is_unbound` in
+// src/v1/04_infer.dag, beside `direct_call_argument_inhabitance_diags`: where a demand for an ELEMENT
+// reaches a direct-call argument whose formal is an applied generic whose type variable is genuinely
+// unsolved, the pair is judged against the call's own substitution basis instead of being released as
+// UndecidableGenericFormal, and the refusal is the located
+// `direct_call_formal_has_unbound_type_variable` diagnostic carrying its inhabitance reason.
+
+// WHY THE SUBJECT LIVES HERE AS SOURCE TEXT, AND WHY THE DOOR IS THE DIRECT ONE.
+// gunbc.design_argument::guarantee_ladder says a state unrepresentable in the accepted corpus is still
+// representable as source handed to the compiler by a fixture, and the compiler refusing it is the
+// enrollable evidence -- the sentence as it is actually written in the header comment of
+// dag/test/claim/census_app_acquisition_refusal_probe_witness.dag. A committed .dag file carrying
+// the refused call would fail the fold before any claim in it ran, putting a refused subject into the
+// whole-tree population and making the fold's green set depend on this wall. A `data String` handed to
+// the declared census door cannot do that: the refused program never enters the fold and the known-red
+// roster is never touched. Precedent for the FORM -- a refused subject carried as source text through
+// this same door -- is test.claim.machine_intake.no_fallback_plan_ineligibility_wall and
+// gunbc.recurring_failure_mode.seed_admits_a_keyword_as_a_pattern_binder.
+//
+// THE DOOR IS `compile_dag_diagnostic_census` AND NOT THE `census_rows_for` WRAPPER IN
+// gunbc.compile_census_probe, and that is a measured choice rather than a style one. The wrapper maps
+// the builtin's `CensusNotRunnable { cause }` arm to `none`, so a claim matching on it cannot tell
+// "these are the rows" from "the census never ran", and cannot name the cause when it did not. The
+// node's red control asks the controls to PASS, which is an assertion about the RUNNABLE arm; an
+// assertion about an arm the surface has erased is not one. So every leg below matches the two typed
+// arms and states which arm it is reading.
+
+// WHAT THE CENSUS DOES AND DOES NOT COVER, stated because it decides which exactness is authorable.
+// `compile_dag_diagnostic_census` reports the diagnostics of the WHOLE compilation the fixture is
+// handed to -- the fixture and its imported closure together -- and carries no projector separating
+// fixture rows from closure rows. A total-count assertion is therefore a statement about the corpus,
+// not about this wall, and is not made here. The two exact forms ARE used: a count scoped to
+// (diagnostic_class, subject_name, blocking), and a differential between the two arms in which the
+// shared closure cancels key by key.
+
+// WHERE THE DOOR ANSWERS AND WHERE IT REFUSES -- MEASURED, BECAUSE IT DECIDES WHERE THESE LEGS MAY LIVE.
+// The census resolves its synthetic source by building a fixture closure over source roots, and under the
+// CLAIM ROUTE that build is contested. With the corpus roots `--source-root dag --source-root src/v1
+// --source-root src/v2`, a single-label selection answers `CensusNotRunnable` with the cause naming
+// `SharedIndexSecondResidentPool: slot 0 already holds roots [\"dag\", \"src/v1\", \"src/v2\"]; roots
+// [\"dag\", \"src/v2\"] demanded at src/v1/stage0/src/cli_run.rs:3690 would be a second resident pool on
+// this thread` (stages3/logs94_evidence.out, the c1/c2/c3 verbatim lines), and a whole-module selection
+// answers the same arm with a DIFFERENT cause, naming `stdlib source is unresolved in this build` alone
+// (stages3/logs91_probe.out, the probe's `p_cause_*` legs: the builtin half named, the imported half not).
+// A leg that reads a row through a refusing door is neither red nor green -- it is a leg that belongs in
+// no batch. So these legs are not claims: they are INSTRUMENT LEGS, and they are executed on the run
+// route, one dispatch per leg, `gunbc run --source-root dag --source-root src/v1 --source-root src/v2
+// --entry dag/gunbc/instruments/list_append_element_argument_wall.dag --function <leg>`, where the
+// entry-scoped load leaves the door's closure authority uncontested and the observed arm answers. The
+// three states survive at the process boundary: exit 0 held, exit 1 an observation that disagreed, exit 2
+// could not run with the door's cause. The witness module moved here from `test.claim` for the same
+// measured reason; its header carries its own copy of the finding.
+
+// THE TARGET KEY, read off the instrument's own output on the head-built compiler at 3201529903d
+// (stages3/logs75_runner.out, leg census_head_repro_at_freemonoid_fold; the same row re-read at the
+// rebased head in stages3/logs80_carrier.out) rather than guessed. The class my refusal projects as,
+// and the subject it names. The subject carries the refusal's own reason, so the key pins WHICH
+// inhabitance refusal fired, not merely that one did.
+data target_class: String = "DeclaredTypeNotInhabited"
+
+data target_subject: String = "direct call argument for parameter 'right' [RefusedTextAtRunOfNonCharElement: a text value inhabits a FreeMonoid carrier only as a run over Char (std.coercion's grounded identity carrier String -> FreeMonoid); the carrier's declared element is not Char, so the text does not inhabit it]"
+
+// THE PARTS OF THAT SUBJECT THE NODE REQUIRES THE DIAGNOSTIC TO NAME, spelled separately from the key
+// so a leg can fail when the message stops naming them even while some other subject still matches.
+data required_parameter_phrase: String = "direct call argument for parameter 'right'"
+
+data required_reason_token: String = "RefusedTextAtRunOfNonCharElement"
+
+// ONE AXIS BY CONSTRUCTION, NOT BY MAINTENANCE. Both arms come out of this producer, parameterised by
+// the second argument's spelling and nothing else: same module name, same import list, same helper,
+// same expected list, same equality function. So the one-axis relation is a property of the producer
+// rather than an alignment between two literals a reader would have to check and a future edit could
+// silently break. The axis is exactly the author error the node names -- an element handed to
+// `list_append` where `list_push` was meant.
+fn eh_f2_probe_source(second_argument: String) -> String {
+  "module eh_f2_subject\n"
+    + "import std.algebra { list_append }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_append([\"a\"], "
+    + second_argument
+    + "), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+// THE TWO SUBJECTS THE REFUSAL CLASS NAMES. `eh_f2_repro_ticket` is the ticket's repro in shape: an
+// element at the second `FreeMonoid<T>` position. `eh_f2_pair_same_container` is its control, one
+// token away: a list in that same position.
+data eh_f2_repro_ticket_element: String = "\"bc\""
+
+data eh_f2_pair_same_container_element: String = "[\"bc\"]"
+
+fn eh_f2_repro_ticket_source() -> String {
+  eh_f2_probe_source(second_argument: eh_f2_repro_ticket_element)
+}
+
+fn eh_f2_pair_same_container_source() -> String {
+  eh_f2_probe_source(second_argument: eh_f2_pair_same_container_element)
+}
+
+// THE DECLARED-ELEMENT CONTROL. `list_push<T>(xs: FreeMonoid<T>, item: T)` asks for an element at
+// `item` BY DECLARATION, so an element there IS the declared type and must stay admitted. This is the
+// arm that keeps the wall from being a "second argument of a generic list function refuses" rule
+// wearing the right clothes: it fires on the shape the wall must never touch.
+fn eh_f2_list_push_element_source() -> String {
+  "module eh_f2_list_push\n"
+    + "import std.algebra { list_push }\n"
+    + "import std.list { list_cover }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn eq_str(a: String, b: String) -> Bool { a == b }\n"
+    + "fn probe() -> Bool { list_cover(held: list_push(xs: [\"a\"], item: \"bc\"), expected: [\"a\", \"bc\"], eq: eq_str) }\n"
+}
+
+// THE DOOR, handed through unchanged. No leg below invents a third arm: the census either observed
+// rows or could not run, and a leg that cannot tell which has not measured anything.
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// THE ARM-PRESERVING PROJECTOR. Every leg below narrows the ROWS of an observed census; none of them
+// narrows the ARMS. A wrapper that mapped the not-runnable arm to an empty row list would make a control
+// that never ran indistinguishable from a control that ran and observed nothing -- the exact fail-open
+// the census module closed when it deleted its own `census_rows` accessor (its note above
+// `census_blocking_rows`). So the narrowing lives here, once, and passes the cause through untouched for
+// `census_exit` to render as exit code 2 with `not evaluated: census not runnable: <cause>` -- the
+// contract's "no observation" code (gunbc.design_document::ci_contract_blocks), the sole place an
+// integer appears in this file (the verdict is a sum, #gunbc.compile_census_probe::CensusVerdict).
+fn on_observed_rows(
+  census: CompileDiagnosticCensus,
+  keep: fn(List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow>
+) -> CompileDiagnosticCensus {
+  match census {
+    CensusObserved { rows: rows } => CensusObserved { rows: keep(rows) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
+// WHY THE LEGS RETURN A PROCESS EXIT AND NOT A BOOL. A Bool leg flattens "the door refused to run" into
+// `false`, the same verdict as "the door ran and disagreed" -- which is what made the first cut of this
+// carrier route-inert: under a whole-tree claim selection the door answers CensusNotRunnable for every
+// subject that imports the stdlib (its measured cause: `stdlib source is unresolved in this build`, the
+// probe's p_cause_* legs naming that half alone), so six Bool legs read `false` identically on a tree
+// WITH the wall and a tree WITHOUT it -- neither red nor green, legs that belong to no batch. On the run
+// route the same door answers the observed arm, and the three-state verdict keeps the two failures apart
+// at the process boundary: exit 0 held, exit 1 an observation that disagreed (a finding), exit 2 could
+// not run with the door's own cause. The form is main's own -- the seal witnesses
+// (test.claim.outcome_laundering_seal_witness, test.claim.transition_lease_store_seal_witness) carry
+// census rows through #gunbc.compile_census_probe::deleted_callable_route_verdicts, and the three states
+// are what that module exists to distinguish (#gunbc.compile_census_probe::census_exit). Each leg is
+// therefore executed by name on the run route, and every leg in the evidence names the route it is
+// evidence on.
+
+// THE DISCRIMINATING RED, exact and pinned to the subject. `>= 1` would keep green on the day the
+// fixture starts refusing for a second, unintended reason: the wall would still prove SOMETHING refuses
+// while having stopped proving THIS refuses. Read on the observed arm; the not-runnable arm keeps its
+// cause and exits 2, so a census that did not run can never satisfy this leg.
+fn an_element_cannot_take_a_lists_place_at_a_free_monoid_position() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_repro_ticket_source()),
+      keep: rows =>
+        census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: target_class, wanted_subject: target_subject)
+    ),
+    holds: fn(n) { n == 1 }
+  ))
+}
+
+// THE SAME RED READ AS REASON AND LOCUS RATHER THAN AS A HISTOGRAM KEY -- the node's red control asks
+// that the refusal NAME the argument and the parameter, and a count cannot show that. Three assertions
+// on the observed arm: the class is the inhabitance class; some blocking row's subject names the
+// PARAMETER `right` as the position that was refused; and that subject carries the inhabitance REASON
+// token by name. A refusal that cannot say which position and why is not one an author can act on, and
+// the mix-up this class exists to catch is only fixed by a message that names them.
+fn the_refusal_names_the_parameter_and_the_reason() -> ProcessExit {
+  let census = census_of(source: eh_f2_repro_ticket_source())
+  census_verdict_all([
+    census_verdict(
+      census: on_observed_rows(census: census, keep: rows => census_rows_of_class(rows: rows, wanted: target_class)),
+      holds: fn(n) { n >= 1 }
+    ),
+    census_verdict(
+      census: on_observed_rows(
+        census: census,
+        keep: rows =>
+          census_blocking_rows(rows: rows)
+            |> filter(r =>
+              (r.diagnostic_class as String) == target_class
+                && string_contains(s: r.subject_name, pattern: required_parameter_phrase)
+            )
+      ),
+      holds: fn(n) { n == 1 }
+    ),
+    census_verdict(
+      census: on_observed_rows(
+        census: census,
+        keep: rows =>
+          census_blocking_rows(rows: rows)
+            |> filter(r =>
+              (r.diagnostic_class as String) == target_class
+                && string_contains(s: r.subject_name, pattern: required_reason_token)
+            )
+      ),
+      holds: fn(n) { n == 1 }
+    )
+  ])
+}
+
+// THE FIRST POSITIVE CONTROL, ON THE RUNNABLE ARM: the same call with a LIST in the second position
+// must be admitted. This leg matches the observed arm and asserts zero BLOCKING rows OF THE TARGET
+// CLASS there -- not "zero rows", which an importing fixture can never show and which would be a
+// permanently red check dressed as rigour. The not-runnable arm exits 2 carrying the door's cause, so an
+// empty census and a census that never ran cannot both satisfy it. Without this leg the red above could be green for any
+// reason at all: a broken import, a misspelled type, a renamed module.
+fn a_list_still_takes_that_position() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_pair_same_container_source()),
+      keep: rows => census_blocking_rows_of_class(rows: rows, wanted: target_class)
+    ),
+    holds: fn(n) { n == 0 }
+  ))
+}
+
+// THE SECOND POSITIVE CONTROL, ON THE RUNNABLE ARM, on the callee the node names as the author's other
+// half: a list plus an element at `list_push`, where the element at `item` IS the declared type, stays
+// admitted. Same arm discipline as the control above, so the three arms cannot be confused with each
+// other, or with a census that did not run (exit 2, cause named, never exit 0).
+fn an_element_at_a_position_declared_as_the_element_is_still_admitted() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_list_push_element_source()),
+      keep: rows => census_blocking_rows_of_class(rows: rows, wanted: target_class)
+    ),
+    holds: fn(n) { n == 0 }
+  ))
+}
+
+// THE ARM DISCIPLINE STATED AS ITS OWN LEG, so a door that stopped being able to run fails HERE, with
+// its own name, instead of quietly turning the two controls into two `false`s that look like a
+// regression in the compiler. All three sources must land on the observed arm: any one of them landing on the
+// not-runnable arm returns exit 2 naming that source's cause, so a door that stopped being able to run
+// is measured as unable to run, not as a compiler that stopped refusing.
+fn all_three_arms_are_observable_censuses() -> ProcessExit {
+  census_verdict_all([
+    census_ran(census: census_of(source: eh_f2_repro_ticket_source())),
+    census_ran(census: census_of(source: eh_f2_pair_same_container_source())),
+    census_ran(census: census_of(source: eh_f2_list_push_element_source()))
+  ])
+}
+
+// THE ONE-AXIS RECEIPT. The producer makes the two SOURCES differ by one token; this makes the two
+// CENSUSES differ by one row -- a population identity, not a cardinality. Whatever the shared closure
+// contributes cancels key by key, so the wall is measured against the other arm rather than against a
+// literal copied out of today's tree (gunbc.design_argument::fail_closed: a measurement of the current
+// tree is not an oracle). It goes red if the red arm picks up a second refusal, if the green arm gains
+// or loses one, if an advisory appears on one side only, and -- unlike a net-count form -- if any
+// ambient class or subject is substituted for another at equal cardinality. Both arms must be the
+// observed arm for the comparison to mean anything.
+fn the_two_arms_differ_by_exactly_the_target_row() -> ProcessExit {
+  // Each census is bound ONCE so the builtin is reached once per source and both conjuncts below read
+  // the same forced observation, exactly as #gunbc.compile_census_probe::deleted_callable_route_verdicts
+  // does for its red probe.
+  let red = census_of(source: eh_f2_repro_ticket_source())
+  let green = census_of(source: eh_f2_pair_same_container_source())
+  census_verdict_all([
+    census_ran(census: red),
+    census_ran(census: green),
+    census_premise(
+      name: "the two observed BLOCKING censuses differ by exactly the one row keyed on the target class and subject",
+      holds: match red {
+        CensusObserved { rows: red_rows } => match green {
+          CensusObserved { rows: green_rows } =>
+            censuses_differ_by_exactly_the_target_key(
+              // ADVISORY ROWS ARE EXCLUDED HERE, AND BY NAME RATHER THAN BY TASTE -- measured at
+              // 95304b7f00c with this head's own binary (stages3/logs96_armdump.out, the scratch
+              // gunbc.instruments.eh_f2_arm_dump over these two sources): the two arms' FULL
+              // histograms differ at 25 keys, not one. Twenty-four of them are
+              // `EffectSummaryIncompleteAtFunctionValue` rows over std.algebra and std.list that the
+              // ADMITTING arm emits and the refusing arm does not -- once the call is refused the
+              // compilation stops lowering those call sites, so their advisories are never produced;
+              // the twenty-fifth is `TextRepresentationUnidentifiedAtBoundary` at `a call argument`,
+              // present only in the refusing arm at the refused actual. All twenty-five are
+              // blocking = false, and every one of them is a consequence of the refusal rather than
+              // the refusal: a differential that walked them would report this wall as
+              // under-observing the standard library. What the wall's claim is ABOUT is the blocking
+              // population, so the comparison is restricted to
+              // #gunbc.compile_diagnostic_census::census_blocking_rows and keyed on the whole
+              // CensusKey (diagnostic_class, subject_name, blocking) -- the sanctioned keyed form,
+              // not a projection iterated until the leg passed.
+              red: census_blocking_rows(rows: red_rows),
+              green: census_blocking_rows(rows: green_rows),
+              target_class: target_class,
+              target_subject: target_subject
+            )
+          CensusNotRunnable { cause: _ } => false
+        }
+        CensusNotRunnable { cause: _ } => false
+      }
+    )
+  ])
+}
+
+// THE ENROLLED ADDRESS FOR THESE LEGS. A module whose legs no address runs is dangling
+// (gunbc.design_argument::consumption: "a module nothing imports" is a listed tell), and review 99292
+// named exactly that on this file. Each leg therefore has a `gunbc test` label in
+// #gunbc.instrument_targets, bound through a `CliWireProgramProducer` whose run step names THIS module
+// and the wire function below -- the host resolves the entry through gunbc.source_layout (no authored
+// path string to drift), evaluates the function WET over the witness layer roots, prints the bytes and
+// maps the exit through the one classifier at src/v1/stage0/src/target_invocation_host.rs. So the exit
+// a reader sees at `gunbc test //gunbc/instruments:<name>` is the leg's own ProcessExit: 0 held, 1 a
+// finding, 2 the door did not answer. Run by name, not a merge gate, in the manner of
+// gunbc.instruments.fleet_convergence_verdict_route.
+//
+// WHY A WIRE FUNCTION PER LEG AND NOT ONLY ONE FOLD. The node's red control is per-leg ("the repro
+// refuses ... AND the two positive controls still pass"), and a fold answers that question with one
+// exit for the module's eight assertions -- a reader could not tell which leg answered. Per-leg labels keep each
+// leg's own exit at the process boundary; the fold below enrolls the whole population in one address,
+// including any leg added later, so a new leg cannot be written and left unaddressed.
+
+fn wall_leg_identity(name: String) -> String {
+  concat("list-append-element-argument-wall/", name)
+}
+
+// THE DISCRIMINATING RED, addressed. rc 1 on a tree without the wall (nothing refuses the fixture),
+// rc 0 with it. `gunbc test //gunbc/instruments:list-append-wall-element-at-list-position`.
+fn element_at_list_position_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "an_element_cannot_take_a_lists_place_at_a_free_monoid_position"),
+    verdict: an_element_cannot_take_a_lists_place_at_a_free_monoid_position()
+  )
+}
+
+// THE NAMING CONTROL: the refusal must name the parameter and carry the reason token.
+// `gunbc test //gunbc/instruments:list-append-wall-refusal-names-parameter`.
+fn refusal_names_parameter_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "the_refusal_names_the_parameter_and_the_reason"),
+    verdict: the_refusal_names_the_parameter_and_the_reason()
+  )
+}
+
+// POSITIVE CONTROL ONE: a list at the same position is admitted.
+// `gunbc test //gunbc/instruments:list-append-wall-list-still-admitted`.
+fn list_still_admitted_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "a_list_still_takes_that_position"),
+    verdict: a_list_still_takes_that_position()
+  )
+}
+
+// POSITIVE CONTROL TWO: an element at a position declared as the element is still admitted -- the wall
+// must not become a ban on elements. `gunbc test //gunbc/instruments:list-append-wall-element-at-element-position`.
+fn element_at_element_position_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "an_element_at_a_position_declared_as_the_element_is_still_admitted"),
+    verdict: an_element_at_a_position_declared_as_the_element_is_still_admitted()
+  )
+}
+
+// THE DOOR'S OWN CONTROL: all three arms observable. `gunbc test //gunbc/instruments:list-append-wall-three-arms-observable`.
+fn three_arms_observable_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "all_three_arms_are_observable_censuses"),
+    verdict: all_three_arms_are_observable_censuses()
+  )
+}
+
+// THE DIFFERENTIAL: the two arms' BLOCKING rows differ by exactly the target row -- an exclusion
+// written down below, with the measured advisory difference it omits, rather than performed.
+// `gunbc test //gunbc/instruments:list-append-wall-arms-differ-by-target-row`.
+fn arms_differ_by_target_row_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "the_two_arms_differ_by_exactly_the_target_row"),
+    verdict: the_two_arms_differ_by_exactly_the_target_row()
+  )
+}
+
+// THE DEPTH FIXTURES FOR THIS ROW'S OWN COMMIT. The predicate that keeps the wall's abstention
+// reachable (`element_demand_direct_call_argument_formal_is_unbound`) used to stop walking at a
+// ceiling of SIXTEEN and answer `false` -- "no unbound type variable" -- for anything deeper, which on
+// this seam releases the pair as UndecidableGenericFormal (advisory) without ever asking the question.
+// That is a silent widen at a literal with no stated basis (gunbc.design_argument::fail_closed: "A
+// failure arm refuses, never widens, and every degradation is typed, located and countable"), and the
+// ceiling is gone. These two fixtures are its controls, one axis apart: the SAME twenty-four-deep
+// literal list, with an unsolved empty list at the core in one and a settled String list in the other.
+// Twenty-four, not seventeen, so the depth that used to be cut off is comfortably past the number.
+//
+// The unsolved core is the shape a real author writes by accident (`list_append` over a list of lists
+// of ... nothing yet), and the wall has to say the same thing about it as it says about the settled
+// one: text cannot stand where a run of a non-Char element is demanded. The resolved twin is the proof
+// that the deeper walk did not turn the wall into a ban on deep types, and -- the walk recursing
+// twenty-four levels with no ceiling -- that the cooperative stack growth holds (no overflow, rc 0).
+fn eh_f2_deep_unsolved_literal() -> String {
+  "[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]"
+}
+
+fn eh_f2_deep_resolved_literal() -> String {
+  "[[[[[[[[[[[[[[[[[[[[[[[[[\"a\"]]]]]]]]]]]]]]]]]]]]]]]]]"
+}
+
+fn eh_f2_deep_probe_source(literal: String) -> String {
+  "module eh_f2_deep\n"
+    + "import std.algebra { list_append, is_empty }\n"
+    + "import std.types { String, List, Bool }\n"
+    + "fn probe() -> Bool { is_empty(xs: list_append(" + literal + ", \"bc\")) }\n"
+}
+
+fn eh_f2_deep_unsolved_element_source() -> String {
+  eh_f2_deep_probe_source(literal: eh_f2_deep_unsolved_literal())
+}
+
+fn eh_f2_deep_resolved_element_source() -> String {
+  eh_f2_deep_probe_source(literal: eh_f2_deep_resolved_literal())
+}
+
+// THE DEPTH RED: the unsolved-core fixture must carry the SAME refusal as the shallow repro -- one
+// blocking row of the target class at the target subject. rc 1 on a tree whose walk stops at the old
+// ceiling, rc 0 on one that walks the shape.
+fn a_deep_unbound_element_below_the_removed_ceiling_is_still_judged() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_deep_unsolved_element_source()),
+      keep: rows =>
+        census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: target_class, wanted_subject: target_subject)
+    ),
+    holds: fn(n) { n == 1 }
+  ))
+}
+
+// THE DEPTH CONTROL: the settled twin at the same depth carries NO row of the target class. Deep is not
+// refused; unsolved-and-text-at-a-run is. Same acquisition as the red above, so the pair also shows the
+// recursion returned rather than blowing the stack.
+fn a_deep_fully_resolved_element_tree_is_still_admitted() -> ProcessExit {
+  census_exit(census_verdict(
+    census: on_observed_rows(
+      census: census_of(source: eh_f2_deep_resolved_element_source()),
+      keep: rows => census_blocking_rows_of_class(rows: rows, wanted: target_class)
+    ),
+    holds: fn(n) { n == 0 }
+  ))
+}
+
+// THE DEPTH RED, addressed. rc 1 where the walk still stops at the ceiling, rc 0 where it walks the
+// shape. `gunbc test //gunbc/instruments:list-append-wall-deep-unbound-element`.
+fn deep_unbound_element_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "a_deep_unbound_element_below_the_removed_ceiling_is_still_judged"),
+    verdict: a_deep_unbound_element_below_the_removed_ceiling_is_still_judged()
+  )
+}
+
+// THE DEPTH CONTROL, addressed. `gunbc test //gunbc/instruments:list-append-wall-deep-resolved-element`.
+fn deep_resolved_element_wire() -> CliWireResponse {
+  census_leg_wire(
+    identity: wall_leg_identity(name: "a_deep_fully_resolved_element_tree_is_still_admitted"),
+    verdict: a_deep_fully_resolved_element_tree_is_still_admitted()
+  )
+}
+
+// THE WHOLE WALL IN ONE ADDRESS: every leg's row printed with its own verdict and code, one exit for
+// the run taken by #gunbc.compile_census_probe::census_worst_exit so a could-not-run (2) is never
+// demoted to a finding (1). `gunbc test //gunbc/instruments:list-append-wall-all-legs`.
+fn wall_all_legs_wire() -> CliWireResponse {
+  census_legs_wire(
+    [
+      element_at_list_position_wire(),
+      refusal_names_parameter_wire(),
+      list_still_admitted_wire(),
+      element_at_element_position_wire(),
+      three_arms_observable_wire(),
+      arms_differ_by_target_row_wire(),
+      deep_unbound_element_wire(),
+      deep_resolved_element_wire(),
+    ],
+    subject: "list-append-wall"
+  )
+}
+
+// THE FOLD CANNOT ABSORB A COULD-NOT-RUN, AS A LEG AND NOT AS A READING OF THE CODE.
+// `census_worst_exit` is a maximum over the members' codes. That is a claim a reviewer cannot check by
+// reading it, and no other leg in this module can make it: every member of `#wall_all_legs_wire` is an
+// ANSWER, so that fold never sees a 2 and its rc says nothing about the loudest state. This leg builds
+// the loudest state on purpose -- one member that HELD, one member the renderer refused -- so the fold
+// must answer 2 with a member that held printed in front of it. Its expectation is the SAME ON BOTH
+// TREES, rc 2 with the wall and rc 2 without it: the property is about the fold, not about the
+// compiler, which is what makes it a control rather than a restatement of the wall. If this ever exits
+// 1, a census that could not run has begun to read as a wall that did not fire -- the absorbing answer
+// #gunbc.design_argument::fail_closed forbids, and the reason #census_worst_exit is a maximum at all.
+fn fold_cannot_absorb_a_two_wire() -> CliWireResponse {
+  census_legs_wire(
+    [
+      census_leg_wire(identity: "fold-absorption/member-that-held", verdict: ExitSuccess),
+      CliWireUnprintable { cause: fold_absorption_refusal_cause() }
+    ],
+    subject: "list-append-wall-fold-absorption"
+  )
+}
+
+// The cause is a NON-EMPTY string by type, and it is written through a function whose return type is
+// `NonEmptyStr` rather than as a bare literal inside the record, because that is the form this repo has
+// a precedent for (gunbc.build_target::required_aggregate_target_name).
+fn fold_absorption_refusal_cause() -> NonEmptyStr {
+  "fold-absorption/member-the-renderer-refused"
+}

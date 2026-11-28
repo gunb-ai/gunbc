@@ -1,0 +1,405 @@
+module test.claim.runner.runner_microvm_boot_probe_lifecycle_witness
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.algebra { string_contains }
+import std.measure { Second, second, second_count }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.virtualization.firecracker { firecracker_run_config_command }
+import extdeps.shell
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner.runner_microvm_boot_probe {
+  BootProbeVerdict, BootPrintedRunnerVersion, BootVmmFailed, BootNotAttempted,
+  BootExceededHostDeadline, BootDeadlineEnforcementUnobservable,
+  BoundedBootRun, ExecutionBoundReceipt,
+  BoundFired, BoundChildExited, BoundSignalledByOther, BoundSpawnRefused,
+  BoundDeathUnconfirmedWithinBound, ConfirmationUnobserved,
+  runner_microvm_boot_probe_run_bounded, runner_microvm_boot_probe_verdict_from_run,
+  boot_probe_verdict_text, boot_probe_admitted,
+}
+import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
+
+// THE BOUNDER'S ENFORCEMENT SENTENCE, QUOTED FROM THE UPSTREAM CONTRACT AND MODELLED NOWHERE. GNU
+// `timeout --verbose` prints this shape on stderr at the moment it decides to signal its subject
+// (timeout(1); the rendering observed here on coreutils 9.4 under LC_ALL=C). It is a FIXTURE for the
+// forgery planted below -- the whole point is that a SUBJECT can write these bytes to the stderr it
+// shares with a bounder -- so it belongs with the witness that plants it. It is deliberately NOT a data
+// in #extdeps.tools.gnu_coreutils: nothing on any production route matches that text any more, and a
+// modelled fact with no consumer is dangling (gunbc.design_argument::consumption).
+data forged_bounder_diagnostic_prefix: String = "timeout: sending signal TERM to command"
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WET, AND IT HAS TO BE. The subject of this file is whether the layer that IMPOSES a deadline can tell
+// a bound that fired from a child that exited with a deadline-looking status of its own accord -- a fact
+// about real processes. The operations it drives (posix.Process.StartDetached / posix.Process.Reap,
+// posix.Signal.TerminateProcessGroup and posix.Signal.KillProcessGroup) deliberately carry no
+// mock_response: a replayed pid is a fabricated process, a replayed reap is a fabricated classification,
+// and a replayed kill is a fabricated escalation -- and a replayed reap is exactly the supplied value the hermetic classifier witness
+// (#test.claim.runner.runner_microvm_boot_probe_witness) already supplies. Local recipe, run on srv1
+// under heavy-slot and posted as the PR's execution evidence. The route is the one that exists at this
+// head -- `gunbc test`, with the label spelled as target_invocation_host::render_label renders it, one
+// operand per test fn:
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 --wet \
+//     //test/claim/runner/runner_microvm_boot_probe_lifecycle_witness:<test-fn-name>
+//
+// EVERY SPAWN HERE IS REAL AND EVERY CHILD IS OUR OWN: each test starts its subject with
+// runner_microvm_boot_probe_run_bounded, whose StartDetached spawns with SETPGROUP (the child leads the
+// group this lifecycle owns), writes its two captures into a directory this test made with
+// shell.Mktemp.Dir(), and removes that directory afterwards. The only signal sent anywhere is the group
+// signal the bounder itself issues, aimed at a group minted from the pid ITS StartDetached returned
+// (process_group_leader, the sole mint, refuses 0 and 1); nothing here kills by name, by pattern, or by
+// any pid it did not start.
+//
+// THE FOUR DIRECTIONS THE SHAPE IS JUDGED ON, each its own test with its own real child:
+//   (1) a child that exits 124 by itself               -> Exited{124}, refused, never a deadline;
+//   (2) a child that exits 137 by itself               -> Exited{137}, refused, never a deadline;
+//   (3) a child wedged past the bound we imposed       -> Signalled{15} after OUR TerminateProcessGroup,
+//                                                         and it IS a deadline;
+//   (4) a child that DECLINES that SIGTERM             -> Signalled{9} after OUR escalated
+//                                                         KillProcessGroup, and it IS a deadline -- the
+//                                                         orphan the base route's --kill-after prevented
+//                                                         is killed here, by the layer that started it.
+// Plus the forgery the Manager B finding on gunbc#17013 requires: a child that PRINTS the bounder's
+// enforcement diagnostic and exits 124 within the bound is not a deadline either. (5) is the arm B's
+// ruling on gunbc#17013 asked for and it is the discriminator for the whole file: the SAME subject as
+// (4), the SAME delivered group kill, and a confirmation bound of zero seconds -- no window in which to
+// look for the death. (4) reports the deadline; (5) refuses it. Nothing between them differs but whether
+// this layer OBSERVED the convergence, which is the only thing that may mint it
+// (gunbc.design_argument::selection_precedes_convergence). The receipt arm no real child can be made to
+// produce is BoundReapRefusedAfterOurSignal, which needs a kernel that accepts the signal and then
+// refuses the reap it owes; its planted case lives, with every other planted arm, in
+// #test.claim.runner.runner_microvm_boot_probe_witness.
+
+// A SHORT BOUND, owned by the witness rather than by the module: the producer carries the value it was
+// given onto the receipt, so the fired verdict must name 3 seconds and not the probe's 180. The red is a
+// bounder that renders a constant nobody imposed on this run.
+data witness_bound: Second = second(count: 3)
+
+// How long the bounder waits for its OWN SIGTERM to land before it escalates to the group kill, and then
+// again for the confirming reap. Kept short here so a declined-SIGTERM case costs seconds, not the probe's
+// 10-second grace; the value is the one carried onto the receipt.
+data witness_kill_grace: Second = second(count: 5)
+
+// A LONG BOUND, for the cases in which the bound must NOT be the thing that ends the child: the child
+// finishes on its own terms in milliseconds and the bounder must still be able to say it never decided
+// to signal.
+data witness_long_bound: Second = second(count: 60)
+
+// THE TWO CAPTURES, INSIDE THE DIRECTORY THIS TEST MADE. Files the witness itself created, in a
+// directory the witness itself made with mktemp -d, removed again by the same test: no path belonging to
+// another session is named anywhere in this file.
+type WitnessCaptureFiles {
+  out: NonEmptyStr
+  err: NonEmptyStr
+}
+
+fn witness_files(dir: FilePath) -> WitnessCaptureFiles {
+  WitnessCaptureFiles {
+    out: join([dir as String, "/console.txt"], "") as NonEmptyStr,
+    err: join([dir as String, "/stderr.txt"], "") as NonEmptyStr,
+  }
+}
+
+// (1) THE ROW'S RED CONTROL, EXECUTED. A child that exits 124 for its own reasons, well inside the bound,
+// is the event the withdrawn reader reported as "host-deadline-expired after 180 seconds -- the host
+// killed the VMM". It reaps Exited{124}: this layer never signalled anything, so no deadline is claimed,
+// the VMM's own status is what is reported, and no deadline sentence appears anywhere in the text.
+test fn a_child_that_exits_124_itself_is_not_reported_as_a_deadline() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: "exit 124"),
+    deadline: witness_long_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt {
+      BoundChildExited { exit_code: code } => code == 124
+      _ => false
+    })
+    && (match verdict { BootVmmFailed { exit_code: code, console: _, detail: _ } => code == 124  _ => false })
+    && !boot_probe_admitted(v: verdict)
+    && string_contains(s: text, pattern: "boot=vmm-failed exit=124")
+    && !string_contains(s: text, pattern: "deadline")
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// (2) THE SAME FOR 137 -- THE STATUS THAT LOOKS MOST LIKE A KILL. A child that exits 137 of its own accord
+// is reaped Exited{137}, not Signalled: the kernel distinguishes a child that reported a signal death
+// from a child the kernel killed, and only the second can be attributed to this layer's signal.
+test fn a_child_that_exits_137_itself_is_not_reported_as_a_deadline() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: "exit 137"),
+    deadline: witness_long_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt { BoundChildExited { exit_code: code } => code == 137  _ => false })
+    && (match verdict { BootVmmFailed { exit_code: code, console: _, detail: _ } => code == 137  _ => false })
+    && !boot_probe_admitted(v: verdict)
+    && !string_contains(s: text, pattern: "deadline")
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// (3) A REAL EXPIRY STILL IS A DEADLINE. The child execs into `sleep`, so the pid this lifecycle started
+// IS the long-running process and the group it leads is the one the bounder owns; at the 3-second bound
+// the await answers StillRunning, THIS layer decides, mints its own group and signals it, and the kernel
+// reaps it as Signalled. The verdict renders the bound that was imposed on THIS run (3 seconds, not the
+// probe's 180) and the signal the kernel reported. The red is a bounder that credits the death to
+// something other than its own decision, or that renders a duration it did not impose.
+test fn a_wedged_child_our_own_bound_signals_is_reported_as_a_deadline() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: "exec sleep 120"),
+    deadline: witness_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt {
+      BoundFired { deadline: d, reaped_signal: sig } => second_count(s: d) == 3 && sig == 15
+      _ => false
+    })
+    && (match verdict { BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => second_count(s: dl) == 3  _ => false })
+    && !boot_probe_admitted(v: verdict)
+    && string_contains(s: text, pattern: "host-deadline-expired after 3 seconds")
+    && string_contains(s: text, pattern: "signal 15")
+    && !string_contains(s: text, pattern: "180")
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// THE FORGERY, PLANTED AND ASSERTED UNOBSERVED. A child can write the bounder's own enforcement sentence
+// onto the stderr the bounder shares with it and then exit 124 -- the exact text a --verbose bounder
+// prints, taken from the upstream contract rather than invented here. It finishes in milliseconds, inside
+// a 60-second bound, so nothing expired and this layer decided nothing. It is reaped Exited{124} and
+// judged as the VMM failure it is: the text on the shared stderr has NO power over the verdict. This is
+// the case the follow-up consumers of this receipt depend on -- if it could be forged, every reader of
+// the receipt inherits a forgeable deadline.
+test fn a_child_that_forges_the_bounders_diagnostic_is_not_reported_as_a_deadline() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let forged = join(
+    ["printf '%s\\n' '", forged_bounder_diagnostic_prefix, " firecracker' >&2; exit 124"],
+    "",
+  )
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: forged),
+    deadline: witness_long_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt { BoundChildExited { exit_code: code } => code == 124  _ => false })
+    && (match verdict { BootVmmFailed { exit_code: code, console: _, detail: _ } => code == 124  _ => false })
+    && string_contains(s: run.console.stderr, pattern: forged_bounder_diagnostic_prefix)
+    && !string_contains(s: text, pattern: "host-deadline-expired")
+    && !boot_probe_admitted(v: verdict)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// A DEATH WE DID NOT CAUSE IS NOT ATTRIBUTED TO OUR BOUND. The child signals its own process group (it is
+// the leader, which is exactly what SETPGGROUP made it) and the kernel reaps it as Signalled while this
+// layer holds no decision to its name: the receipt is BoundSignalledByOther and the classifier refuses by
+// name. An exit status or a signal number cannot say who sent it; the position in THIS layer's lifecycle
+// can, and that is the whole of the discrimination.
+test fn a_child_that_signals_itself_is_refused_and_not_attributed_to_our_bound() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: "kill -TERM 0"),
+    deadline: witness_long_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt { BoundSignalledByOther { signal: sig } => sig == 15  _ => false })
+    && (match verdict {
+      BootDeadlineEnforcementUnobservable { console: _, console_cause: _, detail: _, cause: _ } => true
+      _ => false
+    })
+    && !boot_probe_admitted(v: verdict)
+    && string_contains(s: text, pattern: "although this layer had not signalled")
+    && !string_contains(s: text, pattern: "host-deadline-expired")
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// A WEDGE THAT DECLINES OUR TERM IS KILLED BY OUR OWN ESCALATION, AND THAT IS A DEADLINE THAT FIRED. The
+// child makes SIGTERM ignorable and then LOOPS rather than exec'ing: an exec would reset the disposition
+// and leave the kernel an ordinary sleep that dies on TERM, which would witness direction (3) a second
+// time instead of this one. (The ignored disposition is inherited by the loop's children, so nothing in
+// the group will take TERM.) This layer decides at its 3-second bound, signals the group it started, waits
+// its grace, and the confirming reap still answers StillRunning -- so the survivor is a process this layer
+// created and had not stopped, and it escalates to the posix.Signal KillProcessGroup operation on that
+// same group. The reap then answers Signalled with SIGKILL's number (signal(7): 9, the one signal a
+// subject cannot catch, block or ignore), and the verdict is the deadline: bounded VM lifetime stays
+// ENFORCED, not merely reported, and it is enforced by the layer that imposed the bound.
+test fn a_subject_that_declines_our_term_is_killed_by_our_escalation_and_reported_as_a_deadline() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: "trap '' TERM; while :; do sleep 1; done"),
+    deadline: witness_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt {
+      BoundFired { deadline: d, reaped_signal: sig } => second_count(s: d) == 3 && sig == 9
+      _ => false
+    })
+    && (match verdict {
+      BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => second_count(s: dl) == 3
+      _ => false
+    })
+    && string_contains(s: text, pattern: "host-deadline-expired")
+    && !string_contains(s: text, pattern: "deadline-enforcement-unobservable")
+    && !boot_probe_admitted(v: verdict)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// THE SAME DELIVERED KILL, WITH NO CONFIRMATION WINDOW, IS NOT A DEADLINE -- THE DISCRIMINATOR. Same
+// subject as (4) (SIGTERM ignored, looping so the disposition survives), same 3-second bound, same
+// escalation to posix.Signal.KillProcessGroup on the group this layer started. Only ONE thing differs:
+// the confirmation bound is ZERO seconds, so this layer never looks for the death its kill caused. And
+// the verdict changes: the receipt is BoundDeathUnconfirmedWithinBound carrying BOTH bounds it ran out,
+// the cause is ConfirmationUnobserved, no deadline sentence is printed, and the boot stays blocked. This
+// is the pair that witnesses B's ruling on gunbc#17013 -- kill(2) answering 0 proves the signal was
+// QUEUED, and the composed operation refuses until the gunbc layer OBSERVES the group gone, so the
+// difference between a deadline and a refusal here is an observation and never an actuation return
+// (gunbc.design_argument::selection_precedes_convergence). The child is not left behind: SIGKILL cannot
+// be declined, so the group is gone; what this arm withholds is the CLAIM, not the cleanup.
+test fn a_delivered_group_kill_with_no_confirmation_window_refuses_the_deadline() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: "trap '' TERM; while :; do sleep 1; done"),
+    deadline: witness_bound,
+    kill_grace: second(count: 0),
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt {
+      BoundDeathUnconfirmedWithinBound { deadline: d, confirmation_bound: cb } =>
+        second_count(s: d) == 3 && second_count(s: cb) == 0
+      _ => false
+    })
+    && (match verdict {
+      BootDeadlineEnforcementUnobservable {
+        cause: ConfirmationUnobserved { deadline: d, confirmation_bound: cb },
+        console: _,
+        console_cause: _,
+        detail: _,
+      } => second_count(s: d) == 3 && second_count(s: cb) == 0
+      _ => false
+    })
+    && !string_contains(s: text, pattern: "host-deadline-expired")
+    && string_contains(s: text, pattern: "deadline-enforcement-unobservable")
+    && !boot_probe_admitted(v: verdict)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// THE NON-FIRING BOUND STILL ADMITS A CLEAN BOOT, THROUGH THE REAL PRODUCER. This is the case the reviewers
+// of gunbc#17013 found missing: no test drove the real spawn path through a bound that never fired to an
+// ADMITTED verdict, so a producer that refused every clean exit could pass. The child prints the guest
+// agent's own GuestBooted line (from the emitter's line builder, not a literal) and the cited runner
+// version, exits 0 inside the bound, and the verdict is BootPrintedRunnerVersion -- admitted. The red is
+// any producer that reaches its refusal before the console arms.
+test fn a_clean_boot_through_a_non_firing_bound_is_admitted() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let marker = guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image)
+  let version = gunbc_runner_guest_image.runner.version as String
+  let script = join(["printf '%s\\n' '", marker, "' '", version, "'"], "")
+  let run = runner_microvm_boot_probe_run_bounded(
+    subject: posix_sh_program_command(script: script),
+    deadline: witness_long_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let witnessed =
+    (match run.receipt { BoundChildExited { exit_code: code } => code == 0  _ => false })
+    && boot_probe_admitted(v: verdict)
+    && (match verdict { BootPrintedRunnerVersion { version: v } => true  _ => false })
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// NOTHING WAS STARTED, AND NO VERDICT ABOUT A BOOT IS OFFERED. The program does not exist, StartDetached
+// answers SpawnRefused as a VALUE, and the classifier's answer is BootNotAttempted naming the program --
+// not a failed boot, not a deadline, not an evaluation abort.
+test fn a_spawn_refusal_names_the_program_and_offers_no_boot_verdict() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let files = witness_files(dir: dir.path)
+  let run = runner_microvm_boot_probe_run_bounded(
+    // A PRODUCTION BUILDER, pointed at a binary that is not on any PATH: a witness obtains its
+    // ArgvCommand the way production does, and the refusal is the kernel's, not a fixture's.
+    subject: firecracker_run_config_command(
+      binary: "/nonexistent/gunbc-boot-probe-witness-firecracker",
+      config_path: "/nonexistent/gunbc-boot-probe-witness-vm-config.json",
+    ),
+    deadline: witness_long_bound,
+    kill_grace: witness_kill_grace,
+    stdout_file: files.out,
+    stderr_file: files.err,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_run(runner: gunbc_runner_guest_image.runner, run: run)
+  let text = boot_probe_verdict_text(v: verdict)
+  let witnessed =
+    (match run.receipt {
+      // THE REFUSAL'S OWN WORDS, NOT THE WITNESS'S. `program` is the builder's `binary` argument verbatim
+      // (firecracker_run_config_command -> uncataloged_program(invocation: binary) -> StartDetached's
+      // program field, which the seed fills from argv0 at the one site a spawn failure becomes a value);
+      // `cause` is that site's `std::io::Error` rendering, which is ENOENT's own sentence and carries no
+      // path. Asserting a friendlier string here would have the witness grade its own invention instead of
+      // the refusal -- and asserting the path in the cause would have this arm red for the wrong reason.
+      BoundSpawnRefused { program: p, cause: c } =>
+        p == "/nonexistent/gunbc-boot-probe-witness-firecracker"
+          && string_contains(s: c, pattern: "No such file or directory")
+      _ => false
+    })
+    && (match verdict {
+      BootNotAttempted { cause: cc } =>
+        string_contains(s: cc, pattern: "/nonexistent/gunbc-boot-probe-witness-firecracker")
+      _ => false
+    })
+    && !boot_probe_admitted(v: verdict)
+    && !string_contains(s: text, pattern: "deadline")
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}

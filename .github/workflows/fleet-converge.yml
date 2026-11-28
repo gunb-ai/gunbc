@@ -974,7 +974,7 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'workspace_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'revision_job_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'hostname_converge' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'remote_build_serving_observe' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'remote_build_serving_converge' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'host_truth_read_observe' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'jit_dead_registration_sweep_dry_run' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'review_sheet_converge' && 'review-sheet-converge' || github.event.inputs.mode == 'export_host_reader_converge' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'qualification_floor' && format('gunbc-own-run-{0}', github.run_id) || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'workspace_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'revision_job_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'hostname_converge' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'remote_build_serving_observe' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'remote_build_serving_converge' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'host_truth_read_observe' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'runner_host_file_converge' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'runner_host_withdraw' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'runner_host_restore' && format('gunbc-host-mutation-{0}', github.event.inputs.subject_host) || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'jit_dead_registration_sweep_dry_run' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'review_sheet_converge' && 'review-sheet-converge' || github.event.inputs.mode == 'export_host_reader_converge' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'qualification_floor' && format('gunbc-own-run-{0}', github.run_id) || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -1256,7 +1256,7 @@ jobs:
         id: serve_entry_verdict
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/pre_swap_admission.dag --function record_plan_serve_entry_compile_verdict
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/plan_serve_entry_verdict.dag --function record_plan_serve_entry_compile_verdict
         if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan'
         timeout-minutes: 45
       - name: Upload fleet converge plan artifact
@@ -3720,6 +3720,7 @@ jobs:
         env:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
           RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          FLEET_CONVERGE_PLAN_RUN_POINTER: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
         timeout-minutes: 60
@@ -3905,6 +3906,7 @@ jobs:
         env:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
           RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          FLEET_CONVERGE_PLAN_RUN_POINTER: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
           GUNBC_DEPLOY_INSTANCE_SUBJECT: ${{ github.event.inputs.subject_host }}

@@ -1,5 +1,6 @@
 module test.claim.compute.remote_build_account_witness
 
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
@@ -34,7 +35,12 @@ import gunbc.compute.host_capacity {
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7, operator_host_srv14 }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
-import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
+import gunbc.compute.remote_build_serving_identity {
+  remote_build_serving_instance,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildCandidate, remote_build_candidates,
+}
 import gunbc.compute.remote_build_serve {
   RemoteBuildServeLedgerOwner, ServeLedgerOwnerDeclared, ServeLedgerOwnerUndeclared, remote_build_serve_ledger_owner,
 }
@@ -447,4 +453,47 @@ test fn the_frontier_keys_on_membership_not_the_serving_roster() -> Bool {
     // a rostered-in-name host that is a member with the membership list given gets operator (membership wins
     // over any roster read, in both directions).
     && owner_is_operator(capacity_ledger_owner_for_membership(host: "srv4" as NonEmptyStr, members: [operator_host_srv4], discharge: capacity_ledger_legacy_owner_frontier.discharge))
+}
+
+// ProcessExit door over EVERY test fn in this module (roster GENERATED from the module's own
+// `test fn` declarations when written). Hermetic discovery remains the completeness authority;
+// this door exists to post a receipt.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { return "" }
+  return concat(name, "\n")
+}
+
+fn run_remote_build_account_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "the_remote_build_account_holds_no_root_equivalent_group", held: the_remote_build_account_holds_no_root_equivalent_group()),
+    check_or_name(name: "the_remote_build_account_can_run_a_forced_command", held: the_remote_build_account_can_run_a_forced_command()),
+    check_or_name(name: "the_remote_build_ids_collide_with_no_known_principal", held: the_remote_build_ids_collide_with_no_known_principal()),
+    check_or_name(name: "the_account_in_its_own_and_the_ledger_group_is_admitted", held: the_account_in_its_own_and_the_ledger_group_is_admitted()),
+    check_or_name(name: "the_operator_is_not_admitted", held: the_operator_is_not_admitted()),
+    check_or_name(name: "the_account_in_a_root_equivalent_group_is_not_admitted", held: the_account_in_a_root_equivalent_group_is_not_admitted()),
+    check_or_name(name: "the_account_outside_the_ledger_group_is_not_admitted", held: the_account_outside_the_ledger_group_is_not_admitted()),
+    check_or_name(name: "a_ledger_group_at_another_gid_is_not_admitted", held: a_ledger_group_at_another_gid_is_not_admitted()),
+    check_or_name(name: "the_ledger_gid_under_another_name_is_not_admitted", held: the_ledger_gid_under_another_name_is_not_admitted()),
+    check_or_name(name: "a_ledger_group_without_the_service_user_is_not_admitted", held: a_ledger_group_without_the_service_user_is_not_admitted()),
+    check_or_name(name: "a_dashboard_host_keeps_its_instance_owner_as_the_ledger_service_user", held: a_dashboard_host_keeps_its_instance_owner_as_the_ledger_service_user()),
+    check_or_name(name: "a_serving_host_with_no_dashboard_instance_names_its_host_home_owner", held: a_serving_host_with_no_dashboard_instance_names_its_host_home_owner()),
+    check_or_name(name: "a_host_with_neither_a_home_nor_an_instance_names_no_ledger_owner", held: a_host_with_neither_a_home_nor_an_instance_names_no_ledger_owner()),
+    check_or_name(name: "every_serving_instance_is_the_accounts_own", held: every_serving_instance_is_the_accounts_own()),
+    check_or_name(name: "every_roster_host_resolves_to_a_shared_ledger", held: every_roster_host_resolves_to_a_shared_ledger()),
+    check_or_name(name: "a_ledger_off_the_serving_route_stays_the_service_users", held: a_ledger_off_the_serving_route_stays_the_service_users()),
+    check_or_name(name: "the_shared_ledger_grants_exactly_its_two_areas", held: the_shared_ledger_grants_exactly_its_two_areas()),
+    check_or_name(name: "a_suspended_host_is_still_a_provisioned_candidate", held: a_suspended_host_is_still_a_provisioned_candidate()),
+    check_or_name(name: "every_roster_hosts_ledger_is_the_host_home_not_an_instance_tree", held: every_roster_hosts_ledger_is_the_host_home_not_an_instance_tree()),
+    check_or_name(name: "every_instance_on_a_host_reserves_in_the_one_host_ledger", held: every_instance_on_a_host_reserves_in_the_one_host_ledger()),
+    check_or_name(name: "srv3_and_srv4_reserve_in_the_one_host_ledger", held: srv3_and_srv4_reserve_in_the_one_host_ledger()),
+    check_or_name(name: "srv3_and_srv4_ledger_owner_is_legacy_operator_preserving_byte_identity", held: srv3_and_srv4_ledger_owner_is_legacy_operator_preserving_byte_identity()),
+    check_or_name(name: "the_owner_discriminator_is_the_frontier_not_the_candidate_or_roster_row", held: the_owner_discriminator_is_the_frontier_not_the_candidate_or_roster_row()),
+    check_or_name(name: "the_frontier_discharge_is_consumed_and_falsifiable", held: the_frontier_discharge_is_consumed_and_falsifiable()),
+    check_or_name(name: "the_frontier_keys_on_membership_not_the_serving_roster", held: the_frontier_keys_on_membership_not_the_serving_roster()),
+  ], "")
+  if red == "" {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: concat("run_remote_build_account_witness claims red: ", red) }
+  }
 }

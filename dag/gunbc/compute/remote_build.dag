@@ -1,9 +1,14 @@
 module gunbc.compute.remote_build
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.measure { Second }
+import std.measure {
+  Second, second,
+}
 import std.optional { Present, Absent }
-import std.algebra { trim }
+import std.algebra { trim, skip }
+import std.retry_law {
+  RetryHint,
+}
 import product.host_identity { HostIdentity }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex, git_object_id_eq }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
@@ -31,14 +36,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   belt_reviewer_memory_max_default, belt_max_concurrent_default,
   IsolatedJobToolchainHomes, fleet_compute_hermetic_toolchain,
 }
-import gunbc.provider_account { CodexDefaultAccount, codex_roadmap_account_evidence, admitted_single_session_binding }
-import gunbc.deployment_risk { DeploymentId, deployment_id }
-import std.materialization_store_grant { PersistentInstanceWorkspace }
-import gunbc.persistent_instance_roots { RemoteBuildServing, persistent_instance_scope_root }
-import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_serving_identity { remote_build_serving_instance }
 import gunbc.compute.remote_build_wire {
+  remote_build_retry_after_word, remote_build_capacity_retry_floor, remote_build_capacity_body,
+  remote_build_retry_hint_of_body,
   remote_build_protocol_word, RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully,
   ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
   remote_build_serve_exit_code, remote_build_serve_ending_word,
@@ -51,8 +53,12 @@ import product.fabric.work {
 }
 import product.fabric.envelope { ResourceEnvelope, CpuRequirement }
 import product.fabric.isolation { IsolationProfile, FreshWritableRoot }
-import std.measure { HardwareThreadCount, hardware_thread_count }
-import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import std.measure {
+  hardware_thread_count,
+}
+import extdeps.toolchain.types {
+  Architecture,
+}
 // The fleet's own trust domain and toolchain capability are READ from their authorities, not re-spelled
 // here. gunbc.floor.floor_demand::gunbc_internal_fleet_trust_domain is the row
 // #gunbc.runner.runner_attempt_launch::plan_attempt_launch_cell_granted admits a Work against, so a
@@ -456,97 +462,6 @@ fn remote_build_admit_fetched_source(work: RemoteBuildWork, fetched: GitObjectId
   }
 }
 
-// ── WHO SERVES ───────────────────────────────────────────────────────────────────────────────────────
-//
-// THE ROSTER IS ONE SERVING INSTANCE PER SERVING HOST, OWNED BY THE REMOTE-BUILD ACCOUNT. A request runs
-// as gunbc.fleet.fleet_posix_accounts fleet_posix_remote_build_user, never as the operator (operator,
-// 2026-11-15), so the instance it is served from is that account's: its own checkout, store, toolchain
-// and binary under its home. Which hosts serve is gunbc.compute.remote_build_hosts, the row the host's
-// capacity ledger reads too, so a host on the roster is a host whose ledger admits this account.
-//
-// srv3, srv4, srv14 (butch) and srv15 (bobo) join by joining that row, once their ledger has a home this
-// account can reach (remote_build_hosts says why srv2 and they do not yet), and each will carry its own
-// build-pool reservation carved from its CI runner width.
-type RemoteBuildHostRow {
-  instance: HostDashboardInstance
-}
-
-// THE SERVING INSTANCE. It follows the fleet hermetic compute row (gunbc.roadmap.roadmap_dashboard_instance
-// fleet_compute_hermetic_dashboard_instance_at), the existing instance that serves the provider and no
-// dashboard, and DIVERGES from it only where this one is durable: the store is a persistent workspace,
-// not a frame. Like that row it is not a public built-in, so no host, repo-root or id lookup resolves it;
-// the serving entry finds it on this roster by host. CONFORMANCE, stated: HostDashboardInstance also
-// carries a dashboard's serving fields (listen port, serve function, tmux server, provider state), which
-// this instance never serves -- it is observe-only and nothing listens -- and they are filled as the
-// hermetic row fills them, inert, rather than by a second instance type the provider does not take.
-//
-// THE TOOLCHAIN is the account's own rustup homes, read through the hermetic row's constructor, which
-// derives every Rust shim from the two homes and names no PATH. The serve binary is the account's own
-// build, installed under its instance root.
-fn remote_build_account_home() -> FilePath {
-  fleet_posix_remote_build_home() as FilePath
-}
-
-fn remote_build_serving_instance_id(host: HostIdentity) -> NonEmptyStr {
-  join(["remote-build-", host as String], "") as NonEmptyStr
-}
-
-fn remote_build_serving_deployment(host: HostIdentity) -> DeploymentId {
-  deployment_id(name: remote_build_serving_instance_id(host: host))
-}
-
-fn remote_build_serving_instance(host: HostIdentity) -> HostDashboardInstance {
-  let instance_root = persistent_instance_scope_root(scope: RemoteBuildServing) as FilePath
-  let repo_root = dashboard_instance_child(root: remote_build_account_home(), child: "gunbc")
-  let toolchain = fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes {
-    cargo_home: dashboard_instance_child(root: remote_build_account_home(), child: ".cargo"),
-    rustup_home: dashboard_instance_child(root: remote_build_account_home(), child: ".rustup"),
-  })
-  let serve_binary = dashboard_instance_child(root: instance_root, child: "bin/gunbc")
-  let id = remote_build_serving_instance_id(host: host)
-  HostDashboardInstance {
-    deployment: remote_build_serving_deployment(host: host),
-    instance_id: id,
-    host_identity: host as String as NonEmptyStr,
-    provision_parent_root: dashboard_instance_child(root: remote_build_account_home(), child: ".local/share"),
-    instance_root: instance_root,
-    local_origin_root: repo_root,
-    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
-    repo_root: repo_root,
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
-    publication_base_branch: "main" as NonEmptyStr,
-    dispatch_state_scope: DispatchStateInstanceOwned {
-      worktree_child: "attempts" as NonEmptyStr,
-      attempt_state_child: "attempt-state" as NonEmptyStr,
-    },
-    execution_environment: dashboard_execution_environment_for_toolchain(toolchain: toolchain, serve_binary: serve_binary),
-    provider_state: DashboardExistingProviderState {
-      root: dashboard_instance_child(root: instance_root, child: "codex"),
-      executable: none,
-      binding: admitted_single_session_binding(selection: CodexDefaultAccount, evidence: codex_roadmap_account_evidence),
-    },
-    serve_binary: serve_binary,
-    // The name the serving route runs, read from the wire module that renders the command which carries
-    // it -- the two spellings cannot now drift apart.
-    serve_function: remote_build_serve_cli_function,
-    listen_host: "127.0.0.1" as NonEmptyStr,
-    listen_port: 18085,
-    tmux_server: dashboard_named_tmux_server(instance_id: id),
-    actuation: DashboardObserveOnly,
-    actuator_host: host as String as NonEmptyStr,
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
-    admitted_revision: fleet_admitted_revision_source,
-    toolchain: toolchain,
-    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
-    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
-    belt_obligation_memory_max: belt_obligation_memory_max_default,
-    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
-    belt_max_concurrent: belt_max_concurrent_default,
-    directory_owner: PosixOwnerNames { user: fleet_posix_remote_build_user.name, group: fleet_posix_remote_build_user.name },
-    worker: WorkerIsServiceUser,
-    materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: RemoteBuildServing } },
-  }
-}
 
 fn remote_build_host_rows() -> List<RemoteBuildHostRow> {
   remote_build_serving_hosts() |> map(h => RemoteBuildHostRow { instance: remote_build_serving_instance(host: h) })
@@ -646,9 +561,26 @@ type RemoteBuildHostAnswer
   = HostServed { receipt: String }
   | HostWorkFailed { receipt: String }
   | HostWorkInFlight { receipt: String }
-  | HostCapacityFull { detail: String }
+  // A CAPACITY-LIMITED ANSWER, WITH A RETRY ALLOWANCE. "Room and the host's own readiness move the
+  // request on" -- so this arm is never final, and it carries the host's retry allowance as a
+  // std.retry_law RetryHint: the same carrier the serving router reads (gunbc.retry_http_hint maps an
+  // upstream Retry-After into it; std.retry_law treats a hint as a LOWER BOUND on the caller's backoff,
+  // never a permission gate). A host that refused to start at its wait bound, or whose pool is full,
+  // says "capacity limited, retry allowed", not "no". RetryHintNone means the host named no delay and
+  // the caller's own law supplies the backoff. This is the first step toward the one-router plan item
+  // (gunbc.plans.fabric_serving_router): the end user sees one router whose capacity answer is
+  // retry-allowed, and the remote-build answer now speaks that shape.
+  | HostCapacityFull { detail: String, retry: RetryHint }
   | HostCannotServe { detail: String }
   | HostUnreachable { detail: String }
+  // THE HOST WAS REACHED AND NEVER ANSWERED. Distinct from HostUnreachable (the transport never
+  // reached a host -- ssh's own 255) and from HostCannotServe (a declaration the host SPOKE in the
+  // binary's own vocabulary). An unread exit -- no ending header, an exit outside both vocabularies --
+  // says nothing about the host's standing; it is the fourth case: connected, silent. Carries the raw
+  // exit so a reader can tell which silence it was without parsing prose (review 99224: a fact that
+  // must survive rides a typed carrier). Moves the request on like the transport silence: nothing was
+  // sent, the next candidate is tried, and the host's standing is untouched.
+  | HostUnknown { exit_code: Int, detail: String }
   | HostRefusedRequest { detail: String }
   | HostOutcomeUnknown { detail: String }
   // A LEG THAT RAN OUT OF ITS WALL CLOCK. This arm exists because an overrun is not an answer: the
@@ -684,9 +616,10 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
     HostServed { receipt: _ } => false
     HostWorkFailed { receipt: _ } => false
     HostWorkInFlight { receipt: _ } => false
-    HostCapacityFull { detail: _ } => true
+    HostCapacityFull { detail: _, retry: _ } => true
     HostCannotServe { detail: _ } => true
     HostUnreachable { detail: _ } => true
+    HostUnknown { exit_code: _, detail: _ } => true
     HostRefusedRequest { detail: _ } => false
     HostOutcomeUnknown { detail: _ } => false
     // Nothing was sent on a probe that overran, so the next candidate is tried; the overrun is in the
@@ -930,10 +863,28 @@ data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_ad
 
 
 
+// THE PROBE'S THREE VOICES AND ITS SILENCE. ProbeReady and ProbeCannotServe are things the HOST SAID:
+// the forced entry ran and spoke the serving contract (or the binary's own typed refusal -- exits 0, 1,
+// 2 are the gunbc binary speaking before the contract, review 95521). ProbeUnreachable is the transport
+// saying it never reached a host (ssh's own 255). PROBE UNRECOGNIZED is the fourth, different thing:
+// the transport connected and something on the far side exited with NO ending header and a code outside
+// both vocabularies -- a wrapper abort, a signal death. That is NOT a host declaration: an unread exit
+// is a host that never answered, and it must never be recorded as a host standing (manager ruling
+// 2026-11-27: unrecognized probe = UNKNOWN host, never "answered, do not retry" and never a
+// cannot-serve standing).
+//
+// A TRAP THIS DECODER HAS NEARLY CLAIMED TWICE: THE READY ANSWER'S OWN CODE IS 6
+// (remote_build_serve_exit_code, ServeReady -- gunbc.compute.remote_build_wire). A probe leg whose
+// transport line renders '✗ ... (exit=6)' while stdout carries the 'ending=ready' header is a host
+// that ANSWERED READY -- 6 is the contract speaking, not a failure, and the generic non-zero renderer
+// has no way to know that. The srv3 2026-11-27 probe was exactly this shape; reading its 6 as an
+// unread exit was the misdiagnosis this comment forecloses. Header present -> recognized; header
+// absent -> only then does the exit decide, and 6 with no header is unknown, not ready.
 type RemoteBuildProbe
   = ProbeReady
   | ProbeUnreachable { detail: String }
   | ProbeCannotServe { detail: String }
+  | ProbeUnrecognized { exit_code: Int, detail: String }
 
 fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
   let answer = remote_build_split_answer(stdout: stdout)
@@ -949,17 +900,32 @@ fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) 
     Absent =>
       if exit_code == openssh_connection_failed_exit_code {
         ProbeUnreachable { detail: stderr }
-      } else {
+      } else if exit_code == 0 || exit_code == 1 || exit_code == 2 {
+        // The gunbc binary's OWN vocabulary (review 95521): it ran and refused before the contract --
+        // a host speaking, in the wrong register. Still a host declaration, so cannot-serve.
         ProbeCannotServe { detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+      } else {
+        // Neither an ending word, nor ssh's own failure, nor the binary's refusal vocabulary: an
+        // unread exit is a host that NEVER ANSWERED. The srv3 2026-11-27 class -- the forced entry's
+        // scope wrapper refused at admission (exit 6) -- was recorded as a host cannot-serve standing,
+        // a declaration the host never made.
+        ProbeUnrecognized {
+          exit_code: exit_code,
+          detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer; the host never spoke the serving contract: ", stderr], ""),
+        }
       }
   }
 }
 
 // The attempt a failed probe records; a ready probe records nothing and the request is sent.
+// A host that never answered (transport failure OR an unread exit) is UNKNOWN -- answered exactly
+// like an unreachable host, so the walk moves on with nothing sent, and the host's standing is
+// untouched by an unread exit. The detail keeps which of the two silences it was.
 fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
   match p {
     ProbeReady => none
     ProbeUnreachable { detail } => Present { value: HostUnreachable { detail: detail } }
+    ProbeUnrecognized { exit_code, detail } => Present { value: HostUnknown { exit_code: exit_code, detail: detail } }
     ProbeCannotServe { detail } => Present { value: HostCannotServe { detail: detail } }
   }
 }
@@ -990,12 +956,13 @@ fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, s
     ServeServed => HostServed { receipt: body }
     ServeWorkEndedUnsuccessfully => HostWorkFailed { receipt: body }
     ServeRequestRefused => HostRefusedRequest { detail: concat(body, stderr) }
-    ServeHostFull => HostCapacityFull { detail: concat(body, stderr) }
+    ServeHostFull => HostCapacityFull { detail: concat(body, stderr), retry: remote_build_retry_hint_of_body(body: body) }
     ServeWorkInFlight => HostWorkInFlight { receipt: body }
     ServeHostCannotServe => HostCannotServe { detail: concat(body, stderr) }
     ServeReady => HostOutcomeUnknown { detail: "a work request was answered as a probe" }
   }
 }
+
 
 // WHICH ENDING A PROVIDER OUTCOME IS. Room and the host's own readiness move the request on; anything
 // the work itself produced -- a failure, a cancellation, a mismatch, a unit killed at the ceiling -- is

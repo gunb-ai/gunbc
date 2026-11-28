@@ -1,12 +1,17 @@
 module test.claim.serving.h11_r9700_strata_bench_receipt_witness
 
-import std.types { Bool, String }
+import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { token_count_value }
+import std.measure {
+  token_count_value, millisecond, milli_tokens_per_second, token_count, watt,
+}
+import extdeps.vendor.amd { amd }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
 import gunbc.serving.h11_r9700_strata_bench_receipt {
-  R9700BenchRun, CapReadByOperator, CapNotRecorded,
+  R9700BenchRun,
+  CapReadByOperator,
+  ProbeAbsentOnVendor, ProbeFailed, ReadingPresent,
   h11_r9700_bench_host, h11_r9700_bench_runs,
   r9700_run_shows_cap_is_not_a_peak_bound, r9700_run_busy_mean_within_cap,
 }
@@ -15,6 +20,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn run_named(name: String) -> R9700BenchRun? {
   h11_r9700_bench_runs.filter(r => (r.run as String) == name).first()
+}
+
+// WHICH ARM A RUN'S POWER FIELD ACTUALLY CARRIES, as a name. The tests compare against this so a run filed
+// under the WRONG refusal arm reports the other name and goes red, instead of a match with a wildcard passing
+// either way.
+fn power_arm_of(run: R9700BenchRun) -> String {
+  match run.power {
+    ReadingPresent { value: _ } => "reading"
+    ProbeAbsentOnVendor { probe: _, host_vendor: _ } => "absent"
+    ProbeFailed { probe: _, cause: _ } => "failed"
+  }
 }
 
 // THE 210 W CAP IS SUSTAINED, NOT PEAK: under it the two-second power1_average went above 210 W, and the busy mean
@@ -45,4 +61,113 @@ test fn h11_r9700_follow_up_turns_reused_no_prefix_and_the_failure_is_kept() -> 
       Present { value: r } => r.conversation_cache && r.first_turn_agents_answered == 3
       Absent => false
     }
+}
+
+// THE ABSENCE CARRIES ITS CAUSE: no run in this receipt has a silent gap in its power field, and each run
+// without power data names WHICH PROBE and WHAT IT DID. The two no-sampling runs (r9700-20261112,
+// r9700-convcache) are on the AMD host where the bench's sampler invoked nvidia-smi and it threw per sample
+// (strata_bench.err.log records the crash in every run) -- a probe that ran and threw is ProbeFailed, the
+// failed-read arm, NOT the never-invoked ProbeAbsentOnVendor arm (that conflation is the same class as
+// scoring a failed read as absent: gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent).
+// The two pwr_sampler runs carry ReadingPresent. A missing column without a named cause is the RED case.
+test fn h11_r9700_power_absence_names_its_cause_never_silent() -> Bool {
+  h11_r9700_bench_runs.length() == 4
+    && match run_named(name: "r9700-20261112") {
+      Present { value: r } =>
+        match r.power {
+          ProbeFailed { probe: p, cause: c } =>
+            (p as String) == "nvidia-smi" && starts_with(s: c as String, prefix: "strata_bench.err.log")
+          _ => false
+        }
+      Absent => false
+    }
+    && match run_named(name: "r9700-convcache") {
+      Present { value: r } =>
+        match r.power {
+          ProbeFailed { probe: p, cause: c } =>
+            (p as String) == "nvidia-smi" && starts_with(s: c as String, prefix: "strata_bench.err.log")
+          _ => false
+        }
+      Absent => false
+    }
+    && match run_named(name: "r9700-210w") {
+      Present { value: r } =>
+        match r.power {
+          ReadingPresent { value: p } => p.samples > 0
+          _ => false
+        }
+      Absent => false
+    }
+    && match run_named(name: "r9700-300w-measured") {
+      Present { value: r } =>
+        match r.power {
+          ReadingPresent { value: p } => p.samples > 0
+          _ => false
+        }
+      Absent => false
+    }
+}
+
+// THE TWO REFUSAL ARMS ARE DISTINCT, AND EACH REFUSES: this is the discriminating pair for the conflation the
+// type exists to prevent. The same run, probed two ways: as a probe that was INVOKED AND THREW (ProbeFailed,
+// naming probe and cause) it reports ProbeFailed; as a probe NEVER INVOKED on this vendor (ProbeAbsentOnVendor,
+// naming probe and vendor) it reports ProbeAbsentOnVendor. The cap functions answer false on both -- a refusal,
+// never an empty column -- and the arms discriminate: each construction matches ONLY its own arm, so a future
+// edit that files a crashed read under ProbeAbsentOnVendor (or the reverse) goes red here, not silently green.
+test fn h11_r9700_the_two_refusal_arms_are_distinct_and_both_refuse() -> Bool {
+  let failed_run = R9700BenchRun {
+    run: "synthetic-invoked-and-threw" as NonEmptyStr,
+    rows_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    cap: CapReadByOperator { cap: watt(count: 210) },
+    conversation_cache: false,
+    first_turn_agents_answered: 4,
+    first_turn_ttft_min: millisecond(count: 1000),
+    first_turn_ttft_max: millisecond(count: 2000),
+    first_turn_decode_min: milli_tokens_per_second(count: 50000),
+    first_turn_decode_max: milli_tokens_per_second(count: 60000),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 13000),
+    third_turn_tokens: token_count(count: 2048),
+    third_turn_aggregate: milli_tokens_per_second(count: 12000),
+    cached_tokens_max: token_count(count: 0),
+    power: ProbeFailed {
+      probe: "nvidia-smi" as NonEmptyStr,
+      cause: "invoked per sample and threw inside the sampler thread" as NonEmptyStr,
+    },
+  }
+  let never_invoked_run = R9700BenchRun {
+    run: "synthetic-never-invoked" as NonEmptyStr,
+    rows_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    cap: CapReadByOperator { cap: watt(count: 210) },
+    conversation_cache: false,
+    first_turn_agents_answered: 4,
+    first_turn_ttft_min: millisecond(count: 1000),
+    first_turn_ttft_max: millisecond(count: 2000),
+    first_turn_decode_min: milli_tokens_per_second(count: 50000),
+    first_turn_decode_max: milli_tokens_per_second(count: 60000),
+    second_turn_tokens: token_count(count: 2048),
+    second_turn_aggregate: milli_tokens_per_second(count: 13000),
+    third_turn_tokens: token_count(count: 2048),
+    third_turn_aggregate: milli_tokens_per_second(count: 12000),
+    cached_tokens_max: token_count(count: 0),
+    power: ProbeAbsentOnVendor { probe: "nvidia-smi" as NonEmptyStr, host_vendor: amd },
+  }
+  // Each construction lands in its OWN arm and not the other: the arm-test helper below returns "failed" /
+  // "absent" / "other", and each run must report exactly its own.
+  power_arm_of(run: failed_run) == "failed"
+    && power_arm_of(run: never_invoked_run) == "absent"
+    // Both refusals make the cap functions answer false: no reading, so no cap claim is supportable.
+    && !r9700_run_shows_cap_is_not_a_peak_bound(r: failed_run)
+    && !r9700_run_busy_mean_within_cap(r: failed_run)
+    && !r9700_run_shows_cap_is_not_a_peak_bound(r: never_invoked_run)
+    && !r9700_run_busy_mean_within_cap(r: never_invoked_run)
+}
+
+// A READING PRESENT RUN DISCRIMINATES AGAINST BOTH REFUSALS: the real r9700-210w run reports "reading", not a
+// refusal arm -- so the arm tests are not vacuously true for everything.
+test fn h11_r9700_a_reading_present_run_reports_neither_refusal_arm() -> Bool {
+  match run_named(name: "r9700-210w") {
+    Present { value: r } => power_arm_of(run: r) == "reading"
+    Absent => false
+  }
 }

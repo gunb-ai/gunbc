@@ -1,0 +1,6 @@
+Subject: the actual build_symbol_index_census(modules, source_indices) return during production algorithm, after front_end_sources and normalize_graph. Cases constructed before the first execution. Sample module helper has fn answer() -> Int { 1 } followed by type Existing { rank: Int }.
+* Repeating: all eight SymbolIndex fields structurally equal, existing type binding present.
+* Same-width 1→2 body edit leaves the complete SymbolIndex equal across all eight fields.
+* Append a new type Banner after existing declarations: complete index differs; qualified Banner maps to a declaration and bare Banner changes absent→unique; existing qualified type is unchanged.
+* Add another module with the same name Banner: qualified entries for both remain, bare Banner changes unique→ambiguous with two owners.
+* Make the first literal wider, 1→12345 before the following Existing type. Qualified name roster stays fixed; complete SymbolIndex differs as it contains source-located nodes. The same-signature conclusion does not automatically carry through changes to source spans.

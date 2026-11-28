@@ -11,6 +11,7 @@ import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutatio
 import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
 import gunbc.auth.approval_decision_store { request_revision_of }
@@ -159,17 +160,20 @@ test fn a_refused_gate_fails_the_step_before_any_root_step() -> Bool {
   })
 }
 
-// THE STEP'S SHELL IS RENDERED FROM bash_build NODES: a rejected tree renders the refusal poison, so
-// the claim reads the rendered text for the key export and the gate's entry, and refuses the poison.
+// THE STEP'S SHELL IS RENDERED FROM bash_build NODES: a refused emission is now a typed Rejected (no
+// in-band poison), so the claim binds the accepted bytes -- an Absent (a refusal) FAILS the claim, there
+// is no default text -- and reads the rendered bytes for the key export and the gate's entry.
 test fn the_gate_step_renders_from_nodes_and_exports_only_the_submission_key() -> Bool {
-  let text = gunbc_ci_srv1_root_mutation_approval_invoke()
-  string_contains(s: text, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE=")
-    && string_contains(s: text, pattern: "srv1_root_mutation_approval_wet")
-    && string_contains(s: text, pattern: "'trap'")
-    && !string_contains(s: text, pattern: "GUNBC_ORG_ADMIN_TOKEN")
-    && !string_contains(s: text, pattern: "dissolve-on")
-    && !string_contains(s: text, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
-    && !string_contains(s: text, pattern: "/artifacts")
+  match outcome_accepted_value(gunbc_ci_srv1_root_mutation_approval_invoke()) {
+    Absent => false
+    Present { value: text } =>
+      string_contains(s: text, pattern: "GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE=")
+      && string_contains(s: text, pattern: "srv1_root_mutation_approval_wet")
+      && string_contains(s: text, pattern: "'trap'")
+      && !string_contains(s: text, pattern: "GUNBC_ORG_ADMIN_TOKEN")
+      && !string_contains(s: text, pattern: "dissolve-on")
+      && !string_contains(s: text, pattern: "/artifacts")
+  }
 }
 
 // THE UPLOADED PATH AND THE WRITTEN PATH ARE ONE TEMPLATE, checked against spellings stated here

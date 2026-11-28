@@ -1,0 +1,77 @@
+module gunbc.integration_concern.srv3_serving_cards_have_no_identity_to_cap
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern {
+  ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, CitesDeclaration,
+  fleet_host_state_pass_2026_11_24_revision,
+}
+
+// SRV3 SERVES ON TWO CARDS THE MODEL CANNOT NAME. The gap is not that the readings are missing -- they were
+// taken -- it is that there is no identity to attach them to. srv3 runs two RTX 2000 Ada cards as a Strata
+// serving host; the same card family on srv4 is gpu_board_05 and gpu_board_06, carries device observations in
+// gunbc.fleet.gpu_device_observation, and admits a cap intent in gunbc.serving.gpu_power_state_policy. srv3's
+// pair has no PhysicalAssetIdentity at all, so three facts the 2026-11-24 pass produced have nowhere to go:
+//
+//   - both cards read nvidia-smi power.limit 40 W at the 2026-11-25 ~06:10 UTC pass (the operator's
+//     2026-10-26 figure, restored after the day's detour through 30 W) -- a device observation this module's
+//     sibling would hold as power_limit_current, and cannot;
+//   - the boot mechanism that holds that limit is /etc/systemd/system/strata-pool.service.d/power-cap.conf,
+//     digest 253ba1cb38070757ea89b64e8fe8d3c07939f617057ee5ea2b313254cb187636, whose lines were never
+//     captured; it exists only as the srv3 row of gunbc.fleet.gpu_power_cap_boot_state, which can describe a
+//     file without describing a card;
+//   - the operator's decided cap for those cards has no InstalledGpuCapIntent, because the intent's `board`
+//     field is the only place a cap can be attached to hardware and there is nothing to put in it.
+//
+// WHY A CONCERN AND NOT A MINT. A physical asset identity is an assertion that a piece of hardware is one
+// thing across every inventory claim about it; minting one from a serving pass -- a card count from a session
+// that was there to read a power limit -- would make this change the authority for srv3's inventory
+// (gunbc.design_argument::single_authority). The identity belongs to the physical-inventory program
+// (gunbc.fleet.fleet_physical_inventory and the asset identities it draws from
+// gunbc.fleet.fleet_asset_identity), which records where each identity came from. What this row does is keep
+// the three facts above from going silent while that is owed.
+//
+// WHAT CLOSES IT: an identity row per card in the inventory program, then a GpuDeviceEnumerated row each in
+// gunbc.fleet.gpu_device_observation (range, current, default, control, and the read that produced them), then
+// two InstalledGpuCapIntent rows against the operator's figure. Until then srv3 is the one serving host whose
+// cards can be capped, priced, or audited only by reading a file on it.
+data srv3_serving_cards_have_no_identity_to_cap: IntegrationConcern = IntegrationConcern {
+  identity: "srv3_serving_cards_have_no_identity_to_cap",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "GpuDeviceEnumerated"),
+    tail: [
+      decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "InstalledGpuCapIntent"),
+      decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "fleet_power_cap_boot_units_beyond_srv1"),
+    ],
+  },
+  question: "Who gives srv3's two serving RTX 2000 Ada cards a physical asset identity? Until someone does, no fold can ask whether srv3's cards are present, in range or capped, and the only answer the model can give about them is a digest of a file on the host." ,
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "GpuDeviceEnumerated"),
+    requirement: "A per-card device observation, and the cap intent that hangs off it, both require a PhysicalAssetIdentity for the card. srv3's two serving RTX 2000 Ada cards have none: the fleet survey of 2026-11-07 enumerated srv4's pair and ken's T10s and never enumerated srv3's, and no later intake has. So the 2026-11-24 readings about those cards -- power.limit 40 W on each, read from nvidia-smi over ssh at the 2026-11-25 ~06:10 UTC pass, with the boot drop-in /etc/systemd/system/strata-pool.service.d/power-cap.conf at digest 253ba1cb38070757ea89b64e8fe8d3c07939f617057ee5ea2b313254cb187636 -- can be recorded only as prose beside a host row, and no fold can ask whether srv3's cards are capped, in range, or even present.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "fleet_power_cap_boot_units_beyond_srv1"),
+      },
+    },
+  },
+  sightings: [
+    ConcernSighting {
+      revision: fleet_host_state_pass_2026_11_24_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "fleet_power_cap_boot_units_beyond_srv1"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
+          },
+        ],
+      },
+      account: "Recorded on the 2026-11-24 final-state pass. srv3 and srv4 run the same card family under caps the operator set the same morning, and the two hosts' standing in the model is not the same: srv4 has board identities, device rows, and now a cap decision of the operator's that admits -- pending only its unread UUIDs -- while srv3 has a file on a host and a digest in a boot-state row. The figures named above are single readings of nvidia-smi power.limit taken over ssh, not averages, and are carried with that standing rather than as an envelope.",
+    },
+  ],
+  disposition: Open,
+}

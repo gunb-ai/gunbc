@@ -80,7 +80,8 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
   compute_pre_launch_ceiling_seconds,
 }
-import gunbc.compute.remote_build { remote_build_serving_instance }
+
+import gunbc.compute.seat_cgroup_absence { SeatCgroupEndProof, SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable, observe_seat_cgroup_end_proof }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -107,7 +108,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptExitRecordWriterUnsubstituted,
   AttemptProcessEnd, AttemptProcessExitedWith, AttemptProcessSignaled,
 }
-import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
+import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count, Second }
 import gunbc.compute.work_class_grant {
   WorkClass, work_class_of, work_class_wire, WorkClassGrant, GrantAtCeiling, GrantSized, ClassRetryAfterGrantExceeded,
   work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_is_ceiling, work_class_grant_wire,
@@ -187,7 +188,7 @@ import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
   WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
-  GunbcBinary, GunbcDriver, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
+  GunbcBinary, GunbcDriver, gunbc_binary_name, gunbc_cargo_package, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -854,7 +855,7 @@ fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLa
     BuildGunbcBinaries { profile, bins } =>
       concat(
         concat([compute_program(instance: instance, cap: CargoCapability), "build", "--target-dir", layout.target_dir], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
-        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
+        concat(["-p", gunbc_cargo_package(b: GunbcDriver) as String], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
       [compute_dependency_program(dependency: dependency, bin: GunbcDriver), "compile",
@@ -883,7 +884,7 @@ fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLa
     TestGateSubject { label } =>
       concat(
         [compute_program(instance: instance, cap: CargoCapability), "run", "--target-dir", layout.target_dir, "--release",
-         "-p", "v1-compiler", "--bin", gunbc_binary_name(b: GunbcDriver) as String, "--"],
+         "-p", gunbc_cargo_package(b: GunbcDriver) as String, "--bin", gunbc_binary_name(b: GunbcDriver) as String, "--"],
         invocation_words_bare(words: gunbc_test_invocation_words(label: render_label(l: label))),
       )
   }
@@ -914,9 +915,9 @@ fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte, path_virtualization: ComputeUnitPathVirtualization) -> List<SystemdRunProperty> {
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte, path_virtualization: ComputeUnitPathVirtualization, runtime_max: Second? = none) -> List<SystemdRunProperty> {
   concat(
-    compute_grant_unit_properties(granted: granted, working_directory: compute_unit_working_directory(layout: layout, path_virtualization: path_virtualization), process_bounds: none),
+    compute_grant_unit_properties(granted: granted, working_directory: compute_unit_working_directory(layout: layout, path_virtualization: path_virtualization), process_bounds: none, runtime_max: runtime_max),
     compute_path_virtualization_properties(layout: layout, path_virtualization: path_virtualization),
   )
 }
@@ -1200,7 +1201,7 @@ fn compute_seat_stop_observations(instance: HostDashboardInstance, identity: Str
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observations: List<ComputeUnitStopObservation>, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observations: List<ComputeUnitStopObservation>, path_virtualization: ComputeUnitPathVirtualization, runtime_max: Second? = none) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -1219,7 +1220,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     StopObservationPropertiesOk { properties: stop_properties } =>
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), stop_properties),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization, runtime_max: runtime_max), stop_properties),
       setenv_bindings: concat(
         concat(
           [
@@ -1556,6 +1557,24 @@ fn unit_lifecycle_by_wait(population: UnitPopulation, missing: String) -> UnitLi
   }
 }
 
+// THE THIRD ADMISSIBLE ACCOUNT FOR RECOVERY, consulted only beside the manager's not-found reading
+// and the hook's silence (gunbc.compute.seat_cgroup_absence states why ENOENT on the unit's own cgroup
+// is a kernel-level end proof, and the two guards that keep a wrong spelling from releasing a live
+// seat). Recovery holds no wait account, so today this arm can only answer Unknown and the seat stays
+// charged forever unless the operator rules seat by seat -- srv1's 011dfdd class and srv3's two seats
+// were all this shape. A PRESERVE or UNOBSERVABLE reading falls back to exactly the old answer, with
+// what the cgroup said added to the reason: fail_closed, a located diagnostic and never a release.
+fn seat_cgroup_or_wait(proof: SeatCgroupEndProof, population: UnitPopulation, missing: String) -> UnitLifecycle {
+  match proof {
+    SeatCgroupEnded { detail: d } =>
+      UnitTerminatedCauseUnknown { detail: join([missing, "; the end is nonetheless established by the kernel: ", d], "") }
+    SeatCgroupPreserve { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup still holds processes: ", d], ""))
+    SeatCgroupUnobservable { detail: d } =>
+      unit_lifecycle_by_wait(population: population, missing: join([missing, "; and the seat's cgroup says nothing: ", d], ""))
+  }
+}
+
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
       // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
       // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
@@ -1609,6 +1628,13 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
 // unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
 type UnitLifecycleObservations {
   load_state: UnitPropertyReading
+  // THE SEAT'S OWN CGROUP, observed through gunbc.compute.seat_cgroup_absence: the kernel's answer to
+  // "can anything this unit launched still run". Consulted at exactly ONE arm below -- the manager's
+  // not-found reading beside the hook's silence -- where today the seat can only stay unknown; every
+  // other reading either outranks it (occupied processes) or outranks IT (the manager refusing the
+  // question, the hook's own record). Witness test.claim.compute.seat_cgroup_absence_witness claims
+  // each of those orderings with supplied values.
+  seat_cgroup: SeatCgroupEndProof
   // THE SEAT'S OWN RECORD, for the same reason the termination fold carries it: the two folds must agree
   // about what a manager's absence is worth, and they can only agree if they are deciding on the same
   // reading. test.claim.compute.manager_unaskable_wet_witness asserts that agreement as a relation.
@@ -1665,7 +1691,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
           SeatStopRecordFound { invocation_id, end } =>
             UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
           SeatStopRecordNone =>
-            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
+            // Without the record the manager itself ran, the manager can only say it does not LIST the
+            // unit -- and the seat's own wait, which used to be the only other admissible account here,
+            // is exactly what fails for a seat launched before the hook existed. The kernel's own account
+            // of the unit's cgroup is consulted third (seat_cgroup_or_wait); what it cannot say falls back
+            // to the old, refusing answer.
+            seat_cgroup_or_wait(proof: o.seat_cgroup, population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
           SeatStopRecordUnreadable { cause } =>
             unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and its exit spool could not be read, so the hook says nothing: ", cause], ""))
           SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
@@ -1702,11 +1733,12 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
 fn observe_unit_lifecycle(unit: NonEmptyStr, stop_record: SeatStopRecord) -> UnitLifecycle {
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_lifecycle_decide(o: UnitLifecycleObservations {
-    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
+    stop_record: stop_record,
     active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
     result: read_user_unit_property(unit: unit, property: unit_result_property),
     population: unit_population(control_group: cg, events: read_cgroup_events(control_group: cg)),
+    seat_cgroup: observe_seat_cgroup_end_proof(unit: unit),
   })
 }
 
@@ -2248,9 +2280,10 @@ fn compute_run_opened(
   reference: NonEmptyStr,
   reservation: ComputeReservation,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let granted = work_class_grant_amount(g: grant)
-  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant), opened: opened)
+  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant), opened: opened, runtime_max: runtime_max)
   if !compute_attempt_retries_at_ceiling(grant: grant, attempt: attempt) {
     compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
   } else {
@@ -2301,7 +2334,7 @@ fn compute_run_opened(
               ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
                 compute_run_ceiling_retry(
                   instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-                  dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened)
+                  dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened, runtime_max: runtime_max)
             }
           }
         },
@@ -2326,6 +2359,7 @@ fn compute_run_ceiling_retry(
   reference: NonEmptyStr,
   reservation: ComputeReservation,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   match opened {
     AttemptGateRefused { detail: d } =>
@@ -2333,7 +2367,7 @@ fn compute_run_ceiling_retry(
     AttemptGateReady { record: rec, generation: g } => {
       let retry = compute_run_leased(
         instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency,
-        granted: work_class_grant_amount(g: grant), grant_was_ceiling: true, opened: AttemptGateReady { record: rec, generation: g })
+        granted: work_class_grant_amount(g: grant), grant_was_ceiling: true, opened: AttemptGateReady { record: rec, generation: g }, runtime_max: runtime_max)
       compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: retry, reference: reference, reservation: reservation)
     }
   }
@@ -3153,6 +3187,7 @@ fn compute_provide_leaf(
   op: WorkOperation,
   toolchain: AdmittedToolchain,
   dependency: ComputeDependency,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let request = ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }
   let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
@@ -3167,8 +3202,8 @@ fn compute_provide_leaf(
           ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
         ComputeStoreRefused { detail } =>
           compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
-        ComputeStoreAbsent => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
-        ComputeStoreNotConsulted => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+        ComputeStoreAbsent => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
+        ComputeStoreNotConsulted => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
       }
     }
   }
@@ -3187,6 +3222,7 @@ fn compute_provide_produce(
   subject: WorkSubject,
   op: WorkOperation,
   dependency: ComputeDependency,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   match layout.leases {
     ComputeProducerLeasesUnready { detail: d } =>
@@ -3208,8 +3244,8 @@ fn compute_provide_produce(
           compute_attach_under_lease(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, served: reread)
         ComputeStoreRefused { detail: _ } =>
           compute_attach_under_lease(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, served: reread)
-        ComputeStoreAbsent => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
-        ComputeStoreNotConsulted => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+        ComputeStoreAbsent => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
+        ComputeStoreNotConsulted => compute_reserve_and_run(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
       }
       }
     }
@@ -3250,6 +3286,7 @@ fn compute_reserve_and_run(
   subject: WorkSubject,
   op: WorkOperation,
   dependency: ComputeDependency,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: work_class_memory_ceiling(instance: instance, op: op))
   if !compute_ensure_seat_dir(instance: instance, seat: compute_seat_of(owner: owner)) {
@@ -3261,7 +3298,7 @@ fn compute_reserve_and_run(
     AttemptGateReady { record: rec, generation: g } =>
       compute_reserve_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency: dependency, grant: grant, reference: rec.reference as NonEmptyStr, opened: AttemptGateReady { record: rec, generation: g })
+        dependency: dependency, grant: grant, reference: rec.reference as NonEmptyStr, opened: AttemptGateReady { record: rec, generation: g }, runtime_max: runtime_max)
   }
   }
 }
@@ -3279,6 +3316,7 @@ fn compute_reserve_opened(
   grant: WorkClassGrant,
   reference: NonEmptyStr,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds, request: work_class_grant_amount(g: grant))
   match reservation {
@@ -3291,7 +3329,7 @@ fn compute_reserve_opened(
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
       compute_run_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened)
+        dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened, runtime_max: runtime_max)
   }
 }
 
@@ -3586,6 +3624,7 @@ fn compute_run_leased(
   granted: Kibibyte,
   grant_was_ceiling: Bool,
   opened: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ComputeAttempt {
   let existing = Filesystem.List(path: layout.checkout)
   let checkout = if existing.success {
@@ -3611,7 +3650,7 @@ fn compute_run_leased(
         AttemptGateReady { record: rec2, generation: g2 } =>
           compute_spawn_and_collect(
             instance: instance, layout: layout, identity: identity, op: op, dependency: dependency,
-            granted: granted, grant_was_ceiling: grant_was_ceiling, launched: AttemptGateReady { record: rec2, generation: g2 })
+            granted: granted, grant_was_ceiling: grant_was_ceiling, launched: AttemptGateReady { record: rec2, generation: g2 }, runtime_max: runtime_max)
       }
   }
 }
@@ -3625,6 +3664,7 @@ fn compute_spawn_and_collect(
   granted: Kibibyte,
   grant_was_ceiling: Bool,
   launched: AttemptGate,
+  runtime_max: Second? = none,
 ) -> ComputeAttempt {
   match compute_launching_user_runtime_dir() {
     Absent =>
@@ -3643,7 +3683,7 @@ fn compute_spawn_and_collect(
   if is_compute_command_refused(command: command) {
     compute_claim_refusal_attempt(identity: identity, command: command, launched: launched)
   } else {
-    match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv_words_of(command: command), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
+    match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv_words_of(command: command), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization, runtime_max: runtime_max) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -3694,8 +3734,8 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
 // claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
 // occurrence, never reads the store and is never committed, so it is served here rather than refused.
-fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
-  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op, target: target)
+fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget, runtime_max: Second? = none) -> ProvideResult {
+  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op, target: target, runtime_max: runtime_max)
 }
 
 fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation) -> ProvideResult {
@@ -3705,7 +3745,7 @@ fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation
 
 // The subject is resolved FIRST because the declared release is read from the subject's own
 // rust-toolchain.toml; the observed toolchain is then admitted against that requirement.
-fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
+fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget, runtime_max: Second? = none) -> ProvideResult {
   match compute_resolve_subject(instance: instance, commit: commit) {
     SubjectResolutionRefused { detail } => compute_refuse_unresolved(cause: SubjectUnresolved { detail: detail }, op: op)
     SubjectResolved { subject, toolchain_file } =>
@@ -3726,9 +3766,9 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
                     Present { value: store } =>
                       match op {
                         BuildGunbcBinaries { profile: _, bins: _ } =>
-                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-                        CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-                        RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency, runtime_max: runtime_max)
+                        CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, runtime_max: runtime_max)
+                        RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, runtime_max: runtime_max)
                         // A LEAF, deliberately: the gate subject carries its own seed build inside its
                         // argv (compute_operation_argv's arm), because the dependent route hands the
                         // operation the build's binary as a store blob and `gunbc test` cannot judge one
@@ -3736,7 +3776,7 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
                         // reservations at once, which the dependent route would: the build's charge plus
                         // the gate profile's, and on a carved host those do not both fit.
                         TestGateSubject { label: _ } =>
-                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency, runtime_max: runtime_max)
                       }
                   }
               }
@@ -3750,8 +3790,8 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
-fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> ProvideResult {
-  let build = compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain, runtime_max: Second? = none) -> ProvideResult {
+  let build = compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency, runtime_max: runtime_max)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
@@ -3762,7 +3802,7 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
           carried: provide_result_host_record(r: build))
       ComputeDependencyResolved { dependency } =>
         provide_result_with_host_record(
-          r: compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
+          r: compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency, runtime_max: runtime_max),
           carried: provide_result_host_record(r: build))
     }
   } else {
@@ -4318,7 +4358,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 // (gunbc.design_argument::single_authority; minimize_redundancy: "a concept is modeled once and every
 // use derived from it"). The pairing of an authorization arm to its word lives in the one match that
 // renders it; what the WORDS are lives only here.
-type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String }
+type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, never_charged: String, established_header: String, unknown_header: String }
 
 fn recover_catalog_words() -> RecoverCatalogWords {
   let prefix = "recover-catalog"
@@ -4330,6 +4370,12 @@ fn recover_catalog_words() -> RecoverCatalogWords {
     refused: "refused",
     never_charged: "never-charged",
     established_header: join([prefix, " established"], ""),
+    // THE DECLARED UNKNOWN LINE. compute_recover_catalog_cli prints exactly this word onto STDOUT at
+    // exit 2 (the census's own account of what it could not establish); the reader below must READ it
+    // as the census's answer -- an unknown REASON is the census speaking, never the transport's stderr.
+    // The word carries no trailing space: the reader matches it after trim, where a trailing space
+    // would vanish and the match would fail.
+    unknown_header: join([prefix, " unknown:", ""], ""),
   }
 }
 
@@ -4429,7 +4475,15 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
   match list_at_optional(xs: lines, index: 0) {
     Absent => RecoverCatalogLegUnknown { detail: "the census answered with nothing to read" }
     Present { value: header } =>
-      if trim(s: header) != recover_catalog_words().established_header {
+      if starts_with(s: trim(s: header), prefix: recover_catalog_words().unknown_header) {
+        // THE DECLARED UNKNOWN LINE, READ AS THE CENSUS'S OWN ANSWER: exit 2 carries
+        // "<line_prefix> unknown: <detail>" on stdout, and its text IS the door's reason -- never any
+        // stderr, which belongs to the transport (the user-work-scope trampoline's pre-wrap diagnostics
+        // print there; once one of them was logged as a cause of the census itself refusing, run
+        // 45762320308: "observed-bound arm did not admit (chain-unbounded)" while the census had in
+        // fact answered in full).
+        RecoverCatalogLegUnknown { detail: recover_catalog_unknown_detail(header: trim(s: header)) }
+      } else if trim(s: header) != recover_catalog_words().established_header {
         RecoverCatalogLegUnknown { detail: join(["the census answer is not one this door established (first line: ", trim(s: header), ")"], "") }
       } else {
         let body = skip(xs: lines, n: 1)
@@ -4448,6 +4502,43 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
           }
         }
       }
+  }
+}
+
+// THE UNKNOWN LINE'S DETAIL, taken from the census's own rendering: everything after the declared
+// word, re-joined whole (a detail that itself quotes the word stays verbatim). An empty detail is
+// still an unknown, named as such -- never a silent nothing.
+fn recover_catalog_unknown_detail(header: String) -> String {
+  let w = recover_catalog_words()
+  let parts = split(s: header, delimiter: w.unknown_header)
+  let rest = match list_at_optional(xs: parts, index: 0) {
+    Present { value: head } => if head == "" { join(skip(xs: parts, n: 1), w.unknown_header) } else { header }
+    Absent => header
+  }
+  let detail = trim(s: rest)
+  if detail == "" {
+    "the census answered unknown with no detail"
+  } else {
+    detail
+  }
+}
+
+// THE DOOR'S UNKNOWN REASON, ONE ARMY'S WORTH OF CODE: the census leg renders its exit-2 answer from
+// STDOUT ALONE. The signature takes no stderr -- whatever the transport printed there cannot become
+// the census's answer, structurally and not by convention -- and the contract is UNKNOWN-ONLY: a
+// stdout that would render an established census is itself the mismatch (a mis-wired door, a partial
+// write), named as one, never promoted to knowledge. The exit still outranks the rendering (review
+// 99119): this arm runs only when the declared table speaks 2, and nothing it returns can read as a
+// settled census.
+fn recover_catalog_unknown_leg_reason(stdout: String) -> RecoverCatalogLegReading {
+  match recover_catalog_leg_reading(text: stdout) {
+    RecoverCatalogLegUnknown { detail: d } => RecoverCatalogLegUnknown { detail: d }
+    RecoverCatalogLegEstablished { entries: es } => RecoverCatalogLegUnknown {
+      detail: join(["the door exited unknown while its stdout renders an established census of ", to_string(value: count(es)), " seats; which account speaks for the census cannot be established"], "")
+    }
+    RecoverCatalogLegDeferred { reason: r } => RecoverCatalogLegUnknown {
+      detail: join(["the door exited unknown while its stdout reads deferred: ", r], "")
+    }
   }
 }
 
@@ -4480,7 +4571,7 @@ recover_catalog_response(instance: instance)
 fn recover_catalog_response(instance: HostDashboardInstance) -> CliWireResponse {
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
-          CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
+          CliWirePrintable { bytes: join([recover_catalog_words().unknown_header, " ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
         RecoverCatalogEstablished { entries } =>
           CliWirePrintable {
             bytes: concat(join([recover_catalog_words().established_header, "\n"], ""), fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),

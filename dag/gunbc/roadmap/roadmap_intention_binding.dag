@@ -49,6 +49,7 @@ data gunbhub_source_of_truth_intention: String = "gunbc.plans.gunbhub_source_of_
 data github_actions_retirement_intention: String = "gunbc.plans.github_actions_retirement"
 data demand_engine_intention: String = "gunbc.plans.demand_engine_program"
 data gunb_ai_served_from_gunbc_intention: String = "gunbc.plans.gunb_ai_served_from_gunbc"
+data findings_reach_a_replan_intention: String = "gunbc.plans.findings_reach_a_replan"
 data remote_build_bandwidth_intention: String = "gunbc.plans.remote_build_bandwidth"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
@@ -79,6 +80,14 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "remote-build-client-closure-cost", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   serves(node: "remote-build-served-attempt-host-log-read", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   serves(node: "remote-build-executes-the-bound-source", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
+  serves(node: "serving-observe-reads-absent-toolchain-as-drift", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-census-unknown-reason-names-the-census-not-the-transport", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-request-leg-answers-or-says-why", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "serving-slice-work-is-charged-to-the-ledger", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "serving-pool-seat-count-follows-the-build-ceiling", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-serve-binary-validated-at-request-time", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
+  serves(node: "remote-build-serve-protocol-version-client-checkable", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
+  serves(node: "remote-build-front-is-the-serving-router", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   // #gunbc.plans.fabric_market::fabric_market_plan: layer is the edge depth within the intention.
   serves(node: "market-fix-upstream-model", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
   serves(node: "execution-uncertainty-one-carrier", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
@@ -145,7 +154,11 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "gunbhub-simple-frontend", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 3),
   serves(node: "gunbhub-authoritative-cutover", module_path: gunbhub_source_of_truth_intention, plan: "gunbhub_source_of_truth_plan", layer: 4),
   // gunbc.plans.github_actions_retirement: layer is the edge depth (keen-dove-217, 2026-11-24).
-  serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 0),
+  // work-exec-5-ci-verdict-from-receipt is not bound here, though this plan's text cites it: the work
+  // item names the intention it serves and the intention does not list the work items
+  // (#gunbc.design_argument::plans_are_intentions). Its one binding is the intention whose plan carries it
+  // as work -- gunbc.plans.factory_dogfood, where the work-exec family is bound together -- and this plan
+  // consumes the verdict that item publishes, which is the claim its own section makes.
   serves(node: "github-actions-deleted", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 1),
   // gunbc.plans.claim_execution_consolidation: layer is the edge depth.
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
@@ -291,6 +304,14 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.gunb_ai_served_from_gunbc (2026-11-24): the cutover, then the refresh that waits on it.
   serves(node: "gunb-ai-deploy-cutover", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 0),
   serves(node: "gunb-ai-content-refresh", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 1),
+  // gunbc.plans.findings_reach_a_replan (2026-11-27). Layer is edge depth; the project node is the grouping and is not bound.
+  serves(node: "replan-criterion-and-decision-modeled", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 0),
+  serves(node: "how-to-work-names-contributor-ownership", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 0),
+  serves(node: "criterion-reviewer-approves-its-criterion", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 0),
+  serves(node: "disproved-premise-is-a-submission-outcome", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 1),
+  serves(node: "owed-replan-refuses-dispatch", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 1),
+  serves(node: "escalations-route-to-the-replan", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 2),
+  serves(node: "dispatch-brief-asks-for-the-finding", module_path: findings_reach_a_replan_intention, plan: "findings_reach_a_replan_plan", layer: 2),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -306,7 +327,7 @@ data intention_terminals: List<IntentionTerminals> = [
   // Every bound row reaches one of these: the layer-1 hosts that serve, the layer-2 rows that end a path,
   // and the layer-0 rows nothing else in this intention depends on. srv3-serves is NOT a terminal: it is
   // the read the probe-ceiling row depends on.
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.remote_build_bandwidth", decl_name: "remote_build_bandwidth_plan"), terminals: [nid(s: "remote-build-srv1-serves"), nid(s: "remote-build-srv4-serves"), nid(s: "remote-build-ken-serves"), nid(s: "remote-build-butch-serves"), nid(s: "remote-build-serving-probe-ceiling-from-host-read"), nid(s: "remote-build-client-closure-cost"), nid(s: "remote-build-served-attempt-host-log-read"), nid(s: "remote-build-executes-the-bound-source"), nid(s: "remote-build-serving-precondition-survey-route"), nid(s: "remote-build-client-pin-reaches-sessions"), nid(s: "fleet-drain-jobs-join-host-mutation-group"), nid(s: "serving-observe-assesses-installed-revision"), nid(s: "serving-converge-applied-then-refused-is-typed"), nid(s: "gunbc-entries-resolve-checked-in-ci"), nid(s: "fleet-converge-dispatch-admission-step-slim-entry"), nid(s: "remote-build-run-level-leg-budget")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.remote_build_bandwidth", decl_name: "remote_build_bandwidth_plan"), terminals: [nid(s: "remote-build-srv1-serves"), nid(s: "remote-build-srv4-serves"), nid(s: "remote-build-ken-serves"), nid(s: "remote-build-butch-serves"), nid(s: "remote-build-serving-probe-ceiling-from-host-read"), nid(s: "remote-build-client-closure-cost"), nid(s: "remote-build-served-attempt-host-log-read"), nid(s: "remote-build-executes-the-bound-source"), nid(s: "remote-build-serving-precondition-survey-route"), nid(s: "remote-build-client-pin-reaches-sessions"), nid(s: "fleet-drain-jobs-join-host-mutation-group"), nid(s: "serving-observe-assesses-installed-revision"), nid(s: "serving-converge-applied-then-refused-is-typed"), nid(s: "gunbc-entries-resolve-checked-in-ci"), nid(s: "fleet-converge-dispatch-admission-step-slim-entry"), nid(s: "remote-build-run-level-leg-budget"), nid(s: "serving-pool-seat-count-follows-the-build-ceiling"), nid(s: "remote-build-serve-binary-validated-at-request-time"), nid(s: "remote-build-serve-protocol-version-client-checkable"), nid(s: "remote-build-front-is-the-serving-router")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.fabric_market", decl_name: "fabric_market_plan"), terminals: [nid(s: "fabric-market-convergence")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
@@ -354,6 +375,9 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.github_actions_retirement", decl_name: "github_actions_retirement_plan"), terminals: [nid(s: "github-actions-deleted")] },
   // gunb_ai_served_from_gunbc's one line ends at the refresh, which waits on the cutover along the prerequisite edge.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.gunb_ai_served_from_gunbc", decl_name: "gunb_ai_served_from_gunbc_plan"), terminals: [nid(s: "gunb-ai-content-refresh")] },
+  // findings_reach_a_replan ends at the continuation route and the brief (both downstream of the model), and at the two
+  // independent items, the design text and the reviewer verdict.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.findings_reach_a_replan", decl_name: "findings_reach_a_replan_plan"), terminals: [nid(s: "escalations-route-to-the-replan"), nid(s: "dispatch-brief-asks-for-the-finding"), nid(s: "how-to-work-names-contributor-ownership"), nid(s: "criterion-reviewer-approves-its-criterion")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {

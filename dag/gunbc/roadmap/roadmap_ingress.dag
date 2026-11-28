@@ -3,14 +3,16 @@ module gunbc.roadmap.roadmap_ingress
 import std.types { String, Int, List }
 import std.algebra { list_push }
 import gunbc.http_ingress {
-  HttpIngressAdmission, http_ingress_binding, http_ingress_serves_declared_handler,
+  HttpIngressAdmission, HttpIngressBound, HttpIngressRefused, HttpIngressPreEvaluationRoute,
+  http_ingress_binding, http_ingress_serves_declared_handler, http_ingress_answering_before_evaluation,
   http_ingress_undeclared_handler_reason, http_ingress_row_missing_authority_handler_reason,
 }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_health_path }
 // The handler module whose declarations this entry serves. Importing it is NOT what realizes them:
 // under the demanded-scope run an imported-but-uncalled declaration is not realized (#16069,
 // gunbc.design_ruling::run_realizes_only_demanded_declarations), which is what the row below and the
 // runtime-key registry are for -- see roadmap_ingress_served_handlers.
-import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
+import gunbc.roadmap.roadmap_serve { roadmap_serve_handle, roadmap_serve_healthz_wire_response }
 // THE AUTHORITY for which handler an instance serves: the roadmap dashboard roster's serve_function
 // field (gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance). The row below mirrors it, and
 // roadmap_ingress_row_missing_roster_handlers checks that it does on every startup.
@@ -131,9 +133,32 @@ fn roadmap_ingress(handler: String, listener: String, release_revision: String, 
   } else if !http_ingress_serves_declared_handler(served_handlers: roadmap_ingress_served_handlers, handler: handler) {
     HttpIngressRefused { reason: http_ingress_undeclared_handler_reason(entry: "roadmap_ingress", row: "roadmap_ingress_served_handlers", handler: handler) }
   } else {
-    http_ingress_binding(
+    roadmap_ingress_answering_healthz_before_evaluation(admission: http_ingress_binding(
       handler_module: "gunbc.roadmap.roadmap_serve", handler: handler, listener: listener,
       release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
-    )
+    ))
+  }
+}
+
+// /healthz IS RENDERED ONCE PER PROCESS, AT STARTUP. Its document is the tree's surface plus the release revision
+// (operator ruling 2026-11-26: the surface identity is a fact of (interpreter, tree)), so it is fixed for the
+// process's life, and every entry this binding can serve answers it with the same bytes
+// (gunbc.roadmap.roadmap_serve roadmap_serve_healthz_response, the producer the HealthzHandler arm uses too). The
+// binding hands that response to the host's pre-evaluation table (gunbc.http_ingress
+// http_ingress_answering_before_evaluation), so a probe is answered from rendered bytes without entering the
+// evaluator -- the lab standings refresh probes /healthz with a 5 s timeout behind whatever request the
+// single-threaded evaluator is serving. A request the table does not match exactly (a query string, a mount
+// prefix the proxy did not strip) falls through to the handler and gets the same bytes.
+fn roadmap_ingress_answering_healthz_before_evaluation(admission: HttpIngressAdmission) -> HttpIngressAdmission {
+  match admission {
+    HttpIngressRefused { reason: r } => HttpIngressRefused { reason: r }
+    HttpIngressBound { binding: b } =>
+      http_ingress_answering_before_evaluation(admission: admission, routes: [
+        HttpIngressPreEvaluationRoute {
+          method: "GET",
+          target: roadmap_site_health_path as String,
+          response: roadmap_serve_healthz_wire_response(release_revision: b.release_revision),
+        },
+      ])
   }
 }
