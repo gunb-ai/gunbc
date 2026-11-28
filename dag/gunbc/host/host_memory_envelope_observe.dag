@@ -69,7 +69,7 @@ data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-ob
 // this receipt only decides how its OWN receipt shows the empty (absent) arm, so a bare
 // "memory_max=" can never read as a value.
 fn host_memory_envelope_limit_label(limit: SystemdCgroupMemoryLimit) -> String {
-  let label = systemd_memory_limit_wire_label(limit: limit)
+  let label = systemd_memory_limit_wire_label(lim: limit)
   if label == "" { "(absent)" } else { label }
 }
 
