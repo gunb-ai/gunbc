@@ -455,7 +455,7 @@ fn observe_host_health(telemetry: BmcTelemetryProfile, reader_login: NonEmptyStr
     PrivateSecretFileNotEntered { cause } => return ObservationRefused { cause: cause }
     PrivateSecretFileNotEnteredResidueRemains { cause } => return ObservationRefused { cause: concat("credential material may remain on disk: ", cause as String) as NonEmptyStr }
     PrivateSecretFileCompletedResidueRemains { value: _ } =>
-      return ObservationRefused { cause: "the per-run reader netrc could not be removed after the observation" }
+      return ObservationRefused { cause: "the per-run reader netrc cleanup was not confirmed (file and/or directory) after the observation" }
     PrivateSecretFileCompleted { value: observed } => return ObservationEstablished { observed: observed }
   }
 }

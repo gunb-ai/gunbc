@@ -10255,13 +10255,26 @@ fn host_remove_unanswered_verdict(
   why: String,
 ) -> Reconciliation<HostRemoveTarget, HostRemoveEvidence> {
   let pf = host_remove_path_field(target: target)
-  if fold_list(xs: post_present, empty: false, cons: (acc, b) => acc || b) {
+  let cause_phrase = run_argv_transport_unanswered_cause_phrase(cause: cause, reason: why)
+  // NAME ONLY THE PATHS THE POST-REMOVAL READ ACTUALLY FOUND PRESENT. post_present is aligned to the
+  // target path order, so enumerate the readings and keep the name under each true reading; never print
+  // the whole target roster when only one path was seen.
+  let observed_present = flat_map(enumerate(xs: post_present), p =>
+    if p.second {
+      match host_remove_target_paths(target: target).take(n: p.first + 1).last() {
+        Present { value: nm } => [nm]
+        Absent => []
+      }
+    } else {
+      []
+    })
+  if length(observed_present) > 0 {
     NotConverged {
       reason: host_remove_reason(
         target: target,
         verb: "dispatched, effect unknown",
         detail: join(
-          [pf, " still present after a dispatched removal: ", run_argv_transport_unanswered_cause_phrase(cause: cause, reason: why)],
+          [join(observed_present, ", "), " still present after a dispatched removal: ", cause_phrase],
           "",
         ),
         pathfield: pf,
@@ -10269,8 +10282,25 @@ fn host_remove_unanswered_verdict(
       applied: target,
     }
   } else {
-    Converged {
-      evidence: RemovedByReadback { paths: host_remove_target_paths(target: target) },
+    // NO PATH WAS READ PRESENT -- but this is the UNANSWERED path: the rm's own reply was unreadable, and
+    // the post-removal read is an unprivileged `test` whose exit 1 conflates absent with unstattable, so it
+    // CANNOT establish absence. Settling RemovedByReadback here would fabricate the very absence the
+    // dispatched-unknown leg makes unknown. The effect is WITHHELD (withheld, tracked) carrying the removal
+    // fault; it settles only once the exact-entry parent-listing reader lands (deferred follow-up,
+    // recurring_failure_mode owner bright-ibex-807). (#17119 item 1, ruling C.)
+    NotConverged {
+      reason: host_remove_reason(
+        target: target,
+        verb: "dispatched, effect unknown",
+        detail: join(
+          [
+            "no path was read present, but the removal reply was unreadable and the post-removal `test` read cannot establish absence (the exact-entry readback is a deferred follow-up), so the removal is withheld: ",
+            cause_phrase,
+          ],
+          "",
+        ),
+        pathfield: pf,
+      ),
       applied: target,
     }
   }

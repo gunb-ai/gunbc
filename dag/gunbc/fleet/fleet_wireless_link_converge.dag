@@ -107,7 +107,7 @@ fn spark_wireless_link_converge_ci_wet() -> ProcessExit
                           ) {
                             PrivateSecretFileNotEntered { cause: c } => exit_failure(reason: c as String)
                             PrivateSecretFileNotEnteredResidueRemains { cause: c } => exit_failure(reason: c as String)
-                            PrivateSecretFileCompletedResidueRemains { value: _ } => exit_failure(reason: "the credential file could not be removed after the bracket body ran, so the secret may remain on disk and requires cleanup")
+                            PrivateSecretFileCompletedResidueRemains { value: _ } => exit_failure(reason: "the credential cleanup was not confirmed (file and/or directory) after the bracket body ran, so a copy may remain on disk and requires cleanup")
                             PrivateSecretFileCompleted { value: exit } => exit
                           }
                       }
