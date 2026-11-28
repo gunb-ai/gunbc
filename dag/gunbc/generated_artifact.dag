@@ -23,9 +23,7 @@ type GeneratedArtifact
   | GitattributesArtifact
   | CargoConfigArtifact
   | DesignArtifact
-  | DesignFailureModesArtifact
-  | DesignRungDropsArtifact
-  | ContributorOnboardingArtifact
+  | DocsArtifact { projection: DocsProjection }
   | GithooksPrePushArtifact
   | GithooksPreCommitArtifact
   | ReleaseBinsConsumerCheckScriptArtifact
@@ -62,6 +60,23 @@ type GeneratedArtifact
   | RoadmapAuthoritySupersededScenarioRevocationArtifact
   | RoadmapAuthoritySupersededScenarioRetiredArtifact
   | RoadmapAuthorityAbsentNodeAcceptanceArtifact
+
+type DocsProjection
+  = DesignFailureModesProjection
+  | DesignRungDropsProjection
+  | ContributorOnboardingProjection
+
+data docs_projections: List<DocsProjection> = [DesignFailureModesProjection, DesignRungDropsProjection, ContributorOnboardingProjection]
+
+data docs_projection_directory: String = "docs"
+
+fn docs_projection_name(projection: DocsProjection) -> String {
+  match projection {
+    DesignFailureModesProjection => "design-failure-modes.md"
+    DesignRungDropsProjection => "design-rung-drops.md"
+    ContributorOnboardingProjection => "onboarding.md"
+  }
+}
 
 // THE ROADMAP-AUTHORITY EVENT LOG (five committed JSON files). Each row is ONE file that the hermetic
 // witnesses walk with the real Filesystem.List through the floor's checkout carve-out; the bytes are the log's
@@ -152,9 +167,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     CargoConfigArtifact => ArtifactLocation { directory: ".cargo", name: "config.toml" }
     DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
-    DesignFailureModesArtifact => ArtifactLocation { directory: "docs", name: "design-failure-modes.md" }
-    DesignRungDropsArtifact => ArtifactLocation { directory: "docs", name: "design-rung-drops.md" }
-    ContributorOnboardingArtifact => ArtifactLocation { directory: "docs", name: "onboarding.md" }
+    DocsArtifact { projection } => ArtifactLocation { directory: docs_projection_directory, name: docs_projection_name(projection: projection) }
     GithooksPrePushArtifact => ArtifactLocation { directory: ".githooks", name: "pre-push" }
     GithooksPreCommitArtifact => ArtifactLocation { directory: ".githooks", name: "pre-commit" }
     ReleaseBinsConsumerCheckScriptArtifact =>
@@ -253,9 +266,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HostedRunnerShadowGateYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
-    DesignFailureModesArtifact => NotCommitted
-    DesignRungDropsArtifact => NotCommitted
-    ContributorOnboardingArtifact => NotCommitted
+    DocsArtifact { projection: _ } => NotCommitted
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
@@ -306,9 +317,7 @@ fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
 fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
   match a {
     DesignArtifact => true
-    DesignFailureModesArtifact => true
-    DesignRungDropsArtifact => true
-    ContributorOnboardingArtifact => true
+    DocsArtifact { projection: _ } => true
     WitnessFloorYamlArtifact => false
     FleetConvergeYamlArtifact => false
     MicrovmShakedownYamlArtifact => false

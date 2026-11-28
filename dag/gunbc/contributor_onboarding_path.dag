@@ -29,7 +29,7 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.witness.witness_floor_workflow { witness_floor_required_bins }
 import gunbc.instruments.docs_projection_agreement { docs_projection_regen_command }
 import gunbc.generated_artifact_production { ArtifactGenerated, ArtifactGenerationOutcome, GeneratedArtifactProduction, artifact_always_valid }
-import gunbc.generated_artifact { ContributorOnboardingArtifact }
+import gunbc.generated_artifact { DocsArtifact, ContributorOnboardingProjection }
 
 // THE PATH A NEW ENGINEER WALKS, MODELED SO THE COMMANDS CANNOT ROT AWAY FROM THEIR AUTHORITIES.
 //
@@ -919,7 +919,7 @@ fn contributor_onboarding_artifact_generated() -> ArtifactGenerationOutcome {
 }
 
 data contributor_onboarding_artifact_production: GeneratedArtifactProduction = GeneratedArtifactProduction {
-  artifact: ContributorOnboardingArtifact,
+  artifact: DocsArtifact { projection: ContributorOnboardingProjection },
   generate: contributor_onboarding_artifact_generated,
   extra_valid: artifact_always_valid,
   provenance: none,

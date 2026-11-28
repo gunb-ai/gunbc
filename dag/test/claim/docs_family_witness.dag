@@ -1,0 +1,119 @@
+module test.claim.docs_family_witness
+
+import std.types { Bool, List, String }
+import std.algebra { bag_eq }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol, symbol_eq }
+import v2.std.node_reflection { coproduct_nullary_inhabitants }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  DocsArtifact,
+  DocsProjection,
+  ContributorOnboardingProjection,
+  docs_projections,
+  docs_projection_directory,
+  artifact_directory,
+  artifact_path,
+  artifact_is_committed
+}
+import gunbc.generated_artifact_registry { generated_artifact_registry }
+import gunbc.docs_production { docs_production }
+import gunbc.design_ledgers { design_rung_drops_artifact_production }
+import gunbc.contributor_onboarding_path { expected_contributor_onboarding_md }
+import gunbc.instruments.docs_projection_gate {
+  docs_projection_resolution,
+  docs_projection_resolution_of,
+  committed_docs_projections,
+  DocsProjectionResolved,
+  DocsProjectionGenerationRefused
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn docs_projection_discriminant(p: DocsProjection) -> Symbol {
+  discriminant(v: p)
+}
+
+fn same_projection(a: DocsProjection, b: DocsProjection) -> Bool {
+  symbol_eq(a: docs_projection_discriminant(p: a), b: docs_projection_discriminant(p: b))
+}
+
+fn roster_is_the_sum(roster: List<DocsProjection>, inhabitants: List<DocsProjection>) -> Bool {
+  count(inhabitants) > 0
+    && bag_eq(
+      xs: map(roster, p => docs_projection_discriminant(p: p)),
+      ys: map(inhabitants, p => docs_projection_discriminant(p: p)),
+      eq: symbol_eq
+    )
+}
+
+fn is_docs_family(a: GeneratedArtifact) -> Bool {
+  match a {
+    DocsArtifact { projection: _ } => true
+    _ => false
+  }
+}
+
+fn family_and_location_agree(is_docs: Bool, directory: String) -> Bool {
+  is_docs == (directory == docs_projection_directory)
+}
+
+test fn witness_docs_projections_holds_every_docs_variant_once() -> Bool {
+  match coproduct_nullary_inhabitants(type_name: ^DocsProjection, discriminant_of: docs_projection_discriminant) {
+    Accepted { value: inhabitants, diagnostics: _ } => roster_is_the_sum(roster: docs_projections, inhabitants: inhabitants)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_a_roster_missing_or_repeating_a_docs_variant_is_refused() -> Bool {
+  match coproduct_nullary_inhabitants(type_name: ^DocsProjection, discriminant_of: docs_projection_discriminant) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      !roster_is_the_sum(
+        roster: filter(docs_projections, p => !same_projection(a: p, b: ContributorOnboardingProjection)),
+        inhabitants: inhabitants
+      )
+        && !roster_is_the_sum(roster: concat(docs_projections, [ContributorOnboardingProjection]), inhabitants: inhabitants)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_the_docs_family_is_exactly_the_docs_directory_over_the_registry() -> Bool {
+  any(generated_artifact_registry, a => is_docs_family(a: a))
+    && any(generated_artifact_registry, a => !is_docs_family(a: a))
+    && all(generated_artifact_registry, a => family_and_location_agree(is_docs: is_docs_family(a: a), directory: artifact_directory(a: a)))
+}
+
+test fn witness_a_docs_location_without_the_family_or_the_family_elsewhere_disagrees() -> Bool {
+  !family_and_location_agree(is_docs: false, directory: docs_projection_directory)
+    && !family_and_location_agree(is_docs: true, directory: "src/v1/stage0/src")
+    && family_and_location_agree(is_docs: false, directory: "src/v1/stage0/src")
+}
+
+test fn witness_the_onboarding_projection_resolves_through_its_producer() -> Bool {
+  match docs_projection_resolution(projection: ContributorOnboardingProjection) {
+    DocsProjectionResolved { path, expected } =>
+      path == "docs/onboarding.md"
+        && artifact_path(a: docs_production(projection: ContributorOnboardingProjection).artifact) == path
+        && expected == expected_contributor_onboarding_md()
+    DocsProjectionGenerationRefused { path: _, reason: _ } => false
+  }
+}
+
+test fn witness_a_production_for_another_projection_is_refused() -> Bool {
+  match docs_projection_resolution_of(projection: ContributorOnboardingProjection, production: design_rung_drops_artifact_production) {
+    DocsProjectionGenerationRefused { path, reason } =>
+      path == "docs/onboarding.md" && string_contains(s: reason, pattern: "docs/design-rung-drops.md")
+    DocsProjectionResolved { path: _, expected: _ } => false
+  }
+}
+
+test fn witness_the_onboarding_projection_is_written_and_not_compared() -> Bool {
+  !artifact_is_committed(a: DocsArtifact { projection: ContributorOnboardingProjection })
+    && any(docs_projections, p => same_projection(a: p, b: ContributorOnboardingProjection))
+    && !any(committed_docs_projections(), p => same_projection(a: p, b: ContributorOnboardingProjection))
+}
+
+test fn witness_regen_writes_more_than_main_agrees() -> Bool {
+  count(docs_projections) > count(committed_docs_projections())
+}

@@ -2,8 +2,9 @@ module test.claim.ledger_row_coherence
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  DesignFailureModesArtifact,
-  DesignRungDropsArtifact,
+  DocsArtifact,
+  DesignFailureModesProjection,
+  DesignRungDropsProjection,
   GitignoreArtifact
 }
 import gunbc.ledger_row_coherence {
@@ -61,7 +62,7 @@ fn first_identity(a: GeneratedArtifact) -> String {
 // as coherent. Without this arm the discriminating test below could pass on a classifier that
 // reported every row missing always.
 test fn a_fully_rendered_ledger_is_coherent() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let full = all_rows_rendered(a: a)
   match ledger_row_coherence(a: a, generated_content: full, committed_content: full) {
     LedgerRowsAllRendered => true
@@ -73,7 +74,7 @@ test fn a_fully_rendered_ledger_is_coherent() -> Bool {
 // name THAT identity and no other. Asserting the identity rather than a count is what makes this
 // fail when the classifier reports the wrong row, which a count cannot see.
 test fn a_withheld_row_is_named_as_missing() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let id = first_identity(a: a)
   match ledger_row_coherence(
     a: a,
@@ -89,7 +90,7 @@ test fn a_withheld_row_is_named_as_missing() -> Bool {
 // are derived from the ROSTER rather than from an index in the projection: `gunbc.design_ledgers` `expected_design_rung_drops_md`
 // carries no identity index, so an index-driven classifier could not answer for it at all.
 test fn the_rung_drop_ledger_is_covered_without_a_projection_index() -> Bool {
-  let a = DesignRungDropsArtifact
+  let a = DocsArtifact { projection: DesignRungDropsProjection }
   let id = first_identity(a: a)
   let named = match ledger_row_coherence(
     a: a,
@@ -117,7 +118,7 @@ test fn a_non_ledger_artifact_cannot_report_coherent() -> Bool {
 // names -- so this drives observation_findings, the function production calls, and asserts the
 // identity appears in the rendered diagnostic a human reads.
 test fn the_gate_diagnostic_names_the_missing_identity() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let id = first_identity(a: a)
   let findings = observation_findings(o: GeneratedArtifactObserved {
     artifact: a,
@@ -136,7 +137,7 @@ test fn the_gate_diagnostic_names_the_missing_identity() -> Bool {
 // drift have different owners and different repairs; a diagnostic that says INCOHERENT for both has
 // stopped discriminating, which is the failure this whole change exists to remove.
 test fn a_difference_that_drops_no_row_is_not_reported_incoherent() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let full = all_rows_rendered(a: a)
   match ledger_row_coherence(
     a: a,
@@ -153,7 +154,7 @@ test fn a_difference_that_drops_no_row_is_not_reported_incoherent() -> Bool {
 // back, identity for identity. A renderer and a parser that were written to different shapes would
 // both typecheck and would silently agree on nothing.
 test fn a_rendered_declaration_parses_back_to_the_same_identities() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let id = first_identity(a: a)
   let c = ledger_row_coherence(
     a: a,
@@ -176,7 +177,7 @@ test fn a_rendered_declaration_parses_back_to_the_same_identities() -> Bool {
 // trailer it would have to explain. Without this arm the renderer could emit an empty-identity line
 // and the parser would have to guess what it meant.
 test fn a_coherent_artifact_declares_no_repair() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let full = all_rows_rendered(a: a)
   let c = ledger_row_coherence(a: a, generated_content: full, committed_content: full)
   count(parse_ledger_repair_trailers(message: render_ledger_repair_trailers(path: "docs/design-failure-modes.md", c: c))) == 0
@@ -187,7 +188,7 @@ test fn a_coherent_artifact_declares_no_repair() -> Bool {
 // is the positive control for the disagreement arm below -- without it, a cross-check that reported
 // disagreement unconditionally would pass the discriminating test.
 test fn a_declaration_matching_the_inference_agrees() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let id = first_identity(a: a)
   let c = ledger_row_coherence(
     a: a,
@@ -208,7 +209,7 @@ test fn a_declaration_matching_the_inference_agrees() -> Bool {
 // identity in inferred_only and NOT in declared_only, because the two directions send a reader to
 // different mechanisms.
 test fn a_repair_that_under_declares_is_caught_in_the_inferred_direction() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let id = first_identity(a: a)
   let c = ledger_row_coherence(
     a: a,
@@ -250,7 +251,7 @@ test fn a_trailer_missing_its_identity_yields_no_declaration() -> Bool {
 // nothing must be distinguishable from a heal whose declaration step never ran, and with only the
 // repair token those two produce identical bytes.
 test fn a_coherent_artifact_still_declares_that_it_was_judged() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let full = all_rows_rendered(a: a)
   let msg = render_ledger_repair_trailers(
     path: "docs/design-failure-modes.md",
@@ -270,7 +271,7 @@ test fn an_absent_declaration_judges_nothing() -> Bool {
 // each other's parse even though they share a field scanner: a judged line carries a path and no
 // identity, which is exactly the shape the repair parse rejects.
 test fn a_repairing_declaration_reports_both_numerator_and_denominator() -> Bool {
-  let a = DesignFailureModesArtifact
+  let a = DocsArtifact { projection: DesignFailureModesProjection }
   let id = first_identity(a: a)
   let msg = concat(
     "chore: regenerate drifted generated artifacts (ci auto-heal)",
@@ -296,14 +297,14 @@ test fn a_repairing_declaration_reports_both_numerator_and_denominator() -> Bool
 test fn an_unjudgeable_ledger_refuses_rather_than_skipping() -> Bool {
   let refusals = unjudged_ledger_refusals(observations: [
     GeneratedArtifactObserved {
-      artifact: DesignRungDropsArtifact,
+      artifact: DocsArtifact { projection: DesignRungDropsProjection },
       path: "docs/design-rung-drops.md",
-      generated_content: all_rows_rendered(a: DesignRungDropsArtifact),
-      committed_content: all_rows_rendered(a: DesignRungDropsArtifact),
+      generated_content: all_rows_rendered(a: DocsArtifact { projection: DesignRungDropsProjection }),
+      committed_content: all_rows_rendered(a: DocsArtifact { projection: DesignRungDropsProjection }),
       extra_validation: true
     },
     GeneratedArtifactObservationRefused {
-      artifact: DesignFailureModesArtifact,
+      artifact: DocsArtifact { projection: DesignFailureModesProjection },
       path: "docs/design-failure-modes.md",
       cause: "read failed"
     }
@@ -319,14 +320,14 @@ test fn an_unjudgeable_ledger_refuses_rather_than_skipping() -> Bool {
 test fn one_judged_ledger_does_not_license_a_commit_over_an_unjudged_one() -> Bool {
   count(unjudged_ledger_refusals(observations: [
     GeneratedArtifactObserved {
-      artifact: DesignFailureModesArtifact,
+      artifact: DocsArtifact { projection: DesignFailureModesProjection },
       path: "docs/design-failure-modes.md",
-      generated_content: all_rows_rendered(a: DesignFailureModesArtifact),
-      committed_content: all_rows_rendered(a: DesignFailureModesArtifact),
+      generated_content: all_rows_rendered(a: DocsArtifact { projection: DesignFailureModesProjection }),
+      committed_content: all_rows_rendered(a: DocsArtifact { projection: DesignFailureModesProjection }),
       extra_validation: true
     },
     GeneratedArtifactCommittedAbsent {
-      artifact: DesignRungDropsArtifact,
+      artifact: DocsArtifact { projection: DesignRungDropsProjection },
       path: "docs/design-rung-drops.md",
       detail: "file not present"
     }
