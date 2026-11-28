@@ -1,15 +1,15 @@
 module gunbc.fleet.fleet_desired_state_claim
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { ByteSize }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthExpectation, HostTruthDeclared,
-  HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
+  HostTruthVerdict,
   TruthSize, TruthCount, TruthMarking, TruthUnbounded,
   TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
   TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
-  fleet_host_truth_verdict_for_host, host_truth_divergence_locator,
+  fleet_host_truth_verdict_for_host,
 }
 
 // THE MODEL SIDE OF fleet-truth-follows-the-machine: what the repository CLAIMS about a host,
@@ -93,28 +93,26 @@ fn model_claim_expectation(host: NonEmptyStr, claim: ModelAxisClaim) -> HostTrut
   }
 }
 
-// THE VERDICT A CONSUMER ACTS ON: agrees, diverges, refused, or unread -- each keeping the ARM that
-// broke, named out loud. A consumer admits only ModelAgrees; the diverged_arms / refusals strings
-// say which axis diverged (the handback's "saying which arm diverges").
-type FollowsTheMachine
-  = ModelAgrees { host: NonEmptyStr, compared: Int }
-  | ModelDiverges { host: NonEmptyStr, diverged_arms: List<String> }
-  | ModelRefused { host: NonEmptyStr, refusals: List<String> }
-  | ModelUnread { host: NonEmptyStr, why: String }
+// THE VERDICT IS NOT RE-INVENTED HERE. The read module already owns the four-arm verdict
+// (gunbc.fleet.fleet_host_truth_read::HostTruthVerdict: Follows/Diverges/Refused/NothingRead), and
+// its Diverges/Refused arms carry the typed List<HostTruthComparison>, each comparison holding its
+// HostTruthAxis plus the observed/expected values. Re-declaring that sum here would fork it
+// (gunbc.design_argument::single_authority) and, worse, would flatten the typed axis to a string at
+// the model boundary -- a consumer could then only grep prose to find which axis broke. So this row
+// returns HostTruthVerdict directly. (gunbc.design_argument::minimize_redundancy: net concepts must
+// not grow by re-invention.) The handback's "saying which arm diverges" is satisfied because a
+// consumer matches the divergences on HostTruthAxis, or reads them aloud with the read module's own
+// host_truth_divergence_locator -- neither of which has to re-derive the axis from text.
 
 // THE SEAM. One host (supplied once), the model's claims about it, and the reads of that host. The
-// read module decides (fleet_host_truth_verdict_for_host); this row only shapes its verdict into the
-// form a consumer refuses on and names the diverged arm. It does NOT admit -- admission is decided
-// generically by fleet_truth_admits_host in the read module; this makes the refusal legible to
-// whoever wires a roster. CONSUMED BY a named later change: row fleet-truth-rosters-consume-the-read
-// calls this to gate the remote-build and serving rosters -- the declared frontier, its trigger
-// being that row's dispatch.
-fn desired_state_follows_the_machine(host: NonEmptyStr, claims: List<ModelAxisClaim>, reads: List<HostTruthRead>) -> FollowsTheMachine {
+// read module decides (fleet_host_truth_verdict_for_host); this row's whole job is to turn the typed
+// claims into expectations and hand them to that decision, returning its verdict unchanged. It does
+// NOT admit -- admission is decided generically by fleet_truth_admits_host in the read module. A
+// consumer that must say WHICH arm diverged matches the verdict's divergences/refusals on
+// HostTruthAxis (each comparison carries it), or reads them aloud with host_truth_divergence_locator.
+// CONSUMED BY a named later change: row fleet-truth-rosters-consume-the-read calls this to gate the
+// remote-build and serving rosters -- the declared frontier, its trigger being that row's dispatch.
+fn desired_state_follows_the_machine(host: NonEmptyStr, claims: List<ModelAxisClaim>, reads: List<HostTruthRead>) -> HostTruthVerdict {
   let expectations = claims.map(claim => model_claim_expectation(host: host, claim: claim))
-  match fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations) {
-    HostTruthFollowsDesiredState { host: h, compared: n, undeclared: _ } => ModelAgrees { host: h, compared: n }
-    HostTruthDiverges { host: h, divergences: ds } => ModelDiverges { host: h, diverged_arms: ds.map(d => host_truth_divergence_locator(comparison: d)) }
-    HostTruthRefused { host: h, refusals: rs } => ModelRefused { host: h, refusals: rs.map(r => host_truth_divergence_locator(comparison: r)) }
-    HostTruthNothingRead { host: h, why: w } => ModelUnread { host: h, why: w }
-  }
+  fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations)
 }

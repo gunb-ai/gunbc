@@ -19,14 +19,14 @@ import std.algebra { string_contains }
 import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthObserved,
+  HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
   TruthSize, TruthCount, TruthMarking, TruthUnbounded,
   TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
   TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
-  host_truth_axis_rule,
+  host_truth_axis_rule, host_truth_divergence_locator, fleet_truth_admits_host,
 }
 import gunbc.fleet.fleet_desired_state_claim {
   ModelAxisClaim, EnumeratedHardware, EnabledUnits, HostKey, LeafCap, SwapBacking,
-  FollowsTheMachine, ModelAgrees, ModelDiverges, ModelRefused, ModelUnread,
   model_claim_axis, desired_state_follows_the_machine,
 }
 
@@ -40,25 +40,27 @@ fn obs(host: NonEmptyStr, axis: HostTruthAxis, value: HostTruthValue) -> HostTru
   HostTruthObserved { host: host, axis: axis, observed: value, at_run: "0" as NonEmptyStr, receipt: "supplied by the claim" }
 }
 
-// A host is admitted by a consumer only when the seam says the model and the machine agree.
-fn admits(result: FollowsTheMachine) -> Bool {
-  match result {
-    ModelAgrees { host: _, compared: _ } => true
-    ModelDiverges { host: _, diverged_arms: _ } => false
-    ModelRefused { host: _, refusals: _ } => false
-    ModelUnread { host: _, why: _ } => false
-  }
+// A host is admitted by a consumer only when the seam says the model and the machine agree. The
+// predicate is NOT re-implemented here -- it is the read module's own fleet_truth_admits_host, the
+// single authority for which arm admits (gunbc.design_argument::single_authority).
+fn admits(result: HostTruthVerdict) -> Bool {
+  fleet_truth_admits_host(verdict: result)
 }
 
-// THE ARM THAT BROKE IS NAMED: every diverged/refused arm carries the recognition rule of its axis, so a
-// divergence that "lost its axis" -- collapsed to a bare no -- would fail here.
-fn names_axis(result: FollowsTheMachine, axis: HostTruthAxis) -> Bool {
+// THE ARM THAT BROKE IS NAMED. The verdict carries the typed List<HostTruthComparison>, each holding
+// its HostTruthAxis, so the axis is never lost -- a consumer can match on it directly. What this
+// helper adds is the row's handback "saying which arm diverges" in human form: every diverged/refused
+// comparison, read aloud through the read module's OWN host_truth_divergence_locator, must mention the
+// recognition rule of the axis that broke. A divergence that had "lost its axis" -- collapsed to a bare
+// no, or to a string the model invented rather than the typed comparison -- would fail here. This is the
+// same idiom gunbc.fleet.fleet_host_truth_read's own witness (fleet_host_truth_read_witness) uses.
+fn names_axis(result: HostTruthVerdict, axis: HostTruthAxis) -> Bool {
   let rule = host_truth_axis_rule(axis: axis)
   match result {
-    ModelDiverges { host: _, diverged_arms: arms } => arms.any(arm => string_contains(s: arm, pattern: rule))
-    ModelRefused { host: _, refusals: arms } => arms.any(arm => string_contains(s: arm, pattern: rule))
-    ModelAgrees { host: _, compared: _ } => false
-    ModelUnread { host: _, why: _ } => false
+    HostTruthDiverges { host: _, divergences: cs } => cs.any(c => string_contains(s: host_truth_divergence_locator(comparison: c), pattern: rule))
+    HostTruthRefused { host: _, refusals: cs } => cs.any(c => string_contains(s: host_truth_divergence_locator(comparison: c), pattern: rule))
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthNothingRead { host: _, why: _ } => false
   }
 }
 
