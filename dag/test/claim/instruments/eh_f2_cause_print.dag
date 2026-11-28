@@ -1,10 +1,10 @@
-module test.mutation_witness.eh_f2_cause_print
+module test.claim.instruments.eh_f2_cause_print
 
-// WHERE THIS LIVES AND WHY. A COMMITTED witness module, deliberately outside
-// `dag/test/claim/` (the discovery home named by #gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs)
-// for the same reason as its sibling test.mutation_witness.eh_f2_fold_mutation: the six `p_*` legs
-// below are PRINTS that exit 1 whatever they observe, so under a discovery fold they would join the
-// required witness population with an expected state of DID-NOT-HOLD. They are selected BY NAME.
+// WHERE THIS LIVES AND WHY. A COMMITTED witness module, filed with its sibling
+// #test.claim.instruments.eh_f2_fold_mutation beside the claim modules that speak about instruments.
+// The sibling's header carries the measured reason this cannot live in a directory of its own: the
+// `v2-bootstrap` lane refuses any module whose namespace has no row in
+// #gunbc.layout_namespace_row.gunbc_tree, and adding such a row is a mint-authority decision.
 //
 // PURPOSE. The census door's cause string has been quoted in a row and in a message without ever
 // being printed, and a property test over an unprinted string proves nothing about it (review round:
@@ -21,7 +21,7 @@ module test.mutation_witness.eh_f2_cause_print
 // instrument route gives.
 //
 // HOW TO RUN. `gunbc test --wet --source-root dag --source-root src/v2
-// "//test/mutation_witness/eh_f2_cause_print:<leg>"`, roots EXACTLY
+// "//test/claim/instruments/eh_f2_cause_print:<leg>"`, roots EXACTLY
 // #gunbc.ci.ci_layer_roots::witness_layer_roots; a third root is refused by the closure authority
 // (`SharedIndexSecondResidentPool`) and yields no observation. See the sibling module's header for
 // the measured refusal.

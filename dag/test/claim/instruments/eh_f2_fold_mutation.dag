@@ -1,14 +1,26 @@
-module test.mutation_witness.eh_f2_fold_mutation
+module test.claim.instruments.eh_f2_fold_mutation
 
-// WHERE THIS LIVES AND WHY. This is a COMMITTED witness module, and it is deliberately NOT in
-// `dag/test/claim/`, which is the discovery home named by
-// #gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs. Three of its legs below are mutation
-// demonstrations that return the mutated member's own exit code rather than a verdict (that is the
-// shape the alias-leg rule demands: the fold must be shown answering with the mutated member, not
-// asserted at), so under a discovery fold they would enter the required witness population as claims
-// whose expected state is DID-NOT-HOLD -- a red lane that reports no finding. They are therefore
-// selected BY NAME from outside the discovery scan dirs, which is also why the batch's header prints
-// the selection-count line for every leg: a name that selects nothing is a vacuous run, never a pass.
+// WHERE THIS LIVES AND WHY. A COMMITTED witness module, filed beside the one existing claim module
+// that speaks about instruments (`test.claim.instruments.instrument_dispatch_workflow_witness`), in the
+// discovery home named by #gunbc.ci.ci_layer_roots::witness_discovery_scan_dirs.
+//
+// IT WAS FIRST PUT ELSEWHERE AND CI REFUSED THAT, so the placement is measured, not taste. At
+// 16ea6fe1ae546f753d6d1b53da71fff9c2af97b0 the `witnesses` workflow's `v2-bootstrap` job failed with
+// (verbatim): `V2-NATIVE REFUSAL cause=NativeLayoutCheckDoesNotHoldOverTheLiveRoots -- status=Some(1)
+// stdout=dag:test/mutation_witness/eh_f2_fold_mutation.dag: namespace test.mutation_witness has no
+// declared row // dag:test/mutation_witness/eh_f2_cause_print.dag: namespace test.mutation_witness has
+// no declared row`. A directory under a source root declares a NAMESPACE, and the namespace must carry
+// a row in #gunbc.layout_namespace_row.gunbc_tree -- a flat declared-namespace list. Adding a row there
+// is a mint-authority structural decision, so it was not made here; the modules moved to a namespace
+// the tree already declares instead. Do not "tidy" them into a new directory without carrying that row
+// with them, or the same refusal returns.
+//
+// WHY THE ODD EXIT CODES ARE NOT A CI PROBLEM. Three legs below are mutation demonstrations that return
+// the mutated member's own exit code rather than a verdict -- the shape the alias-leg rule demands: the
+// fold must be SHOWN answering with the mutated member, not asserted at. Per the repo's standing policy
+// the required lanes parse and typecheck and execute no claims, and the batch selects these legs BY
+// NAME, one pattern per invocation, printing its own selection-count line: a name that selects nothing
+// is a vacuous run, never a pass.
 //
 // PURPOSE. The mutation demonstration the alias-leg rule demands (bold-pike-529, 2026-11-28): a fold
 // leg is evidence only if a mutation of what it folds is SHOWN to turn it DID-NOT-HOLD, executed in
@@ -18,7 +30,7 @@ module test.mutation_witness.eh_f2_fold_mutation
 // DIFFERENT sources, never one route compared to itself.
 //
 // HOW TO RUN. `gunbc test --wet --source-root dag --source-root src/v2
-// "//test/mutation_witness/eh_f2_fold_mutation:<leg>"`, from the repository root, with the roots
+// "//test/claim/instruments/eh_f2_fold_mutation:<leg>"`, from the repository root, with the roots
 // EXACTLY the two of #gunbc.ci.ci_layer_roots::witness_layer_roots. A third root (src/v1) is not a
 // wider read: the fixture closure opens its own pool over the witness layer roots, and a run whose
 // resident roots differ is refused `SharedIndexSecondResidentPool` -- measured, empty-caused, at
