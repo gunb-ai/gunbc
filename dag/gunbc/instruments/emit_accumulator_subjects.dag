@@ -25,7 +25,9 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // own two instrument targets. They were split out because, sharing one emitted file with the arms below,
 // they voided this family: five arms that cannot be built at the emitter today were being reported beside
 // three the row must measure green. Why they cannot be built is carried by
-// dag/gunbc/rung_drop/let_bound_closure_parameters_are_emitted_without_their_declared_types.dag -- a plan-only RungDrop row authored
+// dag/gunbc/guarantee_stall/let_bound_closure_parameters_are_emitted_without_their_declared_types_stall.dag -- a plan-only
+// GuaranteeStall row (moved off the rung_drop path under the lane ruling; carried by gunb-ai/gunbc review 17220 at head
+// f7d7429362d79f3463e88c8076c874675bbfca7f, OPEN and absent from origin/main at the time of writing), authored
 // separately, still in flight when this was written, and not restated here. This file keeps the part of the
 // survey that concerns the arms below.
 //

@@ -21,7 +21,7 @@ import gunbc.instruments.emit_accumulator_subjects { acc_cardinality, acc_field_
 // WHAT COUNTS AS AN EXECUTED WITNESS FOR THESE BLOCKS: nothing here, today. Both closure targets refuse at
 // the emitter, and this file deliberately does not restate why -- the mechanism, the counts and the emitted
 // lines are carried by
-// dag/gunbc/rung_drop/let_bound_closure_parameters_are_emitted_without_their_declared_types.dag -- a plan-only RungDrop row authored separately, still in flight when this was
+// dag/gunbc/guarantee_stall/let_bound_closure_parameters_are_emitted_without_their_declared_types_stall.dag -- a plan-only GuaranteeStall row (moved off the rung_drop path under the lane ruling; carried by gunb-ai/gunbc review 17220 at head f7d7429362d79f3463e88c8076c874675bbfca7f, OPEN and absent from origin/main at the time of writing), authored separately, still in flight when this was
 // written, so citing it here is not a claim by this PR that the drop is merged. What lives here is the specimen and
 // its contract: these rows are declared, the family roster reports them executed=no with the reason named,
 // and a contract whose specimen never executed does not discharge the red control. The bodies stay because
