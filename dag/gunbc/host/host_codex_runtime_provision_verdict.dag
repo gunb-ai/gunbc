@@ -33,11 +33,17 @@ type CodexRuntimeObservation
   | CodexRuntimeMaterializationFailed { reason: String }
   | CodexRuntimeIdentityMismatch { observed_output: String }
   | CodexRuntimeTransportRefused { reason: String }
+  // A step's leg WAS DISPATCHED and its reply came back unreadable (deadline overrun or inconsistent
+  // wire shape): whether the codex runtime was materialized is UNKNOWN. This is NOT CodexRuntimeTransportRefused
+  // (a pre-dispatch refusal -- nothing was sent); the provision sequence still refuses fail-closed (does not
+  // converge), but never says the leg was refused or not run.
+  | CodexRuntimeTransportUnanswered { cause: String }
 
 type CodexRuntimeProvisionRefusal
   = RefusalIdentityMismatch
   | RefusalMaterializationFailed
   | RefusalTransport
+  | RefusalTransportUnanswered
   | RefusalHostUnsupported
 
 type CodexRuntimeProvisionVerdict
@@ -86,6 +92,16 @@ fn provision_codex_runtime_verdict(
             reason: concat(
               "host_codex_runtime_provision: typed argv transport refused the codex runtime provision sequence; observed: ",
               why,
+            ) as NonEmptyStr,
+          }
+        CodexRuntimeTransportUnanswered { cause: c } =>
+          ProvisionRefused {
+            cause: RefusalTransportUnanswered,
+            // A dispatched leg is never "refused"/"not run": the sequence refuses (does not converge)
+            // because whether it took effect is UNKNOWN, not because nothing was sent.
+            reason: concat(
+              "host_codex_runtime_provision: a codex runtime provision leg was dispatched but its reply could not be read; whether it took effect is unknown; observed: ",
+              c,
             ) as NonEmptyStr,
           }
       }
@@ -140,6 +156,24 @@ fn codex_runtime_transport_refused_refuses_fail_closed() -> Bool {
     },
   ) {
     ProvisionRefused { cause: RefusalTransport, reason: _ } => true
+    ProvisionConverged { executable: _, version_line: _ } => false
+    ProvisionRefused { cause: _, reason: _ } => false
+  }
+}
+
+fn codex_runtime_transport_unanswered_refuses_fail_closed_never_says_refused() -> Bool {
+  match provision_codex_runtime_verdict(
+    host: "srv1" as HostIdentity,
+    observed: CodexRuntimeTransportUnanswered {
+      cause: "overran its 30s wall-clock deadline; killed before the host answered" as String,
+    },
+  ) {
+    ProvisionRefused { cause: RefusalTransportUnanswered, reason: reason } =>
+      string_contains(s: reason as String, pattern: "dispatched")
+        && string_contains(s: reason as String, pattern: "unknown")
+        && !string_contains(s: reason as String, pattern: "transport refused")
+        && !string_contains(s: reason as String, pattern: "not run")
+        && !string_contains(s: reason as String, pattern: "never sent")
     ProvisionConverged { executable: _, version_line: _ } => false
     ProvisionRefused { cause: _, reason: _ } => false
   }

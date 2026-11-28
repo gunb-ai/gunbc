@@ -327,6 +327,7 @@ import gunbc.host.host_codex_runtime_provision_verdict {
   CodexRuntimeMaterializationFailed,
   CodexRuntimeIdentityMismatch,
   CodexRuntimeTransportRefused,
+  CodexRuntimeTransportUnanswered,
   ProvisionConverged,
   ProvisionRefused,
 }
@@ -1565,6 +1566,10 @@ fn provision_build_cache_reconcile(
 type CodexRuntimeStepResult
   = CodexRuntimeStepRan { observed: ShellExecObserved }
   | CodexRuntimeStepRefused { reason: String }
+  // The step's leg WAS DISPATCHED and its reply came back unreadable (deadline overrun or an
+  // inconsistent wire shape): whether the step took effect is UNKNOWN. This is NOT CodexRuntimeStepRefused
+  // (a pre-dispatch refusal -- nothing was sent). It must never be rendered as "refused"/"not run".
+  | CodexRuntimeStepUnanswered { cause: String }
 
 // The fail-closed reason for a typed-argv leg that overran its per-leg wall deadline. The host was
 // asked and never answered before the ceiling, so it is neither a refusal (nothing was asked) nor a
@@ -1592,12 +1597,12 @@ fn codex_runtime_typed_argv_step(
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
       TypedArgvExecOverran { deadline: d } =>
-        CodexRuntimeStepRefused {
-          reason: host_effect_typed_argv_overran_reason(leg_hint: "codex runtime", deadline: d),
+        CodexRuntimeStepUnanswered {
+          cause: host_effect_typed_argv_overran_reason(leg_hint: "codex runtime", deadline: d),
         }
     TypedArgvExecWireInconsistent { fault: f } =>
-        CodexRuntimeStepRefused {
-          reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "codex runtime", fault: f),
+        CodexRuntimeStepUnanswered {
+          cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "codex runtime", fault: f),
         }
     TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
   }
@@ -1715,6 +1720,15 @@ fn provision_codex_runtime_reconcile(
         observed: CodexRuntimeTransportRefused { reason: why },
         intent: intent,
       )
+    CodexRuntimeStepUnanswered { cause: c } =>
+      // The version read was dispatched and its reply could not be read: the runtime's presence is
+      // unknown, so do not proceed to materialize on an unverified state; refuse fail-closed with the
+      // effect-unknown standing.
+      provision_codex_runtime_refuse(
+        host: host,
+        observed: CodexRuntimeTransportUnanswered { cause: c },
+        intent: intent,
+      )
     CodexRuntimeStepRan { observed: observe_result } =>
       if observe_result.success && codex_runtime_version_identity_satisfied(combined_output: observe_result.stdout) {
         toolchain_ensure_reconcile(observed: observe_result, intent: intent, effect_label: "ProvisionCodexRuntime")
@@ -1726,6 +1740,37 @@ fn provision_codex_runtime_reconcile(
               observed: CodexRuntimeTransportRefused { reason: why },
               intent: intent,
             )
+          // The materialize leg WAS DISPATCHED and its reply could not be read: whether it landed is
+          // UNKNOWN. A readback exists (the observe step), so RUN IT to try to settle the effect rather
+          // than resting on "do not proceed" (the recurring-failure-mode obligation). The readback answers
+          // the question independently; only when IT cannot settle do we stay unknown.
+          CodexRuntimeStepUnanswered { cause: c } =>
+            match codex_runtime_observe_step(transport: transport, executable: executable) {
+              CodexRuntimeStepRan { observed: settled } =>
+                if settled.success && codex_runtime_version_identity_satisfied(combined_output: settled.stdout) {
+                  toolchain_ensure_reconcile(observed: settled, intent: intent, effect_label: "ProvisionCodexRuntime")
+                } else {
+                  provision_codex_runtime_refuse(
+                    host: host,
+                    observed: CodexRuntimeIdentityMismatch {
+                      observed_output: concat(settled.stdout, concat(" ", settled.stderr)),
+                    },
+                    intent: intent,
+                  )
+                }
+              CodexRuntimeStepRefused { reason: why } =>
+                provision_codex_runtime_refuse(
+                  host: host,
+                  observed: CodexRuntimeTransportRefused { reason: why },
+                  intent: intent,
+                )
+              CodexRuntimeStepUnanswered { cause: rc } =>
+                provision_codex_runtime_refuse(
+                  host: host,
+                  observed: CodexRuntimeTransportUnanswered { cause: concat(c, concat("; readback also unanswered: ", rc)) },
+                  intent: intent,
+                )
+            }
           CodexRuntimeStepRan { observed: materialize_result } =>
             if !materialize_result.success {
               provision_codex_runtime_refuse(
@@ -1739,6 +1784,14 @@ fn provision_codex_runtime_reconcile(
                   provision_codex_runtime_refuse(
                     host: host,
                     observed: CodexRuntimeTransportRefused { reason: why },
+                    intent: intent,
+                  )
+                CodexRuntimeStepUnanswered { cause: c } =>
+                  // The confirming readback was dispatched and its reply could not be read: identity is
+                  // not established, so stay unknown (fail-closed; never claim converged or refused).
+                  provision_codex_runtime_refuse(
+                    host: host,
+                    observed: CodexRuntimeTransportUnanswered { cause: c },
                     intent: intent,
                   )
                 CodexRuntimeStepRan { observed: read_back_result } =>
