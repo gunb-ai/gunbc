@@ -236,8 +236,6 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
     )
   )
 }
-  )
-}
 
 // THE CENSUS REFUSALS: the committed workflows whose run-step emission was refused. A refused workflow does
 // not render, so it contributes no row to fleet_workflow_census_rows and no jobs to the bound -- the drop
