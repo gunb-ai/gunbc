@@ -1,0 +1,122 @@
+module gunbc.compute.remote_build_serving_identity
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.provider_account { CodexDefaultAccount, codex_roadmap_account_evidence, admitted_single_session_binding }
+import gunbc.deployment_risk { DeploymentId, deployment_id }
+import std.materialization_store_grant { PersistentInstanceWorkspace }
+import gunbc.persistent_instance_roots { RemoteBuildServing, persistent_instance_scope_root }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_child, dashboard_execution_environment_for_toolchain,
+  DashboardExistingProviderState, dashboard_named_tmux_server, DashboardObserveOnly, DashboardExistingRepo,
+  fleet_admitted_revision_source, DispatchStateInstanceOwned, WorkerIsServiceUser,
+  dispatch_worker_memory_ceiling, compute_build_memory_ceiling_default, belt_obligation_memory_max_default,
+  belt_reviewer_memory_max_default, belt_max_concurrent_default,
+  IsolatedJobToolchainHomes, fleet_compute_hermetic_toolchain,
+}
+import gunbc.compute.remote_build_wire { remote_build_serve_cli_function }
+
+// THE SERVING-INSTANCE MINT, AT A LEAF BOTH ENDS CAN READ. This block lived in
+// gunbc.compute.remote_build (the request module) until the front door's pre-hand-off admission
+// (gunbc.compute.remote_build_serve_front_door) needed the SAME mint the request path uses -- and
+// importing the request module for it re-widened the door's demand-acquired closure to the whole
+// request path (measured: 151 -> 913 modules, resolve 9.8s -> 130s; srv1's probe-door lesson,
+// gunbc.design_argument::demand_before_materialization). The mint is pure roster arithmetic: host
+// identity in, the account's own instance out, no effects, no request vocabulary. The request
+// module, the serving entry, the door and the provisioning route all import THIS module, so the
+// instance one host is served from has one mint (gunbc.design_argument::single_authority).
+
+// ── WHO SERVES ───────────────────────────────────────────────────────────────────────────────────────
+//
+// THE ROSTER IS ONE SERVING INSTANCE PER SERVING HOST, OWNED BY THE REMOTE-BUILD ACCOUNT. A request runs
+// as gunbc.fleet.fleet_posix_accounts fleet_posix_remote_build_user, never as the operator (operator,
+// 2026-11-15), so the instance it is served from is that account's: its own checkout, store, toolchain
+// and binary under its home. Which hosts serve is gunbc.compute.remote_build_hosts, the row the host's
+// capacity ledger reads too, so a host on the roster is a host whose ledger admits this account.
+//
+// srv3, srv4, srv14 (butch) and srv15 (bobo) join by joining that row, once their ledger has a home this
+// account can reach (remote_build_hosts says why srv2 and they do not yet), and each will carry its own
+// build-pool reservation carved from its CI runner width.
+type RemoteBuildHostRow {
+  instance: HostDashboardInstance
+}
+
+// THE SERVING INSTANCE. It follows the fleet hermetic compute row (gunbc.roadmap.roadmap_dashboard_instance
+// fleet_compute_hermetic_dashboard_instance_at), the existing instance that serves the provider and no
+// dashboard, and DIVERGES from it only where this one is durable: the store is a persistent workspace,
+// not a frame. Like that row it is not a public built-in, so no host, repo-root or id lookup resolves it;
+// the serving entry finds it on this roster by host. CONFORMANCE, stated: HostDashboardInstance also
+// carries a dashboard's serving fields (listen port, serve function, tmux server, provider state), which
+// this instance never serves -- it is observe-only and nothing listens -- and they are filled as the
+// hermetic row fills them, inert, rather than by a second instance type the provider does not take.
+//
+// THE TOOLCHAIN is the account's own rustup homes, read through the hermetic row's constructor, which
+// derives every Rust shim from the two homes and names no PATH. The serve binary is the account's own
+// build, installed under its instance root.
+fn remote_build_account_home() -> FilePath {
+  fleet_posix_remote_build_home() as FilePath
+}
+
+fn remote_build_serving_instance_id(host: HostIdentity) -> NonEmptyStr {
+  join(["remote-build-", host as String], "") as NonEmptyStr
+}
+
+fn remote_build_serving_deployment(host: HostIdentity) -> DeploymentId {
+  deployment_id(name: remote_build_serving_instance_id(host: host))
+}
+
+fn remote_build_serving_instance(host: HostIdentity) -> HostDashboardInstance {
+  let instance_root = persistent_instance_scope_root(scope: RemoteBuildServing) as FilePath
+  let repo_root = dashboard_instance_child(root: remote_build_account_home(), child: "gunbc")
+  let toolchain = fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes {
+    cargo_home: dashboard_instance_child(root: remote_build_account_home(), child: ".cargo"),
+    rustup_home: dashboard_instance_child(root: remote_build_account_home(), child: ".rustup"),
+  })
+  let serve_binary = dashboard_instance_child(root: instance_root, child: "bin/gunbc")
+  let id = remote_build_serving_instance_id(host: host)
+  HostDashboardInstance {
+    deployment: remote_build_serving_deployment(host: host),
+    instance_id: id,
+    host_identity: host as String as NonEmptyStr,
+    provision_parent_root: dashboard_instance_child(root: remote_build_account_home(), child: ".local/share"),
+    instance_root: instance_root,
+    local_origin_root: repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(toolchain: toolchain, serve_binary: serve_binary),
+    provider_state: DashboardExistingProviderState {
+      root: dashboard_instance_child(root: instance_root, child: "codex"),
+      executable: none,
+      binding: admitted_single_session_binding(selection: CodexDefaultAccount, evidence: codex_roadmap_account_evidence),
+    },
+    serve_binary: serve_binary,
+    // The name the serving route runs, read from the wire module that renders the command which carries
+    // it -- the two spellings cannot now drift apart.
+    serve_function: remote_build_serve_cli_function,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 18085,
+    tmux_server: dashboard_named_tmux_server(instance_id: id),
+    actuation: DashboardObserveOnly,
+    actuator_host: host as String as NonEmptyStr,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
+    belt_max_concurrent: belt_max_concurrent_default,
+    directory_owner: PosixOwnerNames { user: fleet_posix_remote_build_user.name, group: fleet_posix_remote_build_user.name },
+    worker: WorkerIsServiceUser,
+    materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: RemoteBuildServing } },
+  }
+}
