@@ -829,7 +829,7 @@ fn cleared_prerequisite_pairs(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>
   flat_map(priced, a => flat_map(priced, b =>
     if a.node == b.node {
       [] as List<ClearedPrerequisitePair>
-    } else if prerequisite_reachable(edges: edges, from: a.node, target: b.node, visited: []) && !contained_under(nodes: nodes, node: b.node, ancestor: a.node) {
+    } else if prerequisite_reachable(edges: edges, from: a.node, target: b.node, visited: []) && !(contained_under(nodes: nodes, node: b.node, ancestor: a.node) || prerequisite_reachable(edges: edges, from: a.node, target: b.node, visited: [])) {
       [ClearedPrerequisitePair { senior: a.node, senior_days: a.days, junior: b.node, junior_days: b.days }]
     } else {
       [] as List<ClearedPrerequisitePair>
