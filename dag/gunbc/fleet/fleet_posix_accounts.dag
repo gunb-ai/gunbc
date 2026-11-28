@@ -247,7 +247,7 @@ data fleet_posix_worker_supplementary_groups: List<NonEmptyStr> = [fleet_posix_w
 // account it holds no root-equivalent group and no sudoers line. Unlike it, its shell is a real shell:
 // sshd runs a forced command through the account's login shell, so a nologin shell would make the key
 // authenticate and then refuse every request (extdeps.access.posix posix_shell_permits_command_execution).
-// It owns its own checkout, store and toolchain under its home (gunbc.compute.remote_build
+// It owns its own checkout, store and toolchain under its home (gunbc.compute.remote_build_serving_identity
 // remote_build_serving_instance); the one directory it shares with the operator is the host's compute
 // capacity ledger, through the group below.
 //
