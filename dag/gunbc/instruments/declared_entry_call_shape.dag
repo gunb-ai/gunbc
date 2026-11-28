@@ -7,13 +7,27 @@ module gunbc.instruments.declared_entry_call_shape
 // gunbc-entries-resolve-checked-in-ci). gunbc CI resolves no entries, so today the first resolver in the
 // tree is a person, on a step deadline, paying the whole closure.
 //
-// WHY THIS IS NOT A SECOND AUTHORITY ON CALL SHAPE. The rule below is the ENGINE'S, mirrored and cited,
-// never re-decided here. The runtime authority is v1_interpreter.rs `call_function_inner`, which raises
-// CallContractMismatch when a caller label names no declared parameter, accepting label `x` against a
-// declared `x`, `_x`, or `_` -- the deliberately-unused-parameter idiom -- through
-// `call_arg_label_matches_param`; the same predicate governs the compile seam in `direct_call_shape_diags`
+// THE LABEL RULE IS HELD A SECOND TIME, AND THAT IS A DECLARED DIVERGENCE, NOT A FORK.
+// gunbc.design_argument::single_authority: "a second place that independently decides it is a fork", and the
+// violation is an UNDECLARED second authority. gunbc.design_argument::conformance: the only red is diverging
+// with no reason. So the divergence is stated with its reason and its tie instead of being argued away.
+// WHAT IS MIRRORED: the one predicate `cs_label_ok` below -- caller label `x` is accepted against a declared
+// `x`, `_x` (the deliberately-unused-parameter idiom), or `_`. The authority for that decision is Rust, not
+// this file: v1_interpreter.rs `call_function_inner` raises CallContractMismatch through
+// `call_arg_label_matches_param`, and the compile seam applies the same predicate in `direct_call_shape_diags`
 // (src/v1/stage0/src/v1_compiler_infer.rs: "a caller label naming no declared parameter must raise, never
-// resolve, so a caller cannot silently bind the wrong parameter"). Where this module cannot attribute a
+// resolve, so a caller cannot silently bind the wrong parameter").
+// THE REASON IT IS MIRRORED RATHER THAN CALLED: the engine's matcher is unreachable to a CI closure at a cost
+// anyone would pay. Asking the engine means resolving -- the request arm measured 898 files, 143,992 ms and
+// 3,435,568 KiB per leg; reading the Rust matcher wholesale is the 5 m 18 s whole-tree pass. This row exists
+// to remove exactly that cost, so the rule travels as text and the tie travels as a witness.
+// THE TIE, BY EXECUTION AND NOT BY PROSE: test.claim.declared_entry_call_shape_witness's four
+// `the_engine_matcher_*` claims read src/v1/stage0/src/v1_compiler_infer.rs, bound the two functions that
+// decide the rule, and assert the three arms this predicate writes out. Drop the `_x` idiom, add an arm, or
+// rename the matcher and those claims redden while this predicate keeps passing green: that gap is the drift
+// this paragraph exists to make visible, and it fails in CI, where a person sees it.
+// WHAT IS NOT MIRRORED: the resolver, the closure, the reach of an entry, and where a name lives. The engine
+// stays the sole authority there (READS TEXT, NEVER RESOLVES, below). Where this module cannot attribute a
 // call -- a local declaration, a whole-module import, a homonym whose parameter list it cannot read -- it
 // SKIPS and COUNTS. Refusing on a guess about which `f` was meant is how an instrument teaches its readers
 // to ignore it (gunbc.design_argument::fail_closed: done means green by execution, and a check that cries
@@ -495,13 +509,25 @@ fn cs_label_of(fragment: String) -> String {
   if !string_contains(s: fragment, pattern: ":") { "" } else { trim(s: cs_head(split(s: fragment, delimiter: ":"), "")) }
 }
 
-// THE ENGINE'S LABEL RULE, cited rather than re-invented: caller label `x` is accepted against a declared
-// `x`, `_x`, or `_` (v1_interpreter.rs call_function_inner via call_arg_label_matches_param; the compile
-// seam applies the same predicate in direct_call_shape_diags).
+// THE MIRRORED LABEL RULE -- the only meaning this module decides on its own, declared at the module header
+// with its reason and its tie. The authority is Rust: src/v1/stage0/src/v1_compiler_infer.rs
+// `call_param_caller_labels` + `call_arg_label_matches_param`, reached from v1_interpreter.rs
+// `call_function_inner` and from the compile seam `direct_call_shape_diags`. Its three arms are reproduced
+// here one-for-one -- `_` accepts any label; a `_`-prefixed parameter accepts `_x` and `x`; anything else
+// accepts only its own name -- and NOTHING beyond them: no prefix matching, no case folding, no positional
+// leniency. test.claim.declared_entry_call_shape_witness's `the_engine_matcher_*` claims read that Rust and
+// redden if the arms change here or there, which is what stops this being an undeclared second authority.
 fn cs_label_ok(label: String, declared: List<String>) -> Bool {
   list_member(xs: declared, x: label, eq: cs_eq)
     || list_member(xs: declared, x: join(["_", label], ""), eq: cs_eq)
     || list_member(xs: declared, x: "_", eq: cs_eq)
+}
+
+// THE MIRROR'S ONE PUBLIC FACE, so the witness lane can ask the SAME predicate the scanner asks instead of
+// writing the rule a third time. A witness that re-implemented this rule would be the very defect the header
+// above declares: three places deciding one meaning, two of them in test code.
+fn declared_entry_call_shape_label_ok(label: String, declared: List<String>) -> Bool {
+  cs_label_ok(label: label, declared: declared)
 }
 
 // ── THE TWO REFUSALS ───────────────────────────────────────────────────────────────────────────────────

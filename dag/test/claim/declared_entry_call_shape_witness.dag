@@ -30,13 +30,14 @@ import gunbc.instruments.declared_entry_call_shape {
   declared_entry_call_shape_verdict_judged,
   declared_entry_call_shape_failure_reason, declared_entry_call_shape_counts,
   declared_entry_call_shape_module_file, declared_entry_call_shape_import_lines,
+  declared_entry_call_shape_label_ok,
 }
 
 import gunbc.witness.declared_entry_call_shape_step {
   declared_entry_call_shape_step, declared_entry_call_shape_step_name,
   declared_entry_call_shape_if_condition, declared_entry_call_shape_line_ceiling,
   declared_entry_call_shape_instrument_entry,
-  declared_entry_base_env_name, declared_entry_event_name_env_name
+  declared_entry_base_env_name, declared_entry_event_name_env_name, declared_entry_head_env_name
 }
 import extdeps.languages.yaml.types {
   YamlKeyValue, YamlValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence,
@@ -377,10 +378,32 @@ test fn the_step_runs_on_the_events_that_carry_a_base() -> Bool {
 // checkout is shallow, and a base that cannot be resolved is a refusal -- never a guess, never a skip.
 test fn the_step_computes_its_diff_from_the_events_base_and_refuses_without_it() -> Bool {
   let run = w_step_run(step: w_step())
+  // THE ENDPOINTS ARE THE EVENT'S, AND THE STARTING POINT IS COMPUTED, NOT INFERRED BY THE DIFF COMMAND.
+  // Three facts, each learned the hard way on the required lane at 3b6ade9f:
+  //   - `base...HEAD` over GitHub's MERGE ref, with an event base that has since moved, resolves the merge
+  //     base to something old and hands the check MAIN's own commits: a 13-file PR arrived as 1,932 .dag files
+  //     / 905,722 lines, which only the line ceiling stood between this step and a confident wrong verdict;
+  //   - `git fetch --depth=1` grafts the fetched commit as a parentless root, after which the merge base is
+  //     uncomputable -- reproduced in a depth-1 clone as `fatal: <base>...HEAD: no merge base`, exit 128, an
+  //     untyped death under `set -e` with no annotation and no cause named;
+  //   - a path the change DELETED has no call shape left, and reading it is a read error, not a finding.
+  // So: the PR's own head is the other endpoint, `git merge-base` is asked FIRST and its absence is a typed
+  // refusal, no fetch carries a depth, and deletions are filtered out of the scope.
   w_has(hay: run, needle: concat("if '[' '-z' ", concat(shv(name: "GUNBC_DECLARED_ENTRY_BASE_SHA"), " ']'; then")))
-    && w_has(hay: run, needle: join(["'git' 'diff' '--name-only' ", shv(name: "GUNBC_DECLARED_ENTRY_BASE_SHA"), "'...HEAD' '--' '*.dag' > ", shv(name: "changed")], ""))
-    && w_has(hay: run, needle: "'git' 'fetch' '--no-tags' '--depth=1' 'origin'")
+    && w_has(hay: run, needle: shv(name: "GUNBC_DECLARED_ENTRY_HEAD_SHA"))
+    && w_has(hay: run, needle: "'git' 'rev-parse' 'HEAD'")
+    && w_has(hay: run, needle: "'git' 'merge-base'")
+    && w_has(hay: run, needle: "share no merge base")
+    && w_has(hay: run, needle: join(["'git' 'diff' '--name-only' '--diff-filter=d' ", shv(name: "merge_base"), " ", shv(name: "head"), " '--' '*.dag' > ", shv(name: "changed")], ""))
+    && w_has(hay: run, needle: "'git' 'fetch' '--no-tags' 'origin'")
+    // A shallow graft is the other way a scope gets invented: the step repairs it or refuses, and never
+    // answers from a history whose parents are missing.
+    && w_has(hay: run, needle: "'git' 'rev-parse' '--is-shallow-repository'")
+    && w_has(hay: run, needle: "'git' 'fetch' '--no-tags' '--unshallow' 'origin'")
+    && w_has(hay: run, needle: "did not make its history whole")
     && w_has(hay: run, needle: "could not be fetched: refusing to guess a scope")
+    && !w_has(hay: run, needle: "--depth")
+    && !w_has(hay: run, needle: "...HEAD")
     && !w_has(hay: run, needle: "GITHUB_BASE_REF")
     && !w_has(hay: run, needle: "origin/main")
 }
@@ -400,6 +423,9 @@ test fn the_expressions_reach_the_document_through_the_environment_only() -> Boo
     && w_has(hay: run, needle: shv(name: declared_entry_event_name_env_name))
     && w_has(hay: env, needle: concat(declared_entry_base_env_name, concat(": ", w_dollar_brace(text: "{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"))))
     && w_has(hay: env, needle: concat(declared_entry_event_name_env_name, concat(": ", w_dollar_brace(text: "{ github.event_name }}"))))
+    // The head is an expression too, so it goes the same way: into the environment, never into the script.
+    && w_has(hay: run, needle: shv(name: declared_entry_head_env_name))
+    && w_has(hay: env, needle: concat(declared_entry_head_env_name, concat(": ", w_dollar_brace(text: "{ github.event.pull_request.head.sha }}"))))
 }
 
 // THE BINARY ASKED IS THE ONE THAT OWNS THE `run` VERB. The first enrolled version was handed the fast-lane's
@@ -427,7 +453,7 @@ test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
   w_has(hay: run, needle: join(["if '[' '!' '-s' ", shv(name: "changed"), " ']'; then"], ""))
     && w_has(hay: run, needle: "'skipped: no .dag change in this diff, scope empty'")
     && w_count_lines(hay: run, needle: "; exit 0; fi") == 1
-    && w_count_lines(hay: run, needle: "; exit 1; fi") == 6
+    && w_count_lines(hay: run, needle: "; exit 1; fi") == 9
     && w_has(hay: run, needle: "'sort' '-u'")
 }
 
@@ -524,4 +550,116 @@ test fn the_step_module_imports_the_node_route_and_nothing_from_the_fleet_hubs()
     && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.std.node") })) == 1)
     && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "extdeps.languages.yaml.types") })) == 1)
     && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "gunbc.") })) == 0)
+}
+
+// ── THE MIRROR TIED TO THE ENGINE ──────────────────────────────────────────────────────────────────────
+// THE ONLY MEANING THE INSTRUMENT DECIDES BY ITSELF is one predicate: caller label `x` is accepted against a
+// declared `x`, `_x`, or `_`. The authority for that decision is not the instrument; it is the engine's Rust
+// matcher (src/v1/stage0/src/v1_compiler_infer.rs `call_param_caller_labels` + `call_arg_label_matches_param`,
+// reached from v1_interpreter.rs `call_function_inner` and from the compile seam `direct_call_shape_diags`).
+// gunbc.design_argument::single_authority calls a second place that decides one meaning a fork; the instrument's
+// header declares the mirror and its reason (asking the engine would pay the closure this row exists to remove).
+// A declared divergence without a tie is still drift waiting to happen, so the tie is here, by execution: these
+// four claims READ THE ENGINE'S SOURCE, bound the two functions that decide the rule, and assert that the arms
+// the instrument writes out are the arms the engine still implements. Drop the `_x` idiom upstream, add an arm,
+// rename the matcher, or weaken the mirror, and at least one of these reddens in CI on the PR that did it.
+// The instrument's own predicate is asked, not restated (declared_entry_call_shape_label_ok): a witness that
+// re-wrote the rule would be a third place deciding it, two of them in test code.
+data w_engine_matcher_source: String = "src/v1/stage0/src/v1_compiler_infer.rs"
+data w_engine_labels_marker: String = "pub fn call_param_caller_labels(param_name: String)"
+data w_engine_matcher_marker: String = "pub fn call_arg_label_matches_param(param_name: String, arg_label: String)"
+data w_engine_after_matcher_marker: String = "pub fn param_binds_positionally"
+
+// Occurrences, not pieces: `count(split(...))` counts the PIECES, which is the bug that made this instrument
+// invent 723 refusals (module header). Subtracting one is the correction, written once here.
+fn w_count(hay: String, needle: String) -> Int {
+  length(xs: split(s: hay, delimiter: needle)) - 1
+}
+
+fn w_after_first(hay: String, marker: String) -> String {
+  if !string_contains(s: hay, pattern: marker) {
+    ""
+  } else {
+    join(split(s: hay, delimiter: marker).skip(n: 1), marker)
+  }
+}
+
+fn w_before_first(hay: String, marker: String) -> String {
+  match split(s: hay, delimiter: marker).first() {
+    Present { value: head } => head
+    Absent => hay
+  }
+}
+
+// The engine's text between two declarations. Both markers must appear EXACTLY ONCE, so a rename or a second
+// definition reddens the region claim (the_engine_matcher_regions_are_bounded_and_readable) instead of quietly
+// widening what the other three claims read.
+fn w_engine_region(start: String, stop: String) -> String {
+  let source = Filesystem.Read(path: w_engine_matcher_source, expect: ExpectSuccess).content
+  w_before_first(hay: w_after_first(hay: source, marker: start), marker: stop)
+}
+
+fn w_engine_labels_region() -> String {
+  w_engine_region(start: w_engine_labels_marker, stop: w_engine_matcher_marker)
+}
+
+fn w_engine_matcher_region() -> String {
+  w_engine_region(start: w_engine_matcher_marker, stop: w_engine_after_matcher_marker)
+}
+
+test fn the_engine_matcher_regions_are_bounded_and_readable() -> Bool {
+  let source = Filesystem.Read(path: w_engine_matcher_source, expect: ExpectSuccess).content
+  w_count(hay: source, needle: w_engine_labels_marker) == 1
+    && w_count(hay: source, needle: w_engine_matcher_marker) == 1
+    && w_count(hay: source, needle: w_engine_after_matcher_marker) == 1
+    && length(xs: w_engine_labels_region()) > 0
+    && length(xs: w_engine_matcher_region()) > 0
+}
+
+// ARM ONE: a parameter named `_` -- the deliberately-unused-parameter idiom -- accepts any caller label. The
+// engine says it in two places that must agree: `call_param_caller_labels` gives `_` NO caller label, and
+// `call_arg_label_matches_param` returns `true` for `_` before consulting them. That test is the matcher's
+// ONLY conditional -- everything else in it is membership in the caller labels -- so the claim counts the
+// conditionals rather than trusting the arm's presence.
+test fn the_engine_matcher_accepts_a_bare_underscore_param_and_the_mirror_agrees() -> Bool {
+  let labels = w_engine_labels_region()
+  let matcher = w_engine_matcher_region()
+  w_count(hay: labels, needle: "Rc::new(vec![])") == 1
+    && w_count(hay: matcher, needle: "if (param_name.clone() == \"_\".to_string()) {") == 1
+    && w_count(hay: matcher, needle: "if (") == 2
+    && w_count(hay: matcher, needle: "for caller_label in call_param_caller_labels(param_name.clone())") == 1
+    && declared_entry_call_shape_label_ok(label: "anything", declared: ["_"])
+    && declared_entry_call_shape_label_ok(label: "", declared: ["_"])
+    // ...and the mirror does not read `_` as a WILDCARD CALLER LABEL: a caller writing `_:` binds nothing a
+    // parameter named `z` would accept, and the engine's membership test says so.
+    && !declared_entry_call_shape_label_ok(label: "_", declared: ["z"])
+}
+
+// ARM TWO: a `_`-prefixed parameter accepts BOTH `_x` and `x`, which is what lets a declaration name a
+// parameter it never reads without its callers breaking.
+test fn the_engine_matcher_accepts_an_underscore_prefixed_param_under_both_names_and_the_mirror_agrees() -> Bool {
+  let labels = w_engine_labels_region()
+  w_count(hay: labels, needle: "if (") == 2
+    && w_count(hay: labels, needle: "&& (v1_rt::substring(&param_name, 0, 1) == \"_\".to_string()))") == 1
+    && w_count(hay: labels, needle: "param_name.clone(),") == 1
+    && w_count(hay: labels, needle: "v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name)),") == 1
+    && declared_entry_call_shape_label_ok(label: "value", declared: ["_value"])
+    && declared_entry_call_shape_label_ok(label: "_value", declared: ["_value"])
+    && !declared_entry_call_shape_label_ok(label: "alue", declared: ["_value"])
+}
+
+// ARM THREE: any other parameter accepts its own name and nothing else -- no prefix matching, no case folding,
+// no positional leniency. `Rc::new(vec![param_name.clone()])` is that arm, and the two absences are the
+// negative half: an upstream change that added either convenience would redden this claim and the mirror
+// would still be green, which is the drift these four claims exist to catch.
+test fn the_engine_matcher_accepts_an_exact_param_under_its_own_name_only_and_the_mirror_agrees() -> Bool {
+  let labels = w_engine_labels_region()
+  w_count(hay: labels, needle: "Rc::new(vec![param_name.clone()])") == 1
+    && !string_contains(s: labels, pattern: "to_lowercase")
+    && !string_contains(s: labels, pattern: "to_uppercase")
+    && !string_contains(s: labels, pattern: "starts_with")
+    && declared_entry_call_shape_label_ok(label: "value", declared: ["value"])
+    && !declared_entry_call_shape_label_ok(label: "other", declared: ["value"])
+    && !declared_entry_call_shape_label_ok(label: "value", declared: ["values"])
+    && !declared_entry_call_shape_label_ok(label: "Value", declared: ["value"])
 }

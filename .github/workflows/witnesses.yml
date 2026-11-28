@@ -762,8 +762,15 @@ jobs:
           changed="$dir"'changed.txt'
           candidates="$dir"'candidates.txt'
           stems="$dir"'stems.txt'
-          if ! 'git' 'cat-file' '-e' "$GUNBC_DECLARED_ENTRY_BASE_SHA"'^''{''commit}' 2>/dev/null; then if ! 'git' 'fetch' '--no-tags' '--depth=1' 'origin' "$GUNBC_DECLARED_ENTRY_BASE_SHA" >/dev/null 2>&1; then 'echo' '::error title=declared entry call shape::''the event base commit carried by GUNBC_DECLARED_ENTRY_BASE_SHA is not in this checkout and could not be fetched: refusing to guess a scope'; exit 1; fi; fi
-          'git' 'diff' '--name-only' "$GUNBC_DECLARED_ENTRY_BASE_SHA"'...HEAD' '--' '*.dag' > "$changed"
+          shallow=$('git' 'rev-parse' '--is-shallow-repository')
+          if '[' "$shallow" '=' 'true' ']'; then 'git' 'fetch' '--no-tags' '--unshallow' 'origin' >/dev/null 2>&1 || ':'; shallow=$('git' 'rev-parse' '--is-shallow-repository'); if '[' "$shallow" '=' 'true' ']'; then 'echo' '::error title=declared entry call shape::''this checkout is shallow and completing it did not make its history whole, so no merge base can be computed across a shallow graft: refusing to judge a scope the fetch cannot show'; exit 1; fi; fi
+          if ! 'git' 'cat-file' '-e' "$GUNBC_DECLARED_ENTRY_BASE_SHA"'^''{''commit}' 2>/dev/null; then if ! 'git' 'fetch' '--no-tags' 'origin' "$GUNBC_DECLARED_ENTRY_BASE_SHA" >/dev/null 2>&1; then 'echo' '::error title=declared entry call shape::''the event base commit carried by GUNBC_DECLARED_ENTRY_BASE_SHA is not in this checkout and could not be fetched: refusing to guess a scope'; exit 1; fi; fi
+          head="$GUNBC_DECLARED_ENTRY_HEAD_SHA"
+          if '[' '-z' "$head" ']'; then head=$('git' 'rev-parse' 'HEAD'); fi
+          if ! 'git' 'cat-file' '-e' "$head"'^''{''commit}' 2>/dev/null; then if ! 'git' 'fetch' '--no-tags' 'origin' "$head" >/dev/null 2>&1; then 'echo' '::error title=declared entry call shape::''the commit this run is supposed to judge is not in this checkout and could not be fetched: refusing to guess a scope'; exit 1; fi; fi
+          if ! 'git' 'merge-base' "$GUNBC_DECLARED_ENTRY_BASE_SHA" "$head" >/dev/null 2>&1; then 'echo' '::error title=declared entry call shape::''the event base commit and the commit this run judges share no merge base, so the diff has no honest starting point: refusing rather than judging a scope invented from a shallow or unrelated history'; exit 1; fi
+          merge_base=$('git' 'merge-base' "$GUNBC_DECLARED_ENTRY_BASE_SHA" "$head")
+          'git' 'diff' '--name-only' '--diff-filter=d' "$merge_base" "$head" '--' '*.dag' > "$changed"
           if '[' '!' '-s' "$changed" ']'; then 'echo' '::notice title=declared entry call shape::''skipped: no .dag change in this diff, scope empty'; exit 0; fi
           if ! 'test' '-x' 'target/release/gunbc'; then 'echo' '::error title=declared entry call shape::''no executable run-verb CLI at target/release/gunbc: this job'\''s compiler build is skipped on a reused fast-lane run, and this diff carries .dag changes for the check to judge. Re-run with the fast lane not reused, or carry the CLI in the fast-lane cache'; exit 1; fi
           'target/release/gunbc' 'run' '--source-root' 'dag' '--source-root' 'src/v2' '--entry' 'dag/gunbc/instruments/declared_entry_call_shape.dag' '--function' 'declared_entry_call_shape_stems_emit' '--arg' 'changed_paths_file='"$dir"'changed.txt' '--arg' 'stems_file='"$dir"'stems.txt'
@@ -775,11 +782,12 @@ jobs:
           lines=$('xargs' '-r' '-a'"$candidates" 'cat' | 'wc' '-l' | 'tr' '-d' ' ') || rc="$?"
           if '[' "$rc" '-gt' '0' ']'; then 'echo' '::error title=declared entry call shape::''the line count of the scope could not be computed: a candidate file could not be read. Refusing rather than budgeting against a scope that was not read'; exit 1; fi
           if '[' "$lines" '-gt' '250000' ']'; then 'echo' '::error title=declared entry call shape::''scope of '"$scope"' .dag files / '"$lines"' lines is above the budget of ''250000'' lines: this is not this run'\''s diff, and the step refuses to judge it. A tree-wide migration runs this instrument out of band and cites the run in the PR body'; exit 1; fi
-          'echo' 'scope: '"$scope"' .dag files, '"$lines"' lines (changed plus reverse importers, diffed against '"$GUNBC_DECLARED_ENTRY_BASE_SHA"', budget ''250000'')'
+          'echo' 'scope: '"$scope"' .dag files, '"$lines"' lines (changed plus reverse importers, diffed from the merge base '"$merge_base"' of the event base '"$GUNBC_DECLARED_ENTRY_BASE_SHA"', budget ''250000'')'
           'target/release/gunbc' 'run' '--source-root' 'dag' '--source-root' 'src/v2' '--entry' 'dag/gunbc/instruments/declared_entry_call_shape.dag' '--function' 'main' '--arg' 'changed_paths_file='"$dir"'changed.txt' '--arg' 'candidate_importers_file='"$dir"'candidates.txt'
         env:
           GUNBC_DECLARED_ENTRY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           GUNBC_DECLARED_ENTRY_EVENT_NAME: ${{ github.event_name }}
+          GUNBC_DECLARED_ENTRY_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
       - name: Restore parse-verdict unit for base ancestor 0
         id: parse_receipts_0

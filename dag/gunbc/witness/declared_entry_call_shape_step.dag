@@ -176,6 +176,21 @@ data declared_entry_base_env_name: String = "GUNBC_DECLARED_ENTRY_BASE_SHA"
 
 data declared_entry_event_name_env_name: String = "GUNBC_DECLARED_ENTRY_EVENT_NAME"
 
+// THE COMMIT THIS RUN JUDGES, AND WHY THE CHECK NEEDS IT SEPARATELY FROM `HEAD`. On a pull_request run the
+// checkout is GitHub's MERGE ref -- the PR head merged onto the base branch as it stood when the ref was
+// built -- and the event's `base.sha` is the base branch's tip AT THE TIME OF THE EVENT, which can have moved
+// since. Diffing `base...HEAD` over that merge commit then resolves the merge base to the merge's own second
+// parent's ancestor and reports MAIN's own new commits as if this PR wrote them: observed on the required
+// lane at 3b6ade9f, where a 13-file PR produced a scope of 1,932 .dag files / 905,722 lines and the step's
+// line ceiling refused it (the ceiling worked; the scope was wrong). The PR's OWN head sha is the other end
+// of the diff the review shows, and `merge-base(base, head)` is the same base `git diff ... A...B` means when
+// the history is intact -- which is the merge-base semantics the manager ruled this step to. On a merge_group
+// run there is no pull_request payload, the expression renders empty, and `git rev-parse HEAD` (the group's
+// result commit) takes its place with merge_group.base_sha as the base: the whole group's change, correctly.
+data declared_entry_head_sha_expression: String = "${{ github.event.pull_request.head.sha }}"
+
+data declared_entry_head_env_name: String = "GUNBC_DECLARED_ENTRY_HEAD_SHA"
+
 // The events this step runs on, stated as the step's condition. See the header: the alternative to
 // a condition is a silent green on the events that carry no base.
 data declared_entry_call_shape_if_condition: String =
@@ -339,6 +354,32 @@ fn declared_entry_call_shape_scope_statements(
     bash_build_assign(name: "changed", value: w_dir_path(declared_entry_call_shape_changed_name)),
     bash_build_assign(name: "candidates", value: w_dir_path(declared_entry_call_shape_candidate_name)),
     bash_build_assign(name: "stems", value: w_dir_path(declared_entry_call_shape_stems_name)),
+    // A SHALLOW CHECKOUT CANNOT ANSWER "WHAT DID THIS CHANGE", AND THIS STEP DOES NOT PRETEND IT CAN. The
+    // required job checks itself out at `fetch-depth: 0`, so on the lane this arm is silent; it exists because
+    // the alternative is the failure mode this step has already been caught in twice. A shallow repository
+    // carries grafts with no parents, `git merge-base` cannot cross one, and `A...B` -- the spelling that
+    // produced a 1,932-file scope for a 13-file PR on the required lane at 3b6ade9f -- answers with whatever
+    // boundary survived. So: if the repository is shallow, try once to make it whole; if it is still shallow,
+    // REFUSE with the cause named. A missing base and an unusable history are both refusals here, never skips,
+    // and never a scope inferred from what the fetch happened to bring.
+    bash_build_assign(name: "shallow", value: bash_build_word_cmdsubst(body: cmd(["git", "rev-parse", "--is-shallow-repository"]))),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [w_var("shallow"), w_lit("="), w_lit("true")], spelling: BracketQuoted),
+      then_stmts: [
+        bash_build_or_else(
+          left: bash_build_with_redir_stdout_and_stderr_null(inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("fetch"), w_lit("--no-tags"), w_lit("--unshallow"), w_lit("origin")])),
+          right: cmd([":"])
+        ),
+        bash_build_assign(name: "shallow", value: bash_build_word_cmdsubst(body: cmd(["git", "rev-parse", "--is-shallow-repository"]))),
+        bash_build_if_from_stmts(
+          cond: bash_build_test_bracket(words: [w_var("shallow"), w_lit("="), w_lit("true")], spelling: BracketQuoted),
+          then_stmts: [
+            cs_refusal("this checkout is shallow and completing it did not make its history whole, so no merge base can be computed across a shallow graft: refusing to judge a scope the fetch cannot show"),
+            bash_build_exit(code: "1")
+          ],
+        )
+      ],
+    ),
     // THE BASE IS PROVED, FETCHED, OR THE STEP REFUSES. An ancestor that is simply not there must never be
     // allowed to answer "nothing changed": that is the one arm that could turn a broken run into a green.
     bash_build_if_from_stmts(
@@ -347,8 +388,15 @@ fn declared_entry_call_shape_scope_statements(
         redir: ^bash_production_fold_redir_stderr_null
       )),
       then_stmts: [
+        // FETCHED AT FULL DEPTH, AND THAT IS THE POINT. `--depth=1` was the first draft's spelling, and it is
+        // the defect: a depth-limited fetch grafts the fetched commit as a PARENTLESS root, so the merge base
+        // between it and HEAD cannot be computed -- git either says "no merge base" (reproduced locally in a
+        // depth-1 clone: `fatal: <base>...HEAD: no merge base`, exit 128, an untyped death under set -e) or
+        // resolves it to whatever shallow boundary survived and hands the check MAIN's history as this PR's
+        // scope. Correctness of the scope outranks the transfer size of an arm that, on this job's own
+        // `fetch-depth: 0` checkout, never runs at all.
         bash_build_if_from_stmts(
-          cond: bash_build_negation(inner: bash_build_with_redir_stdout_and_stderr_null(inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("fetch"), w_lit("--no-tags"), w_lit("--depth=1"), w_lit("origin"), w_var(declared_entry_base_env_name)]))),
+          cond: bash_build_negation(inner: bash_build_with_redir_stdout_and_stderr_null(inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("fetch"), w_lit("--no-tags"), w_lit("origin"), w_var(declared_entry_base_env_name)]))),
           then_stmts: [
             cs_refusal("the event base commit carried by GUNBC_DECLARED_ENTRY_BASE_SHA is not in this checkout and could not be fetched: refusing to guess a scope"),
             bash_build_exit(code: "1")
@@ -356,8 +404,45 @@ fn declared_entry_call_shape_scope_statements(
         )
       ],
     ),
+    // THE OTHER END OF THE DIFF: the PR's own head, falling back to the checked-out commit when the event
+    // carries none (a merge_group run), and proved in the checkout by the same full-depth rule.
+    bash_build_assign(name: "head", value: w_var(declared_entry_head_env_name)),
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [w_lit("-z"), w_var("head")], spelling: BracketQuoted),
+      then_stmts: [
+        bash_build_assign(name: "head", value: bash_build_word_cmdsubst(body: cmd(["git", "rev-parse", "HEAD"])))
+      ],
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_negation(inner: bash_build_with_redir(
+        inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("cat-file"), w_lit("-e"), bash_build_word_concat_from_nodes(parts: [w_var("head"), w_lit("^"), w_lit("{"), w_lit("commit}")])]),
+        redir: ^bash_production_fold_redir_stderr_null
+      )),
+      then_stmts: [
+        bash_build_if_from_stmts(
+          cond: bash_build_negation(inner: bash_build_with_redir_stdout_and_stderr_null(inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("fetch"), w_lit("--no-tags"), w_lit("origin"), w_var("head")]))),
+          then_stmts: [
+            cs_refusal("the commit this run is supposed to judge is not in this checkout and could not be fetched: refusing to guess a scope"),
+            bash_build_exit(code: "1")
+          ],
+        )
+      ],
+    ),
+    // THE MERGE BASE, COMPUTED AND REFUSED ON, NEVER INFERRED BY THE DIFF COMMAND. `A...B` asks git for the
+    // same thing; asking first is what turns "no merge base" from a bare `fatal:` under `set -e` into a
+    // located annotation naming what is missing and why the check will not guess.
+    bash_build_if_from_stmts(
+      cond: bash_build_negation(inner: bash_build_with_redir_stdout_and_stderr_null(inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("merge-base"), w_var(declared_entry_base_env_name), w_var("head")]))),
+      then_stmts: [
+        cs_refusal("the event base commit and the commit this run judges share no merge base, so the diff has no honest starting point: refusing rather than judging a scope invented from a shallow or unrelated history"),
+        bash_build_exit(code: "1")
+      ],
+    ),
+    bash_build_assign(name: "merge_base", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [w_lit("git"), w_lit("merge-base"), w_var(declared_entry_base_env_name), w_var("head")]))),
+    // DELETED FILES DO NOT JOIN THE SCOPE (`--diff-filter=d`): a path this change removed has no call shape
+    // left to read, and handing the instrument a path that is not on disk turns a real green into a read error.
     bash_build_with_redir_to_file(
-      inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("diff"), w_lit("--name-only"), bash_build_word_concat_from_nodes(parts: [w_var(declared_entry_base_env_name), w_lit("...HEAD")]), w_lit("--"), w_lit("*.dag")]),
+      inner: bash_build_command_with_words(words: [w_lit("git"), w_lit("diff"), w_lit("--name-only"), w_lit("--diff-filter=d"), w_var("merge_base"), w_var("head"), w_lit("--"), w_lit("*.dag")]),
       path: w_var("changed")
     ),
     bash_build_if_from_stmts(
@@ -468,7 +553,7 @@ fn declared_entry_call_shape_scope_statements(
     // line will be read against, and the one line that makes a mis-scoped run visible rather than merely green.
     bash_build_command_with_words(words: [w_lit("echo"), bash_build_word_concat_from_nodes(parts: [
       w_lit("scope: "), w_var("scope"), w_lit(" .dag files, "), w_var("lines"),
-      w_lit(" lines (changed plus reverse importers, diffed against "), w_var(declared_entry_base_env_name),
+      w_lit(" lines (changed plus reverse importers, diffed from the merge base "), w_var("merge_base"), w_lit(" of the event base "), w_var(declared_entry_base_env_name),
       w_lit(", budget "), w_lit(declared_entry_call_shape_line_ceiling), w_lit(")")
     ])]),
     cs_gunbc_run(
@@ -558,7 +643,8 @@ fn declared_entry_call_shape_marker_line() -> String {
 fn declared_entry_call_shape_env() -> List<YamlKeyValue> {
   [
     kv(key: declared_entry_base_env_name, value: yaml_string(s: declared_entry_base_sha_expression)),
-    kv(key: declared_entry_event_name_env_name, value: yaml_string(s: declared_entry_event_name_expression))
+    kv(key: declared_entry_event_name_env_name, value: yaml_string(s: declared_entry_event_name_expression)),
+    kv(key: declared_entry_head_env_name, value: yaml_string(s: declared_entry_head_sha_expression))
   ]
 }
 
