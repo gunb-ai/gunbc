@@ -1011,6 +1011,12 @@ type ServingObserved {
   // dispatched revision the pin carries. Read only under BOTH the checkout and the account — the read
   // runs `sudo -u <account>` and fails like a missing subject when the account does not exist (A1).
   checkout_revision: ServingSubjectValue
+  // THE CENSUS DOOR'S CARRIER, read under the SAME gate as the revision: does THIS checkout's dag carry
+  // compute_recover_catalog_serving_cli (the census the seat assessment asks)? Established-true is what
+  // the census gate asks for — not equality with the moving dispatched tip, which no trailing checkout
+  // can ever satisfy again once main moves (the deadlock that stranded srv1's recovery). Established-false
+  // is the proven absence that defers; a refused or skipped read (Absent) defers, never asks.
+  checkout_door: ObservationAttempt<Bool, ServingLegFailure>?
   target_arch: ObservationAttempt<String, ServingLegFailure>
   // A3 (side-chat review of 2026-11-16): the two FILE modes the observe was blind to —
   // authorized_keys and the serve binary were byte-compared only, so a world-writable file with the
@@ -1827,6 +1833,7 @@ fn serving_observed_from_reads(
   // gates prove it was right.
   serve_binary_sha256: ObservationAttempt<String, ServingLegFailure>?,
   checkout_revision: ObservationAttempt<String, ServingLegFailure>?,
+  checkout_door: ObservationAttempt<Bool, ServingLegFailure>?,
   // A3: the two file-mode legs, gated the same way — read only under a confirmed-present file.
   authorized_keys_mode: ObservationAttempt<String, ServingLegFailure>?,
   serve_binary_mode: ObservationAttempt<String, ServingLegFailure>?,
@@ -1885,6 +1892,10 @@ fn serving_observed_from_reads(
       serving_gate_and(checkout_g, serving_account_presence_gate(account_name: account_name, passwd: passwd)),
       checkout_revision,
     ),
+    // The door-carrier read rides the SAME two gates as the revision, but NOT the subject-value
+    // wrapper: a skipped read stays skipped (Absent -> the census gate DEFERS, asking nothing), a
+    // proven no-door checkout is established-false (defer, naming the checkout write that brings it).
+    checkout_door: checkout_door,
     authorized_keys_mode: serving_subject_value_leg("authorized_keys.mode", serving_authorized_keys_presence_gate(ak_g), authorized_keys_mode),
     serve_binary_mode: serving_subject_value_leg("serve.binary.mode", serve_binary_g, serve_binary_mode),
     serve_identity: serve_identity,

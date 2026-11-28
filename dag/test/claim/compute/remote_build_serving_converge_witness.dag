@@ -46,7 +46,7 @@ import gunbc.compute.work_provider_local {
   recover_catalog_words, recover_catalog_unknown_leg_reason,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_apply_receipt_lines, ConvergeApplyTerminal, ApplySettled, ApplyRefused, ApplyUnhandled, ApplyStillNeedsWrites, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer , serving_door_leg_kind }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_apply_receipt_lines, ConvergeApplyTerminal, ApplySettled, ApplyRefused, ApplyUnhandled, ApplyStillNeedsWrites, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer, census_door_declaration_carried, census_door_function, census_reading_for_checkout, serving_door_leg_kind }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -128,7 +128,7 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -254,7 +254,7 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -315,7 +315,7 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
         store_root: refused_b(), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -354,7 +354,7 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -428,7 +428,7 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
     scratch_root: est_absent(), scratch_root_mode: store_mode_absent(), compute_attempts: est_absent(),
     checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
-    serve_binary_sha256: Absent, checkout_revision: Absent,
+    serve_binary_sha256: Absent, checkout_revision: Absent, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -498,7 +498,7 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
         scratch_root: est_absent(), scratch_root_mode: store_mode_absent(), compute_attempts: est_absent(),
         checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
-        serve_binary_sha256: Absent, checkout_revision: Absent, authorized_keys_mode: Absent, serve_binary_mode: Absent,
+        serve_binary_sha256: Absent, checkout_revision: Absent, checkout_door: Present { value: est_ok() }, authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
@@ -531,7 +531,7 @@ test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
         checkout: est_ok(), toolchain: est_absent(), rustup: est_ok(),
-        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -602,7 +602,7 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
         scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+        serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -640,7 +640,7 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
         scratch_root: est_absent(), scratch_root_mode: store_mode_absent(), compute_attempts: est_absent(),
         checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
-        serve_binary_sha256: Absent, checkout_revision: Absent,
+        serve_binary_sha256: Absent, checkout_revision: Absent, checkout_door: Present { value: est_ok() },
         authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -681,7 +681,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
           scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
           checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -704,7 +704,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
           scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
           checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -727,7 +727,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
           scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
           checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+          serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -764,7 +764,7 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_root_mode, store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -787,7 +787,7 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -815,7 +815,7 @@ fn fully_matched_scratch(d: RemoteBuildServingDesired, line: String, scratch_roo
     scratch_root: scratch_root, scratch_root_mode: scratch_root_mode,
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     compute_attempts: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1355,7 +1355,7 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1402,7 +1402,7 @@ fn slice_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
@@ -1541,7 +1541,7 @@ fn slice_refused_max_observed(d: RemoteBuildServingDesired, line: String) -> Ser
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice.memory_max", cause: "ssh refused" } },
@@ -1647,7 +1647,7 @@ fn not_lingering_uncapped_observed(d: RemoteBuildServingDesired, line: String) -
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
@@ -1673,7 +1673,7 @@ fn refused_linger_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
@@ -2002,7 +2002,7 @@ fn fully_matched_identity(d: RemoteBuildServingDesired, line: String, sidecar: O
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     serve_identity: sidecar,
@@ -2134,7 +2134,7 @@ fn fully_matched_native_identity(d: RemoteBuildServingDesired, line: String, sid
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     serve_identity: sidecar,
@@ -2226,7 +2226,7 @@ test fn the_native_build_carries_the_single_cargo_package_authority() -> Bool {
 // cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
 // an unmet identity refuses the recovery alongside it.
 
-fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading, checkout_rev: String) -> ServingObserved {
+fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading, checkout_rev: String, door: ObservationAttempt<Bool, ServingLegFailure>?) -> ServingObserved {
   serving_observed_from_reads(
     elevation: est_elevation(), account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
@@ -2234,7 +2234,7 @@ fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: Obs
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(checkout_rev) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(checkout_rev) }, checkout_door: door,
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     serve_identity: sidecar,
@@ -2248,7 +2248,7 @@ fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: Obs
 }
 
 fn plan_census(d: RemoteBuildServingDesired, census: RecoverCatalogLegReading, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
-  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census, checkout_rev: pin_rev()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census, checkout_rev: pin_rev(), door: Present { value: est_ok() }), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
 }
 
 fn count_recover(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecoverStaleSeat { reference: _ } => true  _ => false })) }
@@ -2283,7 +2283,7 @@ test fn a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery() -> B
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let observed = fully_matched_census(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded(pin_sha()) }, census: RecoverCatalogLegDeferred { reason: "the checkout is not at the pin" }, checkout_rev: "0000000000000000000000000000000000000000")
+      let observed = fully_matched_census(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded(pin_sha()) }, census: RecoverCatalogLegDeferred { reason: "the checkout is not at the pin" }, checkout_rev: "0000000000000000000000000000000000000000", door: Present { value: ObservationEstablished { observed: false } })
       let plan = converge_plan(d: d, a: serving_assess(d: d, o: observed, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let ws = plan_writes(plan)
       plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 0
@@ -2292,61 +2292,133 @@ test fn a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery() -> B
   }
 }
 
-// THE GATE ITSELF, over supplied reads: ASK only when the checkout is established AT the dispatched
-// revision; DEFER otherwise, naming what made it unaskable — the stale revision it stands at, the
-// refusal of the revision read, or the revision never being established. The door the checkout does not
-// yet carry is never asked, and its absence is never dressed as an unknown (an unknown would dominate
-// the assessment and strand the checkout write that carries the door).
-test fn the_census_gate_asks_only_at_the_dispatched_revision() -> Bool {
+// THE GATE ITSELF, over supplied reads: ASK when the checkout's revision is ESTABLISHED and the
+// door-carrier read ESTABLISHES the census door in that checkout — whatever revision it stands at.
+// DEFER otherwise, naming what made it unaskable: the refusal of the revision read, a revision never
+// established, a door proven absent (the checkout write brings it), a carrier read refused or never
+// run, or the serve binary proven absent. The gate asks the CHECKOUT, not the moving dispatched tip:
+// equality-only gated the census off forever on every host whose checkout trails main — the defect the
+// manager's 2026-11-28 ruling on srv1's stranded recovery removes, pinned GREEN by asked_behind_pin
+// (RED under the old gate) and RED-controlled by deferred_no_door (a proven no-door tree is still
+// never asked, and its absence is never dressed as an unknown — an unknown would dominate the
+// assessment and strand the checkout write that carries the door).
+test fn the_census_gate_asks_only_a_checkout_proven_to_carry_the_door() -> Bool {
   let pin_sha = "0000000000000000000000000000000000000000"
   let stale = "1111111111111111111111111111111111111111"
   let present = ObservationEstablished { observed: true }
-  let asked = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+  let asked = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
     CensusGateAsk => true
     CensusGateDefer { reason: _ } => false
   }
-  let deferred_stale = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
-    CensusGateAsk => false
-    CensusGateDefer { reason: r } => string_contains(s: r, pattern: stale) && string_contains(s: r, pattern: pin_sha)
+  // GREEN FOR THE DEFECT: a checkout BEHIND the dispatched tip but proven to carry the door is ASKED.
+  // Under the old equality gate this exact reading deferred — and an apply could never open the census,
+  // because the checkout write was itself gated behind the census-opening revision equality.
+  let asked_behind_pin = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+    CensusGateAsk => true
+    CensusGateDefer { reason: _ } => false
   }
-  let deferred_refused = match census_door_gate(checkout_revision: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.revision", cause: "the revision read was refused" } } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+  // RED CONTROL: a checkout PROVEN not to carry the door (the module predates the door) DEFERS, naming
+  // the door and the detachment that brings it. Red if a proven no-door checkout is asked, or if the
+  // deferral does not name the door.
+  let deferred_no_door = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, checkout_door: Present { value: ObservationEstablished { observed: false } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "census door") && string_contains(s: r, pattern: "detaches") && string_contains(s: r, pattern: pin_sha)
+  }
+  // A REFUSED carrier read DEFERS: the carrier is unproven, and an unproven carrier is never asked.
+  let deferred_door_refused = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.door", cause: "cat refused" } } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "unproven carrier")
+  }
+  // A NEVER-RUN carrier read DEFERS: asked only from a checkout PROVEN to carry the door.
+  let deferred_door_unread = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Absent, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "never read")
+  }
+  let deferred_refused = match census_door_gate(checkout_revision: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.revision", cause: "the revision read was refused" } } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: "refused")
   }
-  let deferred_unrun = match census_door_gate(checkout_revision: Absent, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
+  let deferred_unrun = match census_door_gate(checkout_revision: Absent, checkout_door: Present { value: est_ok() }, serve_binary: present, compute_attempts: present, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: "not established")
   }
-  // THE SERVE-BINARY CARRIER (ken converge 45968626078): at the dispatched checkout revision, a PROVEN
-  // ABSENT serve binary DEFERS the census — the door is carried by the installed binary, and asking an
-  // absent one exits 127 and would indeterminate the whole assessment, stranding the binary write that
-  // carries the door. RED if the gate asks an absent-binary host.
-  let deferred_no_binary = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: ObservationEstablished { observed: false }, compute_attempts: present, dispatched_revision: pin_sha) {
+  // THE SERVE-BINARY CARRIER (ken converge 45968626078): at an established revision with the door
+  // present, a PROVEN ABSENT serve binary DEFERS the census — the door is carried by the installed
+  // binary, and asking an absent one exits 127 and would indeterminate the whole assessment, stranding
+  // the binary write that carries the door. RED if the gate asks an absent-binary host.
+  let deferred_no_binary = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: ObservationEstablished { observed: false }, compute_attempts: present, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: "serve binary is not installed")
   }
   // A MERELY UNREAD presence still ASKS (a real read beats a skip nobody proved): only proven absence defers.
-  let asked_unread_binary = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: ObservationRefused { cause: ServingLegFailure { item: "seed.serve_binary", cause: "the presence read was refused" } }, compute_attempts: present, dispatched_revision: pin_sha) {
+  let asked_unread_binary = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: ObservationRefused { cause: ServingLegFailure { item: "seed.serve_binary", cause: "the presence read was refused" } }, compute_attempts: present, dispatched_revision: pin_sha) {
     CensusGateAsk => true
     CensusGateDefer { reason: _ } => false
   }
-  // THE ATTEMPTS-DIR CARRIER (ken converge 46051801988): with the checkout at the pin and the binary
-  // present, a PROVEN ABSENT compute attempts directory DEFERS the census — the door's census IS a
-  // Filesystem.List of that directory, which compute_attempt_slots_root refuses as unread when absent, so
-  // asking it would indeterminate the whole assessment and strand the EnsureDirectory write that creates
-  // it. This is the defect that made ken's re-observe refuse after its binary installed. RED if the gate
-  // asks an absent-attempts host.
-  let deferred_no_attempts = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: present, compute_attempts: ObservationEstablished { observed: false }, dispatched_revision: pin_sha) {
+  // THE ATTEMPTS-DIRECTORY CARRIER (ken, #17238): the door's census IS a Filesystem.List of the
+  // account's compute attempts directory, which compute_attempt_slots_root refuses as unread when the
+  // directory is absent. A PROVEN ABSENT attempts dir DEFERS — the EnsureDirectory write the same
+  // assessment carries is what makes the door askable; a MERELY UNREAD presence still ASKS (the door's
+  // own listing refusal becomes an unknown census: fail_closed reserves unknown for a refused read,
+  // only proven absence is a deferral). RED if the gate asks a host with no attempts directory.
+  let deferred_no_attempts = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: present, compute_attempts: ObservationEstablished { observed: false }, dispatched_revision: pin_sha) {
     CensusGateAsk => false
     CensusGateDefer { reason: r } => string_contains(s: r, pattern: "attempts directory is not established")
   }
-  // A MERELY UNREAD attempts presence still ASKS: the door's own listing refusal becomes an unknown census
-  // (fail_closed reserves unknown for a refused read; only proven absence is a deferral).
-  let asked_unread_attempts = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, serve_binary: present, compute_attempts: ObservationRefused { cause: ServingLegFailure { item: "compute.attempts", cause: "the presence read was refused" } }, dispatched_revision: pin_sha) {
+  let asked_unread_attempts = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, checkout_door: Present { value: ObservationEstablished { observed: true } }, serve_binary: present, compute_attempts: ObservationRefused { cause: ServingLegFailure { item: "compute.attempts", cause: "the presence read was refused" } }, dispatched_revision: pin_sha) {
     CensusGateAsk => true
     CensusGateDefer { reason: _ } => false
   }
-  asked && deferred_stale && deferred_refused && deferred_unrun && deferred_no_binary && asked_unread_binary && deferred_no_attempts && asked_unread_attempts
+  asked && asked_behind_pin && deferred_no_door && deferred_door_refused && deferred_door_unread && deferred_refused && deferred_unrun && deferred_no_binary && asked_unread_binary && deferred_no_attempts && asked_unread_attempts
+}
+
+// AN UNKNOWN CENSUS ON A TRAILING CHECKOUT DOWNGRADES TO A DEFERRAL (review 99586), naming the
+// detachment that reopens it — so the checkout write that replaces that very tree is never stranded
+// by an answer the trailing tree could not give. GREEN FOR THE STALL CLASS. RED CONTROLS: the same
+// Unknown at an ALIGNED checkout stays Unknown (a genuinely unreadable seat on a host that IS at the
+// pin must still dominate and refuse recovery — fail_closed, never plan a write toward an unreadable
+// seat); an Unread revision cannot prove "behind", so it stays Unknown; an ESTABLISHED census reads
+// live seat facts and keeps its meaning whatever revision carried the door code.
+test fn an_unknown_census_behind_the_pin_defers_and_never_strands_the_checkout() -> Bool {
+  let pin_sha = "0000000000000000000000000000000000000000"
+  let stale = "1111111111111111111111111111111111111111"
+  let unknown = RecoverCatalogLegUnknown { detail: "the census door declined at exit 1, which its contract does not speak" }
+  let behind = census_reading_for_checkout(leg: unknown, checkout_revision: Present { value: ObservationEstablished { observed: stale } }, dispatched_revision: pin_sha)
+  let downgraded = match behind {
+    RecoverCatalogLegDeferred { reason: r } => string_contains(s: r, pattern: "trailing checkout") && string_contains(s: r, pattern: pin_sha) && string_contains(s: r, pattern: "detaches")
+    _ => false
+  }
+  let aligned = census_reading_for_checkout(leg: unknown, checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, dispatched_revision: pin_sha)
+  let aligned_stays_unknown = match aligned {
+    RecoverCatalogLegUnknown { detail: d } => string_contains(s: d, pattern: "exit 1")
+    _ => false
+  }
+  let unread_revision = census_reading_for_checkout(leg: unknown, checkout_revision: Absent, dispatched_revision: pin_sha)
+  let unread_stays_unknown = match unread_revision {
+    RecoverCatalogLegUnknown { detail: _ } => true
+    _ => false
+  }
+  let stale_established = census_reading_for_checkout(leg: RecoverCatalogLegEstablished { entries: [] }, checkout_revision: Present { value: ObservationEstablished { observed: stale } }, dispatched_revision: pin_sha)
+  let established_stays = match stale_established {
+    RecoverCatalogLegEstablished { entries: es } => length(es) == 0
+    _ => false
+  }
+  downgraded && aligned_stays_unknown && unread_stays_unknown && established_stays
+}
+
+// THE CARRIER TEST IS EXACT, over supplied bytes (review 99559): the door is carried only when a line
+// BEGINS `fn <name>(` — where the name is the ONE census_door_function the door invocation itself
+// calls, so no second spelling of the door's identity can drift. RED controls: a commented-out
+// declaration, a mid-line prose mention, and a sibling sharing the name's prefix are each NOT a
+// carrier — the substring-true class that would ask a door that does not exist. Green: the plain
+// declaration line. Fixtures are built FROM census_door_function, not by respelling it.
+test fn the_carrier_read_demands_the_exact_declaration() -> Bool {
+  let carried = census_door_declaration_carried(text: concat(concat("\nfn ", census_door_function), "(host: String) -> CliWireResponse {"))
+  let commented = census_door_declaration_carried(text: concat(concat("\n// fn ", census_door_function), "(host: String) {"))
+  let prose = census_door_declaration_carried(text: concat("documents fn ", census_door_function, "( in prose, mid-line, with no carrier"))
+  let sibling = census_door_declaration_carried(text: concat(concat("\nfn ", census_door_function), "_v2(host: String) {"))
+  let empty = census_door_declaration_carried(text: "")
+  carried && !commented && !prose && !sibling && !empty
 }
 
 // RED CONTROL (live holder): an established 'hold' entry — a live or too-early holder, which the model
@@ -2544,7 +2616,7 @@ fn fresh_host_proven_absent_slice_observed(d: RemoteBuildServingDesired) -> Serv
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
     scratch_root: est_absent(), scratch_root_mode: store_mode_absent(), compute_attempts: est_absent(),
     checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
-    serve_binary_sha256: Absent, checkout_revision: Absent,
+    serve_binary_sha256: Absent, checkout_revision: Absent, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
     user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
@@ -2619,7 +2691,7 @@ fn all_slice_refused_account_present_observed(d: RemoteBuildServingDesired, line
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "systemctl refused, account present" } },
@@ -2662,7 +2734,7 @@ fn refused_passwd_settled_slice_observed(d: RemoteBuildServingDesired, line: Str
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d), compute_attempts: est_ok(),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) }, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -2775,7 +2847,7 @@ fn fresh_absent_observed_refused_toolchain(dline: String, d: RemoteBuildServingD
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
     scratch_root: est_absent(), scratch_root_mode: store_mode_absent(), compute_attempts: est_absent(),
     checkout: est_absent(), toolchain: refused_b(), rustup: est_absent(),
-    serve_binary_sha256: Absent, checkout_revision: Absent,
+    serve_binary_sha256: Absent, checkout_revision: Absent, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -2860,7 +2932,7 @@ fn fresh_absent_observed_at_arch(line: String, d: RemoteBuildServingDesired, arc
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
     scratch_root: est_absent(), scratch_root_mode: store_mode_absent(), compute_attempts: est_absent(),
     checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
-    serve_binary_sha256: Absent, checkout_revision: Absent,
+    serve_binary_sha256: Absent, checkout_revision: Absent, checkout_door: Present { value: est_ok() },
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -3126,7 +3198,9 @@ fn run_remote_build_serving_converge_witness() -> ProcessExit {
     check_or_name(name: "the_native_build_carries_the_single_cargo_package_authority", held: the_native_build_carries_the_single_cargo_package_authority()),
     check_or_name(name: "a_stale_seat_plans_the_recovery_when_identity_is_met", held: a_stale_seat_plans_the_recovery_when_identity_is_met()),
     check_or_name(name: "a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery", held: a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery()),
-    check_or_name(name: "the_census_gate_asks_only_at_the_dispatched_revision", held: the_census_gate_asks_only_at_the_dispatched_revision()),
+    check_or_name(name: "the_census_gate_asks_only_a_checkout_proven_to_carry_the_door", held: the_census_gate_asks_only_a_checkout_proven_to_carry_the_door()),
+    check_or_name(name: "the_carrier_read_demands_the_exact_declaration", held: the_carrier_read_demands_the_exact_declaration()),
+    check_or_name(name: "an_unknown_census_behind_the_pin_defers_and_never_strands_the_checkout", held: an_unknown_census_behind_the_pin_defers_and_never_strands_the_checkout()),
     check_or_name(name: "a_legitimately_held_seat_plans_nothing", held: a_legitimately_held_seat_plans_nothing()),
     check_or_name(name: "an_unreadable_seat_census_refuses_the_plan", held: an_unreadable_seat_census_refuses_the_plan()),
     check_or_name(name: "a_stale_seat_with_an_unmet_identity_defers_the_recovery", held: a_stale_seat_with_an_unmet_identity_defers_the_recovery()),

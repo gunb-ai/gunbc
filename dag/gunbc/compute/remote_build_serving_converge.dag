@@ -32,7 +32,7 @@ import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, Typ
 // shape every host-side door run shares. The leg itself decides nothing.
 import gunbc.compute.work_request { GunbcDriver, gunbc_binary_name, gunbc_cargo_package }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading, recover_catalog_unknown_leg_reason,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading, recover_catalog_unknown_leg_reason,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
@@ -273,6 +273,43 @@ fn serving_leg_sha256(item: String, target: SshTarget, context: FleetSshExecutio
 // `safe.directory` '*' word is needed — and '*' is not a portable remote word anyway.
 fn serving_leg_checkout_revision(item: String, target: SshTarget, context: FleetSshExecutionContext, dir: String, owner: String) -> ObservationAttempt<String, ServingLegFailure> {
   serving_leg_first_token(item: item, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: owner as NonEmptyStr, command: argv_words(command: git_rev_parse_head_command(repository_dir: dir)))))
+}
+
+// THE CENSUS DOOR ADDRESS, declared ONCE (single_authority): the door's own invocation
+// (converge_gunbc_door_argv's entry, serving_leg_seat_census's function) and the carrier probe below
+// all read these two data, so the probe cannot spell a second identity for the door. The loudness
+// closes the rename class: if the door moves or renames and one of these is left behind, the door
+// INVOCATION itself fails — a typed refused census leg named in the receipt, visible on every
+// observe — rather than the probe silently deferring the census forever (the stranding class this
+// PR exists to remove). Witness: the_carrier_read_demands_the_exact_declaration.
+data census_door_module_tail: String = "/dag/gunbc/compute/work_provider_local.dag"
+data census_door_function: String = "compute_recover_catalog_serving_cli"
+
+// THE CARRIER TEST, pure over the module's bytes so a claim exercises it without a host: the file
+// carries the door exactly when a LINE BEGINS the declaration `fn <name>(` — anchored at the newline
+// so a commented-out declaration ("// fn name("), a prose mention mid-line, and a sibling sharing
+// the name's prefix ("fn name_v2(") all answer false (fail_closed: no plausible carrier is
+// fabricated from a substring).
+fn census_door_declaration_carried(text: String) -> Bool {
+  string_contains(s: text, pattern: concat(concat("\nfn ", census_door_function), "("))
+}
+
+// THE DOOR-CARRIER LEG: does this checkout carry the census door? One elevated cat of the module the
+// recovery doors live in; the decision is the door function's own declaration, asked of the bytes the
+// checkout itself holds. Exit 0 settles true/false; any other outcome is a REFUSED read — the census
+// gate defers on a refused read and never guesses the carrier away (fail_closed: absence is proven,
+// never assumed). The file is repo source, not secret material: the receipt records the Bool, never
+// the bytes.
+fn serving_leg_checkout_census_door(item: String, target: SshTarget, context: FleetSshExecutionContext, dir: String, owner: String) -> ObservationAttempt<Bool, ServingLegFailure> {
+  let argv = sudo_elevate_argv(command: argv_words(command: cat_command(path: concat(dir, census_door_module_tail))))
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: argv) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
+    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
+      true => ObservationEstablished { observed: census_door_declaration_carried(text: r.stdout) }
+      false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("cat exit ", to_string(r.exit_code)) } }
+    }
+  }
 }
 
 fn serving_leg_arch(item: String, target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<String, ServingLegFailure> {
@@ -656,6 +693,13 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: false } => Absent
     _ => Present { value: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: d.checkout_dir, owner: d.account_name) }
   }
+  // THE DOOR-CARRIER READ rides the SAME two gates. A confirmed-absent subject PROVES its checkout
+  // carries nothing: established-false (the gate defers on it, exactly as a no-door checkout defers).
+  // An unread gate runs the read: a real answer beats a skip nobody proved.
+  let checkout_door_value = match revision_gate {
+    ObservationEstablished { observed: false } => Present { value: ObservationEstablished { observed: false } }
+    _ => Present { value: serving_leg_checkout_census_door(item: "checkout.door", target: target, context: context, dir: d.checkout_dir, owner: d.account_name) }
+  }
   // A3: the file-mode legs, gated the same way — stat runs only under a confirmed-present file. The
   // authorized_keys reader mints the established empty string exactly when the file was confirmed
   // absent, so established-non-empty IS the subject; a refused content read runs the stat anyway.
@@ -703,17 +747,20 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   }
   // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
   // census_door_gate, a pure function over the read values so a claim exercises it without a host. The
-  // recovery doors (compute_recover_catalog_serving_cli and its two apply siblings) live in the checkout's dag;
-  // a checkout not yet detached at the dispatched revision does not contain them, and asking its stale
-  // tree answers "function compute_recover_catalog_cli is not in the loaded entry" — measured on srv1,
-  // run 44984397614, 2026-11-22. An unknown census dominates the assessment (fail_closed), and an
-  // indeterminate assessment plans nothing — so asking a door that cannot exist would strand the very
-  // checkout write that carries it, forever. The leg DEFERS with the reason when the gate says DEFER:
-  // no door runs, the plan carries no recovery write, the receipt says so, and the next assessment —
-  // with the checkout detached at the pin — asks the door. Never a fabricated empty census, and never
-  // an unknown for a door that was simply not asked.
-  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, serve_binary: serve_binary, compute_attempts: compute_attempts, dispatched_revision: pin.dispatched_revision) {
-    CensusGateAsk => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
+  // recovery doors (compute_recover_catalog_serving_cli and its two apply siblings) live in the checkout's dag,
+  // so the gate asks the checkout ITSELF whether it carries the door (the elevated door-carrier read),
+  // rather than demanding equality with the moving dispatched tip: a checkout detached by a past plan at
+  // revision P can never again equal a later dispatch's tip, and equality-only gated the census off
+  // forever on every host whose checkout trails main — srv1's stranded recovery, manager ruling 2026-11-28.
+  // Asking a tree that lacks the door answers "function is not in the loaded entry" (measured on srv1,
+  // run 44984397614, 2026-11-22), which is why proven absence still DEFERS. An unknown census dominates
+  // the assessment (fail_closed), and an indeterminate assessment plans nothing — so asking a door that
+  // cannot exist would strand the very checkout write that carries it. The leg DEFERS with the reason
+  // when the gate says DEFER: no door runs, the plan carries no recovery write, the receipt says so, and
+  // the next assessment — once the checkout write has delivered the door — asks it. Never a fabricated
+  // empty census, and never an unknown for a door that was simply not asked.
+  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, checkout_door: checkout_door_value, serve_binary: serve_binary, compute_attempts: compute_attempts, dispatched_revision: pin.dispatched_revision) {
+    CensusGateAsk => census_reading_for_checkout(leg: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid), checkout_revision: checkout_revision_value, dispatched_revision: pin.dispatched_revision)
     CensusGateDefer { reason: r } => RecoverCatalogLegDeferred { reason: r }
   }
   // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
@@ -747,6 +794,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     rustup: rustup,
     serve_binary_sha256: serve_binary_value,
     checkout_revision: checkout_revision_value,
+    checkout_door: checkout_door_value,
     authorized_keys_mode: authorized_keys_mode_value,
     serve_binary_mode: serve_binary_mode_value,
     serve_identity: serve_identity_value,
@@ -1574,7 +1622,7 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
   match gunbc_installed_run_with_named_arguments_command(
     binary: d.serve_binary as NonEmptyStr,
     source_roots: [concat(repo, "/dag"), concat(repo, "/src/v2")],
-    entry: concat(repo, "/dag/gunbc/compute/work_provider_local.dag"),
+    entry: concat(repo, census_door_module_tail),
     function: function,
     arguments: arguments
   ) {
@@ -1630,28 +1678,68 @@ fn converge_as_user_outcome(kind: FleetLegKind, target: SshTarget, context: Flee
   )
 }
 
+// AN UNKNOWN CENSUS ON A CHECKOUT THAT TRAILS THE PIN IS A DEFERRAL, NOT A VERDICT (review 99586).
+// The gate proved the tree CARRIES the door; this decides what an unfavourable ANSWER means. A door
+// that cannot run at revision P (its sources no longer load under the dispatched binary, a signature
+// the binary no longer accepts) answers Unknown — and an Unknown census dominates the assessment, an
+// indeterminate assessment plans nothing, and the checkout write that would replace that very tree
+// never lands: the permanent stall returns by a new route, which the manager's 2026-11-28 ruling
+// forbids ("a checkout behind the pin is drift the apply writes, and the census runs in the
+// post-checkout assessment"). So while the checkout is ESTABLISHED BEHIND the dispatched revision, an
+// Unknown downgrades to Deferred, naming the detachment that reopens the census. Every other reading
+// keeps its meaning: an ESTABLISHED census answers live seat facts read through the door and plans
+// recovery whatever revision carried the door code; an Unknown at an ALIGNED host (or where alignment
+// was never established) is an observation the model genuinely lacks — it dominates, and recovery
+// refuses toward it (fail_closed: never plan a write toward an unreadable seat).
+fn census_reading_for_checkout(leg: RecoverCatalogLegReading, checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, dispatched_revision: String) -> RecoverCatalogLegReading {
+  let behind = match checkout_revision {
+    Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
+      true => false
+      false => true
+    }
+    // A REFUSED revision read proves nothing about trailing; "behind" is never assumed, so the
+    // census answer keeps its own meaning (fail_closed) — same fail-closed choice as Absent.
+    Present { value: ObservationRefused { cause: _ } } => false
+    Absent => false
+  }
+  match leg {
+    RecoverCatalogLegUnknown { detail: d } => match behind {
+      true => RecoverCatalogLegDeferred { reason: join(["the census door at the trailing checkout revision could not answer (", d, "); the checkout write this plan carries detaches that tree at the dispatched revision ", dispatched_revision, " and the census is asked again from that tree"], "") }
+      false => RecoverCatalogLegUnknown { detail: d }
+    }
+    RecoverCatalogLegEstablished { entries: es } => RecoverCatalogLegEstablished { entries: es }
+    RecoverCatalogLegDeferred { reason: r } => RecoverCatalogLegDeferred { reason: r }
+  }
+}
+
 // Whether the census door may be asked at all, decided over the READ values so a claim exercises the
 // gate without a host (witness_one_interface: the witness supplies the reads at the boundary). The door
 // is carried by THREE things it must exist to be asked: the serving CHECKOUT (the door lives in the
-// checkout's dag), the INSTALLED SERVE BINARY (the door is run through that program), and the account's
-// compute ATTEMPTS DIRECTORY (the door's census IS a Filesystem.List of that directory, which
-// gunbc.compute.compute_attempt_slots_root refuses as unread when it is absent). So it exists only where
-// the checkout stands AT the dispatched revision, the binary is not proven absent, and the attempts
-// directory is not proven absent; an unestablished or refused read defers too — a host whose carrier is
-// not settled cannot be known to carry the door. DEFER is not UNKNOWN: nothing was read and refused
-// (fail_closed reserves unknown for that), and it is never an established-empty census.
+// checkout's dag — asked of the checkout's OWN bytes by the door-carrier read, NOT by equality with the
+// moving dispatched tip, which a checkout detached at a past plan's revision can never satisfy again:
+// equality gated the census off forever on every host trailing main — the defect the manager's
+// 2026-11-28 ruling removes), the INSTALLED SERVE BINARY (the door is run through that program), and
+// the account's compute ATTEMPTS DIRECTORY (the door's census IS a Filesystem.List of that directory,
+// which gunbc.compute.compute_attempt_slots_root refuses as unread when absent — ken, #17238).
+// So it exists where the revision is ESTABLISHED (identity must know which checkout answered), the
+// door-carrier read establishes the door PRESENT, and the binary is not proven absent; an
+// unestablished or refused revision, or a refused or skipped carrier read, defers — an unproven carrier
+// is never asked. DEFER is not UNKNOWN: nothing was read and refused as a census answer (fail_closed
+// reserves unknown for that), and it is never an established-empty census.
 type CensusGate
   = CensusGateAsk
   | CensusGateDefer { reason: String }
 
-fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, serve_binary: ObservationAttempt<Bool, ServingLegFailure>, compute_attempts: ObservationAttempt<Bool, ServingLegFailure>, dispatched_revision: String) -> CensusGate {
+fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, checkout_door: ObservationAttempt<Bool, ServingLegFailure>?, serve_binary: ObservationAttempt<Bool, ServingLegFailure>, compute_attempts: ObservationAttempt<Bool, ServingLegFailure>, dispatched_revision: String) -> CensusGate {
   let checkout_gate = match checkout_revision {
-    Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
-      true => CensusGateAsk
-      false => CensusGateDefer { reason: join(["the serving checkout stands at ", v, ", not the dispatched revision ", dispatched_revision, "; the recovery door lives in the checkout, so the census waits for the assessment after the checkout write detaches it"], "") }
+    Present { value: ObservationEstablished { observed: v } } => match checkout_door {
+      Present { value: ObservationEstablished { observed: true } } => CensusGateAsk
+      Present { value: ObservationEstablished { observed: false } } => CensusGateDefer { reason: join(["the serving checkout at ", v, " does not carry the census door; the checkout write this plan carries detaches at the dispatched revision ", dispatched_revision, " and brings it, so the census waits for the assessment after that detachment"], "") }
+      Present { value: ObservationRefused { cause: c } } => CensusGateDefer { reason: join(["the census-door carrier read on the checkout at ", v, " was refused (", c.cause, "); an unproven carrier is never asked"], "") }
+      Absent => CensusGateDefer { reason: join(["the census-door carrier of the checkout at ", v, " was never read; the census is asked only from a checkout PROVEN to carry the door"], "") }
     }
     Absent => CensusGateDefer { reason: join(["the serving checkout's revision is not established against the dispatched revision ", dispatched_revision, "; the census door is asked only from a checkout known to carry it"], "") }
-    Present { value: ObservationRefused { cause: c } } => CensusGateDefer { reason: join(["the serving checkout's revision read was refused (", c.cause, "), so the census door — which that checkout carries — cannot be known to exist"], "") }
+    Present { value: ObservationRefused { cause: c } } => CensusGateDefer { reason: join(["the serving checkout's revision read was refused (", c.cause, "), so no established checkout can be known to carry the door"], "") }
   }
   // THE CENSUS DOOR IS CARRIED BY THE INSTALLED SERVE BINARY AS WELL AS THE CHECKOUT. The door is run
   // AS the account through the installed binary (converge_gunbc_door_argv runs d.serve_binary, the same
@@ -1702,7 +1790,7 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
       Absent => RecoverCatalogLegUnknown { detail: "the serving account's uid is unobserved, so the census door cannot be placed in its user session" }
       Present { value: serving_uid } => match converge_gunbc_door_argv(
         d: d,
-        function: "compute_recover_catalog_serving_cli",
+        function: census_door_function,
         arguments: [NamedArgumentRequest { name: "host", value: d.host as String }],
         runtime_dir: user_session_runtime_dir(uid: serving_uid)
       ) {
