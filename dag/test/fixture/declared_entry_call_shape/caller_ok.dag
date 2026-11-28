@@ -1,0 +1,15 @@
+module test.fixture.declared_entry_call_shape.caller_ok
+
+// THE ACCEPTING ARM OF THE FIXTURE PAIR: every label names a declared parameter.
+
+import std.types { List, String }
+import test.fixture.declared_entry_call_shape.callee { fixture_step }
+
+fn fixture_call_ok() -> String {
+  fixture_step(source_roots: ["dag/"], target: "gunbc.site.gunb_ai_site", receipt_rel: "receipt.json")
+}
+
+// A route whose entry file exists, so the second refusal stays silent on this file.
+fn fixture_route_ok() -> String {
+  join(["gunbc run --entry dag/gunbc/site/gunb_ai_pages_workflow.dag --function site_write_main"], " ")
+}

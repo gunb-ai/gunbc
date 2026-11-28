@@ -1,0 +1,23 @@
+module test.fixture.declared_entry_call_shape.caller_bad
+
+// THE REFUSING ARM OF THE FIXTURE PAIR: `claim_run` is the label the real break used, and
+// `gunbc_run_step_script_for_target` declares no such parameter. Never resolved by anything -- see
+// callee.dag's header for why that is what makes this file legal to keep in the tree.
+//
+// EXPECTED CALL-SHAPE REFUSAL: this file exists to be refused by
+// dag/gunbc/instruments/declared_entry_call_shape.dag, so the CI step that runs that instrument over a PR
+// diff skips it -- a check that refused its own fixtures would red every PR that touched them. A claim that
+// needs the refusal names this file in `expected_refusal_files`, which judges it again; the refusal below is
+// asserted by test.claim.declared_entry_call_shape_witness, never assumed.
+
+import std.types { List, String }
+import test.fixture.declared_entry_call_shape.callee { fixture_step }
+
+fn fixture_call_bad() -> String {
+  fixture_step(
+    source_roots: ["dag/"],
+    target: "gunbc.site.gunb_ai_site",
+    receipt_rel: "receipt.json",
+    claim_run: false
+  )
+}

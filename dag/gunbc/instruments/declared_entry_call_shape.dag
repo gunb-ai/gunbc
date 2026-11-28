@@ -1,0 +1,971 @@
+module gunbc.instruments.declared_entry_call_shape
+
+// A CALL-SHAPE BREAK IS A DISAGREEMENT BETWEEN TWO FILES THAT ARE BOTH ON DISK, so it does not need a
+// closure to see. `a93c6559c97` passed `claim_run: false` to `gunbc_run_step_script_for_target`, which
+// declares no `claim_run` (gunbc.site.gunb_ai_pages_workflow); the merge stayed green and the break was
+// found 1391 s and 13.3 GiB later, by whoever ran the entry next (roadmap row
+// gunbc-entries-resolve-checked-in-ci). gunbc CI resolves no entries, so today the first resolver in the
+// tree is a person, on a step deadline, paying the whole closure.
+//
+// THE LABEL RULE IS HELD A SECOND TIME, AND THAT IS A DECLARED DIVERGENCE, NOT A FORK.
+// gunbc.design_argument::single_authority: "a second place that independently decides it is a fork", and the
+// violation is an UNDECLARED second authority. gunbc.design_argument::conformance: the only red is diverging
+// with no reason. So the divergence is stated with its reason and its tie instead of being argued away.
+// WHAT IS MIRRORED: the one predicate `cs_label_ok` below -- caller label `x` is accepted against a declared
+// `x`, `_x` (the deliberately-unused-parameter idiom), or `_`. The authority for that decision is Rust, not
+// this file: v1_interpreter.rs `call_function_inner` raises CallContractMismatch through
+// `call_arg_label_matches_param`, and the compile seam applies the same predicate in `direct_call_shape_diags`
+// (src/v1/stage0/src/v1_compiler_infer.rs: "a caller label naming no declared parameter must raise, never
+// resolve, so a caller cannot silently bind the wrong parameter").
+// THE REASON IT IS MIRRORED RATHER THAN CALLED: the engine's matcher is unreachable to a CI closure at a cost
+// anyone would pay. Asking the engine means resolving -- the request arm measured 898 files, 143,992 ms and
+// 3,435,568 KiB per leg; reading the Rust matcher wholesale is the 5 m 18 s whole-tree pass. This row exists
+// to remove exactly that cost, so the rule travels as text and the tie travels as a witness.
+// THE TIE, BY EXECUTION AND NOT BY PROSE: test.claim.declared_entry_call_shape_witness's four
+// `the_engine_matcher_*` claims read src/v1/stage0/src/v1_compiler_infer.rs, bound the two functions that
+// decide the rule, and assert the three arms this predicate writes out. Drop the `_x` idiom, add an arm, or
+// rename the matcher and those claims redden while this predicate keeps passing green: that gap is the drift
+// this paragraph exists to make visible, and it fails in CI, where a person sees it.
+// WHAT IS NOT MIRRORED: the resolver, the closure, the reach of an entry, and where a name lives. The engine
+// stays the sole authority there (READS TEXT, NEVER RESOLVES, below). Where this module cannot attribute a
+// call -- a local declaration, a whole-module import, a homonym whose parameter list it cannot read -- it
+// SKIPS and COUNTS. Refusing on a guess about which `f` was meant is how an instrument teaches its readers
+// to ignore it (gunbc.design_argument::fail_closed: done means green by execution, and a check that cries
+// wolf gets disabled, not heeded).
+//
+// WHAT IT REFUSES -- exactly two things:
+//   PASS_A_LABEL       a label passed that the attributed declaration does not name. The `claim_run` shape.
+//   MISSING_ENTRY_FILE a route literal `--entry <path> --function <fn>` naming a file that is not in the
+//                      tree: the same class of break, found one step later and more expensively.
+// WHAT IT NEVER REFUSES: a declared parameter some call site omits. One caller may legitimately be one of
+// several, and refusing that shape reports 429 findings on unmodified main today, almost all of them the
+// scanner's reach (brand(std.types).name and friends). It is reported, never refused.
+//
+// SLIM BY DESIGN, per the manager's condition on this row: std types, lists and algebra, extdeps.filesystem
+// for the reads, and NOTHING under gunbc.* -- an instrument that imports the hubs it audits would pay the
+// closure it exists to avoid, and would move the cost it measures. Measured at this shape:
+// resolve_entry_graph_inclusive ms=1159, demand_acquired_modules=53 (the request arm of the same binary:
+// 898 files / 143,992 ms / 3,435,568 KiB; the #17114 front door: 150 / 9,751 ms / 374,128 KiB). The import
+// list is pinned by test.claim.compute.declared_entry_call_shape_witness's own w_import_lines row, and the
+// closure cap by the same lane -- a check that silently grows into the hub forest stops being cheap, and
+// nothing here can stop it from the inside.
+//
+// READS TEXT, NEVER RESOLVES. The instrument is a scanner over source, and says so. The engine's resolver
+// stays the sole authority on what a closure is; this module only predicts one narrow, located class of
+// what the resolver would refuse, for files a PR touched.
+//
+// SCOPE: the changed .dag files; their imports are followed ONE hop, to read parameter lists. Whole-tree
+// calibration figures -- 8,777 files, 133,818,701 bytes, 178,190 calls attributed to an imported
+// declaration, 253,088 local, 153,892 not attributable, 102 s -- come from the Python oracle this module
+// was written against. The oracle is calibration only and never the CI instrument: the substrate is .dag,
+// and a Python checker would be a second authority outside the model. The .dag instrument must agree with
+// it on main and on every red control.
+
+import std.types { List, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.algebra { trim, string_contains }
+import std.list { list_member, distinct_by_key }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// The names a file imports, each with the module it came from. A record and not a joined string: a
+// separator would be a second, private syntax inside the model's own syntax.
+type ImportedName { module: String, name: String }
+
+// ── SMALL READERS ──────────────────────────────────────────────────────────────────────────────────────
+
+fn cs_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn cs_read(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { read.content } else { "" }
+}
+
+fn cs_lines(path: String) -> List<String> {
+  split(s: cs_read(path: path), delimiter: "\n")
+}
+
+// A COMMENT IS NOT CODE (the oracle's R3 rule, learned the expensive way). Scanning prose is how the first
+// running version tried to open `<path>`, `"))`, and `names`: this file's own header says "a whole-module
+// `import m` carries no names", and a header line is not an import directive. Comments are dropped before
+// any pattern is looked for, so a comment cannot make the instrument read a file or judge a call.
+fn cs_code_lines(text: String) -> List<String> {
+  map(filter(split(s: text, delimiter: "\n"), line => !starts_with(s: trim(s: line), prefix: "//")),
+      line => cs_strip_trailing_comment(line: cs_blank_string_contents(line: line)))
+}
+
+// THE ORDER MATTERS: blank the literals FIRST, then strip the comment. Stripping first is what made this
+// file refuse itself twice, because the comment rule and the literal rule fight over the same characters --
+// `if !string_contains(s: line, pattern: "//")` contains the very marker the comment rule hunts for, so
+// stripping first cut the line at the literal, its argument list never closed, and the walk harvested
+// `dflt` (a label of a LATER call to cs_head) and attributed it to std.algebra's string_contains. Blank the
+// literals and the marker disappears with them, and the comment rule then only sees real comment text.
+//
+// An inline comment is stripped from `//` to the end of the line. Two conservative compromises, both in the
+// same direction: a `//` inside a string literal truncates that line's tail, and a call on a line whose
+// comment opens a bracket loses its tail -- either can only LOSE a label, never invent one. Worth stating,
+// because this rule earned its keep twice: the header prose of this very file -- "the verified string
+// vocabulary is ... starts_with(s:, prefix:), string_contains(s:, pattern:)" -- was harvested as call
+// sites and made the instrument refuse std.algebra's `trim` for "passing prefix" and "passing pattern",
+// 44 times over. Prose is not code, and a scanner that reads prose as code ends up refused by itself.
+// THE ORACLE'S R3 RULE, AND IT IS THE ONE THAT MATTERS MOST. String contents are blanked before any
+// pattern is looked for. This codebase puts shell scripts, ssh argv and prose in string literals, and an
+// unbalanced `(` inside a literal makes the argument-list walk run on past the call's real close and
+// harvest the labels of every call after it: without this rule the instrument reported 723 refusals on
+// remote_build_client.dag, all of them invented. A literal is therefore replaced by nothing, its quotes
+// kept, and the walk alternates outside/inside per line -- .dag has no multi-line string literal, so a
+// line-local alternation is the whole rule. An escaped quote inside a literal is the known limit; like the
+// other two, it can only cost a label, never invent one.
+fn cs_blank_string_contents(line: String) -> String {
+  cs_blank_walk(pieces: split(s: line, delimiter: "\""), keep: true, acc: "")
+}
+
+fn cs_blank_walk(pieces: List<String>, keep: Bool, acc: String) -> String {
+  match pieces.first() {
+    Absent => acc
+    Present { value: p } => cs_blank_walk(pieces: pieces.skip(n: 1), keep: !keep,
+                                          acc: if keep { join([acc, p], "") } else { acc })
+  }
+}
+
+fn cs_strip_trailing_comment(line: String) -> String {
+  if !string_contains(s: line, pattern: "//") { line } else { cs_before(s: line, marker: "//") }
+}
+
+fn cs_exists(path: String) -> Bool {
+  Filesystem.Read(path: path).success
+}
+
+fn cs_head(xs: List<String>, dflt: String) -> String {
+  match xs.first() {
+    Present { value: x } => x
+    Absent => dflt
+  }
+}
+
+fn cs_drop_first(xs: List<String>) -> List<String> {
+  xs.skip(n: 1)
+}
+
+// `s` after the first occurrence of `marker`, or "" when absent. Written as a scan because the kernel
+// gives substring/starts_with and no index-of.
+fn cs_after(s: String, marker: String) -> String {
+  if !string_contains(s: s, pattern: marker) { "" } else { cs_after_from(s: s, marker: marker, start: 0) }
+}
+
+fn cs_after_from(s: String, marker: String, start: Int) -> String {
+  let end = string_length(s: s)
+  let head = substring(s: s, start: start, end: end)
+  if starts_with(s: head, prefix: marker) {
+    substring(s: s, start: start + string_length(s: marker), end: end)
+  } else if start >= end {
+    ""
+  } else {
+    cs_after_from(s: s, marker: marker, start: start + 1)
+  }
+}
+
+// `s` before the first occurrence of `marker`, or all of `s` when absent.
+fn cs_before(s: String, marker: String) -> String {
+  if !string_contains(s: s, pattern: marker) { s } else { cs_before_from(s: s, marker: marker, start: 0) }
+}
+
+fn cs_before_from(s: String, marker: String, start: Int) -> String {
+  let head = substring(s: s, start: start, end: string_length(s: s))
+  if starts_with(s: head, prefix: marker) {
+    substring(s: s, start: 0, end: start)
+  } else {
+    cs_before_from(s: s, marker: marker, start: start + 1)
+  }
+}
+
+// Characters that cannot appear in a parameter name. A fragment carrying one before its `:` is not a label
+// -- it is a nested record field, a type application, or an expression -- and is dropped. Dropping can
+// only ever cost a finding, never invent one, which is what makes the refusal trustworthy.
+fn cs_non_label_chars() -> List<String> {
+  [" ", "\t", "(", ")", "[", "]", "{", "}", "<", ">", "|", "&", "+", "*", "?",
+   "/", "\\", "\"", "'", ";", "=", "#", "!", "-", ".", ":", ","]
+}
+
+fn cs_is_identifier(s: String) -> Bool {
+  let t = trim(s: s)
+  string_length(s: t) > 0
+    && !any(cs_non_label_chars(), bad => string_contains(s: t, pattern: bad))
+}
+
+// The candidate roots a module name may live under, in order. `gunbc.compute.x` is dag/gunbc/compute/x.dag,
+// `std.types` is dag/std/types.dag, and the v2 corpus lives under src/v2. A module with no file under any
+// root is not a declaration source: its imports are counted as unattributed and never refused on.
+fn cs_module_roots() -> List<String> {
+  ["dag/", "src/v2/"]
+}
+
+fn cs_module_file(module: String) -> String {
+  let rel = join(split(s: module, delimiter: "."), "/")
+  let candidates = if starts_with(s: module, prefix: "v2.") {
+    // THE v2 CORPUS IS ROOTED, NOT NESTED. Module `v2.workflow.gunbc_invoke_step_emit` is
+    // src/v2/workflow/gunbc_invoke_step_emit.dag: the leading `v2.` names the corpus, not a directory. The
+    // first version treated it as a directory and so could not find the declaration file for exactly one
+    // import in gunb_ai_pages_workflow.dag -- the import of gunbc_run_step_script_for_target, which is the
+    // callee of the historical `claim_run` break this row is named for. A root rule that misses the one
+    // file that matters is the reason the skip count is printed: it said "1 skipped" while the instrument
+    // reported a clean pass on the red.
+    join([join(["src/v2/", join(split(s: cs_after(s: module, marker: "v2."), delimiter: "."), "/")], ""), ".dag"], "")
+  } else {
+    ""
+  }
+  let all = concat(map(cs_module_roots(), root => join([root, rel, ".dag"], "")), [candidates])
+  match filter(filter(all, c => c != ""), c => cs_exists(path: c)).first() {
+    Present { value: c } => c
+    Absent => ""
+  }
+}
+
+// ── THE IMPORT SIDE ────────────────────────────────────────────────────────────────────────────────────
+//
+// Only names imported EXPLICITLY are used. A whole-module `import m` carries no names, and attributing a
+// call through it is a guess about which declaration answers; such calls land in the disclosed skip count.
+
+fn cs_import_name(part: String) -> String {
+  trim(s: cs_head(split(s: trim(s: part), delimiter: ":"), ""))
+}
+
+fn cs_import_pairs_of_line(module: String, body: String) -> List<ImportedName> {
+  map(filter(split(s: body, delimiter: ","), part => cs_is_identifier(s: cs_import_name(part))),
+      part => ImportedName { module: module, name: cs_import_name(part) })
+}
+
+fn cs_import_pairs(text: String) -> List<ImportedName> {
+  cs_import_pairs_from(lines: cs_code_lines(text: text))
+}
+
+// Walked by RECURSION OVER THE TAIL rather than by index: the kernel gives no integer indexing and
+// enumerate's element fields are not first/second, so an index-carrying walk would be a second, private
+// numbering of the same file (and gunbc.design_argument::single_authority rules out a positional naming
+// scheme beside the real one).
+fn cs_import_pairs_from(lines: List<String>) -> List<ImportedName> {
+  match lines.first() {
+    Absent => []
+    Present { value: line } => concat(cs_line_imports(line: line, rest: lines.skip(n: 1)),
+                            cs_import_pairs_from(lines: lines.skip(n: 1)))
+  }
+}
+
+fn cs_line_imports(line: String, rest: List<String>) -> List<ImportedName> {
+  let t = trim(s: line)
+  if !starts_with(s: t, prefix: "import ") {
+    []
+  } else if !string_contains(s: t, pattern: "{") {
+    []
+  } else {
+    let module = trim(s: cs_head(split(s: cs_after(s: t, marker: "import "), delimiter: " "), ""))
+    let opened = cs_after(s: t, marker: "{")
+    if string_contains(s: opened, pattern: "}") {
+      cs_import_pairs_of_line(module: module, body: cs_before(s: opened, marker: "}"))
+    } else {
+      cs_import_pairs_of_line(module: module, body: join([opened, cs_block_tail(lines: rest)], " "))
+    }
+  }
+}
+
+// The text of a multi-line import block, up to and including its closing brace.
+fn cs_block_tail(lines: List<String>) -> String {
+  match lines.first() {
+    Absent => ""
+    Present { value: line } => {
+      let trimmed = trim(s: line)
+      if string_contains(s: trimmed, pattern: "}") {
+        cs_before(s: trimmed, marker: "}")
+      } else {
+        join([trimmed, cs_block_tail(lines: lines.skip(n: 1))], " ")
+      }
+    }
+  }
+}
+
+// ── THE DECLARATION SIDE ───────────────────────────────────────────────────────────────────────────────
+//
+// The parameter list of `fn name(` ... balanced parens ..., read by BALANCE and not up to the first `)`.
+// The first draft read up to the first `)` and so cut the list at the close paren of a FUNCTION-TYPED
+// parameter -- `add: fn(String) -> FleetAddVerdict` -- silently dropping every parameter after it. That one
+// bug refused 182 call sites of code that compiles (fleet_keypair_mint_verdict's 20 with it, and the
+// `*_pass_at` / `*_at` / `*_response_over` higher-order families), which is exactly the wrong failure for an
+// instrument whose whole claim is that a refusal means something.
+fn cs_fn_params(text: String, fn_name: String) -> String {
+  let code = join(cs_code_lines(text: text), "\n")
+  let head = join(["fn ", fn_name, "("], "")
+  if !string_contains(s: code, pattern: head) { "" } else {
+    cs_call_body(tail: cs_head(cs_drop_first(split(s: code, delimiter: head)), ""))
+  }
+}
+
+// The declared names from the parameter text: a fragment's prefix before `:`, kept only when it is a bare
+// identifier. A nested comma inside a type can drop a parameter but never add one. `_key` keeps its
+// underscore, because the engine accepts caller label `key` against declared `_key` and this module must
+// agree with the engine, not correct it.
+fn cs_declared_names(param_text: String) -> List<String> {
+  filter(map(split(s: param_text, delimiter: ","), part => cs_label_of(part)),
+         name => cs_is_identifier(s: name))
+}
+
+// ── THE CALL SIDE ──────────────────────────────────────────────────────────────────────────────────────
+//
+// ONE PASS OVER THE CODE, ONE ENTRY PER CALL SITE. The first version asked "where does `name(` appear" by
+// splitting the file on the delimiter `name(` -- and `decide_run(` CONTAINS `run(`. That substring match
+// attributed the labels of `decide_run(r: …, js: …)` to the witness's local `fn run(id, attempt_n, …)` and
+// refused 28 sites of code that compiles and runs. A call site is therefore found structurally: the code is
+// split on `(`, and at each boundary the callee is the identifier run that ENDS the preceding piece (empty
+// when the character before the paren is not an identifier character, which makes that parenthesis a
+// grouping, a tuple, or a type application rather than a call), and the argument text is the pieces that
+// follow until the frame BALANCES BACK to zero. Taking only the next piece -- what the first version did --
+// loses an outer call's labels whenever a nested call comes first in its argument list: an under-refuse,
+// which is the worse error, because a green check then means less than it says.
+type CallSite { head: String, labels: List<String> }
+
+fn cs_call_sites(text: String) -> List<CallSite> {
+  let code = join(cs_code_lines(text: text), "\n")
+  let pieces = split(s: code, delimiter: "(")
+  cs_sites_walk(pieces: pieces, before: "", acc: [])
+}
+
+fn cs_sites_walk(pieces: List<String>, before: String, acc: List<CallSite>) -> List<CallSite> {
+  match pieces.first() {
+    Absent => acc
+    Present { value: p } => {
+      let rest = pieces.skip(n: 1)
+      let head = cs_callee_head(before: before)
+      cs_sites_walk(pieces: rest, before: p,
+                    acc: if head == "" { acc }
+                         else { concat(acc, [CallSite { head: head,
+                                                        labels: cs_top_labels(body: cs_call_args(pieces: pieces, depth: 1)) }]) })
+    }
+  }
+}
+
+// The argument text of the frame that opens immediately before `pieces`, walking forward until the frame
+// closes. Rejoining the consumed pieces with `(` is exact: that is the character the split removed.
+//
+// THE PARENS THIS WALK COUNTS ARE THE ONES THAT ARE NOT THERE. The code was split on `(`, so no piece ever
+// contains the opening paren that got it: a piece boundary IS an open paren. The first version counted
+// literal `(` inside each piece -- always zero -- so a call whose first argument was itself a call closed at
+// the nested call's own `)`, and the instrument reported `gunbc_run_step_script_for_target(source_roots:,
+// target:)` while the file also passed `receipt_rel` and the red's `claim_run`. That hid the historical
+// break this row is named for. The rule is therefore: each further piece crossed opens one frame, each `)`
+// closes one, and the frame closes INSIDE a piece when that piece carries as many `)` as the frames open.
+fn cs_call_args(pieces: List<String>, depth: Int) -> String {
+  match pieces.first() {
+    Absent => ""
+    Present { value: p } => {
+      let closes = cs_occurrences(hay: p, needle: ")")
+      let head = cs_upto_nth(pieces: split(s: p, delimiter: ")"), n: depth, acc: "")
+      if closes >= depth {
+        head
+      } else {
+        let tail = cs_call_args(pieces: pieces.skip(n: 1), depth: depth - closes + 1)
+        if tail == "" { "" } else { join([head, tail], "(") }
+      }
+    }
+  }
+}
+
+// The first `n` pieces rejoined by the delimiter: everything up to and including the n-th `)`.
+fn cs_upto_nth(pieces: List<String>, n: Int, acc: String) -> String {
+  if n <= 0 {
+    acc
+  } else {
+    match pieces.first() {
+      Absent => acc
+      Present { value: p } => cs_upto_nth(pieces: pieces.skip(n: 1), n: n - 1,
+                                          acc: if acc == "" { p } else { join([acc, p], ")") })
+    }
+  }
+}
+
+// Top-level argument labels of one argument list: split at depth zero over parens, braces AND brackets -- a
+// record or list literal inside an argument owns its own commas -- and a fragment without a colon is a
+// positional argument, which carries no label to check.
+fn cs_top_labels(body: String) -> List<String> {
+  filter(map(cs_top_walk(fragments: split(s: body, delimiter: ","), depth: 0), fragment => cs_label_of(fragment)),
+         label => cs_is_identifier(s: label))
+}
+
+// The identifier run that ENDS `before`: what sits immediately left of a `(`. Empty when the last character
+// is not an identifier character -- a space, an operator, a comma -- so that parenthesis is not read as a
+// call at all. Dots are kept, so `a.b.foo` comes back whole and the caller can apply the engine's own
+// whole-path-then-last-segment rule instead of a substring.
+fn cs_callee_head(before: String) -> String {
+  let end = string_length(s: before)
+  if end == 0 { "" } else { cs_head_scan(s: before, start: end - 1, end: end) }
+}
+
+fn cs_head_scan(s: String, start: Int, end: Int) -> String {
+  let c = substring(s: s, start: start, end: start + 1)
+  if !cs_is_head_char(c: c) {
+    ""
+  } else if start == 0 {
+    substring(s: s, start: 0, end: end)
+  } else if !cs_is_head_char(c: substring(s: s, start: start - 1, end: start)) {
+    substring(s: s, start: start, end: end)
+  } else {
+    cs_head_scan(s: s, start: start - 1, end: end)
+  }
+}
+
+// An identifier character is anything the label alphabet allows except `.` itself, which the label alphabet
+// forbids but a callee path needs. A character outside both lists is treated as an identifier character, so
+// the only possible error is a head that matches nothing, which costs a finding and never invents one.
+fn cs_is_head_char(c: String) -> Bool {
+  c != "" && !any(cs_non_label_chars(), bad => bad == c && bad != ".")
+}
+
+// THE CALLEE TEST, WHICH IS THE ENGINE'S OWN: an unqualified head must equal the declared name; a qualified
+// head may end in `.name`, because the interpreter resolves `a.b.c` by trying the whole path and then the
+// last segment. A LOCAL candidate is matched only by an UNQUALIFIED head: `m.run(…)` names a field of `m`,
+// and matching it against an unrelated local `fn run(…)` is the 28-refusal bug this section replaced.
+fn cs_head_matches(head: String, name: String, qualified: Bool) -> Bool {
+  head == name
+    || (qualified && string_length(s: head) > string_length(s: name)
+                      && ends_with(s: head, suffix: join([".", name], "")))
+}
+
+
+fn cs_fragments(part: String) -> List<String> {
+  cs_top_walk(fragments: split(s: cs_call_body(tail: part), delimiter: ","), depth: 0)
+}
+
+// THE ARGUMENT LIST, CUT AT ITS OWN MATCHING `)` AND NOT AT THE FIRST ONE. Cutting at the first `)` was
+// the instrument's most consequential miss: `gunbc_run_step_script_for_target(source_roots: ..., target:
+// gunbc_run_step_target(module: ..., function: "..."), receipt_rel: none, claim_run: false)` ends its
+// first argument at the nested call's close, so every label AFTER the nested call was invisible -- the
+// instrument stayed silent on the very `claim_run` shape it was written for, which is exactly how
+// a93c6559c97 got through. The list is therefore accumulated piece by piece, closing only when the
+// open-paren count that `name(` established returns to zero.
+fn cs_call_body(tail: String) -> String {
+  cs_body_walk(pieces: split(s: tail, delimiter: ")"), acc: "", depth: 1)
+}
+
+fn cs_body_walk(pieces: List<String>, acc: String, depth: Int) -> String {
+  match pieces.first() {
+    Absent => acc
+    Present { value: p } => {
+      // PARENS ONLY. The frame being matched here is the call's own parentheses, so a record or list
+      // literal inside an argument must NOT raise this counter -- braces and brackets raise the FRAGMENT
+      // counter in cs_top_walk instead, which is a different question (is this fragment still an argument
+      // of THIS call) from (has this call closed). Conflating them made the walk run past the call's real
+      // close and harvest labels from later calls: the instrument then reported 189 refusals on
+      // gunb_ai_pages_workflow.dag, including "minute from std.measure passes all_failed".
+      // A `)` inside a string literal does end the list early, which can only lose labels, never invent one.
+      let after_close = depth + cs_occurrences(hay: p, needle: "(") - 1
+      if after_close <= 0 {
+        if acc == "" { p } else { join([acc, p], ")") }
+      } else {
+        cs_body_walk(pieces: pieces.skip(n: 1), acc: if acc == "" { p } else { join([acc, p], ")") }, depth: after_close)
+      }
+    }
+  }
+}
+
+// AN OFF-BY-ONE THAT COST HOURS, AND IS WORTH KEEPING IN PROSE. `count(split(s: f, delimiter: n))` counts
+// the PIECES a split produces, which is one MORE than the occurrences of the delimiter: "a(b" splits to
+// ["a", "b"], one `(` and two pieces. Using the piece count as an occurrence count inflated every depth by
+// one per fragment, so no argument list ever closed and each call harvested the labels of the calls after
+// it -- 723 refusals on remote_build_client.dag, all of them invented, all against std.algebra's `trim`,
+// whose only parameter is `s`. The Python oracle never had this bug, which is the whole reason the oracle
+// exists: it is the calibration that says when the .dag instrument has drifted from the algorithm.
+fn cs_occurrences(hay: String, needle: String) -> Int {
+  count(split(s: hay, delimiter: needle)) - 1
+}
+
+fn cs_opens(f: String) -> Int {
+  cs_occurrences(hay: f, needle: "(") + cs_occurrences(hay: f, needle: "{") + cs_occurrences(hay: f, needle: "[")
+}
+
+fn cs_closes(f: String) -> Int {
+  cs_occurrences(hay: f, needle: ")") + cs_occurrences(hay: f, needle: "}") + cs_occurrences(hay: f, needle: "]")
+}
+
+fn cs_top_walk(fragments: List<String>, depth: Int) -> List<String> {
+  match fragments.first() {
+    Absent => []
+    Present { value: f } => {
+      let kept = if depth == 0 { [f] } else { [] }
+      concat(kept, cs_top_walk(fragments: fragments.skip(n: 1), depth: cs_add(depth, cs_opens(f)) - cs_closes(f)))
+    }
+  }
+}
+
+fn cs_add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+// A FRAGMENT WITH NO `:` IS NOT A LABEL, it is a positional argument, and this was the instrument's most
+// dangerous false positive: `provides_only(capabilities: [CargoCapability, RustcCapability, ...])` cut at
+// the first `)` and split on commas handed back bare element names, and the instrument refused
+// gunb_ai_pages_workflow.dag twice for "passing RustcCapability" to a function whose only parameter is
+// `capabilities`. An element of a list literal carries no label; only a fragment with a colon can.
+fn cs_label_of(fragment: String) -> String {
+  if !string_contains(s: fragment, pattern: ":") { "" } else { trim(s: cs_head(split(s: fragment, delimiter: ":"), "")) }
+}
+
+// THE MIRRORED LABEL RULE -- the only meaning this module decides on its own, declared at the module header
+// with its reason and its tie. The authority is Rust: src/v1/stage0/src/v1_compiler_infer.rs
+// `call_param_caller_labels` + `call_arg_label_matches_param`, reached from v1_interpreter.rs
+// `call_function_inner` and from the compile seam `direct_call_shape_diags`. Its three arms are reproduced
+// here one-for-one -- `_` accepts any label; a `_`-prefixed parameter accepts `_x` and `x`; anything else
+// accepts only its own name -- and NOTHING beyond them: no prefix matching, no case folding, no positional
+// leniency. test.claim.declared_entry_call_shape_witness's `the_engine_matcher_*` claims read that Rust and
+// redden if the arms change here or there, which is what stops this being an undeclared second authority.
+fn cs_label_ok(label: String, declared: List<String>) -> Bool {
+  list_member(xs: declared, x: label, eq: cs_eq)
+    || list_member(xs: declared, x: join(["_", label], ""), eq: cs_eq)
+    || list_member(xs: declared, x: "_", eq: cs_eq)
+}
+
+// THE MIRROR'S ONE PUBLIC FACE, so the witness lane can ask the SAME predicate the scanner asks instead of
+// writing the rule a third time. A witness that re-implemented this rule would be the very defect the header
+// above declares: three places deciding one meaning, two of them in test code.
+fn declared_entry_call_shape_label_ok(label: String, declared: List<String>) -> Bool {
+  cs_label_ok(label: label, declared: declared)
+}
+
+// ── THE TWO REFUSALS ───────────────────────────────────────────────────────────────────────────────────
+
+// THE FIRST: every attributed call whose labels the attributed declaration does not name.
+// ONE READ PER DECLARATION FILE, NOT ONE PER NAME IMPORTED FROM IT. The first version asked for the
+// declaration's text inside the loop over imported names, so a file importing ten names from one hub read
+// that hub ten times through the effect machine: a 78-file, 53,466-line scope took 164.6 s, most of it
+// re-reading the same dozen files. The pairs still filter the call sites; only the read moves out.
+type CalleeText { path: String, text: String }
+
+// THE BRACE FORM IS NOT SYNTACTIC SUGAR HERE. `CalleeText(path: p, text: ...)` -- the parenthesised form -- is
+// read as a CALL, and the engine refuses it in a function that also performs effects: "effect summary
+// incomplete: call to 'CalleeText' ... has no established callee identity, so its effects cannot be joined".
+// The brace form is a record LITERAL and carries no effect to join. The same file already writes
+// `CallSite { head: ..., labels: ... }` for the same reason.
+fn cs_callee_text_of(path: String) -> CalleeText {
+  CalleeText { path: path, text: cs_read(path: path) }
+}
+
+fn cs_pair_findings(file: String, sites: List<CallSite>, callee_text: String, name: String,
+                    label_of_module: String, qualified: Bool) -> List<String> {
+  if callee_text == "" {
+    []
+  } else {
+    let declared = cs_declared_names(param_text: cs_fn_params(text: callee_text, fn_name: name))
+    let called = flat_map(filter(sites, site => cs_head_matches(head: site.head, name: name,
+                                                                qualified: qualified)),
+                          site => site.labels)
+    if length(xs: declared) == 0 {
+      []
+    } else {
+      map(filter(called, label => !cs_label_ok(label: label, declared: declared)),
+          label => join([file, ": ", name, " from ", label_of_module, " passes ", label,
+                        "  declared: ", join(declared, ", ")], ""))
+    }
+  }
+}
+
+fn cs_callee_text(texts: List<CalleeText>, path: String) -> String {
+  if path == "" {
+    ""
+  } else {
+    match filter(texts, item => cs_eq(a: item.path, b: path)).first() {
+      Present { value: item } => item.text
+      Absent => ""
+    }
+  }
+}
+
+fn cs_findings(file: String) -> List<String> {
+  cs_findings_judged(file: file, judged: [])
+}
+
+fn cs_findings_judged(file: String, judged: List<String>) -> List<String> {
+  if cs_declares_control(path: file, judged: judged) { [] } else { cs_findings_of_read_file(file: file) }
+}
+
+fn cs_findings_of_read_file(file: String) -> List<String> {
+  let text = cs_read(path: file)
+  // ONE PARSE PER FILE, NOT ONE PER CANDIDATE NAME. The first version called the scanner inside the loop over
+  // the file's imports, so a file with twenty imports was scanned twenty times: the whole-tree calibration
+  // took over thirty minutes and was killed at its own timeout. The call sites are a fact about the file; a
+  // candidate declaration only filters them.
+  let sites = cs_call_sites(text: text)
+  let pairs = distinct_by_key(cs_import_pairs(text: text), q => join([q.module, q.name], "."))
+  let texts = map(distinct_by_key(map(pairs, pair => cs_module_file(module: pair.module)), p => p),
+                  path => cs_callee_text_of(path: path))
+  concat(
+    flat_map(pairs,
+             pair => cs_pair_findings(file: file, sites: sites,
+                                      callee_text: cs_callee_text(texts: texts,
+                                                                   path: cs_module_file(module: pair.module)),
+                                      name: pair.name, label_of_module: pair.module, qualified: true)),
+    flat_map(distinct_by_key(cs_local_fn_names(text: text), q => q),
+             name => cs_pair_findings(file: file, sites: sites, callee_text: text, name: name,
+                                      label_of_module: file, qualified: false)))
+}
+
+// The functions this file declares. The historical break this row is named for was of THIS shape:
+// `claim_run: false` was passed to `gunbc_run_step_script_for_target`, and the caller and the declaration
+// live together in gunbc.site.gunb_ai_pages_workflow.dag -- a scanner that only follows imports cannot see
+// it, which is what the first version of this instrument did, silently passing the red control. The
+// declaration's own parameter list is scanned as if it were a call and contributes exactly its declared
+// names, all of which the label rule accepts; that is why no special case for the declaration is needed.
+fn cs_local_fn_names(text: String) -> List<String> {
+  filter(map(filter(cs_code_lines(text: text), line => starts_with(s: trim(s: line), prefix: "fn ")),
+             line => trim(s: cs_before(s: cs_after(s: trim(s: line), marker: "fn "), marker: "("))),
+         name => cs_is_identifier(s: name))
+}
+
+// THE SECOND: a route literal naming a file that is not in the tree. The literals are read from the .dag
+// emitters -- the emitted YAML is drift-gated against these models, so scanning the model reads the
+// authority and not its projection.
+fn cs_entry_literals(file: String) -> List<String> {
+  filter(map(filter(cs_route_lines(text: cs_read(path: file)), line => string_contains(s: line, pattern: "--entry ")),
+             line => trim(s: cs_head(split(s: cs_after(s: line, marker: "--entry "), delimiter: " "), ""))),
+         entry => cs_looks_like_dag_path(path: entry))
+}
+
+// The derived population rule: a `--entry` token counts as a route only when it is shaped as a
+// repo-relative .dag path. This is not a courtesy filter to keep the instrument quiet on its own source --
+// and it does that, since the marker literal appears in this file's own code -- it is what makes the
+// population derived rather than a hand list: `--entry <path>` in prose, `--entry` in a flag help string,
+// or `--entry` followed by a shell substitution are not routes, and a check that refuses on them is a check
+// whose refusals stop meaning "the front door of this route is missing its file".
+fn cs_looks_like_dag_path(path: String) -> Bool {
+  string_contains(s: path, pattern: "/") && ends_with(s: path, suffix: ".dag")
+}
+
+// A ROUTE IS READ WITH ITS STRING LITERALS KEPT, unlike the label view. A route is emitted as part of a
+// command string, so blanking literals -- which the label scan must do -- would delete exactly what this
+// scan is looking for. Full-line comments are still dropped: a `--entry` in prose is not a route. The known
+// edge in the other direction: a path named in an INLINE comment on a code line is still seen here, and a
+// stale one will be refused; that is argued as a feature, not patched -- a route claim that names a file
+// which no longer exists is a lie about the route wherever it is written.
+fn cs_route_lines(text: String) -> List<String> {
+  filter(split(s: text, delimiter: "\n"), line => !starts_with(s: trim(s: line), prefix: "//"))
+}
+
+fn cs_missing_entry_files(file: String) -> List<String> {
+  cs_missing_entry_files_judged(file: file, judged: [])
+}
+
+fn cs_missing_entry_files_judged(file: String, judged: List<String>) -> List<String> {
+  if cs_declares_control(path: file, judged: judged) {
+    []
+  } else {
+    cs_missing_entry_lines(file: file)
+  }
+}
+
+fn cs_missing_entry_lines(file: String) -> List<String> {
+  map(filter(cs_entry_literals(file: file), entry => !cs_exists(path: entry)),
+      entry => join([file, ": --entry names no file: ", entry], ""))
+}
+
+// ── SCOPE AND VERDICT ──────────────────────────────────────────────────────────────────────────────────
+//
+// Loud, located refusals -- the shape gunbc.instruments.extdeps_scope_placement_gate took from gunbc#7644:
+// the reason travels in the ExitFailure, never a bare Bool, so a failing run names the file, the callee and
+// the label instead of "returned Bool(false)".
+
+fn cs_changed(paths: String) -> List<String> {
+  filter(map(split(s: paths, delimiter: "\n"), p => trim(s: p)),
+         p => p != "" && ends_with(s: p, suffix: ".dag"))
+}
+
+// THE POPULATION AND THE SCOPE. A declaration and its callers are different files, so scanning only the
+// files a PR touched misses the REVERSE break: drop a parameter from a declaration, leave every caller
+// untouched, and the changed file has no mislabelled call in it -- the mislabelled call is in a file the
+// diff never mentions. The scope is therefore the changed files PLUS every file that imports a module whose
+// file changed, one pass deep (the importer of an importer is the next PR's problem, and saying so is what
+// keeps the cost bounded). Which file imports which module is decided HERE, from the import lines; the
+// population the pass searches is supplied by the step, from git, for the same reason the changed list is:
+// which paths a repository tracks is git's fact, and what they mean is the model's.
+fn cs_population(paths: String) -> List<String> {
+  distinct_by_key(cs_changed(paths: paths), p => p)
+}
+
+fn cs_module_of_file(path: String) -> String {
+  if starts_with(s: path, prefix: "src/v2/") {
+    join(["v2.", cs_dots(s: cs_before(s: cs_after(s: path, marker: "src/v2/"), marker: ".dag"))], "")
+  } else if starts_with(s: path, prefix: "dag/") {
+    cs_dots(s: cs_before(s: cs_after(s: path, marker: "dag/"), marker: ".dag"))
+  } else {
+    ""
+  }
+}
+
+fn cs_dots(s: String) -> String {
+  join(split(s: s, delimiter: "/"), ".")
+}
+
+fn cs_imported_modules(text: String) -> List<String> {
+  filter(map(filter(cs_code_lines(text: text), line => starts_with(s: trim(s: line), prefix: "import ")),
+             line => trim(s: cs_head(split(s: cs_after(s: trim(s: line), marker: "import "), delimiter: " "), ""))),
+         m => m != "" && !any(cs_non_label_chars(), bad => bad != "." && string_contains(s: m, pattern: bad)))
+}
+
+fn cs_changed_modules(changed: List<String>) -> List<String> {
+  distinct_by_key(filter(map(changed, c => cs_module_of_file(path: c)), m => m != ""), m => m)
+}
+
+// WHICH CANDIDATES TO READ IS AN INDEX'S DECISION; WHETHER ONE IS AN IMPORTER IS ALWAYS THE MODEL'S. The
+// first version read every tracked .dag -- 10,898 reads -- and the reverse pass alone cost 5 min 18 s of
+// wall before it printed anything: an instrument that costs more than the break it prevents gets disabled,
+// which is the fate the extdeps gate already documented. So the step narrows with `git grep -l -F` over the
+// tracked .dag set and the instrument decides. The narrowing is provably conservative FOR THIS PARSER: a
+// file is accepted as an importer only when one of its import lines names the module, and every such line
+// contains the literal text `import <module>`, which is exactly what the index was asked for. The index
+// therefore cannot drop a file this parser would accept -- and the instrument does not take that on faith
+// where it can check it: an accepted importer is only ever read from a candidate, and the candidate set is
+// reported in the verdict line, so an index that quietly returned nothing is visible rather than green.
+fn cs_reverse_importers(changed: List<String>, candidates: List<String>) -> List<String> {
+  let modules = cs_changed_modules(changed: changed)
+  filter(candidates,
+         f => !list_member(xs: changed, x: f, eq: cs_eq)
+                && any(cs_imported_modules(text: cs_read(path: f)),
+                       m => list_member(xs: modules, x: m, eq: cs_eq)))
+}
+
+fn cs_scope(changed_paths: String, candidate_paths: String) -> List<String> {
+  let changed = cs_changed(paths: changed_paths)
+  distinct_by_key(concat(changed, cs_reverse_importers(changed: changed, candidates: cs_population(paths: candidate_paths))),
+                  p => p)
+}
+
+fn cs_scope_is_empty(paths: String) -> Bool {
+  length(xs: cs_changed(paths: paths)) == 0
+}
+
+// THE ONE SKIPPED POPULATION: a file that declares, in its own text, that it must not resolve. Enrolled-red
+// controls and forged probes exist to be refused BY THE ENGINE -- `dag/test/probe/
+// census_app_acquisition_forged_probe.dag` opens "THIS MODULE MUST NOT RESOLVE", and
+// `src/v2/test/claim/long/imported_decl_emit_probe.dag` opens "Enrolled RED" -- and those two files are the
+// ONLY two in the whole tracked tree with a label the declaration does not name (8 sites: 5 and 3, the
+// calibration read this module was written against). Mirroring their refusal would make a CI step red over
+// code whose greenness is not the question, and the engine stays the authority on what they refuse: this
+// instrument's limit is its two refusals. What makes the skip a rule and not an escape hatch is that the
+// declaration has to be IN THE FILE -- a module cannot be exempted by its path, its package, or a list
+// somewhere else -- and the count is printed in the verdict line, so an exemption that grows is visible.
+fn cs_declares_no_resolve(path: String) -> Bool {
+  cs_declares_control(path: path, judged: [])
+}
+
+// THE SKIP, AND ITS ONE EXCEPTION. A file that declares itself a control -- a probe that exists to be
+// refused, or a fixture a claim exists to refuse -- is not judged, because judging it would make the check
+// refuse the thing that proves the check works; the two executed arms of this row both found that out the
+// hard way, the second one refusing three of the instrument's OWN fixtures on a real PR diff. The exception
+// is a caller that NAMES the file as an expected refusal: a claim is not a scan, and a claim that had to
+// un-mark its own fixture to observe the refusal would be a claim that quietly stopped testing anything.
+// So the exemption travels in the file (visible to anyone reading it, and to a stray scan) and the
+// expectation travels in the caller (visible in the claim), and neither can be reached from a path, a
+// package, or a list elsewhere in the tree.
+fn cs_declares_control(path: String, judged: List<String>) -> Bool {
+  if list_member(xs: judged, x: path, eq: cs_eq) {
+    false
+  } else {
+    let text = cs_read(path: path)
+    string_contains(s: text, pattern: "MUST NOT RESOLVE")
+      || string_contains(s: text, pattern: "Enrolled RED")
+      || string_contains(s: text, pattern: "EXPECTED CALL-SHAPE REFUSAL")
+  }
+}
+
+fn cs_all_findings(scope: List<String>) -> List<String> {
+  cs_all_findings_judged(scope: scope, judged: [])
+}
+
+fn cs_all_findings_judged(scope: List<String>, judged: List<String>) -> List<String> {
+  flat_map(scope, file => cs_findings_judged(file: file, judged: judged))
+}
+
+fn cs_all_missing_entries(scope: List<String>) -> List<String> {
+  cs_all_missing_entries_judged(scope: scope, judged: [])
+}
+
+fn cs_all_missing_entries_judged(scope: List<String>, judged: List<String>) -> List<String> {
+  flat_map(scope, file => cs_missing_entry_files_judged(file: file, judged: judged))
+}
+
+// The disclosed skip count, printed and never hidden: what the instrument did not look at is part of its
+// verdict, and the row's condition is to widen to qualified calls on evidence rather than on hope.
+fn cs_unattributed(scope: List<String>) -> Int {
+  length(xs: flat_map(scope,
+                  file => filter(cs_import_pairs(text: cs_read(path: file)),
+                                 pair => cs_module_file(module: pair.module) == "")))
+}
+
+fn cs_counts(changed: List<String>, scope: List<String>) -> String {
+  join(["declared-entry call shape: ", to_string(length(xs: changed)), " changed + ",
+        to_string(length(xs: scope) - length(xs: changed)), " reverse-imported files (of the index candidates), ",
+        to_string(cs_unattributed(scope: scope)), " named imports skipped unattributed; ",
+        to_string(length(xs: cs_all_findings(scope: scope))), " label refusals, ",
+        to_string(length(xs: cs_all_missing_entries(scope: scope))), " missing entry files, ",
+        to_string(length(xs: filter(scope, file => cs_declares_no_resolve(path: file)))),
+        " controls skipped"], "")
+}
+
+fn cs_verdict(changed_paths: String, candidate_paths: String) -> ProcessExit {
+  cs_verdict_judged(changed_paths: changed_paths, candidate_paths: candidate_paths, judged: [])
+}
+
+fn cs_verdict_judged(changed_paths: String, candidate_paths: String, judged: List<String>) -> ProcessExit {
+  let changed = cs_changed(paths: changed_paths)
+  let scope = cs_scope(changed_paths: changed_paths, candidate_paths: candidate_paths)
+  let missing = cs_all_missing_entries_judged(scope: scope, judged: judged)
+  let findings = cs_all_findings_judged(scope: scope, judged: judged)
+  if length(xs: missing) > 0 {
+    exit_failure(reason: join([cs_counts(changed: changed, scope: scope), "; ", join(missing, "; ")], ""))
+  } else if length(xs: findings) > 0 {
+    exit_failure(reason: join([cs_counts(changed: changed, scope: scope), "; ", join(findings, "; ")], ""))
+  } else {
+    ExitSuccess
+  }
+}
+
+fn declared_entry_call_shape_body(changed_paths: String, candidate_paths: String) -> ProcessExit {
+  if cs_scope_is_empty(paths: changed_paths) {
+    exit_failure(reason: "declared-entry call shape: the step passed no changed .dag paths, so nothing was checked; an empty scope is a broken step, not a pass -- the STEP skips on an empty .dag diff and prints that it skipped, so this arm means the step itself is broken")
+  } else {
+    cs_verdict(changed_paths: changed_paths, candidate_paths: candidate_paths)
+  }
+}
+
+// The failure-receipt companion channel (gunbc#7644's loudness half, the mechanism v2.std.native_agreement
+// established): the witness lane collapses ProcessExit to Bool, and without this companion a red reports
+// the bare string and names nothing.
+fn declared_entry_call_shape_failure_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+fn declared_entry_call_shape_failure_receipt(changed_paths_file: String, candidate_importers_file: String) -> String {
+  declared_entry_call_shape_failure_reason(
+    exit: main(changed_paths_file: changed_paths_file, candidate_importers_file: candidate_importers_file))
+}
+
+// ── THE WITNESS API ────────────────────────────────────────────────────────────────────────────────────
+//
+// The witness lane drives the instrument through these, never through the CI entry: the entry's job is to
+// read git's lists off files, and a claim that has to manufacture files to test a rule is a claim that will
+// be deleted the first time it is flaky. Paths are repo-relative, as everywhere else here.
+
+fn declared_entry_call_shape_findings(files: List<String>) -> List<String> {
+  declared_entry_call_shape_findings_judged(files: files, expected_refusal_files: [])
+}
+
+// A CLAIM THAT REQUIRES A REFUSAL SAYS SO, by naming the file. The instrument skips a file that declares
+// itself a control -- otherwise the CI step would refuse the very fixtures that prove it refuses -- and a
+// claim may not let that skip stand in for an observed refusal: here the named file is judged, and the claim
+// still has to find the refusal it promises.
+fn declared_entry_call_shape_findings_judged(files: List<String>,
+                                             expected_refusal_files: List<String>) -> List<String> {
+  flat_map(files, f => cs_findings_judged(file: f, judged: expected_refusal_files))
+}
+
+fn declared_entry_call_shape_missing_entry_files(files: List<String>) -> List<String> {
+  declared_entry_call_shape_missing_entry_files_judged(files: files, expected_refusal_files: [])
+}
+
+fn declared_entry_call_shape_missing_entry_files_judged(files: List<String>,
+                                                        expected_refusal_files: List<String>) -> List<String> {
+  flat_map(files, f => cs_missing_entry_files_judged(file: f, judged: expected_refusal_files))
+}
+
+fn declared_entry_call_shape_scope(changed_paths: String, candidate_paths: String) -> List<String> {
+  cs_scope(changed_paths: changed_paths, candidate_paths: candidate_paths)
+}
+
+// THE PATH PRODUCTION RUNS, NOT ITS INNER STEP. The witness asks the instrument what it would answer and
+// must get the answer the CI step gets, empty-scope refusal included; pointing this at the inner fold made
+// the witness test a function nothing executes.
+fn declared_entry_call_shape_verdict(changed_paths: String, candidate_paths: String) -> ProcessExit {
+  declared_entry_call_shape_body(changed_paths: changed_paths, candidate_paths: candidate_paths)
+}
+
+// The same production, with the caller's expected refusals named -- see
+// declared_entry_call_shape_findings_judged for why the exemption and the expectation are separate facts.
+fn declared_entry_call_shape_verdict_judged(changed_paths: String, candidate_paths: String,
+                                            expected_refusal_paths: String) -> ProcessExit {
+  cs_verdict_judged(changed_paths: changed_paths, candidate_paths: candidate_paths,
+                    judged: cs_changed(paths: expected_refusal_paths))
+}
+
+// The instrument's own import lines, as read from source: the pin lives in the witness so the instrument
+// cannot quietly widen its own closure and stay green.
+// THE COUNTS LINE, EXPOSED FOR THE WITNESS. A green verdict must say what it looked at, and the claim that
+// it does has to read the same string the CI step prints -- not a re-derivation of it.
+fn declared_entry_call_shape_counts(changed_paths: String, candidate_paths: String) -> String {
+  cs_counts(changed: cs_changed(paths: changed_paths),
+            scope: cs_scope(changed_paths: changed_paths, candidate_paths: candidate_paths))
+}
+
+// THE MODULE-PATH RULE, EXPOSED FOR THE WITNESS: `v2.` names the corpus, not a directory, and a module with
+// no file under any root is not a declaration source. The first version nested `v2.` as a directory and so
+// could not find the declaration file for exactly one corpus -- an under-refuse, silent as green.
+fn declared_entry_call_shape_module_file(module: String) -> String {
+  cs_module_file(module: module)
+}
+
+fn declared_entry_call_shape_import_lines(path: String) -> List<String> {
+  filter(cs_code_lines(text: cs_read(path: path)), line => starts_with(s: trim(s: line), prefix: "import "))
+}
+
+// THE CI ENTRY. Both lists arrive as PATHS TO NEWLINE-DELIMITED LIST FILES, not as argv strings. The
+// reason is a host limit, not a preference: Linux caps a single argument at 128 KiB (MAX_ARG_STRLEN), and
+// the .dag population of this repository is ~580 KiB -- `git ls-files '*.dag'` as one --arg fails with
+// "Argument list too long" before the instrument is ever reached, which is the failure mode a step author
+// discovers in CI at the worst moment. So the step writes `git diff --name-only` and `git ls-files` to two
+// files and passes their paths; the instrument reads them with its own read. A missing or empty changed-list
+// file then refuses below as a broken step, which is the right answer: no scope means nothing was checked.
+// The git range and the tracked-path set remain the step's inputs; what they MEAN is decided here.
+fn main(changed_paths_file: String, candidate_importers_file: String) -> ProcessExit {
+  declared_entry_call_shape_body(changed_paths: cs_read(path: changed_paths_file),
+                                 candidate_paths: cs_read(path: candidate_importers_file))
+}
+
+fn run_declared_entry_call_shape(changed_paths_file: String, candidate_importers_file: String) -> ProcessExit {
+  main(changed_paths_file: changed_paths_file, candidate_importers_file: candidate_importers_file)
+}
+
+// THE INDEX KEY, READ BY THE STEP BEFORE IT GREPS. Which module a changed file declares is this module's
+// rule (cs_module_of_file), and it must have exactly one author -- so the step asks HERE for the keys and
+// hands them to `git grep -l -F`, instead of reimplementing the root rule in shell next to it. Two entries,
+// one rule: the step searches, the model decides what a search hit means.
+fn declared_entry_call_shape_changed_modules(changed_paths_file: String) -> String {
+  join(cs_changed_modules(changed: cs_changed(paths: cs_read(path: changed_paths_file))), "\n")
+}
+
+// THE SAME KEYS, WRITTEN TO A FILE FOR THE STEP'S SEARCH. Which module a changed file declares is
+// cs_module_of_file's rule and has exactly one author, so the step asks HERE for the keys it hands to
+// `git grep -l -F` instead of spelling the root-and-extension rule again in shell next to it. The first
+// version did spell it in shell, and the two spellings had a silent disagreement available: a stem set
+// the grep found nothing for, an empty candidate file, and a run that passed having judged nothing. So
+// keys are written here, and no keys over a non-empty changed set is a refusal rather than a green.
+fn declared_entry_call_shape_stems_emit(
+  changed_paths_file: String,
+  stems_file: String
+) -> ProcessExit {
+  let changed = cs_changed(paths: cs_read(path: changed_paths_file))
+  let stems = cs_changed_modules(changed: changed)
+  if count(stems) == 0 {
+    exit_failure(reason: join([
+      "declared-entry call shape: ", count(changed),
+      " changed .dag paths name no module, so the reverse-import search would run with no keys and find nothing; refusing to call that a pass"
+    ], ""))
+  } else {
+    let w = Filesystem.Write(path: stems_file, content: concat(join(stems, "\n"), "\n"))
+    if w.success {
+      ExitSuccess
+    } else {
+      exit_failure(reason: join([
+        "declared-entry call shape: the stems file ", stems_file, " is not writable: ", w.error
+      ], ""))
+    }
+  }
+}

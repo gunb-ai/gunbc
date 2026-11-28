@@ -23,6 +23,7 @@ import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 import gunbc.repo.repo_self_build { repo_self_seed_build_step_run, repo_self_test_typecheck_command }
 import gunbc.read_set_restore { fast_lane_full_run_if, fast_lane_reused_if, fast_lane_decision_step_name, fast_lane_layout_check_step_name, fast_lane_reference_check_step_name }
 import gunbc.witness.compiler_gate_contract_stamp { compiler_gate_contract_stamp_step_name, compiler_gate_contract_stamp_evidence_step_name }
+import gunbc.witness.declared_entry_call_shape_step { declared_entry_call_shape_step_name, declared_entry_call_shape_step_id, declared_entry_call_shape_if_condition, declared_entry_call_shape_instrument_entry }
 import gunbc.parse_verdict_restore { parse_verdict_locate_step_name }
 
 // WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
@@ -813,4 +814,31 @@ test fn the_committed_witnesses_yml_compiles_the_v1_unit_test_harness() -> Bool 
   string_contains(s: y, pattern: compiler_gate_v1_unit_test_step_name)
     && string_contains(s: y, pattern: repo_self_test_typecheck_command())
     && string_contains(s: y, pattern: compiler_gate_v1_unit_test_step_id)
+}
+
+// ═══ THE DECLARED-ENTRY CALL-SHAPE STEP (roadmap row gunbc-entries-resolve-checked-in-ci) ═══
+//
+// WHY THE ENROLMENT CLAIM LIVES HERE AND NOT IN THE INSTRUMENT'S OWN LANE. The claim that a required check is
+// actually carried by the required job is the claim whose absence produced the extdeps gate: written,
+// witnessed in its own lane, and never executed. It has to be read from THIS job's own bound-step list, and
+// that list lives behind the workflow module's closure -- which this lane already pays for and the instrument's
+// slim lane must not (its first measurement with this import was a claim still resolving after ten minutes).
+// The instrument's behaviour is witnessed where the instrument lives; being RUN is witnessed here, beside the
+// job that runs it.
+
+// THE JOB CARRIES IT, EXACTLY ONCE, by name.
+test fn the_required_job_carries_the_call_shape_step() -> Bool {
+  let names = map(xs: compiler_gate_emit_build_bound_steps(), f: b => b.step_name)
+  length(xs: filter(xs: names, predicate: fn(n) { n == declared_entry_call_shape_step_name })) == 1
+}
+
+// AND THE SHIPPED FILE CARRIES IT TOO, with the two events it is conditioned on and the instrument it names.
+// The model can be right while the committed YAML is stale -- heal regenerates this workflow and judges nothing
+// on a pull request -- so the file is read as its own subject, the same way the unit-test harness above is.
+test fn the_committed_witnesses_yml_carries_the_call_shape_step() -> Bool {
+  let y = Filesystem.Read(path: ".github/workflows/witnesses.yml", expect: ExpectSuccess).content
+  string_contains(s: y, pattern: declared_entry_call_shape_step_name)
+    && string_contains(s: y, pattern: declared_entry_call_shape_step_id)
+    && string_contains(s: y, pattern: declared_entry_call_shape_instrument_entry)
+    && string_contains(s: y, pattern: declared_entry_call_shape_if_condition)
 }

@@ -1,0 +1,735 @@
+module test.claim.declared_entry_call_shape_witness
+
+// THE WITNESS LANE FOR THE DECLARED-ENTRY CALL-SHAPE INSTRUMENT
+// (dag/gunbc/instruments/declared_entry_call_shape.dag, roadmap row
+// `gunbc-entries-resolve-checked-in-ci`).
+//
+// WHY THIS LANE EXISTS SEPARATELY FROM THE INSTRUMENT'S OWN RED CONTROLS. The instrument is a scanner: it
+// reads .dag text and predicts what the resolver would refuse. Every one of its three real defects so far
+// was a scanner defect that produced a PLAUSIBLE verdict -- and a plausible wrong verdict from a check that
+// prints a count is worse than silence:
+//   - `count(split(s: f, delimiter: n))` counts the PIECES a split produces, not the occurrences of its
+//     delimiter, so no argument list ever closed and every call harvested the labels of the calls after it:
+//     723 refusals on remote_build_client.dag, all invented, all against `trim`, whose only parameter is `s`.
+//   - reading the whole tree to find reverse importers cost 5 min 18 s before printing anything.
+//   - splitting the file on the delimiter `name(` attributed `decide_run(r:, js:)` to the local `fn run(id,
+//     attempt_n, …)`: 28 refusals of code that compiles and runs.
+// None of those showed up in the red controls, which only ever ask "did it refuse". These claims ask the
+// other half -- "did it refuse THE RIGHT THING, and did it stay silent on the thing that is fine" -- and the
+// accepting arms are where a scanner that over-refuses dies. The instrument's own closure is pinned here too
+// (w_import_lines), because a check enrolled in CI under a budget stops being a check the moment someone
+// imports a hub into it.
+
+import std.types { String, Bool, List, Int }
+import std.algebra { string_contains }
+import std.list { list_member }
+import gunbc.instruments.declared_entry_call_shape {
+  declared_entry_call_shape_findings, declared_entry_call_shape_findings_judged,
+  declared_entry_call_shape_missing_entry_files, declared_entry_call_shape_missing_entry_files_judged,
+  declared_entry_call_shape_scope, declared_entry_call_shape_verdict,
+  declared_entry_call_shape_verdict_judged,
+  declared_entry_call_shape_failure_reason, declared_entry_call_shape_counts,
+  declared_entry_call_shape_module_file, declared_entry_call_shape_import_lines,
+  declared_entry_call_shape_label_ok,
+}
+
+import gunbc.witness.declared_entry_call_shape_step {
+  declared_entry_call_shape_step, declared_entry_call_shape_step_name,
+  declared_entry_call_shape_if_condition, declared_entry_call_shape_line_ceiling,
+  declared_entry_call_shape_instrument_entry,
+  declared_entry_base_env_name, declared_entry_event_name_env_name, declared_entry_head_env_name,
+  declared_entry_fast_lane_skip_env_name, declared_entry_deferral_tally_prefix
+}
+import extdeps.languages.yaml.types {
+  YamlKeyValue, YamlValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence,
+  YamlMapping
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.filesystem.filesystem_io
+import gunbc.output_policy { ExpectSuccess }
+import std.optional { Optional, Present, Absent }
+
+// WHY THE IMPORTS STOP HERE. The claim that the required job CARRIES this step -- the enrolment claim, the
+// one whose absence is the extdeps-gate defect -- is not in this file. It lives in
+// dag/test/claim/compiler_gate_emit_build_lane_witness.dag, which already pays for the workflow module's
+// closure. Pulling that 1498-line hub in here would make every claim in this lane resolve it, and the first
+// measurement of that was a claim that had not finished resolving after ten minutes. A check enrolled under
+// a budget law is not exempt from it, least of all in its own test lane.
+
+data w_dir: String = "dag/test/fixture/declared_entry_call_shape"
+data w_instrument: String = "dag/gunbc/instruments/declared_entry_call_shape"
+
+fn w_file(name: String) -> String {
+  join([w_dir, "/", name, ".dag"], "")
+}
+
+fn w_lines(list: List<String>) -> String {
+  join(list, "|")
+}
+
+fn w_refused(changed: String, candidates: String) -> Bool {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict(
+    changed_paths: changed, candidate_paths: candidates)) != ""
+}
+
+fn w_reason(changed: String, candidates: String) -> String {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict(
+    changed_paths: changed, candidate_paths: candidates))
+}
+
+// THE EXPECTED-REFUSAL PAIR OF HELPERS. A fixture that declares itself a control is skipped by the CI scan,
+// so a claim that wants its refusal has to name it; these pass the name through and nothing else changes.
+// The UNJUDGED helpers above stay for the accepting arms, which must not name anything: naming a file as an
+// expected refusal while testing that nothing refuses would be the claim cheating.
+fn w_refused_judged(changed: String, candidates: String, expected: String) -> Bool {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict_judged(
+    changed_paths: changed, candidate_paths: candidates, expected_refusal_paths: expected)) != ""
+}
+
+fn w_reason_judged(changed: String, candidates: String, expected: String) -> String {
+  declared_entry_call_shape_failure_reason(exit: declared_entry_call_shape_verdict_judged(
+    changed_paths: changed, candidate_paths: candidates, expected_refusal_paths: expected))
+}
+
+fn w_str_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn w_has(hay: String, needle: String) -> Bool {
+  string_contains(s: hay, pattern: needle)
+}
+
+// ── THE TWO REFUSALS, EACH WITH ITS ACCEPTING ARM ──────────────────────────────────────────────────────
+
+// THE FIRST REFUSAL: a caller label the attributed declaration does not name. The label is the one the real
+// break used, and the accepting arm below is what makes this claim mean something: a scanner that refused
+// everything would pass a "did it refuse" test and fail this pair.
+test fn a_label_the_declaration_does_not_name_is_refused() -> Bool {
+  let findings = declared_entry_call_shape_findings_judged(
+    files: [w_file(name: "callee"), w_file(name: "caller_bad")],
+    expected_refusal_files: [w_file(name: "caller_bad")])
+  length(xs: findings) == 1
+    && w_has(hay: w_lines(list: findings), needle: "claim_run")
+    && w_has(hay: w_lines(list: findings), needle: "fixture_step")
+    && w_has(hay: w_lines(list: findings), needle: "source_roots")
+}
+
+test fn a_call_that_names_every_declared_parameter_is_accepted() -> Bool {
+  length(xs: declared_entry_call_shape_findings(
+    files: [w_file(name: "callee"), w_file(name: "caller_ok")])) == 0
+}
+
+// THE SECOND REFUSAL: a `--entry` route naming a .dag that does not exist. The accepting arm is the route in
+// caller_ok.dag, which names a file that does exist -- so this cannot pass by the population rule rejecting
+// every route shape.
+test fn a_route_naming_no_file_is_refused() -> Bool {
+  let missing = declared_entry_call_shape_missing_entry_files_judged(
+    files: [w_file(name: "route_missing")], expected_refusal_files: [w_file(name: "route_missing")])
+  length(xs: missing) == 1
+    && w_has(hay: w_lines(list: missing), needle: "no_such_entry_file.dag")
+    && w_has(hay: w_reason_judged(changed: w_file(name: "route_missing"), candidates: "",
+                                  expected: w_file(name: "route_missing")), needle: "no file")
+    // AND IT IS THE MISSING-FILE ARM THAT SPOKE, NOT THE LABEL ARM: the file's own call sites are clean, so
+    // a refusal here that also carried label findings would mean the scanner is confused about what it found.
+    && w_has(hay: w_reason_judged(changed: w_file(name: "route_missing"), candidates: "",
+                                  expected: w_file(name: "route_missing")),
+             needle: "0 label refusals")
+}
+
+test fn a_route_naming_a_real_file_is_accepted() -> Bool {
+  length(xs: declared_entry_call_shape_missing_entry_files(files: [w_file(name: "caller_ok")])) == 0
+}
+
+// ── THE SCOPE, WHICH IS THE CLAIM THE CI STEP DEPENDS ON ───────────────────────────────────────────────
+
+// THE REVERSE BREAK, AND THE ONE THE CI STEP IS FOR: a PR narrows a declaration and never touches the caller.
+// Scanning changed files alone passes it. The step hands the instrument the changed file plus the files the
+// index says may import it, and the instrument decides for itself who imports what.
+test fn an_untouched_caller_of_a_narrowed_declaration_is_still_checked() -> Bool {
+  w_refused_judged(changed: w_file(name: "narrow_callee"), candidates: w_file(name: "wide_caller"),
+                   expected: w_file(name: "wide_caller"))
+    && w_has(hay: w_reason_judged(changed: w_file(name: "narrow_callee"),
+                                  candidates: w_file(name: "wide_caller"),
+                                  expected: w_file(name: "wide_caller")),
+             needle: "receipt_rel")
+}
+
+// A candidate the index over-included must be DROPPED, not checked as if it were an importer: an instrument
+// that trusts the index's membership answer would refuse a file that never names the module.
+test fn the_scope_is_the_changed_files_plus_only_the_files_that_import_them() -> Bool {
+  let scope = declared_entry_call_shape_scope(
+    changed_paths: w_file(name: "narrow_callee"),
+    candidate_paths: join([w_file(name: "wide_caller"), "\n", w_file(name: "route_missing")], ""))
+  w_lines(list: scope) == join([w_file(name: "narrow_callee"), w_file(name: "wide_caller")], "|")
+}
+
+// AN EMPTY SCOPE IS A BROKEN STEP, NOT A PASS. The step is allowed to skip an empty .dag diff out loud; the
+// instrument is not allowed to report green over nothing.
+test fn an_empty_scope_is_refused_rather_than_green() -> Bool {
+  w_refused(changed: "", candidates: "")
+    && w_has(hay: w_reason(changed: "", candidates: ""), needle: "empty scope")
+}
+
+// A GREEN LINE MUST SAY WHAT IT LOOKED AT: the counts line names the changed files, the reverse-imported
+// files it read, the named imports it could not attribute, and both refusal counts. A check whose silence is
+// indistinguishable from success gets deleted the first time it disagrees with something.
+test fn the_counts_line_states_what_the_verdict_actually_read() -> Bool {
+  let counts = declared_entry_call_shape_counts(
+    changed_paths: join([w_file(name: "callee"), "\n", w_file(name: "caller_ok")], ""),
+    candidate_paths: "")
+  w_has(hay: counts, needle: "2 changed")
+    && w_has(hay: counts, needle: "0 reverse-imported")
+    && w_has(hay: counts, needle: "skipped unattributed")
+    && w_has(hay: counts, needle: "0 label refusals")
+    && w_has(hay: counts, needle: "0 missing entry files")
+}
+
+// ── THE RULES THE INSTRUMENT MUST OWN EXACTLY ONCE ─────────────────────────────────────────────────────
+
+// THE MODULE-PATH RULE. `v2.` names a corpus, not a directory, and `std.x` lives under the dag root. The
+// first version nested `v2.` and could not find a declaration file for one whole corpus, which is an
+// under-refuse: it looks exactly like code being fine.
+test fn the_module_path_rule_resolves_both_corpora_and_refuses_nothing_invented() -> Bool {
+  declared_entry_call_shape_module_file(module: "v2.workflow.gunbc_invoke_step_emit")
+    == "src/v2/workflow/gunbc_invoke_step_emit.dag"
+    && declared_entry_call_shape_module_file(module: "std.types") == "dag/std/types.dag"
+    && declared_entry_call_shape_module_file(module: "gunbc.compute.remote_build_serve")
+       == "dag/gunbc/compute/remote_build_serve.dag"
+}
+
+// THE IMPORT RULE, PINNED ON THE INSTRUMENT ITSELF. It is a CI step under a job budget; its slimness is the
+// reason it can be one. This is the w_import_lines idiom from the front-door witness, and it is the claim
+// that reddens the day someone imports a hub -- at which point the honest move is to move the check to a
+// job with a real budget, not to widen a line here.
+test fn the_instrument_names_only_std_and_the_filesystem() -> Bool {
+  w_lines(list: declared_entry_call_shape_import_lines(path: join([w_instrument, ".dag"], "")))
+    == join([
+      "import std.types { List, String }",
+      "import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }",
+      "import std.algebra { trim, string_contains }",
+      "import std.list { list_member, distinct_by_key }",
+      "import std.optional { Present, Absent }",
+      "import extdeps.filesystem.filesystem_io { Filesystem }",
+    ], "|")
+}
+
+// THE SAME RULE, READ FROM A FIXTURE: the import lines of a real caller give the module it names, which is
+// what the reverse pass and the callee lookup both consume. If the parser learned to read something that is
+// not an import -- a call, a string, a comment -- the instrument starts inventing callees.
+test fn the_import_reader_returns_imports_and_nothing_else() -> Bool {
+  w_lines(list: declared_entry_call_shape_import_lines(path: w_file(name: "caller_bad")))
+    == join(["import std.types { List, String }",
+             "import test.fixture.declared_entry_call_shape.callee { fixture_step }"], "|")
+}
+
+// A FILE THAT DECLARES IT MUST NOT RESOLVE IS SKIPPED -- AND SAYS SO. The only two files in the tracked tree
+// carrying a label the declaration does not name are both enrolled-red controls whose purpose is to be
+// refused by the engine (`dag/test/probe/census_app_acquisition_forged_probe.dag`, 3 sites;
+// `src/v2/test/claim/long/imported_decl_emit_probe.dag`, 5). The instrument does not mirror that refusal, and
+// it does not hush it either: the skip is counted in the line the step prints. This claim pins both halves,
+// so an exemption that silently grows -- or a skip rule that quietly stops working -- is a red witness.
+test fn a_file_that_declares_it_must_not_resolve_is_skipped_and_counted() -> Bool {
+  let forged = "dag/test/probe/census_app_acquisition_forged_probe.dag"
+  length(xs: declared_entry_call_shape_findings(files: [forged])) == 0
+    && length(xs: declared_entry_call_shape_missing_entry_files(files: [forged])) == 0
+    && w_has(hay: declared_entry_call_shape_counts(changed_paths: forged, candidate_paths: ""),
+             needle: "1 controls skipped")
+}
+
+// THE SKIP AND ITS EXCEPTION, PINNED TOGETHER. Either half failing quietly is the defect, and both halves
+// have already fired once in the real world: before this rule existed, an executed arm of the CI step ran a
+// real PR diff and the instrument refused THREE OF ITS OWN FIXTURES -- a scan that reds the files proving it
+// works gets reverted within a day. The other half is quieter and worse: if naming a file stopped lifting the
+// exemption, a claim would report green without ever having observed the refusal it asserts. So the
+// declaration lives in the file, the expectation lives in the caller, and this claim makes both of them
+// observable.
+test fn a_fixture_declared_a_control_is_skipped_by_a_scan_and_refused_when_named() -> Bool {
+  let marked = w_file(name: "caller_bad")
+  length(xs: declared_entry_call_shape_findings(files: [w_file(name: "callee"), marked])) == 0
+    && w_has(hay: declared_entry_call_shape_counts(changed_paths: marked, candidate_paths: ""),
+             needle: "1 controls skipped")
+    && length(xs: declared_entry_call_shape_findings_judged(
+         files: [w_file(name: "callee"), marked], expected_refusal_files: [marked])) == 1
+}
+
+// ── THE CI STEP THAT RUNS THE INSTRUMENT ─────────────────────────────────────────────────────────────
+//
+// These claims read dag/gunbc/witness/declared_entry_call_shape_step.dag, the step that decides WHAT the
+// instrument is allowed to see. That file is where the check's budget and its blind spots live, and both
+// have a way of going wrong quietly that a scan-level claim cannot see: a scope computed against a branch
+// name instead of the event's base (so the diff changes under the run), a reverse pass that quietly returns
+// nothing (so the caller nobody edited stops being checked), or a step that is enrolled in the job list
+// under a condition that skips it (the extdeps-gate defect: rostered, green, and never running).
+
+// WHAT THE EMBEDDING JOB PASSES (see the step's header: the binary, the source-root pair and the envelope
+// belong to the job, not to this file). This lane builds the step with the invocation the required job
+// really passes -- the same three values compiler_gate_workflow passes -- so the run text these claims read
+// is the run text CI will print. That the JOB passes them, and not merely that they render, is claimed in
+// dag/test/claim/compiler_gate_emit_build_lane_witness.dag, where the workflow module is already paid for.
+data w_step_bin: String = "target/release/gunbc"
+
+fn w_step_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+fn w_step() -> Step {
+  declared_entry_call_shape_step(bin: w_step_bin, source_roots: w_step_roots())
+}
+
+// A shell reference inside a NEEDLE, assembled for the same reason the step assembles its own: the string
+// medium reads ${name} as a reference to a value in scope, and a witness that quotes a shell script is
+// describing someone else's variables, not naming its own.
+fn shn(name: String) -> String {
+  join(["$", "{", name, "}"], "")
+}
+
+// The same assembly for a double-quoted shell reference, `"$name"`, which is how bash_emit renders a variable
+// word: a needle that spelled it directly would have the medium read the scripts variable as one of ours.
+fn shv(name: String) -> String {
+  join(["\"", "$", name, "\""], "")
+}
+
+// A GitHub expression opener, assembled so the .dag medium does not try to interpolate a needle that is
+// describing someone elses grammar.
+fn w_dollar_brace(text: String) -> String {
+  join(["$", "{", text], "")
+}
+
+// The scalar arms spelled out, because the environment bindings this claim reads are strings and the medium
+// will not let a claim pretend a coproduct is one.
+fn w_yaml_text(v: YamlValue) -> String {
+  match v {
+    YamlString { value: s } => s
+    YamlInt { lexeme: l } => l
+    YamlFloat { lexeme: l } => l
+    YamlBool { value: b } => if b { "true" } else { "false" }
+    YamlNull => "null"
+    YamlSequence { elements: _ } => "sequence"
+    YamlMapping { entries: _ } => "mapping"
+  }
+}
+
+fn w_step_run(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => run
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+// The step's environment bindings, rendered the way the emitter will write them: `key: value` per line. This
+// is the document boundary the two GitHub expressions are allowed to cross, so a claim has to be able to read it.
+fn w_step_env(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: env, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match env {
+        Present { value: entries } => join(map(xs: entries, f: fn(e) { match e { YamlKeyValue { key: k, value: v } => concat(k, concat(": ", w_yaml_text(v: v))) } }), "\n")
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn w_step_field(step: Step, field: String) -> String {
+  match step {
+    RunStep { name: name, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: cond, continue_on_error: coe, timeout_minutes: _ } =>
+      if field == "name" {
+        match name {
+          Present { value: v } => v
+          Absent => ""
+        }
+      } else {
+        if field == "if" {
+          match cond {
+            Present { value: v } => v
+            Absent => ""
+          }
+        } else {
+          if field == "continue_on_error" {
+            match coe {
+              Present { value: _ } => "present"
+              Absent => ""
+            }
+          } else { "" }
+        }
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+// How many lines of the rendered script contain `needle`. Occurrence counting, not presence: a step whose
+// two refusal arms lost one annotation still "has" the annotation, which is not the claim.
+fn w_count_lines(hay: String, needle: String) -> Int {
+  count(filter(xs: split(s: hay, delimiter: "\n"), predicate: fn(l) { w_has(hay: l, needle: needle) }))
+}
+
+// THE STEP IS ENROLLED, ON THE EVENTS THAT CARRY A BASE AND ON NOTHING ELSE. The two diff-carrying events
+// are named; push and schedule are deliberately not policed (they carry no base -- see the step's header),
+// and the alternative to that condition is a step that reports a green on a run with no diff.
+test fn the_step_runs_on_the_events_that_carry_a_base() -> Bool {
+  let step = w_step()
+  w_has(hay: w_step_field(step: step, field: "if"), needle: "github.event_name == 'pull_request'")
+    && w_has(hay: w_step_field(step: step, field: "if"), needle: "github.event_name == 'merge_group'")
+    && w_step_field(step: step, field: "name") == declared_entry_call_shape_step_name
+    && w_step_field(step: step, field: "continue_on_error") == ""
+}
+
+// THE SCOPE COMES FROM THE EVENT'S OWN BASE, AND THE STEP REFUSES WITHOUT ONE. Both rejected spellings are
+// absent: GITHUB_BASE_REF is a branch name that moves under the run, and a two-dot diff against main charges
+// every commit main gained after the branch opened to this PR. The base is fetched explicitly because the
+// checkout is shallow, and a base that cannot be resolved is a refusal -- never a guess, never a skip.
+test fn the_step_computes_its_diff_from_the_events_base_and_refuses_without_it() -> Bool {
+  let run = w_step_run(step: w_step())
+  // THE ENDPOINTS ARE THE EVENT'S, AND THE STARTING POINT IS COMPUTED, NOT INFERRED BY THE DIFF COMMAND.
+  // Three facts, each learned the hard way on the required lane at 3b6ade9f:
+  //   - `base...HEAD` over GitHub's MERGE ref, with an event base that has since moved, resolves the merge
+  //     base to something old and hands the check MAIN's own commits: a 13-file PR arrived as 1,932 .dag files
+  //     / 905,722 lines, which only the line ceiling stood between this step and a confident wrong verdict;
+  //   - `git fetch --depth=1` grafts the fetched commit as a parentless root, after which the merge base is
+  //     uncomputable -- reproduced in a depth-1 clone as `fatal: <base>...HEAD: no merge base`, exit 128, an
+  //     untyped death under `set -e` with no annotation and no cause named;
+  //   - a path the change DELETED has no call shape left, and reading it is a read error, not a finding.
+  // So: the PR's own head is the other endpoint, `git merge-base` is asked FIRST and its absence is a typed
+  // refusal, no fetch carries a depth, and deletions are filtered out of the scope.
+  w_has(hay: run, needle: concat("if '[' '-z' ", concat(shv(name: "GUNBC_DECLARED_ENTRY_BASE_SHA"), " ']'; then")))
+    && w_has(hay: run, needle: shv(name: "GUNBC_DECLARED_ENTRY_HEAD_SHA"))
+    && w_has(hay: run, needle: "'git' 'rev-parse' 'HEAD'")
+    && w_has(hay: run, needle: "'git' 'merge-base'")
+    && w_has(hay: run, needle: "share no merge base")
+    && w_has(hay: run, needle: join(["'git' 'diff' '--name-only' '--diff-filter=d' ", shv(name: "merge_base"), " ", shv(name: "head"), " '--' '*.dag' > ", shv(name: "changed")], ""))
+    && w_has(hay: run, needle: "'git' 'fetch' '--no-tags' 'origin'")
+    // A shallow graft is the other way a scope gets invented: the step repairs it or refuses, and never
+    // answers from a history whose parents are missing.
+    && w_has(hay: run, needle: "'git' 'rev-parse' '--is-shallow-repository'")
+    && w_has(hay: run, needle: "'git' 'fetch' '--no-tags' '--unshallow' 'origin'")
+    && w_has(hay: run, needle: "did not make its history whole")
+    && w_has(hay: run, needle: "could not be fetched: refusing to guess a scope")
+    && !w_has(hay: run, needle: "--depth")
+    && !w_has(hay: run, needle: "...HEAD")
+    && !w_has(hay: run, needle: "GITHUB_BASE_REF")
+    && !w_has(hay: run, needle: "origin/main")
+}
+
+// THE TWO EXPRESSIONS REACH THE DOCUMENT THROUGH THE ENVIRONMENT, AND NOTHING ELSE. A GitHub expression is
+// substituted into the workflow document before any shell exists, so it must arrive verbatim, and the only
+// carrier that promises that is a yaml scalar. `env:` is where the fleet already binds them:
+// gunbc.required_lanes_gate required_lanes_gate_stmts records what happens otherwise -- a bash literal word
+// is quoted and escaped, `'\''` is an illegal escape in expression syntax, and the whole document then fails
+// to parse before the runner starts. Pinned from both sides: the script carries no expression at all, and it
+// reads the two variables the bindings create.
+test fn the_expressions_reach_the_document_through_the_environment_only() -> Bool {
+  let run = w_step_run(step: w_step())
+  let env = w_step_env(step: w_step())
+  !w_has(hay: run, needle: w_dollar_brace(text: ""))
+    && w_has(hay: run, needle: shv(name: declared_entry_base_env_name))
+    && w_has(hay: run, needle: shv(name: declared_entry_event_name_env_name))
+    && w_has(hay: env, needle: concat(declared_entry_base_env_name, concat(": ", w_dollar_brace(text: "{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"))))
+    && w_has(hay: env, needle: concat(declared_entry_event_name_env_name, concat(": ", w_dollar_brace(text: "{ github.event_name }}"))))
+    // The head is an expression too, so it goes the same way: into the environment, never into the script.
+    && w_has(hay: run, needle: shv(name: declared_entry_head_env_name))
+    && w_has(hay: env, needle: concat(declared_entry_head_env_name, concat(": ", w_dollar_brace(text: "{ github.event.pull_request.head.sha }}"))))
+}
+
+// THE BINARY ASKED IS THE ONE THAT OWNS THE `run` VERB. The first enrolled version was handed the fast-lane's
+// staged generator, whose verbs are emit / check-layout / check-references / parse-population: it printed
+// `REFUSED: unknown verb run` and reddened the required lane (run 46025990627, job 140597407049). The full CLI
+// is this job's own "Build the compiler" product, and a step reaching for the staged copy again is a red claim
+// here rather than a red runner. When the job did not build one at all -- a reused fast lane -- the step does
+// not blame the diff: it defers, in the open, to the lane that cannot reuse. See
+// the_step_defers_on_a_reused_fast_lane_and_counts_what_it_defers.
+test fn the_step_asks_a_binary_that_owns_the_run_verb() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: concat("'", concat(w_step_bin, "' 'run'")))
+    && w_has(hay: run, needle: concat("'test' '-x' '", concat(w_step_bin, "'")))
+    && w_has(hay: run, needle: "no executable run-verb CLI at ")
+    && !w_has(hay: run, needle: "v2-native-cli")
+    && !w_has(hay: run, needle: "gunbc-fast-lane-native-cli")
+    && !w_has(hay: run, needle: "runner.temp")
+}
+
+// THE SKIP IS THE EMPTY DIFF, AND THE ONLY OTHER PASS WITHOUT A JUDGEMENT IS A COUNTED DEFERRAL. Two
+// sentences end this step at zero: the diff naming no .dag file, and a reused fast lane holding no run-capable
+// CLI. Both announce themselves, the deferral additionally leaves a machine-readable tally of the work it
+// pushed to the queue, and every refusal is `exit 1` with a `::error` annotation naming what is missing. A run
+// that judged nothing is never silent, and a degradation that lives only in prose is not a degradation the
+// fleet can count (gunbc.design_argument::fail_closed).
+test fn the_step_skips_only_on_an_empty_diff_and_says_so() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: join(["if '[' '!' '-s' ", shv(name: "changed"), " ']'; then"], ""))
+    && w_has(hay: run, needle: "'skipped: no .dag change in this diff, scope empty'")
+    && w_count_lines(hay: run, needle: "; exit 0; fi") == 2
+    && w_count_lines(hay: run, needle: "; exit 1; fi") == 9
+    && w_has(hay: run, needle: "'sort' '-u'")
+}
+
+// A REUSED FAST LANE DEFERS, IT DOES NOT FAIL, AND IT CLAIMS NO CLOSER IT DOES NOT HAVE. `Build the compiler`
+// is gated on this job's own classify output, so a reused run has no CLI carrying `run` -- the restored native
+// CLI's verbs are emit / check-layout / check-references / parse-population (the refusal run 46025990627 proved
+// the generator refuses `run`). Reddening the required job for a tool the job chose not to build puts a
+// pipeline defect on every author whose .dag is outside the compiler's read set, so the arm is a TYPED DEFERRAL:
+// it sits between the empty-scope skip and the carrier preflight (it fires only with real work pending and no
+// way to do it), it prints a tally of what it deferred, and it names the row that closes the gap -- the
+// fast-lane unit carrying a run-verb CLI.
+//
+// What this claim exists to stop is the sentence, not just the exit code. Two closers were argued for this arm
+// and both are false: the merge queue, which has run zero times in the last 200 witnesses runs (184
+// pull_request, 16 push) though the workflow declares the trigger; and the push run on main, which always
+// builds because only a pull_request can reuse -- but this step is enrolled only on the events that carry a
+// base commit, and a push carries none, so main compiles a CLI this step never asks for. Both refusals are
+// pinned below: the annotation states the hole, and neither lane may be named as a closer in the script.
+// THE STEP ASKS THE FAST LANE ITS QUESTION, AND ASKS IT THROUGH THE ENVIRONMENT ONLY. The step never reads
+// the job's classify output directly -- a GitHub expression inside a run block would be substituted before
+// bash sees it, which is the defect the environment-only rule exists to stop.
+// THE STEP ASKS THE FAST LANE ITS QUESTION, AND ASKS IT THROUGH THE ENVIRONMENT ONLY. The step never reads
+// the job's classify output directly -- a GitHub expression inside a run block would be substituted before
+// bash sees it, which is the defect the environment-only rule exists to stop. The question is asked with the
+// job's own word, `steps.fast_lane.outputs.skip`, so the step cannot disagree with the lane's own decision.
+test fn the_step_asks_the_fast_lane_question_through_the_environment() -> Bool {
+  let run = w_step_run(step: w_step())
+  let env = w_step_env(step: w_step())
+  w_has(hay: env, needle: concat(declared_entry_fast_lane_skip_env_name, concat(": ", w_dollar_brace(text: "{ steps.fast_lane.outputs.skip }}"))))
+    && w_has(hay: run, needle: shv(name: declared_entry_fast_lane_skip_env_name))
+    && w_has(hay: run, needle: concat("if '[' ", concat(shv(name: declared_entry_fast_lane_skip_env_name), " '=' 'true' ']'; then")))
+}
+
+// THE DEFERRAL IS TYPED AND LOCATED IN ITS REASON: it names the lane that was reused, the tool that is
+// missing, the population it covers, and the row that closes it. Neither of the two false closers may
+// reappear -- the merge queue that has never run on this repo, and the push run on main that builds a
+// compiler this step is not enrolled on.
+test fn the_step_defers_on_a_reused_fast_lane_with_a_notice_that_names_the_closing_row() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "'deferred: the fast lane was reused")
+    && w_has(hay: run, needle: "no CLI here can run the instrument")
+    && w_has(hay: run, needle: "nothing judges these")
+    && w_has(hay: run, needle: "The fast-lane unit carrying a run-verb CLI closes this")
+    && w_has(hay: run, needle: "roadmap: remote-build-fast-lane-seed-cli")
+    && !w_has(hay: run, needle: "The push run on main")
+    && !w_has(hay: run, needle: "the moment they land")
+    && !w_has(hay: run, needle: "merge queue")
+}
+
+// AND IT IS COUNTABLE. A skip that only exists as prose in a log is not a degradation the ledger can see;
+// the tally line names how many .dag files and how many lines went unjudged, under the reason the fast lane
+// was reused.
+test fn the_step_defers_with_a_tally_naming_what_went_unjudged() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: declared_entry_deferral_tally_prefix)
+    && w_has(hay: w_after_first(hay: run, marker: declared_entry_deferral_tally_prefix), needle: shv(name: "scope"))
+    && w_has(hay: w_after_first(hay: run, marker: declared_entry_deferral_tally_prefix), needle: shv(name: "lines"))
+}
+
+// THE ARM SITS BETWEEN THE TWO ARMS IT MUST NOT REPLACE: after the honest empty-scope skip, and before the
+// carrier preflight -- so the preflight stays a refusal for the state it actually describes, a full run that
+// promised a build and produced no CLI.
+test fn the_step_places_the_deferral_between_the_empty_scope_skip_and_the_carrier_preflight() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: w_before_first(hay: run, marker: "judged=0 reason=fast_lane_reused"), needle: "'skipped: no .dag change in this diff, scope empty'")
+    && w_has(hay: w_before_first(hay: run, marker: "no executable run-verb CLI at "), needle: "judged=0 reason=fast_lane_reused")
+}
+
+
+// THE CARRIER CARRIES ITS OWN DISSOLUTION, ON THE LINE THE RUNNER READS FIRST. The step is the one place on
+// this route where a model cannot answer for itself -- a whole-tree `git grep` it could only reply to by
+// reading every tracked .dag (measured 5 m 18 s for the whole-tree reverse pass, against 105 s at a real
+// scope) -- so the file names the capability that would absorb it, as gunbc.witness.runner_host_deploy_unit_
+// scripts does for its shell, and the rendering refuses if the marker is removed.
+test fn the_shell_carrier_names_its_dissolution_on_the_first_line() -> Bool {
+  let run = w_step_run(step: w_step())
+  let first = match split(s: run, delimiter: "\n").first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+  starts_with(s: first, prefix: "# dissolve-on: declared_entry_call_shape_scope_statements")
+    && w_has(hay: first, needle: "DISSOLVES WHEN")
+    && w_has(hay: first, needle: "rendered by v2.workflow.bash_emit bash_emit_stmts")
+    && w_has(hay: first, needle: "moves into gunbc.instruments.declared_entry_call_shape")
+}
+
+// THE DEBT IS REGISTERED AS A DISPOSITION, NOT ONLY AS PROSE. A comment a reader may skip is the marker; the
+// same admission carried as a `Scaffold` with a `dissolves_to` and a `bind` is the version the model carries,
+// and it names the declaration the statements live in, so the day the whole-tree search is modelled the
+// refusal points at the node that has to move rather than at a paragraph. Asserted against the module text
+// because a `Scaffold` never reaches the emitted script -- asking the script to show it would have been a
+// claim that can only be satisfied by putting the disposition in the wrong medium.
+test fn the_carriers_debt_is_registered_as_a_disposition() -> Bool {
+  let text = Filesystem.Read(path: concat(w_step_module, ".dag"), expect: ExpectSuccess).content
+  w_has(hay: text, needle: "Scaffold {")
+    && w_has(hay: text, needle: "dissolves_to: SingleAuthority")
+    && w_has(hay: text, needle: "decl_name: \"declared_entry_call_shape_scope_statements\"")
+    && w_has(hay: text, needle: "module_path: \"gunbc.witness.declared_entry_call_shape_step\"")
+}
+
+// THE SEARCH KEYS ARE THE MODEL'S, NOT THE SHELL'S. The stems come from the instrument's own path rule, so
+// there is one module-name grammar between the route that declares an entry and the check that resolves it;
+// the text-only entry is not on this route at all, and the shell invents no `sed` mapping of its own.
+test fn the_step_asks_the_instrument_for_its_search_keys() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "'--function' 'declared_entry_call_shape_stems_emit'")
+    && w_has(hay: run, needle: "'--arg' 'stems_file='")
+    && !w_has(hay: run, needle: "'--function' 'declared_entry_call_shape_import_lines'")
+    && !w_has(hay: run, needle: "sed -n")
+}
+
+// THE REVERSE PASS IS NARROW AND ITS BUDGET ONLY REFUSES UPWARD. `git grep -l -F -f` answers in 8 s what the
+// model can only answer by reading every tracked .dag, and an exit of 2 (a real repository error) is a
+// refusal, not an empty answer. Over-large is the only direction the ceiling can speak in: a silently
+// truncated scope is a green on a run that judged nothing.
+test fn the_step_widens_to_reverse_importers_and_bounds_its_scope_above_only() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "'git' 'grep' '-l' '-F' '-f'")
+    && w_has(hay: run, needle: "this is a repository error, not an empty answer")
+    && w_has(hay: run, needle: join(["if '[' ", shv(name: "lines"), " '-gt' '250000' ']'"], ""))
+    && w_has(hay: run, needle: "is above the budget of ")
+    && w_has(hay: run, needle: "the line count of the scope could not be computed")
+    && w_has(hay: run, needle: "'wc' '-l'")
+}
+
+// THE INSTRUMENT IS ASKED ABOUT FILES, NEVER ABOUT TEXT THE SHELL CHOSE. Both invocations pass their scope as
+// a file of paths, and each option is its own word with its own value word -- the first draft folded them
+// (`--entry=dag/...`, `changed_paths_file=...` unquoted) so the words it printed were not the words the
+// engine's own argument shape promises.
+test fn the_step_hands_the_instrument_its_scope_files() -> Bool {
+  let run = w_step_run(step: w_step())
+  w_has(hay: run, needle: "'--function' 'main'")
+    && w_has(hay: run, needle: "'--arg' 'changed_paths_file='")
+    && w_has(hay: run, needle: "'--arg' 'candidate_importers_file='")
+    && w_has(hay: run, needle: "'--source-root' 'dag'")
+    && !w_has(hay: run, needle: "--arg changed_paths_file=")
+    && !w_has(hay: run, needle: "--source-root=dag")
+}
+
+// THE STEP MODULE STAYS SLIM, and the reason is not taste. Its first draft imported the job's binary
+// authority and the source-root pair instead of taking them as parameters, and one claim of this lane took
+// 13 min 54 s to resolve; the same lane without them resolves all seventeen claims in 4 m 57 s. This pin is
+// what keeps that from coming back by accretion: a single `import gunbc.<hub>` in the step module is a red
+// claim here, and the parameter list is where such a fact belongs -- supplied by the job that owns it, so
+// the step can be witnessed without importing the job.
+data w_step_module: String = "dag/gunbc/witness/declared_entry_call_shape_step"
+
+fn w_step_module_imports() -> List<String> {
+  declared_entry_call_shape_import_lines(path: concat(w_step_module, ".dag"))
+}
+
+test fn the_step_module_imports_the_node_route_and_nothing_from_the_fleet_hubs() -> Bool {
+  let lines = w_step_module_imports()
+  length(xs: lines) == 12
+    && list_member(xs: lines, x: "import std.types { List, String }", eq: w_str_eq)
+    && list_member(xs: lines, x: "import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }", eq: w_str_eq)
+    && list_member(xs: lines, x: "import extdeps.github.actions { Step, RunStep }", eq: w_str_eq)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.extdeps.languages.bash_build") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.workflow.bash_emit") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "v2.std.node") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "extdeps.languages.yaml.types") })) == 1)
+    && (length(xs: filter(xs: lines, predicate: fn(l) { w_has(hay: l, needle: "gunbc.") })) == 0)
+}
+
+// ── THE MIRROR TIED TO THE ENGINE ──────────────────────────────────────────────────────────────────────
+// THE ONLY MEANING THE INSTRUMENT DECIDES BY ITSELF is one predicate: caller label `x` is accepted against a
+// declared `x`, `_x`, or `_`. The authority for that decision is not the instrument; it is the engine's Rust
+// matcher (src/v1/stage0/src/v1_compiler_infer.rs `call_param_caller_labels` + `call_arg_label_matches_param`,
+// reached from v1_interpreter.rs `call_function_inner` and from the compile seam `direct_call_shape_diags`).
+// gunbc.design_argument::single_authority calls a second place that decides one meaning a fork; the instrument's
+// header declares the mirror and its reason (asking the engine would pay the closure this row exists to remove).
+// A declared divergence without a tie is still drift waiting to happen, so the tie is here, by execution: these
+// four claims READ THE ENGINE'S SOURCE, bound the two functions that decide the rule, and assert that the arms
+// the instrument writes out are the arms the engine still implements. Drop the `_x` idiom upstream, add an arm,
+// rename the matcher, or weaken the mirror, and at least one of these reddens in CI on the PR that did it.
+// The instrument's own predicate is asked, not restated (declared_entry_call_shape_label_ok): a witness that
+// re-wrote the rule would be a third place deciding it, two of them in test code.
+data w_engine_matcher_source: String = "src/v1/stage0/src/v1_compiler_infer.rs"
+data w_engine_labels_marker: String = "pub fn call_param_caller_labels(param_name: String)"
+data w_engine_matcher_marker: String = "pub fn call_arg_label_matches_param(param_name: String, arg_label: String)"
+data w_engine_after_matcher_marker: String = "pub fn param_binds_positionally"
+
+// Occurrences, not pieces: `count(split(...))` counts the PIECES, which is the bug that made this instrument
+// invent 723 refusals (module header). Subtracting one is the correction, written once here.
+fn w_count(hay: String, needle: String) -> Int {
+  length(xs: split(s: hay, delimiter: needle)) - 1
+}
+
+fn w_after_first(hay: String, marker: String) -> String {
+  if !string_contains(s: hay, pattern: marker) {
+    ""
+  } else {
+    join(split(s: hay, delimiter: marker).skip(n: 1), marker)
+  }
+}
+
+fn w_before_first(hay: String, marker: String) -> String {
+  match split(s: hay, delimiter: marker).first() {
+    Present { value: head } => head
+    Absent => hay
+  }
+}
+
+// The engine's text between two declarations. Both markers must appear EXACTLY ONCE, so a rename or a second
+// definition reddens the region claim (the_engine_matcher_regions_are_bounded_and_readable) instead of quietly
+// widening what the other three claims read.
+fn w_engine_region(start: String, stop: String) -> String {
+  let source = Filesystem.Read(path: w_engine_matcher_source, expect: ExpectSuccess).content
+  w_before_first(hay: w_after_first(hay: source, marker: start), marker: stop)
+}
+
+fn w_engine_labels_region() -> String {
+  w_engine_region(start: w_engine_labels_marker, stop: w_engine_matcher_marker)
+}
+
+fn w_engine_matcher_region() -> String {
+  w_engine_region(start: w_engine_matcher_marker, stop: w_engine_after_matcher_marker)
+}
+
+test fn the_engine_matcher_regions_are_bounded_and_readable() -> Bool {
+  let source = Filesystem.Read(path: w_engine_matcher_source, expect: ExpectSuccess).content
+  w_count(hay: source, needle: w_engine_labels_marker) == 1
+    && w_count(hay: source, needle: w_engine_matcher_marker) == 1
+    && w_count(hay: source, needle: w_engine_after_matcher_marker) == 1
+    && length(xs: w_engine_labels_region()) > 0
+    && length(xs: w_engine_matcher_region()) > 0
+}
+
+// ARM ONE: a parameter named `_` -- the deliberately-unused-parameter idiom -- accepts any caller label. The
+// engine says it in two places that must agree: `call_param_caller_labels` gives `_` NO caller label, and
+// `call_arg_label_matches_param` returns `true` for `_` before consulting them. That test is the matcher's
+// ONLY conditional -- everything else in it is membership in the caller labels -- so the claim counts the
+// conditionals rather than trusting the arm's presence.
+test fn the_engine_matcher_accepts_a_bare_underscore_param_and_the_mirror_agrees() -> Bool {
+  let labels = w_engine_labels_region()
+  let matcher = w_engine_matcher_region()
+  w_count(hay: labels, needle: "Rc::new(vec![])") == 1
+    && w_count(hay: matcher, needle: "if (param_name.clone() == \"_\".to_string()) {") == 1
+    && w_count(hay: matcher, needle: "if (") == 2
+    && w_count(hay: matcher, needle: "for caller_label in call_param_caller_labels(param_name.clone())") == 1
+    && declared_entry_call_shape_label_ok(label: "anything", declared: ["_"])
+    && declared_entry_call_shape_label_ok(label: "", declared: ["_"])
+    // ...and the mirror does not read `_` as a WILDCARD CALLER LABEL: a caller writing `_:` binds nothing a
+    // parameter named `z` would accept, and the engine's membership test says so.
+    && !declared_entry_call_shape_label_ok(label: "_", declared: ["z"])
+}
+
+// ARM TWO: a `_`-prefixed parameter accepts BOTH `_x` and `x`, which is what lets a declaration name a
+// parameter it never reads without its callers breaking.
+test fn the_engine_matcher_accepts_an_underscore_prefixed_param_under_both_names_and_the_mirror_agrees() -> Bool {
+  let labels = w_engine_labels_region()
+  w_count(hay: labels, needle: "if (") == 2
+    && w_count(hay: labels, needle: "&& (v1_rt::substring(&param_name, 0, 1) == \"_\".to_string()))") == 1
+    && w_count(hay: labels, needle: "param_name.clone(),") == 1
+    && w_count(hay: labels, needle: "v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name)),") == 1
+    && declared_entry_call_shape_label_ok(label: "value", declared: ["_value"])
+    && declared_entry_call_shape_label_ok(label: "_value", declared: ["_value"])
+    && !declared_entry_call_shape_label_ok(label: "alue", declared: ["_value"])
+}
+
+// ARM THREE: any other parameter accepts its own name and nothing else -- no prefix matching, no case folding,
+// no positional leniency. `Rc::new(vec![param_name.clone()])` is that arm, and the two absences are the
+// negative half: an upstream change that added either convenience would redden this claim and the mirror
+// would still be green, which is the drift these four claims exist to catch.
+test fn the_engine_matcher_accepts_an_exact_param_under_its_own_name_only_and_the_mirror_agrees() -> Bool {
+  let labels = w_engine_labels_region()
+  w_count(hay: labels, needle: "Rc::new(vec![param_name.clone()])") == 1
+    && !string_contains(s: labels, pattern: "to_lowercase")
+    && !string_contains(s: labels, pattern: "to_uppercase")
+    && !string_contains(s: labels, pattern: "starts_with")
+    && declared_entry_call_shape_label_ok(label: "value", declared: ["value"])
+    && !declared_entry_call_shape_label_ok(label: "other", declared: ["value"])
+    && !declared_entry_call_shape_label_ok(label: "value", declared: ["values"])
+    && !declared_entry_call_shape_label_ok(label: "Value", declared: ["value"])
+}

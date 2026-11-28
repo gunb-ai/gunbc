@@ -377,6 +377,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "test.fixture.decl_facts_field_binder",
     "test.fixture.decl_facts_reflection",
     "test.fixture.decl_facts_reflection_duplicate_qn.primary",
+    "test.fixture.declared_entry_call_shape",
     "test.fixture.demand_closure",
     "test.fixture.demand_closure.excluded",
     "test.fixture.demanded_scope",
