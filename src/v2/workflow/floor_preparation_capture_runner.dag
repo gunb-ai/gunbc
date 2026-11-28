@@ -121,55 +121,9 @@ import v2.workflow.floor_preparation_diff_scope {
 //     --function floor_preparation_capture_run
 //
 // The leg driver is this fixed text (its sha256 is the pinned supply value above; recreate with
-// cat > "$FLOOR_LEG_DRIVER" exactly, chmod +x, and the supply gate re-derives the sha at run time):
-//   #!/usr/bin/sh
-//   # eagle-leg-driver-v4.1 (crisp-eagle-244, run11+).
-//   #
-//   # SCAFFOLD DECLARATION (hand-shell policy): this file is a hand-written POSIX shell leg driver.
-//   # Typed argv through shell.Exec.RunArgv already replaced the hand-written shell scaffolds around
-//   # it; WHAT REMAINS HERE is bounded foreign-executor transport: it opens the leg log, prints the
-//   # acquisition-identity block from the leg's own process, and execs the program verbatim. It
-//   # DISSOLVES WHEN a typed bounded-process effect lands on host_effect_apply AND the release route
-//   # binds a child to the slot cgroup in-model -- the same capability the model trigger names:
-//   # floor_preparation_shell_bound_dissolution_trigger in
-//   # src/v2/workflow/floor_preparation_capture_runner.dag (review 99598 asked that the runner carry
-//   # its own marker, not only the model).
-//   #
-//   # v4.1 (review 99598): the driver NO LONGER JUDGES the binary pins -- the same sha256 was decided
-//   # in three places. The single authority is the model's supply gate
-//   # (floor_preparation_pinned_claim_batch_sha / _gunbc_sha / _leg_driver_sha compared against
-//   # sha256sum re-derived from disk, in floor_preparation_capture_runner.dag, before any leg spawns).
-//   # The driver only OBSERVES: [leg-binary] prints path/bytes/sha of every file operand and the
-//   # model owns the verdict. v4 added: when TRACKED_DIRTY is nonzero the boot line NAMES the dirty
-//   # tracked paths (comma-joined from the porcelain path column) and tags OPTION=b_dirty_paths_named,
-//   # so a leg judging in-run spliced bytes carries its own doctrine-option-(b) evidence in its log
-//   # (run10 claims-a printed OPTION=a_clean_checkout at TRACKED_DIRTY=1 -- the dirt was the fold-legs
-//   # splice of src/v2/workflow/floor_preparation_split.dag). v3 added pin enforcement, now retired
-//   # to the model per above. v2 (sha 19df9ae3381a) added the acquisition-identity block.
-//   #
-//   # argv[1] is the log path; the rest is program+arguments passed verbatim to exec, streams appended
-//   # to that log. No shell string is built from leg data. The identity block prints, INSIDE the leg
-//   # and from the leg's own process, what the leg judges: pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY
-//   # (tracked dirt only, --untracked-files=no per the repo_self_build.dag:302-311 doctrine: untracked
-//   # scratch reaches neither rustc nor the identity; at these legs it is zero by construction -- a
-//   # clean checkout of the judged head), and sha256+bytes of every file operand.
-//   LOG="$1"
-//   shift
-//   : > "$LOG"
-//   {
-//     echo "[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4.1"
-//     echo "[leg-cgroup] $(cat /proc/self/cgroup 2>/dev/null | head -1)"
-//     TRACK_OUT=$(git status --porcelain --untracked-files=no 2>/dev/null || true)
-//     if [ -z "$TRACK_OUT" ]; then TRACK_DIRTY=0; TRACK_PATHS=none; OPTION_TAG=a_clean_checkout; else TRACK_DIRTY=$(printf '%s\n' "$TRACK_OUT" | grep -c '^[^?]' || true); TRACK_PATHS=$(printf '%s\n' "$TRACK_OUT" | cut -c4- | sort -u | tr '\n' ',' | sed 's/,$//'); OPTION_TAG=b_dirty_paths_named; fi
-//     echo "[leg-git] HEAD=$(git rev-parse HEAD 2>/dev/null) TREE=$(git rev-parse 'HEAD^{tree}' 2>/dev/null) TRACKED_DIRTY=$TRACK_DIRTY OPTION=$OPTION_TAG TRACKED_PATHS=$TRACK_PATHS"
-//     for a in "$@"; do
-//       if [ -f "$a" ]; then
-//         echo "[leg-binary] path=$a bytes=$(stat -c%s "$a") sha256=$(sha256sum "$a" | cut -d' ' -f1)"
-//       fi
-//     done
-//     echo "[leg-argv] $*"
-//   } >> "$LOG" 2>&1
-//   exec >>"$LOG" 2>&1 "$@"
+// FLOOR_LEG_DRIVER points at the path the runner EMITS the driver to from
+// floor_preparation_leg_driver_lines (typed carrier; review 99613) -- the operator creates
+// NO file by hand; the supply gate re-derives the sha of the emitted bytes at run time:
 // The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
 // against the same release.
 //
@@ -201,6 +155,76 @@ data floor_preparation_plan_over_dissolution_trigger: DissolutionCondition = unb
 // bash_emit.dag:189 precedent): typed argv through shell.Exec.RunArgv replaced hand-written
 // shell scaffolds; the foreign-executor pieces that REMAIN are named, not silent.
 data floor_preparation_shell_bound_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the timeout(1)+pinned-driver leg legs of floor_preparation_spawn_slot_captured -- bounded foreign-executor processes carrying the wall bound and the leg log until a typed bounded-process effect lands on host_effect_apply (same frontier as bash_emit's dissolve-on). DISSOLVES WHEN that typed bounded-process effect exists AND the release route binds a child to the slot cgroup in-model. Until then the driver's PINNED sha256 is the supply authority and a bound death is transport, never a verdict.")
+
+// TYPED CARRIER (review 99613, gunbc.design_argument::source_annotations -- "a fact that must
+// survive belongs in a typed carrier", "Nothing may depend on a comment for correctness"): the
+// leg driver's bytes live in floor_preparation_leg_driver_lines; the runner EMITS them through
+// the modelled Filesystem.Write effect BEFORE the supply gate, chmods them executable through
+// the typed RunArgv spawn, and the gate re-derives sha256 against
+// floor_preparation_pinned_leg_driver_sha. Deleting or reflowing a comment can no longer strand
+// the pin; deleting a data line reds the gate. The scaffold declaration and version history are
+// the first lines of the carrier itself, so the runner carries its own marker (review 99598).
+data floor_preparation_leg_driver_lines: List<String> = [
+  "#!/usr/bin/sh",
+  "# eagle-leg-driver-v4.1 (crisp-eagle-244, run11+).",
+  "#",
+  "# SCAFFOLD DECLARATION (hand-shell policy): this file is a hand-written POSIX shell leg driver.",
+  "# Typed argv through shell.Exec.RunArgv already replaced the hand-written shell scaffolds around",
+  "# it; WHAT REMAINS HERE is bounded foreign-executor transport: it opens the leg log, prints the",
+  "# acquisition-identity block from the leg's own process, and execs the program verbatim. It",
+  "# DISSOLVES WHEN a typed bounded-process effect lands on host_effect_apply AND the release route",
+  "# binds a child to the slot cgroup in-model -- the same capability the model trigger names:",
+  "# floor_preparation_shell_bound_dissolution_trigger in",
+  "# src/v2/workflow/floor_preparation_capture_runner.dag (review 99598 asked that the runner carry",
+  "# its own marker, not only the model).",
+  "#",
+  "# v4.1 (review 99598): the driver NO LONGER JUDGES the binary pins -- the same sha256 was decided",
+  "# in three places. The single authority is the model's supply gate",
+  "# (floor_preparation_pinned_claim_batch_sha / _gunbc_sha / _leg_driver_sha compared against",
+  "# sha256sum re-derived from disk, in floor_preparation_capture_runner.dag, before any leg spawns).",
+  "# The driver only OBSERVES: [leg-binary] prints path/bytes/sha of every file operand and the",
+  "# model owns the verdict. v4 added: when TRACKED_DIRTY is nonzero the boot line NAMES the dirty",
+  "# tracked paths (comma-joined from the porcelain path column) and tags OPTION=b_dirty_paths_named,",
+  "# so a leg judging in-run spliced bytes carries its own doctrine-option-(b) evidence in its log",
+  "# (run10 claims-a printed OPTION=a_clean_checkout at TRACKED_DIRTY=1 -- the dirt was the fold-legs",
+  "# splice of src/v2/workflow/floor_preparation_split.dag). v3 added pin enforcement, now retired",
+  "# to the model per above. v2 (sha 19df9ae3381a) added the acquisition-identity block.",
+  "#",
+  "# argv[1] is the log path; the rest is program+arguments passed verbatim to exec, streams appended",
+  "# to that log. No shell string is built from leg data. The identity block prints, INSIDE the leg",
+  "# and from the leg's own process, what the leg judges: pid/owner, cgroup, HEAD/TREE/TRACKED_DIRTY",
+  "# (tracked dirt only, --untracked-files=no per the repo_self_build.dag:302-311 doctrine: untracked",
+  "# scratch reaches neither rustc nor the identity; at these legs it is zero by construction -- a",
+  "# clean checkout of the judged head), and sha256+bytes of every file operand.",
+  "LOG=\"$1\"",
+  "shift",
+  ": > \"$LOG\"",
+  "{",
+  "  echo \"[leg-boot $(date -u +%FT%TZ)] pid=$$ owner=$(id -un) ppid=$PPID driver=v4.1\"",
+  "  echo \"[leg-cgroup] $(cat /proc/self/cgroup 2>/dev/null | head -1)\"",
+  "  TRACK_OUT=$(git status --porcelain --untracked-files=no 2>/dev/null || true)",
+  "  if [ -z \"$TRACK_OUT\" ]; then TRACK_DIRTY=0; TRACK_PATHS=none; OPTION_TAG=a_clean_checkout; else TRACK_DIRTY=$(printf '%s\\n' \"$TRACK_OUT\" | grep -c '^[^?]' || true); TRACK_PATHS=$(printf '%s\\n' \"$TRACK_OUT\" | cut -c4- | sort -u | tr '\\n' ',' | sed 's/,$//'); OPTION_TAG=b_dirty_paths_named; fi",
+  "  echo \"[leg-git] HEAD=$(git rev-parse HEAD 2>/dev/null) TREE=$(git rev-parse 'HEAD^{tree}' 2>/dev/null) TRACKED_DIRTY=$TRACK_DIRTY OPTION=$OPTION_TAG TRACKED_PATHS=$TRACK_PATHS\"",
+  "  for a in \"$@\"; do",
+  "    if [ -f \"$a\" ]; then",
+  "      echo \"[leg-binary] path=$a bytes=$(stat -c%s \"$a\") sha256=$(sha256sum \"$a\" | cut -d' ' -f1)\"",
+  "    fi",
+  "  done",
+  "  echo \"[leg-argv] $*\"",
+  "} >> \"$LOG\" 2>&1",
+  "exec >>\"$LOG\" 2>&1 \"$@\""
+]
+
+fn floor_preparation_emit_leg_driver() -> Bool {
+  let target = floor_preparation_leg_driver_binary()
+  let written = (Filesystem.Write(path: target,
+    content: concat(join(floor_preparation_leg_driver_lines, "\n"), "\n"))).success
+  if !written {
+    false
+  } else {
+    (floor_preparation_spawn_plain(binary: "/bin/chmod", args: ["0755", target])).rc == 0
+  }
+}
 
 fn floor_preparation_env_value(name: String) -> String {
   let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
@@ -1277,6 +1301,9 @@ fn floor_preparation_capture_run() -> String {
   let env_missing = floor_preparation_required_env_missing()
   let env_receipt = floor_preparation_supply_env_receipt(
     admitted: env_missing == "", note: concat("unset=", env_missing))
+  let emitted = floor_preparation_emit_leg_driver()
+  let emit_receipt = floor_preparation_receipt("emit-leg-driver",
+    concat("ok=", if emitted { "yes" } else { "no" }))
   let supply_receipts = [
     env_receipt,
     floor_preparation_supply_check(name: "claim_batch",
@@ -1289,10 +1316,10 @@ fn floor_preparation_capture_run() -> String {
       path: floor_preparation_leg_driver_binary(),
       expected: floor_preparation_pinned_leg_driver_sha)
   ]
-  let supplies = floor_preparation_supply_lines(receipts: supply_receipts)
+  let supplies = list_push(xs: floor_preparation_supply_lines(receipts: supply_receipts), item: emit_receipt)
   let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
     concat("lines=", to_string(length(xs: supplies))))
-  if !floor_preparation_supplies_hold(receipts: supply_receipts) {
+  if !floor_preparation_supplies_hold(receipts: supply_receipts) || !emitted {
     concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
   } else {
     let plan = floor_preparation_runner_plan_whole()
