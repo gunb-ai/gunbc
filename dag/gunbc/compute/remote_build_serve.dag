@@ -511,7 +511,7 @@ fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
 // ── THE AUTHORIZED ENTRY EACH ROSTER HOST INSTALLS ──────────────────────────────────────────────────
 //
 // The forced command is derived from the roster candidate, so the serving binary and repo root have one
-// authority (gunbc.compute.remote_build remote_build_serving_instance) and the host it names is the
+// authority (gunbc.compute.remote_build_serving_identity remote_build_serving_instance) and the host it names is the
 // candidate's. The line goes in the remote-build account's authorized_keys, never the operator's: the
 // serving entry refuses any other principal (remote_build_serve_principal). The command is rendered by
 // gunbc.remote_shell_command, whose single quotes the extdeps.ssh.keys constructor admits. `restrict`
