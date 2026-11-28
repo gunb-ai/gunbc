@@ -414,6 +414,26 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-deep-unbound-element".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "deep_unbound_element_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "list-append-wall-deep-resolved-element".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/list_append_element_argument_wall.dag",
+                function: "deep_resolved_element_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "free-monoid-carrier-text-at-string-run-refused".to_string(),
             },
             TargetProducer::CliWireProgram {
