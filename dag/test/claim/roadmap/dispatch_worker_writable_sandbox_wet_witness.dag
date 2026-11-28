@@ -3400,6 +3400,23 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
     outcome: witness_tree_destination_subtree_outcome(root: fp_target),
   )
   let fp_admitted = witness_tree_destination_subtree_is_link_free(root: fp_target)
+  // DIRECT AUTHORITY ON THE PARENT KIND. The subtree answer above can be delivered by the scan's own
+  // error rule before the component walk is ever consulted, which would leave the listing row's
+  // DIRECTORY REQUIREMENT unmeasured on this leg; this reading is that requirement's authority. The
+  // operand carries its trailing separator (ls(1): a file operand with a trailing slash is required to
+  // be a directory), so against a regular file the listing must be refused as unobservable and never
+  // read as a clean listing that simply omitted the child. Removing that requirement from the row
+  // flips THIS reading and nothing else can.
+  let fp_listing_answer = wet_out(output: witness_tree_parent_listing_state(parent: file_parent, wanted: "v2"))
+  let fp_listing_ok = wet_equals_string(actual: fp_listing_answer, expected: "Unobservable")
+  let fp_listing_staged = wet_stage(
+    label: "fp-listing-unobservable" as NonEmptyStr,
+    value: wet_conditional(
+      if_true: fp_listing_ok,
+      then_value: "ok" as NonEmptyStr,
+      else_value: join(["FAILED:", fp_listing_answer], "") as NonEmptyStr,
+    ),
+  )
   let ws_restored = shell.Chmod.OwnerOnlyDirectory(path: ws_dir as FilePath).success
   let nl_restored = shell.Chmod.OwnerOnlyDirectory(path: nl_dir as FilePath).success
   wet_claim_verdicts_with_root_readbacks(
@@ -3427,6 +3444,7 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
       && ws_answer == "Unobservable" && !ws_admitted && ws_dir_not_empty
       && nl_answer == "Unobservable" && !nl_admitted && nl_dir_not_empty
       && file_planted && fp_answer == "Unobservable" && !fp_admitted
+      && fp_listing_staged && fp_listing_ok
       && ws_restored && nl_restored,
     roots: [root as NonEmptyStr],
   )
