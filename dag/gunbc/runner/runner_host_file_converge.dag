@@ -2254,7 +2254,7 @@ fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSsh
     RunnerHostDeployRefused { host: _, cause: c } => JobUserUidUnobserved { cause: concat("the runner deploy row refuses: ", c) as NonEmptyStr }
     RunnerHostDeployFound { deploy: d } =>
       match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: d.job_user }) {
-      TypedArgvExecOverran { deadline: d } => JobUserUidUnobserved { cause: concat("getent passwd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+      TypedArgvExecOverran { deadline: d } => JobUserUidUnobserved { cause: concat("getent passwd leg dispatched, reply unreadable: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
       TypedArgvExecWireInconsistent { fault: f } => JobUserUidUnobserved { cause: concat("getent passwd leg: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
         TypedArgvExecRefused { reason: why } => JobUserUidUnobserved { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
         TypedArgvExecConverged { result: r } =>
@@ -2307,7 +2307,7 @@ fn classify_deploy_slot_account_read(exit_code: Int, stdout: String, stderr: Str
 fn observe_deploy_slot_account(subject: RunnerHostFileSubject, context: FleetSshExecutionContext) -> DeploySlotAccountRead
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: deploy_slot_job_user }) {
-  TypedArgvExecOverran { deadline: d } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+  TypedArgvExecOverran { deadline: d } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg dispatched, reply unreadable: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
   TypedArgvExecWireInconsistent { fault: f } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
     TypedArgvExecConverged { result: r } => classify_deploy_slot_account_read(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
@@ -2465,7 +2465,7 @@ fn classify_runner_spec_account_read(login: NonEmptyStr, exit_code: Int, stdout:
 fn observe_runner_spec_account(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, login: NonEmptyStr) -> RunnerSpecAccountRead
 {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: login }) {
-  TypedArgvExecOverran { deadline: d } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
+  TypedArgvExecOverran { deadline: d } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg dispatched, reply unreadable: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)) as NonEmptyStr }
   TypedArgvExecWireInconsistent { fault: f } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)) as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => RunnerSpecAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
     TypedArgvExecConverged { result: r } => classify_runner_spec_account_read(login: login, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
@@ -2803,7 +2803,7 @@ fn observe_runner_slot_tree_owned(subject: RunnerHostFileSubject, context: Fleet
 // leg is an UNREADABLE read, never an absence (classify_runner_slot_tree_presence).
 fn observe_runner_slot_tree_presence(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, target: RunnerSlotTreeTarget) -> RunnerSlotTreePresence {
   match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: runner_slot_tree_presence_argv(slot_dir: target.slot_dir as String) }) {
-  TypedArgvExecOverran { deadline: d } => TreePresenceUnreadable { cause: join(["the existence read was refused: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)], "") }
+  TypedArgvExecOverran { deadline: d } => TreePresenceUnreadable { cause: join(["the existence read was dispatched, reply unreadable: ", typed_argv_exec_overran_reason(leg_hint: "runner host file", deadline: d)], "") }
   TypedArgvExecWireInconsistent { fault: f } => TreePresenceUnreadable { cause: join(["the existence read could not be read: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "runner host file", fault: f)], "") }
     TypedArgvExecRefused { reason: why } => TreePresenceUnreadable { cause: join(["the existence read was refused: ", why], "") }
     TypedArgvExecConverged { result: r } => classify_runner_slot_tree_presence(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr, entry: runner_slot_tree_presence_entry(slot_dir: target.slot_dir as String))
