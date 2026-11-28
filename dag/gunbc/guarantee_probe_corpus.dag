@@ -288,6 +288,7 @@ data floor_generic_instantiation_hole_probe: GuaranteeProbeId = "floor-generic-i
 data floor_parse_list_separator_control_probe: GuaranteeProbeId = "floor-parse-list-separator-double-separator-control" as GuaranteeProbeId
 data floor_parse_list_separator_green_probe: GuaranteeProbeId = "floor-parse-list-separator-green-control" as GuaranteeProbeId
 data floor_parse_list_separator_hole_probe: GuaranteeProbeId = "floor-parse-list-separator-omitted-hole" as GuaranteeProbeId
+data arm_c_undeclared_below_floor_hole_probe: GuaranteeProbeId = "arm-c-undeclared-below-floor-hole" as GuaranteeProbeId
 data floor_record_completeness_green_probe: GuaranteeProbeId = "floor-record-field-completeness-green-control" as GuaranteeProbeId
 data floor_record_completeness_red_probe: GuaranteeProbeId = "floor-record-field-completeness-missing-field-red" as GuaranteeProbeId
 // THE ZERO-FIELD FORMS. `floor_record_completeness_red_probe` supplies SOME fields and omits one.
@@ -749,6 +750,14 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       path: v1_compile_rust_path_id,
       expectation: ExpectSilentAcceptanceHole {
         invalid_state: "a list literal whose second separator is omitted parses as element juxtaposition -- two elements where three were written -- with zero diagnostics" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: arm_c_undeclared_below_floor_hole_probe,
+      class: floor_closed_match_exhaustiveness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "red-control plant: a below-floor hole row that the declared-hole leg does not declare" as NonEmptyStr,
       },
     },
     GuaranteeProbeRow {
