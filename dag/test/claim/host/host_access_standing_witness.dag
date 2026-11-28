@@ -1,0 +1,295 @@
+module test.claim.host.host_access_standing_witness
+
+// THE ACCESS WITNESS FOR gunbc.recurring_failure_mode::declared_uncitedness_ignored_by_admission
+// (roadmap node fleet-truth-declared-incompleteness-refuses-use, rn_AYHH104UYXBSJUVP94BE4X03S2, owner model).
+//
+// THE PATH, NAMED FROM THE ROW: first_slice verbatim -- "The comparison and access paths that consume
+// hardware-catalog and intake-receipt rows, refusing or downgrading with the standing named, with a witness
+// per path." This is the ACCESS half; the comparison half is
+// test/claim/gpu_market/comparison_standing_witness.dag. The intake-receipt RELAYED-FIGURE arm lives HERE,
+// inside this path's consumer reading (claims 3 and 5), because the row's slice names two paths, not three:
+// without that arm a consumer could pass while reading relayed figures as if their standing said nothing.
+//
+// THE FAILURE (red_control verbatim -- "A decision whose inputs include a row whose standing says incomplete,
+// with that standing nowhere in the conclusion, keeps this open"). The specimen is the record's own, not a
+// fixture: the H11SSL unit-1 hand-install receipt carries accounts_and_ssh_keys_report as NotRelayed with an
+// open reading obligation, while that host's access was gated by a key outside
+// gunbc.fleet.fleet_ssh_access::fleet_authorized_keys -- and the row's own 2026-11-23 CHECKED leaves the debt
+// exactly here: "the access gate and the roster of keys still do not read it". The roster rule is
+// gunbc.design_ruling::fleet_authorized_keys_on_every_install_route.
+//
+// WHICH POPULATION EACH CLAIM RESTS ON (scope honesty; the two populations are never merged):
+//   THE STANDING RECORD (claims 1, 2, 6): the accounts-and-keys field these claims drive is THE RECEIPT'S OWN
+//   NotRelayed value, taken by name out of
+//   gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt::supermicro_h11ssl_unit1_hand_install,
+//   and the obligation they check is that field's OWN string, read out of the receipt -- never retyped here.
+//   SUPPLIED VALUES AT THE INTERFACE (claims 3, 4, 5): the relayed arms have no real inhabitant today -- the
+//   receipt's accounts field is NotRelayed, and relaying it is OUT OF SCOPE on this row (its own owed receipt,
+//   the operator's to file). Claim 3 reuses the receipt's own relayed companion-hardware figure, which the
+//   receipt itself marks TranscribedUncited, presented as the accounts figure; claim 4 stands a cited arm from
+//   a supplied authority. These are SHAPE claims about what the consumer does with a relayed-marked or
+//   relayed-cited report, NOT observations that anyone relayed this host's accounts, and no claim here asserts
+//   anything about the real key state of any machine. The keys themselves are roster members by reference
+//   (extdeps data from gunbc.fleet.fleet_ssh_access) plus one fixture that is not.
+//
+// THE ASSERTIONS BIND THE VALUE AND THE OBLIGATION, NOT THE WORD: each claim matches the TYPED arm of
+// gunbc.host.host_authorized_keys_reconcile::HostAccountsKeysStanding and compares the carried obligation for
+// EQUALITY against the string the declaring record itself holds (the NotRelayed field's own
+// read_obligation, or the relayed figure's own standing obligation). A verdict that only mentions a standing
+// cannot satisfy them, and the negative shape (claim 4: a cited report admits and carries NO obligation) stops
+// a consumer that stuffed obligations into every arm to game the first half.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ExternalAuthority }
+import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
+  supermicro_h11ssl_unit1_hand_install,
+  InstallSystemState,
+  HandInstallRecordedField,
+  OperatorRelayed,
+  NotRelayed,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
+import gunbc.host.host_authorized_keys_reconcile {
+  host_access_admission,
+  host_accounts_keys_standing,
+  host_accounts_keys_declares_gap,
+  host_keys_out_of_roster,
+  AccountsKeysRelayedCited,
+  AccountsKeysRelayedMarked,
+  AccountsKeysNotRelayed,
+  AccessAdmitted,
+  AccessDowngraded,
+  AccessRefused,
+  HostAccessRefusal,
+  OutOfRosterKeyAgainstRelayedAccounts,
+  OutOfRosterKeyUndecidableOnUndeclaredAccounts,
+}
+
+// The two causes, told apart by a typed read rather than a string: collapsing them is how a declared gap
+// becomes a routine denial and stops being visible.
+fn cause_is_undecidable(cause: HostAccessRefusal) -> Bool {
+  match cause {
+    OutOfRosterKeyUndecidableOnUndeclaredAccounts => true
+    OutOfRosterKeyAgainstRelayedAccounts => false
+  }
+}
+
+fn cause_is_against_relayed_accounts(cause: HostAccessRefusal) -> Bool {
+  match cause {
+    OutOfRosterKeyUndecidableOnUndeclaredAccounts => false
+    OutOfRosterKeyAgainstRelayedAccounts => true
+  }
+}
+
+// ── THE RECORD, READ OUT OF THE MODULE THAT DECLARES IT ────────────────────────────────────────────
+
+// The receipt's own accounts-and-keys field, taken BY NAME (never by position out of a tracked list -- a
+// positional read would be a claim about an index, not about the field).
+fn receipt_accounts_report() -> HandInstallRecordedField {
+  match supermicro_h11ssl_unit1_hand_install.system_state {
+    InstallSystemState { hostname: _, accounts_and_ssh_keys_report: a, network_config_report: _ } => a
+  }
+}
+
+// The receipt's own obligation for that field: the string the access verdict must carry, read from the record.
+fn receipt_accounts_obligation() -> NonEmptyStr? {
+  match receipt_accounts_report() {
+    NotRelayed { as_of_relayed_day: _, read_obligation: o } => Present { value: o }
+    OperatorRelayed { figure: _ } => Absent
+  }
+}
+
+// The receipt's own relayed figure, standing and all, as declared beside the accounts field in the same
+// record. Used only to exercise the relayed arms' SHAPE, never as a claim that the accounts report was relayed.
+fn receipt_relayed_figure() -> H11sslReportedFigure? {
+  match supermicro_h11ssl_unit1_hand_install.companion_hardware_report {
+    OperatorRelayed { figure: f } => Present { value: f }
+    NotRelayed { as_of_relayed_day: _, read_obligation: _ } => Absent
+  }
+}
+
+fn relayed_accounts_holding_a_gap() -> HandInstallRecordedField {
+  match receipt_relayed_figure() {
+    Present { value: f } => OperatorRelayed { figure: f }
+    Absent => receipt_accounts_report()
+  }
+}
+
+// A SUPPLIED authority for the cited arm's shape only; see the population note above.
+fn relayed_accounts_cited() -> HandInstallRecordedField {
+  match receipt_relayed_figure() {
+    Present { value: f } =>
+      OperatorRelayed {
+        figure: H11sslReportedFigure {
+          value: f.value,
+          standing: CitedToAuthority { authority: ExternalAuthority { uri: uri_https("www.supermicro.com/support/manuals/") } },
+        },
+      }
+    Absent => receipt_accounts_report()
+  }
+}
+
+// ── THE KEYS ───────────────────────────────────────────────────────────────────────────────────────
+
+fn foreign_key() -> SshPublicKey {
+  SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIOutsiderVendorImageKeyNotInTheFleetRoster",
+    comment: "vendor-image-key-not-in-the-fleet-roster",
+  }
+}
+
+fn rostered_keys() -> List<SshPublicKey> {
+  [ fleet_automation_ssh_key, operator_macbook_ssh_key ]
+}
+
+fn one_foreign_key_alongside_rostered() -> List<SshPublicKey> {
+  [ fleet_automation_ssh_key, foreign_key() ]
+}
+
+// The fixture is genuinely outside the roster, checked against the roster through the module's own roster
+// read -- so no claim below can be satisfied by a fixture that accidentally IS the roster.
+fn foreign_key_is_outside_the_roster() -> Bool {
+  count(host_keys_out_of_roster(observed: [ foreign_key() ])) == 1
+    && count(host_keys_out_of_roster(observed: rostered_keys())) == 0
+}
+
+fn obligation_is_the_records_own(carried: NonEmptyStr) -> Bool {
+  match receipt_accounts_obligation() {
+    Present { value: o } => o == carried
+    Absent => false
+  }
+}
+
+// ── THE REFUSAL: A FOREIGN KEY AGAINST A REPORT THAT DECLARES ITSELF INCOMPLETE ─────────────────────
+
+test fn unrelayed_accounts_report_refuses_a_key_outside_the_fleet_roster_naming_the_standing() -> Bool {
+  // THE ROW'S OWN SPECIMEN. The roster is the fleet's only record of who may reach a host; while the intake
+  // record says it does not know which accounts and keys the hand install put on that host, a key outside the
+  // roster is not decidable -- so the access decision REFUSES, with the cause naming that condition, and the
+  // verdict carries the standing arm and the record's OWN obligation text.
+  foreign_key_is_outside_the_roster()
+    && match host_access_admission(host: "h11ssl-unit-1", observed: one_foreign_key_alongside_rostered(), accounts_report: receipt_accounts_report()) {
+        AccessRefused {
+          host: h,
+          out_of_roster: out,
+          cause: cause,
+          accounts_keys: AccountsKeysNotRelayed { as_of_relayed_day: day, read_obligation: carried }
+        } =>
+          cause_is_undecidable(cause: cause) &&
+          h == "h11ssl-unit-1"
+            && count(out) == 1
+            && count(host_keys_out_of_roster(observed: out)) == 1
+            && obligation_is_the_records_own(carried: carried)
+            && host_accounts_keys_declares_gap(standing: AccountsKeysNotRelayed { as_of_relayed_day: day, read_obligation: carried })
+        _ => false
+      }
+}
+
+// ── THE DOWNGRADE: NOTHING OUTSIDE THE ROSTER, AND STILL NOT ADMITTED WHOLE ─────────────────────────
+
+test fn unrelayed_accounts_report_downgrades_a_complete_roster_and_still_names_the_gap() -> Bool {
+  // Every observed key is on the roster, and the access is STILL not admitted: the roster covered everything
+  // seen, and the fleet may not state that the roster is the whole of what the install left on the host. The
+  // downgrade carries the standing and the record's own obligation -- refusing is not the only honest answer,
+  // and an admission here is exactly the failure this row names.
+  match host_access_admission(host: "h11ssl-unit-1", observed: rostered_keys(), accounts_report: receipt_accounts_report()) {
+    AccessDowngraded { host: h, rostered: in_roster, accounts_keys: AccountsKeysNotRelayed { as_of_relayed_day: day, read_obligation: carried } } =>
+      h == "h11ssl-unit-1"
+        && count(in_roster) == 2
+        && obligation_is_the_records_own(carried: carried)
+        && host_accounts_keys_declares_gap(standing: AccountsKeysNotRelayed { as_of_relayed_day: day, read_obligation: carried })
+    _ => false
+  }
+}
+
+// ── THE RELAYED ARMS, INSIDE THIS PATH ─────────────────────────────────────────────────────────────
+
+test fn relayed_transcribed_accounts_report_is_read_as_the_gap_it_declares() -> Bool {
+  // A figure the operator DID relay, whose own standing says it is a transcription with no authority attached:
+  // a receipt about what someone wrote down, not a measurement
+  // (gunbc.design_argument::external_upstreams). It grounds nothing, so the foreign key stays undecidable and
+  // the verdict carries the marked arm and THAT FIGURE'S OWN obligation -- compared for equality against the
+  // standing the relayed figure itself declares, not against a paraphrase.
+  match host_access_admission(host: "h11ssl-unit-1", observed: one_foreign_key_alongside_rostered(), accounts_report: relayed_accounts_holding_a_gap()) {
+    AccessRefused {
+      host: h,
+      out_of_roster: out,
+      cause: cause,
+      accounts_keys: AccountsKeysRelayedMarked { value: v, standing: TranscribedUncited { read_obligation: stated }, read_obligation: carried }
+    } =>
+      cause_is_undecidable(cause: cause) && h == "h11ssl-unit-1"
+        && count(out) == 1
+        && stated == carried
+        && host_accounts_keys_declares_gap(standing: AccountsKeysRelayedMarked { value: v, standing: TranscribedUncited { read_obligation: stated }, read_obligation: carried })
+    _ => false
+  }
+}
+
+test fn relayed_cited_accounts_report_admits_and_carries_no_obligation() -> Bool {
+  // THE NEGATIVE SHAPE. A report relayed AND cited to an authority is the one arm that lets the roster stand as
+  // the whole description: it ADMITS, and it carries NO obligation -- an arm that printed an obligation beside
+  // a citation would mean this consumer cannot tell a cited figure from a transcription, and fails here.
+  match host_access_admission(host: "h11ssl-unit-1", observed: rostered_keys(), accounts_report: relayed_accounts_cited()) {
+    AccessAdmitted { host: h, rostered: in_roster, accounts_keys: AccountsKeysRelayedCited { value: v, authority: a } } =>
+      h == "h11ssl-unit-1"
+        && count(in_roster) == 2
+        && !host_accounts_keys_declares_gap(standing: AccountsKeysRelayedCited { value: v, authority: a })
+        && count(keys_carrying_an_obligation(observed: relayed_accounts_cited())) == 0
+    _ => false
+  }
+}
+
+// The obligation count, read through the module's own standing fold rather than the arm the verdict rendered:
+// so an admission that quietly kept an obligation cannot pass the claim above.
+fn keys_carrying_an_obligation(accounts_report: HandInstallRecordedField) -> List<String> {
+  match host_accounts_keys_standing(field: accounts_report) {
+    AccountsKeysRelayedMarked { value: _, standing: _, read_obligation: carried } => [ carried ]
+    AccountsKeysNotRelayed { as_of_relayed_day: _, read_obligation: carried } => [ carried as String ]
+    _ => []
+  }
+}
+
+// ── THE TWO REFUSALS ARE DIFFERENT EVENTS ──────────────────────────────────────────────────────────
+
+test fn the_two_refusals_are_distinguishable_by_cause() -> Bool {
+  // Same foreign key, two reports. Against a relayed AND cited accounts report the key is an ordinary
+  // out-of-roster key -- the operator has said what is on the host and this is not it. While the report
+  // declares itself incomplete the key is UNDECIDABLE, because the record that would tell a hand-added
+  // operator credential from an intruder's is unrelayed. Reporting both as "refused" is how a declared gap
+  // becomes a routine denial and stops being visible, so the causes are pinned apart here.
+  match host_access_admission(host: "h11ssl-unit-1", observed: one_foreign_key_alongside_rostered(), accounts_report: relayed_accounts_cited()) {
+    AccessRefused { host: h1, out_of_roster: a, cause: cause1, accounts_keys: AccountsKeysRelayedCited { value: v1, authority: au1 } } =>
+      cause_is_against_relayed_accounts(cause: cause1) &&
+      match host_access_admission(host: "h11ssl-unit-1", observed: one_foreign_key_alongside_rostered(), accounts_report: receipt_accounts_report()) {
+        AccessRefused { host: h2, out_of_roster: b, cause: cause2, accounts_keys: AccountsKeysNotRelayed { as_of_relayed_day: d2, read_obligation: o2 } } =>
+          cause_is_undecidable(cause: cause2)
+            && h1 == "h11ssl-unit-1" && h2 == "h11ssl-unit-1" && count(a) == 1 && count(b) == 1
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// ── THE HANDBACK, AS A CLAIM ───────────────────────────────────────────────────────────────────────
+
+test fn a_gap_declaring_report_is_never_admitted_whole() -> Bool {
+  // handback verbatim from the row: "Rows that cannot be consumed as more complete than they declare
+  // themselves." Every gap shape the record can carry, with and without a foreign key, answers a refusal or a
+  // downgrade -- never an admission.
+  never_admitted(report: receipt_accounts_report(), keys: one_foreign_key_alongside_rostered())
+    && never_admitted(report: receipt_accounts_report(), keys: rostered_keys())
+    && never_admitted(report: relayed_accounts_holding_a_gap(), keys: one_foreign_key_alongside_rostered())
+    && never_admitted(report: relayed_accounts_holding_a_gap(), keys: rostered_keys())
+}
+
+fn never_admitted(report: HandInstallRecordedField, keys: List<SshPublicKey>) -> Bool {
+  match host_access_admission(host: "h11ssl-unit-1", observed: keys, accounts_report: report) {
+    AccessAdmitted { host: _, rostered: _, accounts_keys: _ } => false
+    _ => true
+  }
+}

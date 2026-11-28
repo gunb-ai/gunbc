@@ -1,0 +1,400 @@
+module test.claim.gpu_market.comparison_standing_witness
+
+// THE COMPARISON WITNESS FOR gunbc.recurring_failure_mode::declared_uncitedness_ignored_by_admission
+// (roadmap node fleet-truth-declared-incompleteness-refuses-use, rn_AYHH104UYXBSJUVP94BE4X03S2, owner model).
+//
+// THE PATH, NAMED FROM THE ROW: first_slice verbatim -- "The comparison and access paths that consume
+// hardware-catalog and intake-receipt rows, refusing or downgrading with the standing named, with a witness
+// per path." This is the COMPARISON half; the access half is
+// test/claim/host/host_access_standing_witness.dag.
+//
+// THE FAILURE (red_control verbatim -- "A decision whose inputs include a row whose standing says incomplete,
+// with that standing nowhere in the conclusion, keeps this open"): the deciding fold of the accelerator
+// comparison, gunbc.gpu_market.realization_join::realization_check_board, read the two figures that decide a
+// board's fate -- the device row's memory and the board's power ceiling -- bare, and consulted no standing at
+// all. A board handed to it was compared on figures whose grounding nobody looked at.
+//
+// WHICH POPULATION EACH CLAIM RESTS ON (scope honesty; the two populations are different and are never merged):
+//   SUPPLIED-VALUE POPULATION (claims 1, 2, 3, 6, 7): realization_check_board and board_comparison_admission
+//   take the board BY VALUE, so these claims test what the comparison does with a marked or ungrounded row
+//   handed to it. They do NOT claim the fleet's standing market census contains AMD boards -- it does not:
+//   gunbc.gpu_market.catalog_boards carries the NVIDIA rows only, which is exactly why the census could never
+//   have caught this failure through the census path.
+//   STANDING-CATALOG POPULATION (claims 4, 5): the cited row is the RTX 2000 Ada board the existing comparison
+//   witness already joins (test/claim/gpu_market_realization_join_witness.dag), and both of its deciding
+//   figures are cited -- memory on the device row, board_power on the board row -- so the gate does not newly
+//   refuse anything the current population exercises. That is the blast-radius guard written as a claim.
+//
+// THE ASSERTIONS BIND THE VALUE AND THE OBLIGATION, NOT THE WORD (lane ruling, Demand 1): every "the standing
+// is in the conclusion's own text" claim matches the TYPED arm (FigureMarked), matches the TYPED standing arm
+// (TranscribedUncited), and compares the carried obligation for EQUALITY against the declaring module's own
+// accessor gunbc.fleet.gpu_declared_figures_standing::gpu_figure_read_obligation applied to the standing the
+// declaring module itself exports (extdeps.gpu.amd::r9700_figures_standing). A conclusion that merely mentions
+// the word "standing", or that string-formats the row, cannot satisfy them. The negative shape is a claim too
+// (claim 4): a cited arm must carry NO obligation, so a consumer that stuffed obligations into every arm to
+// game the first half cannot pass either.
+//
+// THE PRIOR ART THIS EXTENDS, NAMED AS A REUSE: the rate table already refuses this way --
+// product.node_power_envelope::rank_specific_2dpc_clock answers ChannelClockUnresolvedCause
+// RankSpecificRateUncited rather than consume a rate whose standing says nobody cited the table. Same rule,
+// second consumer site, no second provenance model.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.measure { mebibyte, milliwatt }
+import extdeps.storage.types { PcieLink, Gen4 }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.gpu.types { GpuBoardCatalogRow, GpuBoardAdmitted, GpuBoardRefused }
+import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_board_catalog, r9700_figures_standing }
+import extdeps.gpu.nvidia { nvidia_rtx_2000_ada_board_catalog, nvidia_b200_sxm_board_catalog, nvidia_rtx_5090_board_catalog }
+import gunbc.serving.serving_benchmark_run_receipt { ObservedGpu }
+import gunbc.gpu_market.realization_join {
+  realization_check_board,
+  realization_gpu_join,
+  RealizationGpuJoined,
+  RealizationGpuRefused,
+  BoardCheckPassed,
+  BoardCheckRefused,
+  ComparisonStandingRefused,
+  MemoryAboveCatalog,
+}
+import gunbc.gpu_market.comparison_standing {
+  DecidedFigure,
+  MemoryCapacity,
+  BoardPowerCeiling,
+  ComparisonGrounding,
+  FigureCited,
+  FigureMarked,
+  FigureUngrounded,
+  FigureAbsent,
+  comparison_figure_grounding,
+  comparison_figure_groundings,
+  comparison_refused_groundings,
+  comparison_absent_groundings,
+  comparison_grounding_is_marked,
+  comparison_grounding_is_cited,
+  comparison_grounding_is_absent,
+  board_comparison_admission,
+  ComparisonAdmitted,
+  ComparisonRefused,
+}
+import gunbc.fleet.gpu_declared_figures_standing { gpu_figure_read_obligation }
+
+// ── FIXTURES AND READERS ──────────────────────────────────────────────────────────────────────────
+
+fn observed_card(name: NonEmptyStr, mib: Nat, cap_mw: Nat) -> ObservedGpu {
+  ObservedGpu {
+    name: name,
+    uuid: "GPU-comparison-standing-fixture",
+    vbios: "00.00.00.00.00",
+    driver: "580.95.05",
+    memory: mebibyte(count: mib),
+    power_limit: milliwatt(count: cap_mw),
+    link_max: PcieLink { generation: Gen4, lane_count: 8 },
+  }
+}
+
+// The AMD R9700 reference board: its own module declares its figures TranscribedUncited
+// (extdeps.gpu.amd::r9700_figures_standing) and its rows cite no figure at all (figure_citations: [] on both
+// the board facts and the device row). Supplied to the comparison BY VALUE -- see the population note above.
+fn amd_r9700_row() -> GpuBoardCatalogRow? {
+  match amd_radeon_ai_pro_r9700_board_catalog {
+    GpuBoardAdmitted { row: r } => Present { value: r }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
+  }
+}
+
+// The cited board the standing population already exercises: both deciding figures cited to an authority.
+fn rtx_2000_ada_row() -> GpuBoardCatalogRow? {
+  match nvidia_rtx_2000_ada_board_catalog {
+    GpuBoardAdmitted { row: r } => Present { value: r }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
+  }
+}
+
+// The row that states one deciding figure and declares the other absent entirely (board_power: none).
+fn b200_sxm_row() -> GpuBoardCatalogRow? {
+  match nvidia_b200_sxm_board_catalog {
+    GpuBoardAdmitted { row: r } => Present { value: r }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
+  }
+}
+
+fn is_memory(figure: DecidedFigure) -> Bool {
+  match figure {
+    MemoryCapacity => true
+    BoardPowerCeiling => false
+  }
+}
+
+fn is_power(figure: DecidedFigure) -> Bool {
+  match figure {
+    MemoryCapacity => false
+    BoardPowerCeiling => true
+  }
+}
+
+// A row that STATES both deciding figures and grounds neither: figure_citations name neither field and no
+// standing is declared for it. This is the rate-table defect's own shape -- an uncited figure stated by a
+// row, which must not be read as a cited one.
+fn rtx_5090_row() -> GpuBoardCatalogRow? {
+  match nvidia_rtx_5090_board_catalog {
+    GpuBoardAdmitted { row: r } => Present { value: r }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
+  }
+}
+
+fn refused_for(refusals: List<ComparisonGrounding>, figure: DecidedFigure) -> ComparisonGrounding? {
+  first_where(xs: refusals, keep: g => match g {
+    FigureMarked { figure: f, standing: _, read_obligation: _ } => same_figure(f, figure)
+    FigureCited { figure: f, authority: _ } => same_figure(f, figure)
+    FigureUngrounded { figure: f } => same_figure(f, figure)
+  })
+}
+
+fn same_figure(a: DecidedFigure, b: DecidedFigure) -> Bool {
+  is_memory(a) == is_memory(b) && is_power(a) == is_power(b)
+}
+
+// THE OBLIGATION BINDING, once, so no claim compares against a paraphrase: the carried string must EQUAL what
+// the declaring module's own accessor says for the standing that module itself exports.
+fn obligation_is_the_modules_own(carried: String) -> Bool {
+  match gpu_figure_read_obligation(standing: r9700_figures_standing) {
+    Present { value: o } => o == carried
+    Absent => false
+  }
+}
+
+// ── THE MARKED ROW: REFUSED, WITH THE STANDING AND ITS OBLIGATION IN THE CONCLUSION'S OWN TEXT ──────
+
+test fn marked_board_power_ceiling_refuses_entry_naming_the_standing_and_its_obligation() -> Bool {
+  match amd_r9700_row() {
+    Present { value: row } =>
+      match comparison_figure_grounding(board: row, figure: BoardPowerCeiling) {
+        FigureMarked { figure: f, standing: TranscribedUncited { read_obligation: stated }, read_obligation: carried } =>
+          is_power(f) && obligation_is_the_modules_own(carried: carried) && stated == carried
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn marked_memory_figure_refuses_entry_naming_the_standing_and_its_obligation() -> Bool {
+  match amd_r9700_row() {
+    Present { value: row } =>
+      match comparison_figure_grounding(board: row, figure: MemoryCapacity) {
+        FigureMarked { figure: f, standing: TranscribedUncited { read_obligation: stated }, read_obligation: carried } =>
+          is_memory(f) && obligation_is_the_modules_own(carried: carried) && stated == carried
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// The refusal, counted from the fold that DECIDES -- not from the admission arm's own rendering: the witness
+// counts what comparison_refused_groundings reports, so an admission arm that merely prints a refusal while
+// the gate let the figure through still goes red here.
+test fn marked_board_is_refused_before_any_number_is_compared() -> Bool {
+  match amd_r9700_row() {
+    Present { value: row } =>
+      match board_comparison_admission(board: row) {
+        ComparisonRefused { model: m, refusals: refusals } =>
+          m == "Radeon AI PRO R9700"
+            && count(refusals) == 2
+            && count(comparison_refused_groundings(grounds: comparison_figure_groundings(board: row))) == 2
+            && marked_refusal_is(refusals, BoardPowerCeiling)
+            && marked_refusal_is(refusals, MemoryCapacity)
+            // The model's own vocabulary has to agree with the arm structure: comparison_grounding_is_marked
+            // is the predicate a consumer routes on without matching every arm, so if it ever said "marked"
+            // of something the match above would not accept (or the reverse), this claim goes red.
+            && all(refusals, g => comparison_grounding_is_marked(grounding: g))
+        ComparisonAdmitted { model: _, grounds: _, absent: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn marked_refusal_is(refusals: List<ComparisonGrounding>, figure: DecidedFigure) -> Bool {
+  match refused_for(refusals: refusals, figure: figure) {
+    Present { value: FigureMarked { figure: _, standing: TranscribedUncited { read_obligation: stated }, read_obligation: carried } } =>
+      obligation_is_the_modules_own(carried: carried) && stated == carried
+    _ => false
+  }
+}
+
+// ── THE CITED ROW: ADMITTED, AND OWEING NOTHING (the negative shape) ───────────────────────────────
+
+test fn cited_board_is_admitted_and_owes_no_obligation() -> Bool {
+  match rtx_2000_ada_row() {
+    Present { value: row } =>
+      match board_comparison_admission(board: row) {
+        ComparisonAdmitted { model: m, grounds: grounds, absent: absent } =>
+          m == "RTX 2000 Ada Generation"
+            && count(absent) == 0
+            && count(grounds) == 2
+            && count(comparison_refused_groundings(grounds: grounds)) == 0
+            && cited_grounding_is(grounds, MemoryCapacity)
+            && cited_grounding_is(grounds, BoardPowerCeiling)
+            && no_grounding_carries_an_obligation(grounds: grounds)
+            // Both deciding figures are cited on the model's own test, not only on the arm match here.
+            && all(grounds, g => comparison_grounding_is_cited(grounding: g))
+        ComparisonRefused { model: _, refusals: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn cited_grounding_is(grounds: List<ComparisonGrounding>, figure: DecidedFigure) -> Bool {
+  match refused_for(refusals: grounds, figure: figure) {
+    Present { value: FigureCited { figure: _, authority: _ } } => true
+    _ => false
+  }
+}
+
+// THE NEGATIVE SHAPE: an arm that printed an obligation beside a cited figure would mean this consumer cannot
+// tell a citation from a transcription, and it fails here rather than quietly passing both halves.
+fn no_grounding_carries_an_obligation(grounds: List<ComparisonGrounding>) -> Bool {
+  grounds |> all(g => match g {
+    FigureMarked { figure: _, standing: _, read_obligation: _ } => false
+    _ => true
+  })
+}
+
+test fn cited_board_inside_limits_gets_no_verdict_from_the_fold() -> Bool {
+  // The blast-radius guard as a claim: the row the current population actually exercises -- 12 GiB observed
+  // against a 16 GiB catalog figure, a 50 W cap against the board's cited 70 W ceiling -- still answers with
+  // no verdict, and the standing it passed on is two CITED figures and no carried absence.
+  match rtx_2000_ada_row() {
+    Present { value: row } =>
+      match realization_check_board(gpu: observed_card("NVIDIA RTX 2000 Ada Generation", 12288, 50000), board: row) {
+        BoardCheckPassed { carried: carried } =>
+          count(carried) == 2
+          && count(carried |> filter(g => match g { FigureCited { figure: _, authority: _ } => true  _ => false })) == 2
+          && count(carried |> filter(g => match g { FigureAbsent { figure: _ } => true  _ => false })) == 0
+        BoardCheckRefused { refusal: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// ── THE ABSENT FIGURE: REFUSED AS UNGROUNDED, NEVER READ AS CITED OR AS ZERO ───────────────────────
+
+test fn a_present_but_uncited_figure_refuses_entry_and_is_not_read_as_cited() -> Bool {
+  // The rate-table defect at the comparison site (the repaired half of product.node_power_envelope:
+  // "refused empty rows but admitted nonempty uncited rows"). The RTX 5090 board STATES a memory figure and
+  // a board power figure, cites neither, and declares no standing -- so both are FigureUngrounded and the
+  // board is refused on both. A gate that filled an uncited figure in, or read it as cited because the row is
+  // otherwise well-populated, fails here.
+  match rtx_5090_row() {
+    Present { value: row } =>
+      match board_comparison_admission(board: row) {
+        ComparisonRefused { model: m, refusals: refusals } =>
+          m == "GeForce RTX 5090"
+            && count(refusals) == 2
+            && count(comparison_refused_groundings(grounds: comparison_figure_groundings(board: row))) == 2
+            && match refused_for(refusals: refusals, figure: MemoryCapacity) {
+                Present { value: FigureUngrounded { figure: f } } => is_memory(f)
+                _ => false
+              }
+            && match refused_for(refusals: refusals, figure: BoardPowerCeiling) {
+                Present { value: FigureUngrounded { figure: f } } => is_power(f)
+                _ => false
+              }
+        ComparisonAdmitted { model: _, grounds: _, absent: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn an_absent_figure_is_carried_visibly_and_never_refused_as_if_it_decided() -> Bool {
+  // The third answer, and the one most easily got wrong in both directions. The B200 SXM board cites its
+  // memory and declares NO board power (board_power: none): the ceiling is FigureAbsent, not FigureUngrounded
+  // and not FigureCited. It is NOT a refusal -- a figure that is not there cannot decide anything, and the
+  // fold's own numeric check answers nothing for it -- but it is NOT invisible either: the admitted arm names
+  // it, and the fold still answers none for an observation inside the cited memory figure. Refusing this board
+  // would be a prohibition broader than the evidence (gunbc.design_argument::epistemic_humility); reading the
+  // absence as a zero, or as a citation, would be the failure the row names (gunbc.design_argument::fail_closed).
+  match b200_sxm_row() {
+    Present { value: row } =>
+      match board_comparison_admission(board: row) {
+        ComparisonAdmitted { model: m, grounds: grounds, absent: absent } =>
+          m == "NVIDIA B200 SXM"
+            && count(absent) == 1
+            && count(comparison_absent_groundings(grounds: grounds)) == 1
+            && all(absent, g => comparison_grounding_is_absent(grounding: g))
+            && cited_grounding_is(grounds: comparison_figure_groundings(board: row), figure: MemoryCapacity)
+            && match refused_for(refusals: absent, figure: BoardPowerCeiling) {
+                Present { value: FigureAbsent { figure: f } } => is_power(f)
+                _ => false
+              }
+        ComparisonRefused { model: _, refusals: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn an_absent_ceiling_still_answers_no_power_verdict_from_the_fold() -> Bool {
+  // The same row through the production fold: the absent ceiling produces no power verdict and no standing
+  // refusal -- the fold has nothing to compare -- while the cited memory figure still decides normally. The
+  // pass is not silent: it carries the ceiling it could not check.
+  match b200_sxm_row() {
+    Present { value: row } =>
+      match realization_check_board(gpu: observed_card("NVIDIA B200 SXM", 131072, 700000), board: row) {
+        BoardCheckPassed { carried: carried } =>
+          count(carried) == 2
+          && count(carried |> filter(g => match g { FigureAbsent { figure: BoardPowerCeiling } => true  _ => false })) == 1
+          && count(carried |> filter(g => match g { FigureCited { figure: MemoryCapacity, authority: _ } => true  _ => false })) == 1
+        BoardCheckRefused { refusal: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn the_join_itself_names_the_ceiling_it_never_compared() -> Bool {
+  // THE CONSUMER, not the fold beside it. This is the whole point of the change: a board joined with a
+  // ceiling its own row declares absent must not come back looking like a board whose ceiling was checked
+  // and passed. The join's own text has to say which figures it decided on and which it could not.
+  match realization_gpu_join(gpu: observed_card("NVIDIA B200", 131072, 700000)) {
+    RealizationGpuJoined { gpu: _, board: b, carried: carried } =>
+      b.facts.model == "NVIDIA B200 SXM"
+      && count(carried |> filter(g => match g { FigureAbsent { figure: BoardPowerCeiling } => true  _ => false })) == 1
+      && count(carried |> filter(g => match g { FigureCited { figure: MemoryCapacity, authority: _ } => true  _ => false })) == 1
+    RealizationGpuRefused { gpu: _, refusal: _ } => false
+  }
+}
+
+test fn a_checked_ceiling_is_distinguishable_from_an_uncheckable_one() -> Bool {
+  // The pair that makes the last claim say something: the same fold on a board that DOES state its ceiling
+  // carries that ceiling as cited and carries no absence at all. If both joins read the same way, this
+  // claim is the one that fails.
+  match realization_gpu_join(gpu: observed_card("NVIDIA RTX 2000 Ada Generation", 12288, 50000)) {
+    RealizationGpuJoined { gpu: _, board: b, carried: carried } =>
+      b.facts.model == "RTX 2000 Ada Generation"
+      && count(carried |> filter(g => match g { FigureAbsent { figure: _ } => true  _ => false })) == 0
+      && count(carried |> filter(g => match g { FigureCited { figure: BoardPowerCeiling, authority: _ } => true  _ => false })) == 1
+    RealizationGpuRefused { gpu: _, refusal: _ } => false
+  }
+}
+
+// ── THE GATE PRECEDES THE ARITHMETIC ───────────────────────────────────────────────────────────────
+
+test fn standing_gate_precedes_the_numeric_verdict() -> Bool {
+  // An observation whose memory is plainly above the catalog figure, handed in with a row whose memory figure
+  // nobody has cited. The fold must answer with the STANDING refusal, not with MemoryAboveCatalog: a verdict
+  // computed FROM an uncited figure is the failure, and a fold that consulted the standing only after the
+  // arithmetic would report the numeric cause here.
+  match amd_r9700_row() {
+    Present { value: row } =>
+      match realization_check_board(gpu: observed_card("AMD Radeon AI PRO R9700", 49152, 250000), board: row) {
+        BoardCheckRefused { refusal: ComparisonStandingRefused { model: m, refusals: refusals } } =>
+          m == "Radeon AI PRO R9700"
+            && count(refusals) == 2
+            && marked_refusal_is(refusals, MemoryCapacity)
+            && marked_refusal_is(refusals, BoardPowerCeiling)
+        BoardCheckRefused { refusal: _ } => false
+        BoardCheckPassed { carried: _ } => false
+      }
+    Absent => false
+  }
+}

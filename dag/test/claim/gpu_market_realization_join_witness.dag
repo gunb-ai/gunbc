@@ -39,7 +39,7 @@ fn srv3_gpus() -> List<ObservedGpu> {
 test fn w_srv3_gpus_join_to_the_rtx_2000_ada_board() -> Bool {
   let gpus = srv3_gpus()
   count(gpus) == 2 && gpus |> all(g => match realization_gpu_join(gpu: g) {
-    RealizationGpuJoined { gpu: _, board: b } => gpu_catalog_row_eq(a: b.facts.gpu, b: nvidia_rtx_2000_ada_catalog)
+    RealizationGpuJoined { gpu: _, board: b, carried: _ } => gpu_catalog_row_eq(a: b.facts.gpu, b: nvidia_rtx_2000_ada_catalog)
     RealizationGpuRefused { gpu: _, refusal: _ } => false
   })
 }

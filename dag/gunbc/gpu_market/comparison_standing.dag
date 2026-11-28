@@ -1,0 +1,214 @@
+module gunbc.gpu_market.comparison_standing
+
+// THE STANDING IS AN INPUT TO THE COMPARISON, NOT METADATA BESIDE IT.
+//
+// gunbc.fleet.gpu_declared_figures_standing binds each marked GPU row to the standing its own module
+// declares and hands the standing over to a consumer; its header says plainly that deciding whether a
+// consumer may PROCEED with a marked figure is not that module's call -- "refusing, downgrading or
+// carrying the obligation is the consumer's, and each path that consumes these figures takes its own
+// work item". This is that consumer for the comparison path, the item it names:
+// gunbc.plans.desired_state_follows_the_machine's fleet-truth-declared-incompleteness-refuses-use.
+//
+// THE CLASS THIS KILLS (gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission): a row
+// whose own standing declares it incomplete consumed as if it declared nothing. The 2026-11-21 receipt
+// names the accelerator purchase comparison; the 2026-11-23 CHECKED paragraph corrected the path -- the
+// market census is NVIDIA-only (gunbc.gpu_market.catalog_boards imports neither extdeps.gpu.amd nor
+// extdeps.gpu.gigabyte), so the marked R9700 rows never entered that census -- and what the correction
+// does NOT do is close the consumer rule: the deciding fold of the comparison,
+// gunbc.gpu_market.realization_join::realization_check_board, reads the two figures that decide it bare
+// (the device row's memory capacity and the board's power ceiling) and consulted no standing at all.
+// A board handed to that fold was compared on figures whose grounding it never looked at: that is the
+// same consumer behaviour on whatever population the census does hold, and on any board supplied to the
+// interface.
+//
+// WHY IT IS A REFUSAL AND NOT A WARNING. gunbc.design_argument::fail_closed: an unreadable or undeclared
+// input refuses; it does not read as complete, and the absence of a figure is neither a zero nor a pass.
+// gunbc.design_argument::epistemic_humility: a conclusion built on a row carries that row's declared
+// standing in its own text -- so the refusal below carries the standing VALUE and the obligation VERBATIM
+// from the declaring module, through gunbc.fleet.gpu_declared_figures_standing::gpu_figure_read_obligation,
+// rather than paraphrasing it into a softer sentence. The rate-table precedent already in the corpus is
+// this same shape (product.node_power_envelope refuses a rank-specific ceiling row whose standing is
+// uncited and propagates the obligation, per the recurring-failure-mode row's repair); this extends that
+// rule to the comparison site and creates no second provenance model -- the standing type stays
+// extdeps.external_authority::CitedFigureStanding, the one place it can be minted.
+//
+// WHAT THIS DOES NOT DECIDE: the purchase decision itself, and sourcing the citations that would ground
+// a marked figure -- both out of scope on the row, the second belonging to the operator and the intake
+// lanes.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.external_authority {
+  CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, ExternalAuthority,
+}
+import extdeps.gpu.types { GpuBoardCatalogRow }
+import gunbc.fleet.gpu_declared_figures_standing {
+  gpu_board_power_ceiling_with_standing, gpu_catalog_memory_with_standing, gpu_figure_read_obligation,
+}
+
+// THE FIGURES THE COMPARISON DECIDES ON. Typed, not strings: a refusal must name WHICH figure it would
+// not decide on, and a consumer must not be able to ask for a figure the comparison never reads. These
+// are exactly the two figures gunbc.gpu_market.realization_join compares an observed card against
+// (its MemoryAboveCatalog and PowerCapAboveBoardCeiling causes); the link endpoint is deliberately NOT
+// here, because the standing model declares no standing for it and inventing a third figure this
+// comparison does not decide on would be modeling a question nobody asks.
+type DecidedFigure
+  = MemoryCapacity
+  | BoardPowerCeiling
+
+// WHAT THE STANDING MODEL ANSWERED FOR ONE DECIDING FIGURE.
+//   FigureCited     -- one citation names the figure and no module has declared otherwise: the figure may
+//                      decide the comparison, and NOTHING is owed (the negative shape: a consumer that
+//                      attached an obligation here would be claiming an incompleteness the row denies).
+//   FigureMarked    -- the row's own standing declares the figure a transcription (or an observation
+//                      receipt): the figure cannot decide, and the refusal carries the standing value and
+//                      the declaring module's obligation text.
+//   FigureUngrounded -- the row states the figure but nothing grounds it: no declared standing and no
+//                      single figure_citations entry naming the field. This is the rate-table defect
+//                      exactly ("refused empty rows but admitted nonempty uncited rows"): an uncited
+//                      figure stated by a row is NOT read as a cited one, and here it is not decided on
+//                      either. Absence of grounding is a refusal, never a pass.
+//   FigureAbsent    -- the row states no such figure at all (board_power: none). This is NOT a refusal and
+//                      it is NOT a zero: a figure that is not there cannot decide anything, and the fold's
+//                      own numeric check already answers nothing for it. What it must not be is INVISIBLE --
+//                      gunbc.design_argument::fail_closed says an absence is neither a zero nor a pass, and
+//                      the row's boundary names an absent field as something the selecting consumer must see.
+//                      So the absence travels in the admitted arm, named, while the comparison proceeds on
+//                      the figures it does have -- and it travels PAST that arm: the production consumer
+//                      gunbc.gpu_market.realization_join::RealizationGpuJoined carries the same list in its own
+//                      joined arm, so a board joined with no checkable ceiling never reads as a board whose
+//                      ceiling was checked and passed. Refusing a board for a figure the comparison never gets to
+//                      use would be over-generalizing the prohibition (gunbc.design_argument::epistemic_humility).
+type ComparisonGrounding
+  = FigureCited { figure: DecidedFigure, authority: ExternalAuthority }
+  | FigureMarked { figure: DecidedFigure, standing: CitedFigureStanding, read_obligation: String }
+  | FigureUngrounded { figure: DecidedFigure }
+  | FigureAbsent { figure: DecidedFigure }
+
+// THE READ FOR ONE FIGURE, through the one route that knows both grounding kinds: a declared standing
+// wins over the citation-derived one (gunbc.fleet.gpu_declared_figures_standing states why -- a citation
+// to a reseller page is shaped exactly like a citation to the vendor, and the declaring module has
+// already said which it is). An ObservedByReceipt figure grounds NOTHING in this comparison: its warrant
+// is a receipt of an observation this repository made, which is not a vendor's statement of a catalog
+// figure, and today no board row under extdeps.gpu carries that arm -- so the choice is a declared
+// boundary rather than a live branch, and a marked figure can never be quietly re-labelled cited by it.
+// IS THE FIGURE STATED AT ALL? A device row's memory is a required field, so it is always stated; a board's
+// power ceiling is declared absent by the row itself (board_power: none), and a great many laptop and SXM
+// rows state none. Absence is decided HERE, once, so no consumer can confuse "not there" with "there and
+// uncited" -- the two have opposite consequences, one is carried and one refuses.
+fn comparison_figure_is_stated(board: GpuBoardCatalogRow, figure: DecidedFigure) -> Bool {
+  match figure {
+    MemoryCapacity => true
+    BoardPowerCeiling => match board.facts.board_power {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+// THE STANDING THE DECLARING MODULE GIVES THE FIGURE, if the figure is stated at all.
+fn comparison_figure_standing(board: GpuBoardCatalogRow, figure: DecidedFigure) -> CitedFigureStanding? {
+  match figure {
+    MemoryCapacity => match gpu_catalog_memory_with_standing(row: board.facts.gpu) {
+      Absent => none
+      Present { value: memory } => Present { value: memory.standing }
+    }
+    BoardPowerCeiling => match gpu_board_power_ceiling_with_standing(facts: board.facts) {
+      Present { value: power } => Present { value: power.standing }
+      Absent => none
+    }
+  }
+}
+
+fn comparison_figure_grounding(board: GpuBoardCatalogRow, figure: DecidedFigure) -> ComparisonGrounding {
+  if !comparison_figure_is_stated(board: board, figure: figure) {
+    FigureAbsent { figure: figure }
+  } else {
+    match comparison_figure_standing(board: board, figure: figure) {
+      Absent => FigureUngrounded { figure: figure }
+      Present { value: standing } => match standing {
+        CitedToAuthority { authority: authority } => FigureCited { figure: figure, authority: authority }
+        // A figure warranted by a receipt of OUR OWN observation warrants nothing about what the vendor
+        // states as a catalog figure, so it grounds no comparison: it is ungrounded here, not cited.
+        ObservedByReceipt { observed: _ } => FigureUngrounded { figure: figure }
+        _ => match gpu_figure_read_obligation(standing: standing) {
+          Present { value: obligation } => FigureMarked { figure: figure, standing: standing, read_obligation: obligation }
+          Absent => FigureUngrounded { figure: figure }
+        }
+      }
+    }
+  }
+}
+
+// BOTH DECIDING FIGURES AT ONCE, in the order the comparison reads them.
+fn comparison_figure_groundings(board: GpuBoardCatalogRow) -> List<ComparisonGrounding> {
+  [
+    comparison_figure_grounding(board: board, figure: MemoryCapacity),
+    comparison_figure_grounding(board: board, figure: BoardPowerCeiling),
+  ]
+}
+
+// THE FIGURES THAT MAY NOT DECIDE: everything that is not grounded in a citation to the authority that
+// states it. Exported because a witness must be able to count what the gate refused without trusting the
+// admission arm's rendering of it.
+fn comparison_refused_groundings(grounds: List<ComparisonGrounding>) -> List<ComparisonGrounding> {
+  grounds |> filter(grounding => match grounding {
+    FigureCited { figure: _, authority: _ } => false
+    FigureAbsent { figure: _ } => false
+    _ => true
+  })
+}
+
+// THE FIGURES THE ROW DOES NOT STATE, in the order the comparison reads them. Exported for the same reason
+// as the refusals: the admitted arm must be checkable for what it carries, not just for what it let through.
+fn comparison_absent_groundings(grounds: List<ComparisonGrounding>) -> List<ComparisonGrounding> {
+  grounds |> filter(grounding => match grounding {
+    FigureAbsent { figure: _ } => true
+    _ => false
+  })
+}
+
+// THE ADMISSION: the comparison proceeds only when EVERY figure it would decide on arrives cited to the
+// authority that states it. Refusal names the board it refused and carries, per figure, the standing the
+// row itself declared and the obligation that would close it -- the conclusion carries the standing in
+// its own text (gunbc.design_argument::epistemic_humility), so no downstream rendering can lose it.
+type BoardComparisonAdmission
+  = ComparisonAdmitted { model: NonEmptyStr, grounds: List<ComparisonGrounding>, absent: List<ComparisonGrounding> }
+  | ComparisonRefused { model: NonEmptyStr, refusals: List<ComparisonGrounding> }
+
+fn board_comparison_admission(board: GpuBoardCatalogRow) -> BoardComparisonAdmission {
+  let grounds = comparison_figure_groundings(board: board)
+  let refusals = comparison_refused_groundings(grounds: grounds)
+  let absent = comparison_absent_groundings(grounds: grounds)
+  if count(refusals) == 0 {
+    ComparisonAdmitted { model: board.facts.model, grounds: grounds, absent: absent }
+  } else {
+    ComparisonRefused { model: board.facts.model, refusals: refusals }
+  }
+}
+
+// IS THIS GROUNDING A DECLARED INCOMPLETENESS, NAMED? The question a witness asks so the binding is on
+// the VALUE and the OBLIGATION, not on a word: the arm must BE the marked arm, its standing must be the
+// arm the declaring module states, and its obligation must be that module's own text.
+fn comparison_grounding_is_marked(grounding: ComparisonGrounding) -> Bool {
+  match grounding {
+    FigureMarked { figure: _, standing: _, read_obligation: _ } => true
+    _ => false
+  }
+}
+
+fn comparison_grounding_is_cited(grounding: ComparisonGrounding) -> Bool {
+  match grounding {
+    FigureCited { figure: _, authority: _ } => true
+    _ => false
+  }
+}
+
+// IS THIS FIGURE ONE THE ROW DOES NOT STATE? The third answer a consumer must be able to ask, and the one
+// that must never be dressed as either of the other two.
+fn comparison_grounding_is_absent(grounding: ComparisonGrounding) -> Bool {
+  match grounding {
+    FigureAbsent { figure: _ } => true
+    _ => false
+  }
+}
