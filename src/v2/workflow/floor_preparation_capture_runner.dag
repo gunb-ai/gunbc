@@ -1379,8 +1379,6 @@ fn floor_preparation_capture_run() -> String {
         list_push(xs: acc, item: name)
       })
     let claims_a_args = floor_preparation_claims_leg_argv(leg_a_roster)
-    // A claims leg's own rc is a transport fact too: 124 means the roster was never judged.
-    let claims_a_truncated = transport_ok && claims_a.rc == transport_timeout_rc
     let claims_a = if transport_ok {
       floor_preparation_spawn_slot_captured(
         label: "leg-claims-a", bound: floor_preparation_claims_bound(),
@@ -1395,6 +1393,10 @@ fn floor_preparation_capture_run() -> String {
     // println!, i.e. STDOUT; run8's gate read stderr and could never see a verdict) plus every
     // resolve banner and phase line -- is read back from the script log and its size reported,
     // so a missing-roster verdict can be read, not guessed.
+    // A claims leg's own rc is a transport fact too: 124 means the roster was never judged.
+    // (Defined AFTER the claims_a binding -- a forward reference is a resolve error, and
+    // claim_batch's closure gate is what caught it at preflight on 2026-11-28.)
+    let claims_a_truncated = transport_ok && claims_a.rc == transport_timeout_rc
     let claims_transcript = if transport_ok {
       floor_preparation_read_captured(label: "leg-claims-a")
     } else {
