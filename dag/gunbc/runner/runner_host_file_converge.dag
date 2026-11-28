@@ -1364,6 +1364,11 @@ type RunnerSlotUnitStanding
   | SlotUnitNotLoaded { load_state: String }
   | SlotRetiredAsDeclared
   | SlotRetirementIncomplete { cause: String }
+  // A retirement the authority owes but whose drain the read could NOT observe (the batched
+  // cgroup.events read was unanswered). Distinct from SlotRetirementIncomplete (a drain that WAS read and
+  // is still pending): an unread retirement is not a complete read, so the read-completely gate rejects it
+  // -- it must not be accepted as an observed pending drain. (#17119 item 6.)
+  | SlotRetirementUnobserved { cause: String }
   | SlotUnitUnread
 
 // ORDER MATTERS AND IS THE POINT. A unit the manager has not loaded still gets a show block, carrying
@@ -1376,7 +1381,9 @@ type RunnerSlotUnitStanding
 // gunbc.runner.runner_slot_retirement runner_retirement_standing for each unit the width transition obliges
 // retired, and only RetirementComplete -- mask held, service not running, workload cgroup empty or
 // absent -- reads SlotRetiredAsDeclared. Masked is the inhibit, not the drain: a retiree masked mid-job
-// still holds its worker, so a pending or unobserved retirement refuses as SlotRetirementIncomplete.
+// still holds its worker, so an OBSERVED pending drain refuses as SlotRetirementIncomplete and an
+// UNOBSERVED drain (the batched cgroup.events reply was unreadable) refuses as SlotRetirementUnobserved --
+// the two are never collapsed, because the read-completely gate must reject the unread one (#17119 item 6).
 // A masked unit with no retirement standing -- one the authority does NOT retire -- stays not-loaded,
 // because ignoring masked units would hide a slot masked by mistake; a retiree still loaded is still
 // judged on its teardown, because it can still run a job.
@@ -1387,7 +1394,7 @@ fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, 
     fold(own, init: SlotRetiredAsDeclared, f: (acc, st) => match st {
       RetirementComplete { unit: _ } => acc
       RetirementPendingDrain { unit: _, cause: c } => SlotRetirementIncomplete { cause: c }
-      RetirementUnobserved { unit: _, cause: c } => SlotRetirementIncomplete { cause: c }
+      RetirementUnobserved { unit: _, cause: c } => SlotRetirementUnobserved { cause: c }
     })
   } else if trim(s: reading.load_state) != "loaded" {
     SlotUnitNotLoaded { load_state: trim(s: reading.load_state) }
@@ -1412,6 +1419,7 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
     SlotUnitNotLoaded { load_state: l } => concat("NOT-LOADED LoadState=", l)
     SlotRetiredAsDeclared => "retired-as-declared LoadState=masked"
     SlotRetirementIncomplete { cause: c } => concat("MASKED-RETIREMENT-INCOMPLETE ", c)
+    SlotRetirementUnobserved { cause: c } => concat("MASKED-RETIREMENT-UNOBSERVED ", c)
     SlotUnitUnread => "UNREAD"
   }
 }
@@ -1680,7 +1688,7 @@ fn runner_slot_population_effective(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => false
     SlotPopulationObserved { units: us } =>
-      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
+      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotRetirementUnobserved { cause: _ } => false SlotUnitUnread => false })
         && all(us, r => match r.standing {
         SlotTeardownEffective => true
         SlotRetiredAsDeclared => true
@@ -1689,7 +1697,7 @@ fn runner_slot_population_effective(population: RunnerSlotPopulation) -> Bool {
         SlotReloadPending => false
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberRunsARunner => false
         SlotUnitNotLoaded { load_state: _ } => false
-        SlotUnitUnread => false
+        SlotRetirementUnobserved { cause: _ } => false SlotUnitUnread => false
       })
   }
 }
@@ -1699,7 +1707,7 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
     SlotPopulationUnobservable { reason: _ } => false
     SlotPopulationObserved { units: us } =>
       length(us) > 0 && all(us, r => match r.standing {
-        SlotUnitUnread => false
+        SlotRetirementUnobserved { cause: _ } => false SlotUnitUnread => false
         SlotTeardownEffective => true
         SlotReloadPending => true
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true SlotFabricMemberNotARunner { load_state: _ } => true SlotFabricMemberRunsARunner => true
@@ -4487,7 +4495,7 @@ fn runner_host_cap_retirement_gate(retired_units: List<NonEmptyStr>, population:
     observation: match population {
       SlotPopulationUnobservable { reason: r } => SurplusSlotsUnobserved { cause: r }
       SlotPopulationObserved { units: us } => {
-        let done = map(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }), r => r.unit)
+        let done = map(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetirementUnobserved { cause: _ } => false SlotUnitUnread => false }), r => r.unit)
         SurplusSlotsObserved {
           retired: done,
           still_present: filter(retired_units, u => !any(done, d => (d as String) == (u as String))),
@@ -5558,8 +5566,8 @@ fn runner_slot_population_text(population: RunnerSlotPopulation) -> String {
     SlotPopulationObserved { units: us } =>
       join([
         "slots observed=", to_string(length(us)),
-        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
-        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
+        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotRetirementUnobserved { cause: _ } => false SlotUnitUnread => false }))),
+        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetirementUnobserved { cause: _ } => false SlotUnitUnread => false }))),
         "\n",
         join(map(us, r => join(["slot ", r.unit as String, " ", runner_slot_unit_standing_wire(standing: r.standing), "\n"], "")), ""),
       ], "")

@@ -37,6 +37,7 @@ import gunbc.runner.runner_slot_retirement {
   retirement_unit,
   retirement_is_complete,
   retirement_is_unobserved,
+  RetirementUnobserved,
   CgroupEventsBatch,
   CgroupEventsBatchRead,
   CgroupEventsBatchUnread,
@@ -190,6 +191,7 @@ import gunbc.runner.runner_host_file_converge {
   SlotUnitUnread,
   SlotRetiredAsDeclared,
   SlotRetirementIncomplete,
+  SlotRetirementUnobserved,
   classify_runner_slot_unit_against_retirement,
   RunnerSlotUnitResult,
   RunnerSlotPopulation,
@@ -969,6 +971,7 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
     SlotRetiredAsDeclared => "retired"
     SlotRetirementIncomplete { cause: _ } => "retirement-incomplete"
+    SlotRetirementUnobserved { cause: _ } => "retirement-unobserved"
     SlotUnitUnread => "unread"
   }
 }
@@ -2514,4 +2517,18 @@ test fn the_spec_dispatched_create_unreadable_readback_keeps_the_dispatch_cause(
         && !runner_spec_account_settled(a: st)
     _ => false
   }
+}
+
+// item 6 (round-4 sweep): the batched cgroup.events read for a MASKED retiree is a dispatched
+// leg. When that reply is unread (a RetirementUnobserved standing from the unread batch), the unit
+// is SlotRetirementUnobserved, NOT SlotRetirementIncomplete. The completeness gate must REJECT a
+// population carrying an unread retirement: a gate may not be satisfied by an unread result.
+test fn an_unanswered_masked_retiree_cgroup_batch_is_not_read_completely() -> Bool {
+  let unread_batch = classify_runner_slot_unit_against_retirement(
+    retirements: [RetirementUnobserved { unit: "actions-runner@srv1-01.service", cause: "the batched cgroup.events reply was unreadable" }],
+    reading: reading(load: "masked", reload: "no", kill: "control-group", exit: "main"),
+    expect: fixture_expect())
+  let population = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: unread_batch, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }] }
+  standing_wire_of(st: unread_batch) == "retirement-unobserved"
+    && !runner_slot_population_read_completely(population: population)
 }
